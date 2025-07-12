@@ -3,10 +3,13 @@ import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { Config } from './types/config';
 import { GoogleCloudVoiceSimple } from './voice/google-cloud-voice-simple';
 import { WelcomeAgent } from './agents/welcome-agent';
-import { EnhancedQAAgent } from './agents/enhanced-qa-agent';
 import { RealtimeAgent } from './agents/realtime-agent';
 import { SlideNarrator } from './agents/slide-narrator';
+import { MainQAWorkflow } from './workflows/main-qa-workflow';
 import { SupabaseMemoryAdapter } from '@/lib/supabase-memory';
+import { getSharedMemoryService } from '@/lib/shared-memory-service';
+import { VoiceOutputAgent } from './agents/voice-output-agent';
+import { CharacterControlAgent } from './agents/character-control-agent';
 
 // Import tools
 import { SlideControlTool } from './tools/slide-control';
@@ -17,6 +20,7 @@ import { ExternalApiTool } from './tools/external-api';
 import { LanguageSwitchTool } from './tools/language-switch';
 import { PageTransitionTool } from './tools/page-transition';
 import { RAGSearchTool } from './tools/rag-search';
+import { enhancedRagSearchTool } from './tools/enhanced-rag-search';
 import { ExternalDataFetcherTool } from './tools/external-data-fetcher';
 import { EngineerCafeWebSearchTool } from './tools/company-web-search';
 import { GeneralWebSearchTool } from './tools/general-web-search';
@@ -53,22 +57,47 @@ export class EngineerCafeNavigator {
     
     const model = google(this.config.gemini.model);
     
+    // Get shared memory service for all agents
+    const sharedMemory = getSharedMemoryService();
+    
     const modelConfig = {
       llm: {
         model,
       },
-      memory: this.mastra.memory,
+      // Removed mastra.memory as it's not used
+      sharedMemory: sharedMemory,
     };
     
     const welcomeAgent = new WelcomeAgent(modelConfig);
-    const qaAgent = new EnhancedQAAgent(modelConfig);
     const realtimeAgent = new RealtimeAgent(modelConfig, this.voiceService);
     const slideNarrator = new SlideNarrator(modelConfig);
+    const mainQAWorkflow = new MainQAWorkflow(modelConfig);
+    
+    // Voice output agent with voice service
+    const voiceOutputAgent = new VoiceOutputAgent({
+      ...modelConfig,
+      tools: {
+        voice: this.voiceService
+      }
+    });
+    
+    // Character control agent
+    const characterControlAgent = new CharacterControlAgent(modelConfig);
 
     this.agents.set('welcome', welcomeAgent);
-    this.agents.set('qa', qaAgent);
+    this.agents.set('qa', mainQAWorkflow); // New architecture as primary QA
     this.agents.set('realtime', realtimeAgent);
     this.agents.set('narrator', slideNarrator);
+    this.agents.set('voiceOutput', voiceOutputAgent); // Centralized voice output
+    this.agents.set('characterControl', characterControlAgent); // Centralized character control
+    
+    // Connect agents for unified presentation layer
+    realtimeAgent.setVoiceOutputAgent(voiceOutputAgent);
+    realtimeAgent.setCharacterControlAgent(characterControlAgent);
+    
+    // Connect SlideNarrator to unified presentation layer
+    slideNarrator.setVoiceOutputAgent(voiceOutputAgent);
+    slideNarrator.setCharacterControlAgent(characterControlAgent);
   }
 
   private initializeTools() {
@@ -102,6 +131,7 @@ export class EngineerCafeNavigator {
     this.tools.set('languageSwitch', languageSwitchTool);
     this.tools.set('pageTransition', pageTransitionTool);
     this.tools.set('ragSearch', ragSearchTool);
+    this.tools.set('enhancedRagSearch', enhancedRagSearchTool);
     this.tools.set('externalDataFetcher', externalDataFetcherTool);
     this.tools.set('engineerCafeWebSearch', engineerCafeWebSearchTool);
     this.tools.set('calendarService', calendarServiceTool);

@@ -45,8 +45,11 @@ export class RAGSearchTool {
     const { query, language = 'ja', category, limit = 5, threshold = 0.5 } = params;
 
     try {
+      // Keep query as is to match knowledge base content exactly
+      const normalizedQuery = query; // Removed term conversion that was causing search mismatches
+      
       // Generate embedding for the query
-      const embedding = await this.generateEmbedding(query);
+      const embedding = await this.generateEmbedding(normalizedQuery);
       
       // Search the knowledge base
       const results = await this.performKnowledgeBaseSearch({
@@ -68,7 +71,21 @@ export class RAGSearchTool {
         }
       };
 
+      // Check if this is a specific query (e.g., Saino Cafe)
+      const isSpecificQuery = query.toLowerCase().includes('saino') || 
+                             query.toLowerCase().includes('才能') ||
+                             query.toLowerCase().includes('併設');
+
       const sorted = results.sort((a,b)=>{
+        // For specific queries, prioritize similarity over importance
+        if (isSpecificQuery) {
+          // If similarity difference is significant (>0.2), use similarity
+          const simDiff = b.similarity - a.similarity;
+          if (Math.abs(simDiff) > 0.2) {
+            return simDiff;
+          }
+        }
+
         const diffImp = importanceRank(b.metadata?.importance) - importanceRank(a.metadata?.importance);
         if (diffImp !== 0) return diffImp;
 
@@ -138,7 +155,7 @@ export class RAGSearchTool {
       const { data, error } = await supabaseAdmin.rpc('search_knowledge_base', {
         query_embedding: embedding,
         similarity_threshold: threshold,
-        match_count: limit * 3, // Get more results to filter by language/category
+        match_count: limit * 5, // Get more results to filter by language/category
       });
 
       if (error) {
@@ -307,7 +324,8 @@ export class RAGSearchTool {
         contentLength: item.content.length,
         category: item.category
       });
-      return `[${title}]\n${item.content}`;
+      // Return only the content without the title in brackets
+      return item.content;
     });
 
     const finalContext = contextParts.join('\n\n');
@@ -324,14 +342,14 @@ export class RAGSearchTool {
       this.execute({
         query,
         language: primaryLanguage,
-        limit: 3,
-        threshold: 0.3,
+        limit: 10,
+        threshold: 0.2,
       }),
       this.execute({
         query,
         language: primaryLanguage === 'ja' ? 'en' : 'ja',
-        limit: 2,
-        threshold: 0.3,
+        limit: 5,
+        threshold: 0.2,
       })
     ]);
 
@@ -364,7 +382,8 @@ export class RAGSearchTool {
         contentLength: item.content.length,
         category: item.category
       });
-      return `[${title}]\n${item.content}`;
+      // Return only the content without the title in brackets
+      return item.content;
     });
 
     const finalContext = contextParts.join('\n\n');
