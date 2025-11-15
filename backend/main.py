@@ -55,25 +55,22 @@ async def chat(request: ChatRequest):
     LangGraphエージェントを使用してクエリを処理します
     """
     try:
-        # TODO: LangGraphワークフローの実装後に統合
-        # from workflows.main_workflow import get_workflow
-        # workflow = get_workflow()
-        # result = await workflow.ainvoke({
-        #     "query": request.query,
-        #     "session_id": request.session_id,
-        #     "language": request.language,
-        #     "context": request.context or {}
-        # })
+        from workflows.main_workflow import get_workflow
+        workflow = get_workflow()
+        result = await workflow.ainvoke({
+            "query": request.query,
+            "session_id": request.session_id,
+            "language": request.language,
+            "context": request.context or {}
+        })
         
-        # 暫定的な応答
         return ChatResponse(
-            answer="LangGraphワークフローは実装中です。",
-            emotion="neutral",
-            metadata={
-                "status": "pending",
+            answer=result.get("answer", "回答を生成できませんでした。"),
+            emotion=result.get("emotion", "neutral"),
+            metadata=result.get("metadata", {
                 "query": request.query,
                 "session_id": request.session_id
-            }
+            })
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -85,10 +82,18 @@ async def invoke_agent(request: ChatRequest):
     LangGraphエージェントの直接実行エンドポイント
     """
     try:
-        # TODO: LangGraphワークフローの実装後に統合
+        from workflows.main_workflow import get_workflow
+        workflow = get_workflow()
+        result = await workflow.ainvoke({
+            "query": request.query,
+            "session_id": request.session_id,
+            "language": request.language,
+            "context": request.context or {}
+        })
+        
         return {
-            "status": "pending",
-            "message": "LangGraphワークフローは実装中です。"
+            "status": "success",
+            "result": result
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
