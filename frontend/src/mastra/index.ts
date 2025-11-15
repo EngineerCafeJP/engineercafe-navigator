@@ -167,10 +167,6 @@ export class EngineerCafeNavigator {
   public getVoiceService() {
     return this.voiceService;
   }
-
-  public getLangGraphWorkflow() {
-    return this.langGraphWorkflow;
-  }
 }
 
 // Singleton instance
