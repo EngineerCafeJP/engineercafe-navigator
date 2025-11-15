@@ -1,5 +1,32 @@
 # Node modules
 node_modules/
+frontend/node_modules/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+backend/venv/
+backend/env/
+backend/ENV/
+backend/.venv/
 
 # dotenv files
 .env
@@ -7,6 +34,8 @@ node_modules/
 .env.development.local
 .env.test.local
 .env.production.local
+frontend/.env.local
+backend/.env
 
 # Log files
 npm-debug.log*
@@ -16,7 +45,9 @@ pnpm-debug.log*
 
 # Next.js build output
 .next/
+frontend/.next/
 out/
+frontend/out/
 
 # TypeScript build output
 dist/
@@ -34,23 +65,28 @@ Thumbs.db
 # Test coverage
 coverage/
 
-# GCP specific (service account keys are often .json, but ignoring all .json is dangerous)
-# It's safer to ignore the .env file which contains the path, or explicitly ignore the known key file name if it's fixed.
-# Assuming the service account key path is stored in .env, ignoring .env is sufficient.
-# If you have a specific service account key file name like 'service-account.json' at the root, uncomment the line below:
-# service-account.json
-
-# Config directory (contains sensitive files like service account keys)
+# GCP specific
 *service-account-key.json
-# *.vrm
-# *.vrma
 
 # Supabase CLI artifacts
 supabase/.temp/
 supabase/.branches/
+frontend/supabase/.temp/
+frontend/supabase/.branches/
 
 # Local HTTPS certificates
 certificates/
 *.pem
+
+# Poetry
+poetry.lock
+backend/poetry.lock
+
+# Python testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Temporary directories
 langgraph-repo/
 engineer-cafe-navigator-repo/
