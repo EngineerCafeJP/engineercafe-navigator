@@ -5,7 +5,7 @@
  * より柔軟で拡張可能なAIエージェントシステムを構築します。
  */
 
-import { StateGraph, END, START } from '@langchain/langgraph';
+import { StateGraph, START, END } from '@langchain/langgraph';
 import { BaseMessage, HumanMessage, AIMessage } from '@langchain/core/messages';
 import { RouterAgent } from '@/mastra/agents/router-agent';
 import { BusinessInfoAgent } from '@/mastra/agents/business-info-agent';
@@ -67,7 +67,7 @@ export class LangGraphWorkflow {
   /**
    * LangGraphのグラフ構造を構築
    */
-  private buildGraph(): StateGraph<LangGraphState> {
+  private buildGraph() {
     const workflow = new StateGraph<LangGraphState>({
       channels: {
         messages: {
@@ -86,18 +86,9 @@ export class LangGraphWorkflow {
           reducer: (x: string, y: string) => y || x,
           default: () => 'ja',
         },
-        routedTo: {
-          reducer: (x: string | undefined, y: string | undefined) => y || x,
-          default: () => undefined,
-        },
-        answer: {
-          reducer: (x: string | undefined, y: string | undefined) => y || x,
-          default: () => undefined,
-        },
-        emotion: {
-          reducer: (x: string | undefined, y: string | undefined) => y || x,
-          default: () => undefined,
-        },
+        routedTo: null,
+        answer: null,
+        emotion: null,
         metadata: {
           reducer: (x: any, y: any) => ({ ...x, ...y }),
           default: () => ({}),
@@ -110,36 +101,33 @@ export class LangGraphWorkflow {
     });
 
     // Add nodes
-    workflow.addNode('memory', this.memoryNode.bind(this));
-    workflow.addNode('router', this.routerNode.bind(this));
-    workflow.addNode('clarification', this.clarificationNode.bind(this));
-    workflow.addNode('businessInfo', this.businessInfoNode.bind(this));
-    workflow.addNode('facility', this.facilityNode.bind(this));
-    workflow.addNode('event', this.eventNode.bind(this));
-    workflow.addNode('generalKnowledge', this.generalKnowledgeNode.bind(this));
-    workflow.addNode('formatResponse', this.formatResponseNode.bind(this));
+    workflow
+      .addNode('memory', this.memoryNode.bind(this))
+      .addNode('router', this.routerNode.bind(this))
+      .addNode('clarification', this.clarificationNode.bind(this))
+      .addNode('businessInfo', this.businessInfoNode.bind(this))
+      .addNode('facility', this.facilityNode.bind(this))
+      .addNode('event', this.eventNode.bind(this))
+      .addNode('generalKnowledge', this.generalKnowledgeNode.bind(this))
+      .addNode('formatResponse', this.formatResponseNode.bind(this));
 
     // Define edges
-    workflow.addEdge(START, 'memory');
-    workflow.addEdge('memory', 'router');
-    
-    // Conditional routing based on router decision
-    workflow.addConditionalEdges('router', this.routeDecision.bind(this), {
-      clarification: 'clarification',
-      businessInfo: 'businessInfo',
-      facility: 'facility',
-      event: 'event',
-      generalKnowledge: 'generalKnowledge',
-    });
-
-    // All agent nodes converge to formatResponse
-    workflow.addEdge('clarification', 'formatResponse');
-    workflow.addEdge('businessInfo', 'formatResponse');
-    workflow.addEdge('facility', 'formatResponse');
-    workflow.addEdge('event', 'formatResponse');
-    workflow.addEdge('generalKnowledge', 'formatResponse');
-    
-    workflow.addEdge('formatResponse', END);
+    workflow
+      .addEdge(START, 'memory')
+      .addEdge('memory', 'router')
+      .addConditionalEdges('router', this.routeDecision.bind(this), {
+        clarification: 'clarification',
+        businessInfo: 'businessInfo',
+        facility: 'facility',
+        event: 'event',
+        generalKnowledge: 'generalKnowledge',
+      })
+      .addEdge('clarification', 'formatResponse')
+      .addEdge('businessInfo', 'formatResponse')
+      .addEdge('facility', 'formatResponse')
+      .addEdge('event', 'formatResponse')
+      .addEdge('generalKnowledge', 'formatResponse')
+      .addEdge('formatResponse', END);
 
     return workflow.compile();
   }
