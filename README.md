@@ -7,14 +7,26 @@
 [![Next.js](https://img.shields.io/badge/Next.js-15.3.2-black)](https://nextjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8.3-blue)](https://www.typescriptlang.org/)
 [![Mastra](https://img.shields.io/badge/Mastra-0.10.5-green)](https://mastra.ai/)
+[![LangGraph](https://img.shields.io/badge/LangGraph-0.2.0-blue)](https://langchain-ai.github.io/langgraph/)
 [![React](https://img.shields.io/badge/React-19.1.0-61dafb)](https://reactjs.org/)
 [![Three.js](https://img.shields.io/badge/Three.js-VRM-orange)](https://threejs.org/)
 
 ## 📖 プロジェクト概要
 
-Engineer Cafe Navigator（エンジニアカフェナビゲーター）は、福岡市エンジニアカフェの新規顧客対応を自動化する**多言語対応音声AIエージェントシステム**です。Mastraフレームワークを活用し、スタッフの負担軽減と顧客満足度向上を目指します。
+Engineer Cafe Navigator（エンジニアカフェナビゲーター）は、福岡市エンジニアカフェの新規顧客対応を自動化する**多言語対応音声AIエージェントシステム**です。MastraフレームワークとLangGraphを統合し、より柔軟で拡張可能なエージェントワークフローを実現します。スタッフの負担軽減と顧客満足度向上を目指します。
 
-### 🆕 最新アップデート (2025/07/03)
+### 🆕 最新アップデート (2025/01/XX)
+
+#### ✅ LangGraph統合
+- **🔗 LangGraphワークフロー統合** - 既存のMastraエージェントをLangGraphのグラフ構造で統合
+- **📊 グラフベースのワークフロー** - より柔軟なルーティングと状態管理
+- **🔄 永続的な実行** - 失敗から自動的に回復し、長時間実行可能
+- **💾 包括的なメモリ** - 短期作業メモリと長期永続メモリの両方をサポート
+- **🔍 デバッグと可視化** - LangSmithとの統合による詳細な実行トレース
+
+### 📋 以前のアップデート
+
+#### ✅ 8エージェント体制への完全移行 (2025/07/03)
 
 #### ✅ 8エージェント体制への完全移行
 - **🤖 新マルチエージェントアーキテクチャ** - MainQAWorkflowが8つの専門エージェントを統合

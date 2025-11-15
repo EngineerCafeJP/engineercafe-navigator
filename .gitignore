@@ -52,3 +52,5 @@ supabase/.branches/
 # Local HTTPS certificates
 certificates/
 *.pem
+langgraph-repo/
+engineer-cafe-navigator-repo/
