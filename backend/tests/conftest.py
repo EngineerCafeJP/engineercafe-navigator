@@ -3,7 +3,6 @@ pytest設定とフィクスチャ
 """
 
 import pytest
-import os
 from dotenv import load_dotenv
 
 # 環境変数の読み込み
