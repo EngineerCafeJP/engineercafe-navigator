@@ -13,15 +13,6 @@ load_dotenv()
 @pytest.fixture
 def sample_workflow_state():
     """サンプルのワークフロー状態"""
-    try:
-        from models.types import WorkflowState
-    except ImportError:
-        # フォールバック
-        import sys
-        import os
-        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        from models.types import WorkflowState
-    
     return {
         "messages": [],
         "query": "営業時間は何時ですか？",
