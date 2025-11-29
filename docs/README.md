@@ -6,16 +6,6 @@
 
 ### 🏠 メインドキュメント
 - **[README.md](../README.md)** - プロジェクト概要・セットアップガイド・基本的な使用方法
-- **[ONBOARDING.md](../ONBOARDING.md)** - 新規メンバー向けオンボーディングガイド
-
-### 🔄 移行プロジェクト（LangGraph移行）
-- **[移行概要](migration/OVERVIEW.md)** - Mastra→LangGraph移行の目的と概要
-- **[ロードマップ](migration/ROADMAP.md)** - 移行プロジェクトのスケジュール
-- **[ブランチ戦略](migration/BRANCH-STRATEGY.md)** - 開発フロー（feature→develop→main）
-- **[チーム担当者一覧](migration/TEAM-ASSIGNMENTS.md)** - 各エージェントの担当者情報
-- **[参考実装分析](migration/COWORKING-SYSTEM-ANALYSIS.md)** - coworking-space-systemの分析
-- **[Mastra版エージェント分析](migration/MASTRA-AGENT-ANALYSIS.md)** - 既存エージェントの責任範囲
-- **[統合ガイド](migration/INTEGRATION-GUIDE.md)** - 統合エージェント担当者向け
 
 ### 🛠️ 技術ドキュメント
 
@@ -62,13 +52,10 @@
 
 ### 新しい開発者向け
 
-1. **[オンボーディングガイド](../ONBOARDING.md)** - 新規メンバー向けの完全ガイド（まずはここから！）
-2. **[移行概要](migration/OVERVIEW.md)** - プロジェクトの全体像と移行プロジェクトの概要
-3. **[チーム担当者一覧](migration/TEAM-ASSIGNMENTS.md)** - 各エージェントの担当者情報
-4. **[README.md](../README.md)** - プロジェクト概要を理解
-5. **[DEVELOPMENT.md](DEVELOPMENT.md)** - 開発環境をセットアップ
-6. **[API.md](API.md)** - API仕様を確認
-7. **[SECURITY.md](SECURITY.md)** - セキュリティ要件を理解
+1. **[README.md](../README.md)** - プロジェクト概要を理解
+2. **[DEVELOPMENT.md](DEVELOPMENT.md)** - 開発環境をセットアップ
+3. **[API.md](API.md)** - API仕様を確認
+4. **[SECURITY.md](SECURITY.md)** - セキュリティ要件を理解
 
 ### 本番デプロイ担当者向け
 

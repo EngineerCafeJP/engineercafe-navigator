@@ -17,18 +17,8 @@ Engineer Cafe Navigator（エンジニアカフェナビゲーター）は、福
 
 このプロジェクトは**モノレポ構成**で、以下の2つの主要コンポーネントで構成されています：
 
-- **Frontend (NextJS)**: TypeScript/Reactベースのフロントエンドアプリケーション（Mastra 0.10.5使用）
-- **Backend (Python)**: LangGraphを使用したAIエージェントバックエンド（移行中）
-
-### 🚧 現在の開発状況
-
-**重要**: 現在、Mastra版からLangGraph版への移行プロジェクトが進行中です。
-
-- **Frontend**: Mastra版が本番稼働中（`frontend/`）
-- **Backend**: LangGraph版を実装中（`backend/`）
-- **移行ドキュメント**: [docs/migration/](docs/migration/) を参照
-
-**新規メンバーの方へ**: まずは[オンボーディングガイド](ONBOARDING.md)を読んで、プロジェクトの全体像を把握してください。
+- **Frontend (NextJS)**: TypeScript/Reactベースのフロントエンドアプリケーション
+- **Backend (Python)**: LangGraphを使用したAIエージェントバックエンド
 
 ## 🏗️ プロジェクト構造
 
@@ -60,18 +50,12 @@ engineer-cafe-navigator2025/
 
 ### セットアップ
 
-1. **リポジトリのクローン（参考リポジトリも含む）**
+1. **リポジトリのクローン**
 
 ```bash
-# 参考リポジトリ（langgraph-reference）も含めてクローン
-git clone --recurse-submodules https://github.com/EngineerCafeJP/engineercafe-navigator.git
+git clone https://github.com/EngineerCafeJP/engineercafe-navigator.git
 cd engineercafe-navigator
-
-# 既存リポジトリの場合、参考リポジトリを取得
-git submodule update --init --recursive
 ```
-
-**参考リポジトリ**: `langgraph-reference/` には、LangGraph実装の参考例（coworking-space-system）が含まれています。
 
 2. **依存関係のインストール**
 
@@ -202,27 +186,10 @@ cd frontend && pnpm build
 
 ## 📖 ドキュメント
 
-### 🆕 新規メンバー向け
-
-- **[オンボーディングガイド](ONBOARDING.md)** - 新規メンバー向けの完全ガイド（まずはここから！）
-- **[移行概要](docs/migration/OVERVIEW.md)** - プロジェクトの全体像と移行プロジェクトの概要
-- **[チーム担当者一覧](docs/migration/TEAM-ASSIGNMENTS.md)** - 各エージェントの担当者情報
-- **[ブランチ戦略](docs/migration/BRANCH-STRATEGY.md)** - 開発フロー（feature→develop→main）
-- **[ロードマップ](docs/migration/ROADMAP.md)** - 移行プロジェクトのスケジュール
-
-### 📚 技術ドキュメント
-
-- [開発者ガイド](docs/DEVELOPMENT.md) - 既存システム（Mastra版）の開発ガイド
+- [開発者ガイド](docs/DEVELOPMENT.md)
 - [API ドキュメント](docs/API.md)
 - [システムアーキテクチャ](docs/SYSTEM-ARCHITECTURE.md)
 - [デプロイメントガイド](docs/DEPLOYMENT.md)
-
-### 🔄 移行プロジェクト関連
-
-- **[移行概要](docs/migration/OVERVIEW.md)** - Mastra→LangGraph移行の目的と概要
-- **[参考実装分析](docs/migration/COWORKING-SYSTEM-ANALYSIS.md)** - coworking-space-systemの分析
-- **[Mastra版エージェント分析](docs/migration/MASTRA-AGENT-ANALYSIS.md)** - 既存エージェントの責任範囲
-- **[統合ガイド](docs/migration/INTEGRATION-GUIDE.md)** - 統合エージェント担当者向け
 
 ## 🤝 コントリビューション
 

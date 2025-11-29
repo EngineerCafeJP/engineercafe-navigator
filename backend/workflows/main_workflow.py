@@ -3,12 +3,23 @@
 既存のMastraエージェントのロジックをPython版LangGraphで実装
 """
 
-from typing import Literal
+from typing import TypedDict, Annotated, Literal
 from langgraph.graph import StateGraph, START, END
-from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
+import operator
 
-# WorkflowStateはmodels/types.pyからインポート
-from models.types import WorkflowState
+
+class WorkflowState(TypedDict):
+    """ワークフローの状態定義"""
+    messages: Annotated[list[BaseMessage], operator.add]
+    query: str
+    session_id: str
+    language: str
+    routed_to: str | None
+    answer: str | None
+    emotion: str | None
+    metadata: dict
+    context: dict
 
 
 class MainWorkflow:

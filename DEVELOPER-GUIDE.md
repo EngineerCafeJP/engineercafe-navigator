@@ -2,19 +2,16 @@
 
 最終更新日: 2025年7月3日（RAGシステム完全近代化済み）
 
-> **⚠️ 重要**: このドキュメントは既存のMastra版（Frontend）の開発ガイドです。LangGraph移行プロジェクトに参加する新規メンバーは、まず[オンボーディングガイド](../ONBOARDING.md)を読んでください。
-
 ## 📋 目次
 
 1. [プロジェクト概要](#プロジェクト概要)
 2. [現在の状況](#現在の状況)
-3. [LangGraph移行プロジェクト](#langgraph移行プロジェクト)
-4. [クイックスタート](#クイックスタート)
-5. [アーキテクチャ](#アーキテクチャ)
-6. [実装ガイド](#実装ガイド)
-7. [テスト戦略](#テスト戦略)
-8. [トラブルシューティング](#トラブルシューティング)
-9. [今後の開発計画](#今後の開発計画)
+3. [クイックスタート](#クイックスタート)
+4. [アーキテクチャ](#アーキテクチャ)
+5. [実装ガイド](#実装ガイド)
+6. [テスト戦略](#テスト戦略)
+7. [トラブルシューティング](#トラブルシューティング)
+8. [今後の開発計画](#今後の開発計画)
 
 ---
 
@@ -41,26 +38,6 @@ Engineer Cafe Navigator は、福岡市中央区天神にあるエンジニア�
 - **Voice**: Google Cloud Speech/TTS (Service Account認証)
 - **3D Graphics**: Three.js + @pixiv/three-vrm
 - **Memory**: SimplifiedMemorySystem (3分間TTL)
-
----
-
-## LangGraph移行プロジェクト
-
-### 🚧 現在進行中
-
-現在、Mastra版からLangGraph版への移行プロジェクトが進行中です。
-
-**新規メンバーの方へ**: 
-- まずは[オンボーディングガイド](../ONBOARDING.md)を読んでください
-- [移行概要](docs/migration/OVERVIEW.md)でプロジェクトの全体像を把握してください
-- [チーム担当者一覧](docs/migration/TEAM-ASSIGNMENTS.md)で自分の担当を確認してください
-
-**移行プロジェクトのドキュメント**:
-- [移行概要](docs/migration/OVERVIEW.md)
-- [ロードマップ](docs/migration/ROADMAP.md)
-- [ブランチ戦略](docs/migration/BRANCH-STRATEGY.md)
-- [チーム担当者一覧](docs/migration/TEAM-ASSIGNMENTS.md)
-- [参考実装分析](docs/migration/COWORKING-SYSTEM-ANALYSIS.md)
 
 ---
 
