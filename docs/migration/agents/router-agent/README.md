@@ -1,179 +1,170 @@
-# RouterAgent（統合エージェント）
+# Router Agent
 
-## 概要
-
-RouterAgentは、ユーザーのクエリを分析し、適切な専門エージェントにルーティングする統合エージェントです。Primary Assistantパターンで実装され、全体のワークフローを制御します。
+> クエリルーティングを担当する中央振り分けエージェント
 
 ## 担当者
 
-- **寺田@terisuke**（優先度1）- 責任者
-- **YukitoLyn**（優先度1）
+| 担当者 | 役割 |
+|-------|------|
+| **テリスケ** | メイン実装 |
+| **YukitoLyn** | レビュー・サポート |
 
-## 役割と責任範囲
+## 概要
 
-### やること
+Router Agentは、ユーザーからの入力を分析し、適切な専門エージェントにルーティングする役割を担います。マルチエージェントアーキテクチャの「交通整理役」として機能し、システム全体の応答品質と効率性を左右する重要なコンポーネントです。
 
-1. **クエリの言語検出**
-   - 日本語/英語の自動検出
-   - 応答言語の決定
+## 責任範囲
 
-2. **クエリの分類**
-   - カテゴリの判定（business, facility, event, general, clarification）
-   - 特定リクエストタイプの抽出（hours, pricing, location等）
+### 主要責務
 
-3. **メモリー関連の質問の検出**
-   - 「以前何を聞いたか」等のメモリー関連質問を優先的に検出
-   - MemoryAgentへの直接ルーティング
+| 責務 | 説明 |
+|------|------|
+| **言語検出** | ユーザー入力が日本語か英語かを判定 |
+| **クエリ分類** | 質問のカテゴリ（営業時間、設備、イベント等）を特定 |
+| **エージェント選択** | 最適な専門エージェントを決定 |
+| **コンテキスト継承** | 文脈依存クエリの場合、前回の情報を引き継ぐ |
+| **メモリ関連判定** | 「さっき何を聞いた？」等のメモリ系質問を識別 |
 
-4. **文脈依存クエリの処理**
-   - 短いクエリ（「営業時間は？」等）の文脈継承
-   - 前回のrequestTypeとエンティティの継承
+### 責任範囲外
 
-5. **適切なエージェントへのルーティング**
-   - クエリの内容に基づいて最適なエージェントを選択
-   - ルーティング結果の返却
+- 実際の質問への回答生成（専門エージェントの責務）
+- 音声処理（Voice Agentの責務）
+- データベースアクセス（各専門エージェントの責務）
 
-### やらないこと
+## アーキテクチャ上の位置づけ
 
-- クエリへの直接回答（専門エージェントに委譲）
-- データベースへの直接アクセス
-- RAG検索の実行（専門エージェントに委譲）
+```
+[ユーザー入力]
+       │
+       ▼
+┌─────────────────┐
+│  Router Agent   │  ← このエージェント
+└────────┬────────┘
+         │
+    ┌────┴────┬────────┬────────┬────────┬────────┐
+    ▼         ▼        ▼        ▼        ▼        ▼
+┌───────┐ ┌───────┐ ┌───────┐ ┌───────┐ ┌───────┐ ┌───────┐
+│Business│ │Facility│ │ Event │ │Memory │ │General│ │Clarify│
+│ Info  │ │       │ │       │ │       │ │Knowledge│ │      │
+└───────┘ └───────┘ └───────┘ └───────┘ └───────┘ └───────┘
+```
 
 ## 依存関係
 
-### 依存するコンポーネント
+### 入力依存
 
-- **LanguageProcessor**: 言語検出
-- **QueryClassifier**: クエリ分類
-- **SimplifiedMemorySystem**: メモリーアクセス（文脈継承用）
+| コンポーネント | 用途 |
+|--------------|------|
+| `QueryClassifier` | クエリのカテゴリ分類ロジック |
+| `LanguageProcessor` | 言語検出・応答言語決定 |
+| `SimplifiedMemorySystem` | 文脈継承時の前回情報取得 |
 
-### 依存されるコンポーネント
+### 出力先
 
-- **すべての専門エージェント**: RouterAgentのルーティング結果に基づいて処理
+| エージェント | ルーティング条件 |
+|------------|-----------------|
+| `BusinessInfoAgent` | 営業時間、料金、場所に関する質問 |
+| `FacilityAgent` | 設備、Wi-Fi、地下施設に関する質問 |
+| `EventAgent` | イベント、カレンダーに関する質問 |
+| `MemoryAgent` | 会話履歴に関する質問 |
+| `GeneralKnowledgeAgent` | 上記に該当しない一般的な質問 |
+| `ClarificationAgent` | 曖昧な質問（カフェ/会議室の特定が必要） |
 
-## 主要機能
+## ルーティングロジック
 
-### 1. 言語検出
+### 優先順位
 
-```python
-def detect_language(query: str) -> SupportedLanguage:
-    """クエリの言語を検出"""
-    # LanguageProcessorを使用
-    # 日本語/英語の判定
-    # 応答言語の決定
+1. **メモリ関連チェック** - 「さっき」「覚えてる」等のキーワード → `MemoryAgent`
+2. **文脈依存チェック** - 「土曜日も同じ？」等 → 前回のエージェントへ
+3. **曖昧性チェック** - カフェ・会議室の特定が必要 → `ClarificationAgent`
+4. **リクエストタイプ判定** - 具体的なキーワードから判定
+5. **カテゴリマッピング** - 分類結果に基づくエージェント選択
+
+### リクエストタイプ一覧
+
+| タイプ | キーワード例 | ルーティング先 |
+|-------|-------------|---------------|
+| `hours` | 営業時間、何時まで、open | BusinessInfoAgent |
+| `price` | 料金、いくら、price | BusinessInfoAgent |
+| `location` | 場所、どこ、アクセス | BusinessInfoAgent |
+| `wifi` | Wi-Fi、インターネット | FacilityAgent |
+| `facility` | 設備、電源、プリンター | FacilityAgent |
+| `basement` | 地下、B1、MTGスペース | FacilityAgent |
+| `event` | イベント、勉強会、セミナー | EventAgent |
+
+## パフォーマンス指標
+
+| 指標 | 目標値 | 現在値（Mastra版） |
+|-----|-------|-------------------|
+| ルーティング精度 | 95%以上 | 94.1% |
+| 処理時間 | 100ms以下 | 約50ms |
+| 文脈継承成功率 | 90%以上 | 実装済み |
+
+## 現在の実装（Mastra）
+
+### ファイル構成
+
+```
+engineer-cafe-navigator-repo/src/
+├── mastra/agents/router-agent.ts    # メインロジック
+├── lib/query-classifier.ts          # クエリ分類
+└── lib/language-processor.ts        # 言語処理
 ```
 
-### 2. クエリ分類
+### 主要メソッド
+
+| メソッド | 説明 |
+|---------|------|
+| `routeQuery()` | メインルーティング処理 |
+| `selectAgent()` | エージェント選択ロジック |
+| `extractRequestType()` | リクエストタイプ抽出 |
+| `isMemoryRelatedQuestion()` | メモリ関連判定 |
+| `isContextDependentQuery()` | 文脈依存判定 |
+
+## LangGraph移行後の設計
+
+### ノード構成
 
 ```python
-def classify_query(query: str) -> QueryClassification:
-    """クエリを分類"""
-    # QueryClassifierを使用
-    # category, requestType, confidenceを返却
-```
-
-### 3. ルーティング決定
-
-```python
-def route_query(query: str, session_id: str) -> RouteResult:
-    """クエリを適切なエージェントにルーティング"""
-    # メモリー関連の質問をチェック
-    # クエリを分類
-    # エージェントを選択
-    # RouteResultを返却
-```
-
-## Mastra版からの移行
-
-### 対応関係
-
-| Mastra版 | LangGraph版 |
-|----------|-------------|
-| `RouterAgent.routeQuery()` | `router_node()` |
-| `QueryClassifier` | `query_classifier` ツール |
-| `LanguageProcessor` | `language_processor` ツール |
-| `RouteResult` | `WorkflowState.routed_to` |
-
-### 実装のポイント
-
-1. **Primary Assistantパターン**
-   - coworking-space-systemの`primary_assistant`を参考
-   - ツールベースのルーティング（`ToBusinessInfoAgent`, `ToFacilityAgent`等）
-
-2. **状態管理**
-   - `WorkflowState.routed_to`にルーティング結果を保存
-   - 条件付きエッジで各エージェントに分岐
-
-3. **メモリー統合**
-   - チェックポインターとの統合
-   - 文脈継承の実装
-
-## 実装例
-
-### LangGraphノード実装
-
-```python
-def router_node(state: WorkflowState) -> dict:
-    """ルーターノード: クエリを適切なエージェントにルーティング"""
-    query = state.get("query", "")
-    session_id = state.get("session_id", "")
-    
-    # 言語検出
-    language = detect_language(query)
-    
-    # メモリー関連の質問をチェック
-    if is_memory_related_question(query):
-        return {
-            "routed_to": "memory",
-            "language": language,
-            "metadata": {"reason": "Memory-related question"}
-        }
-    
-    # クエリ分類
-    classification = classify_query(query)
-    
-    # エージェント選択
-    selected_agent = select_agent(
-        classification.category,
-        classification.request_type,
-        query
-    )
-    
-    return {
-        "routed_to": selected_agent,
-        "language": language,
-        "metadata": {
-            "category": classification.category,
-            "request_type": classification.request_type,
-            "confidence": classification.confidence
-        }
+# LangGraphワークフロー内でのノード
+workflow.add_node("router", router_node)
+workflow.add_conditional_edges(
+    "router",
+    route_decision,
+    {
+        "business_info": "business_info",
+        "facility": "facility",
+        "event": "event",
+        "memory": "memory",
+        "general_knowledge": "general_knowledge",
+        "clarification": "clarification",
     }
+)
 ```
 
-## テスト戦略
+### 状態定義
 
-### 単体テスト
+```python
+class RouterState(TypedDict):
+    query: str
+    session_id: str
+    language: str  # 'ja' | 'en'
+    routed_to: str | None
+    request_type: str | None
+    confidence: float
+    context: dict
+```
 
-- 言語検出のテスト
-- クエリ分類のテスト
-- ルーティング決定のテスト
-- メモリー関連質問の検出テスト
+## 関連ドキュメント
 
-### 統合テスト
+- [SPEC.md](./SPEC.md) - 入出力仕様の詳細
+- [MIGRATION-GUIDE.md](./MIGRATION-GUIDE.md) - Mastra→LangGraph移行手順
+- [TESTING.md](./TESTING.md) - テスト戦略とテストケース
 
-- 各エージェントへのルーティングテスト
-- ワークフロー全体のテスト
+## 担当者向けチェックリスト
 
-## 次のステップ
-
-1. [MIGRATION-GUIDE.md](./MIGRATION-GUIDE.md) を読んで移行手順を確認
-2. [CI-CD.md](./CI-CD.md) を読んでCI/CD設定を確認
-3. [TESTING.md](./TESTING.md) を読んでテスト戦略を確認
-4. featureブランチを作成して実装を開始
-
-## 参考資料
-
-- [MASTRA-AGENT-ANALYSIS.md](../../MASTRA-AGENT-ANALYSIS.md): Mastra版の分析
-- [COWORKING-SYSTEM-ANALYSIS.md](../../COWORKING-SYSTEM-ANALYSIS.md): 参考実装の分析
-- [INTEGRATION-GUIDE.md](../../INTEGRATION-GUIDE.md): 統合ガイド
-
+- [ ] Mastra版の実装を理解した
+- [ ] ルーティングロジックの優先順位を把握した
+- [ ] 各エージェントへの振り分け条件を確認した
+- [ ] LangGraph版の設計方針を理解した
+- [ ] テストケースを確認した
