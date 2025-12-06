@@ -3,28 +3,9 @@ langchain>=0.3.0
 langchain-openai>=0.2.0
 langchain-google-genai>=2.0.0
 pydantic>=2.0.0
-pydantic-settings>=2.0.0
 fastapi>=0.115.0
 uvicorn[standard]>=0.30.0
 python-dotenv>=1.0.0
 httpx>=0.27.0
 supabase>=2.0.0
-
-# OCR関連（新規機能）
-pytesseract>=0.3.10
-easyocr>=1.7.0
-Pillow>=10.0.0
-opencv-python>=4.8.0
-google-cloud-vision>=3.4.0
-
-# テスト関連
-pytest>=8.0.0
-pytest-asyncio>=0.23.0
-pytest-cov>=4.1.0
-pytest-mock>=3.12.0
-
-# 開発ツール
-black>=24.0.0
-ruff>=0.5.0
-mypy>=1.10.0
 
