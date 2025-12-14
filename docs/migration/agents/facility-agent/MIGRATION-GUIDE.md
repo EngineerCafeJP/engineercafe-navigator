@@ -1,4 +1,4 @@
-# Router Agent - 移行ガイド
+# Facility Agent - 移行ガイド
 
 > Mastra (TypeScript) → LangGraph (Python) 移行手順
 
@@ -498,15 +498,31 @@ from backend.agents.facility_agent import FacilityAgent
 
 class MainWorkflow:
     def __init__(self):
-        self.facility_agent = FacilityAgent()
+        # FacilityAgentを初期化（ツールは後で注入）
+        self.facility_agent = FacilityAgent(config={}, llm_client=llm_client)
         self.graph = self._build_graph()
 
     async def _facility_node(self, state: WorkflowState) -> dict:
         """ファシリティノード"""
+        query = state.get("query", "")
+        request_type = state.get("metadata", {}).get("routing", {}).get("request_type")
+        language = state.get("language", "ja")
+        # FacilityAgentで処理
+        result = await self.facility_agent.answer_facility_query(
+            query, request_type, language
+        )
 
-    def _route_decision(self, state: WorkflowState) -> str:
-        """ルーティング決定"""
-        return agent_to_node.get(routed_to, "general_knowledge")
+        return {
+            "answer": result["text"],
+            "emotion": result["emotion"],
+            "metadata": {
+                **state.get("metadata", {}),
+                "agentName": result["agentName"],
+                "requestType": request_type,
+                "confidence": result["metadata"].get("confidence"),
+                "sources": result["metadata"].get("sources")
+            }
+        }
 ```
 
 ## 移行チェックリスト
@@ -547,10 +563,15 @@ class MainWorkflow:
 
 ### よくある問題
 
+| 問題 | 原因 | 解決策 |
+|-----|------|-------|
+| Enhanced RAG検索が失敗する | Supabase接続エラー | 環境変数を確認 |
+| コンテキストフィルタが効かない | requestTypeがnull | RouterAgentからのrequestTypeを確認 |
+| 感情タグが生成されない | LLMプロンプトの問題 | プロンプトテンプレートを確認 |
+| 地下施設が検出されない | クエリ拡張が不十分 | `_enhance_query`メソッドを確認 |
 
 ## 参考リンク
 
 - [LangGraph ドキュメント](https://langchain-ai.github.io/langgraph/)
 - [Mastra ドキュメント](https://mastra.dev)
-- [元実装: facility-agent.ts](../../engineer-cafe-navigator-repo/src/mastra/agents/facility-agent.ts)
-````
+- [元実装: facility-agent.ts](../../frontend/src/mastra/agents/facility-agent.ts)
