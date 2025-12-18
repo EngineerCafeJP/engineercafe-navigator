@@ -4,7 +4,8 @@
 
 Mastra（TypeScript）で実装された 
 <br>音声入出力＋会話オーケストレーション（STT→品質判定→聞き返し→QA/RAG→LLM→感情→メモリ→TTS→キャラ制御）を、
-<br>Python/LangGraph のノード群へ段階的に移行する。テンプレートは Router Agent の移行ガイドを参照。
+<br>Python/LangGraph のノード群へ段階的に移行する。
+<br>テンプレートは Router Agent の移行ガイドを参照。
 
 ## 移行概要
 
