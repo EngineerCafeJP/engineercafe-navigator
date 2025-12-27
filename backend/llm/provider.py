@@ -69,10 +69,7 @@ class LLMProvider(ABC):
         pass
 
     @abstractmethod
-    def get_langchain_llm(
-        self,
-        config: Optional["ModelConfig"] = None
-    ) -> "ChatOpenAI":
+    def get_langchain_llm(self, config: Optional["ModelConfig"] = None) -> "ChatOpenAI":
         """
         Get a LangChain-compatible LLM instance.
 
@@ -109,6 +106,7 @@ def get_llm_provider() -> LLMProvider:
     global _provider_instance
     if _provider_instance is None:
         from .openrouter import OpenRouterProvider
+
         _provider_instance = OpenRouterProvider()
     return _provider_instance
 

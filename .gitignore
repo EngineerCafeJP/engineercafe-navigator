@@ -62,6 +62,21 @@ Thumbs.db
 .vscode/
 .idea/
 
+# Cursor / Claude Code artifacts
+# - Keep `.cursor/commands/` tracked (project commands), ignore everything else under `.cursor/`.
+.cursor/*
+!.cursor/commands/
+!.cursor/commands/**
+
+# - Keep shared Claude Code config/rules/memory, ignore local state and local overrides.
+.claude/state/
+.claude/settings.local.json
+.claude/memory/session-log*.md
+
+# Claude Code harness (local)
+.claude-code-harness/
+.claude-code-harness-version
+
 # Test coverage
 coverage/
 

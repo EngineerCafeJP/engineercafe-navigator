@@ -7,7 +7,6 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
-import os
 from dotenv import load_dotenv
 
 # 環境変数の読み込み
@@ -16,7 +15,7 @@ load_dotenv()
 app = FastAPI(
     title="Engineer Cafe Navigator Backend",
     description="Python LangGraph backend for Engineer Cafe Navigator",
-    version="0.1.0"
+    version="0.1.0",
 )
 
 # CORS設定
@@ -56,21 +55,23 @@ async def chat(request: ChatRequest):
     """
     try:
         from workflows.main_workflow import get_workflow
+
         workflow = get_workflow()
-        result = await workflow.ainvoke({
-            "query": request.query,
-            "session_id": request.session_id,
-            "language": request.language,
-            "context": request.context or {}
-        })
-        
+        result = await workflow.ainvoke(
+            {
+                "query": request.query,
+                "session_id": request.session_id,
+                "language": request.language,
+                "context": request.context or {},
+            }
+        )
+
         return ChatResponse(
             answer=result.get("answer", "回答を生成できませんでした。"),
             emotion=result.get("emotion", "neutral"),
-            metadata=result.get("metadata", {
-                "query": request.query,
-                "session_id": request.session_id
-            })
+            metadata=result.get(
+                "metadata", {"query": request.query, "session_id": request.session_id}
+            ),
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -83,23 +84,23 @@ async def invoke_agent(request: ChatRequest):
     """
     try:
         from workflows.main_workflow import get_workflow
+
         workflow = get_workflow()
-        result = await workflow.ainvoke({
-            "query": request.query,
-            "session_id": request.session_id,
-            "language": request.language,
-            "context": request.context or {}
-        })
-        
-        return {
-            "status": "success",
-            "result": result
-        }
+        result = await workflow.ainvoke(
+            {
+                "query": request.query,
+                "session_id": request.session_id,
+                "language": request.language,
+                "context": request.context or {},
+            }
+        )
+
+        return {"status": "success", "result": result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
 
+    uvicorn.run(app, host="0.0.0.0", port=8000)

@@ -21,7 +21,7 @@ from langchain_core.messages import (
 )
 from langchain_openai import ChatOpenAI
 
-from .models import MODEL_CONFIGS, ModelConfig, SupportedModel
+from .models import MODEL_CONFIGS, ModelConfig
 from .provider import LLMProvider
 
 
@@ -169,7 +169,9 @@ class OpenRouterProvider(LLMProvider):
         except httpx.HTTPStatusError as e:
             # Try fallback model if available
             if config.fallback_model:
-                print(f"[OpenRouter] Primary model failed, trying fallback: {config.fallback_model.value}")
+                print(
+                    f"[OpenRouter] Primary model failed, trying fallback: {config.fallback_model.value}"
+                )
                 fallback_config = ModelConfig(
                     model_id=config.fallback_model,
                     temperature=config.temperature,
@@ -246,10 +248,7 @@ class OpenRouterProvider(LLMProvider):
                 status_code=e.response.status_code,
             ) from e
 
-    def get_langchain_llm(
-        self,
-        config: Optional[ModelConfig] = None
-    ) -> ChatOpenAI:
+    def get_langchain_llm(self, config: Optional[ModelConfig] = None) -> ChatOpenAI:
         """
         Get a LangChain-compatible LLM instance using OpenRouter.
 

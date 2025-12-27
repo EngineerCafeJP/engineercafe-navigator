@@ -16,35 +16,37 @@ class SupportedModel(str, Enum):
 
     These models are available via the unified OpenRouter API.
     See https://openrouter.ai/docs#models for full list.
+
+    Last updated: 2025-12-27
     """
 
-    # Google Models
+    # Google Models (2025-12 latest)
+    GEMINI_3_FLASH = "google/gemini-3-flash-preview"
+    GEMINI_3_PRO = "google/gemini-3-pro-preview"
     GEMINI_2_5_FLASH = "google/gemini-2.5-flash-preview"
-    GEMINI_2_0_FLASH = "google/gemini-2.0-flash-exp"
-    GEMINI_PRO = "google/gemini-pro"
-    GEMINI_PRO_VISION = "google/gemini-pro-vision"
+    GEMINI_2_5_FLASH_IMAGE = "google/gemini-2.5-flash-image"
 
-    # OpenAI Models
+    # OpenAI Models (2025-12 latest)
+    GPT_5_2 = "openai/gpt-5.2-chat"
+    GPT_5_1 = "openai/gpt-5.1-chat"
     GPT_4O = "openai/gpt-4o"
     GPT_4O_MINI = "openai/gpt-4o-mini"
-    GPT_4_TURBO = "openai/gpt-4-turbo"
-    GPT_4 = "openai/gpt-4"
-    GPT_3_5_TURBO = "openai/gpt-3.5-turbo"
 
-    # Anthropic Models
-    CLAUDE_3_5_SONNET = "anthropic/claude-3.5-sonnet"
-    CLAUDE_3_OPUS = "anthropic/claude-3-opus"
-    CLAUDE_3_HAIKU = "anthropic/claude-3-haiku"
+    # Anthropic Models (2025-12 latest)
+    CLAUDE_OPUS_4_5 = "anthropic/claude-opus-4.5"
+    CLAUDE_HAIKU_4_5 = "anthropic/claude-haiku-4.5"
+    CLAUDE_SONNET_4 = "anthropic/claude-sonnet-4"
+    CLAUDE_3_5_SONNET = "anthropic/claude-3.5-sonnet"  # Legacy fallback
 
     # Meta Models
+    LLAMA_3_3_NEMOTRON = "nvidia/llama-3.3-nemotron-super-49b-v1.5"
     LLAMA_3_2_90B = "meta-llama/llama-3.2-90b-vision-instruct"
     LLAMA_3_1_70B = "meta-llama/llama-3.1-70b-instruct"
-    LLAMA_3_1_8B = "meta-llama/llama-3.1-8b-instruct"
 
-    # Mistral Models
-    MISTRAL_LARGE = "mistralai/mistral-large-latest"
-    MISTRAL_MEDIUM = "mistralai/mistral-medium"
-    MISTRAL_SMALL = "mistralai/mistral-small"
+    # Mistral Models (2025-12 latest)
+    MISTRAL_LARGE = "mistralai/mistral-large-2512"
+    MISTRAL_SMALL = "mistralai/mistral-small-creative"
+    DEVSTRAL = "mistralai/devstral-2512"
 
 
 @dataclass
@@ -83,50 +85,49 @@ class ModelConfig:
 
 
 # Pre-configured model settings for common use cases
+# Updated: 2025-12-27 with latest OpenRouter models
 MODEL_CONFIGS: dict[str, ModelConfig] = {
     # Router Agent: Low temperature for consistent routing decisions
+    # Using Gemini 3 Flash for fastest routing
     "router": ModelConfig(
-        model_id=SupportedModel.GEMINI_2_5_FLASH,
+        model_id=SupportedModel.GEMINI_3_FLASH,
         temperature=0.3,
         max_tokens=256,
-        fallback_model=SupportedModel.GPT_4O_MINI,
+        fallback_model=SupportedModel.GEMINI_2_5_FLASH,
     ),
-
     # Q&A Response: Balanced settings for informative responses
+    # Using Gemini 3 Flash with GPT-4o fallback
     "qa_response": ModelConfig(
-        model_id=SupportedModel.GEMINI_2_5_FLASH,
+        model_id=SupportedModel.GEMINI_3_FLASH,
         temperature=0.7,
         max_tokens=1024,
         fallback_model=SupportedModel.GPT_4O,
     ),
-
     # Clarification: Helpful tone for disambiguation
     "clarification": ModelConfig(
-        model_id=SupportedModel.GEMINI_2_5_FLASH,
+        model_id=SupportedModel.GEMINI_3_FLASH,
         temperature=0.5,
         max_tokens=512,
-        fallback_model=SupportedModel.GPT_4O_MINI,
+        fallback_model=SupportedModel.CLAUDE_HAIKU_4_5,
     ),
-
     # General Knowledge: Higher creativity for diverse topics
+    # Using Claude Sonnet 4 for better reasoning
     "general_knowledge": ModelConfig(
-        model_id=SupportedModel.GEMINI_2_5_FLASH,
+        model_id=SupportedModel.CLAUDE_SONNET_4,
         temperature=0.8,
         max_tokens=1024,
         fallback_model=SupportedModel.GPT_4O,
     ),
-
     # Event Information: Factual, structured responses
     "event_info": ModelConfig(
-        model_id=SupportedModel.GEMINI_2_5_FLASH,
+        model_id=SupportedModel.GEMINI_3_FLASH,
         temperature=0.4,
         max_tokens=512,
         fallback_model=SupportedModel.GPT_4O_MINI,
     ),
-
     # Facility Information: Detailed, accurate responses
     "facility_info": ModelConfig(
-        model_id=SupportedModel.GEMINI_2_5_FLASH,
+        model_id=SupportedModel.GEMINI_3_FLASH,
         temperature=0.5,
         max_tokens=768,
         fallback_model=SupportedModel.GPT_4O_MINI,
