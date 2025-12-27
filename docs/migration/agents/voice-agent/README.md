@@ -11,7 +11,9 @@
 
 ## 概要
 
-Voice Agentは、音声の入出力処理を担当します。Speech-to-Text（音声認識）とText-to-Speech（音声合成）の両方を統括し、リアルタイム音声インタラクションを実現します。Google Cloud Speech APIと連携し、日本語/英語の両方に対応します。
+Voice Agentは、音声の入出力処理を担当します。
+<br>Speech-to-Text（音声認識）とText-to-Speech（音声合成）の両方を統括し、リアルタイム音声インタラクションを実現します。
+<br>Google Cloud Speech APIと連携し、日本語/英語の両方に対応します。
 
 ## 責任範囲
 
