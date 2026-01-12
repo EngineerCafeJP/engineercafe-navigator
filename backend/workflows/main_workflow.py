@@ -108,20 +108,45 @@ class MainWorkflow:
         # TODO: 明確化エージェントの実装
         return {"answer": "もう少し詳しく教えていただけますか？", "emotion": "neutral"}
 
-    def _business_info_node(self, state: WorkflowState) -> dict:
+    async def _business_info_node(self, state: WorkflowState) -> dict:
         """営業情報ノード: 営業情報を処理"""
-        # TODO: 営業情報エージェントの実装
-        return {"answer": "営業情報の取得中です。", "emotion": "neutral"}
+        from backend.agents.business_info_agent import BusinessInfoAgent
+
+        agent = BusinessInfoAgent()
+        query = state.get("query", "")
+        language = state.get("language", "ja")
+        session_id = state.get("session_id", "")
+        request_type = state.get("metadata", {}).get("routing", {}).get("request_type")
+
+        result = await agent.answer_business_query(query, request_type, language, session_id)
+
+        return {
+            "answer": result.get("answer", ""),
+            "emotion": result.get("emotion", "neutral"),
+            "metadata": {**state.get("metadata", {}), **result.get("metadata", {})},
+        }
 
     def _facility_node(self, state: WorkflowState) -> dict:
         """施設ノード: 施設情報を処理"""
         # TODO: 施設エージェントの実装
         return {"answer": "施設情報の取得中です。", "emotion": "neutral"}
 
-    def _event_node(self, state: WorkflowState) -> dict:
+    async def _event_node(self, state: WorkflowState) -> dict:
         """イベントノード: イベント情報を処理"""
-        # TODO: イベントエージェントの実装
-        return {"answer": "イベント情報の取得中です。", "emotion": "neutral"}
+        from backend.agents.event_agent import EventAgent
+
+        agent = EventAgent()
+        query = state.get("query", "")
+        language = state.get("language", "ja")
+        session_id = state.get("session_id", "")
+
+        result = await agent.answer_event_query(query, language, session_id)
+
+        return {
+            "answer": result.get("answer", ""),
+            "emotion": result.get("emotion", "neutral"),
+            "metadata": {**state.get("metadata", {}), **result.get("metadata", {})},
+        }
 
     def _general_knowledge_node(self, state: WorkflowState) -> dict:
         """一般知識ノード: 一般的な知識を処理"""
