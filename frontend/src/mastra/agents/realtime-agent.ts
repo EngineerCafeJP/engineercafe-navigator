@@ -327,7 +327,7 @@ export class RealtimeAgent extends Agent {
         characterAction,
         emotion,
         emotionTags: parsedResponse.emotions,
-        primaryEmotion: parsedResponse.primaryEmotion,
+        primaryEmotion: parsedResponse.primaryEmotion ?? undefined,
         characterControlData
       };
     } catch (error) {
@@ -520,6 +520,7 @@ export class RealtimeAgent extends Agent {
           shouldUpdateCharacter: true,
           characterAction: 'thinking',
           emotion: {
+            primary: 'curious',
             emotion: 'curious',
             intensity: 0.8,
             confidence: 0.9,
@@ -560,8 +561,9 @@ export class RealtimeAgent extends Agent {
       let emotion: EmotionData;
       if (parsedResponse.primaryEmotion) {
         emotion = {
+          primary: parsedResponse.primaryEmotion,
           emotion: parsedResponse.primaryEmotion,
-          intensity: parsedResponse.emotions[0]?.intensity || 0.8,
+          intensity: 0.8,
           confidence: 0.9,
           duration: 3000
         };
@@ -744,7 +746,7 @@ export class RealtimeAgent extends Agent {
         characterAction,
         emotion,
         emotionTags: parsedResponse.emotions,
-        primaryEmotion: parsedResponse.primaryEmotion,
+        primaryEmotion: parsedResponse.primaryEmotion ?? undefined,
         responseText: cleanResponse,
         characterControlData
       };
@@ -1612,7 +1614,7 @@ export class RealtimeAgent extends Agent {
         characterAction,
         emotion,
         emotionTags: parsedResponse.emotions,
-        primaryEmotion: parsedResponse.primaryEmotion,
+        primaryEmotion: parsedResponse.primaryEmotion ?? undefined,
         characterControlData: undefined // Will be provided in streaming chunks
       };
     } catch (error) {

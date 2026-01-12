@@ -1,8 +1,8 @@
 import fs from 'fs';
 import path from 'path';
-import { knowledgeBaseUtils } from '../src/lib/knowledge-base-utils';
-import { supabaseAdmin } from '../src/lib/supabase';
-import { SupportedLanguage } from '../src/mastra/types/config';
+import { knowledgeBaseUtils } from '@/lib/knowledge-base-utils';
+import { supabaseAdmin } from '@/lib/supabase';
+import { SupportedLanguage } from '@/mastra/types/config';
 
 interface NarrationJSON {
   metadata: {
