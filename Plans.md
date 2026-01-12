@@ -114,13 +114,7 @@ Claude Code は PR 作成・更新時に以下を確認:
 
 | # | タイトル | ブランチ | ステータス |
 |---|----------|----------|-----------|
-| 24 | テスト基盤整備 | feature/test-infrastructure | OPEN (レビュー待ち) |
 | 20 | RouterAgent実装 | feature/router-agent-implementation | OPEN (レビュー待ち) |
-| 13 | OCRAgent YOLO/ML アプローチ | docs/ocr-agent-yolo-update | OPEN |
-| 12 | OpenRouter LLM インフラ | feature/openrouter-infrastructure | OPEN |
-| 11 | VoiceAgent MIGRATION-GUIDE | docs/voice-agent | OPEN |
-| 9 | ClarificationAgent ドキュメント | docs/clarification-agent | OPEN |
-| 7 | テリスケ担当エージェントドキュメント | docs/agent-documentation-enhancement | OPEN |
 
 ---
 
