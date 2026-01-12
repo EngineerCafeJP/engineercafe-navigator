@@ -72,49 +72,8 @@ class MainWorkflow:
         return workflow.compile()
 
     def _memory_node(self, state: WorkflowState) -> dict:
-        """
-        メモリノード: 会話履歴とコンテキストを取得
-
-        TODO (専門エンジニア - takegg0311):
-        1. SimplifiedMemoryHelperの初期化とインスタンス取得
-        2. session_idの抽出
-        3. memory_helper.get_context() で会話履歴を取得
-        4. コンテキストをstateに追加
-
-        現在の実装:
-        - 骨組みのみ（プレースホルダー）
-        - 完全実装は専門エンジニアが担当
-        """
-        # TODO: 実装
-        # from backend.utils.memory_helper import get_memory_helper
-        #
-        # memory_helper = get_memory_helper()
-        # session_id = state.get("session_id", "")
-        # query = state.get("query", "")
-        # language = state.get("language", "ja")
-        #
-        # try:
-        #     memory_context = await memory_helper.get_context(
-        #         query=query,
-        #         session_id=session_id,
-        #         options={
-        #             "include_knowledge_base": False,  # メモリのみ参照
-        #             "language": language,
-        #             "inherit_context": True
-        #         }
-        #     )
-        #
-        #     return {
-        #         "context": {
-        #             **state.get("context", {}),
-        #             "memory": memory_context
-        #         }
-        #     }
-        # except Exception as e:
-        #     # エラー時はメモリなしで続行
-        #     return {"context": {**state.get("context", {}), "memory": {}}}
-
-        # プレースホルダー（骨組み実装）
+        """メモリノード: 会話履歴とコンテキストを取得"""
+        # TODO: メモリシステムの実装
         return {"context": {**state.get("context", {}), "memory": {}}}
 
     def _router_node(self, state: WorkflowState) -> dict:
