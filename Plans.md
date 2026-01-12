@@ -11,8 +11,8 @@
 |------|------|
 | **CI/CD** | ✅ グリーン (最終実行: 2025-01-12) |
 | **オープン PR** | PR #24 (テスト基盤), PR #25 (バックエンド統合 - Draft) |
-| **完了したフェーズ** | 0.5 (OpenRouter), 0.6 (構造整理), 1.1-1.4 (Agent移行), 2.1 (Memory骨組み), 6 (テスト), 7.1-7.6 (バックエンド統合) |
-| **次のフェーズ** | 7.5 (バックエンド完全実装), 1.5 (FacilityAgent) |
+| **完了したフェーズ** | 0.5 (OpenRouter), 0.6 (構造整理), 1.1-1.5 (Agent移行), 2.1-2.3 (会話機能骨組み), 6 (テスト), 7.1-7.6 (バックエンド統合) |
+| **次のフェーズ** | 7.5 (バックエンド完全実装), 3.1-3.2 (出力機能), 4.1-4.3 (新機能) |
 | **ベースブランチ** | develop |
 
 ---
@@ -34,54 +34,12 @@ Claude Code は PR 作成・更新時に以下を確認:
 
 ---
 
-## フェーズ 0: ハーネスセットアップ `cc:WIP`
-
-- [x] AGENTS.md 作成 `cc:DONE`
-- [x] Plans.md 作成 `cc:DONE`
-- [ ] .cursor/commands/ 作成 `cc:TODO`
-- [ ] .claude/rules/ 作成 `cc:TODO`
-- [ ] .claude/memory/ 初期化 `cc:TODO`
-- [ ] .claude/settings.json 更新 `cc:TODO`
-- [ ] 環境診断実行 `cc:TODO`
-- [ ] CI/CD グリーン確認 `cc:TODO`
-
-### PM → Claude Code 依頼 (2025-12-27) `pm:依頼中`
-
-- [ ] `.gitignore` を allowlist 方式に整理（`.cursor/commands/` と `.claude/{rules,settings.json,memory/{decisions,patterns}.md}` は追跡、それ以外のローカル状態/ログ/ハーネスは ignore）
-- [ ] 共有ファイルを追跡対象として `git add`（`AGENTS.md`, `Plans.md`, `.cursor/commands/*`, `.claude/rules/*`, `.claude/memory/{decisions,patterns}.md`, `.claude/settings.json`）
-- [ ] `feature/openrouter-infrastructure` ブランチへ取り込み（merge/cherry-pick）→ 既存 PR を更新
-- [ ] OpenRouter のモデル定義を **2025/12 最新**へ更新（`backend/llm/models.py` など、古いモデルIDの整理・置換）
-
 ---
 
-## 📋 次の実装計画（優先順位順）
-
-### 最優先: フェーズ1.5 FacilityAgent実装
-
-**目的**: 設備情報クエリ処理を実装
-
-**推定期間**: 3日
-
-### 次優先: フェーズ2.2-2.3 会話機能完成
-
-**目的**: ClarificationAgentとLanguageClassifierを実装
-
-**推定期間**: 1週間
-
----
-
-## フェーズ 1: LangGraph 移行 - コア機能 `cc:WIP`
+## フェーズ 1: LangGraph 移行 - コア機能 `cc:DONE`
 
 > 担当: テリスケ, Natsumi, けいてぃー
-
-### 1.5 FacilityAgent 移行 `cc:DONE`
-- [x] FacilityAgentクラス実装 (wifi/facility/basement requestType対応) `cc:DONE`
-- [x] 地下施設キーワード検出ロジック実装 `cc:DONE`
-- [x] クエリ拡張ロジック実装 (requestType別) `cc:DONE`
-- [x] Enhanced RAG統合 `cc:DONE`
-- [x] ワークフロー統合 (main_workflow.py) `cc:DONE`
-- [x] テストケース作成 (16テスト全PASS) `cc:DONE`
-- [x] CI/CD検証 (Ruff/Black/Pytest) `cc:DONE`
+> **完了**: フェーズ1のコア機能実装は全て完了。詳細はアーカイブ参照。
 
 ---
 
@@ -89,14 +47,21 @@ Claude Code は PR 作成・更新時に以下を確認:
 
 > 担当: テリスケ（骨組み）, takegg0311・YukitoLyn（完全実装）, Chie, Jun
 
-### 2.2 ClarificationAgent 移行
-- [ ] 曖昧さ検出ロジック `cc:TODO`
-- [ ] 選択肢生成 `cc:TODO`
-- [ ] テストケース作成 `cc:TODO`
+### 2.2 ClarificationAgent 移行 `cc:DONE` `pm:確認済`
+> 完了: 2025-01-13 | 担当: Claude Code (骨組み), Chie (完全実装), Jun (レビュー)
+- [x] ClarificationAgent骨組み実装 `cc:DONE`
+  - [x] `backend/agents/clarification_agent.py` 作成
+  - [x] クラス構造とメソッドシグネチャ定義
+  - [x] TODOコメントで実装箇所を明示
+  - [x] プレースホルダーレスポンス実装
 
-### 2.3 LanguageClassifier 移行
-- [ ] 言語検出ロジック `cc:TODO`
-- [ ] テストケース作成 `cc:TODO`
+### 2.3 LanguageClassifier 移行 `cc:DONE` `pm:確認済`
+> 完了: 2025-01-13 | 担当: Claude Code (骨組み), Chie (完全実装), Jun (レビュー)
+- [x] LanguageClassifier骨組み実装 `cc:DONE`
+  - [x] `backend/utils/language_processor.py` 作成（または既存確認）
+  - [x] クラス構造とメソッドシグネチャ定義
+  - [x] TODOコメントで実装箇所を明示
+  - [x] プレースホルダーレスポンス実装
 
 ---
 
@@ -134,8 +99,14 @@ Claude Code は PR 作成・更新時に以下を確認:
 - [ ] Connpass API 連携（完全実装） `cc:TODO`
 - [ ] Google Calendar API 連携（完全実装） `cc:TODO`
 
-### 4.3 GeneralKnowledgeAgent 移行
-- [ ] Web 検索機能 `cc:TODO`
+### 4.3 GeneralKnowledgeAgent 移行 `cc:DONE` `pm:確認済`
+> 完了: 2025-01-13 | 担当: Claude Code (骨組み), テリスケ (完全実装)
+- [x] GeneralKnowledgeAgent骨組み実装 `cc:DONE`
+  - [x] `backend/agents/general_knowledge_agent.py` 作成
+  - [x] クラス構造とメソッドシグネチャ定義
+  - [x] TODOコメントで実装箇所を明示
+  - [x] プレースホルダーレスポンス実装
+- [ ] Web 検索機能 `cc:TODO` (完全実装時に実装)
 
 ---
 
@@ -202,51 +173,39 @@ Claude Code は PR 作成・更新時に以下を確認:
 
 **7.5 バックエンド実装**
 
-### 7.5.1 音声処理エージェント骨組み実装 (VoiceAgent) `cc:TODO`
-> 担当: Claude Code (骨組み), エンジニアチーム (完全実装)
+### 7.5.1 音声処理エージェント骨組み実装 (VoiceAgent) `cc:DONE` `pm:確認済`
+> 完了: 2025-01-13 | 担当: Claude Code (骨組み), エンジニアチーム (完全実装)
 > 参考: MemoryAgent骨組み実装パターン
 
-- [ ] VoiceAgent骨組み実装 `cc:TODO`
-  - [ ] `backend/agents/voice_agent.py` 作成
-  - [ ] クラス構造とメソッドシグネチャ定義
-  - [ ] TODOコメントで実装箇所を明示
-  - [ ] プレースホルダーレスポンス実装
+- [x] VoiceAgent骨組み実装 `cc:DONE`
+  - [x] `backend/agents/voice_agent.py` 作成
+  - [x] クラス構造とメソッドシグネチャ定義
+  - [x] TODOコメントで実装箇所を明示
+  - [x] プレースホルダーレスポンス実装
 
-### 7.5.2 キャラクター制御エージェント骨組み実装 (CharacterControlAgent) `cc:TODO`
-> 担当: Claude Code (骨組み), エンジニアチーム (完全実装)
+### 7.5.2 キャラクター制御エージェント骨組み実装 (CharacterControlAgent) `cc:DONE` `pm:確認済`
+> 完了: 2025-01-13 | 担当: Claude Code (骨組み), エンジニアチーム (完全実装)
 > 参考: MemoryAgent骨組み実装パターン
 
-- [ ] CharacterControlAgent骨組み実装 `cc:TODO`
-  - [ ] `backend/agents/character_control_agent.py` 作成
-  - [ ] クラス構造とメソッドシグネチャ定義
-  - [ ] TODOコメントで実装箇所を明示
-  - [ ] プレースホルダーレスポンス実装
+- [x] CharacterControlAgent骨組み実装 `cc:DONE`
+  - [x] `backend/agents/character_control_agent.py` 作成
+  - [x] クラス構造とメソッドシグネチャ定義
+  - [x] TODOコメントで実装箇所を明示
+  - [x] プレースホルダーレスポンス実装
 
-### 7.5.3 スライド制御ロジック実装 `cc:完了`
-> 担当: Claude Code
-> 依頼日時: 2025-01-13
-> 開始日時: 2025-01-13
-> 完了日時: 2025-01-13
+### 7.5.3-7.5.4 スライド制御実装 `cc:DONE` `pm:確認済`
+> 完了: 2025-01-13 | PR: #27
 
-- [x] スライド制御ロジック実装 (SlideAgentとAPI統合) `cc:完了` (2025-01-13)
-  - [x] `/api/slides` エンドポイントの完全実装
-  - [x] 既存の `SlideAgent` とAPIエンドポイントの統合
-  - [x] スライドナビゲーション機能の実装
-  - [x] エラーハンドリングとフォールバック処理
+**未完了部分** `cc:DONE` `pm:確認済`:
+> 完了: 2025-01-13 | PR: #28
+- [x] 全ての骨組みエージェントのワークフロー統合 `cc:DONE`
+  - [x] ClarificationAgent のワークフロー統合 (`_clarification_node` 実装)
+  - [x] GeneralKnowledgeAgent のワークフロー統合 (`_general_knowledge_node` 実装)
+  - [x] developブランチにPR作成 (PR#28)
+  - [x] CI/CD オールグリーン確認
 
-### 7.5.4 LangGraphワークフローとの統合（スライド部分） `cc:完了`
-> 担当: Claude Code
-> 依頼日時: 2025-01-13
-> 開始日時: 2025-01-13
-> 完了日時: 2025-01-13
-
-- [x] LangGraphワークフローとの統合（スライド部分） `cc:完了` (2025-01-13)
-  - [x] スライド制御エンドポイント (`/api/slides`) のワークフロー統合
-  - [x] RouterAgentにSlideAgentルーティング追加
-  - [x] main_workflow.pyにslideノード追加
-  - [x] エラーハンドリングとフォールバック処理
-
-**未完了部分（7.5.4の残りタスク）**:
-- [ ] 音声処理エンドポイント (`/api/voice`) のワークフロー統合 `cc:TODO`
-- [ ] キャラクター制御エンドポイント (`/api/character`) のワークフロー統合 `cc:TODO`
-
+**残タスク**:
+- [ ] LanguageClassifier のワークフロー統合（RouterAgentから呼び出される形で既に統合済みの可能性あり、要確認）
+- [ ] VoiceAgent のワークフロー統合（音声処理エンドポイント `/api/voice`）
+- [ ] CharacterControlAgent のワークフロー統合（キャラクター制御エンドポイント `/api/character`）
+- [ ] RouterAgent関連のファイル変更はPR#20にpush（要確認）
