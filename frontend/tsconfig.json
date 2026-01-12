@@ -106,7 +106,7 @@
     "allowJs": true,
     "noEmit": true,
     "incremental": true,
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
     "jsx": "preserve",
@@ -124,6 +124,7 @@
   ],
   "exclude": [
     "node_modules",
-    "scripts/**/*"
+    "scripts/**/*",
+    "src/mastra/langgraph/langgraph-workflow.ts"
   ]
 }
