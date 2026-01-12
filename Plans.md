@@ -43,25 +43,10 @@ Claude Code は PR 作成・更新時に以下を確認:
 
 ---
 
-## フェーズ 2: LangGraph 移行 - 会話機能 `cc:WIP`
+## フェーズ 2: LangGraph 移行 - 会話機能 `cc:DONE`
 
 > 担当: テリスケ（骨組み）, takegg0311・YukitoLyn（完全実装）, Chie, Jun
-
-### 2.2 ClarificationAgent 移行 `cc:DONE` `pm:確認済`
-> 完了: 2025-01-13 | 担当: Claude Code (骨組み), Chie (完全実装), Jun (レビュー)
-- [x] ClarificationAgent骨組み実装 `cc:DONE`
-  - [x] `backend/agents/clarification_agent.py` 作成
-  - [x] クラス構造とメソッドシグネチャ定義
-  - [x] TODOコメントで実装箇所を明示
-  - [x] プレースホルダーレスポンス実装
-
-### 2.3 LanguageClassifier 移行 `cc:DONE` `pm:確認済`
-> 完了: 2025-01-13 | 担当: Claude Code (骨組み), Chie (完全実装), Jun (レビュー)
-- [x] LanguageClassifier骨組み実装 `cc:DONE`
-  - [x] `backend/utils/language_processor.py` 作成（または既存確認）
-  - [x] クラス構造とメソッドシグネチャ定義
-  - [x] TODOコメントで実装箇所を明示
-  - [x] プレースホルダーレスポンス実装
+> **完了**: フェーズ2の会話機能骨組みは全て完了。詳細はアーカイブ参照。
 
 ---
 
@@ -100,12 +85,7 @@ Claude Code は PR 作成・更新時に以下を確認:
 - [ ] Google Calendar API 連携（完全実装） `cc:TODO`
 
 ### 4.3 GeneralKnowledgeAgent 移行 `cc:DONE` `pm:確認済`
-> 完了: 2025-01-13 | 担当: Claude Code (骨組み), テリスケ (完全実装)
-- [x] GeneralKnowledgeAgent骨組み実装 `cc:DONE`
-  - [x] `backend/agents/general_knowledge_agent.py` 作成
-  - [x] クラス構造とメソッドシグネチャ定義
-  - [x] TODOコメントで実装箇所を明示
-  - [x] プレースホルダーレスポンス実装
+> 完了: 2025-01-13 | 骨組み実装完了。詳細はアーカイブ参照。
 - [ ] Web 検索機能 `cc:TODO` (完全実装時に実装)
 
 ---
@@ -146,7 +126,11 @@ Claude Code は PR 作成・更新時に以下を確認:
 - フェーズ 1.3: EventAgent 移行
 - フェーズ 1.4: SlideAgent 移行
 - フェーズ 2.1: MemoryAgent 骨組み実装
+- フェーズ 2.2: ClarificationAgent 骨組み実装 (2025-01-13)
+- フェーズ 2.3: LanguageClassifier 骨組み実装 (2025-01-13)
+- フェーズ 4.3: GeneralKnowledgeAgent 骨組み実装 (2025-01-13)
 - フェーズ 6: テスト基盤整備
+- フェーズ 7.5.1-7.5.4: エージェント骨組み実装とワークフロー統合 (2025-01-13)
 
 ---
 
@@ -167,36 +151,9 @@ Claude Code は PR 作成・更新時に以下を確認:
 
 **7.5 バックエンド実装**
 
-### 7.5.1 音声処理エージェント骨組み実装 (VoiceAgent) `cc:DONE` `pm:確認済`
-> 完了: 2025-01-13 | 担当: Claude Code (骨組み), エンジニアチーム (完全実装)
-> 参考: MemoryAgent骨組み実装パターン
-
-- [x] VoiceAgent骨組み実装 `cc:DONE`
-  - [x] `backend/agents/voice_agent.py` 作成
-  - [x] クラス構造とメソッドシグネチャ定義
-  - [x] TODOコメントで実装箇所を明示
-  - [x] プレースホルダーレスポンス実装
-
-### 7.5.2 キャラクター制御エージェント骨組み実装 (CharacterControlAgent) `cc:DONE` `pm:確認済`
-> 完了: 2025-01-13 | 担当: Claude Code (骨組み), エンジニアチーム (完全実装)
-> 参考: MemoryAgent骨組み実装パターン
-
-- [x] CharacterControlAgent骨組み実装 `cc:DONE`
-  - [x] `backend/agents/character_control_agent.py` 作成
-  - [x] クラス構造とメソッドシグネチャ定義
-  - [x] TODOコメントで実装箇所を明示
-  - [x] プレースホルダーレスポンス実装
-
-### 7.5.3-7.5.4 スライド制御実装 `cc:DONE` `pm:確認済`
-> 完了: 2025-01-13 | PR: #27
-
-**未完了部分** `cc:DONE` `pm:確認済`:
-> 完了: 2025-01-13 | PR: #28
-- [x] 全ての骨組みエージェントのワークフロー統合 `cc:DONE`
-  - [x] ClarificationAgent のワークフロー統合 (`_clarification_node` 実装)
-  - [x] GeneralKnowledgeAgent のワークフロー統合 (`_general_knowledge_node` 実装)
-  - [x] developブランチにPR作成 (PR#28)
-  - [x] CI/CD オールグリーン確認
+### 7.5.1-7.5.4 エージェント骨組み実装とワークフロー統合 `cc:DONE` `pm:確認済`
+> 完了: 2025-01-13 | PR: #27, #28
+> VoiceAgent, CharacterControlAgent, ClarificationAgent, GeneralKnowledgeAgentの骨組み実装とワークフロー統合が完了。詳細はアーカイブ参照。
 
 **残タスク**:
 - [ ] LanguageClassifier のワークフロー統合（RouterAgentから呼び出される形で既に統合済みの可能性あり、要確認）
