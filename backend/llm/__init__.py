@@ -5,7 +5,7 @@ Provides unified interface for AI model access through OpenRouter,
 supporting multiple providers (OpenAI, Google, Anthropic, etc.).
 
 Example:
-    >>> from llm import get_llm_provider, MODEL_CONFIGS
+    >>> from backend.llm import get_llm_provider, MODEL_CONFIGS
     >>>
     >>> # Get the singleton provider
     >>> provider = get_llm_provider()

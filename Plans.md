@@ -53,21 +53,104 @@ Claude Code は PR 作成・更新時に以下を確認:
 
 ---
 
+## フェーズ 0.5: OpenRouter API徹底整備 `cc:DONE`
+
+> 担当: テリスケ（統括）
+> 完了日: 2025-01-12
+
+### 0.5.1 OpenRouter API基盤整備
+- [x] `langchain-google-genai`パッケージ削除（requirements.txt, pyproject.toml） `cc:DONE`
+- [x] `backend/README.md`のGemini API直接使用記述削除 `cc:DONE`
+- [x] OpenRouter API使用チェックリスト作成 `cc:DONE`
+- [x] OpenRouter API使用ベストプラクティスドキュメント作成 `cc:DONE`
+
+**完了条件**:
+- [x] `langchain-google-genai`が依存関係から削除されている
+- [x] ドキュメントからGemini直接APIの記述が削除されている
+- [x] OpenRouter API使用のチェックリストが作成されている
+- [x] CI/CDがグリーン
+
+**成果物**:
+- `docs/migration/agents/openrouter-checklist.md` - OpenRouter API使用チェックリスト
+- `docs/migration/agents/openrouter-best-practices.md` - OpenRouter APIベストプラクティス
+- `backend/requirements.txt` - langchain-google-genai削除済み
+- `backend/pyproject.toml` - langchain-google-genai削除済み
+- `backend/README.md` - OpenRouter API使用方法更新済み
+
 ## フェーズ 1: LangGraph 移行 - コア機能 `cc:TODO`
 
 > 担当: テリスケ, Natsumi, けいてぃー
 
-### 1.1 RouterAgent 移行
-- [ ] Python ノード実装 `cc:TODO`
-- [ ] ルーティングロジック移植 `cc:TODO`
-- [ ] テストケース作成 `cc:TODO`
+### 1.1 RouterAgent 移行 `pm:依頼中`
 
-### 1.2 BusinessInfoAgent 移行
-- [ ] Enhanced RAG 移植 `cc:TODO`
-- [ ] 営業時間/料金/場所クエリ処理 `cc:TODO`
-- [ ] テストケース作成 `cc:TODO`
+> 依頼日時: 2025-01-12  
+> レビュー日時: 2025-01-12
 
-### 1.3 FacilityAgent 移行
+- [x] LanguageProcessor実装 `cc:DONE`
+- [x] QueryClassifier実装 `cc:DONE`
+- [x] RouterAgent本体実装（OpenRouter API使用） `cc:DONE`
+- [x] OCR結果処理ロジック実装 `cc:DONE`
+- [x] ClarificationAgent連携ロジック実装 `cc:DONE`
+- [x] メモリシステム未実装時でも動作する実装 `cc:DONE`
+- [x] 単体テスト実装 `cc:DONE`
+- [x] **PR作成してYukitoLynにレビュー依頼** `cc:DONE` (PR #20)
+- [x] **フォールバック戦略強化（ネットワークエラー時対応）** `cc:DONE` `pm:確認済`
+- [x] **環境変数テンプレート更新（.env.example）** `cc:DONE` `pm:確認済`
+- [x] **ドキュメント更新（フォールバック戦略説明）** `cc:DONE` `pm:確認済`
+
+**ブランチ**: `feature/router-agent-implementation`  
+**マージ方法**: **必ずPRを作成してレビュー（YukitoLynにレビュー依頼）**  
+**PR**: #20 (レビュー待ち)
+
+### 1.2 BusinessInfoAgent 移行 `pm:確認済`
+> 依頼日時: 2025-01-12  
+> 完了日時: 2025-01-12
+
+- [x] Enhanced RAG 移植 `cc:DONE`
+- [x] 営業時間/料金/場所クエリ処理 `cc:DONE`
+- [x] main_workflow.pyの_business_info_node()を実装 `cc:DONE`
+- [x] OpenRouter API使用を確認（OpenRouterProviderとget_model_config("facility_info")を使用） `cc:DONE`
+- [x] テストケース作成 `cc:DONE`
+- [x] CI/CDがグリーン `cc:DONE`
+- [x] PRを作成してCI/CD確認後、developにマージ `cc:DONE`
+- [x] PR #20との整合性確保（ディレクトリ構造・インポートパス統一） `cc:DONE` `pm:確認済`
+
+**ブランチ**: `feature/business-info-event-slide-agents`  
+**PR**: #21  
+**マージ方法**: **PR作成 → CI/CDグリーン確認 → developに直接マージ**
+
+### 1.3 EventAgent 移行 `pm:確認済`
+> 依頼日時: 2025-01-12  
+> 完了日時: 2025-01-12
+
+- [x] Google Calendar API連携（期間抽出ロジック含む） `cc:DONE`
+- [x] イベント情報取得・整形処理 `cc:DONE`
+- [x] main_workflow.pyの_event_node()を実装 `cc:DONE`
+- [x] OpenRouter API使用を確認（OpenRouterProviderとget_model_config("event_info")を使用） `cc:DONE`
+- [x] テストケース作成 `cc:DONE`
+- [x] CI/CDがグリーン `cc:DONE`
+- [x] PRを作成してCI/CD確認後、developにマージ `cc:DONE`
+
+**ブランチ**: `feature/business-info-event-slide-agents`（BusinessInfoAgentと同一ブランチ）
+
+### 1.4 SlideAgent 移行 `pm:確認済`
+> 依頼日時: 2025-01-12  
+> 完了日時: 2025-01-12
+
+- [x] ナレーションJSON読み込み機能 `cc:DONE`
+- [x] スライドナレーション生成 `cc:DONE`
+- [x] スライドナビゲーション（次へ/前へ/特定スライド） `cc:DONE`
+- [x] スライド質問応答 `cc:DONE`
+- [x] main_workflow.pyの_slide_node()を実装（必要に応じて） `cc:DONE`
+- [x] OpenRouter API使用を確認（OpenRouterProviderとget_model_config("qa_response")を使用） `cc:DONE`
+- [x] テストケース作成 `cc:DONE`
+- [x] CI/CDがグリーン `cc:DONE`
+- [x] PRを作成してCI/CD確認後、developにマージ `cc:DONE`
+- [ ] **スライドファイルの配置（backend/slides/）** `cc:TODO` `pm:依頼中`
+
+**ブランチ**: `feature/business-info-event-slide-agents`（BusinessInfoAgentと同一ブランチ）
+
+### 1.5 FacilityAgent 移行
 - [ ] 地下施設キーワード検出 `cc:TODO`
 - [ ] 設備情報クエリ処理 `cc:TODO`
 - [ ] テストケース作成 `cc:TODO`

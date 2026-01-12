@@ -1,0 +1,178 @@
+{
+  "metadata": {
+    "title": "Engineer Cafe Guide",
+    "language": "en",
+    "speaker": "en-US-Neural2-F",
+    "version": "2.0"
+  },
+  "slides": [
+    {
+      "slideNumber": 1,
+      "narration": {
+        "auto": "Welcome to Engineer Cafe, a free public space where engineers can learn, connect, and grow. This deck explains the facility and how to use it.",
+        "onEnter": "Welcome to Engineer Cafe. This is the first slide of our facility guide.",
+        "onDemand": {
+          "details": "Engineer Cafe opened in August 2019 as part of Fukuoka City's \"Engineer-Friendly City Fukuoka\" initiative.",
+          "free": "The entire facility is free of charge.",
+          "location": "We are located inside the historic Red-Brick Culture Hall, a nationally designated Important Cultural Property."
+        }
+      },
+      "transitions": {
+        "next": "Let me introduce Engineer Cafe in detail.",
+        "previous": null
+      }
+    },
+    {
+      "slideNumber": 2,
+      "narration": {
+        "auto": "Engineer Cafe was created through cooperation between Fukuoka City and its citizens. A community manager and volunteer Hacker Supporters are here daily to help you. The facility is completely free.",
+        "onEnter": "About Engineer Cafe.",
+        "onDemand": {
+          "establishment": "Opened in August 2019 under the \"Engineer-Friendly City Fukuoka\" program.",
+          "community manager": "A dedicated community manager is always on duty to support users.",
+          "hacker supporters": "Volunteer Hacker Supporters answer technical questions and provide advice.",
+          "free": "This is a free public facility operated by Fukuoka City."
+        }
+      },
+      "transitions": {
+        "next": "Let me explain the available coworking spaces.",
+        "previous": "Back to the first slide."
+      }
+    },
+    {
+      "slideNumber": 3,
+      "narration": {
+        "auto": "Our coworking area includes the Main Hall and four basement spaces. The Main Hall is free when no events are held; details of the basement spaces follow on the next slide.",
+        "onEnter": "About our coworking spaces.",
+        "onDemand": {
+          "main hall": "The open Main Hall is a coworking space that is free whenever not reserved for private events.",
+          "basement": "There are four distinctive spaces in the basement. I will explain them next.",
+          "events": "The Main Hall may have restrictions during events.",
+          "fee": "All spaces are completely free to use."
+        }
+      },
+      "transitions": {
+        "next": "Let me explain the basement spaces in detail.",
+        "previous": "Back to About Engineer Cafe."
+      }
+    },
+    {
+      "slideNumber": 4,
+      "narration": {
+        "auto": "The basement offers four unique areas. Meeting Space (2+ people) requires online booking in 2-hour slots. Focus Space has 6 booths—no booking, complete silence. Under Space is free address with extra monitors and one soundproof room. Makers Space provides 3D printers and laser cutters but requires initial training.",
+        "onEnter": "Details of the basement spaces.",
+        "onDemand": {
+          "meeting": "For groups of two or more; reserve in advance via website. No same-day booking; 2-hour slots.",
+          "focus": "Six booths, no reservation, talking strictly prohibited—perfect for deep work.",
+          "under": "Free-address seating with extra monitors. Includes one soundproof room (1-hour slots).",
+          "makers": "3D printers and laser cutters available. First-time users must book a training session online."
+        }
+      },
+      "transitions": {
+        "next": "Let me explain about time slots and extensions.",
+        "previous": "Back to coworking spaces."
+      }
+    },
+    {
+      "slideNumber": 5,
+      "narration": {
+        "auto": "Seats are allotted in 2-hour blocks (1-hour for the soundproof room) but you may extend indefinitely if space is available. Request an extension from staff or via the Discord reception channel.",
+        "onEnter": "About time limits and extensions.",
+        "onDemand": {
+          "basic time": "Standard usage time is 2 hours; the soundproof room is limited to 1 hour.",
+          "extensions": "Unlimited extensions when seats are free.",
+          "how to": "Ask staff directly or use the Discord reception channel to extend.",
+          "discord": "The Discord invite code is printed on the back of the neck holder."
+        }
+      },
+      "transitions": {
+        "next": "Let me explain cultural-property etiquette.",
+        "previous": "Back to basement details."
+      }
+    },
+    {
+      "slideNumber": 6,
+      "narration": {
+        "auto": "The Red-Brick Culture Hall is a national Important Cultural Property. Food is prohibited; only drinks with sealed lids are allowed, and straws are not permitted.",
+        "onEnter": "About cultural-property etiquette.",
+        "onDemand": {
+          "cultural property": "The building is a nationally designated Important Cultural Property.",
+          "no food": "To protect the property, food is generally not allowed.",
+          "sealed drinks": "Only beverages with sealed lids are permitted.",
+          "no straws": "Straws are prohibited—please take care."
+        }
+      },
+      "transitions": {
+        "next": "Let me explain the registration process.",
+        "previous": "Back to time & extensions."
+      }
+    },
+    {
+      "slideNumber": 7,
+      "narration": {
+        "auto": "Connect to our guest Wi-Fi, scan the QR code, and complete the registration form. A membership number is issued and cannot be viewed again on your phone—please write it down and tell staff.",
+        "onEnter": "About the registration process.",
+        "onDemand": {
+          "wi-fi": "SSID: engnrcf-guest-5GHz, Password: akarenga-112years.",
+          "qr": "Scan the QR code at reception to access the registration form.",
+          "membership": "The membership number cannot be viewed later on your phone. Please note it down and inform staff.",
+          "security": "Your data is handled securely and personal information is protected."
+        }
+      },
+      "transitions": {
+        "next": "Let me explain membership cards.",
+        "previous": "Back to cultural-property etiquette."
+      }
+    },
+    {
+      "slideNumber": 8,
+      "narration": {
+        "auto": "Link your membership number to an NFC/IC card such as Suica for tap-in entry. Because the number cannot be re-shown on your phone, we recommend you keep it noted down. Staff can still look it up by your name or email if needed.",
+        "onEnter": "About membership cards.",
+        "onDemand": {
+          "nfc": "You can link Suica or other NFC/IC cards, or a mobile wallet.",
+          "lost": "If you lose your card, staff can retrieve your membership number by your name or email, but having it noted down is safer.",
+          "strap": "Each person receives one neck strap; no replacements available."
+        }
+      },
+      "transitions": {
+        "next": "Let me explain reception for next visits.",
+        "previous": "Back to registration process."
+      }
+    },
+    {
+      "slideNumber": 9,
+      "narration": {
+        "auto": "At reception, tell staff which space you wish to use. The neck holder shows Wi-Fi and Discord info. Do NOT leave belongings unattended for over 15 minutes; staff may move them for verification.",
+        "onEnter": "About reception for future visits.",
+        "onDemand": {
+          "space": "Specify Main Hall, Under Space, or Focus Space at reception.",
+          "neck holder": "Wi-Fi info is printed on the back of the neck holder.",
+          "away": "If you leave for more than 15 minutes, please check out temporarily; unattended items are not allowed.",
+          "discord": "The neck holder also carries our Discord invite code."
+        }
+      },
+      "transitions": {
+        "next": "Let me conclude the presentation.",
+        "previous": "Back to membership cards."
+      }
+    },
+    {
+      "slideNumber": 10,
+      "narration": {
+        "auto": "This concludes the guide. Opening hours are 9 AM–10 PM. We are in the Red-Brick Culture Hall and completely free to use. Feel free to ask staff any questions!",
+        "onEnter": "Presentation conclusion screen.",
+        "onDemand": {
+          "hours": "Open 9 AM–10 PM.",
+          "location": "Inside Fukuoka City's Red-Brick Culture Hall.",
+          "free": "Use of the facility is completely free.",
+          "questions": "Please ask staff if you have any questions."
+        }
+      },
+      "transitions": {
+        "next": null,
+        "previous": "Back to reception information."
+      }
+    }
+  ]
+}
