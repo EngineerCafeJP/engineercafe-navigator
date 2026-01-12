@@ -1,7 +1,7 @@
 # Makefile for Engineer Cafe Navigator
 # Unified development commands using mise and Docker
 
-.PHONY: help setup install dev dev-frontend dev-backend build test lint clean
+.PHONY: help setup install dev dev-frontend dev-backend build test lint clean debug-agent test-agent show-logs
 
 # Default target
 .DEFAULT_GOAL := help
@@ -29,6 +29,11 @@ help:
 	@echo "  make build              - Build frontend and backend"
 	@echo "  make test               - Run all tests"
 	@echo "  make lint               - Run linters (frontend + backend)"
+	@echo ""
+	@echo "$(GREEN)Debug & Tools:$(NC)"
+	@echo "  make debug-agent        - Interactive agent debugger"
+	@echo "  make test-agent         - Test specific agent (AGENT=business_info|event QUERY='...')"
+	@echo "  make show-logs          - Show recent agent debug logs"
 	@echo ""
 	@echo "$(GREEN)Cleanup:$(NC)"
 	@echo "  make clean              - Stop containers and clean volumes"
@@ -109,3 +114,41 @@ clean\:all:
 	@echo "$(CYAN)Deep cleaning...$(NC)"
 	docker-compose down -v --rmi all
 	@echo "$(GREEN)✓ Deep cleanup complete$(NC)"
+
+## debug-agent: Interactive agent debugger
+debug-agent:
+	@echo "$(CYAN)Starting agent debugger (interactive mode)...$(NC)"
+	@echo "$(YELLOW)Agent type: $(if $(AGENT),$(AGENT),business_info) (set AGENT=event to change)$(NC)"
+	@cd backend && mise exec -- python debug_agent.py $(if $(AGENT),-a $(AGENT),)
+
+## test-agent: Test specific agent with query
+test-agent:
+	@if [ -z "$(QUERY)" ]; then \
+		echo "$(YELLOW)Usage: make test-agent AGENT=business_info QUERY='営業時間は？'$(NC)"; \
+		exit 1; \
+	fi
+	@echo "$(CYAN)Testing agent...$(NC)"
+	@echo "$(YELLOW)Agent: $(if $(AGENT),$(AGENT),business_info)$(NC)"
+	@echo "$(YELLOW)Query: $(QUERY)$(NC)"
+	@cd backend && mise exec -- python debug_agent.py \
+		$(if $(AGENT),-a $(AGENT),) \
+		-q "$(QUERY)" \
+		$(if $(REQUEST_TYPE),-r $(REQUEST_TYPE),) \
+		$(if $(LANGUAGE),-l $(LANGUAGE),) \
+		$(if $(VERBOSE),-v,)
+
+## show-logs: Show recent agent debug logs
+show-logs:
+	@echo "$(CYAN)Recent agent debug logs:$(NC)"
+	@if [ -d "logs/agent-debug" ]; then \
+		echo ""; \
+		ls -lt logs/agent-debug/*.json 2>/dev/null | head -5 | while read -r line; do \
+			file=$$(echo $$line | awk '{print $$NF}'); \
+			echo "$(GREEN)$$file$(NC)"; \
+			echo "$(YELLOW)---$(NC)"; \
+			cat "$$file" | head -20; \
+			echo ""; \
+		done; \
+	else \
+		echo "$(YELLOW)No debug logs found. Run 'make debug-agent' or 'make test-agent' first.$(NC)"; \
+	fi

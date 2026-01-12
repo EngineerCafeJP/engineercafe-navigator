@@ -1,7 +1,9 @@
 {
   "used": [
-    "claude-code-harness:impl"
+    "claude-code-harness:impl",
+    "claude-code-harness:workflow",
+    "claude-code-harness:maintenance"
   ],
   "session_start": "2026-01-12T08:42:21Z",
-  "last_used": "2026-01-12T08:42:21Z"
+  "last_used": "2026-01-12T17:53:07Z"
 }

@@ -1141,12 +1141,13 @@ pnpm test                   # 統合テストスイート実行
 - **バッチ処理**: 効率的なメモリ操作
 
 ### 技術ドキュメント
-- **[📚 ドキュメント一覧](docs/README.md)** - 全ドキュメントのインデックス
-- **[📖 API仕様書](docs/API.md)** - REST API完全仕様
-- **[🔒 セキュリティガイド](docs/SECURITY.md)** - セキュリティ対策・脅威分析
-- **[🛠️ 開発ガイド](docs/DEVELOPMENT.md)** - 開発者向け技術仕様
-- **[🚀 デプロイガイド](docs/DEPLOYMENT.md)** - 本番環境デプロイ手順
-- **[🏛️ システムアーキテクチャ](docs/SYSTEM-ARCHITECTURE.md)** - 8エージェント体制の詳細
+- **[📚 ドキュメント一覧](../docs/README.md)** - 全ドキュメントのインデックス
+- **[📖 API仕様書](../docs/api/API.md)** - REST API完全仕様
+- **[🔒 セキュリティガイド](../docs/SECURITY.md)** - セキュリティ対策・脅威分析
+- **[🛠️ 開発ガイド](../docs/development/DEVELOPER-GUIDE.md)** - 開発者向け技術仕様
+- **[🚀 デプロイガイド](../docs/DEPLOYMENT.md)** - 本番環境デプロイ手順
+- **[🏛️ システムアーキテクチャ](../docs/architecture/SYSTEM-ARCHITECTURE.md)** - 8エージェント体制の詳細
+- **[🆘 トラブルシューティング](../docs/development/TROUBLESHOOTING.md)** - トラブルシューティングガイド
 
 ### セキュリティハイライト
 - ✅ **XSS対策**: HTMLサニタイゼーション実装済み
