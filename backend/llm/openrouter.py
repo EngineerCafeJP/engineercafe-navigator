@@ -132,6 +132,7 @@ class OpenRouterProvider(LLMProvider):
         self,
         messages: List[BaseMessage],
         config: Optional[ModelConfig] = None,
+        _fallback_count: int = 0,
     ) -> str:
         """
         Generate a response using OpenRouter API.
@@ -139,6 +140,7 @@ class OpenRouterProvider(LLMProvider):
         Args:
             messages: List of conversation messages
             config: Model configuration (defaults to qa_response config)
+            _fallback_count: Internal counter to prevent infinite fallback loops
 
         Returns:
             Generated text response
@@ -167,10 +169,10 @@ class OpenRouterProvider(LLMProvider):
             return data["choices"][0]["message"]["content"]
 
         except httpx.HTTPStatusError as e:
-            # Try fallback model if available
-            if config.fallback_model:
+            # Try fallback model if available (prevent infinite loop)
+            if config.fallback_model and _fallback_count < 1:
                 print(
-                    f"[OpenRouter] Primary model failed, trying fallback: {config.fallback_model.value}"
+                    f"[OpenRouter] HTTP error (status {e.response.status_code}), trying fallback: {config.fallback_model.value}"
                 )
                 fallback_config = ModelConfig(
                     model_id=config.fallback_model,
@@ -178,7 +180,9 @@ class OpenRouterProvider(LLMProvider):
                     max_tokens=config.max_tokens,
                     top_p=config.top_p,
                 )
-                return await self.generate(messages, fallback_config)
+                return await self.generate(
+                    messages, fallback_config, _fallback_count=_fallback_count + 1
+                )
 
             raise OpenRouterError(
                 f"API request failed: {e.response.text}",
@@ -186,6 +190,19 @@ class OpenRouterProvider(LLMProvider):
             ) from e
 
         except httpx.RequestError as e:
+            # Try fallback model for network errors (prevent infinite loop)
+            if config.fallback_model and _fallback_count < 1:
+                print(f"[OpenRouter] Network error, trying fallback: {config.fallback_model.value}")
+                fallback_config = ModelConfig(
+                    model_id=config.fallback_model,
+                    temperature=config.temperature,
+                    max_tokens=config.max_tokens,
+                    top_p=config.top_p,
+                )
+                return await self.generate(
+                    messages, fallback_config, _fallback_count=_fallback_count + 1
+                )
+
             raise OpenRouterError(f"Network error: {str(e)}") from e
 
     async def stream(

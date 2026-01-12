@@ -26,10 +26,9 @@ pip install -r requirements.txt
 `.env`ファイルを作成し、以下の環境変数を設定してください：
 
 ```env
-# OpenAI API
-OPENAI_API_KEY=your_openai_api_key
-
-# OpenRouter API
+# OpenRouter API (Required - Primary AI Provider)
+# All AI models (Router, QA, etc.) use OpenRouter API
+# Get your key at: https://openrouter.ai/keys
 OPENROUTER_API_KEY=your_openrouter_api_key
 
 # Supabase
@@ -38,7 +37,27 @@ SUPABASE_KEY=your_supabase_key
 
 # その他
 ENVIRONMENT=development
+PORT=8000
+APP_URL=http://localhost:3000
 ```
+
+### フォールバック戦略
+
+OpenRouter APIは自動フォールバック機能を持っています：
+
+1. **HTTPエラー時**（500, 503など）:
+   - プライマリモデル失敗 → フォールバックモデルに自動切り替え
+   - 例: `GEMINI_3_FLASH` → `GEMINI_2_5_FLASH`
+
+2. **ネットワークエラー時**（タイムアウト、接続エラーなど）:
+   - フォールバックモデルを自動的に試行
+   - 無限ループ防止のため、フォールバック試行は1回まで
+
+3. **フォールバック回数制限**:
+   - 各リクエストで最大1回のフォールバック試行
+   - ログ出力でフォールバック発生を記録
+
+詳細は `backend/llm/README.md` を参照してください。
 
 ## 実行
 
