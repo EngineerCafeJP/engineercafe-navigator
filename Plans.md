@@ -74,10 +74,14 @@ Claude Code は PR 作成・更新時に以下を確認:
 
 > 担当: テリスケ, Natsumi, けいてぃー
 
-### 1.5 FacilityAgent 移行 `cc:TODO`
-- [ ] 地下施設キーワード検出 `cc:TODO`
-- [ ] 設備情報クエリ処理 `cc:TODO`
-- [ ] テストケース作成 `cc:TODO`
+### 1.5 FacilityAgent 移行 `cc:DONE`
+- [x] FacilityAgentクラス実装 (wifi/facility/basement requestType対応) `cc:DONE`
+- [x] 地下施設キーワード検出ロジック実装 `cc:DONE`
+- [x] クエリ拡張ロジック実装 (requestType別) `cc:DONE`
+- [x] Enhanced RAG統合 `cc:DONE`
+- [x] ワークフロー統合 (main_workflow.py) `cc:DONE`
+- [x] テストケース作成 (16テスト全PASS) `cc:DONE`
+- [x] CI/CD検証 (Ruff/Black/Pytest) `cc:DONE`
 
 ---
 
