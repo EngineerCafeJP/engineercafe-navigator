@@ -1,6 +1,6 @@
 {
-  "timestamp": "2026-01-12T06:36:34Z",
-  "changed_file": "src/lib/language-processor.ts",
+  "timestamp": "2026-01-12T12:55:13Z",
+  "changed_file": "src/lib/types.ts",
   "test_command": "npm test",
   "related_test": "",
   "recommendation": "テストの実行を推奨します"

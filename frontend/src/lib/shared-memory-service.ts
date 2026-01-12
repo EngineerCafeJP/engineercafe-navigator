@@ -1,5 +1,5 @@
 import { SimplifiedMemorySystem } from './simplified-memory';
-import { SupportedLanguage } from '@/mastra/types/config';
+import { SupportedLanguage } from '@/lib/types';
 
 /**
  * Shared memory service that provides a unified memory interface for all agents

@@ -260,10 +260,11 @@ export class RAGExperiment {
   }
   
   private static async searchWithCurrentImplementation(query: string, options?: any): Promise<any[]> {
-    // Import and use current RAG search tool
-    const { ragSearchTool } = await import('@/mastra/tools/rag-search');
-    const result = await ragSearchTool.searchKnowledgeBase(query, options?.language || 'ja');
-    return typeof result === 'string' ? [] : []; // Return empty array for now as searchKnowledgeBase returns string
+    // TODO: Implement after backend migration is complete
+    // const { ragSearchTool } = await import('@/mastra/tools/rag-search');
+    // const result = await ragSearchTool.searchKnowledgeBase(query, options?.language || 'ja');
+    console.warn('[RAGExperiment] Current implementation disabled during migration');
+    return []; // Return empty array during migration
   }
   
   private static async searchWithNewEmbeddings(query: string, options?: any): Promise<any[]> {
