@@ -10,9 +10,9 @@
 | 項目 | 状態 |
 |------|------|
 | **CI/CD** | ✅ グリーン (最終実行: 2025-01-12) |
-| **オープン PR** | PR #20 (RouterAgent - レビュー待ち), PR #22 (プロジェクト構造リファクタリング) |
-| **完了したフェーズ** | フェーズ0.5 (OpenRouter API徹底整備), フェーズ0.6 (プロジェクト構造リファクタリング), フェーズ1.1-1.4 (RouterAgent, BusinessInfoAgent, EventAgent, SlideAgent) |
-| **次のフェーズ** | フェーズ2.1 (MemoryAgent骨組み実装), フェーズ6 (pytestとLangGraphEvaluate基本実装) |
+| **オープン PR** | PR #20 (RouterAgent - レビュー待ち) |
+| **完了したフェーズ** | フェーズ0.5 (OpenRouter API徹底整備), フェーズ0.6 (プロジェクト構造リファクタリング), フェーズ1.1-1.4 (RouterAgent, BusinessInfoAgent, EventAgent, SlideAgent), フェーズ2.1 (MemoryAgent骨組み実装) |
+| **次のフェーズ** | フェーズ6 (pytestとLangGraphEvaluate基本実装) |
 | **ベースブランチ** | develop |
 
 ---
@@ -157,18 +157,7 @@ Claude Code は PR 作成・更新時に以下を確認:
 
 ## 📋 次の実装計画（優先順位順）
 
-### 最優先: フェーズ2.1 MemoryAgent骨組み実装
-
-**目的**: 専門エンジニア（takegg0311）がMemoryAgentを実装するための骨組みとドキュメント
-
-**理由**:
-- RouterAgent、BusinessInfoAgent、EventAgent、SlideAgentが完了
-- メモリシステムは他のエージェントの基盤となる重要な機能
-- 専門エンジニアが実装しやすいよう、骨組みとインターフェースを準備
-
-**推定期間**: 1-2週間
-
-### 次優先: フェーズ6 pytestとLangGraphEvaluate基本実装
+### 最優先: フェーズ6 pytestとLangGraphEvaluate基本実装
 
 **目的**: テスト基盤を構築し、他のエンジニアがテストを書きやすくする
 
@@ -186,12 +175,8 @@ Claude Code は PR 作成・更新時に以下を確認:
 
 ### 1.1 RouterAgent 移行 `cc:DONE` `pm:確認済`
 
-<<<<<<< HEAD
-> 完了日時: 2025-01-12
-=======
 > 依頼日時: 2025-01-12  
 > レビュー日時: 2025-01-12
->>>>>>> origin/develop
 
 - [x] LanguageProcessor実装 `cc:DONE`
 - [x] QueryClassifier実装 `cc:DONE`
@@ -201,53 +186,6 @@ Claude Code は PR 作成・更新時に以下を確認:
 - [x] メモリシステム未実装時でも動作する実装 `cc:DONE`
 - [x] 単体テスト実装 `cc:DONE`
 - [x] **PR作成してYukitoLynにレビュー依頼** `cc:DONE` (PR #20)
-<<<<<<< HEAD
-
-**ブランチ**: `feature/router-agent-implementation`  
-**PR**: #20  
-**ステータス**: レビュー待ち（YukitoLyn）
-
-### 1.2 BusinessInfoAgent 移行 `cc:DONE` `pm:確認済`
-
-> 完了日時: 2025-01-12
-
-- [x] Enhanced RAG 移植 `cc:DONE`
-- [x] 営業時間/料金/場所クエリ処理 `cc:DONE`
-- [x] テストケース作成 `cc:DONE`
-
-**ブランチ**: `feature/business-info-event-slide-agents`  
-**PR**: #21  
-**ステータス**: 完了（マージ済み）
-
-### 1.3 EventAgent 移行 `cc:DONE` `pm:確認済`
-
-> 完了日時: 2025-01-12
-
-- [x] Google Calendar API連携（骨組み） `cc:DONE`
-- [x] Connpass API連携（骨組み） `cc:DONE`
-- [x] 時間範囲抽出ロジック `cc:DONE`
-- [x] テストケース作成 `cc:DONE`
-
-**ブランチ**: `feature/business-info-event-slide-agents`  
-**PR**: #21  
-**ステータス**: 完了（マージ済み）
-
-### 1.4 SlideAgent 移行 `cc:DONE` `pm:確認済`
-
-> 完了日時: 2025-01-12
-
-- [x] ナレーションデータ読み込み `cc:DONE`
-- [x] スライドナビゲーション `cc:DONE`
-- [x] スライド関連の質問応答 `cc:DONE`
-- [x] テストケース作成 `cc:DONE`
-
-**ブランチ**: `feature/business-info-event-slide-agents`  
-**PR**: #21  
-**ステータス**: 完了（マージ済み）
-
-### 1.5 FacilityAgent 移行 `cc:TODO`
-
-=======
 - [x] **フォールバック戦略強化（ネットワークエラー時対応）** `cc:DONE` `pm:確認済`
 - [x] **環境変数テンプレート更新（.env.example）** `cc:DONE` `pm:確認済`
 - [x] **ドキュメント更新（フォールバック戦略説明）** `cc:DONE` `pm:確認済`
@@ -256,7 +194,7 @@ Claude Code は PR 作成・更新時に以下を確認:
 **マージ方法**: **必ずPRを作成してレビュー（YukitoLynにレビュー依頼）**  
 **PR**: #20 (レビュー待ち)
 
-### 1.2 BusinessInfoAgent 移行 `pm:確認済`
+### 1.2 BusinessInfoAgent 移行 `cc:DONE` `pm:確認済`
 > 依頼日時: 2025-01-12  
 > 完了日時: 2025-01-12
 
@@ -273,7 +211,7 @@ Claude Code は PR 作成・更新時に以下を確認:
 **PR**: #21  
 **マージ方法**: **PR作成 → CI/CDグリーン確認 → developに直接マージ**
 
-### 1.3 EventAgent 移行 `pm:確認済`
+### 1.3 EventAgent 移行 `cc:DONE` `pm:確認済`
 > 依頼日時: 2025-01-12  
 > 完了日時: 2025-01-12
 
@@ -287,7 +225,7 @@ Claude Code は PR 作成・更新時に以下を確認:
 
 **ブランチ**: `feature/business-info-event-slide-agents`（BusinessInfoAgentと同一ブランチ）
 
-### 1.4 SlideAgent 移行 `pm:確認済`
+### 1.4 SlideAgent 移行 `cc:DONE` `pm:確認済`
 > 依頼日時: 2025-01-12  
 > 完了日時: 2025-01-12
 
@@ -300,46 +238,59 @@ Claude Code は PR 作成・更新時に以下を確認:
 - [x] テストケース作成 `cc:DONE`
 - [x] CI/CDがグリーン `cc:DONE`
 - [x] PRを作成してCI/CD確認後、developにマージ `cc:DONE`
-- [ ] **スライドファイルの配置（backend/slides/）** `cc:TODO` `pm:依頼中`
+- [x] **スライドファイルの配置（backend/slides/）** `cc:DONE`
 
 **ブランチ**: `feature/business-info-event-slide-agents`（BusinessInfoAgentと同一ブランチ）
 
-### 1.5 FacilityAgent 移行
->>>>>>> origin/develop
+### 1.5 FacilityAgent 移行 `cc:TODO`
 - [ ] 地下施設キーワード検出 `cc:TODO`
 - [ ] 設備情報クエリ処理 `cc:TODO`
 - [ ] テストケース作成 `cc:TODO`
 
 ---
 
-## フェーズ 2: LangGraph 移行 - 会話機能 `cc:TODO`
+## フェーズ 2: LangGraph 移行 - 会話機能 `cc:WIP`
 
-> 担当: テリスケ（骨組み）, takegg0311（完全実装）, Chie, Jun
+> 担当: テリスケ（骨組み）, takegg0311・YukitoLyn（完全実装）, Chie, Jun
 
-### 2.1 MemoryAgent 骨組み実装 `cc:TODO` `pm:次フェーズ`
+### 2.1 MemoryAgent 骨組み実装 `cc:DONE` `pm:確認済`
 
-> 目的: 専門エンジニア（takegg0311）がMemoryAgentを実装するための骨組みとドキュメント
+> 依頼日時: 2025-01-12
+> 完了日時: 2025-01-12
+> 目的: 専門エンジニア（takegg0311・YukitoLyn）がMemoryAgentを実装するための骨組みとドキュメント
 
 **タスク**:
-- [ ] `backend/utils/memory_interface.py`を作成 - Protocolインターフェース定義 `cc:TODO`
-- [ ] `backend/utils/memory_helper.py`を作成 - 暫定実装（Supabase + Supabase Storage） `cc:TODO`
-- [ ] `backend/agents/memory_agent.py`を作成 - 骨組みのみ（TODOコメント付き） `cc:TODO`
-- [ ] `backend/workflows/main_workflow.py`の`_memory_node()`を骨組みに置き換え `cc:TODO`
-- [ ] Checkpointer基盤実装（`langgraph-checkpoint-postgres`統合） `cc:TODO`
-- [ ] 専門エンジニア向けの実装ガイドを作成 `cc:TODO`
+- [x] `backend/utils/memory_interface.py`を作成 - Protocolインターフェース定義 `cc:DONE`
+- [x] `backend/utils/memory_helper.py`を作成 - 暫定実装（Supabase + Supabase Storage） `cc:DONE`
+- [x] `backend/agents/memory_agent.py`を作成 - 骨組みのみ（TODOコメント付き） `cc:DONE`
+- [x] `backend/workflows/main_workflow.py`の`_memory_node()`を骨組みに置き換え `cc:DONE`
+- [x] Checkpointer基盤実装（`langgraph-checkpoint-postgres`統合） `cc:DONE`
+- [x] 専門エンジニア向けの実装ガイドを作成 `cc:DONE`
+- [x] 単体テスト作成（骨組み動作確認） `cc:DONE`
 
 **完了条件**:
-- [ ] `MemorySystemInterface` Protocolが定義されている
-- [ ] 暫定実装（`SimplifiedMemoryHelper`）が動作する
-- [ ] MemoryAgentの骨組みが作成されている
-- [ ] Checkpointer基盤が実装されている
-- [ ] 専門エンジニア向けの実装ガイドが作成されている
-- [ ] RouterAgentがメモリシステムとオプショナルに連携できる
+- [x] `MemorySystemInterface` Protocolが定義されている
+- [x] 暫定実装（`SimplifiedMemoryHelper`）が動作する
+- [x] MemoryAgentの骨組みが作成されている
+- [x] Checkpointer基盤が実装されている
+- [x] 専門エンジニア向けの実装ガイドが作成されている
+- [x] RouterAgentがメモリシステムとオプショナルに連携できる
+- [x] CI/CDがグリーン（Ruff, Black, Pytest 全てパス）
+
+**成果物**:
+- `backend/utils/memory_interface.py` - MemorySystemInterface Protocol
+- `backend/utils/memory_helper.py` - SimplifiedMemoryHelper暫定実装
+- `backend/utils/checkpointer.py` - Checkpointer基盤
+- `backend/agents/memory_agent.py` - MemoryAgent骨組み
+- `backend/workflows/main_workflow.py` - _memory_node()更新
+- `docs/migration/agents/memory-agent/IMPLEMENTATION-GUIDE.md` - 完全実装ガイド
+- `backend/tests/test_memory_skeleton.py` - 骨組みテスト（17テスト全てパス）
 
 **ブランチ**: `feature/memory-agent-skeleton`  
+**PR**: #23  
 **マージ方法**: **直接developブランチにマージ（PR不要）**
 
-**注意**: 完全実装は専門エンジニア（takegg0311）が担当。ここでは骨組みのみ。
+**注意**: 完全実装は専門エンジニア（takegg0311・YukitoLyn）が担当。骨組み実装のみ完了。
 
 ### 2.2 ClarificationAgent 移行
 - [ ] 曖昧さ検出ロジック `cc:TODO`
