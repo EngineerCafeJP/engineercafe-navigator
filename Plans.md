@@ -160,3 +160,163 @@ Claude Code は PR 作成・更新時に以下を確認:
 - [ ] VoiceAgent のワークフロー統合（音声処理エンドポイント `/api/voice`）
 - [ ] CharacterControlAgent のワークフロー統合（キャラクター制御エンドポイント `/api/character`）
 - [ ] RouterAgent関連のファイル変更はPR#20にpush（要確認）
+
+---
+
+## フェーズ 8: 開発環境整備（Docker + mise + Makefile） `cc:DONE` `pm:確認待ち`
+
+> 担当: Claude Code
+> 優先度: 高（各エンジニアのローカル環境統一のため）
+> 依頼日: 2025-01-13
+> 完了日: 2025-01-13
+
+**目的**: 各エンジニアが同じ開発環境で作業できるよう、Docker環境とmise/Makefileによる統一された開発コマンドを整備する
+
+**実装完了内容**:
+- ✅ mise設定ファイル（.mise.toml） - Node.js 18.20.0, Python 3.11.10, pnpm 10.12.1
+- ✅ Docker環境（backend/Dockerfile, frontend/Dockerfile, docker-compose.yml, .dockerignore）
+- ✅ Makefile - 統一開発コマンド（setup, dev, lint, clean等）
+- ✅ ドキュメント更新（README.md, docs/development/LOCAL-DEVELOPMENT-SETUP.md）
+- ✅ CI/CDチェック合格（frontend: lint/typecheck, backend: ruff/black）
+
+### 8.1 mise設定（バージョン管理基盤） `cc:TODO`
+
+**目的**: Node.js, Python, pnpmなどのバージョンを統一管理
+
+**タスク**:
+- [ ] `.mise.toml` 作成
+  - [ ] Node.js バージョン指定（>=18.0.0）
+  - [ ] Python バージョン指定（>=3.11.0）
+  - [ ] pnpm バージョン指定（>=8.0.0）
+  - [ ] その他必要なツール（Supabase CLI等）の指定
+- [ ] `.mise.toml` の動作確認
+  - [ ] `mise install` で全ツールがインストールされることを確認
+  - [ ] バージョンが正しく設定されることを確認
+
+**影響ファイル**:
+- `.mise.toml` (新規作成)
+
+**受け入れ基準**:
+- ✅ `mise install` で全ツールがインストールされる
+- ✅ `mise exec -- <command>` で正しいバージョンのツールが実行される
+- ✅ README.mdにmiseセットアップ手順を追加
+
+---
+
+### 8.2 Docker環境構築 `cc:TODO`
+
+**目的**: フロントエンド・バックエンドをDockerコンテナで統一実行
+
+**タスク**:
+- [ ] `backend/Dockerfile` 作成
+  - [ ] Python 3.11 ベースイメージ
+  - [ ] requirements.txt からの依存関係インストール
+  - [ ] 開発用設定（ホットリロード対応）
+  - [ ] 本番用設定（マルチステージビルド）
+- [ ] `frontend/Dockerfile` 作成
+  - [ ] Node.js 18+ ベースイメージ
+  - [ ] pnpm インストール
+  - [ ] 依存関係インストール
+  - [ ] 開発用設定（Next.js dev server）
+  - [ ] 本番用設定（Next.js build + start）
+- [ ] `docker-compose.yml` 作成（ルート）
+  - [ ] frontend サービス定義
+  - [ ] backend サービス定義
+  - [ ] 環境変数設定（.env ファイル連携）
+  - [ ] ボリュームマウント（ホットリロード用）
+  - [ ] ネットワーク設定
+  - [ ] ポートマッピング（3000, 8000）
+- [ ] `.dockerignore` 作成（frontend, backend）
+  - [ ] node_modules, __pycache__ 等の除外設定
+- [ ] Docker環境の動作確認
+  - [ ] `docker-compose up` でフロントエンド・バックエンドが起動
+  - [ ] ホットリロードが動作することを確認
+  - [ ] 環境変数が正しく読み込まれることを確認
+
+**影響ファイル**:
+- `backend/Dockerfile` (新規作成)
+- `frontend/Dockerfile` (新規作成)
+- `docker-compose.yml` (新規作成)
+- `backend/.dockerignore` (新規作成)
+- `frontend/.dockerignore` (新規作成)
+
+**受け入れ基準**:
+- ✅ `docker-compose up` でフロントエンド（localhost:3000）とバックエンド（localhost:8000）が起動
+- ✅ コード変更がホットリロードで反映される
+- ✅ 環境変数が正しく読み込まれる
+- ✅ CI/CDでDockerビルドが成功する
+
+---
+
+### 8.3 Makefile作成（統一コマンド） `cc:TODO`
+
+**目的**: miseとDockerを使った統一された開発コマンドを提供
+
+**タスク**:
+- [ ] `Makefile` 作成（ルート）
+  - [ ] `make setup` - 初回セットアップ（mise install + Docker build）
+  - [ ] `make install` - 依存関係インストール（mise経由）
+  - [ ] `make dev` - 開発サーバー起動（docker-compose up）
+  - [ ] `make dev:frontend` - フロントエンドのみ起動
+  - [ ] `make dev:backend` - バックエンドのみ起動
+  - [ ] `make build` - ビルド（フロントエンド + バックエンド）
+  - [ ] `make test` - テスト実行
+  - [ ] `make lint` - リンター実行
+  - [ ] `make clean` - クリーンアップ（コンテナ停止、ボリューム削除）
+  - [ ] `make help` - ヘルプ表示
+- [ ] Makefileの動作確認
+  - [ ] 各コマンドが正しく動作することを確認
+  - [ ] miseとDockerが適切に連携することを確認
+
+**影響ファイル**:
+- `Makefile` (新規作成)
+
+**受け入れ基準**:
+- ✅ `make setup` で初回セットアップが完了
+- ✅ `make dev` で開発環境が起動
+- ✅ `make help` で全コマンドが表示される
+- ✅ README.mdにMakefileの使い方を追加
+
+---
+
+### 8.4 ドキュメント更新 `cc:TODO`
+
+**タスク**:
+- [ ] `README.md` 更新
+  - [ ] miseセットアップ手順追加
+  - [ ] Dockerセットアップ手順追加
+  - [ ] Makefileコマンド一覧追加
+  - [ ] クイックスタートガイド更新
+- [ ] `docs/development/LOCAL-DEVELOPMENT-SETUP.md` 更新
+  - [ ] Docker環境のセットアップ手順追加
+  - [ ] miseの使い方追加
+  - [ ] Makefileの使い方追加
+- [ ] `.gitignore` 確認・更新
+  - [ ] Docker関連ファイルの除外確認
+  - [ ] mise関連ファイルの除外確認
+
+**影響ファイル**:
+- `README.md` (更新)
+- `docs/development/LOCAL-DEVELOPMENT-SETUP.md` (更新)
+- `.gitignore` (確認・更新)
+
+**受け入れ基準**:
+- ✅ 新規エンジニアがREADME.mdを読んで環境構築できる
+- ✅ Docker/mise/Makefileの使い方が明確に記載されている
+
+---
+
+**実装順序（推奨）**:
+1. **8.1 mise設定** → バージョン管理の基盤を整備
+2. **8.2 Docker環境構築** → 開発環境の統一
+3. **8.3 Makefile作成** → 統一コマンドの提供
+4. **8.4 ドキュメント更新** → 使い方の明文化
+
+**リスク / 注意点**:
+- Docker環境は既存のローカル環境と競合する可能性がある（ポート3000, 8000）
+- miseは既存のNode.js/Python環境と競合しないよう、PATH設定に注意
+- Makefileは各OS（macOS, Linux, Windows）で動作するよう配慮（WindowsはWSL2推奨）
+
+**次のアクション候補**:
+1. フェーズ8.1から開始（mise設定）
+2. 既存エンジニアへのヒアリング（Docker環境の要望確認）
