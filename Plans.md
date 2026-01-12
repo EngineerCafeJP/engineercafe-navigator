@@ -53,14 +53,49 @@ Claude Code は PR 作成・更新時に以下を確認:
 
 ---
 
+## フェーズ 0.5: OpenRouter API徹底整備 `cc:DONE`
+
+> 担当: テリスケ（統括）
+> 完了日: 2025-01-12
+
+### 0.5.1 OpenRouter API基盤整備
+- [x] `langchain-google-genai`パッケージ削除（requirements.txt, pyproject.toml） `cc:DONE`
+- [x] `backend/README.md`のGemini API直接使用記述削除 `cc:DONE`
+- [x] OpenRouter API使用チェックリスト作成 `cc:DONE`
+- [x] OpenRouter API使用ベストプラクティスドキュメント作成 `cc:DONE`
+
+**完了条件**:
+- [x] `langchain-google-genai`が依存関係から削除されている
+- [x] ドキュメントからGemini直接APIの記述が削除されている
+- [x] OpenRouter API使用のチェックリストが作成されている
+- [x] CI/CDがグリーン
+
+**成果物**:
+- `docs/migration/agents/openrouter-checklist.md` - OpenRouter API使用チェックリスト
+- `docs/migration/agents/openrouter-best-practices.md` - OpenRouter APIベストプラクティス
+- `backend/requirements.txt` - langchain-google-genai削除済み
+- `backend/pyproject.toml` - langchain-google-genai削除済み
+- `backend/README.md` - OpenRouter API使用方法更新済み
+
 ## フェーズ 1: LangGraph 移行 - コア機能 `cc:TODO`
 
 > 担当: テリスケ, Natsumi, けいてぃー
 
-### 1.1 RouterAgent 移行
-- [ ] Python ノード実装 `cc:TODO`
-- [ ] ルーティングロジック移植 `cc:TODO`
-- [ ] テストケース作成 `cc:TODO`
+### 1.1 RouterAgent 移行 `pm:依頼中`
+
+> 依頼日時: 2025-01-12
+
+- [ ] LanguageProcessor実装 `cc:TODO`
+- [ ] QueryClassifier実装 `cc:TODO`
+- [ ] RouterAgent本体実装（OpenRouter API使用） `cc:TODO`
+- [ ] OCR結果処理ロジック実装 `cc:TODO`
+- [ ] ClarificationAgent連携ロジック実装 `cc:TODO`
+- [ ] メモリシステム未実装時でも動作する実装 `cc:TODO`
+- [ ] 単体テスト実装 `cc:TODO`
+- [ ] **PR作成してYukitoLynにレビュー依頼** `cc:TODO`
+
+**ブランチ**: `feature/router-agent-implementation`  
+**マージ方法**: **必ずPRを作成してレビュー（YukitoLynにレビュー依頼）**
 
 ### 1.2 BusinessInfoAgent 移行
 - [ ] Enhanced RAG 移植 `cc:TODO`
