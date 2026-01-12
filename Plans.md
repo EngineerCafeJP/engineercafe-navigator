@@ -1,6 +1,6 @@
 # Plans.md - Engineer Cafe Navigator
 
-> 最終更新: 2025-01-12
+> 最終更新: 2025-01-13
 > モード: 2-Agent (Cursor PM + Claude Code Worker)
 
 ---
@@ -9,10 +9,10 @@
 
 | 項目 | 状態 |
 |------|------|
-| **CI/CD** | ✅ グリーン (最終実行: 2025-01-12) |
-| **オープン PR** | PR #24 (テスト基盤), PR #25 (バックエンド統合 - Draft) |
-| **完了したフェーズ** | 0.5 (OpenRouter), 0.6 (構造整理), 1.1-1.4 (Agent移行), 2.1 (Memory骨組み), 6 (テスト), 7.1-7.6 (バックエンド統合) |
-| **次のフェーズ** | 7.5 (バックエンド完全実装), 1.5 (FacilityAgent) |
+| **CI/CD** | ✅ グリーン (最終実行: 2025-01-13) |
+| **オープン PR** | PR #25 (バックエンド統合 - Draft), PR #20 (RouterAgent実装 - コンフリクト解決完了、push待ち) |
+| **完了したフェーズ** | 0.5 (OpenRouter), 0.6 (構造整理), 1.1-1.5 (Agent移行), 2.1 (Memory骨組み), 6 (テスト基盤) |
+| **次のフェーズ** | 1.6 (RouterAgent統合完了確認), 7.5 (バックエンド完全実装), 8 (開発環境整備), 9 (ドキュメント更新) |
 | **ベースブランチ** | develop |
 
 ---
@@ -56,13 +56,55 @@ Claude Code は PR 作成・更新時に以下を確認:
 
 ## 📋 次の実装計画（優先順位順）
 
-### 最優先: フェーズ1.5 FacilityAgent実装
+### 最優先: フェーズ7.5 バックエンド完全実装（フロントエンド統合）
 
-**目的**: 設備情報クエリ処理を実装
+**目的**: フロントエンドのAIロジックを完全にバックエンド（LangGraph）に移行し、UIを最適化
 
-**推定期間**: 3日
+**推定期間**: 2-3週間
 
-### 次優先: フェーズ2.2-2.3 会話機能完成
+**タスク**:
+1. バックエンドAPIの完全実装
+   - 音声処理ロジック実装 (STT/TTS)
+   - スライド制御ロジック実装
+   - キャラクター制御ロジック実装
+2. フロントエンドの最適化
+   - 残存するMastraエージェントのクライアントサイド実行を完全に削除
+   - すべてのAPI Routesをバックエンドプロキシに変更
+   - UI/UXの最適化
+
+### 次優先: フェーズ8 開発環境整備
+
+**目的**: Docker整備とmise/makeを使ったモノレポベストプラクティスの実装
+
+**推定期間**: 1-2週間
+
+**タスク**:
+1. Docker環境の整備
+   - Dockerfile作成（backend, frontend）
+   - docker-compose.yml作成
+   - ローカル開発環境の構築
+2. mise/makeの統合
+   - `.mise.toml`作成
+   - `Makefile`作成
+   - モノレポ操作コマンドの統合
+3. ローカル動作確認環境
+   - エンドツーエンドテスト環境
+   - 開発ワークフローの最適化
+
+### その後: フェーズ9 ドキュメント更新
+
+**目的**: 大幅に変わったプロジェクト構造に沿ってドキュメント更新・パス修正
+
+**推定期間**: 1週間
+
+**タスク**:
+1. README.mdの更新
+2. 開発ガイドの更新
+3. APIドキュメントの更新
+4. ドキュメント内のパス修正
+5. アーキテクチャドキュメントの更新
+
+### その他: フェーズ2.2-2.3 会話機能完成
 
 **目的**: ClarificationAgentとLanguageClassifierを実装
 
@@ -74,7 +116,7 @@ Claude Code は PR 作成・更新時に以下を確認:
 
 > 担当: テリスケ, Natsumi, けいてぃー
 
-### 1.5 FacilityAgent 移行 `cc:DONE`
+### 1.5 FacilityAgent 移行 `cc:DONE` `pm:確認済`
 - [x] FacilityAgentクラス実装 (wifi/facility/basement requestType対応) `cc:DONE`
 - [x] 地下施設キーワード検出ロジック実装 `cc:DONE`
 - [x] クエリ拡張ロジック実装 (requestType別) `cc:DONE`
@@ -82,6 +124,132 @@ Claude Code は PR 作成・更新時に以下を確認:
 - [x] ワークフロー統合 (main_workflow.py) `cc:DONE`
 - [x] テストケース作成 (16テスト全PASS) `cc:DONE`
 - [x] CI/CD検証 (Ruff/Black/Pytest) `cc:DONE`
+
+**完了日**: 2025-01-12  
+**ブランチ**: `feature/facility-agent`  
+**PR**: #26 (✅ マージ済み)
+
+---
+
+### 1.6 RouterAgent統合とエージェント連携検証 `cc:DONE` `pm:確認済`
+
+**目的**: RouterAgent実装（PR #20）のコンフリクト解決とワークフロー統合
+
+**完了日**: 2025-01-13
+
+#### 1.6.1 PR #24（テスト基盤整備）レビュー・マージ `cc:DONE` `pm:確認済`
+- [x] PR #24をレビュー `cc:DONE`
+- [x] テスト基盤の内容を確認 `cc:DONE`
+- [x] CI/CD確認（すべてグリーン） `cc:DONE`
+- [x] developブランチにマージ `cc:DONE`
+
+#### 1.6.2 SlideAgentバグ修正 `cc:DONE` `pm:確認済`
+- [x] ナレーションファイルパス解決バグを修正 `cc:DONE`
+- [x] `__file__`ベースの絶対パスで堅牢なパス解決実装 `cc:DONE`
+- [x] SlideAgentテスト 15/15 全通過を達成 `cc:DONE`
+
+#### 1.6.3 RouterAgent統合テスト実装 `cc:DONE` `pm:確認済`
+- [x] MainWorkflowとRouterAgentの統合テスト11ケースを実装 `cc:DONE`
+- [x] feature/router-agent-implementationブランチで11/11全通過を確認 `cc:DONE`
+
+#### 1.6.4 PR #20（RouterAgent実装）コンフリクト解決 `cc:DONE` `pm:確認済`
+- [x] developブランチをマージ `cc:DONE`
+- [x] 5つのファイルのコンフリクト解決 `cc:DONE`
+  - [x] `backend/utils/__init__.py` - RouterAgent utilities追加 `cc:DONE`
+  - [x] `backend/tests/utils/__init__.py` - docstring統一 `cc:DONE`
+  - [x] `backend/agents/__init__.py` - 全エージェントのexport統合 `cc:DONE`
+  - [x] `backend/README.md` - OpenRouter API説明を統一 `cc:DONE`
+  - [x] `Plans.md` - 完了済みフェーズをアーカイブ参照に整理 `cc:DONE`
+- [x] `main_workflow.py`の`_router_node()`をRouterAgent実装で置き換え `cc:DONE`
+- [x] テンプレートファイルのリネームとテスト修正 `cc:DONE`
+- [x] Black自動フォーマット適用 `cc:DONE`
+- [x] 142/142テスト PASS `cc:DONE`
+- [x] CI/CD確認（Ruff/Black/Pytest すべてグリーン） `cc:DONE`
+
+**コミット**:
+- `f6031d4c` - Merge branch 'develop' into feature/router-agent-implementation
+- `d4eb8e55` - fix: developマージ後のテスト修正
+
+**次のステップ**: PR #20ブランチをpushしてPRを更新、またはレビュー依頼
+
+---
+
+## フェーズ 8: 開発環境整備 `cc:TODO`
+
+> 担当: Claude Code
+> 目的: Docker整備とmise/makeを使ったモノレポベストプラクティスの実装
+
+### 8.1 Docker環境の整備 `cc:TODO`
+- [ ] `backend/Dockerfile`作成 `cc:TODO`
+- [ ] `frontend/Dockerfile`作成 `cc:TODO`
+- [ ] `docker-compose.yml`作成（ルートディレクトリ） `cc:TODO`
+- [ ] `.dockerignore`作成 `cc:TODO`
+- [ ] ローカル開発環境の構築 `cc:TODO`
+- [ ] 環境変数の管理（docker-compose.yml） `cc:TODO`
+
+### 8.2 mise/makeの統合 `cc:TODO`
+- [ ] `.mise.toml`作成（プロジェクトルート） `cc:TODO`
+  - [ ] Python 3.11/3.12の設定 `cc:TODO`
+  - [ ] Node.js 20.xの設定 `cc:TODO`
+  - [ ] 必要なツールの設定 `cc:TODO`
+- [ ] `Makefile`作成（プロジェクトルート） `cc:TODO`
+  - [ ] `make setup` - 初期セットアップ `cc:TODO`
+  - [ ] `make install` - 依存関係インストール `cc:TODO`
+  - [ ] `make test` - テスト実行（backend + frontend） `cc:TODO`
+  - [ ] `make lint` - リンター実行 `cc:TODO`
+  - [ ] `make dev` - 開発サーバー起動 `cc:TODO`
+  - [ ] `make build` - ビルド実行 `cc:TODO`
+  - [ ] `make clean` - クリーンアップ `cc:TODO`
+
+### 8.3 ローカル動作確認環境 `cc:TODO`
+- [ ] エンドツーエンドテスト環境構築 `cc:TODO`
+- [ ] 開発ワークフローの最適化 `cc:TODO`
+- [ ] ドキュメント作成（ローカル開発ガイド） `cc:TODO`
+
+**参照ファイル**:
+- `langgraph-reference/coworking-space-system/docker-compose.yml` - 参考実装
+
+---
+
+## フェーズ 9: ドキュメント更新 `cc:TODO`
+
+> 担当: Claude Code
+> 目的: 大幅に変わったプロジェクト構造に沿ってドキュメント更新・パス修正
+
+### 9.1 README.mdの更新 `cc:TODO`
+- [ ] プロジェクトルートの`README.md`更新 `cc:TODO`
+- [ ] `backend/README.md`更新 `cc:TODO`
+- [ ] `frontend/README.md`更新 `cc:TODO`
+- [ ] セットアップ手順の更新 `cc:TODO`
+- [ ] アーキテクチャ図の更新 `cc:TODO`
+
+### 9.2 開発ガイドの更新 `cc:TODO`
+- [ ] `docs/development/DEVELOPER-GUIDE.md`更新 `cc:TODO`
+- [ ] `docs/development/LOCAL-DEVELOPMENT-SETUP.md`更新 `cc:TODO`
+- [ ] `docs/development/LANGGRAPH-DEVELOPMENT-GUIDE.md`更新 `cc:TODO`
+- [ ] パス修正（旧パス → 新パス） `cc:TODO`
+
+### 9.3 APIドキュメントの更新 `cc:TODO`
+- [ ] `docs/api/API.md`更新 `cc:TODO`
+- [ ] `docs/api/API-ja.md`更新 `cc:TODO`
+- [ ] エンドポイント一覧の更新 `cc:TODO`
+- [ ] リクエスト/レスポンス形式の更新 `cc:TODO`
+
+### 9.4 アーキテクチャドキュメントの更新 `cc:TODO`
+- [ ] `docs/architecture/SYSTEM-ARCHITECTURE.md`更新 `cc:TODO`
+- [ ] `docs/architecture/UNIFIED-ARCHITECTURE.md`更新 `cc:TODO`
+- [ ] エージェント構成図の更新 `cc:TODO`
+- [ ] ワークフロー図の更新 `cc:TODO`
+
+### 9.5 その他のドキュメント修正 `cc:TODO`
+- [ ] ドキュメント内のパス修正（一括検索・置換） `cc:TODO`
+- [ ] 古い参照の削除 `cc:TODO`
+- [ ] リンク切れの修正 `cc:TODO`
+
+**完了条件**:
+- [ ] すべてのドキュメントが最新のプロジェクト構造を反映している
+- [ ] パス参照が正しい
+- [ ] セットアップ手順が動作することを確認
 
 ---
 
@@ -143,8 +311,8 @@ Claude Code は PR 作成・更新時に以下を確認:
 
 | # | タイトル | ブランチ | ステータス |
 |---|----------|----------|-----------|
-| 24 | テスト基盤整備 | feature/test-infrastructure | OPEN (レビュー待ち) |
-| 20 | RouterAgent実装 | feature/router-agent-implementation | OPEN (レビュー待ち) |
+| 24 | テスト基盤整備 | feature/test-infrastructure | ✅ マージ済み |
+| 20 | RouterAgent実装 | feature/router-agent-implementation | ✅ コンフリクト解決完了 (push待ち) |
 | 13 | OCRAgent YOLO/ML アプローチ | docs/ocr-agent-yolo-update | OPEN |
 | 12 | OpenRouter LLM インフラ | feature/openrouter-infrastructure | OPEN |
 | 11 | VoiceAgent MIGRATION-GUIDE | docs/voice-agent | OPEN |
@@ -180,8 +348,11 @@ Claude Code は PR 作成・更新時に以下を確認:
 - フェーズ 1.2: BusinessInfoAgent 移行
 - フェーズ 1.3: EventAgent 移行
 - フェーズ 1.4: SlideAgent 移行
+- フェーズ 1.5: FacilityAgent 移行
+- フェーズ 1.6: RouterAgent統合とエージェント連携検証
 - フェーズ 2.1: MemoryAgent 骨組み実装
 - フェーズ 6: テスト基盤整備
+- フェーズ 7: AIロジックのバックエンド統合とフロントエンド整理
 
 ---
 
@@ -255,4 +426,3 @@ Claude Code は PR 作成・更新時に以下を確認:
 - ステータス: Draft PR (PMレビュー待ち)
 - URL: https://github.com/EngineerCafeJP/engineercafe-navigator/pull/25
 - 次のアクション: PMレビュー後にReady for Reviewまたはマージ判断
-
