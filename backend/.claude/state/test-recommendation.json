@@ -1,6 +1,6 @@
 {
-  "timestamp": "2026-01-12T10:32:33Z",
-  "changed_file": "tests/agents/test_slide_agent.py",
+  "timestamp": "2026-01-12T17:07:56Z",
+  "changed_file": "workflows/main_workflow.py",
   "test_command": "pytest",
   "related_test": "",
   "recommendation": "テストの実行を推奨します"
