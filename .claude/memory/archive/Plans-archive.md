@@ -205,3 +205,54 @@
 
 **ブランチ**: `feature/test-infrastructure`
 **PR**: #24 (レビュー待ち)
+
+---
+
+### フェーズ 1.6: RouterAgent統合とエージェント連携検証 `cc:DONE` `pm:確認済`
+
+> 完了日: 2025-01-13
+> 目的: RouterAgent実装（PR #20）のコンフリクト解決とワークフロー統合
+
+#### 1.6.1 PR #24（テスト基盤整備）レビュー・マージ
+- [x] PR #24をレビュー `cc:DONE`
+- [x] テスト基盤の内容を確認 `cc:DONE`
+- [x] CI/CD確認（すべてグリーン） `cc:DONE`
+- [x] developブランチにマージ `cc:DONE`
+
+#### 1.6.2 SlideAgentバグ修正
+- [x] ナレーションファイルパス解決バグを修正 `cc:DONE`
+- [x] `__file__`ベースの絶対パスで堅牢なパス解決実装 `cc:DONE`
+- [x] SlideAgentテスト 15/15 全通過を達成 `cc:DONE`
+
+#### 1.6.3 RouterAgent統合テスト実装
+- [x] MainWorkflowとRouterAgentの統合テスト11ケースを実装 `cc:DONE`
+- [x] feature/router-agent-implementationブランチで11/11全通過を確認 `cc:DONE`
+
+#### 1.6.4 PR #20（RouterAgent実装）コンフリクト解決
+- [x] developブランチをマージ `cc:DONE`
+- [x] 5つのファイルのコンフリクト解決 `cc:DONE`
+  - [x] `backend/utils/__init__.py` - RouterAgent utilities追加
+  - [x] `backend/tests/utils/__init__.py` - docstring統一
+  - [x] `backend/agents/__init__.py` - 全エージェントのexport統合
+  - [x] `backend/README.md` - OpenRouter API説明を統一
+  - [x] `Plans.md` - 完了済みフェーズをアーカイブ参照に整理
+- [x] `main_workflow.py`の`_router_node()`をRouterAgent実装で置き換え `cc:DONE`
+- [x] テンプレートファイルのリネームとテスト修正 `cc:DONE`
+- [x] Black自動フォーマット適用 `cc:DONE`
+- [x] 142/142テスト PASS `cc:DONE`
+- [x] CI/CD確認（Ruff/Black/Pytest すべてグリーン） `cc:DONE`
+
+**成果物**:
+- SlideAgent パス解決バグ修正 (15/15 tests passing)
+- RouterAgent 統合テスト 11ケース (feature/router-agent-implementation)
+- PR #24 マージ完了 (develop)
+- PR #20 コンフリクト解決完了
+
+**コミット**:
+- `f6031d4c` - Merge branch 'develop' into feature/router-agent-implementation
+- `d4eb8e55` - fix: developマージ後のテスト修正
+- `ee7d45dd` - docs: Plans.md更新（PM更新分を反映）
+
+**ブランチ**: `feature/router-agent-implementation`
+**PR**: #20 (レビュー待ち)
+
