@@ -34,13 +34,6 @@ Claude Code は PR 作成・更新時に以下を確認:
 
 ---
 
-## フェーズ 0: ハーネスセットアップ `cc:WIP`
-
-**完了**: AGENTS.md, Plans.md作成
-**残タスク**: .cursor/commands/, .claude/rules整備, .gitignore整理, OpenRouterモデル更新
-
----
-
 ## 📋 次の実装計画（優先順位順）
 
 1. **フェーズ7.5**: バックエンド完全実装 (STT/TTS, スライド/キャラクター制御) - 2-3週間

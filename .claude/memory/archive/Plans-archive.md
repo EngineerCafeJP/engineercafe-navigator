@@ -256,3 +256,26 @@
 **ブランチ**: `feature/router-agent-implementation`
 **PR**: #20 (レビュー待ち)
 
+
+---
+
+### フェーズ 0: ハーネスセットアップ `cc:DONE`
+
+> 完了日: 2025-01-13
+
+**完了タスク**:
+- [x] AGENTS.md 作成
+- [x] Plans.md 作成
+
+**未実施タスク (優先度低/不要と判断)**:
+- .cursor/commands/ 作成
+- .claude/rules/ 作成
+- .claude/memory/ 初期化
+- .claude/settings.json 更新
+- 環境診断実行
+- CI/CD グリーン確認
+- .gitignore allowlist方式整理
+- OpenRouterモデル定義最新化
+
+**備考**: 基本的なハーネス構造は構築済み。残タスクは必要に応じて個別対応。
+
