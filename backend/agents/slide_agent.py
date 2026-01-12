@@ -33,12 +33,23 @@ class SlideAgent:
             読み込み成功: True, 失敗: False
         """
         try:
-            # ナレーションファイルのパス
-            # backend/slides/narration/ または frontend/src/slides/narration/
+            # このファイル（slide_agent.py）からの相対パスで narration ディレクトリを探す
+            # backend/agents/slide_agent.py -> backend/slides/narration/
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            backend_dir = os.path.dirname(current_dir)  # backend/
+
             narration_paths = [
-                f"backend/slides/narration/engineer-cafe-{language}.json",
-                f"frontend/src/slides/narration/engineer-cafe-{language}.json",
-                f"../frontend/src/slides/narration/engineer-cafe-{language}.json",
+                # backend/slides/narration/ (絶対パス)
+                os.path.join(backend_dir, "slides", "narration", f"engineer-cafe-{language}.json"),
+                # frontend/src/slides/narration/ (プロジェクトルートからの相対パス)
+                os.path.join(
+                    os.path.dirname(backend_dir),
+                    "frontend",
+                    "src",
+                    "slides",
+                    "narration",
+                    f"engineer-cafe-{language}.json",
+                ),
             ]
 
             for narration_path in narration_paths:
@@ -52,6 +63,7 @@ class SlideAgent:
                         return True
 
             print(f"[SlideAgent] Narration file not found for language: {language}")
+            print(f"[SlideAgent] Searched paths: {narration_paths}")
             return False
 
         except Exception as e:
