@@ -1,0 +1,26 @@
+# mise configuration for Engineer Cafe Navigator
+# Manages consistent tool versions across development environments
+# Usage: run `mise install` to install all tools
+
+[tools]
+# Node.js - Frontend development
+node = "18.20.0"
+
+# Python - Backend development with FastAPI and LangGraph
+python = "3.11.10"
+
+# pnpm - Package manager for frontend
+pnpm = "10.12.1"
+
+# Optional tools
+# Uncomment to enable additional tools
+# "supabase-cli" = "latest"
+
+[env]
+# Environment variables (optional)
+# These are applied when using `mise exec`
+_.file = ".env"
+
+[settings]
+# Auto-activation when entering this directory
+experimental = true

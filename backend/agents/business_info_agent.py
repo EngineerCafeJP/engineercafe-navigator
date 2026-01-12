@@ -9,10 +9,35 @@ from backend.llm import get_llm_provider, get_model_config
 
 
 class BusinessInfoAgent:
-    """営業情報エージェント"""
+    """営業情報エージェント
+
+    営業時間、料金、場所に関する質問にRAG検索とLLMを組み合わせて回答します。
+
+    Attributes:
+        enhanced_rag (EnhancedRAGSearch): RAG検索ツール
+        llm_provider (LLMProvider): LLMプロバイダー
+
+    Examples:
+        >>> agent = BusinessInfoAgent()
+        >>> result = await agent.answer_business_query(
+        ...     query="営業時間は何時までですか？",
+        ...     request_type="hours",
+        ...     language="ja"
+        ... )
+        >>> print(result["answer"])
+        [relaxed]平日は9:00-22:00、土日祝は10:00-20:00まで営業しております。
+
+    Notes:
+        - リクエストタイプをRAGカテゴリにマッピングして検索精度を向上
+        - LLMプロンプトで感情タグの埋め込みを指示
+        - RAG検索失敗時やLLMエラー時はデフォルト応答を返す
+    """
 
     def __init__(self):
-        """初期化"""
+        """BusinessInfoAgentを初期化
+
+        EnhancedRAGSearchとLLMプロバイダーのインスタンスを作成します。
+        """
         self.enhanced_rag = EnhancedRAGSearch()
         self.llm_provider = get_llm_provider()
 
@@ -23,17 +48,63 @@ class BusinessInfoAgent:
         language: str = "ja",
         session_id: Optional[str] = None,
     ) -> Dict:
-        """
-        営業情報クエリに回答
+        """営業情報クエリに回答
+
+        RAG検索で関連情報を取得し、LLMで自然な応答を生成します。
+        リクエストタイプに応じてRAGカテゴリをマッピングし、検索精度を向上させます。
 
         Args:
-            query: ユーザークエリ
-            request_type: リクエストタイプ（hours, price, location）
-            language: 言語（ja or en）
-            session_id: セッションID
+            query (str): ユーザーからの質問文
+                例: "営業時間は何時までですか？", "料金はいくらですか？"
+            request_type (Optional[str]): リクエストタイプ
+                - "hours": 営業時間
+                - "price": 料金
+                - "location": 場所・アクセス
+                - "access": アクセス情報
+                - "basement": 地下施設
+                - "facility": 施設情報
+                - "wifi": Wi-Fi情報
+                - None: 一般的な質問
+            language (str): 応答言語。デフォルトは"ja"
+                - "ja": 日本語
+                - "en": 英語
+            session_id (Optional[str]): セッションID（将来の拡張用）
 
         Returns:
-            回答辞書 {answer, emotion, metadata}
+            Dict: 回答辞書
+                - answer (str): 回答テキスト。感情タグ付き
+                - emotion (str): 感情タグ（happy, relaxed, sad, informative, guiding, helpful, apologetic）
+                - metadata (Dict): メタデータ
+                    - agent (str): エージェント名
+                    - confidence (float): 信頼度（0.0-1.0）
+                    - category (str): RAGカテゴリ
+                    - request_type (str): リクエストタイプ
+                    - sources (List[str]): 情報ソース
+
+        Examples:
+            >>> agent = BusinessInfoAgent()
+            >>> result = await agent.answer_business_query(
+            ...     query="営業時間は？",
+            ...     request_type="hours",
+            ...     language="ja"
+            ... )
+            >>> print(result)
+            {
+                "answer": "[relaxed]平日は9:00-22:00、土日祝は10:00-20:00まで営業しております。",
+                "emotion": "relaxed",
+                "metadata": {
+                    "agent": "BusinessInfoAgent",
+                    "confidence": 0.85,
+                    "category": "hours",
+                    "request_type": "hours",
+                    "sources": ["enhanced_rag"]
+                }
+            }
+
+        Notes:
+            - RAG検索失敗時はデフォルト応答を返す（confidence: 0.3）
+            - LLMエラー時もフォールバック処理を実行
+            - 感情タグはLLM応答から抽出、または request_type に基づいて決定
         """
         print(
             f"[BusinessInfoAgent] Processing query: {query}, request_type: {request_type}, language: {language}"
@@ -86,7 +157,23 @@ class BusinessInfoAgent:
             return self._get_default_response(language, request_type)
 
     def _map_request_type_to_category(self, request_type: Optional[str]) -> str:
-        """requestTypeをEnhanced RAGカテゴリにマッピング"""
+        """requestTypeをEnhanced RAGカテゴリにマッピング
+
+        Args:
+            request_type (Optional[str]): リクエストタイプ
+
+        Returns:
+            str: RAGカテゴリ（hours, pricing, location, facility-info, general）
+
+        Examples:
+            >>> agent = BusinessInfoAgent()
+            >>> agent._map_request_type_to_category("hours")
+            'hours'
+            >>> agent._map_request_type_to_category("price")
+            'pricing'
+            >>> agent._map_request_type_to_category("wifi")
+            'facility-info'
+        """
         category_mapping = {
             "hours": "hours",
             "price": "pricing",
@@ -102,7 +189,42 @@ class BusinessInfoAgent:
     def _build_prompt(
         self, query: str, context: str, request_type: Optional[str], language: str
     ) -> str:
-        """プロンプト構築"""
+        """LLMプロンプトを構築
+
+        リクエストタイプと言語に応じて適切なプロンプトを生成します。
+        感情タグの埋め込みを指示し、簡潔な応答を促します。
+
+        Args:
+            query (str): ユーザークエリ
+            context (str): RAG検索で取得したコンテキスト
+            request_type (Optional[str]): リクエストタイプ
+            language (str): 言語（ja or en）
+
+        Returns:
+            str: 構築されたプロンプト
+
+        Examples:
+            >>> agent = BusinessInfoAgent()
+            >>> prompt = agent._build_prompt(
+            ...     query="営業時間は？",
+            ...     context="平日9:00-22:00です。",
+            ...     request_type="hours",
+            ...     language="ja"
+            ... )
+            >>> print(prompt)
+            次の情報から営業時間のみを抽出して質問に答えてください。
+
+            質問: 営業時間は？
+            情報: 平日9:00-22:00です。
+
+            営業時間のみを答えてください。最大1-2文。他の情報は含めないでください。
+            重要: 情報提供の場合は[relaxed]、良いニュースの場合は[happy]で回答を始めてください。
+
+        Notes:
+            - request_typeがある場合は特定情報の抽出を指示
+            - 感情タグの埋め込みを"重要"として強調
+            - 最大1-2文の簡潔な応答を促す
+        """
         print(
             f"[BusinessInfoAgent] Building prompt with query_length: {len(query)}, context_length: {len(context)}, request_type: {request_type}, language: {language}"
         )
@@ -161,7 +283,28 @@ IMPORTANT: Start your response with an emotion tag: [relaxed] for information, [
         return prompt.get(language, prompt.get("ja", ""))
 
     def _determine_emotion(self, request_type: Optional[str], response_text: str) -> str:
-        """感情タグを決定"""
+        """感情タグを決定
+
+        LLM応答テキストから感情タグを抽出、または request_type に基づいて決定します。
+
+        Args:
+            request_type (Optional[str]): リクエストタイプ
+            response_text (str): LLMの応答テキスト
+
+        Returns:
+            str: 感情タグ（happy, sad, relaxed, informative, guiding, helpful）
+
+        Examples:
+            >>> agent = BusinessInfoAgent()
+            >>> agent._determine_emotion("hours", "[relaxed]営業時間は...")
+            'relaxed'
+            >>> agent._determine_emotion("hours", "営業時間は...")
+            'informative'
+
+        Notes:
+            - 優先順位: 応答テキスト内のタグ > request_type 基準 > デフォルト
+            - タグがない場合は request_type に応じた適切な感情を返す
+        """
         # レスポンステキストから感情タグを抽出
         if "[happy]" in response_text.lower():
             return "happy"
@@ -179,7 +322,30 @@ IMPORTANT: Start your response with an emotion tag: [relaxed] for information, [
         return "helpful"
 
     def _get_default_response(self, language: str, request_type: Optional[str]) -> Dict:
-        """デフォルト応答（情報が見つからない場合）"""
+        """デフォルト応答を返す
+
+        RAG検索失敗またはLLMエラー時のフォールバック応答を生成します。
+
+        Args:
+            language (str): 言語（ja or en）
+            request_type (Optional[str]): リクエストタイプ
+
+        Returns:
+            Dict: デフォルト応答辞書
+                - answer (str): お詫びメッセージ
+                - emotion (str): "apologetic"
+                - metadata (Dict): 低信頼度（0.3）とフォールバックソース
+
+        Examples:
+            >>> agent = BusinessInfoAgent()
+            >>> response = agent._get_default_response("ja", "hours")
+            >>> print(response["answer"])
+            [sad]申し訳ございません。お探しの情報が見つかりませんでした。質問を言い換えていただくか、スタッフにお問い合わせください。
+
+        Notes:
+            - confidence は 0.3 に設定（低信頼度）
+            - sources は ["fallback"] を記録
+        """
         if language == "en":
             text = "[sad]I'm sorry, I couldn't find the specific information you're looking for. Please try rephrasing your question or contact the staff for assistance."
         else:

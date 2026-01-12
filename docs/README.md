@@ -6,20 +6,50 @@
 
 ### 🏠 メインドキュメント
 - **[README.md](../README.md)** - プロジェクト概要・セットアップガイド・基本的な使用方法
+- **[README-EN.md](../README-EN.md)** - English version of project overview
+- **[frontend/README.md](../frontend/README.md)** - Frontendアプリケーション詳細
+- **[backend/README.md](../backend/README.md)** - Backendアプリケーション詳細
 
-### 🛠️ 技術ドキュメント
+### 🚀 クイックスタート・セットアップ
+- **[development/AGENT-QUICKSTART.md](development/AGENT-QUICKSTART.md)** - エージェント開発クイックスタートガイド（10分で開始）
+- **[development/LOCAL-DEVELOPMENT-SETUP.md](development/LOCAL-DEVELOPMENT-SETUP.md)** - ローカル開発環境セットアップガイド（Docker/mise対応）
+- **[development/ENVIRONMENT-VARIABLES.md](development/ENVIRONMENT-VARIABLES.md)** - 環境変数設定ガイド（完全版）
 
-#### 📖 API仕様
-- **[API.md](API.md)** - REST API 完全仕様書
-  - 音声処理API
-  - スライド制御API
-  - キャラクター制御API
-  - 外部連携API
-  - Q&A API
-  - エラーハンドリング
-  - 認証・セキュリティ
+### 🛠️ 開発ガイド
 
-#### 🔒 セキュリティ
+#### 📖 開発者向けドキュメント
+- **[development/DEVELOPER-GUIDE.md](development/DEVELOPER-GUIDE.md)** - 開発者向け包括的ガイド
+- **[development/LANGGRAPH-DEVELOPMENT-GUIDE.md](development/LANGGRAPH-DEVELOPMENT-GUIDE.md)** - LangGraph開発ガイド
+- **[development/AGENT-IMPLEMENTATION-REQUEST.md](development/AGENT-IMPLEMENTATION-REQUEST.md)** - 新規エージェント実装依頼テンプレート
+- **[development/AGENT-IMPLEMENTATION-CHECKLIST.md](development/AGENT-IMPLEMENTATION-CHECKLIST.md)** - エージェント実装チェックリスト
+- **[development/AGENT-EXAMPLES.md](development/AGENT-EXAMPLES.md)** - エージェント実装サンプル集
+
+#### 🔧 プロジェクト管理・ワークフロー
+- **[development/CLAUDE.md](development/CLAUDE.md)** - Claude Code向け開発ガイダンス
+- **[development/AGENTS.md](development/AGENTS.md)** - エージェント体制概要
+- **[development/AGILE-AI-DEVELOPMENT.md](development/AGILE-AI-DEVELOPMENT.md)** - アジャイルAI開発手法
+- **[development/BRANCH-PROTECTION-SETUP.md](development/BRANCH-PROTECTION-SETUP.md)** - ブランチ保護設定ガイド
+- **[development/CONTRIBUTING.md](development/CONTRIBUTING.md)** - コントリビューションガイド
+
+#### 🧪 テスト・品質保証
+- **[testing/TESTING-GUIDE.md](testing/TESTING-GUIDE.md)** - テストガイド
+- **[development/CODE-REVIEW-GUIDELINES.md](development/CODE-REVIEW-GUIDELINES.md)** - コードレビューガイドライン
+- **[development/IMPLEMENTATION-LIMITATIONS.md](development/IMPLEMENTATION-LIMITATIONS.md)** - 実装制限事項
+
+#### 🆘 トラブルシューティング・メンテナンス
+- **[development/TROUBLESHOOTING.md](development/TROUBLESHOOTING.md)** - トラブルシューティングガイド（包括版）
+- **[development/MAINTENANCE-GUIDE.md](development/MAINTENANCE-GUIDE.md)** - メンテナンスガイド
+
+### 📖 API仕様
+- **[api/API.md](api/API.md)** - REST API 完全仕様書（英語）
+- **[api/API-ja.md](api/API-ja.md)** - REST API 完全仕様書（日本語）
+- **[api/api-setup-guide.md](api/api-setup-guide.md)** - API セットアップガイド
+
+### 🏗️ アーキテクチャ
+- **[architecture/SYSTEM-ARCHITECTURE.md](architecture/SYSTEM-ARCHITECTURE.md)** - システムアーキテクチャ詳細
+- **[architecture/UNIFIED-ARCHITECTURE.md](architecture/UNIFIED-ARCHITECTURE.md)** - 統合アーキテクチャ概要
+
+### 🔒 セキュリティ
 - **[SECURITY.md](SECURITY.md)** - セキュリティ対策・脅威分析
   - XSS対策実装
   - iframe サンドボックス化
@@ -28,17 +58,7 @@
   - インシデント対応手順
   - セキュリティ監査
 
-#### 🔧 開発ガイド
-- **[DEVELOPMENT.md](DEVELOPMENT.md)** - 開発者向け技術仕様
-  - 開発環境セットアップ
-  - アーキテクチャ詳細
-  - コンポーネント設計原則
-  - 状態管理パターン
-  - スタイリング規約
-  - テスト戦略
-  - デバッグ・監視
-
-#### 🚀 デプロイメント
+### 🚀 デプロイメント
 - **[DEPLOYMENT.md](DEPLOYMENT.md)** - 本番環境デプロイ手順
   - インフラストラクチャ構成
   - Vercel デプロイ
@@ -48,26 +68,70 @@
   - CI/CD パイプライン
   - トラブルシューティング
 
+### 📚 技術資料・レポート
+- **[MIGRATION-GUIDE.md](MIGRATION-GUIDE.md)** - マイグレーションガイド
+- **[MIGRATION-COMPLETION-REPORT.md](MIGRATION-COMPLETION-REPORT.md)** - マイグレーション完了報告
+- **[RAG-SYSTEM-COMPLETION-REPORT.md](RAG-SYSTEM-COMPLETION-REPORT.md)** - RAGシステム完了報告
+- **[PRESENTATION-MODE-GUIDE.md](PRESENTATION-MODE-GUIDE.md)** - プレゼンテーションモードガイド
+- **[STATUS.md](STATUS.md)** - プロジェクトステータス
+- **[CHANGELOG.md](CHANGELOG.md)** - 変更履歴
+
+### 📂 データ・コンテンツ
+- **[development/data-input-guide.md](development/data-input-guide.md)** - データ入力ガイド
+- **[development/memory-rag-integration.md](development/memory-rag-integration.md)** - メモリ・RAG統合
+- **[development/stt-correction-coverage.md](development/stt-correction-coverage.md)** - STT補正カバレッジ
+- **[development/repo-structure.md](development/repo-structure.md)** - リポジトリ構造
+
+### 📝 ブログ記事
+- **[blog/2025-06-29_AIアシスタントが空気を読めるようになった話〜会話の文脈を理解してピンポイントで答える技術〜.md](blog/2025-06-29_AIアシスタントが空気を読めるようになった話〜会話の文脈を理解してピンポイントで答える技術〜.md)**
+
+### 🗃️ アーカイブドキュメント
+- **[archive/README.md](archive/README.md)** - アーカイブドキュメント一覧
+- 過去のレポート、古いバージョンのドキュメント等
+
+### 🔄 マイグレーション関連
+- **[migration/agents/](migration/agents/)** - エージェント移行関連ドキュメント
+  - 各エージェントの実装ガイド・仕様・テスト
+  - OpenRouter統合ベストプラクティス
+
 ## 🎯 ドキュメント使用ガイド
 
-### 新しい開発者向け
+### 新規エンジニア向け（推奨読書順序）
 
-1. **[README.md](../README.md)** - プロジェクト概要を理解
-2. **[DEVELOPMENT.md](DEVELOPMENT.md)** - 開発環境をセットアップ
-3. **[API.md](API.md)** - API仕様を確認
-4. **[SECURITY.md](SECURITY.md)** - セキュリティ要件を理解
+1. **[README.md](../README.md)** - プロジェクト概要を理解（5分）
+2. **[development/AGENT-QUICKSTART.md](development/AGENT-QUICKSTART.md)** - 10分で開発開始（クイックスタート）
+3. **[development/LOCAL-DEVELOPMENT-SETUP.md](development/LOCAL-DEVELOPMENT-SETUP.md)** - ローカル環境構築（15分）
+4. **[development/ENVIRONMENT-VARIABLES.md](development/ENVIRONMENT-VARIABLES.md)** - 環境変数設定（10分）
+5. **[development/DEVELOPER-GUIDE.md](development/DEVELOPER-GUIDE.md)** - 開発ガイド詳細（30分）
+6. **[architecture/SYSTEM-ARCHITECTURE.md](architecture/SYSTEM-ARCHITECTURE.md)** - アーキテクチャ理解（20分）
+7. **[api/API.md](api/API.md)** - API仕様確認（必要に応じて）
+
+### エージェント開発者向け
+
+1. **[development/AGENT-QUICKSTART.md](development/AGENT-QUICKSTART.md)** - クイックスタート
+2. **[development/AGENT-IMPLEMENTATION-CHECKLIST.md](development/AGENT-IMPLEMENTATION-CHECKLIST.md)** - 実装チェックリスト
+3. **[development/AGENT-EXAMPLES.md](development/AGENT-EXAMPLES.md)** - 実装サンプル
+4. **[development/AGENT-IMPLEMENTATION-REQUEST.md](development/AGENT-IMPLEMENTATION-REQUEST.md)** - 新規エージェント依頼テンプレート
+5. **[development/LANGGRAPH-DEVELOPMENT-GUIDE.md](development/LANGGRAPH-DEVELOPMENT-GUIDE.md)** - LangGraph詳細
 
 ### 本番デプロイ担当者向け
 
 1. **[DEPLOYMENT.md](DEPLOYMENT.md)** - デプロイ手順を実行
 2. **[SECURITY.md](SECURITY.md)** - セキュリティ設定を確認
-3. **[API.md](API.md)** - エンドポイント動作を検証
+3. **[api/API.md](api/API.md)** - エンドポイント動作を検証
+4. **[development/TROUBLESHOOTING.md](development/TROUBLESHOOTING.md)** - トラブル対応
 
-### セキュリティ担当者向け
+### トラブルシューティング時
 
-1. **[SECURITY.md](SECURITY.md)** - セキュリティ対策を確認
-2. **[DEVELOPMENT.md](DEVELOPMENT.md)** - 開発プロセスを理解
-3. **[DEPLOYMENT.md](DEPLOYMENT.md)** - 本番環境設定を監査
+1. **[development/TROUBLESHOOTING.md](development/TROUBLESHOOTING.md)** - 包括的トラブルシューティングガイド
+2. **[development/MAINTENANCE-GUIDE.md](development/MAINTENANCE-GUIDE.md)** - メンテナンスガイド
+3. **[testing/TESTING-GUIDE.md](testing/TESTING-GUIDE.md)** - テストガイド
+
+### コードレビュー担当者向け
+
+1. **[development/CODE-REVIEW-GUIDELINES.md](development/CODE-REVIEW-GUIDELINES.md)** - コードレビューガイドライン
+2. **[development/CONTRIBUTING.md](development/CONTRIBUTING.md)** - コントリビューションガイド
+3. **[SECURITY.md](SECURITY.md)** - セキュリティ要件
 
 ## 📋 実装状況サマリー
 

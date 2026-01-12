@@ -6,28 +6,42 @@
 
 1. [前提条件](#前提条件)
 2. [プロジェクト構成](#プロジェクト構成)
-3. [Supabase ローカル環境のセットアップ](#supabase-ローカル環境のセットアップ)
-4. [Frontend（Next.js/Mastra）のセットアップ](#frontendnextjsmastraのセットアップ)
-5. [Backend（LangGraph）のセットアップ](#backendlanggraphのセットアップ)
-6. [環境変数の設定](#環境変数の設定)
-7. [データベースマイグレーション](#データベースマイグレーション)
-8. [開発の開始](#開発の開始)
-9. [トラブルシューティング](#トラブルシューティング)
+3. [開発環境のセットアップ](#開発環境のセットアップ)
+   - [Docker環境（推奨）](#docker環境推奨)
+   - [mise + Makefile環境](#mise--makefile環境)
+4. [Supabase ローカル環境のセットアップ](#supabase-ローカル環境のセットアップ)
+5. [Frontend（Next.js/Mastra）のセットアップ](#frontendnextjsmastraのセットアップ)
+6. [Backend（LangGraph）のセットアップ](#backendlanggraphのセットアップ)
+7. [環境変数の設定](#環境変数の設定)
+8. [データベースマイグレーション](#データベースマイグレーション)
+9. [開発の開始](#開発の開始)
+10. [トラブルシューティング](#トラブルシューティング)
 
 ---
 
 ## 前提条件
 
-以下のツールがインストールされている必要があります：
+### Docker環境（推奨）
 
 | ツール | バージョン | インストール方法 |
 |--------|-----------|-----------------|
-| **Node.js** | 18.x 以上 | [nodejs.org](https://nodejs.org/) |
-| **pnpm** | 8.x 以上 | `npm install -g pnpm` |
-| **Python** | 3.11 以上 | [python.org](https://www.python.org/) |
+| **Docker Desktop** | 最新版 | [docker.com](https://www.docker.com/) |
+| **Docker Compose** | v2.x 以上 | Docker Desktopに同梱 |
+| **Git** | 最新版 | `brew install git` |
+
+### または、ローカル環境（mise使用）
+
+| ツール | バージョン | インストール方法 |
+|--------|-----------|-----------------|
+| **mise** | 最新版 | `brew install mise` または [mise.run](https://mise.run/) |
 | **Docker** | 最新版 | [docker.com](https://www.docker.com/) |
 | **Supabase CLI** | 最新版 | `brew install supabase/tap/supabase` |
 | **Git** | 最新版 | `brew install git` |
+
+miseが自動でインストールするツール:
+- Node.js 18.20.0
+- Python 3.11.10
+- pnpm 10.12.1
 
 ### Supabase CLI のインストール
 
@@ -65,6 +79,121 @@ engineer-cafe-navigator2025/
 │   └── migration/        # エージェント移行ドキュメント
 └── langgraph-reference/  # 参考実装
 ```
+
+---
+
+## 開発環境のセットアップ
+
+### Docker環境（推奨）
+
+Docker環境を使用すると、全エンジニアが同じ環境で開発できます。
+
+#### 1. 環境変数の設定
+
+```bash
+# Frontend環境変数
+cp frontend/.env.example frontend/.env.local
+
+# Backend環境変数
+cp backend/.env.example backend/.env
+```
+
+各`.env`ファイルを編集して、必要なAPI keyを設定してください。
+
+#### 2. Makefileを使った統一コマンド
+
+```bash
+# 初回セットアップ（Docker build + mise install）
+make setup
+
+# 開発サーバー起動
+make dev
+
+# その他のコマンド
+make help              # 利用可能なコマンド一覧
+make dev:frontend      # フロントエンドのみ起動
+make dev:backend       # バックエンドのみ起動
+make lint              # リンター実行
+make clean             # クリーンアップ
+```
+
+#### 3. アクセス確認
+
+| URL | サービス |
+|-----|---------|
+| http://localhost:3000 | Frontend（Next.js） |
+| http://localhost:8000 | Backend（FastAPI） |
+| http://localhost:8000/docs | Backend API ドキュメント（Swagger UI） |
+
+#### 4. ホットリロードの確認
+
+Docker環境では、コード変更が自動的に反映されます:
+
+- **Frontend**: `frontend/`ディレクトリ内のファイル変更
+- **Backend**: `backend/`ディレクトリ内のファイル変更
+
+### mise + Makefile環境
+
+miseを使用して、ローカル環境でツールのバージョンを統一管理します。
+
+#### 1. mise のインストール
+
+```bash
+# macOS (Homebrew)
+brew install mise
+
+# または公式インストーラー
+curl https://mise.run | sh
+```
+
+#### 2. プロジェクトツールのインストール
+
+```bash
+# Node.js, Python, pnpm を自動インストール
+mise install
+```
+
+インストールされるツール:
+- Node.js 18.20.0
+- Python 3.11.10
+- pnpm 10.12.1
+
+#### 3. バージョン確認
+
+```bash
+# miseでインストールされたツールのバージョン確認
+mise exec -- node --version   # v18.20.0
+mise exec -- python --version # Python 3.11.10
+mise exec -- pnpm --version   # 10.12.1
+```
+
+#### 4. 依存関係のインストール
+
+```bash
+make install
+```
+
+#### 5. 開発サーバーの起動
+
+```bash
+make dev
+```
+
+### Makefile コマンド一覧
+
+| コマンド | 説明 |
+|---------|------|
+| `make setup` | 初回セットアップ（mise install + Docker build） |
+| `make install` | 依存関係インストール（mise経由） |
+| `make dev` | 開発サーバー起動（Docker Compose） |
+| `make dev:frontend` | フロントエンドのみ起動 |
+| `make dev:backend` | バックエンドのみ起動 |
+| `make build` | ビルド実行 |
+| `make test` | テスト実行 |
+| `make lint` | リンター実行 |
+| `make clean` | クリーンアップ（コンテナ停止・ボリューム削除） |
+| `make clean:all` | ディープクリーンアップ（イメージも削除） |
+| `make help` | ヘルプ表示 |
 
 ---
 

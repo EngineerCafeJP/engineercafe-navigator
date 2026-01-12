@@ -1,0 +1,58 @@
+# Docker Compose for Engineer Cafe Navigator
+# Frontend (Next.js) + Backend (FastAPI + LangGraph)
+
+version: '3.8'
+
+services:
+  # Frontend service - Next.js
+  frontend:
+    build:
+      context: ./frontend
+      target: development
+    container_name: engineer-cafe-frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      # Hot reload support
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    environment:
+      - NODE_ENV=development
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    env_file:
+      - ./frontend/.env.local
+    depends_on:
+      - backend
+    networks:
+      - engineer-cafe-network
+    restart: unless-stopped
+
+  # Backend service - FastAPI + LangGraph
+  backend:
+    build:
+      context: ./backend
+      target: development
+    container_name: engineer-cafe-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      # Hot reload support
+      - ./backend:/app
+      - /app/__pycache__
+    environment:
+      - PYTHONUNBUFFERED=1
+    env_file:
+      - ./backend/.env
+    networks:
+      - engineer-cafe-network
+    restart: unless-stopped
+
+networks:
+  engineer-cafe-network:
+    driver: bridge
+
+volumes:
+  frontend-node-modules:
+  frontend-next:
+  backend-pycache:

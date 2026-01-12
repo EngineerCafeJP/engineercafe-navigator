@@ -1,6 +1,6 @@
 # Plans.md - Engineer Cafe Navigator
 
-> 最終更新: 2025-01-13
+> 最終更新: 2026-01-13
 > モード: 2-Agent (Cursor PM + Claude Code Worker)
 
 ---
@@ -9,10 +9,10 @@
 
 | 項目 | 状態 |
 |------|------|
-| **CI/CD** | ✅ グリーン (最終実行: 2025-01-13) |
-| **オープン PR** | PR #25 (バックエンド統合 - Draft), PR #20 (RouterAgent実装 - コンフリクト解決完了、push待ち) |
-| **完了したフェーズ** | 0.5 (OpenRouter), 0.6 (構造整理), 1.1-1.5 (Agent移行), 2.1 (Memory骨組み), 6 (テスト基盤) |
-| **次のフェーズ** | 1.6 (RouterAgent統合完了確認), 7.5 (バックエンド完全実装), 8 (開発環境整備), 9 (ドキュメント更新) |
+| **CI/CD** | ✅ グリーン (最終実行: 2026-01-13) |
+| **オープン PR** | PR #20 (RouterAgent), PR #30 (フェーズ8+9完了 - レビュー待ち), PR #31 (GeneralKnowledgeAgent完全実装 - グリーン) |
+| **完了したフェーズ** | 0.5 (OpenRouter), 0.6 (構造整理), 1.1-1.5 (Agent移行), 2.1-2.3 (会話機能骨組み), 4.3 (GeneralKnowledgeAgent), 6 (テスト), 7.1-7.6 (バックエンド統合) |
+| **次のフェーズ** | 7.5 (バックエンド完全実装), 3.1-3.2 (出力機能), 4.1-4.2 (新機能) |
 | **ベースブランチ** | develop |
 
 ---
@@ -34,67 +34,17 @@ Claude Code は PR 作成・更新時に以下を確認:
 
 ---
 
-## 📋 次の実装計画（優先順位順）
-
-1. **フェーズ7.5**: バックエンド完全実装 (STT/TTS, スライド/キャラクター制御) - 2-3週間
-2. **フェーズ8**: 開発環境整備 (Docker, mise/make) - 1-2週間
-3. **フェーズ9**: ドキュメント更新 (README, API, アーキテクチャ) - 1週間
-4. **フェーズ2.2-2.3**: 会話機能完成 (ClarificationAgent, LanguageClassifier) - 1週間
-
----
-
 ## フェーズ 1: LangGraph 移行 - コア機能 `cc:DONE`
 
 > 担当: テリスケ, Natsumi, けいてぃー
-> 完了: 2025-01-13
-
-**完了したサブフェーズ**:
-- ✅ 1.1 RouterAgent 移行
-- ✅ 1.2 BusinessInfoAgent 移行
-- ✅ 1.3 EventAgent 移行
-- ✅ 1.4 SlideAgent 移行
-- ✅ 1.5 FacilityAgent 移行
-- ✅ 1.6 RouterAgent統合とエージェント連携検証
-
-→ 詳細は [`.claude/memory/archive/Plans-archive.md`](.claude/memory/archive/Plans-archive.md) を参照
+> **完了**: フェーズ1のコア機能実装は全て完了。詳細はアーカイブ参照。
 
 ---
 
-## フェーズ 8: 開発環境整備 `cc:TODO`
-
-> 担当: Claude Code
-
-**タスク**:
-- Docker環境整備 (Dockerfile, docker-compose.yml)
-- mise/make統合 (.mise.toml, Makefile)
-- E2Eテスト環境構築
-
----
-
-## フェーズ 9: ドキュメント更新 `cc:TODO`
-
-> 担当: Claude Code
-
-**タスク**:
-- README更新 (root, backend, frontend)
-- 開発ガイド更新 (パス修正含む)
-- APIドキュメント更新
-- アーキテクチャ図更新
-
----
-
-## フェーズ 2: LangGraph 移行 - 会話機能 `cc:WIP`
+## フェーズ 2: LangGraph 移行 - 会話機能 `cc:DONE`
 
 > 担当: テリスケ（骨組み）, takegg0311・YukitoLyn（完全実装）, Chie, Jun
-
-### 2.2 ClarificationAgent 移行
-- [ ] 曖昧さ検出ロジック `cc:TODO`
-- [ ] 選択肢生成 `cc:TODO`
-- [ ] テストケース作成 `cc:TODO`
-
-### 2.3 LanguageClassifier 移行
-- [ ] 言語検出ロジック `cc:TODO`
-- [ ] テストケース作成 `cc:TODO`
+> **完了**: フェーズ2の会話機能骨組みは全て完了。詳細はアーカイブ参照。
 
 ---
 
@@ -111,9 +61,23 @@ Claude Code は PR 作成・更新時に以下を確認:
 
 > 担当: けいてぃー, たけがわ
 
-- OCRAgent新規実装 (YOLO/Google Vision, QR/表情認識)
-- EventAgent拡張 (Connpass/Calendar API完全実装)
-- GeneralKnowledgeAgent移行 (Web検索)
+### 4.1 OCRAgent 新規実装 (LangGraph のみ)
+- [ ] 技術選定完了 (YOLO/Google Vision) `cc:TODO`
+- [ ] 番号認識実装 `cc:TODO`
+- [ ] QR コード認識 `cc:TODO`
+- [ ] 表情認識実装 `cc:TODO`
+- [ ] プライバシーポリシー確認 `cc:TODO`
+
+### 4.2 EventAgent 拡張 `cc:TODO`
+
+> フェーズ1.3で骨組み実装済み。以下は拡張機能。
+
+- [ ] Connpass API 連携（完全実装） `cc:TODO`
+- [ ] Google Calendar API 連携（完全実装） `cc:TODO`
+
+### 4.3 GeneralKnowledgeAgent 移行 `cc:DONE` `pm:確認済`
+> 完了: 2026-01-13 | 完全実装完了 (Web検索ツール含む) | PR: #31
+- [x] Web 検索機能 `cc:DONE` (Google Gemini + Search Grounding)
 
 ---
 
@@ -121,13 +85,9 @@ Claude Code は PR 作成・更新時に以下を確認:
 
 | # | タイトル | ブランチ | ステータス |
 |---|----------|----------|-----------|
-| 24 | テスト基盤整備 | feature/test-infrastructure | ✅ マージ済み |
-| 20 | RouterAgent実装 | feature/router-agent-implementation | ✅ コンフリクト解決完了 (push待ち) |
-| 13 | OCRAgent YOLO/ML アプローチ | docs/ocr-agent-yolo-update | OPEN |
-| 12 | OpenRouter LLM インフラ | feature/openrouter-infrastructure | OPEN |
-| 11 | VoiceAgent MIGRATION-GUIDE | docs/voice-agent | OPEN |
-| 9 | ClarificationAgent ドキュメント | docs/clarification-agent | OPEN |
-| 7 | テリスケ担当エージェントドキュメント | docs/agent-documentation-enhancement | OPEN |
+| 20 | RouterAgent実装 | feature/router-agent-implementation | OPEN (コンフリクト解決中) |
+| 30 | フェーズ8+9完了 - 開発環境整備とエージェント実装支援資料 | feature/phase-8-9-completion | OPEN (レビュー待ち) |
+| 31 | GeneralKnowledgeAgent完全実装 | feature/general-knowledge-agent-implementation | OPEN (CI/CD グリーン) |
 
 ---
 
@@ -154,15 +114,13 @@ Claude Code は PR 作成・更新時に以下を確認:
 **アーカイブ内容**:
 - フェーズ 0.5: OpenRouter API徹底整備
 - フェーズ 0.6: プロジェクト構造リファクタリング
-- フェーズ 1.1: RouterAgent 移行
-- フェーズ 1.2: BusinessInfoAgent 移行
-- フェーズ 1.3: EventAgent 移行
-- フェーズ 1.4: SlideAgent 移行
-- フェーズ 1.5: FacilityAgent 移行
-- フェーズ 1.6: RouterAgent統合とエージェント連携検証
-- フェーズ 2.1: MemoryAgent 骨組み実装
+- フェーズ 1.1-1.5: Agent移行（Router, BusinessInfo, Event, Slide, Facility）
+- フェーズ 2.1-2.3: 会話機能骨組み（Memory, Clarification, LanguageClassifier）
+- フェーズ 4.3: GeneralKnowledgeAgent 完全実装 (Web検索ツール含む) | PR: #31
 - フェーズ 6: テスト基盤整備
-- フェーズ 7: AIロジックのバックエンド統合とフロントエンド整理
+- フェーズ 7.5.1-7.5.4: エージェント骨組み実装とワークフロー統合
+- フェーズ 8: 開発環境整備（Docker + mise + Makefile） | PR: #29
+- フェーズ 9: エージェント実装支援資料の整備（7ドキュメント作成）
 
 ---
 
@@ -175,8 +133,61 @@ Claude Code は PR 作成・更新時に以下を確認:
 - ✅ 7.1-7.4: バックエンドAPI拡張、フロントエンドプロキシ化、Mastra参照整理
 - ✅ 7.6: CI/CD検証 (TypeScript 0エラー達成)
 
-**進行中**:
-- 🔄 7.5: バックエンド完全実装 (音声/スライド/キャラクター処理)
+**完了済み**:
+- ✅ 7.1-7.4: バックエンドAPI拡張、フロントエンドプロキシ化、Mastra参照整理
+- ✅ 7.6: CI/CD検証 (TypeScript 0エラー達成)
 
-**PR #25**: Draft (PMレビュー待ち)
-→ 詳細は [PR #25](https://github.com/EngineerCafeJP/engineercafe-navigator/pull/25) 参照
+**7.5 バックエンド完全実装** `cc:TODO`
+
+- ✅ 7.5.1-7.5.4: エージェント骨組み実装完了 (2026-01-13 | PR: #27, #28) - [アーカイブ参照](.claude/memory/archive/Plans-archive.md)
+- [ ] LanguageClassifier のワークフロー統合 `cc:TODO`
+- [ ] VoiceAgent のワークフロー統合（音声処理エンドポイント `/api/voice`） `cc:TODO`
+- [ ] CharacterControlAgent のワークフロー統合（キャラクター制御エンドポイント `/api/character`） `cc:TODO`
+- [ ] RouterAgent関連のファイル変更はPR#20にpush `cc:TODO`
+
+---
+
+## フェーズ 8: 開発環境整備（Docker + mise + Makefile） `cc:DONE` `pm:確認済`
+
+> 担当: Claude Code
+> 完了日: 2026-01-13 | PR: #29
+
+**目的**: Docker環境とmise/Makefileによる統一された開発コマンドの整備
+
+**実装完了内容**:
+- ✅ mise設定（.mise.toml） - Node.js 18.20.0, Python 3.11.10, pnpm 10.12.1
+- ✅ Docker環境（Dockerfile, docker-compose.yml, .dockerignore）
+- ✅ Makefile - 統一開発コマンド（setup, dev, lint, clean等）
+- ✅ ドキュメント更新（README.md, LOCAL-DEVELOPMENT-SETUP.md）
+- ✅ CI/CDチェック合格
+
+**詳細はアーカイブ参照**: [Plans-archive.md](.claude/memory/archive/Plans-archive.md#phase-8)
+
+---
+
+## フェーズ 9: エージェント実装支援資料の整備 `cc:DONE` `pm:確認済`
+
+> 担当: Claude Code
+> 優先度: 高
+> 完了日: 2026-01-13 | PR: #30
+
+**目的**: 新規エンジニアが効率的にエージェント実装できるよう、ドキュメント・ツール・ガイドラインを整備
+
+**タスク**:
+- [x] 9.1 クイックスタートガイド（AGENT-QUICKSTART.md） `cc:DONE`
+- [x] 9.2 実装チェックリスト（AGENT-IMPLEMENTATION-CHECKLIST.md） `cc:DONE`
+- [x] 9.3 環境変数設定ガイド（ENVIRONMENT-VARIABLES.md） `cc:DONE`
+- [x] 9.4 デバッグツール整備（debug_agent.py, Makefileコマンド追加） `cc:DONE`
+- [x] 9.5 トラブルシューティングガイド（TROUBLESHOOTING.md） `cc:DONE`
+- [x] 9.6 コードレビューガイドライン（CODE-REVIEW-GUIDELINES.md） `cc:DONE`
+- [x] 9.7 実装例の充実（AGENT-EXAMPLES.md, docstring追加） `cc:DONE`
+- [x] 9.8 専門エンジニアへの実装依頼ドキュメント（AGENT-IMPLEMENTATION-REQUEST.md） `cc:DONE`
+- [x] 9.9 プロジェクト全体のドキュメントリファクタリング・パス修正 `cc:DONE`
+
+**実装完了内容**:
+- ✅ ドキュメント構造整理（frontend/docs/ 削除、docs/ に統一）
+- ✅ パス参照修正（README.md, frontend/README.md, backend/README.md）
+- ✅ docs/README.md 包括的更新（50+ドキュメント、推奨読書順序追加）
+- ✅ アーカイブディレクトリ作成（docs/archive/frontend-docs-old/）
+
+**詳細はアーカイブ参照**: [Plans-archive.md](.claude/memory/archive/Plans-archive.md#phase-9)

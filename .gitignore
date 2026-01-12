@@ -109,3 +109,10 @@ htmlcov/
 langgraph-repo/
 # Note: langgraph-reference/ is a Git submodule and should be tracked
 engineer-cafe-navigator-repo/
+
+# Docker
+docker-compose.override.yml
+
+# mise (version management tool)
+.mise/
+.mise.lock

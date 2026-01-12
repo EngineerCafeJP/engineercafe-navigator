@@ -43,6 +43,7 @@ class MainWorkflow:
         workflow.add_node("business_info", self._business_info_node)
         workflow.add_node("facility", self._facility_node)
         workflow.add_node("event", self._event_node)
+        workflow.add_node("slide", self._slide_node)
         workflow.add_node("general_knowledge", self._general_knowledge_node)
         workflow.add_node("format_response", self._format_response_node)
 
@@ -59,6 +60,7 @@ class MainWorkflow:
                 "business_info": "business_info",
                 "facility": "facility",
                 "event": "event",
+                "slide": "slide",
                 "general_knowledge": "general_knowledge",
             },
         )
@@ -68,6 +70,7 @@ class MainWorkflow:
         workflow.add_edge("business_info", "format_response")
         workflow.add_edge("facility", "format_response")
         workflow.add_edge("event", "format_response")
+        workflow.add_edge("slide", "format_response")
         workflow.add_edge("general_knowledge", "format_response")
 
         workflow.add_edge("format_response", END)
@@ -135,6 +138,7 @@ class MainWorkflow:
             "BusinessInfoAgent": "business_info",
             "FacilityAgent": "facility",
             "EventAgent": "event",
+            "SlideAgent": "slide",
             "MemoryAgent": "general_knowledge",  # Memory未実装時はgeneral_knowledgeへ
             "GeneralKnowledgeAgent": "general_knowledge",
             "ClarificationAgent": "clarification",
@@ -160,14 +164,48 @@ class MainWorkflow:
 
     def _route_decision(
         self, state: WorkflowState
-    ) -> Literal["clarification", "business_info", "facility", "event", "general_knowledge"]:
+    ) -> Literal[
+        "clarification", "business_info", "facility", "event", "slide", "general_knowledge"
+    ]:
         """ルーティング決定"""
         return state.get("routed_to", "general_knowledge")
 
-    def _clarification_node(self, state: WorkflowState) -> dict:
+    async def _clarification_node(self, state: WorkflowState) -> dict:
         """明確化ノード: 曖昧なクエリを明確化"""
-        # TODO: 明確化エージェントの実装
-        return {"answer": "もう少し詳しく教えていただけますか？", "emotion": "neutral"}
+        from backend.agents.clarification_agent import ClarificationAgent
+
+        agent = ClarificationAgent()
+        query = state.get("query", "")
+        context = state.get("context", {})
+
+        # ClarificationAgentで曖昧さを検出・明確化
+        result = await agent.process(query, context)
+
+        # 明確化が必要な場合、質問文を返す
+        if result.get("needs_clarification"):
+            return {
+                "answer": result.get(
+                    "clarification_question", "もう少し詳しく教えていただけますか？"
+                ),
+                "emotion": result.get("emotion", "neutral"),
+                "metadata": {
+                    **state.get("metadata", {}),
+                    "clarification": {
+                        "options": result.get("options", []),
+                        "needs_clarification": True,
+                    },
+                },
+            }
+
+        # 明確化不要の場合
+        return {
+            "answer": "質問内容を確認しました。",
+            "emotion": "neutral",
+            "metadata": {
+                **state.get("metadata", {}),
+                "clarification": {"needs_clarification": False},
+            },
+        }
 
     async def _business_info_node(self, state: WorkflowState) -> dict:
         """営業情報ノード: 営業情報を処理"""
@@ -222,10 +260,60 @@ class MainWorkflow:
             "metadata": {**state.get("metadata", {}), **result.get("metadata", {})},
         }
 
-    def _general_knowledge_node(self, state: WorkflowState) -> dict:
+    async def _slide_node(self, state: WorkflowState) -> dict:
+        """スライドノード: スライドナレーションと質問応答を処理"""
+        from backend.agents.slide_agent import SlideAgent
+
+        agent = SlideAgent()
+        query = state.get("query", "")
+        language = state.get("language", "ja")
+
+        # メタデータからスライドアクションを取得（デフォルトはnarrate）
+        metadata = state.get("metadata", {})
+        routing_metadata = metadata.get("routing", {})
+        request_type = routing_metadata.get("request_type", "narrate")
+
+        # アクションマッピング
+        action_map = {
+            "narrate": "narrate",
+            "next": "next",
+            "previous": "previous",
+            "goto": "goto",
+            "question": "question",
+        }
+
+        slide_action = action_map.get(request_type, "narrate")
+
+        # SlideAgentのhandle_slide_action呼び出し
+        result = await agent.handle_slide_action(
+            action=slide_action,
+            query=query if slide_action == "question" else None,
+            language=language,
+        )
+
+        return {
+            "answer": result.get("answer", ""),
+            "emotion": result.get("emotion", "neutral"),
+            "metadata": {**state.get("metadata", {}), **result.get("metadata", {})},
+        }
+
+    async def _general_knowledge_node(self, state: WorkflowState) -> dict:
         """一般知識ノード: 一般的な知識を処理"""
-        # TODO: 一般知識エージェントの実装
-        return {"answer": "情報の取得中です。", "emotion": "neutral"}
+        from backend.agents.general_knowledge_agent import GeneralKnowledgeAgent
+
+        agent = GeneralKnowledgeAgent()
+        query = state.get("query", "")
+        language = state.get("language", "ja")
+        session_id = state.get("session_id", "")
+
+        # GeneralKnowledgeAgentで一般知識を処理
+        result = await agent.answer_general_query(query, language, session_id)
+
+        return {
+            "answer": result.get("answer", ""),
+            "emotion": result.get("emotion", "neutral"),
+            "metadata": {**state.get("metadata", {}), **result.get("metadata", {})},
+        }
 
     def _format_response_node(self, state: WorkflowState) -> dict:
         """応答フォーマットノード: 最終的な応答をフォーマット"""
