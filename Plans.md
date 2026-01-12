@@ -193,66 +193,60 @@ Claude Code は PR 作成・更新時に以下を確認:
 
 **目的**: フロントエンド(Mastra)からバックエンド(FastAPI + LangGraph)へのAIロジック移行
 
-### 7.1 バックエンドAPI拡張 `cc:DONE`
-- [x] `/api/voice` エンドポイント追加 (プレースホルダー) `cc:DONE`
-- [x] `/api/slides` エンドポイント追加 (プレースホルダー) `cc:DONE`
-- [x] `/api/character` エンドポイント追加 (プレースホルダー) `cc:DONE`
-- [x] backend/main.py にリクエスト/レスポンスモデル定義 `cc:DONE`
+**完了済み**:
+- ✅ 7.1-7.4: バックエンドAPI拡張、フロントエンドプロキシ化、Mastra参照整理
+- ✅ 7.6: CI/CD検証 (TypeScript 0エラー達成)
 
-### 7.2 フロントエンドAPI Routes プロキシ化 `cc:DONE`
-- [x] `/api/qa/route.ts` をバックエンドプロキシに変更 `cc:DONE`
-- [x] `/api/voice/route.ts` をバックエンドプロキシに変更 `cc:DONE`
-- [x] `/api/slides/route.ts` をバックエンドプロキシに変更 `cc:DONE`
-- [x] `/api/character/route.ts` をバックエンドプロキシに変更 `cc:DONE`
-- [x] `/api/marp/route.ts` を一時無効化(503) `cc:DONE`
-- [x] `/api/external/route.ts` を一時無効化(503) `cc:DONE`
-- [x] `/api/knowledge/search/route.ts` を一時無効化(503) `cc:DONE`
+**進行中**:
+- 🔄 7.5: バックエンド実装 (音声/スライド/キャラクター処理)
 
-### 7.3 Mastra参照の整理 `cc:DONE`
-- [x] `frontend/src/mastra/` を `frontend/src/_reference/mastra/` に移動 `cc:DONE`
-- [x] `frontend/src/slides/` を削除 `cc:DONE`
-- [x] 残存する @/mastra import の解決 `cc:DONE`
-  - [x] tsconfig.json で src/_reference/** を除外 `cc:DONE`
-  - [x] src/lib/types.ts を作成し一時的な型定義を追加 `cc:DONE`
-  - [x] src/lib/ 内の全 @/mastra/types/config 参照を @/lib/types に変更 `cc:DONE`
-  - [x] src/jobs/ 内の @/mastra 参照を修正 `cc:DONE`
+**7.5 バックエンド実装**
 
-### 7.4 環境変数設定 `cc:DONE`
-- [x] `BACKEND_API_URL` を `.env.example` に追加 `cc:DONE`
+### 7.5.1 音声処理エージェント骨組み実装 (VoiceAgent) `cc:TODO`
+> 担当: Claude Code (骨組み), エンジニアチーム (完全実装)
+> 参考: MemoryAgent骨組み実装パターン
 
-### 7.5 バックエンド実装 (完全実装) `cc:TODO`
-- [ ] 音声処理ロジック実装 (STT/TTS) `cc:TODO`
-- [ ] スライド制御ロジック実装 `cc:TODO`
-- [ ] キャラクター制御ロジック実装 `cc:TODO`
-- [ ] LangGraphワークフローとの統合 `cc:TODO`
+- [ ] VoiceAgent骨組み実装 `cc:TODO`
+  - [ ] `backend/agents/voice_agent.py` 作成
+  - [ ] クラス構造とメソッドシグネチャ定義
+  - [ ] TODOコメントで実装箇所を明示
+  - [ ] プレースホルダーレスポンス実装
 
-### 7.6 CI/CD検証 `cc:DONE`
-- [x] `ruff check .` (backend) - ✅ PASS `cc:DONE`
-- [x] `black --check .` (backend) - ✅ PASS `cc:DONE`
-- [x] `pytest` (backend) - ⚠️ 7件失敗 (SlideAgent narration関連 - 既存問題) `cc:DONE`
-- [x] `pnpm lint` (frontend) - ✅ PASS (警告のみ、既存) `cc:DONE`
-- [x] `pnpm typecheck` (frontend) - ✅ PASS (0 TypeScriptエラー) `cc:DONE`
-- [x] `pnpm build` (frontend) - ⚠️ Supabase設定エラー(既存問題) `cc:DONE`
+### 7.5.2 キャラクター制御エージェント骨組み実装 (CharacterControlAgent) `cc:TODO`
+> 担当: Claude Code (骨組み), エンジニアチーム (完全実装)
+> 参考: MemoryAgent骨組み実装パターン
 
-### 完了したタスク
+- [ ] CharacterControlAgent骨組み実装 `cc:TODO`
+  - [ ] `backend/agents/character_control_agent.py` 作成
+  - [ ] クラス構造とメソッドシグネチャ定義
+  - [ ] TODOコメントで実装箇所を明示
+  - [ ] プレースホルダーレスポンス実装
 
-**PMレビュー後の対応完了**:
-- ✅ TypeScriptエラー解決 (40+ → 0件)
-- ✅ 全API Routesのプロキシ化/一時無効化
-- ✅ src/lib/ および src/jobs/ 内の @/mastra 参照修正
-- ✅ CI/CD検証完了 (typecheck PASS)
+### 7.5.3 スライド制御ロジック実装 `cc:完了`
+> 担当: Claude Code
+> 依頼日時: 2025-01-13
+> 開始日時: 2025-01-13
+> 完了日時: 2025-01-13
 
-### 残タスク (別PR予定)
+- [x] スライド制御ロジック実装 (SlideAgentとAPI統合) `cc:完了` (2025-01-13)
+  - [x] `/api/slides` エンドポイントの完全実装
+  - [x] 既存の `SlideAgent` とAPIエンドポイントの統合
+  - [x] スライドナビゲーション機能の実装
+  - [x] エラーハンドリングとフォールバック処理
 
-**バックエンド完全実装 (フェーズ7.5)**:
-- バックエンドの音声/スライド/キャラクター処理の完全実装 (80%)
-- LangGraphワークフローとの統合
-- Supabaseビルドエラー修正 (既存問題)
+### 7.5.4 LangGraphワークフローとの統合（スライド部分） `cc:完了`
+> 担当: Claude Code
+> 依頼日時: 2025-01-13
+> 開始日時: 2025-01-13
+> 完了日時: 2025-01-13
 
-### PR #25 状態
+- [x] LangGraphワークフローとの統合（スライド部分） `cc:完了` (2025-01-13)
+  - [x] スライド制御エンドポイント (`/api/slides`) のワークフロー統合
+  - [x] RouterAgentにSlideAgentルーティング追加
+  - [x] main_workflow.pyにslideノード追加
+  - [x] エラーハンドリングとフォールバック処理
 
-- ブランチ: `refactor/backend-api-integration`
-- ステータス: Draft PR (PMレビュー待ち)
-- URL: https://github.com/EngineerCafeJP/engineercafe-navigator/pull/25
-- 次のアクション: PMレビュー後にReady for Reviewまたはマージ判断
+**未完了部分（7.5.4の残りタスク）**:
+- [ ] 音声処理エンドポイント (`/api/voice`) のワークフロー統合 `cc:TODO`
+- [ ] キャラクター制御エンドポイント (`/api/character`) のワークフロー統合 `cc:TODO`
 

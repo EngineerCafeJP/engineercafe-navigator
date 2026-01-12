@@ -153,6 +153,8 @@ async def voice_api(request: VoiceRequest):
 class SlidesRequest(BaseModel):
     action: str
     slideId: Optional[str] = None
+    targetSlide: Optional[int] = None
+    query: Optional[str] = None
     sessionId: Optional[str] = None
     language: Optional[str] = "ja"
 
@@ -161,6 +163,10 @@ class SlidesResponse(BaseModel):
     success: bool
     slide: Optional[Dict[str, Any]] = None
     narration: Optional[str] = None
+    answer: Optional[str] = None
+    emotion: Optional[str] = None
+    slideNumber: Optional[int] = None
+    metadata: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
 
 
@@ -168,19 +174,43 @@ class SlidesResponse(BaseModel):
 async def slides_api(request: SlidesRequest):
     """
     スライド制御エンドポイント
-    フロントエンドからのプロキシリクエストを処理
+    SlideAgentを使用してスライドナレーションと質問応答を処理
     """
     try:
-        # TODO: スライド処理ロジックを実装
-        # 現在はプレースホルダー
-        if request.action == "get_slide":
-            return SlidesResponse(
-                success=True,
-                slide={"id": request.slideId, "content": "スライド内容"},
-                narration="スライド説明文",
-            )
-        else:
+        from backend.agents.slide_agent import SlideAgent
+
+        slide_agent = SlideAgent()
+
+        # アクションマッピング
+        action_map = {
+            "narrate": "narrate",
+            "next": "next",
+            "previous": "previous",
+            "goto": "goto",
+            "question": "question",
+        }
+
+        slide_action = action_map.get(request.action)
+        if not slide_action:
             raise HTTPException(status_code=400, detail=f"Unknown action: {request.action}")
+
+        # SlideAgentのhandle_slide_action呼び出し
+        result = await slide_agent.handle_slide_action(
+            action=slide_action,
+            query=request.query,
+            target_slide=request.targetSlide,
+            language=request.language,
+        )
+
+        return SlidesResponse(
+            success=True,
+            answer=result.get("answer"),
+            emotion=result.get("emotion"),
+            slideNumber=result.get("slideNumber"),
+            metadata=result.get("metadata"),
+        )
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
