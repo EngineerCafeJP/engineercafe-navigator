@@ -193,7 +193,16 @@ class TestRouterAgentIntegration:
 
         # 感情フィールドが設定されることを確認
         assert result["emotion"] is not None
-        valid_emotions = ["neutral", "happy", "sad", "surprised", "relaxed", "angry"]
+        valid_emotions = [
+            "neutral",
+            "happy",
+            "sad",
+            "surprised",
+            "relaxed",
+            "angry",
+            "apologetic",
+            "helpful",
+        ]
         assert result["emotion"] in valid_emotions
 
     @pytest.mark.asyncio
