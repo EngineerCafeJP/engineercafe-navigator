@@ -29,8 +29,8 @@ pip install -r requirements.txt
 # OpenAI API
 OPENAI_API_KEY=your_openai_api_key
 
-# Google Gemini API
-GOOGLE_API_KEY=your_google_api_key
+# OpenRouter API
+OPENROUTER_API_KEY=your_openrouter_api_key
 
 # Supabase
 SUPABASE_URL=your_supabase_url
