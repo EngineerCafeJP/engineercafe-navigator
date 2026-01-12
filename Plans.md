@@ -10,7 +10,7 @@
 | 項目 | 状態 |
 |------|------|
 | **CI/CD** | ✅ グリーン (最終実行: 2026-01-13) |
-| **オープン PR** | PR #20 (RouterAgent), PR #30 (フェーズ8+9完了), PR #32 (GeneralKnowledgeAgent完全実装+テスト) |
+| **オープン PR** | PR #20 (RouterAgent), PR #30 (フェーズ8+9完了), PR #33 (README更新: LangGraph統合完了) |
 | **完了したフェーズ** | 0.5 (OpenRouter), 0.6 (構造整理), 1.1-1.5 (Agent移行), 2.1-2.3 (会話機能骨組み), 4.3 (GeneralKnowledgeAgent完全実装), 6 (テスト), 7.1-7.6 (バックエンド統合) |
 | **次のフェーズ** | 7.5 (バックエンド完全実装), 3.1-3.2 (出力機能), 4.1-4.2 (新機能) |
 | **ベースブランチ** | develop |
@@ -31,20 +31,6 @@ Claude Code は PR 作成・更新時に以下を確認:
 1. エラーログを確認
 2. 自動修正を試行
 3. 修正不可の場合は PM に報告
-
----
-
-## フェーズ 1: LangGraph 移行 - コア機能 `cc:DONE`
-
-> 担当: テリスケ, Natsumi, けいてぃー
-> **完了**: フェーズ1のコア機能実装は全て完了。詳細はアーカイブ参照。
-
----
-
-## フェーズ 2: LangGraph 移行 - 会話機能 `cc:DONE`
-
-> 担当: テリスケ（骨組み）, takegg0311・YukitoLyn（完全実装）, Chie, Jun
-> **完了**: フェーズ2の会話機能骨組みは全て完了。詳細はアーカイブ参照。
 
 ---
 
@@ -75,38 +61,11 @@ Claude Code は PR 作成・更新時に以下を確認:
 - [ ] Connpass API 連携（完全実装） `cc:TODO`
 - [ ] Google Calendar API 連携（完全実装） `cc:TODO`
 
-<<<<<<< HEAD
-### 4.3 GeneralKnowledgeAgent 移行 `cc:DONE`
-> 完了: 骨組み実装 | 詳細: [アーカイブ](.claude/memory/archive/Plans-archive.md)
-
-#### 4.3.1 GeneralKnowledgeAgent完全実装 `cc:DONE` `pm:確認済`
-> 依頼日: 2026-01-13
-> 担当: Claude Code
-> 完了日: 2026-01-13
-> プラン: [generalknowledgeagent完全実装とrouteragent統合](.cursor/plans/generalknowledgeagent完全実装とrouteragent統合_01c9d7a6.plan.md)
-
-**タスク**:
-- [x] Web検索ツールの実装（backend/tools/web_search.py） `cc:DONE` (2026-01-13)
-- [x] GeneralKnowledgeAgentの完全実装（backend/agents/general_knowledge_agent.py） `cc:DONE` (2026-01-13)
-- [ ] テスト実装（backend/tests/agents/test_general_knowledge_agent.py） `cc:TODO`
-- [x] RouterAgentのGeneralKnowledgeAgentルーティング確認・修正（PR#20） `cc:DONE` (2026-01-13)
-- [x] PR#31作成（GeneralKnowledgeAgent完全実装、CI/CDグリーン） `cc:DONE` (2026-01-13)
-- [x] PR#20のコンフリクト解消と最終確認 `cc:DONE` (2026-01-13)
-
-**完了条件**:
-- [x] GeneralKnowledgeAgent完全実装完了 ✅
-- [x] Web検索ツール実装完了 ✅
-- [ ] テスト実装完了
-- [x] PR#31作成完了（CI/CDグリーン） ✅
-- [x] PR#20のコンフリクト解消完了 ✅
-- [x] 統合テスト成功 ✅
-=======
 ### 4.3 GeneralKnowledgeAgent 移行 `cc:DONE` `pm:確認済`
 > 完了: 2026-01-13 | 完全実装とテスト追加完了。PR: #32
 - [x] Web 検索機能 `cc:DONE` (Google Gemini API with Search Grounding)
 - [x] GeneralKnowledgeAgent完全実装 `cc:DONE`
 - [x] ユニットテスト・統合テスト実装 `cc:DONE` (19テストケース、100%パス)
->>>>>>> origin/develop
 
 ---
 
@@ -116,11 +75,7 @@ Claude Code は PR 作成・更新時に以下を確認:
 |---|----------|----------|-----------|
 | 20 | RouterAgent実装 | feature/router-agent-implementation | OPEN (コンフリクト解決中) |
 | 30 | フェーズ8+9完了 - 開発環境整備とエージェント実装支援資料 | feature/phase-8-9-completion | OPEN (レビュー待ち) |
-<<<<<<< HEAD
-| 31 | GeneralKnowledgeAgent完全実装 | feature/general-knowledge-agent-implementation | OPEN (CI/CD グリーン) |
-=======
 | 32 | GeneralKnowledgeAgent完全実装+テスト | revert-31-feature/general-knowledge-agent-implementation | OPEN (CI/CDグリーン、レビュー待ち) |
->>>>>>> origin/develop
 
 ---
 
@@ -161,10 +116,6 @@ Claude Code は PR 作成・更新時に以下を確認:
 
 > 担当: Claude Code
 > ブランチ: refactor/backend-api-integration
-
-**完了済み**:
-- ✅ 7.1-7.4: バックエンドAPI拡張、フロントエンドプロキシ化、Mastra参照整理
-- ✅ 7.6: CI/CD検証 (TypeScript 0エラー達成)
 
 **完了済み**:
 - ✅ 7.1-7.4: バックエンドAPI拡張、フロントエンドプロキシ化、Mastra参照整理
