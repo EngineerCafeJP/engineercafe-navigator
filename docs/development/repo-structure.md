@@ -8,6 +8,10 @@
 
 ```
 engineer-cafe-navigator2025/
+├── README.md                        # プロジェクト概要
+├── README-EN.md                     # 英語版README
+├── Plans.md                         # タスク管理（ルートに保持）
+│
 ├── frontend/                        # 新Frontend実装
 │   └── src/
 │       └── mastra/                  # Mastra AIエージェント
@@ -16,13 +20,43 @@ engineer-cafe-navigator2025/
 ├── backend/                         # 新Backend実装（LangGraph）
 │   ├── agents/                      # LangGraphエージェント
 │   ├── llm/                         # OpenRouter LLMプロバイダー
-│   └── workflows/                   # LangGraphワークフロー
+│   ├── tools/                       # ツール実装
+│   ├── workflows/                   # LangGraphワークフロー
+│   └── slides/                      # スライドファイル
 │
-├── docs/                            # ドキュメント
-│   ├── migration/                   # 移行関連ドキュメント
+├── docs/                            # ドキュメント（整理済み）
+│   ├── development/                 # 開発ガイド
+│   │   ├── AGENTS.md
+│   │   ├── CLAUDE.md
+│   │   ├── CONTRIBUTING.md
+│   │   ├── DEVELOPER-GUIDE.md
+│   │   ├── LANGGRAPH-DEVELOPMENT-GUIDE.md
+│   │   ├── LOCAL-DEVELOPMENT-SETUP.md
+│   │   ├── MAINTENANCE-GUIDE.md
+│   │   ├── BRANCH-PROTECTION-SETUP.md
+│   │   ├── AGILE-AI-DEVELOPMENT.md
+│   │   ├── IMPLEMENTATION-LIMITATIONS.md
+│   │   ├── memory-rag-integration.md
+│   │   ├── stt-correction-coverage.md
+│   │   ├── data-input-guide.md
+│   │   └── repo-structure.md        # このファイル
+│   ├── api/                         # API仕様
+│   │   ├── API.md
+│   │   ├── API-ja.md
+│   │   └── api-setup-guide.md
+│   ├── architecture/                # アーキテクチャ
+│   │   ├── SYSTEM-ARCHITECTURE.md
+│   │   └── UNIFIED-ARCHITECTURE.md
+│   ├── migration/                   # 移行ガイド
 │   │   └── agents/                  # エージェント別移行ガイド
+│   ├── archive/                     # 古いドキュメント
+│   │   ├── DEVELOPMENT-old.md
+│   │   ├── fix-double-tts-call.md
+│   │   ├── fix-summary-report.md
+│   │   └── ...
+│   ├── blog/                        # ブログ記事
 │   ├── wiki/                        # Backlog Wiki テンプレート
-│   └── development/                 # 開発ガイド
+│   └── CHANGELOG.md                 # 変更履歴
 │
 ├── supabase/                        # Supabase設定
 │
@@ -45,9 +79,13 @@ engineer-cafe-navigator2025/
 
 | ディレクトリ | 用途 |
 |-------------|------|
+| `docs/development/` | 開発ガイド、CLAUDE.md、AGENTS.md等 |
+| `docs/api/` | API仕様（API.md, API-ja.md） |
+| `docs/architecture/` | システムアーキテクチャドキュメント |
 | `docs/migration/` | MastraからLangGraphへの移行ガイド |
+| `docs/archive/` | 古いドキュメント・完了レポート |
+| `docs/blog/` | ブログ記事 |
 | `docs/wiki/` | Backlog Wiki向けテンプレート |
-| `docs/development/` | 開発者向けガイド |
 
 ### 参照コード（編集禁止）
 
@@ -70,7 +108,7 @@ engineer-cafe-navigator2025/
 | `src/mastra/agents/router-agent.ts` | RouterAgentの完全実装（290行） |
 | `src/mastra/agents/` | 12エージェントのMastra実装 |
 | `src/lib/simplified-memory.ts` | メモリシステム実装 |
-| `CLAUDE.md` | 旧プロジェクトのAI向け指示書 |
+| `CLAUDE.md` | 旧プロジェクトのAI向け指示書（現在は`docs/development/CLAUDE.md`に移動） |
 
 ### 使い方
 
