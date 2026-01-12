@@ -65,7 +65,7 @@ class GeneralKnowledgeAgent:
         # RAG検索ツール初期化
         self.rag_search = EnhancedRAGSearch()
 
-        logger.info(f"GeneralKnowledgeAgent initialized with model: {self.model_config['model']}")
+        logger.info(f"GeneralKnowledgeAgent initialized with model: {self.model_config.model_id}")
 
     async def answer_general_query(
         self, query: str, language: SupportedLanguage = "ja", session_id: Optional[str] = None
@@ -147,7 +147,9 @@ class GeneralKnowledgeAgent:
             from langchain_core.messages import HumanMessage
 
             messages = [HumanMessage(content=prompt)]
-            response_text = await self.provider.generate(messages, **self.model_config)
+            response_text = await self.provider.generate(
+                messages=messages, config=self.model_config
+            )
 
             # 7. 感情・信頼度抽出
             emotion = self._extract_emotion(response_text)
