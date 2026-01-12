@@ -10,9 +10,9 @@
 | 項目 | 状態 |
 |------|------|
 | **CI/CD** | ✅ グリーン (最終実行: 2026-01-13) |
-| **オープン PR** | PR #20 (RouterAgent), PR #30 (フェーズ8+9完了 - レビュー待ち) |
-| **完了したフェーズ** | 0.5 (OpenRouter), 0.6 (構造整理), 1.1-1.5 (Agent移行), 2.1-2.3 (会話機能骨組み), 6 (テスト), 7.1-7.6 (バックエンド統合) |
-| **次のフェーズ** | 7.5 (バックエンド完全実装), 3.1-3.2 (出力機能), 4.1-4.3 (新機能) |
+| **オープン PR** | PR #20 (RouterAgent), PR #30 (フェーズ8+9完了), PR #32 (GeneralKnowledgeAgent完全実装+テスト) |
+| **完了したフェーズ** | 0.5 (OpenRouter), 0.6 (構造整理), 1.1-1.5 (Agent移行), 2.1-2.3 (会話機能骨組み), 4.3 (GeneralKnowledgeAgent完全実装), 6 (テスト), 7.1-7.6 (バックエンド統合) |
+| **次のフェーズ** | 7.5 (バックエンド完全実装), 3.1-3.2 (出力機能), 4.1-4.2 (新機能) |
 | **ベースブランチ** | develop |
 
 ---
@@ -85,8 +85,10 @@ Claude Code は PR 作成・更新時に以下を確認:
 - [ ] Google Calendar API 連携（完全実装） `cc:TODO`
 
 ### 4.3 GeneralKnowledgeAgent 移行 `cc:DONE` `pm:確認済`
-> 完了: 2025-01-13 | 骨組み実装完了。詳細はアーカイブ参照。
-- [ ] Web 検索機能 `cc:TODO` (完全実装時に実装)
+> 完了: 2026-01-13 | 完全実装とテスト追加完了。PR: #32
+- [x] Web 検索機能 `cc:DONE` (Google Gemini API with Search Grounding)
+- [x] GeneralKnowledgeAgent完全実装 `cc:DONE`
+- [x] ユニットテスト・統合テスト実装 `cc:DONE` (19テストケース、100%パス)
 
 ---
 
@@ -96,6 +98,7 @@ Claude Code は PR 作成・更新時に以下を確認:
 |---|----------|----------|-----------|
 | 20 | RouterAgent実装 | feature/router-agent-implementation | OPEN (レビュー待ち) |
 | 30 | フェーズ8+9完了 - 開発環境整備とエージェント実装支援資料 | feature/phase-8-9-completion | OPEN (レビュー待ち) |
+| 32 | GeneralKnowledgeAgent完全実装+テスト | revert-31-feature/general-knowledge-agent-implementation | OPEN (CI/CDグリーン、レビュー待ち) |
 
 ---
 
