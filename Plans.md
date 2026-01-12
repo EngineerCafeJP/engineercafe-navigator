@@ -51,6 +51,14 @@ Claude Code は PR 作成・更新時に以下を確認:
 - [ ] `feature/openrouter-infrastructure` ブランチへ取り込み（merge/cherry-pick）→ 既存 PR を更新
 - [ ] OpenRouter のモデル定義を **2025/12 最新**へ更新（`backend/llm/models.py` など、古いモデルIDの整理・置換）
 
+### PM → Claude Code 依頼 (2026-01-12) `pm:依頼中`
+
+- [ ] PR #19 のCI/CD修正をコミット
+  - `frontend/package.json` に `typecheck` スクリプト追加
+  - `.github/workflows/ci.yml` の `PNPM_VERSION` を `8` → `10` に更新
+- [ ] コミット後にCIの結果を確認し、グリーンであることを確認
+- [ ] エラーが発生した場合は、エラーメッセージを確認して修正
+
 ---
 
 ## フェーズ 1: LangGraph 移行 - コア機能 `cc:TODO`

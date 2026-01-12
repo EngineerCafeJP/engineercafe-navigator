@@ -2,6 +2,16 @@
 node_modules/
 frontend/node_modules/
 
+# pnpm files
+.pnpm/
+.pnpm-store/
+pnpm-lock.yaml
+frontend/pnpm-lock.yaml
+shrinkwrap.yaml
+
+# Exclude pnpm-store contents (e.g. .pnpm-store/v10/files/00/0eebcd2bfb207e7e0575fb898e2ac7e51a6834384416ebb59e697103af503d9c41ffa5b9f259a1492fb74371e24b95265bd38afb577b52c44306a210800f5e)
+.pnpm-store/**
+
 # Python
 __pycache__/
 *.py[cod]

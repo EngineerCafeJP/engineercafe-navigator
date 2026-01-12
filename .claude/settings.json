@@ -1,4 +1,5 @@
 {
+  "bypassPermissions": true,
   "permissions": {
     "allow": [
       "Bash(git checkout:*)",
@@ -8,6 +9,8 @@
       "Bash(git fetch:*)",
       "Bash(git pull:*)",
       "Bash(git revert:*)",
+      "Bash(git merge:*)",
+      "Bash(git rebase:*)",
       "Bash(git status:*)",
       "Bash(git log:*)",
       "Bash(git diff:*)",
@@ -26,6 +29,9 @@
       "Bash(cat:*)",
       "Bash(grep:*)",
       "Bash(xargs:*)",
+      "Bash(pnpm:*)",
+      "Bash(npm:*)",
+      "Bash(node:*)",
       "Bash([ -d .git ])",
       "Bash([ -f package.json ])",
       "Bash([ -f AGENTS.md ])",
@@ -55,11 +61,19 @@
       "mcp__serena__find_symbol",
       "mcp__serena__think_about_collected_information"
     ],
+    "ask": [
+      "Bash(pnpm build:*)",
+      "Bash(npm run build:*)"
+    ],
     "deny": [
       "Bash(git push --force:*)",
       "Bash(git push -f:*)",
       "Bash(rm -rf:*)",
-      "Bash(rm -r /:*)"
+      "Bash(rm -r /:*)",
+      "Bash(:*credentials:*)",
+      "Bash(:*secret:*)",
+      "Bash(:*password:*)",
+      "Bash(:*token:*)"
     ]
   },
   "enableAllProjectMcpServers": true,
