@@ -6,7 +6,7 @@ SlideAgent - スライドナレーターエージェント
 import json
 import os
 from typing import Dict, Optional, Literal
-from llm import get_llm_provider, get_model_config
+from backend.llm import get_llm_provider, get_model_config
 
 
 SlideAction = Literal["narrate", "next", "previous", "goto", "question"]

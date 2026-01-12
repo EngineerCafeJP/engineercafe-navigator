@@ -4,8 +4,8 @@ EventAgent - イベント情報エージェント
 """
 
 from typing import Dict, Optional
-from tools.calendar_service import CalendarService
-from llm import get_llm_provider, get_model_config
+from backend.tools.calendar_service import CalendarService
+from backend.llm import get_llm_provider, get_model_config
 
 
 class EventAgent:

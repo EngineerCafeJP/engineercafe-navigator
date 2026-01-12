@@ -2,7 +2,7 @@
 SlideAgent のユニットテスト
 """
 
-from agents.slide_agent import SlideAgent
+from backend.agents.slide_agent import SlideAgent
 
 
 class TestSlideAgent:

@@ -2,7 +2,7 @@
 EventAgent のユニットテスト
 """
 
-from agents.event_agent import EventAgent
+from backend.agents.event_agent import EventAgent
 
 
 class TestEventAgent:
