@@ -2,6 +2,9 @@
 node_modules/
 frontend/node_modules/
 
+# pnpm store
+.pnpm-store/
+
 # Python
 __pycache__/
 *.py[cod]
@@ -104,4 +107,5 @@ htmlcov/
 
 # Temporary directories
 langgraph-repo/
+# Note: langgraph-reference/ is a Git submodule and should be tracked
 engineer-cafe-navigator-repo/
