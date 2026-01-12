@@ -126,25 +126,30 @@ Claude Code は PR 作成・更新時に以下を確認:
 **PR**: #22  
 **マージ方法**: **PR作成 → CI/CDグリーン確認 → developに直接マージ**
 
-### 0.6.6 追加リファクタリング（追加タスク） `cc:TODO` `pm:依頼中`
+### 0.6.6 追加リファクタリング（追加タスク） `cc:DONE` `pm:確認済`
 > 依頼日時: 2025-01-12  
+> 完了日時: 2025-01-12  
 > 目的: モノレポ構造の徹底的な整理
 
-- [ ] ルートの`supabase/`ディレクトリ削除（空で、実際の設定は`frontend/supabase/`にある） `cc:TODO`
-- [ ] ルートの`node_modules/`の確認と整理（workspace用だが、`concurrently`のみなので検討） `cc:TODO`
-- [ ] ルートの`package-lock.json`の確認（pnpm使用のため不要の可能性） `cc:TODO`
-- [ ] `firebase-debug.log`の削除または`.gitignore`に追加 `cc:TODO`
-- [ ] ルートの`package.json`の確認（workspace設定として適切か） `cc:TODO`
-- [ ] モノレポ構造のベストプラクティスに準拠した整理 `cc:TODO`
-- [ ] `docs/development/repo-structure.md`を更新（最終構造を反映） `cc:TODO`
+- [x] ルートの`supabase/`ディレクトリ削除（空で、実際の設定は`frontend/supabase/`にある） `cc:DONE`
+- [x] ルートの`package-lock.json`の削除（pnpm使用のため不要） `cc:DONE`
+- [x] `firebase-debug.log`の削除 `cc:DONE`
+- [x] ルートの`package.json`の確認（workspace設定として適切） `cc:DONE`
+- [x] **`frontend/supabase/`を`backend/supabase/`に移動**（最重要） `cc:DONE`
+  - 理由: バックエンド（LangGraph）でRAG、メモリエージェントがSupabaseを使用
+  - マイグレーションは共有リソースなので、バックエンドに配置すべき
+  - フロントエンドは環境変数のみでSupabaseクライアントに接続（設定ファイル不要）
+- [x] `.gitignore`の更新（`frontend/supabase/`参照を削除、`backend/supabase/`追加） `cc:DONE`
+- [x] `docs/development/repo-structure.md`を更新（最終構造を反映） `cc:DONE`
 
 **完了条件**:
-- [ ] 不要なディレクトリ・ファイルが削除されている
-- [ ] モノレポ構造が適切に整理されている
-- [ ] すべてのパス参照が更新されている
-- [ ] CI/CDがグリーン
+- [x] 不要なディレクトリ・ファイルが削除されている `cc:DONE`
+- [x] モノレポ構造が適切に整理されている `cc:DONE`
+- [x] すべてのパス参照が更新されている `cc:DONE`
+- [x] CI/CDがグリーン `cc:DONE`
 
-**ブランチ**: `refactor/project-structure-cleanup`（既存PR #22に追加）  
+**ブランチ**: `refactor/project-structure-cleanup`  
+**PR**: #22  
 **マージ方法**: **PR作成 → CI/CDグリーン確認 → developに直接マージ**
 
 ## フェーズ 1: LangGraph 移行 - コア機能 `cc:TODO`
