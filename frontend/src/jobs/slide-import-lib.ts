@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { knowledgeBaseUtils } from '@/lib/knowledge-base-utils';
 import { supabaseAdmin } from '@/lib/supabase';
-import { SupportedLanguage } from '@/mastra/types/config';
+import { SupportedLanguage } from '@/lib/types';
 
 interface NarrationJSON {
   metadata: {

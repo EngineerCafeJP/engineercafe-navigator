@@ -3,7 +3,7 @@
  * 言語の検出、応答言語の決定、翻訳処理などを担当
  */
 
-import { SupportedLanguage } from '@/mastra/types/config';
+import { SupportedLanguage } from '@/lib/types';
 
 export interface LanguageDetectionResult {
   detectedLanguage: SupportedLanguage;

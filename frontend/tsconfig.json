@@ -125,6 +125,7 @@
   "exclude": [
     "node_modules",
     "scripts/**/*",
-    "src/mastra/langgraph/langgraph-workflow.ts"
+    "src/mastra/langgraph/langgraph-workflow.ts",
+    "src/_reference/**"
   ]
 }

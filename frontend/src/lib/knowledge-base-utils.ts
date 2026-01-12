@@ -1,6 +1,6 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { supabaseAdmin } from './supabase';
-import { SupportedLanguage } from '../mastra/types/config';
+import { SupportedLanguage } from '@/lib/types';
 
 export interface KnowledgeBaseEntry {
   content: string;
