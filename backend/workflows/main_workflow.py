@@ -110,7 +110,7 @@ class MainWorkflow:
 
     async def _business_info_node(self, state: WorkflowState) -> dict:
         """営業情報ノード: 営業情報を処理"""
-        from backend.agents.business_info_agent import BusinessInfoAgent
+        from agents.business_info_agent import BusinessInfoAgent
 
         agent = BusinessInfoAgent()
         query = state.get("query", "")
@@ -133,7 +133,7 @@ class MainWorkflow:
 
     async def _event_node(self, state: WorkflowState) -> dict:
         """イベントノード: イベント情報を処理"""
-        from backend.agents.event_agent import EventAgent
+        from agents.event_agent import EventAgent
 
         agent = EventAgent()
         query = state.get("query", "")

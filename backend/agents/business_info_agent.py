@@ -4,8 +4,8 @@ BusinessInfoAgent - 営業情報エージェント
 """
 
 from typing import Dict, Optional
-from backend.tools.enhanced_rag import EnhancedRAGSearch
-from backend.llm import get_llm_provider, get_model_config
+from tools.enhanced_rag import EnhancedRAGSearch
+from llm import get_llm_provider, get_model_config
 
 
 class BusinessInfoAgent:

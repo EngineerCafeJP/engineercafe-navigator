@@ -2,7 +2,7 @@
 BusinessInfoAgent のユニットテスト
 """
 
-from backend.agents.business_info_agent import BusinessInfoAgent
+from agents.business_info_agent import BusinessInfoAgent
 
 
 class TestBusinessInfoAgent:
