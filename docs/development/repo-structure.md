@@ -22,7 +22,8 @@ engineer-cafe-navigator2025/
 │   ├── llm/                         # OpenRouter LLMプロバイダー
 │   ├── tools/                       # ツール実装
 │   ├── workflows/                   # LangGraphワークフロー
-│   └── slides/                      # スライドファイル
+│   ├── slides/                      # スライドファイル
+│   └── supabase/                    # Supabase設定・マイグレーション
 │
 ├── docs/                            # ドキュメント（整理済み）
 │   ├── development/                 # 開発ガイド
@@ -71,7 +72,7 @@ engineer-cafe-navigator2025/
 |-------------|------|-------------|
 | `frontend/` | 新Frontend | Next.js 15.3 + Mastra 0.10.5 |
 | `backend/` | 新Backend | Python + LangGraph + OpenRouter |
-| `supabase/` | DB設定 | PostgreSQL + pgvector |
+| `backend/supabase/` | DB設定・マイグレーション | PostgreSQL + pgvector |
 
 ### ドキュメント
 
