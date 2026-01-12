@@ -8,6 +8,8 @@ from langgraph.graph import StateGraph, START, END
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 import operator
 
+from backend.agents.router_agent import RouterAgent
+
 
 class WorkflowState(TypedDict):
     """ワークフローの状態定義"""
@@ -27,6 +29,7 @@ class MainWorkflow:
     """メインLangGraphワークフロー"""
 
     def __init__(self):
+        self.router_agent = RouterAgent(debug_mode=True)
         self.graph = self._build_graph()
 
     def _build_graph(self) -> StateGraph:
@@ -40,6 +43,7 @@ class MainWorkflow:
         workflow.add_node("business_info", self._business_info_node)
         workflow.add_node("facility", self._facility_node)
         workflow.add_node("event", self._event_node)
+        workflow.add_node("slide", self._slide_node)
         workflow.add_node("general_knowledge", self._general_knowledge_node)
         workflow.add_node("format_response", self._format_response_node)
 
@@ -56,6 +60,7 @@ class MainWorkflow:
                 "business_info": "business_info",
                 "facility": "facility",
                 "event": "event",
+                "slide": "slide",
                 "general_knowledge": "general_knowledge",
             },
         )
@@ -65,6 +70,7 @@ class MainWorkflow:
         workflow.add_edge("business_info", "format_response")
         workflow.add_edge("facility", "format_response")
         workflow.add_edge("event", "format_response")
+        workflow.add_edge("slide", "format_response")
         workflow.add_edge("general_knowledge", "format_response")
 
         workflow.add_edge("format_response", END)
@@ -117,30 +123,50 @@ class MainWorkflow:
         # プレースホルダー（骨組み実装）
         return {"context": {**state.get("context", {}), "memory": {}}}
 
-    def _router_node(self, state: WorkflowState) -> dict:
+    async def _router_node(self, state: WorkflowState) -> dict:
         """ルーターノード: クエリを適切なエージェントにルーティング"""
-        # TODO: ルーターエージェントの実装
-        query = state.get("query", "").lower()
+        query = state.get("query", "")
+        session_id = state.get("session_id", "")
 
-        if any(keyword in query for keyword in ["営業", "時間", "料金", "場所"]):
-            routed_to = "business_info"
-        elif any(keyword in query for keyword in ["設備", "施設", "wifi", "wi-fi"]):
-            routed_to = "facility"
-        elif any(keyword in query for keyword in ["イベント", "カレンダー", "予約"]):
-            routed_to = "event"
-        elif any(keyword in query for keyword in ["?", "？", "どちら", "どっち"]):
-            routed_to = "clarification"
-        else:
-            routed_to = "general_knowledge"
+        # RouterAgentでルーティング
+        route_result = await self.router_agent.route_query(
+            query=query, session_id=session_id, memory_system=None
+        )
+
+        # エージェント名をノード名にマッピング
+        agent_to_node = {
+            "BusinessInfoAgent": "business_info",
+            "FacilityAgent": "facility",
+            "EventAgent": "event",
+            "SlideAgent": "slide",
+            "MemoryAgent": "general_knowledge",  # Memory未実装時はgeneral_knowledgeへ
+            "GeneralKnowledgeAgent": "general_knowledge",
+            "ClarificationAgent": "clarification",
+            "TimeAgent": "general_knowledge",  # Time未実装時はgeneral_knowledgeへ
+        }
+
+        routed_to = agent_to_node.get(route_result.agent, "general_knowledge")
 
         return {
             "routed_to": routed_to,
-            "metadata": {**state.get("metadata", {}), "routing": {"routed_to": routed_to}},
+            "language": route_result.language,
+            "metadata": {
+                **state.get("metadata", {}),
+                "routing": {
+                    "agent": route_result.agent,
+                    "category": route_result.category,
+                    "request_type": route_result.request_type,
+                    "confidence": route_result.confidence,
+                    "debug_info": route_result.debug_info,
+                },
+            },
         }
 
     def _route_decision(
         self, state: WorkflowState
-    ) -> Literal["clarification", "business_info", "facility", "event", "general_knowledge"]:
+    ) -> Literal[
+        "clarification", "business_info", "facility", "event", "slide", "general_knowledge"
+    ]:
         """ルーティング決定"""
         return state.get("routed_to", "general_knowledge")
 
@@ -195,6 +221,43 @@ class MainWorkflow:
         session_id = state.get("session_id", "")
 
         result = await agent.answer_event_query(query, language, session_id)
+
+        return {
+            "answer": result.get("answer", ""),
+            "emotion": result.get("emotion", "neutral"),
+            "metadata": {**state.get("metadata", {}), **result.get("metadata", {})},
+        }
+
+    async def _slide_node(self, state: WorkflowState) -> dict:
+        """スライドノード: スライドナレーションと質問応答を処理"""
+        from backend.agents.slide_agent import SlideAgent
+
+        agent = SlideAgent()
+        query = state.get("query", "")
+        language = state.get("language", "ja")
+
+        # メタデータからスライドアクションを取得（デフォルトはnarrate）
+        metadata = state.get("metadata", {})
+        routing_metadata = metadata.get("routing", {})
+        request_type = routing_metadata.get("request_type", "narrate")
+
+        # アクションマッピング
+        action_map = {
+            "narrate": "narrate",
+            "next": "next",
+            "previous": "previous",
+            "goto": "goto",
+            "question": "question",
+        }
+
+        slide_action = action_map.get(request_type, "narrate")
+
+        # SlideAgentのhandle_slide_action呼び出し
+        result = await agent.handle_slide_action(
+            action=slide_action,
+            query=query if slide_action == "question" else None,
+            language=language,
+        )
 
         return {
             "answer": result.get("answer", ""),
