@@ -102,45 +102,51 @@ Claude Code は PR 作成・更新時に以下を確認:
 **マージ方法**: **必ずPRを作成してレビュー（YukitoLynにレビュー依頼）**  
 **PR**: #20 (レビュー待ち)
 
-### 1.2 BusinessInfoAgent 移行 `pm:依頼中`
-> 依頼日時: 2025-01-12
+### 1.2 BusinessInfoAgent 移行 `pm:確認済`
+> 依頼日時: 2025-01-12  
+> 完了日時: 2025-01-12
 
-- [ ] Enhanced RAG 移植 `cc:TODO`
-- [ ] 営業時間/料金/場所クエリ処理 `cc:TODO`
-- [ ] main_workflow.pyの_business_info_node()を実装 `cc:TODO`
-- [ ] OpenRouter API使用を確認（OpenRouterProviderとget_model_config("facility_info")を使用） `cc:TODO`
-- [ ] テストケース作成 `cc:TODO`
-- [ ] CI/CDがグリーン `cc:TODO`
-- [ ] PRを作成してCI/CD確認後、developにマージ `cc:TODO`
+- [x] Enhanced RAG 移植 `cc:DONE`
+- [x] 営業時間/料金/場所クエリ処理 `cc:DONE`
+- [x] main_workflow.pyの_business_info_node()を実装 `cc:DONE`
+- [x] OpenRouter API使用を確認（OpenRouterProviderとget_model_config("facility_info")を使用） `cc:DONE`
+- [x] テストケース作成 `cc:DONE`
+- [x] CI/CDがグリーン `cc:DONE`
+- [x] PRを作成してCI/CD確認後、developにマージ `cc:DONE`
+- [x] PR #20との整合性確保（ディレクトリ構造・インポートパス統一） `cc:DONE` `pm:確認済`
 
 **ブランチ**: `feature/business-info-event-slide-agents`  
+**PR**: #21  
 **マージ方法**: **PR作成 → CI/CDグリーン確認 → developに直接マージ**
 
-### 1.3 EventAgent 移行 `pm:依頼中`
-> 依頼日時: 2025-01-12
+### 1.3 EventAgent 移行 `pm:確認済`
+> 依頼日時: 2025-01-12  
+> 完了日時: 2025-01-12
 
-- [ ] Google Calendar API連携（期間抽出ロジック含む） `cc:TODO`
-- [ ] イベント情報取得・整形処理 `cc:TODO`
-- [ ] main_workflow.pyの_event_node()を実装 `cc:TODO`
-- [ ] OpenRouter API使用を確認（OpenRouterProviderとget_model_config("event_info")を使用） `cc:TODO`
-- [ ] テストケース作成 `cc:TODO`
-- [ ] CI/CDがグリーン `cc:TODO`
-- [ ] PRを作成してCI/CD確認後、developにマージ `cc:TODO`
+- [x] Google Calendar API連携（期間抽出ロジック含む） `cc:DONE`
+- [x] イベント情報取得・整形処理 `cc:DONE`
+- [x] main_workflow.pyの_event_node()を実装 `cc:DONE`
+- [x] OpenRouter API使用を確認（OpenRouterProviderとget_model_config("event_info")を使用） `cc:DONE`
+- [x] テストケース作成 `cc:DONE`
+- [x] CI/CDがグリーン `cc:DONE`
+- [x] PRを作成してCI/CD確認後、developにマージ `cc:DONE`
 
 **ブランチ**: `feature/business-info-event-slide-agents`（BusinessInfoAgentと同一ブランチ）
 
-### 1.4 SlideAgent 移行 `pm:依頼中`
-> 依頼日時: 2025-01-12
+### 1.4 SlideAgent 移行 `pm:確認済`
+> 依頼日時: 2025-01-12  
+> 完了日時: 2025-01-12
 
-- [ ] ナレーションJSON読み込み機能 `cc:TODO`
-- [ ] スライドナレーション生成 `cc:TODO`
-- [ ] スライドナビゲーション（次へ/前へ/特定スライド） `cc:TODO`
-- [ ] スライド質問応答 `cc:TODO`
-- [ ] main_workflow.pyの_slide_node()を実装（必要に応じて） `cc:TODO`
-- [ ] OpenRouter API使用を確認（OpenRouterProviderとget_model_config("qa_response")を使用） `cc:TODO`
-- [ ] テストケース作成 `cc:TODO`
-- [ ] CI/CDがグリーン `cc:TODO`
-- [ ] PRを作成してCI/CD確認後、developにマージ `cc:TODO`
+- [x] ナレーションJSON読み込み機能 `cc:DONE`
+- [x] スライドナレーション生成 `cc:DONE`
+- [x] スライドナビゲーション（次へ/前へ/特定スライド） `cc:DONE`
+- [x] スライド質問応答 `cc:DONE`
+- [x] main_workflow.pyの_slide_node()を実装（必要に応じて） `cc:DONE`
+- [x] OpenRouter API使用を確認（OpenRouterProviderとget_model_config("qa_response")を使用） `cc:DONE`
+- [x] テストケース作成 `cc:DONE`
+- [x] CI/CDがグリーン `cc:DONE`
+- [x] PRを作成してCI/CD確認後、developにマージ `cc:DONE`
+- [ ] **スライドファイルの配置（backend/slides/）** `cc:TODO` `pm:依頼中`
 
 **ブランチ**: `feature/business-info-event-slide-agents`（BusinessInfoAgentと同一ブランチ）
 
