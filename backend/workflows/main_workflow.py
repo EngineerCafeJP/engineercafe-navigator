@@ -8,6 +8,8 @@ from langgraph.graph import StateGraph, START, END
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 import operator
 
+from backend.agents.router_agent import RouterAgent
+
 
 class WorkflowState(TypedDict):
     """ワークフローの状態定義"""
@@ -27,6 +29,7 @@ class MainWorkflow:
     """メインLangGraphワークフロー"""
 
     def __init__(self):
+        self.router_agent = RouterAgent(debug_mode=True)
         self.graph = self._build_graph()
 
     def _build_graph(self) -> StateGraph:
@@ -76,25 +79,42 @@ class MainWorkflow:
         # TODO: メモリシステムの実装
         return {"context": {**state.get("context", {}), "memory": {}}}
 
-    def _router_node(self, state: WorkflowState) -> dict:
+    async def _router_node(self, state: WorkflowState) -> dict:
         """ルーターノード: クエリを適切なエージェントにルーティング"""
-        # TODO: ルーターエージェントの実装
-        query = state.get("query", "").lower()
+        query = state.get("query", "")
+        session_id = state.get("session_id", "")
 
-        if any(keyword in query for keyword in ["営業", "時間", "料金", "場所"]):
-            routed_to = "business_info"
-        elif any(keyword in query for keyword in ["設備", "施設", "wifi", "wi-fi"]):
-            routed_to = "facility"
-        elif any(keyword in query for keyword in ["イベント", "カレンダー", "予約"]):
-            routed_to = "event"
-        elif any(keyword in query for keyword in ["?", "？", "どちら", "どっち"]):
-            routed_to = "clarification"
-        else:
-            routed_to = "general_knowledge"
+        # RouterAgentでルーティング
+        route_result = await self.router_agent.route_query(
+            query=query, session_id=session_id, memory_system=None
+        )
+
+        # エージェント名をノード名にマッピング
+        agent_to_node = {
+            "BusinessInfoAgent": "business_info",
+            "FacilityAgent": "facility",
+            "EventAgent": "event",
+            "MemoryAgent": "general_knowledge",  # Memory未実装時はgeneral_knowledgeへ
+            "GeneralKnowledgeAgent": "general_knowledge",
+            "ClarificationAgent": "clarification",
+            "TimeAgent": "general_knowledge",  # Time未実装時はgeneral_knowledgeへ
+        }
+
+        routed_to = agent_to_node.get(route_result.agent, "general_knowledge")
 
         return {
             "routed_to": routed_to,
-            "metadata": {**state.get("metadata", {}), "routing": {"routed_to": routed_to}},
+            "language": route_result.language,
+            "metadata": {
+                **state.get("metadata", {}),
+                "routing": {
+                    "agent": route_result.agent,
+                    "category": route_result.category,
+                    "request_type": route_result.request_type,
+                    "confidence": route_result.confidence,
+                    "debug_info": route_result.debug_info,
+                },
+            },
         }
 
     def _route_decision(
