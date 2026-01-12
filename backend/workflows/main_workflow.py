@@ -167,10 +167,23 @@ class MainWorkflow:
             "metadata": {**state.get("metadata", {}), **result.get("metadata", {})},
         }
 
-    def _facility_node(self, state: WorkflowState) -> dict:
+    async def _facility_node(self, state: WorkflowState) -> dict:
         """施設ノード: 施設情報を処理"""
-        # TODO: 施設エージェントの実装
-        return {"answer": "施設情報の取得中です。", "emotion": "neutral"}
+        from backend.agents.facility_agent import FacilityAgent
+
+        agent = FacilityAgent()
+        query = state.get("query", "")
+        language = state.get("language", "ja")
+        session_id = state.get("session_id", "")
+        request_type = state.get("metadata", {}).get("routing", {}).get("request_type")
+
+        result = await agent.answer_facility_query(query, request_type, language, session_id)
+
+        return {
+            "answer": result.get("answer", ""),
+            "emotion": result.get("emotion", "neutral"),
+            "metadata": {**state.get("metadata", {}), **result.get("metadata", {})},
+        }
 
     async def _event_node(self, state: WorkflowState) -> dict:
         """イベントノード: イベント情報を処理"""
