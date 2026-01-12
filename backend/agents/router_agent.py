@@ -30,6 +30,7 @@ AgentName = Literal[
     "GeneralKnowledgeAgent",
     "ClarificationAgent",
     "TimeAgent",
+    "SlideAgent",
 ]
 
 
@@ -183,6 +184,9 @@ class RouterAgent:
             # イベントに関する質問はEventAgentへ
             if request_type == "event":
                 return "EventAgent"
+            # スライドに関する質問はSlideAgentへ
+            if request_type == "slide":
+                return "SlideAgent"
 
         # カテゴリベースのマッピング
         agent_map: Dict[str, AgentName] = {
@@ -332,6 +336,23 @@ class RouterAgent:
             ]
         ):
             return "event"
+
+        # スライド関連
+        if any(
+            keyword in lower_question
+            for keyword in [
+                "スライド",
+                "slide",
+                "プレゼン",
+                "presentation",
+                "次のスライド",
+                "前のスライド",
+                "説明して",
+                "ナレーション",
+                "narration",
+            ]
+        ):
+            return "slide"
 
         return None
 
