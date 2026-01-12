@@ -10,7 +10,6 @@ TODO (専門エンジニア - takegg0311):
 - 統合テストの追加
 """
 
-import pytest
 import sys
 from pathlib import Path
 
@@ -18,9 +17,11 @@ from pathlib import Path
 backend_path = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_path))
 
-from utils.memory_interface import MemorySystemInterface, MemoryNotAvailableError
-from utils.memory_helper import SimplifiedMemoryHelper, get_memory_helper
-from agents.memory_agent import MemoryAgent
+import pytest  # noqa: E402
+
+from utils.memory_interface import MemorySystemInterface, MemoryNotAvailableError  # noqa: E402
+from utils.memory_helper import SimplifiedMemoryHelper, get_memory_helper  # noqa: E402
+from agents.memory_agent import MemoryAgent  # noqa: E402
 
 
 class TestMemoryInterface:
