@@ -152,13 +152,15 @@ Python版LangGraphを使用したAIエージェントバックエンド。FastAP
 
 ## 🆕 最新アップデート
 
-### ✅ LangGraph統合（2025/01/XX）
+### ✅ LangGraph統合完了（2026-01-13）
 
-- **🔗 モノレポ構造への移行** - Frontend（NextJS）とBackend（Python LangGraph）を分離
-- **📊 Python版LangGraphワークフロー** - 既存のMastraエージェントロジックをPython版LangGraphで実装
-- **🔄 FastAPIバックエンド** - RESTful APIによるフロントエンドとバックエンドの統合
-- **💾 グラフベースのワークフロー** - より柔軟なルーティングと状態管理
-- **🔄 永続的な実行** - 失敗から自動的に回復し、長時間実行可能
+- **🔗 モノレポ構造への移行** - Frontend（NextJS）とBackend（Python LangGraph）を分離 ✅
+- **📊 Python版LangGraphワークフロー** - RouterAgent, GeneralKnowledgeAgent含む7つのエージェント実装完了 ✅
+- **🔄 FastAPIバックエンド** - RESTful APIによるフロントエンドとバックエンドの統合完了 ✅
+- **💾 グラフベースのワークフロー** - 条件分岐ルーティングと状態管理の実装完了 ✅
+- **🧪 テスト基盤整備** - pytest + AsyncMockによる包括的なテストスイート構築 ✅
+- **🐳 開発環境整備** - Docker + mise + Makefile による統一開発コマンド整備 ✅
+- **🔍 Web検索統合** - Google Gemini API with Search Grounding による最新情報取得 ✅
 
 ## 🛠️ 開発
 
