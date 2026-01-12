@@ -328,6 +328,53 @@ Claude Code は PR 作成・更新時に以下を確認:
 
 ---
 
+## フェーズ 6: テスト基盤整備 `cc:TODO` `pm:次フェーズ`
+
+> 担当: テリスケ
+> 目的: テスト基盤を構築し、他のエンジニアがテストを書きやすくする
+
+### 6.1 pytest基本設定とフィクスチャ `cc:TODO`
+- [ ] `backend/tests/conftest.py`を作成 - pytest設定とフィクスチャ `cc:TODO`
+- [ ] テストフィクスチャ（OpenRouterProvider, モデル設定等） `cc:TODO`
+- [ ] 非同期テスト設定（pytest-asyncio） `cc:TODO`
+
+### 6.2 テストユーティリティ作成 `cc:TODO`
+- [ ] `backend/tests/utils/test_helpers.py`作成 - テストヘルパー関数 `cc:TODO`
+- [ ] `backend/tests/utils/mock_helpers.py`作成 - モック作成ユーティリティ `cc:TODO`
+- [ ] `backend/tests/utils/assertion_helpers.py`作成 - カスタムアサート関数 `cc:TODO`
+
+### 6.3 LangGraphEvaluate基本セットアップ `cc:TODO`
+- [ ] `backend/tests/utils/langgraph_evaluate_setup.py`作成 `cc:TODO`
+- [ ] LangGraphEvaluator基本設定 `cc:TODO`
+- [ ] 評価メトリクス定義 `cc:TODO`
+
+### 6.4 エージェントテストテンプレート `cc:TODO`
+- [ ] `backend/tests/templates/test_agent_template.py`作成 `cc:TODO`
+- [ ] 基本的な機能テストのテンプレート `cc:TODO`
+- [ ] エラーハンドリングテストのテンプレート `cc:TODO`
+- [ ] 非同期処理テストのテンプレート `cc:TODO`
+
+### 6.5 テスト作成ガイド `cc:TODO`
+- [ ] `docs/testing/TESTING-GUIDE.md`作成 - テスト作成ガイド `cc:TODO`
+- [ ] pytestの基本的な使い方 `cc:TODO`
+- [ ] フィクスチャとモックの使い方 `cc:TODO`
+- [ ] LangGraphEvaluateの使い方 `cc:TODO`
+- [ ] テストテンプレートの使い方 `cc:TODO`
+
+**完了条件**:
+- [ ] `backend/tests/conftest.py`が作成されている
+- [ ] テストユーティリティが作成されている
+- [ ] LangGraphEvaluateが基本セットアップされている
+- [ ] エージェントテストテンプレートが作成されている
+- [ ] テスト作成ガイドが作成されている
+- [ ] 既存テストが全て動作する
+- [ ] CI/CDがグリーン
+
+**ブランチ**: `feature/test-infrastructure`
+**マージ方法**: **PRを作成してCI/CDグリーン確認 → developに直接マージ**
+
+---
+
 ## フェーズ 4: 新機能 `cc:TODO`
 
 > 担当: けいてぃー, たけがわ
