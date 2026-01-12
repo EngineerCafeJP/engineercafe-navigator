@@ -9,6 +9,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "typecheck": "tsc --noEmit",
     "dev:clean": "rm -rf .next && next dev",
     "install:css": "sh scripts/install-css.sh",
     "seed:knowledge": "tsx -r dotenv/config scripts/seed-knowledge-base.ts",
