@@ -172,8 +172,6 @@ export class CharacterControlAgent extends Agent {
       const mouthShape = (Math.floor(time / 200) % 2) === 0 ? 'A' : 'Closed';
       frames.push({
         time,
-        viseme: mouthShape,
-        intensity: 0.5,
         volume: 0.5,
         mouthOpen: 0.5,
         mouthShape: mouthShape as 'A' | 'I' | 'U' | 'E' | 'O' | 'Closed'
