@@ -58,8 +58,6 @@ engineer-cafe-navigator2025/
 │   ├── wiki/                        # Backlog Wiki テンプレート
 │   └── CHANGELOG.md                 # 変更履歴
 │
-├── supabase/                        # Supabase設定
-│
 └── engineer-cafe-navigator-repo/    # 旧実装（参照用）
     ├── src/                         # 旧Mastra実装
     └── docs/                        # 旧ドキュメント

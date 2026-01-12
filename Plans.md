@@ -77,6 +77,76 @@ Claude Code は PR 作成・更新時に以下を確認:
 - `backend/pyproject.toml` - langchain-google-genai削除済み
 - `backend/README.md` - OpenRouter API使用方法更新済み
 
+## フェーズ 0.6: プロジェクト構造リファクタリング `cc:DONE` `pm:確認済`
+
+> 依頼日時: 2025-01-12  
+> 完了日時: 2025-01-12  
+> 目的: プロジェクト構造を整理し、入れ子構造やルート直下の散在を解消
+
+### 0.6.1 不要なディレクトリの削除
+- [x] `agents/` ディレクトリ削除（ルートレベル、空の__init__.pyのみ） `cc:DONE`
+- [x] `backend/backend/` ディレクトリ削除（空の__init__.pyのみ） `cc:DONE`
+- [x] `backend/docs/` の重複確認と整理 `cc:DONE`
+
+### 0.6.2 ルートディレクトリのドキュメント整理
+- [x] `CHANGELOG.md` → `docs/CHANGELOG.md` に移動 `cc:DONE`
+- [x] `CLAUDE.md` → `docs/development/CLAUDE.md` に移動 `cc:DONE`
+- [x] `CONTRIBUTING.md` → `docs/development/CONTRIBUTING.md` に移動 `cc:DONE`
+- [x] `DEVELOPER-GUIDE.md` → `docs/development/DEVELOPER-GUIDE.md` に移動 `cc:DONE`
+- [x] `unified-response-demo.md` → `docs/archive/` に移動 `cc:DONE`
+- [x] `AGENTS.md` → `docs/development/AGENTS.md` に移動 `cc:DONE`
+- [x] `Plans.md` → **ルートに保持**（移動しない） `cc:DONE`
+
+### 0.6.3 docs/ディレクトリの整理
+- [x] `docs/archive/` に古いドキュメントを移動 `cc:DONE`
+- [x] `docs/api/` ディレクトリを作成し、API関連ドキュメントを移動 `cc:DONE`
+- [x] `docs/architecture/` にアーキテクチャ関連ドキュメントを移動 `cc:DONE`
+- [x] `docs/development/` に開発ガイドを移動 `cc:DONE`
+- [x] `docs/blog/` にブログ記事を移動 `cc:DONE`
+
+### 0.6.4 プロジェクト構造の見直しとパス修正
+- [x] `docs/development/repo-structure.md` を更新（新しい構造を反映） `cc:DONE`
+- [x] すべてのドキュメント内のパス参照を修正 `cc:DONE`
+- [x] README.mdのパス参照を更新 `cc:DONE`
+- [x] CI/CD設定ファイルのパス参照を確認・修正 `cc:DONE`
+
+### 0.6.5 インポートパスと参照の確認
+- [x] コード内のドキュメント参照パスを確認 `cc:DONE`
+- [x] テストファイルのパス参照を確認 `cc:DONE`
+- [x] 設定ファイルのパス参照を確認 `cc:DONE`
+
+**完了条件**:
+- [x] 不要なディレクトリが削除されている `cc:DONE`
+- [x] ルートディレクトリが整理されている（README.md, Plans.md以外はdocs/に移動） `cc:DONE`
+- [x] docs/ディレクトリがカテゴリ別に整理されている `cc:DONE`
+- [x] すべてのパス参照が更新されている `cc:DONE`
+- [x] CI/CDがグリーン `cc:DONE`
+
+**ブランチ**: `refactor/project-structure-cleanup`  
+**PR**: #22  
+**マージ方法**: **PR作成 → CI/CDグリーン確認 → developに直接マージ**
+
+### 0.6.6 追加リファクタリング（追加タスク） `cc:TODO` `pm:依頼中`
+> 依頼日時: 2025-01-12  
+> 目的: モノレポ構造の徹底的な整理
+
+- [ ] ルートの`supabase/`ディレクトリ削除（空で、実際の設定は`frontend/supabase/`にある） `cc:TODO`
+- [ ] ルートの`node_modules/`の確認と整理（workspace用だが、`concurrently`のみなので検討） `cc:TODO`
+- [ ] ルートの`package-lock.json`の確認（pnpm使用のため不要の可能性） `cc:TODO`
+- [ ] `firebase-debug.log`の削除または`.gitignore`に追加 `cc:TODO`
+- [ ] ルートの`package.json`の確認（workspace設定として適切か） `cc:TODO`
+- [ ] モノレポ構造のベストプラクティスに準拠した整理 `cc:TODO`
+- [ ] `docs/development/repo-structure.md`を更新（最終構造を反映） `cc:TODO`
+
+**完了条件**:
+- [ ] 不要なディレクトリ・ファイルが削除されている
+- [ ] モノレポ構造が適切に整理されている
+- [ ] すべてのパス参照が更新されている
+- [ ] CI/CDがグリーン
+
+**ブランチ**: `refactor/project-structure-cleanup`（既存PR #22に追加）  
+**マージ方法**: **PR作成 → CI/CDグリーン確認 → developに直接マージ**
+
 ## フェーズ 1: LangGraph 移行 - コア機能 `cc:TODO`
 
 > 担当: テリスケ, Natsumi, けいてぃー
