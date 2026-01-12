@@ -1,0 +1,7 @@
+{
+  "timestamp": "2026-01-12T10:32:33Z",
+  "changed_file": "tests/agents/test_slide_agent.py",
+  "test_command": "pytest",
+  "related_test": "",
+  "recommendation": "テストの実行を推奨します"
+}

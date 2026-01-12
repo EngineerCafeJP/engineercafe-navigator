@@ -1,0 +1,7 @@
+{
+  "timestamp": "2026-01-12T12:55:13Z",
+  "changed_file": "src/lib/types.ts",
+  "test_command": "npm test",
+  "related_test": "",
+  "recommendation": "テストの実行を推奨します"
+}

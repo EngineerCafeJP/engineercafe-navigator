@@ -1,4 +1,4 @@
-import { RAGSearchTool, KnowledgeSearchResult } from "@/mastra/tools/rag-search";
+import { RAGSearchTool, KnowledgeSearchResult } from '@/lib/types';
 import { supabaseAdmin } from "./supabase";
 import { getMostFrequentEmotion } from "./emotion-utils";
 

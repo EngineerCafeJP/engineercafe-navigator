@@ -3,7 +3,7 @@
  * EnhancedQAAgentから分離して、テスト可能でメンテナンスしやすい構造にする
  */
 
-import { SupportedLanguage } from '../mastra/types/config';
+import { SupportedLanguage } from '@/lib/types';
 
 export interface QueryClassificationResult {
   category: string;

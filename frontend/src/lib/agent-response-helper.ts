@@ -4,7 +4,7 @@
  */
 
 import { EmotionTagger, UnifiedEmotion } from './emotion-tagger';
-import { SupportedLanguage } from '@/mastra/types/config';
+import { SupportedLanguage } from '@/lib/types';
 
 export interface AgentResponseOptions {
   agent: string;

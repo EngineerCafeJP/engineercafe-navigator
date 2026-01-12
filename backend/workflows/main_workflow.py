@@ -75,8 +75,49 @@ class MainWorkflow:
         return workflow.compile()
 
     def _memory_node(self, state: WorkflowState) -> dict:
-        """メモリノード: 会話履歴とコンテキストを取得"""
-        # TODO: メモリシステムの実装
+        """
+        メモリノード: 会話履歴とコンテキストを取得
+
+        TODO (専門エンジニア - takegg0311):
+        1. SimplifiedMemoryHelperの初期化とインスタンス取得
+        2. session_idの抽出
+        3. memory_helper.get_context() で会話履歴を取得
+        4. コンテキストをstateに追加
+
+        現在の実装:
+        - 骨組みのみ（プレースホルダー）
+        - 完全実装は専門エンジニアが担当
+        """
+        # TODO: 実装
+        # from backend.utils.memory_helper import get_memory_helper
+        #
+        # memory_helper = get_memory_helper()
+        # session_id = state.get("session_id", "")
+        # query = state.get("query", "")
+        # language = state.get("language", "ja")
+        #
+        # try:
+        #     memory_context = await memory_helper.get_context(
+        #         query=query,
+        #         session_id=session_id,
+        #         options={
+        #             "include_knowledge_base": False,  # メモリのみ参照
+        #             "language": language,
+        #             "inherit_context": True
+        #         }
+        #     )
+        #
+        #     return {
+        #         "context": {
+        #             **state.get("context", {}),
+        #             "memory": memory_context
+        #         }
+        #     }
+        # except Exception as e:
+        #     # エラー時はメモリなしで続行
+        #     return {"context": {**state.get("context", {}), "memory": {}}}
+
+        # プレースホルダー（骨組み実装）
         return {"context": {**state.get("context", {}), "memory": {}}}
 
     async def _router_node(self, state: WorkflowState) -> dict:
@@ -128,20 +169,58 @@ class MainWorkflow:
         # TODO: 明確化エージェントの実装
         return {"answer": "もう少し詳しく教えていただけますか？", "emotion": "neutral"}
 
-    def _business_info_node(self, state: WorkflowState) -> dict:
+    async def _business_info_node(self, state: WorkflowState) -> dict:
         """営業情報ノード: 営業情報を処理"""
-        # TODO: 営業情報エージェントの実装
-        return {"answer": "営業情報の取得中です。", "emotion": "neutral"}
+        from backend.agents.business_info_agent import BusinessInfoAgent
 
-    def _facility_node(self, state: WorkflowState) -> dict:
+        agent = BusinessInfoAgent()
+        query = state.get("query", "")
+        language = state.get("language", "ja")
+        session_id = state.get("session_id", "")
+        request_type = state.get("metadata", {}).get("routing", {}).get("request_type")
+
+        result = await agent.answer_business_query(query, request_type, language, session_id)
+
+        return {
+            "answer": result.get("answer", ""),
+            "emotion": result.get("emotion", "neutral"),
+            "metadata": {**state.get("metadata", {}), **result.get("metadata", {})},
+        }
+
+    async def _facility_node(self, state: WorkflowState) -> dict:
         """施設ノード: 施設情報を処理"""
-        # TODO: 施設エージェントの実装
-        return {"answer": "施設情報の取得中です。", "emotion": "neutral"}
+        from backend.agents.facility_agent import FacilityAgent
 
-    def _event_node(self, state: WorkflowState) -> dict:
+        agent = FacilityAgent()
+        query = state.get("query", "")
+        language = state.get("language", "ja")
+        session_id = state.get("session_id", "")
+        request_type = state.get("metadata", {}).get("routing", {}).get("request_type")
+
+        result = await agent.answer_facility_query(query, request_type, language, session_id)
+
+        return {
+            "answer": result.get("answer", ""),
+            "emotion": result.get("emotion", "neutral"),
+            "metadata": {**state.get("metadata", {}), **result.get("metadata", {})},
+        }
+
+    async def _event_node(self, state: WorkflowState) -> dict:
         """イベントノード: イベント情報を処理"""
-        # TODO: イベントエージェントの実装
-        return {"answer": "イベント情報の取得中です。", "emotion": "neutral"}
+        from backend.agents.event_agent import EventAgent
+
+        agent = EventAgent()
+        query = state.get("query", "")
+        language = state.get("language", "ja")
+        session_id = state.get("session_id", "")
+
+        result = await agent.answer_event_query(query, language, session_id)
+
+        return {
+            "answer": result.get("answer", ""),
+            "emotion": result.get("emotion", "neutral"),
+            "metadata": {**state.get("metadata", {}), **result.get("metadata", {})},
+        }
 
     def _general_knowledge_node(self, state: WorkflowState) -> dict:
         """一般知識ノード: 一般的な知識を処理"""
