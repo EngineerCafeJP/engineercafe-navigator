@@ -186,14 +186,14 @@ cd frontend && pnpm build
 
 ## 📖 ドキュメント
 
-- [開発者ガイド](docs/DEVELOPMENT.md)
-- [API ドキュメント](docs/API.md)
-- [システムアーキテクチャ](docs/SYSTEM-ARCHITECTURE.md)
+- [開発者ガイド](docs/development/DEVELOPER-GUIDE.md)
+- [API ドキュメント](docs/api/API.md)
+- [システムアーキテクチャ](docs/architecture/SYSTEM-ARCHITECTURE.md)
 - [デプロイメントガイド](docs/DEPLOYMENT.md)
 
 ## 🤝 コントリビューション
 
-コントリビューションを歓迎します！詳細は[CONTRIBUTING.md](CONTRIBUTING.md)を参照してください。
+コントリビューションを歓迎します！詳細は[CONTRIBUTING.md](docs/development/CONTRIBUTING.md)を参照してください。
 
 ## 📄 ライセンス
 

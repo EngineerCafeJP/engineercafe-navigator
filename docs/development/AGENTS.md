@@ -60,10 +60,14 @@ engineer-cafe-navigator2025/
 │   ├── workflows/
 │   └── tests/
 ├── docs/                     # ドキュメント
-│   └── migration/agents/    # エージェント移行仕様
-├── Plans.md                  # タスク管理
-├── CLAUDE.md                # Claude Code 設定
-└── AGENTS.md                # このファイル
+│   ├── development/         # 開発ガイド
+│   │   ├── AGENTS.md        # このファイル
+│   │   └── CLAUDE.md        # Claude Code 設定
+│   ├── api/                 # API仕様
+│   ├── architecture/        # アーキテクチャ
+│   ├── migration/agents/    # エージェント移行仕様
+│   └── archive/             # 古いドキュメント
+└── Plans.md                  # タスク管理（ルートに保持）
 ```
 
 ---
@@ -97,7 +101,7 @@ engineer-cafe-navigator2025/
 
 ## 関連ファイル
 
-- `Plans.md` - タスク管理
-- `CLAUDE.md` - Claude Code 詳細設定
-- `.cursor/commands/` - Cursor コマンド
-- `.claude/memory/` - 意思決定記録
+- `../../Plans.md` - タスク管理（ルートディレクトリ）
+- `CLAUDE.md` - Claude Code 詳細設定（同じディレクトリ）
+- `../../.cursor/commands/` - Cursor コマンド
+- `../../.claude/memory/` - 意思決定記録
