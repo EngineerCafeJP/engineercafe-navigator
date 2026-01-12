@@ -43,12 +43,17 @@ engineer-cafe-navigator2025/
 
 ### 前提条件
 
+**推奨: Docker環境**
+- Docker Desktop
+- Docker Compose
+
+**または、ローカル環境**
+- mise (バージョン管理ツール)
 - Node.js >= 18.0.0
 - pnpm >= 8.0.0
 - Python >= 3.11.0
-- pip または poetry
 
-### セットアップ
+### 🐳 Docker環境でのセットアップ（推奨）
 
 1. **リポジトリのクローン**
 
@@ -57,18 +62,7 @@ git clone https://github.com/EngineerCafeJP/engineercafe-navigator.git
 cd engineercafe-navigator
 ```
 
-2. **依存関係のインストール**
-
-```bash
-# すべての依存関係をインストール
-pnpm install
-
-# または個別にインストール
-pnpm install:frontend  # NextJSフロントエンド
-pnpm install:backend   # Pythonバックエンド
-```
-
-3. **環境変数の設定**
+2. **環境変数の設定**
 
 **Frontend (.env.local)**
 ```env
@@ -86,15 +80,48 @@ SUPABASE_URL=your_supabase_url
 SUPABASE_KEY=your_supabase_key
 ```
 
-4. **開発サーバーの起動**
+3. **初回セットアップと起動**
 
 ```bash
-# フロントエンドとバックエンドを同時に起動
-pnpm dev
+# Makefileを使った統一コマンド
+make setup  # 初回セットアップ（Docker buildを実行）
+make dev    # 開発サーバー起動（http://localhost:3000, http://localhost:8000）
+```
 
-# または個別に起動
-pnpm dev:frontend  # http://localhost:3000
-pnpm dev:backend   # http://localhost:8000
+**その他のコマンド:**
+```bash
+make help              # 使用可能なコマンド一覧
+make dev:frontend      # フロントエンドのみ起動
+make dev:backend       # バックエンドのみ起動
+make lint              # リンター実行
+make clean             # クリーンアップ
+```
+
+### 🛠️ ローカル環境でのセットアップ（mise使用）
+
+miseを使用したローカル開発環境の構築:
+
+1. **mise のインストール**
+
+```bash
+# macOS (Homebrew)
+brew install mise
+
+# または公式サイトから
+curl https://mise.run | sh
+```
+
+2. **プロジェクトツールのインストール**
+
+```bash
+mise install  # Node.js, Python, pnpm を自動インストール
+```
+
+3. **依存関係のインストールと起動**
+
+```bash
+make install  # 依存関係インストール
+make dev      # 開発サーバー起動
 ```
 
 ## 📚 各コンポーネントの詳細
