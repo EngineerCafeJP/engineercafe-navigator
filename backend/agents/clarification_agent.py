@@ -18,13 +18,32 @@ TODO (専門エンジニア - Chie):
 """
 
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Literal, TypedDict
+
+from backend.utils.emotion_tagger import add_emotion_tag
+
 
 # TODO: 実装時に必要なインポート
 # from llm.openrouter import OpenRouterProvider
 # from llm.models import get_model_config
 
 logger = logging.getLogger(__name__)
+
+# 型定義
+SupportedLanguage = Literal["ja", "en"]
+
+ClarificationCategory = Literal[
+    "cafe-clarification-needed",
+    "meeting-room-clarification-needed",
+    "general-clarification-needed",
+]
+
+
+class ClarificationResult(TypedDict):
+    """Clarification Agentの出力結果"""
+    response: str  # 感情タグ付きテキスト
+    emotion: Literal["surprised"]
+    metadata: dict  # agent名, category, confidence など
 
 
 class ClarificationAgent:
