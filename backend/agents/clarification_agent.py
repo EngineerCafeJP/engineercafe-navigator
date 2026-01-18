@@ -65,6 +65,103 @@ class ClarificationAgent:
         logger.info("ClarificationAgent骨組み初期化")
         # TODO: OpenRouterProvider等の初期化
 
+    async def handle_clarification(
+        self,
+        query: str,
+        category: ClarificationCategory,
+        language: SupportedLanguage,
+    ) -> ClarificationResult:
+        """
+        曖昧性解消の処理
+
+        RouterAgentからcategoryを受け取り、固定メッセージで曖昧性を解消します。
+        LLMを使用せず、高速で一貫性のある応答を提供します。
+
+        Args:
+            query: ユーザーからの入力テキスト（現在は使用されないが、将来の拡張用）
+            category: 曖昧性の種類（RouterAgentが判定済み）
+            language: 応答言語
+
+        Returns:
+            ClarificationResult: 感情タグ付きの応答とメタデータ
+        """
+        logger.info(f"ClarificationAgent.handle_clarification: query={query}, category={category}, language={language}")
+
+        # カフェの曖昧性解消
+        if category == 'cafe-clarification-needed':
+            clarification_message = (
+                "I'd be happy to help! Are you asking about:\n"
+                "1. **Engineer Cafe** (the coworking space) - hours, facilities, usage\n"
+                "2. **Saino Cafe** (the attached cafe & bar) - menu, hours, prices\n\n"
+                "Please let me know which one you're interested in!"
+                if language == 'en'
+                else "お手伝いさせていただきます！どちらについてお聞きでしょうか：\n"
+                      "1. **エンジニアカフェ**（コワーキングスペース）- 営業時間、設備、利用方法\n"
+                      "2. **サイノカフェ**（併設のカフェ＆バー）- メニュー、営業時間、料金\n\n"
+                      "お聞かせください！"
+            )
+
+            tagged_message = add_emotion_tag(clarification_message, 'surprised')
+
+            return {
+                "response": tagged_message,
+                "emotion": "surprised",
+                "metadata": {
+                    "agent": "ClarificationAgent",
+                    "confidence": 0.9,
+                    "category": "cafe-clarification-needed",
+                    "sources": ["clarification_system"]
+                }
+            }
+
+        # 会議室の曖昧性解消
+        if category == 'meeting-room-clarification-needed':
+            clarification_message = (
+                "I'd be happy to help! We have two types of meeting spaces:\n"
+                "1. **Paid Meeting Rooms (2F)** - Private rooms with advance booking required (fees apply)\n"
+                "2. **Basement Meeting Spaces (B1)** - Free open spaces for casual meetings\n\n"
+                "Which one would you like to know about?"
+                if language == 'en'
+                else "お手伝いさせていただきます！会議スペースは2種類ございます：\n"
+                      "1. **有料会議室（2階）** - 事前予約制の個室（有料）\n"
+                      "2. **地下MTGスペース（地下1階）** - カジュアルな打ち合わせ用の無料スペース\n\n"
+                      "どちらについてお知りになりたいですか？"
+            )
+
+            tagged_message = add_emotion_tag(clarification_message, 'surprised')
+
+            return {
+                "response": tagged_message,
+                "emotion": "surprised",
+                "metadata": {
+                    "agent": "ClarificationAgent",
+                    "confidence": 0.9,
+                    "category": "meeting-room-clarification-needed",
+                    "sources": ["clarification_system"]
+                }
+            }
+
+        # デフォルトの曖昧性解消
+        default_message = (
+            "I'd be happy to help! Could you please provide more details about what you'd like to know?"
+            if language == 'en'
+            else "お手伝いさせていただきます！もう少し詳しくお聞かせいただけますか？"
+        )
+
+        tagged_message = add_emotion_tag(default_message, 'surprised')
+
+        return {
+            "response": tagged_message,
+            "emotion": "surprised",
+            "metadata": {
+                "agent": "ClarificationAgent",
+                "confidence": 0.7,
+                "category": "general-clarification-needed",
+                "sources": ["clarification_system"]
+            }
+        }
+
+
     async def detect_ambiguity(self, query: str, context: Optional[Dict[str, Any]] = None) -> bool:
         """
         曖昧さを検出
