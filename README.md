@@ -8,7 +8,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8.3-blue)](https://www.typescriptlang.org/)
 [![Python](https://img.shields.io/badge/Python-3.11+-blue)](https://www.python.org/)
 [![LangGraph](https://img.shields.io/badge/LangGraph-0.2.0-blue)](https://langchain-ai.github.io/langgraph/)
-[![Mastra](https://img.shields.io/badge/Mastra-0.10.5-green)](https://mastra.ai/)
+[![LangSmith](https://img.shields.io/badge/LangSmith-Evaluation-orange)](https://smith.langchain.com/)
 [![React](https://img.shields.io/badge/React-19.1.0-61dafb)](https://reactjs.org/)
 
 ## 📖 プロジェクト概要
@@ -128,13 +128,15 @@ make dev      # 開発サーバー起動
 
 ### Frontend (NextJS)
 
-NextJSベースのフロントエンドアプリケーション。Mastraフレームワークを使用してAIエージェント機能を提供します。
+NextJSベースのフロントエンドアプリケーション。UIとユーザーインタラクションを担当し、AIロジックはバックエンド（LangGraph）に委譲します。
+
+> **📌 移行中**: フロントエンドのMastraロジックをLangGraphバックエンドに移行中です。詳細は [Issue #37-42](https://github.com/EngineerCafeJP/engineercafe-navigator/issues) を参照。
 
 **主要機能:**
 - 音声AIエージェントインターフェース
-- VRMキャラクター表示
+- VRMキャラクター表示（Three.js）
 - リアルタイム会話
-- スライドプレゼンテーション
+- スライドプレゼンテーション（Marp）
 
 **詳細:** [frontend/README.md](frontend/README.md)
 
@@ -142,22 +144,44 @@ NextJSベースのフロントエンドアプリケーション。Mastraフレ�
 
 Python版LangGraphを使用したAIエージェントバックエンド。FastAPIでRESTful APIを提供します。
 
+**実装済みエージェント（9種）:**
+| エージェント | 責務 |
+|-------------|------|
+| BusinessInfoAgent | 営業時間・料金・アクセス |
+| FacilityAgent | 設備・Wi-Fi・地下施設 |
+| EventAgent | イベント・カレンダー |
+| SlideAgent | スライド表示・ナレーション |
+| GeneralKnowledgeAgent | Web検索（範囲外質問） |
+| MemoryAgent | 会話履歴・コンテキスト |
+| ClarificationAgent | 曖昧解消 |
+| VoiceAgent | 音声処理（STT/TTS） |
+| CharacterControlAgent | VRM制御 |
+
 **主要機能:**
 - LangGraphワークフローによるエージェント実行
-- 複数エージェントのルーティング
-- 会話メモリ管理
-- RAG（Retrieval-Augmented Generation）統合
+- LangSmithによる評価・トレーシング
+- 会話メモリ管理（3分TTL）
+- Enhanced RAG統合
 
 **詳細:** [backend/README.md](backend/README.md)
 
 ## 🆕 最新アップデート
 
+### 🚧 進行中: フロントエンド→LangGraph移行（2026-01）
+
+フロントエンドのクライアントサイド処理をLangGraphバックエンドに移行中：
+- **[#37](https://github.com/EngineerCafeJP/engineercafe-navigator/issues/37)** QueryClassifier → RouterAgent
+- **[#38](https://github.com/EngineerCafeJP/engineercafe-navigator/issues/38)** EmotionTagger → Agent統一
+- **[#39](https://github.com/EngineerCafeJP/engineercafe-navigator/issues/39)** 会話メモリ → LangGraph State
+- **[#40](https://github.com/EngineerCafeJP/engineercafe-navigator/issues/40)** フロントエンド薄型化
+- **[#42](https://github.com/EngineerCafeJP/engineercafe-navigator/issues/42)** Next.js → Vite移行検討
+
 ### ✅ LangGraph統合完了（2026-01-13）
 
 - **🔗 モノレポ構造への移行** - Frontend（NextJS）とBackend（Python LangGraph）を分離 ✅
-- **📊 Python版LangGraphワークフロー** - RouterAgent, GeneralKnowledgeAgent含む7つのエージェント実装完了 ✅
+- **📊 9エージェント実装完了** - 単体テスト62件全パス ✅
 - **🔄 FastAPIバックエンド** - RESTful APIによるフロントエンドとバックエンドの統合完了 ✅
-- **💾 グラフベースのワークフロー** - 条件分岐ルーティングと状態管理の実装完了 ✅
+- **📈 LangSmith統合** - エージェント評価・トレーシングシステム実装 ✅
 - **🧪 テスト基盤整備** - pytest + AsyncMockによる包括的なテストスイート構築 ✅
 - **🐳 開発環境整備** - Docker + mise + Makefile による統一開発コマンド整備 ✅
 - **🔍 Web検索統合** - Google Gemini API with Search Grounding による最新情報取得 ✅
@@ -204,14 +228,16 @@ cd frontend && pnpm build
 - **Framework**: Next.js 15.3.2
 - **Language**: TypeScript 5.8.3
 - **UI**: React 19.1.0
-- **AI Framework**: Mastra 0.10.5
-- **3D**: Three.js + VRM
+- **3D**: Three.js + @pixiv/three-vrm
+- **Styling**: Tailwind CSS v3.4.17
 
 ### Backend
 - **Framework**: FastAPI
 - **Language**: Python 3.11+
 - **AI Framework**: LangGraph 0.2.0
-- **LLM**: LangChain (OpenAI, Google Gemini)
+- **LLM**: LangChain (OpenRouter, Google Gemini)
+- **Evaluation**: LangSmith
+- **Database**: Supabase (PostgreSQL + pgvector)
 
 ## 📖 ドキュメント
 
@@ -241,5 +267,6 @@ ISC License
 ## 🙏 謝辞
 
 - [LangGraph](https://github.com/langchain-ai/langgraph) - AIエージェントワークフロー
-- [Mastra](https://mastra.ai/) - AIフレームワーク
+- [LangSmith](https://smith.langchain.com/) - エージェント評価・トレーシング
 - [Next.js](https://nextjs.org/) - Reactフレームワーク
+- [FastAPI](https://fastapi.tiangolo.com/) - Python Webフレームワーク

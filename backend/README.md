@@ -2,6 +2,23 @@
 
 Python版LangGraphを使用したAIエージェントバックエンドシステムです。
 
+## 🤖 実装済みエージェント（9種）
+
+| エージェント | ファイル | 責務 |
+|-------------|----------|------|
+| RouterAgent | `router_agent.py` | クエリルーティング・分類 |
+| BusinessInfoAgent | `business_info_agent.py` | 営業時間・料金・アクセス |
+| FacilityAgent | `facility_agent.py` | 設備・Wi-Fi・地下施設 |
+| EventAgent | `event_agent.py` | イベント・カレンダー |
+| SlideAgent | `slide_agent.py` | スライド表示・ナレーション |
+| GeneralKnowledgeAgent | `general_knowledge_agent.py` | Web検索（範囲外質問） |
+| MemoryAgent | `memory_agent.py` | 会話履歴・コンテキスト |
+| ClarificationAgent | `clarification_agent.py` | 曖昧解消 |
+| VoiceAgent | `voice_agent.py` | 音声処理（STT/TTS） |
+| CharacterControlAgent | `character_control_agent.py` | VRM制御 |
+
+**テスト状況**: 62件全パス ✅
+
 ## セットアップ
 
 ### Poetryを使用する場合
@@ -32,9 +49,17 @@ OPENAI_API_KEY=your_openai_api_key
 # OpenRouter API
 OPENROUTER_API_KEY=your_openrouter_api_key
 
+# Google API (GeneralKnowledgeAgent用)
+GOOGLE_API_KEY=your_google_api_key
+
 # Supabase
 SUPABASE_URL=your_supabase_url
 SUPABASE_KEY=your_supabase_key
+
+# LangSmith（評価・トレーシング）
+LANGCHAIN_TRACING_V2=true
+LANGCHAIN_API_KEY=your_langsmith_api_key
+LANGCHAIN_PROJECT=engineer-cafe-navigator
 
 # その他
 ENVIRONMENT=development
@@ -60,30 +85,61 @@ python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
 - `POST /api/chat` - チャットエンドポイント
 - `POST /api/agent/invoke` - LangGraphエージェントの実行
 
+## テスト
+
+```bash
+# 全テスト実行
+poetry run pytest
+
+# 特定のエージェントテスト
+poetry run pytest tests/agents/test_router_agent.py -v
+
+# カバレッジ付き
+poetry run pytest --cov=agents --cov-report=html
+```
+
+## コード品質
+
+```bash
+# フォーマット
+poetry run black .
+
+# リンター
+poetry run ruff check .
+
+# 型チェック
+poetry run mypy .
+```
+
 ## プロジェクト構造
 
 ```
 backend/
 ├── main.py                 # FastAPIアプリケーション
-├── agents/                 # LangGraphエージェント
+├── agents/                 # LangGraphエージェント（9種）
 │   ├── __init__.py
-│   ├── router_agent.py
-│   ├── business_info_agent.py
-│   └── ...
+│   ├── router_agent.py           # クエリルーティング
+│   ├── business_info_agent.py    # 営業情報
+│   ├── facility_agent.py         # 設備情報
+│   ├── event_agent.py            # イベント情報
+│   ├── slide_agent.py            # スライド表示
+│   ├── general_knowledge_agent.py # Web検索
+│   ├── memory_agent.py           # 会話履歴
+│   ├── clarification_agent.py    # 曖昧解消
+│   ├── voice_agent.py            # 音声処理
+│   └── character_control_agent.py # VRM制御
 ├── workflows/              # LangGraphワークフロー
 │   ├── __init__.py
 │   └── main_workflow.py
 ├── tools/                  # エージェントツール
-│   ├── __init__.py
 │   └── ...
 ├── models/                 # データモデル
-│   ├── __init__.py
 │   └── ...
 ├── utils/                  # ユーティリティ
-│   ├── __init__.py
 │   └── ...
-└── tests/                  # テスト
-    └── ...
+└── tests/                  # テスト（62件）
+    ├── agents/             # エージェントテスト
+    └── utils/              # ユーティリティテスト
 ```
 
 ## 📖 関連ドキュメント
