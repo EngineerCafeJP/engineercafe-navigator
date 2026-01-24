@@ -17,7 +17,7 @@ help:
 	@echo "$(CYAN)Engineer Cafe Navigator - Development Commands$(NC)"
 	@echo ""
 	@echo "$(GREEN)Setup:$(NC)"
-	@echo "  make setup              - Initial project setup (mise + Docker build)"
+	@echo "  make setup              - Initial project setup (mise + dependencies + Docker build)"
 	@echo "  make install            - Install dependencies (mise-based)"
 	@echo ""
 	@echo "$(GREEN)Development:$(NC)"
@@ -45,7 +45,9 @@ setup:
 	@echo "$(CYAN)Setting up Engineer Cafe Navigator...$(NC)"
 	@echo "$(YELLOW)Step 1: Installing mise tools...$(NC)"
 	mise install
-	@echo "$(YELLOW)Step 2: Building Docker images...$(NC)"
+	@echo "$(YELLOW)Step 2: Installing dependencies...$(NC)"
+	@$(MAKE) install
+	@echo "$(YELLOW)Step 3: Building Docker images...$(NC)"
 	docker-compose build
 	@echo "$(GREEN)✓ Setup complete!$(NC)"
 	@echo "$(CYAN)Run 'make dev' to start development servers$(NC)"
