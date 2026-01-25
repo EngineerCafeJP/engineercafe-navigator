@@ -163,16 +163,32 @@ class LanguageProcessor:
         )
 
     def _build_result(
-        self, language: SupportedLanguage, confidence: float, has_latin: bool
+        self,
+        language: SupportedLanguage,
+        confidence: float,
+        is_mixed: bool = False,
+        secondary: SupportedLanguage | None = None,
     ) -> LanguageDetectionResult:
-        """LanguageDetectionResult を構築する（共通処理）"""
-        is_mixed = (language != "en") and has_latin
+        """
+        LanguageDetectionResult を構築する（共通処理）
+
+        Args:
+            language: 検出された主言語
+            confidence: 信頼度スコア（0.0-1.0）
+            is_mixed: 混合言語かどうか
+            secondary: 副言語（混合言語の場合）
+
+        Returns:
+            LanguageDetectionResult: 構築された検出結果
+        """
         return {
             "detected_language": language,
             "confidence": confidence,
             "is_mixed": is_mixed,
             "languages": (
-                {"primary": language, "secondary": "en"} if is_mixed else {"primary": language}
+                {"primary": language, "secondary": secondary}
+                if is_mixed and secondary
+                else {"primary": language}
             ),
         }
 
@@ -208,9 +224,7 @@ class LanguageProcessor:
             ),
             "en": a.en_keyword_count + (1 if a.has_latin else 0),
             "zh": (
-                (2 if a.has_cjk else 0)
-                + a.zh_keyword_count
-                - (1 if a.has_japanese_chars else 0)
+                (2 if a.has_cjk else 0) + a.zh_keyword_count - (1 if a.has_japanese_chars else 0)
             ),
             "ko": (2 if a.has_hangul else 0) + a.ko_keyword_count,
         }
@@ -224,12 +238,11 @@ class LanguageProcessor:
 
         # スコアがすべて 0 の場合はフォールバック
         if primary_score == 0:
-            return {
-                "detected_language": self.default_language,
-                "confidence": 0.5,
-                "is_mixed": False,
-                "languages": {"primary": self.default_language},
-            }
+            return self._build_result(
+                language=self.default_language,
+                confidence=0.5,
+                is_mixed=False,
+            )
 
         # ---------------------------------------------------------------------
         # 3. 混合言語判定（TS版の isMixed 相当）
@@ -247,18 +260,14 @@ class LanguageProcessor:
             confidence = 0.6
 
         # ---------------------------------------------------------------------
-        # 5. 結果構築
+        # 5. 結果構築（_build_result を使用）
         # ---------------------------------------------------------------------
-        return {
-            "detected_language": primary,
-            "confidence": confidence,
-            "is_mixed": is_mixed,
-            "languages": (
-                {"primary": primary, "secondary": secondary}
-                if is_mixed
-                else {"primary": primary}
-            ),
-        }
+        return self._build_result(
+            language=primary,
+            confidence=confidence,
+            is_mixed=is_mixed,
+            secondary=secondary if is_mixed else None,
+        )
 
     async def detect(self, text: str, use_llm: bool = False) -> LanguageCode:
         """
