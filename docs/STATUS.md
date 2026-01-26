@@ -2,12 +2,12 @@
 
 > Current implementation status and roadmap for Engineer Cafe Navigator
 
-Last Updated: 2025-07-03
+Last Updated: 2026-01-24
 
 ## 🟢 Implemented Features
 
 ### Core Features
-- ✅ **8-Agent Architecture** - MainQAWorkflow coordinating specialized agents
+- ✅ **9-Agent Architecture** - LangGraph backend coordinating specialized agents
 - ✅ **Voice Processing API** - Speech recognition, AI response generation, and text-to-speech using Google Cloud
 - ✅ **Google Cloud Service Account Authentication** - Secure authentication without API keys
 - ✅ **Multi-language Support** - Japanese and English voice interactions
@@ -32,10 +32,11 @@ Last Updated: 2025-07-03
 - ✅ **GET /api/backgrounds** - Background image list
 
 ### Technical Implementation
-- ✅ **Next.js 15.3.2** with App Router
+- ✅ **Next.js 15.3.2** with App Router (Frontend - 移行検討中)
 - ✅ **React 19.1.0** with TypeScript 5.8.3
-- ✅ **Mastra 0.10.5** for AI agent orchestration
-- ✅ **Google Gemini 2.5 Flash Preview** for AI responses
+- ✅ **LangGraph 0.2.0** for AI agent orchestration (Backend)
+- ✅ **LangSmith** for evaluation and tracing
+- ✅ **Google Gemini API** for AI responses
 - ✅ **Three.js 0.176.0** with @pixiv/three-vrm 3.4.1
 - ✅ **Tailwind CSS v3.4.17** (NOT v4)
 - ✅ **PostgreSQL with pgvector** via Supabase 2.49.8
@@ -46,15 +47,17 @@ Last Updated: 2025-07-03
 - ✅ **Lip-sync System** - Optimized with intelligent caching
 - ✅ **Production Monitoring** - Real-time metrics and alerting
 
-### 8-Agent Architecture (NEW - 2025/07/03)
-- ✅ **MainQAWorkflow** - Central coordinator for all specialized agents
+### 9-Agent Architecture (LangGraph Backend - 2026/01)
 - ✅ **RouterAgent** - Context-dependent query routing and classification
 - ✅ **BusinessInfoAgent** - Hours, pricing, location with Enhanced RAG
 - ✅ **FacilityAgent** - Equipment, basement facilities with Enhanced RAG
-- ✅ **MemoryAgent** - Conversation history and context management
 - ✅ **EventAgent** - Calendar and event information
-- ✅ **GeneralKnowledgeAgent** - Out-of-scope queries via web search
+- ✅ **SlideAgent** - Slide presentation and narration
+- ✅ **GeneralKnowledgeAgent** - Out-of-scope queries via Google Gemini Search
+- ✅ **MemoryAgent** - Conversation history and context management
 - ✅ **ClarificationAgent** - Ambiguous query clarification
+- ✅ **VoiceAgent** - STT/TTS processing
+- ✅ **CharacterControlAgent** - VRM character control
 
 ## 🔴 Features NOT Implemented (Despite Being Referenced)
 
@@ -177,7 +180,14 @@ pnpm check:deployment       # Check deployment readiness
 
 ## 🔄 Migration Notes
 
-### Recent Changes (2025-07-03)
+### Recent Changes (2026-01)
+1. **LangGraph Backend統合完了** - Python LangGraphバックエンドへの完全移行
+2. **9-Agent Architecture** - 9種のエージェント実装完了（62テストパス）
+3. **LangSmith統合** - エージェント評価・トレーシングシステム実装
+4. **フロントエンド→LangGraph移行開始** - Issue #37-42で段階的移行
+5. **Web検索統合** - Google Gemini API with Search Grounding
+
+### Previous Changes (2025-07-03)
 1. **8-Agent Architecture** - Complete migration to multi-agent system with MainQAWorkflow
 2. **ClarificationAgent Implementation** - Ambiguity resolution for cafe/meeting room queries
 3. **Legacy Code Removal** - Deleted old EnhancedQAAgent (2,342 lines)

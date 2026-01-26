@@ -139,6 +139,43 @@ config = ModelConfig(
 )
 ```
 
+### フォールバック動作の詳細
+
+OpenRouterProviderは以下のエラーケースで自動的にフォールバックを試行します:
+
+1. **HTTPステータスエラー**（500, 503など）:
+   - プライマリモデルのAPI呼び出しが失敗
+   - ログに `[OpenRouter] HTTP error (status XXX), trying fallback: ...` を出力
+   - フォールバックモデルで再試行
+
+2. **ネットワークエラー**（タイムアウト、接続エラーなど）:
+   - ネットワーク障害でリクエストが完了しない
+   - ログに `[OpenRouter] Network error, trying fallback: ...` を出力
+   - フォールバックモデルで再試行
+
+3. **無限ループ防止**:
+   - 各リクエストで最大1回のフォールバック試行
+   - `_fallback_count` パラメータで再帰呼び出しを制限
+   - フォールバック後も失敗した場合は `OpenRouterError` を発生
+
+### フォールバックの例
+
+```python
+# 例: Gemini 2.5 Flash → GPT-4o Mini フォールバック
+config = ModelConfig(
+    model_id=SupportedModel.GEMINI_2_5_FLASH,
+    fallback_model=SupportedModel.GPT_4O_MINI,
+)
+
+# プライマリモデル失敗時、自動的にフォールバックが試行される
+try:
+    response = await provider.generate(messages, config)
+    # フォールバック成功 → レスポンスが返る
+except OpenRouterError as e:
+    # フォールバックも失敗 → エラーが発生
+    print(f"Both primary and fallback failed: {e}")
+```
+
 ## エラーハンドリング
 
 ```python

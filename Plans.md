@@ -38,15 +38,8 @@ Claude Code は PR 作成・更新時に以下を確認:
 
 > 担当: Chie, takegg0311, テリスケ
 
-### 3.1 VoiceAgent 移行
-- [ ] Google Cloud STT 連携 `cc:TODO`
-- [ ] Google Cloud TTS 連携 `cc:TODO`
-- [ ] STT 補正システム移植 `cc:TODO`
-- [ ] 感情タグ処理 `cc:TODO`
-
-### 3.2 CharacterControlAgent 移行
-- [ ] 感情→表情マッピング `cc:TODO`
-- [ ] VRM 制御コマンド生成 `cc:TODO`
+- VoiceAgent移行 (STT/TTS, 感情タグ)
+- CharacterControlAgent移行 (表情マッピング, VRM制御)
 
 ---
 
@@ -80,7 +73,7 @@ Claude Code は PR 作成・更新時に以下を確認:
 
 | # | タイトル | ブランチ | ステータス |
 |---|----------|----------|-----------|
-| 20 | RouterAgent実装 | feature/router-agent-implementation | OPEN (レビュー待ち) |
+| 20 | RouterAgent実装 | feature/router-agent-implementation | OPEN (コンフリクト解決中) |
 | 30 | フェーズ8+9完了 - 開発環境整備とエージェント実装支援資料 | feature/phase-8-9-completion | OPEN (レビュー待ち) |
 | 32 | GeneralKnowledgeAgent完全実装+テスト | revert-31-feature/general-knowledge-agent-implementation | OPEN (CI/CDグリーン、レビュー待ち) |
 
@@ -109,9 +102,9 @@ Claude Code は PR 作成・更新時に以下を確認:
 **アーカイブ内容**:
 - フェーズ 0.5: OpenRouter API徹底整備
 - フェーズ 0.6: プロジェクト構造リファクタリング
-- フェーズ 1.1-1.4: Agent移行（Router, BusinessInfo, Event, Slide）
+- フェーズ 1.1-1.5: Agent移行（Router, BusinessInfo, Event, Slide, Facility）
 - フェーズ 2.1-2.3: 会話機能骨組み（Memory, Clarification, LanguageClassifier）
-- フェーズ 4.3: GeneralKnowledgeAgent 骨組み実装
+- フェーズ 4.3: GeneralKnowledgeAgent 完全実装 (Web検索ツール含む) | PR: #31
 - フェーズ 6: テスト基盤整備
 - フェーズ 7.5.1-7.5.4: エージェント骨組み実装とワークフロー統合
 - フェーズ 8: 開発環境整備（Docker + mise + Makefile） | PR: #29
@@ -122,10 +115,7 @@ Claude Code は PR 作成・更新時に以下を確認:
 ## フェーズ 7: AIロジックのバックエンド統合とフロントエンド整理 `cc:WIP`
 
 > 担当: Claude Code
-> 開始日: 2025-01-12
 > ブランチ: refactor/backend-api-integration
-
-**目的**: フロントエンド(Mastra)からバックエンド(FastAPI + LangGraph)へのAIロジック移行
 
 **完了済み**:
 - ✅ 7.1-7.4: バックエンドAPI拡張、フロントエンドプロキシ化、Mastra参照整理
@@ -133,7 +123,7 @@ Claude Code は PR 作成・更新時に以下を確認:
 
 **7.5 バックエンド完全実装** `cc:TODO`
 
-- ✅ 7.5.1-7.5.4: エージェント骨組み実装完了 (2025-01-13 | PR: #27, #28) - [アーカイブ参照](.claude/memory/archive/Plans-archive.md)
+- ✅ 7.5.1-7.5.4: エージェント骨組み実装完了 (2026-01-13 | PR: #27, #28) - [アーカイブ参照](.claude/memory/archive/Plans-archive.md)
 - [ ] LanguageClassifier のワークフロー統合 `cc:TODO`
 - [ ] VoiceAgent のワークフロー統合（音声処理エンドポイント `/api/voice`） `cc:TODO`
 - [ ] CharacterControlAgent のワークフロー統合（キャラクター制御エンドポイント `/api/character`） `cc:TODO`

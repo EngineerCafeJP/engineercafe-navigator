@@ -18,17 +18,20 @@
 
 import pytest  # noqa: F401
 from unittest.mock import Mock, AsyncMock  # noqa: F401
-from tests.utils.test_helpers import (  # noqa: F401
-    create_mock_agent_response,
-    assert_agent_response,
-    create_test_query,
-)
-from tests.utils.mock_helpers import create_mock_openrouter_provider  # noqa: F401
-from tests.utils.assertion_helpers import (  # noqa: F401
-    assert_response_structure,
-    assert_emotion_tag,
-    assert_metadata_contains,
-)
+
+# NOTE: テンプレートファイルのため、インポートはコメントアウトしています
+# 実際のテストを作成する際は、以下のように backend プレフィックスを使用してください:
+# from backend.tests.utils.test_helpers import (
+#     create_mock_agent_response,
+#     assert_agent_response,
+#     create_test_query,
+# )
+# from backend.tests.utils.mock_helpers import create_mock_openrouter_provider
+# from backend.tests.utils.assertion_helpers import (
+#     assert_response_structure,
+#     assert_emotion_tag,
+#     assert_metadata_contains,
+# )
 
 # TODO: 実際のエージェントをインポート
 # from agents.your_agent import YourAgent
