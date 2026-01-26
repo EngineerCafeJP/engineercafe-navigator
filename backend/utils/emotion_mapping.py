@@ -87,6 +87,10 @@ class EmotionMapping:
         "inquisitive": ("surprised", 0.8),
     }
 
+    DEFAULT_EXPRESSION: SupportedExpression = "neutral"
+    DEFAULT_INTENSITY: float = 1.0
+    DEFAULT_EXPRESSION_DURATION: float = 2.0
+
     # VRM表情→アニメーションマッピングテーブル
     ANIMATION_MAP: Dict[SupportedExpression, str] = {
         "neutral": "idle",
@@ -96,6 +100,8 @@ class EmotionMapping:
         "surprised": "greeting",
         "relaxed": "thinking",
     }
+
+    DEFAULT_ANIMATION: str = "idle"
 
     @classmethod
     def map_to_expression(cls, emotion: str) -> SupportedExpression:
@@ -210,7 +216,10 @@ class EmotionMapping:
             0.8
         """
         if not emotion or not isinstance(emotion, str):
-            return {"expression": "neutral", "intensity": 1.0}
+            return {
+                "expression": cls.DEFAULT_EXPRESSION,
+                "intensity": cls.DEFAULT_INTENSITY,
+            }
 
         normalized_emotion = emotion.lower().strip()
 
@@ -220,7 +229,7 @@ class EmotionMapping:
         else:
             # EXPRESSION_MAPに定義されていない場合、
             # "neutral"をデフォルトとして使用
-            expression, intensity = cls.EXPRESSION_MAP["neutral"]
+            expression, intensity = cls.EXPRESSION_MAP[cls.DEFAULT_EXPRESSION]
 
         return {
             "expression": expression,

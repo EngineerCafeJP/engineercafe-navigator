@@ -36,6 +36,11 @@ class CharacterControlAgent:
     このクラスは骨組みのみを提供します。完全実装は専門エンジニア（Chie, takegg0311）が担当。
     """
 
+    DEFAULT_EXPRESSION: str = EmotionMapping.DEFAULT_EXPRESSION
+    DEFAULT_INTENSITY: float = EmotionMapping.DEFAULT_INTENSITY
+    DEFAULT_EXPRESSION_DURATION: float = EmotionMapping.DEFAULT_EXPRESSION_DURATION
+    DEFAULT_ANIMATION: str = EmotionMapping.DEFAULT_ANIMATION
+
     def __init__(self):
         """
         初期化
@@ -45,8 +50,10 @@ class CharacterControlAgent:
         logger.info("CharacterControlAgent初期化開始")
 
         # 現在の状態変数の初期化
-        self.current_expression: str = "neutral"
-        self.current_animation: str = "idle"
+        self.current_expression: str = self.DEFAULT_EXPRESSION
+        self.current_intensity: float = self.DEFAULT_INTENSITY
+        self.current_expression_duration: float = self.DEFAULT_EXPRESSION_DURATION
+        self.current_animation: str = self.DEFAULT_ANIMATION
 
         # リップシンク関連のプレースホルダー（将来の拡張用）
         # TODO: リップシンク解析器の実装
@@ -56,6 +63,8 @@ class CharacterControlAgent:
 
         logger.info(
             f"CharacterControlAgent初期化完了: expression={self.current_expression}, "
+            f"intensity={self.current_intensity}, "
+            f"expression_duration={self.current_expression_duration}, "
             f"animation={self.current_animation}"
         )
 
@@ -69,21 +78,68 @@ class CharacterControlAgent:
         Returns:
             表情パラメータ
             {
-                "expression": str,  # 表情名（"smile", "sad", "neutral"等）
+                "expression": str,  # 表情名（"neutral", "happy", "sad"等）
                 "intensity": float,  # 表情の強度（0.0～1.0）
                 "duration": float  # 表情の持続時間（秒）
             }
 
-        TODO:
-        - 感情タグと表情の詳細マッピング
-        - 表情の強度計算（感情の程度に応じて調整）
-        - 複数表情のブレンド
+        Examples:
+            >>> agent = CharacterControlAgent()
+            >>> result = agent.map_emotion_to_expression("happy")
+            >>> result["expression"]
+            'happy'
+            >>> result["intensity"]
+            0.8
         """
-        logger.info(f"感情→表情マッピング（骨組み）: {emotion}")
+        try:
+            # 入力検証
+            if not emotion or not isinstance(emotion, str):
+                logger.warning(
+                    f"無効な感情値: {emotion}, "
+                    f"型: {type(emotion).__name__}. "
+                    "デフォルト値'neutral'を使用します。"
+                )
+                emotion = "neutral"
 
-        # TODO: 実装
-        # プレースホルダー
-        return {"expression": "neutral", "intensity": 0.5, "duration": 2.0}
+            # 1. 感情→VRM表情と強度の取得
+            # EmotionMappingを使用して感情を標準VRM表情と強度にマッピング
+            expression_data = EmotionMapping.get_expression_with_intensity(emotion)
+            mapped_expression = expression_data["expression"]
+            intensity = expression_data["intensity"]
+
+            # 将来の拡張用: intensityパラメータが追加された場合の処理
+            # Mastra版では、intensity < 0.3 の場合はneutralを返す
+            # TODO: メソッドシグネチャにintensityパラメータを追加する場合の処理
+            # if intensity is not None and intensity < 0.3:
+            #     mapped_expression = "neutral"
+
+            # 2. durationの設定（デフォルト値を使用）
+            duration = self.DEFAULT_EXPRESSION_DURATION
+
+            logger.info(
+                f"感情→表情マッピング: '{emotion}' -> "
+                f"expression='{mapped_expression}', "
+                f"intensity={intensity}, duration={duration}s"
+            )
+
+            return {
+                "expression": mapped_expression,
+                "intensity": intensity,
+                "duration": duration,
+            }
+
+        except Exception as e:
+            logger.error(
+                f"感情→表情マッピングエラー: emotion={emotion}, "
+                f"error={e}",
+                exc_info=True,
+            )
+            # エラー時はデフォルト値を返す（EmotionMappingから取得）
+            return {
+                "expression": self.DEFAULT_EXPRESSION,
+                "intensity": self.DEFAULT_INTENSITY,
+                "duration": self.DEFAULT_EXPRESSION_DURATION,
+            }
 
     def generate_vrm_command(self, expression: str, intensity: float = 1.0) -> Dict[str, Any]:
         """
@@ -247,8 +303,14 @@ class CharacterControlAgent:
         except Exception as e:
             logger.error(f"CharacterControlAgent処理エラー（骨組み）: {e}", exc_info=True)
             # TODO: エラーハンドリング
+            # エラー時はデフォルト値を返す（EmotionMappingから取得）
+            default_data = EmotionMapping.get_expression_with_intensity("neutral")
             return {
-                "expression": {"expression": "neutral", "intensity": 0.5, "duration": 2.0},
+                "expression": {
+                    "expression": default_data["expression"],
+                    "intensity": default_data["intensity"],
+                    "duration": self.DEFAULT_EXPRESSION_DURATION,
+                },
                 "animation": "idle",
                 "vrm_command": {},
                 "lipsync": [],
