@@ -511,7 +511,7 @@ class CharacterControlAgent:
             logger.error(
                 f"VRM制御コマンド生成エラー: expression={expression}, "
                 f"intensity={intensity}, error={e}",
-                exc_info=True,
+                exc_info=False,  # exc_info=True を False に変更してログフォーマッターの max() 呼び出しを回避
             )
             # エラー時はデフォルト値を返す
             return {
