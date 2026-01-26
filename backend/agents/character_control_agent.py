@@ -20,7 +20,7 @@ TODO (専門エンジニア - Chie, takegg0311):
 import logging
 from typing import Dict, Any, Optional, List
 
-from backend.utils.emotion_mapping import EmotionMapping, SupportedEmotion
+from backend.utils.emotion_mapping import EmotionMapping, SupportedExpression
 
 # TODO: 実装時に必要なインポート
 # from llm.openrouter import OpenRouterProvider
