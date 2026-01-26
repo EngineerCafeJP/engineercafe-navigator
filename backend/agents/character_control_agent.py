@@ -18,9 +18,12 @@ TODO (専門エンジニア - Chie, takegg0311):
 """
 
 import logging
+import math
+import random
 from typing import Dict, Any, Optional, List
 
 from backend.utils.emotion_mapping import EmotionMapping, SupportedExpression
+from backend.utils.kanji_converter import KanjiConverter
 
 # TODO: 実装時に必要なインポート
 # from llm.openrouter import OpenRouterProvider
@@ -54,6 +57,9 @@ class CharacterControlAgent:
         self.current_intensity: float = self.DEFAULT_INTENSITY
         self.current_expression_duration: float = self.DEFAULT_EXPRESSION_DURATION
         self.current_animation: str = self.DEFAULT_ANIMATION
+
+        # 漢字→読みカナ変換ユーティリティの初期化
+        self._kanji_converter = KanjiConverter()
 
         # リップシンク関連のプレースホルダー（将来の拡張用）
         # TODO: リップシンク解析器の実装
@@ -205,22 +211,187 @@ class CharacterControlAgent:
         Returns:
             リップシンクデータ（タイムスタンプと口の形状のリスト）
             [
-                {"time": 0.0, "viseme": "A"},
-                {"time": 0.1, "viseme": "I"},
+                {
+                    "time": float,        # タイムスタンプ（秒）
+                    "volume": float,      # 音量（0.0-1.0）
+                    "mouthOpen": float,   # 口の開き具合（0.0-1.0）
+                    "mouthShape": str     # 口の形状（"A", "I", "U", "E", "O", "Closed"）
+                },
                 ...
             ]
 
-        TODO:
-        - テキストから音素（Phoneme）を抽出
-        - 音素から口の形状（Viseme）にマッピング
-        - タイムスタンプの計算
-        - 音声データとの同期
+        Examples:
+            >>> agent = CharacterControlAgent()
+            >>> data = agent.generate_lipsync_data(1.0, "Hello")
+            >>> len(data) > 0
+            True
+            >>> data[0]["mouthShape"] in ["A", "I", "U", "E", "O", "Closed"]
+            True
         """
-        logger.info(f"リップシンクデータ生成（骨組み）: duration={audio_duration}s")
+        try:
+            logger.info(
+                f"リップシンクデータ生成開始: duration={audio_duration}s, "
+                f"text_length={len(text) if text else 0}"
+            )
 
-        # TODO: 実装
-        # プレースホルダー
-        return []
+            # 1. バリデーション
+            # audio_durationの検証
+            if not isinstance(audio_duration, (int, float)) or audio_duration <= 0:
+                logger.warning(
+                    f"無効な音声長: {audio_duration}, 型: {type(audio_duration).__name__}. "
+                    "フォールバック実装を使用します。"
+                )
+                return self._generate_fallback_lipsync(audio_duration if audio_duration > 0 else 1.0)
+
+            # textの検証
+            if not text or not isinstance(text, str) or not text.strip():
+                logger.warning(
+                    f"テキストが空または無効です: text={text}. "
+                    "フォールバック実装を使用します。"
+                )
+                return self._generate_fallback_lipsync(audio_duration)
+
+            # 2. テキストベースのリップシンクデータ生成
+            frames = self._generate_visemes_from_text(text, audio_duration)
+
+            logger.info(f"リップシンクデータ生成完了: frames={len(frames)}")
+
+            return frames
+
+        except Exception as e:
+            logger.error(
+                f"リップシンクデータ生成エラー: duration={audio_duration}, "
+                f"text_length={len(text) if text else 0}, error={e}",
+                exc_info=True,
+            )
+            # エラー時はフォールバック実装を返す
+            return self._generate_fallback_lipsync(audio_duration)
+
+    def _generate_visemes_from_text(self, text: str, duration: float) -> List[Dict[str, Any]]:
+        """
+        テキストから口の形状（Viseme）を生成
+
+        Args:
+            text: 発話テキスト
+            duration: 音声の長さ（秒）
+
+        Returns:
+            リップシンクフレームのリスト
+        """
+        frames: List[Dict[str, Any]] = []
+        frame_interval = 0.05  # 50ms間隔
+        frame_count = math.floor(duration / frame_interval)
+
+        # テキストを単語に分割（空白文字で分割）
+        words = text.lower().strip().split()
+
+        for i in range(frame_count):
+            time = i * frame_interval
+            progress = time / duration if duration > 0 else 0
+
+            # 現在の単語を決定
+            current_word_index = math.floor(progress * len(words)) if words else 0
+            current_word = words[current_word_index] if current_word_index < len(words) else ""
+
+            # 単語内の母音を検出して口の形状を決定
+            mouth_shape = self._detect_mouth_shape_from_word(current_word)
+
+            # 音量と口の開き具合を設定（単語がある場合は0.3-0.7の範囲）
+            if current_word:
+                volume = 0.3 + random.random() * 0.4
+                mouth_open = volume
+            else:
+                volume = 0.0
+                mouth_open = 0.0
+
+            frames.append(
+                {
+                    "time": time,
+                    "volume": volume,
+                    "mouthOpen": mouth_open,
+                    "mouthShape": mouth_shape,
+                }
+            )
+
+        return frames
+
+    def _detect_mouth_shape_from_word(self, word: str) -> str:
+        """
+        単語から口の形状を検出
+
+        漢字を含む単語の場合は、KanjiConverterを使用して読みカナに変換してから母音を検出します。
+
+        Args:
+            word: 単語（小文字、漢字を含む可能性がある）
+
+        Returns:
+            口の形状（"A", "I", "U", "E", "O", "Closed"）
+        """
+        if not word:
+            return "Closed"
+
+        # 漢字を含む場合は読みカナに変換（KanjiConverterを使用）
+        processed_word = self._kanji_converter.convert_to_hiragana(word)
+
+        # 英語の母音を検出
+        if "a" in processed_word.lower():
+            return "A"
+        elif "i" in processed_word.lower():
+            return "I"
+        elif "u" in processed_word.lower():
+            return "U"
+        elif "e" in processed_word.lower():
+            return "E"
+        elif "o" in processed_word.lower():
+            return "O"
+
+        # 日本語の母音を検出（ひらがな・カタカナ）
+        if "あ" in processed_word or "ア" in processed_word:
+            return "A"
+        elif "い" in processed_word or "イ" in processed_word:
+            return "I"
+        elif "う" in processed_word or "ウ" in processed_word:
+            return "U"
+        elif "え" in processed_word or "エ" in processed_word:
+            return "E"
+        elif "お" in processed_word or "オ" in processed_word:
+            return "O"
+
+        # 母音がない場合は閉じた口
+        return "Closed"
+
+    def _generate_fallback_lipsync(self, duration: float) -> List[Dict[str, Any]]:
+        """
+        フォールバックリップシンクデータを生成
+
+        テキストが無効な場合やエラー時に使用される単純な口パクパターン。
+
+        Args:
+            duration: 音声の長さ（秒）
+
+        Returns:
+            リップシンクフレームのリスト
+        """
+        frames: List[Dict[str, Any]] = []
+        frame_interval = 0.05  # 50ms間隔
+        frame_count = math.floor(duration / frame_interval)
+
+        for i in range(frame_count):
+            time = i * frame_interval
+
+            # 200msごとにA/Closedを交互に切り替え
+            mouth_shape = "A" if (math.floor(time * 10) % 4) < 2 else "Closed"
+
+            frames.append(
+                {
+                    "time": time,
+                    "volume": 0.5,
+                    "mouthOpen": 0.5,
+                    "mouthShape": mouth_shape,
+                }
+            )
+
+        return frames
 
     def combine_emotions(self, emotions: List[str]) -> str:
         """
