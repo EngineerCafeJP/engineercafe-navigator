@@ -141,56 +141,58 @@ class CharacterControlAgent:
                 "duration": self.DEFAULT_EXPRESSION_DURATION,
             }
 
-    def generate_vrm_command(self, expression: str, intensity: float = 1.0) -> Dict[str, Any]:
-        """
-        VRM制御コマンドを生成
-
-        Args:
-            expression: 表情名
-            intensity: 表情の強度（0.0～1.0）
-
-        Returns:
-            VRM制御コマンド
-            {
-                "command": str,  # コマンドタイプ（"setExpression", "playAnimation"等）
-                "params": Dict[str, Any]  # パラメータ
-            }
-
-        TODO:
-        - VRMライブラリに応じたコマンド形式生成
-        - BlendShapeの制御パラメータ生成
-        - モーフターゲットの重み計算
-        """
-        logger.info(f"VRM制御コマンド生成（骨組み）: {expression}, intensity={intensity}")
-
-        # TODO: 実装
-        # プレースホルダー
-        return {
-            "command": "setExpression",
-            "params": {"expression": expression, "intensity": intensity},
-        }
-
     def select_animation(self, emotion: str, context: Optional[Dict[str, Any]] = None) -> str:
         """
         感情に応じたアニメーションを選択
 
         Args:
-            emotion: 感情タグ
-            context: コンテキスト情報（オプション）
+            emotion: 感情タグ（"happy", "sad", "neutral"等）
+            context: コンテキスト情報（将来の拡張用、現時点では未使用）
 
         Returns:
-            アニメーション名
+            アニメーション名（"idle", "greeting", "thinking", "explaining"等）
 
-        TODO:
-        - 感情とアニメーションのマッピング
-        - コンテキストに応じたアニメーション選択（挨拶、説明、質問等）
-        - ランダム性の導入（同じ感情でも毎回違う動きをする）
+        Examples:
+            >>> agent = CharacterControlAgent()
+            >>> agent.select_animation("happy")
+            'greeting'
+            >>> agent.select_animation("sad")
+            'thinking'
+            >>> agent.select_animation("neutral")
+            'idle'
+
+        Note:
+            contextパラメータは将来の拡張用として保持されています。
+            将来的には、コンテキストに応じたアニメーション選択や
+            ランダム性の導入が予定されています。
         """
-        logger.info(f"アニメーション選択（骨組み）: {emotion}")
+        try:
+            logger.info(f"アニメーション選択開始: emotion={emotion}")
 
-        # TODO: 実装
-        # プレースホルダー
-        return "idle"
+            # 1. emotionのバリデーション
+            if not emotion or not isinstance(emotion, str):
+                logger.warning(
+                    f"無効な感情値: {emotion}, 型: {type(emotion).__name__}. "
+                    f"デフォルト値'{self.DEFAULT_ANIMATION}'を使用します。"
+                )
+                return self.DEFAULT_ANIMATION
+
+            # 2. EmotionMappingを使用してアニメーション名を取得
+            animation = EmotionMapping.get_animation_for_emotion(emotion)
+
+            logger.info(
+                f"アニメーション選択完了: emotion={emotion}, animation={animation}"
+            )
+
+            return animation
+
+        except Exception as e:
+            logger.error(
+                f"アニメーション選択エラー: emotion={emotion}, error={e}",
+                exc_info=True,
+            )
+            # エラー時はデフォルト値を返す
+            return self.DEFAULT_ANIMATION
 
     def generate_lipsync_data(self, audio_duration: float, text: str) -> List[Dict[str, Any]]:
         """
@@ -240,6 +242,35 @@ class CharacterControlAgent:
         # TODO: 実装
         # プレースホルダー: 最初の感情を返す
         return emotions[0] if emotions else "neutral"
+
+    def generate_vrm_command(self, expression: str, intensity: float = 1.0) -> Dict[str, Any]:
+        """
+        VRM制御コマンドを生成
+
+        Args:
+            expression: 表情名
+            intensity: 表情の強度（0.0～1.0）
+
+        Returns:
+            VRM制御コマンド
+            {
+                "command": str,  # コマンドタイプ（"setExpression", "playAnimation"等）
+                "params": Dict[str, Any]  # パラメータ
+            }
+
+        TODO:
+        - VRMライブラリに応じたコマンド形式生成
+        - BlendShapeの制御パラメータ生成
+        - モーフターゲットの重み計算
+        """
+        logger.info(f"VRM制御コマンド生成（骨組み）: {expression}, intensity={intensity}")
+
+        # TODO: 実装
+        # プレースホルダー
+        return {
+            "command": "setExpression",
+            "params": {"expression": expression, "intensity": intensity},
+        }
 
     async def process(
         self,
