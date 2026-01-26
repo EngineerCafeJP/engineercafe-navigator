@@ -414,34 +414,120 @@ class CharacterControlAgent:
         # プレースホルダー: 最初の感情を返す
         return emotions[0] if emotions else "neutral"
 
-    def generate_vrm_command(self, expression: str, intensity: float = 1.0) -> Dict[str, Any]:
+    def generate_vrm_command(
+        self, expression: str, intensity: float = 1.0, animation: Optional[str] = None
+    ) -> Dict[str, Any]:
         """
         VRM制御コマンドを生成
 
         Args:
-            expression: 表情名
+            expression: 表情名（"neutral", "happy", "sad"等）
             intensity: 表情の強度（0.0～1.0）
+            animation: アニメーション名（オプション、humanoid.poseに使用）
 
         Returns:
             VRM制御コマンド
             {
-                "command": str,  # コマンドタイプ（"setExpression", "playAnimation"等）
-                "params": Dict[str, Any]  # パラメータ
+                "expressions": [
+                    {
+                        "name": str,  # 表情名またはViseme名
+                        "value": float,  # 強度（0.0-1.0）
+                        "transition": float  # 遷移時間（秒）
+                    }
+                ],
+                "lookAt": {
+                    "position": {"x": float, "y": float, "z": float},
+                    "target": str  # "camera"等
+                },
+                "humanoid": {
+                    "pose": Optional[str]  # ポーズ名（アニメーション名から決定）
+                }
             }
 
-        TODO:
-        - VRMライブラリに応じたコマンド形式生成
-        - BlendShapeの制御パラメータ生成
-        - モーフターゲットの重み計算
+        Examples:
+            >>> agent = CharacterControlAgent()
+            >>> cmd = agent.generate_vrm_command("happy", 0.8)
+            >>> cmd["expressions"][0]["name"]
+            'happy'
+            >>> cmd["expressions"][0]["value"]
+            0.8
         """
-        logger.info(f"VRM制御コマンド生成（骨組み）: {expression}, intensity={intensity}")
+        try:
+            logger.info(
+                f"VRM制御コマンド生成開始: expression={expression}, "
+                f"intensity={intensity}, animation={animation}"
+            )
 
-        # TODO: 実装
-        # プレースホルダー
-        return {
-            "command": "setExpression",
-            "params": {"expression": expression, "intensity": intensity},
-        }
+            # 1. 入力検証
+            if not expression or not isinstance(expression, str):
+                logger.warning(
+                    f"無効な表情名: {expression}, 型: {type(expression).__name__}. "
+                    "デフォルト値'neutral'を使用します。"
+                )
+                expression = self.DEFAULT_EXPRESSION
+
+            # intensityの範囲チェック
+            if not isinstance(intensity, (int, float)):
+                logger.warning(
+                    f"無効な強度値: {intensity}, 型: {type(intensity).__name__}. "
+                    "デフォルト値1.0を使用します。"
+                )
+                intensity = self.DEFAULT_INTENSITY
+            else:
+                intensity = max(0.0, min(1.0, float(intensity)))
+
+            # 2. メイン表情をexpressions配列に追加
+            expressions: List[Dict[str, Any]] = [
+                {
+                    "name": expression,
+                    "value": intensity,
+                    "transition": self.DEFAULT_EXPRESSION_DURATION,
+                }
+            ]
+
+            # 3. lookAt設定を追加（デフォルトでカメラを向く）
+            look_at: Dict[str, Any] = {
+                "position": {"x": 0, "y": 1.5, "z": 2.0},
+                "target": "camera",
+            }
+
+            # 4. humanoidポーズ設定（アニメーション名から決定）
+            humanoid: Dict[str, Any] = {"pose": animation if animation else None}
+
+            vrm_control: Dict[str, Any] = {
+                "expressions": expressions,
+                "lookAt": look_at,
+                "humanoid": humanoid,
+            }
+
+            logger.info(
+                f"VRM制御コマンド生成完了: expression={expression}, "
+                f"intensity={intensity}, expressions_count={len(expressions)}"
+            )
+
+            return vrm_control
+
+        except Exception as e:
+            logger.error(
+                f"VRM制御コマンド生成エラー: expression={expression}, "
+                f"intensity={intensity}, error={e}",
+                exc_info=True,
+            )
+            # エラー時はデフォルト値を返す
+            return {
+                "expressions": [
+                    {
+                        "name": self.DEFAULT_EXPRESSION,
+                        "value": self.DEFAULT_INTENSITY,
+                        "transition": self.DEFAULT_EXPRESSION_DURATION,
+                    }
+                ],
+                "lookAt": {
+                    "position": {"x": 0, "y": 1.5, "z": 2.0},
+                    "target": "camera",
+                },
+                "humanoid": {"pose": None},
+            }
 
     async def process(
         self,
@@ -460,61 +546,126 @@ class CharacterControlAgent:
             context: コンテキスト情報（オプション）
 
         Returns:
-            制御コマンド
+            制御コマンド（出力フォーマット例に合わせた構造）
             {
-                "expression": Dict[str, Any],  # 表情パラメータ
-                "animation": str,  # アニメーション名
-                "vrm_command": Dict[str, Any],  # VRM制御コマンド
-                "lipsync": List[Dict[str, Any]]  # リップシンクデータ（オプション）
+                "action": str,  # アクションタイプ（"speak"）
+                "vrm_control": {
+                    "expressions": [
+                        {
+                            "name": str,  # 表情名またはViseme名
+                            "value": float,  # 強度（0.0-1.0）
+                            "transition": float  # 遷移時間（秒）
+                        }
+                    ],
+                    "lookAt": {
+                        "position": {"x": float, "y": float, "z": float},
+                        "target": str
+                    },
+                    "humanoid": {
+                        "pose": Optional[str]  # ポーズ名
+                    }
+                },
+                "text": Optional[str]  # 発話テキスト
             }
 
-        TODO:
-        - 感情→表情→VRMコマンドの統合
-        - アニメーション選択
-        - リップシンクデータ生成（音声がある場合）
-        - エラーハンドリング
-        - ログ出力
+        Examples:
+            >>> agent = CharacterControlAgent()
+            >>> result = await agent.process("happy", "こんにちは", 1.0)
+            >>> result["action"]
+            'speak'
+            >>> "vrm_control" in result
+            True
         """
-        logger.info(f"CharacterControlAgent処理開始（骨組み）: emotion={emotion}")
+        logger.info(
+            f"CharacterControlAgent処理開始: emotion={emotion}, "
+            f"text_length={len(text) if text else 0}, "
+            f"audio_duration={audio_duration}"
+        )
 
         try:
-            # TODO: 実装
             # 1. 感情→表情マッピング
             expression_params = self.map_emotion_to_expression(emotion)
+            mapped_expression = expression_params["expression"]
+            expression_intensity = expression_params["intensity"]
 
-            # 2. VRM制御コマンド生成
-            vrm_command = self.generate_vrm_command(
-                expression_params["expression"], expression_params["intensity"]
-            )
-
-            # 3. アニメーション選択
+            # 2. アニメーション選択
             animation = self.select_animation(emotion, context)
 
-            # 4. リップシンクデータ生成（音声がある場合）
-            lipsync_data = []
-            if text and audio_duration:
-                lipsync_data = self.generate_lipsync_data(audio_duration, text)
+            # 3. VRM制御コマンド生成（アニメーション名も渡す）
+            vrm_control = self.generate_vrm_command(
+                mapped_expression, expression_intensity, animation
+            )
 
-            return {
-                "expression": expression_params,
-                "animation": animation,
-                "vrm_command": vrm_command,
-                "lipsync": lipsync_data,
+            # 4. リップシンクデータ生成（音声がある場合）
+            lipsync_data: List[Dict[str, Any]] = []
+            if text and audio_duration:
+                try:
+                    lipsync_data = self.generate_lipsync_data(audio_duration, text)
+
+                    # 5. リップシンクデータからVisemeを抽出してvrm_control.expressionsに追加
+                    if lipsync_data and len(lipsync_data) > 0:
+                        try:
+                            viseme_expression = EmotionMapping.extract_viseme_from_lipsync_data(
+                                lipsync_data
+                            )
+
+                            if viseme_expression:
+                                vrm_control["expressions"].append(viseme_expression)
+
+                                logger.info(
+                                    f"Viseme追加: viseme={viseme_expression['name']}, "
+                                    f"value={viseme_expression['value']}"
+                                )
+                        except Exception as viseme_error:
+                            logger.warning(
+                                f"Viseme追加エラー: {viseme_error}, "
+                                "Visemeなしで続行します。",
+                                exc_info=True,
+                            )
+                except Exception as lipsync_error:
+                    logger.warning(
+                        f"リップシンクデータ生成エラー: {lipsync_error}, "
+                        "リップシンクなしで続行します。",
+                        exc_info=True,
+                    )
+
+            # 6. humanoid.poseをアニメーション名から設定
+            if animation:
+                vrm_control["humanoid"]["pose"] = animation
+
+            # 7. 出力構造を生成（出力フォーマット例に合わせた構造）
+            result: Dict[str, Any] = {
+                "action": "speak",
+                "vrm_control": vrm_control,
             }
 
+            # textパラメータがある場合は追加
+            if text:
+                result["text"] = text
+
+            logger.info(
+                f"CharacterControlAgent処理完了: action={result['action']}, "
+                f"expressions_count={len(vrm_control['expressions'])}, "
+                f"animation={animation}"
+            )
+
+            return result
+
         except Exception as e:
-            logger.error(f"CharacterControlAgent処理エラー（骨組み）: {e}", exc_info=True)
-            # TODO: エラーハンドリング
-            # エラー時はデフォルト値を返す（EmotionMappingから取得）
+            logger.error(
+                f"CharacterControlAgent処理エラー: emotion={emotion}, "
+                f"text_length={len(text) if text else 0}, error={e}",
+                exc_info=True,
+            )
+            # エラー時はデフォルト値を返す
             default_data = EmotionMapping.get_expression_with_intensity("neutral")
+            default_vrm_control = self.generate_vrm_command(
+                default_data["expression"], default_data["intensity"], "idle"
+            )
+
             return {
-                "expression": {
-                    "expression": default_data["expression"],
-                    "intensity": default_data["intensity"],
-                    "duration": self.DEFAULT_EXPRESSION_DURATION,
-                },
-                "animation": "idle",
-                "vrm_command": {},
-                "lipsync": [],
+                "action": "speak",
+                "vrm_control": default_vrm_control,
+                "text": text if text else None,
                 "error": str(e),
             }

@@ -9,7 +9,7 @@ Mastra版の`emotion-mapping.ts`を参考にしたPython実装。
 - frontend/src/_reference/mastra/agents/character-control-agent.ts
 """
 
-from typing import Dict, Literal, Any
+from typing import Dict, Literal, Any, List, Optional
 
 # サポートされているVRM表情タイプ (VRM1.0準拠)
 SupportedExpression = Literal[
@@ -102,6 +102,20 @@ class EmotionMapping:
     }
 
     DEFAULT_ANIMATION: str = "idle"
+
+    # Visemeマッピング（リップシンク用の口形状）
+    # VRMのBlendShape名に対応: A→aa, I→ih, U→ou, E→ee, O→oh, Closed→neutral
+    VISEME_MAPPING: Dict[str, str] = {
+        "A": "aa",
+        "I": "ih",
+        "U": "ou",
+        "E": "ee",
+        "O": "oh",
+        "Closed": "neutral",
+    }
+
+    # Visemeのtransition時間（口の動きは素早く）
+    VISEME_TRANSITION_DURATION: float = 0.1
 
     @classmethod
     def map_to_expression(cls, emotion: str) -> SupportedExpression:
@@ -329,3 +343,72 @@ class EmotionMapping:
             "expression": expression,
             "intensity": normalized_intensity,
         }
+
+    @classmethod
+    def extract_viseme_from_lipsync_data(
+        cls, lipsync_data: List[Dict[str, Any]]
+    ) -> Optional[Dict[str, Any]]:
+        """
+        リップシンクデータからViseme式を抽出
+
+        リップシンクデータの最初のフレームから口形状情報を取得し、
+        VRM制御用のViseme式オブジェクトを生成します。
+
+        Args:
+            lipsync_data: リップシンクデータのリスト
+                [
+                    {
+                        "time": float,
+                        "volume": float,
+                        "mouthOpen": float,
+                        "mouthShape": str  # "A", "I", "U", "E", "O", "Closed"
+                    },
+                    ...
+                ]
+
+        Returns:
+            Viseme式オブジェクト（リップシンクデータが無効な場合はNone）
+            {
+                "name": str,  # Viseme名（"aa", "ih", "ou", "ee", "oh", "neutral"）
+                "value": float,  # 口の開き具合（0.0-1.0）
+                "transition": float  # 遷移時間（秒）
+            }
+
+        Examples:
+            >>> lipsync_data = [
+            ...     {"time": 0.0, "volume": 0.5, "mouthOpen": 0.3, "mouthShape": "A"}
+            ... ]
+            >>> viseme = EmotionMapping.extract_viseme_from_lipsync_data(lipsync_data)
+            >>> viseme["name"]
+            'aa'
+            >>> viseme["value"]
+            0.3
+        """
+        if not lipsync_data or len(lipsync_data) == 0:
+            return None
+
+        try:
+            # 最初のフレームからmouthShapeとmouthOpenを取得
+            first_frame = lipsync_data[0]
+            mouth_shape = first_frame.get("mouthShape", "Closed")
+            mouth_open = first_frame.get("mouthOpen", 0.0)
+
+            # mouth_openの値を検証（0.0-1.0の範囲に制限）
+            if not isinstance(mouth_open, (int, float)):
+                mouth_open = 0.0
+            else:
+                mouth_open = max(0.0, min(1.0, float(mouth_open)))
+
+            # Visemeマッピングを適用
+            viseme_name = cls.VISEME_MAPPING.get(mouth_shape, "neutral")
+
+            # Viseme式オブジェクトを生成
+            return {
+                "name": viseme_name,
+                "value": mouth_open,
+                "transition": cls.VISEME_TRANSITION_DURATION,
+            }
+
+        except Exception:
+            # エラー時はNoneを返す（呼び出し側でエラーハンドリング）
+            return None
