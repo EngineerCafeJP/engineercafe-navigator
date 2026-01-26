@@ -35,7 +35,7 @@ SupportedLanguage = Literal["ja", "en", "zh", "ko"]
 class LanguageDetectionResult(TypedDict):
     """言語検出結果"""
 
-    detected_language: SupportedLanguage
+    detected: SupportedLanguage
     confidence: float
     is_mixed: bool
     languages: dict
@@ -182,7 +182,7 @@ class LanguageProcessor:
             LanguageDetectionResult: 構築された検出結果
         """
         return {
-            "detected_language": language,
+            "detected": language,
             "confidence": confidence,
             "is_mixed": is_mixed,
             "languages": (
@@ -192,14 +192,14 @@ class LanguageProcessor:
             ),
         }
 
-    def detect_language(self, text: str) -> LanguageDetectionResult:
+    def detect_language(self, query: str) -> LanguageDetectionResult:
         """
-        テキストの言語を検出（メインAPI）
+        クエリの言語を検出（メインAPI）
 
         信頼度スコア・混合言語判定付きの詳細な検出結果を返す。
 
         Args:
-            text: 検出対象のテキスト
+            query: 検出対象のクエリ
 
         Returns:
             LanguageDetectionResult: 検出結果
@@ -209,9 +209,9 @@ class LanguageProcessor:
         primary / secondary を決定する。
         """
         if self.debug_mode:
-            logger.debug(f"言語検出開始: {text[:50]}")
+            logger.debug(f"言語検出開始: {query[:50]}")
 
-        a = self._analyze_text(text)
+        a = self._analyze_text(query)
 
         # ---------------------------------------------------------------------
         # 1. 各言語のスコア計算（共通ロジック）
@@ -269,7 +269,7 @@ class LanguageProcessor:
             secondary=secondary if is_mixed else None,
         )
 
-    async def detect(self, text: str, use_llm: bool = False) -> LanguageCode:
+    async def detect(self, query: str, use_llm: bool = False) -> LanguageCode:
         """
         言語検出（非同期版、LLM対応）
 
@@ -277,39 +277,39 @@ class LanguageProcessor:
         use_llm=True の場合、低信頼度時にLLMベースの検出を試行する。
 
         Args:
-            text: 検出対象のテキスト
+            query: 検出対象のクエリ
             use_llm: LLMを使用するかどうか
 
         Returns:
             検出された言語コード
         """
         try:
-            result = self.detect_language(text)
+            result = self.detect_language(query)
 
             if not use_llm or result["confidence"] >= 0.7:
-                return result["detected_language"]
+                return result["detected"]
 
             # LLMによる高精度検出を試行
-            llm_result = await self._detect_by_llm(text)
+            llm_result = await self._detect_by_llm(query)
             if llm_result:
                 return llm_result
 
-            return result["detected_language"]
+            return result["detected"]
 
         except Exception as e:
             logger.error(f"言語検出エラー: {e}", exc_info=True)
             return self.default_language
 
-    async def _detect_by_llm(self, text: str) -> Optional[LanguageCode]:
+    async def _detect_by_llm(self, query: str) -> Optional[LanguageCode]:
         """
         LLMを使用した高精度言語検出（内部メソッド）
 
         TODO:
         - OpenRouter APIを使用
-        - プロンプト: "Detect the language of the following text: {text}"
+        - プロンプト: "Detect the language of the following text: {query}"
         - レスポンスから言語コードを抽出
         """
-        logger.debug(f"LLMベース検出（未実装）: {text[:50]}...")
+        logger.debug(f"LLMベース検出（未実装）: {query[:50]}...")
         # TODO: 実装
         return None
 
@@ -330,7 +330,7 @@ class LanguageProcessor:
         """
         if force_language:
             return force_language
-        return query_language["detected_language"]
+        return query_language["detected"]
 
     def get_language_name(self, language_code: LanguageCode) -> str:
         """言語コードから言語名（日本語表記）を取得"""

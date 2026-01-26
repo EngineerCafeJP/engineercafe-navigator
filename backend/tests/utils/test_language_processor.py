@@ -21,18 +21,18 @@ def processor():
 class TestDetectJapanese:
     def test_japanese_with_particles(self, processor):
         result = processor.detect_language("営業時間は？")
-        assert result["detected_language"] == "ja"
+        assert result["detected"] == "ja"
         assert result["confidence"] == 0.9
         assert result["is_mixed"] is False
 
     def test_japanese_without_particles(self, processor):
         result = processor.detect_language("テスト")
-        assert result["detected_language"] == "ja"
+        assert result["detected"] == "ja"
         assert result["confidence"] == 0.7
 
     def test_japanese_single_particle(self, processor):
         result = processor.detect_language("は")
-        assert result["detected_language"] == "ja"
+        assert result["detected"] == "ja"
         assert result["confidence"] == 0.9
 
 
@@ -44,18 +44,18 @@ class TestDetectJapanese:
 class TestDetectEnglish:
     def test_english_multiple_keywords(self, processor):
         result = processor.detect_language("What are the hours?")
-        assert result["detected_language"] == "en"
+        assert result["detected"] == "en"
         assert result["confidence"] == 0.9
         assert result["is_mixed"] is False
 
     def test_english_minimal_sentence(self, processor):
         result = processor.detect_language("Tell me")
-        assert result["detected_language"] == "en"
+        assert result["detected"] == "en"
         assert result["confidence"] >= 0.7
 
     def test_single_latin_word_low_signal(self, processor):
         result = processor.detect_language("hello")
-        assert result["detected_language"] == "en"
+        assert result["detected"] == "en"
         assert result["confidence"] == 0.6
 
 
@@ -67,17 +67,17 @@ class TestDetectEnglish:
 class TestDetectChinese:
     def test_chinese_with_keywords(self, processor):
         result = processor.detect_language("这是我的书")
-        assert result["detected_language"] == "zh"
+        assert result["detected"] == "zh"
         assert result["confidence"] == 0.9
 
     def test_chinese_cjk_only(self, processor):
         result = processor.detect_language("福岡")
-        assert result["detected_language"] == "zh"
+        assert result["detected"] == "zh"
         assert result["confidence"] == 0.7
 
     def test_chinese_mixed_with_english(self, processor):
         result = processor.detect_language("WiFi的密码是什么")
-        assert result["detected_language"] == "zh"
+        assert result["detected"] == "zh"
         assert result["is_mixed"] is True
         assert result["languages"]["secondary"] == "en"
 
@@ -90,18 +90,18 @@ class TestDetectChinese:
 class TestDetectKorean:
     def test_korean_with_keywords(self, processor):
         result = processor.detect_language("이것은 카페입니다")
-        assert result["detected_language"] == "ko"
+        assert result["detected"] == "ko"
         assert result["confidence"] == 0.9
 
     def test_korean_without_keywords(self, processor):
         result = processor.detect_language("안녕")
-        assert result["detected_language"] == "ko"
+        assert result["detected"] == "ko"
         assert result["confidence"] == 0.7
 
     def test_korean_mixed_with_english(self, processor):
         # "Engineer Cafe는 좋습니다" では英語キーワードが多く、enが優先される場合がある
         result = processor.detect_language("이 카페는 좋습니다")
-        assert result["detected_language"] == "ko"
+        assert result["detected"] == "ko"
         assert result["confidence"] >= 0.7
 
 
@@ -113,13 +113,13 @@ class TestDetectKorean:
 class TestDetectMixed:
     def test_japanese_english_mixed(self, processor):
         result = processor.detect_language("Engineer Cafeの営業時間")
-        assert result["detected_language"] == "ja"
+        assert result["detected"] == "ja"
         assert result["is_mixed"] is True
         assert result["languages"]["secondary"] == "en"
 
     def test_japanese_chinese_mixed(self, processor):
         result = processor.detect_language("这是カフェです")
-        assert result["detected_language"] in {"ja", "zh"}
+        assert result["detected"] in {"ja", "zh"}
         assert result["is_mixed"] is True
 
     def test_japanese_korean_mixed(self, processor):
@@ -135,17 +135,17 @@ class TestDetectMixed:
 class TestEdgeCases:
     def test_empty_string(self, processor):
         result = processor.detect_language("")
-        assert result["detected_language"] == "ja"
+        assert result["detected"] == "ja"
         assert result["confidence"] == 0.5
 
     def test_numbers_only(self, processor):
         result = processor.detect_language("12345")
-        assert result["detected_language"] == "ja"
+        assert result["detected"] == "ja"
         assert result["confidence"] == 0.5
 
     def test_symbols_only(self, processor):
         result = processor.detect_language("!@#$%")
-        assert result["detected_language"] == "ja"
+        assert result["detected"] == "ja"
         assert result["confidence"] == 0.5
 
 
@@ -155,7 +155,7 @@ class TestEdgeCases:
 
 
 class TestDetermineResponseLanguage:
-    def test_detected_language_used(self, processor):
+    def test_detected_used(self, processor):
         result = processor.detect_language("これはテストです")
         assert processor.determine_response_language(result) == "ja"
 
@@ -208,7 +208,7 @@ class TestLanguageProcessorInitialization:
         assert processor.default_language == "en"
         # フォールバック時にカスタム言語が使用される
         result = processor.detect_language("")
-        assert result["detected_language"] == "en"
+        assert result["detected"] == "en"
 
     def test_debug_mode_enabled(self):
         """デバッグモード有効"""
@@ -361,28 +361,28 @@ class TestErrorHandling:
         """非常に長いテキストの処理"""
         long_text = "これはテストです。" * 1000
         result = processor.detect_language(long_text)
-        assert result["detected_language"] == "ja"
+        assert result["detected"] == "ja"
         assert result["confidence"] == 0.9
 
     def test_unicode_special_characters(self, processor):
         """特殊Unicode文字の処理"""
         result = processor.detect_language("🎉✨🚀")
         # 絵文字のみの場合はフォールバック
-        assert result["detected_language"] == "ja"
+        assert result["detected"] == "ja"
         assert result["confidence"] == 0.5
 
     def test_mixed_scripts_complex(self, processor):
         """複雑な混合スクリプト"""
         result = processor.detect_language("Hello こんにちは 你好 안녕")
         # 4言語が混在するが、いずれかが検出される
-        assert result["detected_language"] in ["ja", "en", "zh", "ko"]
+        assert result["detected"] in ["ja", "en", "zh", "ko"]
         # 混合言語として検出されるかは実装依存
-        assert "detected_language" in result
+        assert "detected" in result
 
     def test_whitespace_only(self, processor):
         """空白のみの処理"""
         result = processor.detect_language("   \t\n  ")
-        assert result["detected_language"] == "ja"
+        assert result["detected"] == "ja"
         assert result["confidence"] == 0.5
 
 
@@ -409,7 +409,7 @@ class TestDetermineResponseLanguageExtended:
         result = processor.detect_language("Engineer Cafeの営業時間は？")
         # 混合言語でも primary 言語が返される
         response_lang = processor.determine_response_language(result)
-        assert response_lang == result["detected_language"]
+        assert response_lang == result["detected"]
 
 
 # =============================================================================
@@ -435,7 +435,7 @@ class TestParameterizedDetection:
     def test_language_detection_parametrized(self, processor, text, expected_lang, min_confidence):
         """パラメータ化された言語検出"""
         result = processor.detect_language(text)
-        assert result["detected_language"] == expected_lang
+        assert result["detected"] == expected_lang
         assert result["confidence"] >= min_confidence
 
     @pytest.mark.parametrize(
