@@ -20,6 +20,8 @@ TODO (専門エンジニア - Chie, takegg0311):
 import logging
 from typing import Dict, Any, Optional, List
 
+from backend.utils.emotion_mapping import EmotionMapping, SupportedEmotion
+
 # TODO: 実装時に必要なインポート
 # from llm.openrouter import OpenRouterProvider
 # from llm.models import get_model_config
@@ -38,13 +40,24 @@ class CharacterControlAgent:
         """
         初期化
 
-        TODO:
-        - 感情→表情マッピングテーブルの初期化
-        - VRM制御パラメータの初期化
-        - アニメーションプリセットの読み込み
+        感情マッピングテーブル、アニメーションマッピング、状態変数を初期化します。
         """
-        logger.info("CharacterControlAgent骨組み初期化")
-        # TODO: 初期化処理
+        logger.info("CharacterControlAgent初期化開始")
+
+        # 現在の状態変数の初期化
+        self.current_expression: str = "neutral"
+        self.current_animation: str = "idle"
+
+        # リップシンク関連のプレースホルダー（将来の拡張用）
+        # TODO: リップシンク解析器の実装
+        # self.lip_sync_analyzer = None
+        # TODO: リップシンクキャッシュの実装
+        # self.lip_sync_cache = None
+
+        logger.info(
+            f"CharacterControlAgent初期化完了: expression={self.current_expression}, "
+            f"animation={self.current_animation}"
+        )
 
     def map_emotion_to_expression(self, emotion: str) -> Dict[str, Any]:
         """
