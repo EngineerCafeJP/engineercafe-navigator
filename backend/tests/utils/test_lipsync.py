@@ -6,11 +6,10 @@ CharacterControlAgentのgenerate_lipsync_data()メソッドの動作を確認す
 コマンドラインツールです。
 
 使用方法:
-    python -m backend.tests.utils.test_lipsync \\
-        --duration 2.5 --text "こんにちは、エンジニアカフェへようこそ"
-    python -m backend.tests.utils.test_lipsync -d 1.0 -t "Hello World"
-    python -m backend.tests.utils.test_lipsync \\
-        -d 3.0 -t "エンジニアカフェへようこそ" --pretty
+    python -m backend.tests.utils.test_lipsync "こんにちは、エンジニアカフェへようこそ"
+    python -m backend.tests.utils.test_lipsync "こんにちは" --duration 2.5
+    python -m backend.tests.utils.test_lipsync "Hello World" -d 1.0
+    python -m backend.tests.utils.test_lipsync "エンジニアカフェへようこそ" -d 3.0 --pretty
 """
 
 import argparse
@@ -38,25 +37,25 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 使用例:
-  %(prog)s --duration 2.5 --text "こんにちは"
-  %(prog)s -d 1.0 -t "Hello World"
-  %(prog)s --duration 3.0 --text "エンジニアカフェへようこそ" --pretty
-  %(prog)s -d 2.0 -t "テスト" --verbose
+  %(prog)s "こんにちは"
+  %(prog)s "こんにちは" --duration 2.5
+  %(prog)s "Hello World" -d 1.0
+  %(prog)s "エンジニアカフェへようこそ" --duration 3.0 --pretty
+  %(prog)s "テスト" -d 2.0 --verbose
         """,
+    )
+    parser.add_argument(
+        "text",
+        type=str,
+        metavar="TEXT",
+        help="発話テキスト（必須）",
     )
     parser.add_argument(
         "-d",
         "--duration",
         type=float,
-        required=True,
-        help="音声の長さ（秒）",
-    )
-    parser.add_argument(
-        "-t",
-        "--text",
-        type=str,
-        required=True,
-        help="発話テキスト",
+        required=False,
+        help="音声の長さ（秒）。未指定の場合は文字数から自動計算",
     )
     parser.add_argument(
         "--pretty",
@@ -94,13 +93,19 @@ def main():
 
         # リップシンクデータを生成
         print("リップシンクデータ生成中...", file=sys.stderr)
-        print(f"  音声長: {args.duration}秒", file=sys.stderr)
+        if args.duration:
+            print(f"  音声長: {args.duration}秒", file=sys.stderr)
+        else:
+            print("  音声長: 未指定（文字数から自動計算）", file=sys.stderr)
         print(f"  テキスト: {args.text}", file=sys.stderr)
         if converted_text != args.text:
             print(f"  変換後: {converted_text}", file=sys.stderr)
         print("", file=sys.stderr)
 
-        lipsync_data = agent.generate_lipsync_data(args.duration, args.text)
+        lipsync_data = agent.generate_lipsync_data(
+            text=args.text,
+            audio_duration=args.duration,
+        )
 
         # 結果をJSON形式で出力
         result = {

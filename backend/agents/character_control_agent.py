@@ -17,10 +17,25 @@ TODO (専門エンジニア - Chie, takegg0311):
 6. エラーハンドリングとフォールバック
 """
 
+import base64
+import io
 import logging
 import math
 import random
-from typing import Dict, Any, Optional, List
+import wave
+from typing import Dict, Any, Optional, List, Tuple
+
+logger = logging.getLogger(__name__)
+
+try:
+    import numpy as np
+    import scipy.signal
+    AUDIO_ANALYSIS_AVAILABLE = True
+except ImportError:
+    AUDIO_ANALYSIS_AVAILABLE = False
+    logger.warning(
+        "numpy or scipy not available. Audio-based lip sync will be disabled."
+    )
 
 from backend.utils.emotion_mapping import EmotionMapping, SupportedExpression
 from backend.utils.kanji_converter import KanjiConverter
@@ -28,8 +43,6 @@ from backend.utils.kanji_converter import KanjiConverter
 # TODO: 実装時に必要なインポート
 # from llm.openrouter import OpenRouterProvider
 # from llm.models import get_model_config
-
-logger = logging.getLogger(__name__)
 
 
 class CharacterControlAgent:
@@ -43,6 +56,7 @@ class CharacterControlAgent:
     DEFAULT_INTENSITY: float = EmotionMapping.DEFAULT_INTENSITY
     DEFAULT_EXPRESSION_DURATION: float = EmotionMapping.DEFAULT_EXPRESSION_DURATION
     DEFAULT_ANIMATION: str = EmotionMapping.DEFAULT_ANIMATION
+    CHAR_DURATION_SECONDS: float = 0.15  # 読みカナ1文字あたりの長さ（秒）
 
     def __init__(self):
         """
@@ -200,13 +214,154 @@ class CharacterControlAgent:
             # エラー時はデフォルト値を返す
             return self.DEFAULT_ANIMATION
 
-    def generate_lipsync_data(self, audio_duration: float, text: str) -> List[Dict[str, Any]]:
+    def _analyze_audio_data(
+        self, audio_data: str
+    ) -> Tuple[float, List[Dict[str, Any]]]:
+        """
+        Base64エンコードされた音声データを解析してリップシンクデータを生成
+
+        Args:
+            audio_data: Base64エンコードされたWAV形式の音声データ
+
+        Returns:
+            (duration, frames) のタプル
+            - duration: 音声の長さ（秒）
+            - frames: リップシンクフレームのリスト
+
+        Raises:
+            Exception: 音声解析に失敗した場合
+        """
+        if not AUDIO_ANALYSIS_AVAILABLE:
+            raise ImportError("numpy or scipy not available")
+
+        try:
+            # Base64文字列をデコード
+            audio_bytes = base64.b64decode(audio_data)
+
+            # WAVファイルとして読み込み
+            audio_io = io.BytesIO(audio_bytes)
+            with wave.open(audio_io, "rb") as wav_file:
+                sample_rate = wav_file.getframerate()
+                n_channels = wav_file.getnchannels()
+                n_frames = wav_file.getnframes()
+                sample_width = wav_file.getsampwidth()
+
+                # 音声データを読み込み
+                audio_frames = wav_file.readframes(n_frames)
+
+            # バイナリデータをnumpy配列に変換
+            if sample_width == 1:
+                # 8-bit unsigned
+                audio_array = np.frombuffer(audio_frames, dtype=np.uint8)
+                audio_array = (audio_array.astype(np.float32) - 128) / 128.0
+            elif sample_width == 2:
+                # 16-bit signed
+                audio_array = np.frombuffer(audio_frames, dtype=np.int16)
+                audio_array = audio_array.astype(np.float32) / 32768.0
+            else:
+                raise ValueError(f"Unsupported sample width: {sample_width}")
+
+            # モノラルに変換（複数チャンネルの場合）
+            if n_channels > 1:
+                audio_array = audio_array.reshape(-1, n_channels)
+                audio_array = np.mean(audio_array, axis=1)
+
+            duration = len(audio_array) / sample_rate
+
+            # フレーム間隔（0.05秒）
+            frame_interval = 0.05
+            frame_count = math.floor(duration / frame_interval)
+            frames: List[Dict[str, Any]] = []
+
+            # 各フレームを処理
+            for i in range(frame_count):
+                start_sample = int(i * frame_interval * sample_rate)
+                end_sample = int((i + 1) * frame_interval * sample_rate)
+                end_sample = min(end_sample, len(audio_array))
+
+                if start_sample >= len(audio_array):
+                    break
+
+                # フレームデータを取得
+                frame_data = audio_array[start_sample:end_sample]
+
+                if len(frame_data) == 0:
+                    continue
+
+                # RMS音量を計算
+                rms = np.sqrt(np.mean(frame_data**2))
+
+                # 簡易的な口の形状を決定
+                mouth_shape = self._determine_mouth_shape_simplified(
+                    rms, frame_data
+                )
+
+                frames.append(
+                    {
+                        "time": i * frame_interval,
+                        "volume": min(rms * 10, 1.0),
+                        "mouthOpen": min(rms * 15, 1.0),
+                        "mouthShape": mouth_shape,
+                    }
+                )
+
+            return (duration, frames)
+
+        except Exception as e:
+            logger.error(f"音声データ解析エラー: {e}", exc_info=True)
+            raise
+
+    def _determine_mouth_shape_simplified(
+        self, rms: float, frame_data: np.ndarray
+    ) -> str:
+        """
+        簡易的な口の形状を決定（音量と分散ベース）
+
+        Args:
+            rms: RMS音量
+            frame_data: フレームの音声データ
+
+        Returns:
+            口の形状（"A", "I", "U", "E", "O", "Closed"）
+        """
+        if rms < 0.01:
+            return "Closed"
+
+        # 簡易的な分散を計算
+        sample_points = min(4, len(frame_data))
+        step = max(1, len(frame_data) // sample_points)
+        sampled = frame_data[::step][:sample_points]
+
+        avg_value = np.mean(np.abs(sampled))
+        variance = np.var(np.abs(sampled))
+
+        # 簡易的なヒューリスティック
+        if rms > 0.1:
+            if variance > 0.05:
+                return "A"  # 高エネルギー、高分散
+            elif variance > 0.02:
+                return "E"  # 高エネルギー、中分散
+            else:
+                return "I"  # 高エネルギー、低分散
+        else:
+            if variance > 0.02:
+                return "O"  # 中エネルギー、高分散
+            else:
+                return "U"  # 中エネルギー、低分散
+
+    def generate_lipsync_data(
+        self,
+        text: str,
+        audio_duration: Optional[float] = None,
+        audio_data: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
         """
         リップシンクデータを生成
 
         Args:
-            audio_duration: 音声の長さ（秒）
             text: 発話テキスト
+            audio_duration: 音声の長さ（秒）。音声データが提供されない場合に使用
+            audio_data: Base64エンコードされた音声データ（オプション）
 
         Returns:
             リップシンクデータ（タイムスタンプと口の形状のリスト）
@@ -222,7 +377,7 @@ class CharacterControlAgent:
 
         Examples:
             >>> agent = CharacterControlAgent()
-            >>> data = agent.generate_lipsync_data(1.0, "Hello")
+            >>> data = agent.generate_lipsync_data("Hello", audio_duration=1.0)
             >>> len(data) > 0
             True
             >>> data[0]["mouthShape"] in ["A", "I", "U", "E", "O", "Closed"]
@@ -230,28 +385,48 @@ class CharacterControlAgent:
         """
         try:
             logger.info(
-                f"リップシンクデータ生成開始: duration={audio_duration}s, "
-                f"text_length={len(text) if text else 0}"
+                f"リップシンクデータ生成開始: text_length={len(text) if text else 0}, "
+                f"audio_duration={audio_duration}, has_audio_data={audio_data is not None}"
             )
 
-            # 1. バリデーション
-            # audio_durationの検証
-            if not isinstance(audio_duration, (int, float)) or audio_duration <= 0:
-                logger.warning(
-                    f"無効な音声長: {audio_duration}, 型: {type(audio_duration).__name__}. "
-                    "フォールバック実装を使用します。"
-                )
-                return self._generate_fallback_lipsync(audio_duration if audio_duration > 0 else 1.0)
+            # 1. 音声データが提供されている場合は音声解析を試行
+            if audio_data:
+                try:
+                    duration, frames = self._analyze_audio_data(audio_data)
+                    logger.info(
+                        f"音声データからリップシンクデータ生成完了: "
+                        f"duration={duration}s, frames={len(frames)}"
+                    )
+                    return frames
+                except Exception as e:
+                    logger.warning(
+                        f"音声データ解析に失敗しました: {e}. "
+                        "テキストベースのフォールバック処理に移行します。"
+                    )
+                    # フォールバック処理に移行
 
+            # 2. フォールバック処理（テキストベース）
             # textの検証
             if not text or not isinstance(text, str) or not text.strip():
                 logger.warning(
                     f"テキストが空または無効です: text={text}. "
                     "フォールバック実装を使用します。"
                 )
-                return self._generate_fallback_lipsync(audio_duration)
+                fallback_duration = audio_duration if audio_duration and audio_duration > 0 else 1.0
+                return self._generate_fallback_lipsync(fallback_duration)
 
-            # 2. テキストベースのリップシンクデータ生成
+            # audio_durationが提供されていない場合は、文字数から算出
+            if audio_duration is None or audio_duration <= 0:
+                # テキストを読みカナに変換
+                converted_text = self._kanji_converter.convert_to_kana(text)
+                char_count = len(converted_text)
+                audio_duration = char_count * self.CHAR_DURATION_SECONDS
+                logger.info(
+                    f"audio_durationが未指定のため、文字数から算出: "
+                    f"char_count={char_count}, duration={audio_duration}s"
+                )
+
+            # テキストベースのリップシンクデータ生成
             frames = self._generate_visemes_from_text(text, audio_duration)
 
             logger.info(f"リップシンクデータ生成完了: frames={len(frames)}")
@@ -260,12 +435,13 @@ class CharacterControlAgent:
 
         except Exception as e:
             logger.error(
-                f"リップシンクデータ生成エラー: duration={audio_duration}, "
-                f"text_length={len(text) if text else 0}, error={e}",
+                f"リップシンクデータ生成エラー: text_length={len(text) if text else 0}, "
+                f"audio_duration={audio_duration}, error={e}",
                 exc_info=True,
             )
             # エラー時はフォールバック実装を返す
-            return self._generate_fallback_lipsync(audio_duration)
+            fallback_duration = audio_duration if audio_duration and audio_duration > 0 else 1.0
+            return self._generate_fallback_lipsync(fallback_duration)
 
     def _generate_visemes_from_text(self, text: str, duration: float) -> List[Dict[str, Any]]:
         """
@@ -761,11 +937,20 @@ class CharacterControlAgent:
                 mapped_expression, expression_intensity, animation
             )
 
-            # 4. リップシンクデータ生成（音声がある場合）
+            # 4. リップシンクデータ生成（テキストがある場合）
             lipsync_data: List[Dict[str, Any]] = []
-            if text and audio_duration:
+            if text:
                 try:
-                    lipsync_data = self.generate_lipsync_data(audio_duration, text)
+                    # contextからaudio_dataを取得（可能な場合）
+                    audio_data = None
+                    if context and isinstance(context, dict):
+                        audio_data = context.get("audio_data") or context.get("audioData")
+
+                    lipsync_data = self.generate_lipsync_data(
+                        text=text,
+                        audio_duration=audio_duration,
+                        audio_data=audio_data,
+                    )
 
                     # 5. リップシンクデータからVisemeを抽出してvrm_control.expressionsに追加
                     if lipsync_data and len(lipsync_data) > 0:

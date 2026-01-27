@@ -203,7 +203,7 @@ class TestCharacterControlAgent:
 
     def test_generate_lipsync_data_basic(self):
         """基本的なリップシンクデータ生成"""
-        data = self.agent.generate_lipsync_data(1.0, "Hello")
+        data = self.agent.generate_lipsync_data("Hello", audio_duration=1.0)
 
         assert len(data) > 0
         assert "time" in data[0]
@@ -214,13 +214,13 @@ class TestCharacterControlAgent:
 
     def test_generate_lipsync_data_japanese(self):
         """日本語テキストのリップシンクデータ生成"""
-        data = self.agent.generate_lipsync_data(1.0, "こんにちは")
+        data = self.agent.generate_lipsync_data("こんにちは", audio_duration=1.0)
         assert len(data) > 0
         assert data[0]["mouthShape"] in ["A", "I", "U", "E", "O", "Closed"]
 
     def test_generate_lipsync_data_frame_structure(self):
         """リップシンクデータのフレーム構造確認"""
-        data = self.agent.generate_lipsync_data(0.5, "Hello")
+        data = self.agent.generate_lipsync_data("Hello", audio_duration=0.5)
         assert len(data) > 0
 
         for frame in data:
@@ -234,27 +234,27 @@ class TestCharacterControlAgent:
 
     def test_generate_lipsync_data_invalid_duration_negative(self):
         """無効な音声長（負の値）の処理"""
-        data = self.agent.generate_lipsync_data(-1.0, "Hello")
+        data = self.agent.generate_lipsync_data("Hello", audio_duration=-1.0)
         assert len(data) > 0  # フォールバック実装が動作
 
     def test_generate_lipsync_data_invalid_duration_zero(self):
         """無効な音声長（0）の処理"""
-        data = self.agent.generate_lipsync_data(0.0, "Hello")
+        data = self.agent.generate_lipsync_data("Hello", audio_duration=0.0)
         assert len(data) > 0  # フォールバック実装が動作
 
     def test_generate_lipsync_data_invalid_text_empty(self):
         """無効なテキスト（空文字列）の処理"""
-        data = self.agent.generate_lipsync_data(1.0, "")
+        data = self.agent.generate_lipsync_data("", audio_duration=1.0)
         assert len(data) > 0  # フォールバック実装が動作
 
     def test_generate_lipsync_data_invalid_text_none(self):
         """無効なテキスト（None）の処理"""
-        data = self.agent.generate_lipsync_data(1.0, None)
+        data = self.agent.generate_lipsync_data(None, audio_duration=1.0)
         assert len(data) > 0  # フォールバック実装が動作
 
     def test_generate_lipsync_data_long_duration(self):
         """長い音声長のリップシンクデータ生成"""
-        data = self.agent.generate_lipsync_data(5.0, "Hello World")
+        data = self.agent.generate_lipsync_data("Hello World", audio_duration=5.0)
         assert len(data) > 0
         # フレーム数は duration / 0.05 に比例
         assert len(data) >= 50  # 5.0秒 / 0.05 = 100フレーム以上
@@ -414,8 +414,9 @@ class TestCharacterControlAgent:
         result = await self.agent.process("happy", "こんにちは", None)
         assert result["action"] == "speak"
         assert result["text"] == "こんにちは"
-        # 音声長がないため、リップシンクデータは生成されない
-        assert len(result["vrm_control"]["expressions"]) == 1
+        # 音声長がない場合、文字数から自動計算されるため、リップシンクデータが生成される
+        # メイン表情 + Visemeが含まれる
+        assert len(result["vrm_control"]["expressions"]) >= 1
 
     # ==========================================================================
     # 統合テスト
@@ -440,7 +441,7 @@ class TestCharacterControlAgent:
         assert vrm_command["humanoid"]["pose"] == "greeting"
 
         # 4. リップシンクデータ生成
-        lipsync_data = self.agent.generate_lipsync_data(1.0, "Hello")
+        lipsync_data = self.agent.generate_lipsync_data("Hello", audio_duration=1.0)
         assert len(lipsync_data) > 0
 
         # 5. processメソッドで統合
