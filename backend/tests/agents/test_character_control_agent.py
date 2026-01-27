@@ -1,5 +1,24 @@
 """
 CharacterControlAgent のユニットテスト
+
+テスト実行方法 (backendディレクトリで実行):
+    # すべてのテストを実行
+    pytest tests/agents/test_character_control_agent.py
+
+    # 特定のテストクラスのみ実行
+    pytest tests/agents/test_character_control_agent.py::TestCharacterControlAgent
+
+    # 特定のテストメソッドのみ実行
+    pytest tests/agents/test_character_control_agent.py::TestCharacterControlAgent::test_generate_lipsync_data_basic
+
+    # 詳細な出力で実行
+    pytest tests/agents/test_character_control_agent.py -v
+
+    # カバレッジ付きで実行
+    pytest tests/agents/test_character_control_agent.py --cov=backend.agents.character_control_agent
+
+    # プロジェクトルートから実行する場合
+    cd backend && pytest tests/agents/test_character_control_agent.py
 """
 
 import pytest

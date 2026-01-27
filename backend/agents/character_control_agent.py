@@ -1,20 +1,24 @@
 """
-CharacterControlAgent骨組み（専門エンジニア向け）
+CharacterControlAgent
 
 VRMキャラクターの表情・モーションを制御するエージェント。
 応答テキストの感情タグに基づいて、適切な表情やアニメーションを指示。
 
+主な機能:
+- 感情→表情マッピング
+- VRM制御コマンド生成
+- アニメーション選択
+- リップシンクデータ生成（音声データ対応、テキストベースフォールバック）
+- 日本語/英語対応の口の形状検出
+
+依存関係:
+- numpy>=1.24.0,<2.0: 音声データ解析に使用
+- scipy>=1.10.0: 音声データ解析に使用
+- pykakasi>=1.2.0: 漢字→読みカナ変換に使用
+
 参考:
 - docs/migration/agents/character-control-agent/README.md
-- engineer-cafe-navigator-repo/src/mastra/agents/character-control-agent.ts (Mastra版)
-
-TODO (専門エンジニア - Chie, takegg0311):
-1. 感情→表情マッピング実装
-2. VRM制御コマンド生成
-3. アニメーション選択ロジック実装
-4. リップシンク制御（音声と口の動きの同期）
-5. 複数感情の優先順位付け
-6. エラーハンドリングとフォールバック
+- frontend/src/_reference/mastra/agents/character-control-agent.ts (Mastra版)
 """
 
 import base64
@@ -47,9 +51,20 @@ from backend.utils.kanji_converter import KanjiConverter
 
 class CharacterControlAgent:
     """
-    CharacterControlAgent骨組み（専門エンジニア向け）
+    CharacterControlAgent
 
-    このクラスは骨組みのみを提供します。完全実装は専門エンジニア（Chie, takegg0311）が担当。
+    VRMキャラクターの表情・モーション・リップシンクを制御するエージェント。
+
+    主な機能:
+    - 感情タグから表情パラメータへのマッピング
+    - VRM制御コマンドの生成
+    - アニメーション選択
+    - リップシンクデータ生成（音声データ解析またはテキストベース）
+
+    リップシンク生成:
+    - 音声データ（Base64エンコードWAV）が提供された場合、音声解析から生成
+    - 音声データがない場合、テキストから口の形状を推定
+    - audio_durationが未指定の場合、文字数から自動計算（CHAR_DURATION_SECONDS使用）
     """
 
     DEFAULT_EXPRESSION: str = EmotionMapping.DEFAULT_EXPRESSION
@@ -358,10 +373,15 @@ class CharacterControlAgent:
         """
         リップシンクデータを生成
 
+        音声データが提供されている場合は音声解析を優先し、
+        提供されていない場合や解析に失敗した場合はテキストベースの生成にフォールバックします。
+
         Args:
-            text: 発話テキスト
-            audio_duration: 音声の長さ（秒）。音声データが提供されない場合に使用
-            audio_data: Base64エンコードされた音声データ（オプション）
+            text: 発話テキスト（必須）
+            audio_duration: 音声の長さ（秒）。音声データが提供されない場合に使用。
+                未指定の場合は文字数から自動計算（CHAR_DURATION_SECONDS使用）
+            audio_data: Base64エンコードされたWAV形式の音声データ（オプション）。
+                提供された場合、音声解析からリップシンクデータを生成
 
         Returns:
             リップシンクデータ（タイムスタンプと口の形状のリスト）
@@ -375,12 +395,27 @@ class CharacterControlAgent:
                 ...
             ]
 
+        Note:
+            - 音声データ解析にはnumpy（1.x系）とscipyが必要です
+            - 日本語テキストの場合、漢字は自動的に読みカナに変換されます
+            - 日本語の「段」行（あ段、い段、う段、え段、お段）に対応
+            - 日本語の「ん」「ン」は"Closed"として扱われます
+
         Examples:
             >>> agent = CharacterControlAgent()
+            >>> # テキストベース（audio_duration指定）
             >>> data = agent.generate_lipsync_data("Hello", audio_duration=1.0)
             >>> len(data) > 0
             True
             >>> data[0]["mouthShape"] in ["A", "I", "U", "E", "O", "Closed"]
+            True
+            >>> # テキストベース（audio_duration自動計算）
+            >>> data = agent.generate_lipsync_data("Hello")
+            >>> len(data) > 0
+            True
+            >>> # 音声データベース（Base64エンコードWAV）
+            >>> data = agent.generate_lipsync_data("Hello", audio_data="UklGRiQAAABXQVZF...")
+            >>> len(data) > 0
             True
         """
         try:
