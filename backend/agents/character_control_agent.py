@@ -285,6 +285,12 @@ class CharacterControlAgent:
         # テキストを単語に分割（空白文字で分割）
         words = text.lower().strip().split()
 
+        # 各単語の母音マッピングを事前計算
+        word_vowel_maps: List[List[tuple[int, str]]] = []
+        for word in words:
+            vowel_map = self._get_vowel_positions_from_word(word)
+            word_vowel_maps.append(vowel_map)
+
         for i in range(frame_count):
             time = i * frame_interval
             progress = time / duration if duration > 0 else 0
@@ -293,8 +299,19 @@ class CharacterControlAgent:
             current_word_index = math.floor(progress * len(words)) if words else 0
             current_word = words[current_word_index] if current_word_index < len(words) else ""
 
-            # 単語内の母音を検出して口の形状を決定
-            mouth_shape = self._detect_mouth_shape_from_word(current_word)
+            # 単語内の位置に応じた口の形状を決定
+            if current_word and current_word_index < len(word_vowel_maps):
+                vowel_map = word_vowel_maps[current_word_index]
+                # 単語内の相対位置を計算（0.0-1.0）
+                word_progress = (progress * len(words)) - current_word_index
+                word_progress = max(0.0, min(1.0, word_progress))
+                # 単語内の文字位置を計算
+                char_position = math.floor(word_progress * len(current_word))
+                char_position = max(0, min(len(current_word) - 1, char_position))
+                # その位置に対応する母音を取得
+                mouth_shape = self._get_vowel_at_position(vowel_map, char_position)
+            else:
+                mouth_shape = "Closed"
 
             # 音量と口の開き具合を設定（単語がある場合は0.3-0.7の範囲）
             if current_word:
@@ -315,9 +332,9 @@ class CharacterControlAgent:
 
         return frames
 
-    def _detect_mouth_shape_from_word(self, word: str) -> str:
+    def _get_vowel_positions_from_word(self, word: str) -> List[tuple[int, str]]:
         """
-        単語から口の形状を検出
+        単語内の各文字位置に対応する母音のリストを取得
 
         漢字を含む単語の場合は、KanjiConverterを使用して読みカナに変換してから母音を検出します。
 
@@ -325,39 +342,114 @@ class CharacterControlAgent:
             word: 単語（小文字、漢字を含む可能性がある）
 
         Returns:
-            口の形状（"A", "I", "U", "E", "O", "Closed"）
+            母音の位置と種類のリスト [(位置, 母音), ...]
+            例: [(1, "E"), (4, "O")] for "Hello"
         """
         if not word:
-            return "Closed"
+            return []
 
         # 漢字を含む場合は読みカナに変換（KanjiConverterを使用）
         processed_word = self._kanji_converter.convert_to_hiragana(word)
+        processed_word_lower = processed_word.lower()
 
-        # 英語の母音を検出
-        if "a" in processed_word.lower():
-            return "A"
-        elif "i" in processed_word.lower():
-            return "I"
-        elif "u" in processed_word.lower():
-            return "U"
-        elif "e" in processed_word.lower():
-            return "E"
-        elif "o" in processed_word.lower():
-            return "O"
+        vowel_positions: List[tuple[int, str]] = []
 
-        # 日本語の母音を検出（ひらがな・カタカナ）
-        if "あ" in processed_word or "ア" in processed_word:
-            return "A"
-        elif "い" in processed_word or "イ" in processed_word:
-            return "I"
-        elif "う" in processed_word or "ウ" in processed_word:
-            return "U"
-        elif "え" in processed_word or "エ" in processed_word:
-            return "E"
-        elif "お" in processed_word or "オ" in processed_word:
-            return "O"
+        # 各文字位置を順番にチェック（実際の母音の位置のみを記録）
+        for i, char in enumerate(processed_word_lower):
+            vowel = None
 
-        # 母音がない場合は閉じた口
+            # 英語の母音を検出
+            if char == "a":
+                vowel = "A"
+            elif char == "i":
+                vowel = "I"
+            elif char == "u":
+                vowel = "U"
+            elif char == "e":
+                vowel = "E"
+            elif char == "o":
+                vowel = "O"
+            # 日本語の母音を検出（ひらがな・カタカナ）
+            elif char == "あ" or char == "ア":
+                vowel = "A"
+            elif char == "い" or char == "イ":
+                vowel = "I"
+            elif char == "う" or char == "ウ":
+                vowel = "U"
+            elif char == "え" or char == "エ":
+                vowel = "E"
+            elif char == "お" or char == "オ":
+                vowel = "O"
+
+            if vowel:
+                vowel_positions.append((i, vowel))
+
+        return vowel_positions
+
+    def _get_vowel_at_position(
+        self, vowel_map: List[tuple[int, str]], position: int
+    ) -> str:
+        """
+        指定された文字位置に対応する母音を取得
+
+        指定された位置が母音の場合はその母音を返し、
+        子音の場合は前の母音を返します（前の母音がない場合は次の母音）。
+
+        Args:
+            vowel_map: 母音の位置と種類のリスト
+            position: 文字位置
+
+        Returns:
+            口の形状（"A", "I", "U", "E", "O", "Closed"）
+        """
+        if not vowel_map:
+            return "Closed"
+
+        # 正確な位置の母音を探す
+        for vowel_pos, vowel in vowel_map:
+            if vowel_pos == position:
+                return vowel
+
+        # 正確な位置が見つからない場合（子音の位置）
+        # 前の母音を優先的に探す
+        prev_vowel = None
+        next_vowel = None
+
+        for vowel_pos, vowel in vowel_map:
+            if vowel_pos < position:
+                # 前の母音（最も近いものを保持）
+                if prev_vowel is None or vowel_pos > prev_vowel[0]:
+                    prev_vowel = (vowel_pos, vowel)
+            elif vowel_pos > position:
+                # 次の母音（最初に見つかったものを保持）
+                if next_vowel is None:
+                    next_vowel = (vowel_pos, vowel)
+                break
+
+        # 前の母音を優先、なければ次の母音
+        if prev_vowel:
+            return prev_vowel[1]
+        elif next_vowel:
+            return next_vowel[1]
+
+        return "Closed"
+
+    def _detect_mouth_shape_from_word(self, word: str) -> str:
+        """
+        単語から口の形状を検出（後方互換性のためのメソッド）
+
+        このメソッドは最初の母音のみを返します。
+        時間的な母音の変化が必要な場合は、_get_vowel_positions_from_wordを使用してください。
+
+        Args:
+            word: 単語（小文字、漢字を含む可能性がある）
+
+        Returns:
+            口の形状（"A", "I", "U", "E", "O", "Closed"）
+        """
+        vowel_map = self._get_vowel_positions_from_word(word)
+        if vowel_map:
+            return vowel_map[0][1]  # 最初の母音を返す
         return "Closed"
 
     def _generate_fallback_lipsync(self, duration: float) -> List[Dict[str, Any]]:
