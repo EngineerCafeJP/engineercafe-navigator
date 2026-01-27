@@ -35,11 +35,11 @@ class KanjiConverter:
 
     Examples:
         >>> converter = KanjiConverter()
-        >>> converter.convert_to_hiragana("会議室")
+        >>> converter.convert_to_kana("会議室")
         'カイギシツ'
-        >>> converter.convert_to_hiragana("エンジニアカフェ")
+        >>> converter.convert_to_kana("エンジニアカフェ")
         'エンジニアカフェ'
-        >>> converter.convert_to_hiragana("Hello World")
+        >>> converter.convert_to_kana("Hello World")
         'Hello World'  # 英語はそのまま返す
     """
 
@@ -70,9 +70,9 @@ class KanjiConverter:
                 "漢字→読みカナ変換は無効になります。"
             )
 
-    def convert_to_hiragana(self, text: str) -> str:
+    def convert_to_kana(self, text: str) -> str:
         """
-        テキスト内の漢字をひらがなに変換
+        テキスト内の漢字をカタカナに変換
 
         Args:
             text: 変換するテキスト（漢字、カタカナ、ひらがな、英語を含む可能性がある）
@@ -83,13 +83,13 @@ class KanjiConverter:
 
         Examples:
             >>> converter = KanjiConverter()
-            >>> converter.convert_to_hiragana("会議室")
+            >>> converter.convert_to_kana("会議室")
             'カイギシツ'
-            >>> converter.convert_to_hiragana("質問")
+            >>> converter.convert_to_kana("質問")
             'シツモン'
-            >>> converter.convert_to_hiragana("エンジニアカフェ")
+            >>> converter.convert_to_kana("エンジニアカフェ")
             'エンジニアカフェ'
-            >>> converter.convert_to_hiragana("Hello World")
+            >>> converter.convert_to_kana("Hello World")
             'Hello World'
         """
         if not text:

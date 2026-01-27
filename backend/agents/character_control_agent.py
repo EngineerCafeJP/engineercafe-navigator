@@ -282,13 +282,22 @@ class CharacterControlAgent:
         frame_interval = 0.05  # 50ms間隔
         frame_count = math.floor(duration / frame_interval)
 
+        # 漢字を含む場合は読みカナに変換（変換後のテキストの長さを使用するため）
+        converted_text = self._kanji_converter.convert_to_kana(text)
+
         # テキストを単語に分割（空白文字で分割）
-        words = text.lower().strip().split()
+        words = converted_text.lower().strip().split()
 
         # 各単語の母音マッピングを事前計算
         word_vowel_maps: List[List[tuple[int, str]]] = []
+        converted_words: List[str] = []  # 変換後の単語を保持
         for word in words:
-            vowel_map = self._get_vowel_positions_from_word(word)
+            # 変換済みテキストなので、_get_vowel_positions_from_word内での変換をスキップ
+            # そのため、変換後の単語を直接使用
+            converted_word = self._kanji_converter.convert_to_kana(word)
+            converted_words.append(converted_word)
+            # 変換済みテキストから直接母音を検出（二重変換を避ける）
+            vowel_map = self._get_vowel_positions_from_converted_text(converted_word)
             word_vowel_maps.append(vowel_map)
 
         for i in range(frame_count):
@@ -296,16 +305,16 @@ class CharacterControlAgent:
             progress = time / duration if duration > 0 else 0
 
             # 現在の単語を決定
-            current_word_index = math.floor(progress * len(words)) if words else 0
-            current_word = words[current_word_index] if current_word_index < len(words) else ""
+            current_word_index = math.floor(progress * len(converted_words)) if converted_words else 0
+            current_word = converted_words[current_word_index] if current_word_index < len(converted_words) else ""
 
             # 単語内の位置に応じた口の形状を決定
             if current_word and current_word_index < len(word_vowel_maps):
                 vowel_map = word_vowel_maps[current_word_index]
                 # 単語内の相対位置を計算（0.0-1.0）
-                word_progress = (progress * len(words)) - current_word_index
+                word_progress = (progress * len(converted_words)) - current_word_index
                 word_progress = max(0.0, min(1.0, word_progress))
-                # 単語内の文字位置を計算
+                # 単語内の文字位置を計算（変換後のテキストの長さを使用）
                 char_position = math.floor(word_progress * len(current_word))
                 char_position = max(0, min(len(current_word) - 1, char_position))
                 # その位置に対応する母音を取得
@@ -352,9 +361,39 @@ class CharacterControlAgent:
             return []
 
         # 漢字を含む場合は読みカナに変換（KanjiConverterを使用）
-        processed_word = self._kanji_converter.convert_to_hiragana(word)
+        processed_word = self._kanji_converter.convert_to_kana(word)
         processed_word_lower = processed_word.lower()
 
+        vowel_positions: List[tuple[int, str]] = []
+
+        # 各文字位置を順番にチェック（実際の母音の位置のみを記録）
+        for i, char in enumerate(processed_word_lower):
+            vowel = self._detect_vowel_from_char(char)
+
+            if vowel:
+                vowel_positions.append((i, vowel))
+
+        return vowel_positions
+
+    def _get_vowel_positions_from_converted_text(
+        self, converted_text: str
+    ) -> List[tuple[int, str]]:
+        """
+        変換済みテキスト（カタカナ/ひらがな）から母音の位置を取得
+
+        このメソッドは、既にKanjiConverterで変換済みのテキストを受け取り、
+        二重変換を避けるために使用します。
+
+        Args:
+            converted_text: 変換済みテキスト（カタカナ/ひらがな）
+
+        Returns:
+            母音の位置と種類のリスト [(位置, 母音), ...]
+        """
+        if not converted_text:
+            return []
+
+        processed_word_lower = converted_text.lower()
         vowel_positions: List[tuple[int, str]] = []
 
         # 各文字位置を順番にチェック（実際の母音の位置のみを記録）

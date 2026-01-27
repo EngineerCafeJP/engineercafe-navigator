@@ -26,6 +26,7 @@ sys.path.insert(0, str(project_root))
 from backend.agents.character_control_agent import (  # noqa: E402
     CharacterControlAgent,
 )
+from backend.utils.kanji_converter import KanjiConverter  # noqa: E402
 
 
 def main():
@@ -87,10 +88,16 @@ def main():
         # CharacterControlAgentのインスタンスを作成
         agent = CharacterControlAgent()
 
+        # 漢字→読みカナ変換を確認
+        kanji_converter = KanjiConverter()
+        converted_text = kanji_converter.convert_to_kana(args.text)
+
         # リップシンクデータを生成
         print("リップシンクデータ生成中...", file=sys.stderr)
         print(f"  音声長: {args.duration}秒", file=sys.stderr)
         print(f"  テキスト: {args.text}", file=sys.stderr)
+        if converted_text != args.text:
+            print(f"  変換後: {converted_text}", file=sys.stderr)
         print("", file=sys.stderr)
 
         lipsync_data = agent.generate_lipsync_data(args.duration, args.text)
@@ -100,6 +107,7 @@ def main():
             "input": {
                 "audio_duration": args.duration,
                 "text": args.text,
+                "converted_text": converted_text,
             },
             "output": {
                 "frame_count": len(lipsync_data),
