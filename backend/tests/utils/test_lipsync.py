@@ -1,0 +1,150 @@
+#!/usr/bin/env python3
+"""
+リップシンクデータ生成のテスト・確認用スクリプト
+
+CharacterControlAgentのgenerate_lipsync_data()メソッドの動作を確認するための
+コマンドラインツールです。
+
+使用方法:
+    python -m backend.tests.utils.test_lipsync \\
+        --duration 2.5 --text "こんにちは、エンジニアカフェへようこそ"
+    python -m backend.tests.utils.test_lipsync -d 1.0 -t "Hello World"
+    python -m backend.tests.utils.test_lipsync \\
+        -d 3.0 -t "エンジニアカフェへようこそ" --pretty
+"""
+
+import argparse
+import json
+import logging
+import sys
+from pathlib import Path
+
+# プロジェクトルートをパスに追加
+project_root = Path(__file__).parent.parent.parent.parent
+sys.path.insert(0, str(project_root))
+
+from backend.agents.character_control_agent import (  # noqa: E402
+    CharacterControlAgent,
+)
+
+
+def main():
+    """
+    コマンドラインからリップシンクデータ生成を実行する関数
+    """
+    parser = argparse.ArgumentParser(
+        description="リップシンクデータ生成のテスト・確認用コマンドラインツール",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+使用例:
+  %(prog)s --duration 2.5 --text "こんにちは"
+  %(prog)s -d 1.0 -t "Hello World"
+  %(prog)s --duration 3.0 --text "エンジニアカフェへようこそ" --pretty
+  %(prog)s -d 2.0 -t "テスト" --verbose
+        """,
+    )
+    parser.add_argument(
+        "-d",
+        "--duration",
+        type=float,
+        required=True,
+        help="音声の長さ（秒）",
+    )
+    parser.add_argument(
+        "-t",
+        "--text",
+        type=str,
+        required=True,
+        help="発話テキスト",
+    )
+    parser.add_argument(
+        "--pretty",
+        action="store_true",
+        help="JSON出力を整形して表示",
+    )
+    parser.add_argument(
+        "--verbose",
+        "-v",
+        action="store_true",
+        help="詳細なログを表示",
+    )
+
+    args = parser.parse_args()
+
+    # ログレベルの設定
+    if args.verbose:
+        logging.basicConfig(
+            level=logging.DEBUG,
+            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        )
+    else:
+        logging.basicConfig(
+            level=logging.INFO,
+            format="%(levelname)s - %(message)s",
+        )
+
+    try:
+        # CharacterControlAgentのインスタンスを作成
+        agent = CharacterControlAgent()
+
+        # リップシンクデータを生成
+        print("リップシンクデータ生成中...", file=sys.stderr)
+        print(f"  音声長: {args.duration}秒", file=sys.stderr)
+        print(f"  テキスト: {args.text}", file=sys.stderr)
+        print("", file=sys.stderr)
+
+        lipsync_data = agent.generate_lipsync_data(args.duration, args.text)
+
+        # 結果をJSON形式で出力
+        result = {
+            "input": {
+                "audio_duration": args.duration,
+                "text": args.text,
+            },
+            "output": {
+                "frame_count": len(lipsync_data),
+                "frames": lipsync_data,
+            },
+            "summary": {
+                "total_duration": (
+                    lipsync_data[-1]["time"]
+                    if lipsync_data
+                    else 0.0
+                ),
+                "frame_interval": (
+                    lipsync_data[1]["time"] - lipsync_data[0]["time"]
+                    if len(lipsync_data) > 1
+                    else 0.0
+                ),
+                "mouth_shapes": sorted(
+                    list(
+                        set(
+                            frame["mouthShape"]
+                            for frame in lipsync_data
+                        )
+                    )
+                ),
+            },
+        }
+
+        if args.pretty:
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+        else:
+            print(json.dumps(result, ensure_ascii=False))
+
+        return 0
+
+    except KeyboardInterrupt:
+        print("\n中断されました", file=sys.stderr)
+        return 130
+    except Exception as e:
+        print(f"エラーが発生しました: {e}", file=sys.stderr)
+        if args.verbose:
+            import traceback
+
+            traceback.print_exc()
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
