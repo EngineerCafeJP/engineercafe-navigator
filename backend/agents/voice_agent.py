@@ -148,10 +148,16 @@ def parse_emotion_tags(text: str) -> ParsedResponse:
 # -----------------------------
 # TTS preprocess (TS準拠: MTG置換)
 # -----------------------------
+# def preprocess_tts(text: str, lang: str) -> str:
+#     # TS: MTG -> ミーティング/meeting
+#     replacement = "ミーティング" if lang == "ja" else "meeting"
+#     return re.sub(r"\bMTG\b", replacement, text, flags=re.IGNORECASE)
+
 def preprocess_tts(text: str, lang: str) -> str:
-    # TS: MTG -> ミーティング/meeting
     replacement = "ミーティング" if lang == "ja" else "meeting"
-    return re.sub(r"\bMTG\b", replacement, text, flags=re.IGNORECASE)
+    # TSと同等に MTG を置換（case-insensitive）
+    return re.sub(r"MTG", replacement, text, flags=re.IGNORECASE)
+
 
 # -----------------------------
 # TTS text cleaning (VoiceOutputAgent準拠)
