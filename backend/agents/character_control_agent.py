@@ -21,11 +21,15 @@ VRMキャラクターの表情・モーションを制御するエージェン�
 - frontend/src/_reference/mastra/agents/character-control-agent.ts (Mastra版)
 """
 
+import argparse
+import asyncio
 import base64
 import io
+import json
 import logging
 import math
 import random
+import sys
 import wave
 from typing import Dict, Any, Optional, List, Tuple
 
@@ -951,6 +955,50 @@ class CharacterControlAgent:
             'speak'
             >>> "vrm_control" in result
             True
+
+        実行例:
+            emotion="describing", text="こんにちは、エンジニアカフェへようこそ。"の場合:
+            
+            処理フロー:
+            1. 感情マッピング: "describing" -> expression="neutral", intensity=0.8
+            2. アニメーション選択: "describing" -> animation="idle"
+            3. VRM制御コマンド生成: neutral表情（強度0.8）を生成
+            4. リップシンクデータ生成:
+               - audio_duration未指定のため、文字数から自動計算（20文字 × 0.15秒 = 3.0秒）
+               - テキストから口の形状を推定（日本語対応）
+            5. Viseme抽出: リップシンクデータからViseme（"oh"など）を抽出して追加
+            
+            結果:
+            {
+                "action": "speak",
+                "vrm_control": {
+                    "expressions": [
+                        {"name": "neutral", "value": 0.8, "transition": 2.0},
+                        {"name": "oh", "value": 0.47, "transition": 0.1}
+                    ],
+                    "lookAt": {"position": {"x": 0, "y": 1.5, "z": 2.0}, "target": "camera"},
+                    "humanoid": {"pose": "idle"}
+                },
+                "text": "こんにちは、エンジニアカフェへようこそ。"
+            }
+
+        実行手順:
+            # テストスクリプトを使用
+            python -m backend.tests.utils.test_process_output
+            
+            # Pythonコードから直接実行
+            import asyncio
+            from backend.agents.character_control_agent import CharacterControlAgent
+            
+            async def main():
+                agent = CharacterControlAgent()
+                result = await agent.process(
+                    emotion="describing",
+                    text="こんにちは、エンジニアカフェへようこそ。"
+                )
+                print(result)
+            
+            asyncio.run(main())
         """
         logger.info(
             f"CharacterControlAgent処理開始: emotion={emotion}, "
@@ -967,13 +1015,9 @@ class CharacterControlAgent:
             # 2. アニメーション選択
             animation = self.select_animation(emotion, context)
 
-            # 3. VRM制御コマンド生成（アニメーション名も渡す）
-            vrm_control = self.generate_vrm_command(
-                mapped_expression, expression_intensity, animation
-            )
-
-            # 4. リップシンクデータ生成（テキストがある場合）
+            # 3. リップシンクデータ生成（テキストがある場合、先に生成して表情遷移時間を調整）
             lipsync_data: List[Dict[str, Any]] = []
+            has_lipsync = False
             if text:
                 try:
                     # contextからaudio_dataを取得（可能な場合）
@@ -987,30 +1031,48 @@ class CharacterControlAgent:
                         audio_data=audio_data,
                     )
 
-                    # 5. リップシンクデータからVisemeを抽出してvrm_control.expressionsに追加
                     if lipsync_data and len(lipsync_data) > 0:
-                        try:
-                            viseme_expression = EmotionMapping.extract_viseme_from_lipsync_data(
-                                lipsync_data
-                            )
-
-                            if viseme_expression:
-                                vrm_control["expressions"].append(viseme_expression)
-
-                                logger.info(
-                                    f"Viseme追加: viseme={viseme_expression['name']}, "
-                                    f"value={viseme_expression['value']}"
-                                )
-                        except Exception as viseme_error:
-                            logger.warning(
-                                f"Viseme追加エラー: {viseme_error}, "
-                                "Visemeなしで続行します。",
-                                exc_info=True,
-                            )
+                        has_lipsync = True
+                        logger.info(
+                            f"リップシンクデータ生成完了: frames={len(lipsync_data)}"
+                        )
                 except Exception as lipsync_error:
                     logger.warning(
                         f"リップシンクデータ生成エラー: {lipsync_error}, "
                         "リップシンクなしで続行します。",
+                        exc_info=True,
+                    )
+
+            # 4. VRM制御コマンド生成（リップシンクがある場合は表情遷移時間を短くする）
+            # リップシンクがある場合、neutralの表情遷移を短くしてリップシンクと同時に開始
+            expression_transition = (
+                0.1 if has_lipsync else self.DEFAULT_EXPRESSION_DURATION
+            )
+            vrm_control = self.generate_vrm_command(
+                mapped_expression, expression_intensity, animation
+            )
+            # 表情遷移時間を調整
+            if vrm_control["expressions"] and len(vrm_control["expressions"]) > 0:
+                vrm_control["expressions"][0]["transition"] = expression_transition
+
+            # 5. リップシンクデータからVisemeを抽出してvrm_control.expressionsに追加
+            if has_lipsync:
+                try:
+                    viseme_expression = EmotionMapping.extract_viseme_from_lipsync_data(
+                        lipsync_data
+                    )
+
+                    if viseme_expression:
+                        vrm_control["expressions"].append(viseme_expression)
+
+                        logger.info(
+                            f"Viseme追加: viseme={viseme_expression['name']}, "
+                            f"value={viseme_expression['value']}"
+                        )
+                except Exception as viseme_error:
+                    logger.warning(
+                        f"Viseme追加エラー: {viseme_error}, "
+                        "Visemeなしで続行します。",
                         exc_info=True,
                     )
 
@@ -1028,10 +1090,15 @@ class CharacterControlAgent:
             if text:
                 result["text"] = text
 
+            # リップシンクデータがある場合は追加（Mastra版のCharacterControlResponseに合わせる）
+            if has_lipsync and lipsync_data:
+                result["lipsync_data"] = lipsync_data
+
             logger.info(
                 f"CharacterControlAgent処理完了: action={result['action']}, "
                 f"expressions_count={len(vrm_control['expressions'])}, "
-                f"animation={animation}"
+                f"animation={animation}, "
+                f"lipsync_frames={len(lipsync_data) if has_lipsync else 0}"
             )
 
             return result
@@ -1054,3 +1121,99 @@ class CharacterControlAgent:
                 "text": text if text else None,
                 "error": str(e),
             }
+
+
+async def main():
+    """
+    CharacterControlAgentのprocessメソッドを実行するメイン関数
+
+    使用例:
+        python -m backend.agents.character_control_agent "こんにちは、エンジニアカフェへようこそ。"
+        python -m backend.agents.character_control_agent "Hello" --emotion "happy"
+        python -m backend.agents.character_control_agent "Hello" -e "happy" -d 2.0
+    """
+    parser = argparse.ArgumentParser(
+        description="CharacterControlAgentのprocessメソッドを実行",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+使用例:
+  %(prog)s "こんにちは、エンジニアカフェへようこそ。"
+  %(prog)s "Hello" --emotion "happy"
+  %(prog)s "Hello" -e "happy" -d 2.0
+        """,
+    )
+    parser.add_argument(
+        "text",
+        type=str,
+        metavar="TEXT",
+        help="発話テキスト（必須）",
+    )
+    parser.add_argument(
+        "-e",
+        "--emotion",
+        type=str,
+        default=CharacterControlAgent.DEFAULT_EXPRESSION,
+        help=f"感情タグ（デフォルト: {CharacterControlAgent.DEFAULT_EXPRESSION}）",
+    )
+    parser.add_argument(
+        "-d",
+        "--duration",
+        type=float,
+        default=None,
+        metavar="SECONDS",
+        help="音声の長さ（秒）。未指定の場合は文字数から自動計算",
+    )
+
+    args = parser.parse_args()
+
+    # ログレベルの設定
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(levelname)s - %(message)s",
+    )
+
+    try:
+        # CharacterControlAgentのインスタンスを作成
+        agent = CharacterControlAgent()
+
+        # パラメータ
+        emotion = args.emotion
+        text = args.text
+        audio_duration = args.duration
+
+        print("=" * 80, file=sys.stderr)
+        print("CharacterControlAgent.process() 実行", file=sys.stderr)
+        print("=" * 80, file=sys.stderr)
+        print(f"emotion: {emotion}", file=sys.stderr)
+        print(f"text: {text}", file=sys.stderr)
+        if audio_duration is not None:
+            print(f"audio_duration: {audio_duration}", file=sys.stderr)
+        else:
+            print("audio_duration: 自動計算", file=sys.stderr)
+        print("", file=sys.stderr)
+
+        # processメソッドを実行
+        result = await agent.process(
+            emotion=emotion,
+            text=text,
+            audio_duration=audio_duration,
+        )
+
+        # 結果をJSON形式で出力
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+
+        return 0
+
+    except KeyboardInterrupt:
+        print("\n中断されました", file=sys.stderr)
+        return 130
+    except Exception as e:
+        print(f"エラーが発生しました: {e}", file=sys.stderr)
+        import traceback
+
+        traceback.print_exc()
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(asyncio.run(main()))
