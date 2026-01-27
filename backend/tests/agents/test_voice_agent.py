@@ -41,8 +41,6 @@ def test_preprocess_tts_mtg(lang, expected):
     assert preprocess_tts("mtgがあります", lang).startswith(expected)  # 大文字小文字無視も確認
 
 
-
-
 def test_clean_text_for_tts_strips_markdown_links_code():
     import textwrap
 
