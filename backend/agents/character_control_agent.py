@@ -337,6 +337,8 @@ class CharacterControlAgent:
         単語内の各文字位置に対応する母音のリストを取得
 
         漢字を含む単語の場合は、KanjiConverterを使用して読みカナに変換してから母音を検出します。
+        日本語の場合は、あ段（あかさたな...）→"A"、い段（いきしちに...）→"I"のように
+        各行の母音を検出します。
 
         Args:
             word: 単語（小文字、漢字を含む可能性がある）
@@ -344,6 +346,7 @@ class CharacterControlAgent:
         Returns:
             母音の位置と種類のリスト [(位置, 母音), ...]
             例: [(1, "E"), (4, "O")] for "Hello"
+            例: [(0, "A"), (1, "I")] for "かい"（か→A、い→I）
         """
         if not word:
             return []
@@ -356,35 +359,66 @@ class CharacterControlAgent:
 
         # 各文字位置を順番にチェック（実際の母音の位置のみを記録）
         for i, char in enumerate(processed_word_lower):
-            vowel = None
-
-            # 英語の母音を検出
-            if char == "a":
-                vowel = "A"
-            elif char == "i":
-                vowel = "I"
-            elif char == "u":
-                vowel = "U"
-            elif char == "e":
-                vowel = "E"
-            elif char == "o":
-                vowel = "O"
-            # 日本語の母音を検出（ひらがな・カタカナ）
-            elif char == "あ" or char == "ア":
-                vowel = "A"
-            elif char == "い" or char == "イ":
-                vowel = "I"
-            elif char == "う" or char == "ウ":
-                vowel = "U"
-            elif char == "え" or char == "エ":
-                vowel = "E"
-            elif char == "お" or char == "オ":
-                vowel = "O"
+            vowel = self._detect_vowel_from_char(char)
 
             if vowel:
                 vowel_positions.append((i, vowel))
 
         return vowel_positions
+
+    def _detect_vowel_from_char(self, char: str) -> Optional[str]:
+        """
+        1文字から母音を検出
+
+        英語の母音（a, i, u, e, o）と日本語の各段（あ段、い段、う段、え段、お段）
+        を検出します。撥音（ん、ン）の場合は"Closed"を返します。
+
+        Args:
+            char: 1文字（英語、ひらがな、カタカナ）
+
+        Returns:
+            口の形状（"A", "I", "U", "E", "O", "Closed"）またはNone
+        """
+        if not char:
+            return None
+
+        # 英語の母音を検出
+        if char == "a":
+            return "A"
+        elif char == "i":
+            return "I"
+        elif char == "u":
+            return "U"
+        elif char == "e":
+            return "E"
+        elif char == "o":
+            return "O"
+
+        # 「あ」の段
+        if char in "あぁかさたなはまやゃらわがざだばぱアァカサタナハマヤャラワガザダバパ":
+            return "A"
+
+        # 「い」の段
+        if char in "いぃきしちにひみりぎじぢびぴイィキシチニヒミリギジヂビピ":
+            return "I"
+
+        # 「う」の段
+        if char in "うぅくすつぬふむゆゅるぐずづぶぷウゥクスツヌフムユュルグズヅブプ":
+            return "U"
+
+        # 「え」の段
+        if char in "えぇけせてねへめれげぜでべぺエェケセテネヘメレゲゼデベペ":
+            return "E"
+
+        # 「お」の段
+        if char in "おぉこそとのほもよょろをごぞどぼぽオォコソトノホモヨョロヲゴゾドボポ":
+            return "O"
+
+        # 撥音（ん、ン）
+        if char == "ん" or char == "ン":
+            return "Closed"
+
+        return None
 
     def _get_vowel_at_position(
         self, vowel_map: List[tuple[int, str]], position: int
