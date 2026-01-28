@@ -9,6 +9,7 @@ from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 import operator
 
 from backend.agents.router_agent import RouterAgent
+from backend.agents.clarification_agent import ClarificationAgent
 
 
 class WorkflowState(TypedDict):
@@ -31,6 +32,7 @@ class MainWorkflow:
     def __init__(self):
         self.router_agent = RouterAgent(debug_mode=True)
         self.graph = self._build_graph()
+        self.clarification_agent = ClarificationAgent()
 
     def _build_graph(self) -> StateGraph:
         """グラフ構造を構築"""
@@ -172,39 +174,41 @@ class MainWorkflow:
 
     async def _clarification_node(self, state: WorkflowState) -> dict:
         """明確化ノード: 曖昧なクエリを明確化"""
-        from backend.agents.clarification_agent import ClarificationAgent
 
-        agent = ClarificationAgent()
+        #agent = ClarificationAgent()
         query = state.get("query", "")
-        context = state.get("context", {})
+        #context = state.get("context", {})
+        language = state.get("language", "ja")
 
-        # ClarificationAgentで曖昧さを検出・明確化
-        result = await agent.process(query, context)
-
-        # 明確化が必要な場合、質問文を返す
-        if result.get("needs_clarification"):
-            return {
-                "answer": result.get(
-                    "clarification_question", "もう少し詳しく教えていただけますか？"
-                ),
-                "emotion": result.get("emotion", "neutral"),
-                "metadata": {
-                    **state.get("metadata", {}),
-                    "clarification": {
-                        "options": result.get("options", []),
-                        "needs_clarification": True,
-                    },
-                },
-            }
-
-        # 明確化不要の場合
+        # Router Agentから設定されたcategoryを取得
+        category = state.get("metadata", {}).get("routing", {}).get("category", "general-clarification-needed")
+        
+        # categoryがclarification系でない場合はデフォルトにフォールバック
+        if category not in [
+            "cafe-clarification-needed",
+            "meeting-room-clarification-needed",
+            "general-clarification-needed"
+        ]:
+            category = "general-clarification-needed"
+        
+        # ClarificationAgentを使用
+        result = await self.clarification_agent.handle_clarification(
+            query=query,
+            category=category,
+            language=language
+        )
+        
         return {
-            "answer": "質問内容を確認しました。",
-            "emotion": "neutral",
+            "answer": result["response"],
+            "emotion": result["emotion"],
             "metadata": {
                 **state.get("metadata", {}),
-                "clarification": {"needs_clarification": False},
-            },
+                "clarification": {
+                    **result["metadata"],
+                    "clarification_type": category,
+                },
+                "requires_followup": True,  # ユーザーの回答待ち
+            }
         }
 
     async def _business_info_node(self, state: WorkflowState) -> dict:
