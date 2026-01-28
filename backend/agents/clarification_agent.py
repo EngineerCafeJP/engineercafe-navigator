@@ -53,6 +53,10 @@ class ClarificationAgent:
     このクラスは骨組みのみを提供します。完全実装は専門エンジニア（Chie）が担当。
     """
 
+    # 共通メタデータ定数
+    _AGENT_NAME = "ClarificationAgent"
+    _DEFAULT_SOURCES = ["clarification_system"]
+
     def __init__(self):
         """
         初期化
@@ -64,6 +68,36 @@ class ClarificationAgent:
         """
         logger.info("ClarificationAgent骨組み初期化")
         # TODO: OpenRouterProvider等の初期化
+
+
+    def _create_result(
+        self,
+        message: str,
+        category: ClarificationCategory,
+        confidence: float = 0.9,
+    ) -> ClarificationResult:
+        """
+        ClarificationResultを生成するヘルパーメソッド
+        
+        Args:
+            message: 応答メッセージ
+            category: 曖昧性のカテゴリ
+            confidence: 信頼度スコア（デフォルト：0.9）
+        
+        Returns:
+            ClarificationResult: 感情タグ付きの応答とメタデータ
+        """
+        tagged_message = add_emotion_tag(message, 'surprised')
+        return {
+            "response": tagged_message,
+            "emotion": "surprised",
+            "metadata": {
+                "agent": self._AGENT_NAME,
+                "confidence": confidence,
+                "category": category,
+                "sources": self._DEFAULT_SOURCES,
+            }
+        }
 
     async def handle_clarification(
         self,
@@ -101,18 +135,7 @@ class ClarificationAgent:
                       "お聞かせください！"
             )
 
-            tagged_message = add_emotion_tag(clarification_message, 'surprised')
-
-            return {
-                "response": tagged_message,
-                "emotion": "surprised",
-                "metadata": {
-                    "agent": "ClarificationAgent",
-                    "confidence": 0.9,
-                    "category": "cafe-clarification-needed",
-                    "sources": ["clarification_system"]
-                }
-            }
+            return self._create_result(clarification_message, "cafe-clarification-needed")
 
         # 会議室の曖昧性解消
         if category == 'meeting-room-clarification-needed':
@@ -128,18 +151,7 @@ class ClarificationAgent:
                       "どちらについてお知りになりたいですか？"
             )
 
-            tagged_message = add_emotion_tag(clarification_message, 'surprised')
-
-            return {
-                "response": tagged_message,
-                "emotion": "surprised",
-                "metadata": {
-                    "agent": "ClarificationAgent",
-                    "confidence": 0.9,
-                    "category": "meeting-room-clarification-needed",
-                    "sources": ["clarification_system"]
-                }
-            }
+            return self._create_result(clarification_message, "meeting-room-clarification-needed")
 
         # デフォルトの曖昧性解消
         default_message = (
@@ -148,18 +160,7 @@ class ClarificationAgent:
             else "お手伝いさせていただきます！もう少し詳しくお聞かせいただけますか？"
         )
 
-        tagged_message = add_emotion_tag(default_message, 'surprised')
-
-        return {
-            "response": tagged_message,
-            "emotion": "surprised",
-            "metadata": {
-                "agent": "ClarificationAgent",
-                "confidence": 0.7,
-                "category": "general-clarification-needed",
-                "sources": ["clarification_system"]
-            }
-        }
+        return self._create_result(default_message, "general-clarification-needed", confidence=0.7)
 
 
     async def detect_ambiguity(self, query: str, context: Optional[Dict[str, Any]] = None) -> bool:
