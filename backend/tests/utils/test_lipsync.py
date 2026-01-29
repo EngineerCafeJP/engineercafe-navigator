@@ -10,6 +10,19 @@ CharacterControlAgentのgenerate_lipsync_data()メソッドの動作を確認す
     python -m backend.tests.utils.test_lipsync "こんにちは" --duration 2.5
     python -m backend.tests.utils.test_lipsync "Hello World" -d 1.0
     python -m backend.tests.utils.test_lipsync "エンジニアカフェへようこそ" -d 3.0 --pretty
+
+出力例（上記1つ目のコマンド実行時）:
+    JSON で以下を出力します。
+    - input: text（入力）, converted_text（漢字→カタカナ）, audio_duration（未指定時は null）
+    - output: frame_count（フレーム数）, frames（各フレームの time, volume, mouthOpen, mouthShape）
+    - summary: total_duration（秒）, frame_interval（0.05）, mouth_shapes（使用した口形: A/Closed/E/I/O/U）
+
+    例（要約）:
+        {
+          "input": {"text": "こんにちは、エンジニアカフェへようこそ", "converted_text": "コンニチハ、エンジニアカフェヘヨウコソ", "audio_duration": null},
+          "output": {"frame_count": 57, "frames": [{"time": 0.0, "volume": 0.59..., "mouthOpen": 0.59..., "mouthShape": "O"}, ...]},
+          "summary": {"total_duration": 2.8, "frame_interval": 0.05, "mouth_shapes": ["A", "Closed", "E", "I", "O", "U"]}
+        }
 """
 
 import argparse
