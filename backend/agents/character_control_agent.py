@@ -1131,6 +1131,29 @@ async def main():
         python -m backend.agents.character_control_agent "こんにちは、エンジニアカフェへようこそ。"
         python -m backend.agents.character_control_agent "Hello" --emotion "happy"
         python -m backend.agents.character_control_agent "Hello" -e "happy" -d 2.0
+
+    出力例（上記1つ目のコマンド実行時）:
+        {
+          "action": "speak",
+          "vrm_control": {
+            "expressions": [
+              {"name": "neutral", "value": 1.0, "transition": 0.1},
+              {"name": "oh", "value": 0.326..., "transition": 0.1}
+            ],
+            "lookAt": {
+              "position": {"x": 0, "y": 1.5, "z": 2.0},
+              "target": "camera"
+            },
+            "humanoid": {"pose": "idle"}
+          },
+          "text": "こんにちは、エンジニアカフェへようこそ。",
+          "lipsync_data": [
+            {"time": 0.0, "volume": 0.326..., "mouthOpen": 0.326..., "mouthShape": "O"},
+            {"time": 0.05, "volume": 0.485..., "mouthOpen": 0.485..., "mouthShape": "O"},
+            {"time": 0.1, "volume": 0.669..., "mouthOpen": 0.669..., "mouthShape": "O"},
+            ...
+          ]
+        }
     """
     parser = argparse.ArgumentParser(
         description="CharacterControlAgentのprocessメソッドを実行",
