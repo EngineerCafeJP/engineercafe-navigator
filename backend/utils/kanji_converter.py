@@ -50,14 +50,11 @@ class KanjiConverter:
         pykakasiのコンバーターを初期化します。
         pykakasiが利用できない場合は、変換機能は無効になります。
         """
-        self._kakasi_converter: Optional[Any] = None
+        self._kakasi: Optional[Any] = None
 
         if pykakasi:
             try:
-                kakasi = pykakasi.kakasi()
-                kakasi.setMode("J", "K")  # 漢字→ひらがな
-                kakasi.setMode("r", "Hepburn")  # ローマ字→ヘボン式
-                self._kakasi_converter = kakasi.getConverter()
+                self._kakasi = pykakasi.kakasi()
                 logger.info("KanjiConverter初期化完了: 漢字→読みカナ変換が有効")
             except Exception as e:
                 logger.warning(
@@ -95,13 +92,16 @@ class KanjiConverter:
         if not text:
             return text
 
-        if not self._kakasi_converter:
+        if not self._kakasi:
             # pykakasiが利用できない場合は元のテキストを返す
             return text
 
         try:
-            # 漢字をひらがなに変換
-            converted = self._kakasi_converter.do(text)
+            # 漢字をカタカナに変換（新API: convert() はリストで各要素に 'kana'/'orig' を持つ）
+            result = self._kakasi.convert(text)
+            converted = "".join(
+                item.get("kana") or item.get("orig", "") for item in result
+            )
             logger.debug(f"漢字変換: '{text}' -> '{converted}'")
             return converted
         except Exception as e:
@@ -118,4 +118,4 @@ class KanjiConverter:
         Returns:
             pykakasiが利用可能な場合はTrue、そうでない場合はFalse
         """
-        return self._kakasi_converter is not None
+        return self._kakasi is not None
