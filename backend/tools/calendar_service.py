@@ -1,11 +1,16 @@
 """
 Calendar Service Tool
-Google Calendar API連携によるイベント情報取得
+ICS/iCal形式によるイベント情報取得
+
+Google Calendar APIを使用せず、公開ICSフィードからイベントを取得します。
+これにより、Google Cloud APIキーなしで利用可能です。
 """
 
 import os
+import re
+import hashlib
 from datetime import datetime, timedelta
-from typing import List, Dict, Literal
+from typing import List, Dict, Literal, Optional
 import httpx
 
 
@@ -13,12 +18,11 @@ TimeRange = Literal["today", "thisWeek", "nextWeek", "thisMonth"]
 
 
 class CalendarService:
-    """Google Calendar APIサービス"""
+    """ICS/iCalカレンダーサービス"""
 
     def __init__(self):
         """初期化"""
-        self.calendar_id = os.getenv("GOOGLE_CALENDAR_ID", "")
-        self.api_key = os.getenv("GOOGLE_API_KEY", "")
+        self.ical_url = os.getenv("GOOGLE_CALENDAR_ICAL_URL", "")
 
     async def search_events(self, time_range: TimeRange = "thisWeek") -> Dict:
         """
@@ -36,18 +40,15 @@ class CalendarService:
             # 期間の開始日と終了日を計算
             time_min, time_max = self._calculate_time_range(time_range)
 
-            # Google Calendar APIでイベント取得
-            events = await self._fetch_calendar_events(time_min, time_max)
-
-            # イベントを整形
-            formatted_events = self._format_events(events)
+            # ICSからイベント取得
+            events = await self._fetch_ics_events(time_min, time_max)
 
             return {
                 "success": True,
                 "data": {
-                    "events": formatted_events,
+                    "events": events,
                     "timeRange": time_range,
-                    "eventCount": len(formatted_events),
+                    "eventCount": len(events),
                 },
             }
 
@@ -100,9 +101,11 @@ class CalendarService:
         week_end = week_start + timedelta(days=6, hours=23, minutes=59, seconds=59)
         return (week_start, week_end)
 
-    async def _fetch_calendar_events(self, time_min: datetime, time_max: datetime) -> List[Dict]:
+    async def _fetch_ics_events(
+        self, time_min: datetime, time_max: datetime
+    ) -> List[Dict]:
         """
-        Google Calendar APIからイベントを取得
+        ICSフィードからイベントを取得
 
         Args:
             time_min: 検索開始日時
@@ -111,74 +114,211 @@ class CalendarService:
         Returns:
             イベントのリスト
         """
-        if not self.calendar_id or not self.api_key:
-            print("[CalendarService] Calendar ID or API Key not configured")
+        if not self.ical_url:
+            print("[CalendarService] GOOGLE_CALENDAR_ICAL_URL not configured")
             return []
 
         try:
-            # ISO 8601形式に変換
-            time_min_str = time_min.isoformat() + "Z"
-            time_max_str = time_max.isoformat() + "Z"
-
-            # Google Calendar API v3エンドポイント
-            url = f"https://www.googleapis.com/calendar/v3/calendars/{self.calendar_id}/events"
-
-            params = {
-                "key": self.api_key,
-                "timeMin": time_min_str,
-                "timeMax": time_max_str,
-                "singleEvents": "true",
-                "orderBy": "startTime",
-                "maxResults": 50,
-            }
-
             async with httpx.AsyncClient() as client:
-                response = await client.get(url, params=params, timeout=30.0)
+                response = await client.get(self.ical_url, timeout=30.0)
 
                 if response.status_code != 200:
-                    print(f"[CalendarService] API error: {response.text}")
+                    print(f"[CalendarService] ICS fetch error: {response.status_code}")
                     return []
 
-                data = response.json()
-                return data.get("items", [])
+                ics_content = response.text
+                all_events = self._parse_ics_content(ics_content)
+
+                # 時間範囲でフィルタリング
+                filtered_events = self._filter_events_by_time(
+                    all_events, time_min, time_max
+                )
+
+                # 開始日時でソート
+                filtered_events.sort(
+                    key=lambda e: e.get("start") or "", reverse=False
+                )
+
+                return filtered_events
 
         except Exception as e:
-            print(f"[CalendarService] Fetch error: {e}")
+            print(f"[CalendarService] ICS fetch error: {e}")
             return []
 
-    def _format_events(self, events: List[Dict]) -> List[Dict]:
+    def _parse_ics_content(self, content: str) -> List[Dict]:
         """
-        イベントを整形
+        ICSコンテンツをパース
 
         Args:
-            events: 生のイベントデータ
+            content: ICSファイルの内容
 
         Returns:
-            整形されたイベントのリスト
+            パースされたイベントのリスト
         """
-        formatted_events = []
+        events = []
 
-        for event in events:
-            # 開始日時と終了日時を取得
-            start = event.get("start", {})
-            end = event.get("end", {})
+        # VEVENTブロックを抽出
+        vevent_pattern = r"BEGIN:VEVENT(.*?)END:VEVENT"
+        vevent_matches = re.findall(vevent_pattern, content, re.DOTALL)
 
-            start_datetime = start.get("dateTime") or start.get("date")
-            end_datetime = end.get("dateTime") or end.get("date")
+        for vevent in vevent_matches:
+            event = self._parse_vevent(vevent)
+            if event:
+                events.append(event)
 
-            formatted_event = {
-                "id": event.get("id", ""),
-                "title": event.get("summary", "No Title"),
-                "description": event.get("description", ""),
-                "location": event.get("location", ""),
-                "start": start_datetime,
-                "end": end_datetime,
-                "htmlLink": event.get("htmlLink", ""),
+        return events
+
+    def _parse_vevent(self, vevent_content: str) -> Optional[Dict]:
+        """
+        VEVENTブロックをパース
+
+        Args:
+            vevent_content: VEVENTの内容
+
+        Returns:
+            パースされたイベント辞書
+        """
+        try:
+            # 行継続（折り返し）を処理
+            # ICSでは長い行は改行+空白で継続される
+            content = re.sub(r"\r?\n[ \t]", "", vevent_content)
+            lines = content.strip().split("\n")
+
+            event_data: Dict[str, str] = {}
+
+            for line in lines:
+                line = line.strip()
+                if not line or ":" not in line:
+                    continue
+
+                # プロパティ名と値を分離
+                # 形式: PROPERTY;PARAM=VALUE:VALUE または PROPERTY:VALUE
+                if ";" in line.split(":")[0]:
+                    prop_part = line.split(":")[0]
+                    prop_name = prop_part.split(";")[0]
+                    value = ":".join(line.split(":")[1:])
+                else:
+                    parts = line.split(":", 1)
+                    prop_name = parts[0]
+                    value = parts[1] if len(parts) > 1 else ""
+
+                event_data[prop_name.upper()] = value
+
+            # 必須フィールドの確認
+            if "DTSTART" not in event_data:
+                return None
+
+            # IDの生成（UIDがない場合はハッシュ生成）
+            uid = event_data.get("UID", "")
+            if not uid:
+                uid = hashlib.md5(
+                    f"{event_data.get('SUMMARY', '')}{event_data.get('DTSTART', '')}".encode()
+                ).hexdigest()
+
+            # 日付のパース
+            start_str = self._parse_ics_date(event_data.get("DTSTART", ""))
+            end_str = self._parse_ics_date(event_data.get("DTEND", ""))
+
+            # 説明文のエスケープ解除
+            description = event_data.get("DESCRIPTION", "")
+            description = description.replace("\\n", "\n").replace("\\,", ",")
+
+            return {
+                "id": uid,
+                "title": event_data.get("SUMMARY", "No Title"),
+                "description": description,
+                "location": event_data.get("LOCATION", ""),
+                "start": start_str,
+                "end": end_str,
+                "htmlLink": event_data.get("URL", ""),
             }
 
-            formatted_events.append(formatted_event)
+        except Exception as e:
+            print(f"[CalendarService] VEVENT parse error: {e}")
+            return None
 
-        return formatted_events
+    def _parse_ics_date(self, date_str: str) -> str:
+        """
+        ICS日付文字列をISO形式に変換
+
+        ICSの日付形式:
+        - 20240115T090000Z (UTC)
+        - 20240115T090000 (ローカル)
+        - 20240115 (終日イベント)
+
+        Args:
+            date_str: ICS形式の日付文字列
+
+        Returns:
+            ISO 8601形式の日付文字列
+        """
+        if not date_str:
+            return ""
+
+        try:
+            # Z付きUTC時刻
+            if date_str.endswith("Z"):
+                date_str = date_str[:-1]
+                if "T" in date_str:
+                    dt = datetime.strptime(date_str, "%Y%m%dT%H%M%S")
+                else:
+                    dt = datetime.strptime(date_str, "%Y%m%d")
+                return dt.isoformat() + "Z"
+
+            # ローカル時刻（T付き）
+            if "T" in date_str:
+                dt = datetime.strptime(date_str, "%Y%m%dT%H%M%S")
+                return dt.isoformat()
+
+            # 終日イベント
+            dt = datetime.strptime(date_str, "%Y%m%d")
+            return dt.date().isoformat()
+
+        except Exception as e:
+            print(f"[CalendarService] Date parse error: {date_str} - {e}")
+            return date_str
+
+    def _filter_events_by_time(
+        self, events: List[Dict], time_min: datetime, time_max: datetime
+    ) -> List[Dict]:
+        """
+        時間範囲でイベントをフィルタリング
+
+        Args:
+            events: イベントリスト
+            time_min: 開始日時
+            time_max: 終了日時
+
+        Returns:
+            フィルタリングされたイベントリスト
+        """
+        filtered = []
+
+        for event in events:
+            start_str = event.get("start", "")
+            if not start_str:
+                continue
+
+            try:
+                # ISO形式からdatetimeに変換
+                if "T" in start_str:
+                    if start_str.endswith("Z"):
+                        event_start = datetime.fromisoformat(start_str[:-1])
+                    else:
+                        event_start = datetime.fromisoformat(start_str)
+                else:
+                    # 終日イベント
+                    event_start = datetime.fromisoformat(start_str)
+
+                # 時間範囲内かチェック
+                if time_min <= event_start <= time_max:
+                    filtered.append(event)
+
+            except Exception as e:
+                print(f"[CalendarService] Filter error: {start_str} - {e}")
+                continue
+
+        return filtered
 
     def extract_time_range_from_query(self, query: str) -> TimeRange:
         """
