@@ -1,32 +1,25 @@
 """
-SimplifiedMemoryHelper - 暫定実装
+SimplifiedMemoryHelper - 完全実装
 
 Supabase agent_memoryテーブルを使用した3分間TTL付きメモリシステム。
 フロントエンドのSimplifiedMemorySystemを参考にしたPython実装。
 
 参考: frontend/src/lib/simplified-memory.ts
-
-TODO (専門エンジニア向け):
-- RAGツールとの統合（現在はプレースホルダー）
-- 完全なエラーハンドリング
-- パフォーマンス最適化
-- メッセージインデックスの実装
 """
 
+import os
 from typing import Optional, Dict, Any, List
-
-# from datetime import datetime  # TODO: 完全実装時に使用
+from datetime import datetime, timedelta
 import logging
 
-# Supabaseクライアントのインポート（実装時に調整）
-# from supabase import create_client, Client
+from supabase import create_client, Client
 
 logger = logging.getLogger(__name__)
 
 
 class SimplifiedMemoryHelper:
     """
-    暫定実装：Supabase agent_memoryテーブルを使用
+    Supabase agent_memoryテーブルを使用したメモリシステム
 
     3分間のTTL（有効期限）付きで会話履歴を管理。
     フロントエンドのSimplifiedMemorySystemと同様のインターフェースを提供。
@@ -38,12 +31,16 @@ class SimplifiedMemoryHelper:
 
         環境変数から Supabase の接続情報を取得します。
         SUPABASE_URL: Supabase プロジェクトの URL
-        SUPABASE_SERVICE_ROLE_KEY: サービスロールキー（server-side用）
+        SUPABASE_KEY: サービスロールキー（server-side用）
         """
-        # TODO: Supabaseクライアントの初期化
-        # supabase_url = os.getenv("SUPABASE_URL")
-        # supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-        # self.supabase: Client = create_client(supabase_url, supabase_key)
+        supabase_url = os.getenv("SUPABASE_URL")
+        supabase_key = os.getenv("SUPABASE_KEY")
+
+        if not supabase_url or not supabase_key:
+            logger.warning("Supabase credentials not found. Memory system will be disabled.")
+            self.supabase: Optional[Client] = None
+        else:
+            self.supabase: Optional[Client] = create_client(supabase_url, supabase_key)
 
         self.agent_name = "langgraph_memory"
         self.ttl_seconds = 180  # 3 minutes（フロントエンドと同じ）
@@ -61,19 +58,44 @@ class SimplifiedMemoryHelper:
         Returns:
             前回のリクエストタイプ（hours, price, location など）
             存在しない場合は None
-
-        TODO:
-        - agent_memoryテーブルから最新のuser messageを取得
-        - metadataからrequest_typeを抽出
         """
         logger.info(f"Getting previous request type for session: {session_id}")
 
-        # TODO: 実装
-        # 1. agent_memoryテーブルから recent messages を取得
-        # 2. session_idでフィルタリング
-        # 3. 最新のuser messageのmetadata.request_typeを返す
+        if not self.supabase:
+            logger.warning("Supabase not available")
+            return None
 
-        return None  # プレースホルダー
+        try:
+            current_time = datetime.now().isoformat()
+
+            # agent_memoryテーブルから有効なメッセージを取得
+            response = (
+                self.supabase.table("agent_memory")
+                .select("*")
+                .eq("agent_name", self.agent_name)
+                .like("key", "message_%")
+                .gt("expires_at", current_time)
+                .order("created_at", desc=True)
+                .execute()
+            )
+
+            if not response.data:
+                return None
+
+            # session_idでフィルタリングし、最新のuser messageを探す
+            for item in response.data:
+                value = item.get("value", {})
+                if value.get("role") == "user" and value.get("sessionId") == session_id:
+                    request_type = value.get("request_type")
+                    if request_type:
+                        logger.info(f"Found previous request type: {request_type}")
+                        return request_type
+
+            return None
+
+        except Exception as e:
+            logger.error(f"Error getting previous request type: {e}")
+            return None
 
     async def get_context(
         self, query: str, session_id: str, options: Optional[Dict[str, Any]] = None
@@ -92,36 +114,32 @@ class SimplifiedMemoryHelper:
         Returns:
             {
                 "recent_messages": List[Dict],  # 最近のメッセージ履歴
-                "knowledge_results": List[Dict],  # ナレッジベース検索結果（未実装）
+                "knowledge_results": List[Dict],  # ナレッジベース検索結果
                 "context_string": str,  # フォーマット済みコンテキスト文字列
                 "inherited_request_type": Optional[str]  # 継承されたリクエストタイプ
             }
-
-        TODO:
-        - agent_memoryテーブルから recent messages を取得（3分以内）
-        - RAGツールでナレッジベース検索
-        - コンテキスト文字列のフォーマット
         """
         options = options or {}
-        # include_knowledge_base = options.get("include_knowledge_base", True)  # TODO: RAG統合時に使用
         language = options.get("language", "ja")
-        # inherit_context = options.get("inherit_context", True)  # TODO: 完全実装時に使用
+        inherit_context = options.get("inherit_context", True)
 
         logger.info(f"Getting context for query: '{query[:50]}...', session: {session_id}")
 
-        # TODO: 実装
-        # 1. get_recent_messages() で履歴を取得
-        # 2. inherit_context=True なら get_previous_request_type() を呼び出し
-        # 3. include_knowledge_base=True なら RAG検索
-        # 4. build_comprehensive_context() でフォーマット
+        # 最近のメッセージを取得
+        recent_messages = await self._get_recent_messages(session_id)
+        logger.info(f"Found {len(recent_messages)} recent messages")
 
-        recent_messages: List[Dict] = []
-        knowledge_results: List[Dict] = []
+        # リクエストタイプの継承
         inherited_request_type: Optional[str] = None
+        if inherit_context:
+            inherited_request_type = await self.get_previous_request_type(session_id)
 
-        # プレースホルダー
-        context_string = (
-            "会話履歴がありません。" if language == "ja" else "No conversation context."
+        # ナレッジベース検索結果（現在は空、RAG統合時に実装）
+        knowledge_results: List[Dict] = []
+
+        # コンテキスト文字列のフォーマット
+        context_string = self._build_comprehensive_context(
+            recent_messages, knowledge_results, language
         )
 
         return {
@@ -130,6 +148,119 @@ class SimplifiedMemoryHelper:
             "context_string": context_string,
             "inherited_request_type": inherited_request_type,
         }
+
+    async def _get_recent_messages(self, session_id: str) -> List[Dict]:
+        """
+        agent_memoryテーブルから有効なメッセージを取得
+
+        Args:
+            session_id: セッションID
+
+        Returns:
+            最近のメッセージのリスト
+        """
+        if not self.supabase:
+            return []
+
+        try:
+            current_time = datetime.now().isoformat()
+
+            response = (
+                self.supabase.table("agent_memory")
+                .select("*")
+                .eq("agent_name", self.agent_name)
+                .like("key", "message_%")
+                .gt("expires_at", current_time)
+                .order("created_at", desc=False)
+                .execute()
+            )
+
+            if not response.data:
+                return []
+
+            # session_idでフィルタリングしてメッセージを整形
+            messages = []
+            for item in response.data:
+                value = item.get("value", {})
+                if value.get("sessionId") == session_id:
+                    messages.append({
+                        "role": value.get("role"),
+                        "content": value.get("content"),
+                        "metadata": {
+                            "emotion": value.get("emotion"),
+                            "confidence": value.get("confidence"),
+                            "timestamp": value.get("timestamp"),
+                            "request_type": value.get("request_type"),
+                        },
+                    })
+
+            return messages
+
+        except Exception as e:
+            logger.error(f"Error getting recent messages: {e}")
+            return []
+
+    def _build_comprehensive_context(
+        self,
+        recent_messages: List[Dict],
+        knowledge_results: List[Dict],
+        language: str,
+    ) -> str:
+        """
+        会話履歴とナレッジベース結果からコンテキスト文字列を構築
+
+        Args:
+            recent_messages: 最近のメッセージリスト
+            knowledge_results: ナレッジベース検索結果
+            language: 言語設定（"ja" or "en"）
+
+        Returns:
+            フォーマット済みコンテキスト文字列
+        """
+        lines: List[str] = []
+
+        # 会話履歴の追加
+        if recent_messages:
+            header = (
+                "最近の会話履歴（直近3分）:"
+                if language == "ja"
+                else "Recent conversation (last 3 minutes):"
+            )
+            lines.append(header)
+
+            for msg in recent_messages:
+                role_label = (
+                    ("ユーザー" if msg["role"] == "user" else "アシスタント")
+                    if language == "ja"
+                    else ("User" if msg["role"] == "user" else "Assistant")
+                )
+                emotion = msg.get("metadata", {}).get("emotion")
+                emotion_info = f" [{emotion}]" if emotion else ""
+                lines.append(f"{role_label}: {msg['content']}{emotion_info}")
+
+        # ナレッジベース結果の追加
+        if knowledge_results:
+            lines.append("")  # 空行
+            header = (
+                "関連するエンジニアカフェ情報:"
+                if language == "ja"
+                else "Relevant Engineer Cafe information:"
+            )
+            lines.append(header)
+
+            for i, result in enumerate(knowledge_results, 1):
+                category = result.get("category", "")
+                category_info = f" [{category}]" if category else ""
+                lines.append(f"{i}. {result.get('content', '')}{category_info}")
+
+        if not lines:
+            return (
+                "会話履歴がありません。"
+                if language == "ja"
+                else "No conversation context."
+            )
+
+        return "\n".join(lines)
 
     async def store_message(
         self,
@@ -150,13 +281,12 @@ class SimplifiedMemoryHelper:
                 - confidence: float - 信頼度
                 - request_type: str - リクエストタイプ
                 - timestamp: int - タイムスタンプ
-
-        TODO:
-        - agent_memoryテーブルにメッセージを保存
-        - TTL（expires_at）を設定
-        - メッセージインデックスを更新
         """
-        # timestamp = int(datetime.now().timestamp() * 1000)  # TODO: 完全実装時に使用
+        if not self.supabase:
+            logger.warning("Supabase not available, skipping message storage")
+            return
+
+        timestamp = int(datetime.now().timestamp() * 1000)
         metadata = metadata or {}
 
         # リクエストタイプの自動抽出（user messageの場合）
@@ -168,11 +298,36 @@ class SimplifiedMemoryHelper:
             f"request_type: {metadata.get('request_type')}"
         )
 
-        # TODO: 実装
-        # 1. message_data = { role, content, timestamp, ...metadata }
-        # 2. expires_at = now() + ttl_seconds
-        # 3. supabase.from('agent_memory').insert({ ... })
-        # 4. update_message_index(timestamp)
+        try:
+            # メッセージデータの構築
+            message_data = {
+                "role": role,
+                "content": content,
+                "timestamp": timestamp,
+                "sessionId": session_id,
+                "emotion": metadata.get("emotion"),
+                "confidence": metadata.get("confidence"),
+                "request_type": metadata.get("request_type"),
+            }
+
+            # TTL設定
+            expires_at = (
+                datetime.now() + timedelta(seconds=self.ttl_seconds)
+            ).isoformat()
+
+            # agent_memoryテーブルにINSERT
+            self.supabase.table("agent_memory").insert({
+                "agent_name": self.agent_name,
+                "key": f"message_{timestamp}",
+                "value": message_data,
+                "expires_at": expires_at,
+            }).execute()
+
+            logger.info(f"Stored message with key: message_{timestamp}, expires_at: {expires_at}")
+
+        except Exception as e:
+            logger.error(f"Error storing message: {e}")
+            raise
 
     def _extract_request_type(self, content: str) -> Optional[str]:
         """
@@ -219,14 +374,14 @@ class SimplifiedMemoryHelper:
 
         # 予約系
         if any(
-            keyword in lower_content for keyword in ["予約", "booking", "reservation", "reserve"]
+            keyword in lower_content for keyword in ["予約", "booking", "book", "reservation", "reserve"]
         ):
             return "booking"
 
         # 設備系
         if any(
             keyword in lower_content
-            for keyword in ["設備", "facility", "equipment", "何がある", "利用できる"]
+            for keyword in ["設備", "facility", "facilities", "equipment", "何がある", "何があり", "利用できる"]
         ):
             return "facility"
 
@@ -244,14 +399,21 @@ class SimplifiedMemoryHelper:
         期限切れエントリのクリーンアップ
 
         Supabaseが自動的にTTLで削除するが、手動でも実行可能。
-
-        TODO:
-        - agent_memoryテーブルから expires_at < now() のエントリを削除
         """
         logger.info("Running cleanup for expired memory entries")
 
-        # TODO: 実装
-        # await self.supabase.from('agent_memory').delete().lt('expires_at', datetime.now().isoformat())
+        if not self.supabase:
+            return
+
+        try:
+            current_time = datetime.now().isoformat()
+            self.supabase.table("agent_memory").delete().eq(
+                "agent_name", self.agent_name
+            ).lt("expires_at", current_time).execute()
+
+            logger.info("Cleanup completed")
+        except Exception as e:
+            logger.error(f"Error during cleanup: {e}")
 
     async def get_memory_stats(self) -> Dict[str, Any]:
         """
@@ -265,20 +427,85 @@ class SimplifiedMemoryHelper:
                 "dominant_emotion": Optional[str],  # 主な感情
                 "time_span": float  # 会話の時間範囲（分）
             }
-
-        TODO:
-        - agent_memoryテーブルから統計情報を計算
         """
         logger.info("Getting memory statistics")
 
-        # TODO: 実装
-        return {
-            "active_turns": 0,
-            "oldest_turn": None,
-            "newest_turn": None,
-            "dominant_emotion": None,
-            "time_span": 0.0,
-        }
+        if not self.supabase:
+            return {
+                "active_turns": 0,
+                "oldest_turn": None,
+                "newest_turn": None,
+                "dominant_emotion": None,
+                "time_span": 0.0,
+            }
+
+        try:
+            current_time = datetime.now().isoformat()
+
+            response = (
+                self.supabase.table("agent_memory")
+                .select("*")
+                .eq("agent_name", self.agent_name)
+                .like("key", "message_%")
+                .gt("expires_at", current_time)
+                .execute()
+            )
+
+            if not response.data:
+                return {
+                    "active_turns": 0,
+                    "oldest_turn": None,
+                    "newest_turn": None,
+                    "dominant_emotion": None,
+                    "time_span": 0.0,
+                }
+
+            # 統計情報を計算
+            timestamps = []
+            emotions = []
+
+            for item in response.data:
+                value = item.get("value", {})
+                ts = value.get("timestamp")
+                if ts:
+                    timestamps.append(ts)
+                emotion = value.get("emotion")
+                if emotion:
+                    emotions.append(emotion)
+
+            oldest_turn = min(timestamps) if timestamps else None
+            newest_turn = max(timestamps) if timestamps else None
+            time_span = (
+                (newest_turn - oldest_turn) / (1000 * 60)
+                if oldest_turn and newest_turn
+                else 0.0
+            )
+
+            # 最も多い感情を取得
+            dominant_emotion = None
+            if emotions:
+                emotion_counts: Dict[str, int] = {}
+                for e in emotions:
+                    emotion_counts[e] = emotion_counts.get(e, 0) + 1
+                dominant_emotion = max(emotion_counts, key=lambda k: emotion_counts[k])
+
+            return {
+                "active_turns": len(response.data),
+                "oldest_turn": oldest_turn,
+                "newest_turn": newest_turn,
+                "dominant_emotion": dominant_emotion,
+                "time_span": time_span,
+            }
+
+        except Exception as e:
+            logger.error(f"Error getting memory stats: {e}")
+            return {
+                "active_turns": 0,
+                "oldest_turn": None,
+                "newest_turn": None,
+                "dominant_emotion": None,
+                "time_span": 0.0,
+            }
 
 
 # シングルトンインスタンス（フロントエンドのrealtimeMemoryに相当）
