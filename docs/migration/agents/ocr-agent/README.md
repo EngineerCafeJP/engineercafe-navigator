@@ -66,20 +66,12 @@ OCR Agentは、カメラからの画像を解析し、文字認識や表情認�
 ```typescript
 interface OCRRequest {
   imageData: ArrayBuffer;   // 画像データ
-  type: 'text' | 'number' | 'qr';  // 認識タイプ
-  language?: 'ja' | 'en';   // 言語ヒント
+  type: 'text' | 'qr';  // 認識タイプ
 }
 
 interface OCRResponse {
   success: boolean;
   text?: string;            // 認識されたテキスト
-  confidence: number;       // 信頼度
-  boundingBox?: {           // 検出位置
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  };
   error?: string;
 }
 ```
