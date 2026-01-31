@@ -1,10 +1,14 @@
 """
 EventAgent - イベント情報エージェント
 イベント、カレンダー情報に関する質問に回答
+
+Google CalendarとConnpassの両方からイベント情報を取得し、統合して応答します。
 """
 
-from typing import Dict, Optional
+import asyncio
+from typing import Dict, Optional, List
 from backend.tools.calendar_service import CalendarService
+from backend.tools.connpass_service import ConnpassService
 from backend.llm import get_llm_provider, get_model_config
 
 
@@ -36,9 +40,10 @@ class EventAgent:
     def __init__(self):
         """EventAgentを初期化
 
-        CalendarServiceとLLMプロバイダーのインスタンスを作成します。
+        CalendarService、ConnpassService、LLMプロバイダーのインスタンスを作成します。
         """
         self.calendar_service = CalendarService()
+        self.connpass_service = ConnpassService()
         self.llm_provider = get_llm_provider()
 
     async def answer_event_query(
@@ -109,15 +114,18 @@ class EventAgent:
         # クエリから時間範囲を抽出
         time_range = self.calendar_service.extract_time_range_from_query(query)
 
-        # Calendar Serviceでイベント取得
-        calendar_result = await self.calendar_service.search_events(time_range)
+        # クエリからキーワードを抽出（Connpass用）
+        keyword = self.connpass_service.extract_keyword_from_query(query)
 
-        if not calendar_result.get("success"):
-            return self._get_no_events_response(language, time_range)
+        # Google CalendarとConnpassを並列検索
+        calendar_result, connpass_result = await asyncio.gather(
+            self.calendar_service.search_events(time_range),
+            self.connpass_service.search_events(time_range, keyword=keyword),
+        )
 
-        # イベントデータ取得
-        events = calendar_result.get("data", {}).get("events", [])
-        event_count = calendar_result.get("data", {}).get("eventCount", 0)
+        # 両方の結果をマージ
+        events = self._merge_events(calendar_result, connpass_result)
+        event_count = len(events)
 
         # イベントなしの場合
         if event_count == 0:
@@ -137,6 +145,10 @@ class EventAgent:
             # イベントがある場合は happy
             emotion = "happy" if event_count > 0 else "sad"
 
+            # ソース別のイベント数をカウント
+            calendar_count = sum(1 for e in events if e.get("source") == "google_calendar")
+            connpass_count = sum(1 for e in events if e.get("source") == "connpass")
+
             return {
                 "answer": response_text,
                 "emotion": emotion,
@@ -144,6 +156,10 @@ class EventAgent:
                     "agent": "EventAgent",
                     "time_range": time_range,
                     "event_count": event_count,
+                    "sources": {
+                        "google_calendar": calendar_count,
+                        "connpass": connpass_count,
+                    },
                 },
             }
 
@@ -152,12 +168,12 @@ class EventAgent:
             return self._get_no_events_response(language, time_range)
 
     def _format_calendar_events(self, events: list, language: str) -> str:
-        """カレンダーイベントを整形
+        """イベントを整形（Google Calendar + Connpass両対応）
 
-        Google Calendar APIの生データをLLMに渡しやすい形式に整形します。
+        Google CalendarとConnpassのイベントをLLMに渡しやすい形式に整形します。
 
         Args:
-            events (list): Google Calendar APIから取得したイベントのリスト
+            events (list): イベントのリスト（source フィールドでソース判定）
             language (str): 言語（ja or en）
 
         Returns:
@@ -166,15 +182,16 @@ class EventAgent:
         Examples:
             >>> agent = EventAgent()
             >>> events = [
-            ...     {"title": "Workshop", "start": "2024-01-15T14:00:00", "description": "Python basics"}
+            ...     {"title": "Workshop", "start": "2024-01-15T14:00:00", "source": "google_calendar"}
             ... ]
             >>> formatted = agent._format_calendar_events(events, "ja")
             >>> print(formatted)
-            - Workshop（2024-01-15） - Python basics
+            - Workshop（2024-01-15）[カレンダー]
 
         Notes:
             - 日時はISO8601形式からYYYY-MM-DDに変換
             - 説明文は100文字に制限してトークン数を削減
+            - Connpassの場合は参加者数も表示
             - 空のイベントリストには空文字列を返す
         """
         if not events:
@@ -186,19 +203,46 @@ class EventAgent:
             title = event.get("title", "No Title")
             start = event.get("start", "")
             description = event.get("description", "")
-            _location = event.get("location", "")  # Reserved for future use
+            source = event.get("source", "unknown")
+            location = event.get("location", "")
 
             # 日時を整形
             start_str = start[:10] if start else "日時不明"
 
+            # ソースラベル
             if language == "en":
-                event_line = f"- {title} ({start_str})"
-                if description:
-                    event_line += f" - {description[:100]}"
+                source_label = "[Calendar]" if source == "google_calendar" else "[Connpass]"
             else:
-                event_line = f"- {title}（{start_str}）"
+                source_label = "[カレンダー]" if source == "google_calendar" else "[Connpass]"
+
+            # Connpassの場合は参加者情報を追加
+            participant_info = ""
+            if source == "connpass":
+                accepted = event.get("accepted", 0)
+                limit = event.get("limit")
+                if limit:
+                    if language == "en":
+                        participant_info = f" ({accepted}/{limit} participants)"
+                    else:
+                        participant_info = f"（{accepted}/{limit}名参加）"
+                elif accepted > 0:
+                    if language == "en":
+                        participant_info = f" ({accepted} participants)"
+                    else:
+                        participant_info = f"（{accepted}名参加）"
+
+            if language == "en":
+                event_line = f"- {title} ({start_str}){participant_info} {source_label}"
+                if location:
+                    event_line += f" @ {location}"
                 if description:
-                    event_line += f" - {description[:100]}"
+                    event_line += f" - {description[:80]}"
+            else:
+                event_line = f"- {title}（{start_str}）{participant_info} {source_label}"
+                if location:
+                    event_line += f" @ {location}"
+                if description:
+                    event_line += f" - {description[:80]}"
 
             formatted_lines.append(event_line)
 
@@ -331,3 +375,40 @@ Maximum 2-3 sentences."""
             "emotion": "sad",
             "metadata": {"agent": "EventAgent", "time_range": time_range, "event_count": 0},
         }
+
+    def _merge_events(self, calendar_result: Dict, connpass_result: Dict) -> List[Dict]:
+        """Google CalendarとConnpassのイベントをマージ
+
+        両方のソースからイベントを取得し、開始日時順にソートして返します。
+
+        Args:
+            calendar_result: CalendarServiceの結果
+            connpass_result: ConnpassServiceの結果
+
+        Returns:
+            マージされたイベントのリスト（開始日時順）
+
+        Notes:
+            - 各イベントには "source" フィールド（google_calendar / connpass）が付与される
+            - 重複は除外されない（異なるソースのため基本的に重複しない想定）
+        """
+        events = []
+
+        # Google Calendarイベント
+        if calendar_result.get("success"):
+            calendar_events = calendar_result.get("data", {}).get("events", [])
+            for event in calendar_events:
+                event["source"] = "google_calendar"
+                events.append(event)
+
+        # Connpassイベント
+        if connpass_result.get("success"):
+            connpass_events = connpass_result.get("data", {}).get("events", [])
+            for event in connpass_events:
+                # source は既にConnpassServiceで付与済み
+                events.append(event)
+
+        # 開始日時でソート
+        events.sort(key=lambda e: e.get("start", "") or "")
+
+        return events

@@ -9,6 +9,7 @@ from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 import operator
 
 from backend.agents.router_agent import RouterAgent
+from backend.agents.clarification_agent import ClarificationAgent
 
 
 class WorkflowState(TypedDict):
@@ -31,6 +32,7 @@ class MainWorkflow:
     def __init__(self):
         self.router_agent = RouterAgent(debug_mode=True)
         self.graph = self._build_graph()
+        self.clarification_agent = ClarificationAgent()
 
     def _build_graph(self) -> StateGraph:
         """グラフ構造を構築"""
@@ -45,6 +47,7 @@ class MainWorkflow:
         workflow.add_node("event", self._event_node)
         workflow.add_node("slide", self._slide_node)
         workflow.add_node("general_knowledge", self._general_knowledge_node)
+        workflow.add_node("memory_agent", self._memory_agent_node)
         workflow.add_node("format_response", self._format_response_node)
 
         # エッジの定義
@@ -62,6 +65,7 @@ class MainWorkflow:
                 "event": "event",
                 "slide": "slide",
                 "general_knowledge": "general_knowledge",
+                "memory_agent": "memory_agent",
             },
         )
 
@@ -72,56 +76,47 @@ class MainWorkflow:
         workflow.add_edge("event", "format_response")
         workflow.add_edge("slide", "format_response")
         workflow.add_edge("general_knowledge", "format_response")
+        workflow.add_edge("memory_agent", "format_response")
 
         workflow.add_edge("format_response", END)
 
         return workflow.compile()
 
-    def _memory_node(self, state: WorkflowState) -> dict:
+    async def _memory_node(self, state: WorkflowState) -> dict:
         """
         メモリノード: 会話履歴とコンテキストを取得
 
-        TODO (専門エンジニア - takegg0311):
-        1. SimplifiedMemoryHelperの初期化とインスタンス取得
-        2. session_idの抽出
-        3. memory_helper.get_context() で会話履歴を取得
-        4. コンテキストをstateに追加
-
-        現在の実装:
-        - 骨組みのみ（プレースホルダー）
-        - 完全実装は専門エンジニアが担当
+        全クエリの前処理として、SimplifiedMemoryHelperから会話履歴を取得し、
+        stateのcontextに追加する。これにより後続のエージェントが
+        会話コンテキストを参照できるようになる。
         """
-        # TODO: 実装
-        # from backend.utils.memory_helper import get_memory_helper
-        #
-        # memory_helper = get_memory_helper()
-        # session_id = state.get("session_id", "")
-        # query = state.get("query", "")
-        # language = state.get("language", "ja")
-        #
-        # try:
-        #     memory_context = await memory_helper.get_context(
-        #         query=query,
-        #         session_id=session_id,
-        #         options={
-        #             "include_knowledge_base": False,  # メモリのみ参照
-        #             "language": language,
-        #             "inherit_context": True
-        #         }
-        #     )
-        #
-        #     return {
-        #         "context": {
-        #             **state.get("context", {}),
-        #             "memory": memory_context
-        #         }
-        #     }
-        # except Exception as e:
-        #     # エラー時はメモリなしで続行
-        #     return {"context": {**state.get("context", {}), "memory": {}}}
+        from backend.utils.memory_helper import get_memory_helper
 
-        # プレースホルダー（骨組み実装）
-        return {"context": {**state.get("context", {}), "memory": {}}}
+        memory_helper = get_memory_helper()
+        session_id = state.get("session_id", "")
+        query = state.get("query", "")
+        language = state.get("language", "ja")
+
+        try:
+            memory_context = await memory_helper.get_context(
+                query=query,
+                session_id=session_id,
+                options={
+                    "include_knowledge_base": False,
+                    "language": language,
+                    "inherit_context": True,
+                },
+            )
+
+            return {
+                "context": {
+                    **state.get("context", {}),
+                    "memory": memory_context,
+                }
+            }
+        except Exception:
+            # エラー時はメモリなしで続行
+            return {"context": {**state.get("context", {}), "memory": {}}}
 
     async def _router_node(self, state: WorkflowState) -> dict:
         """ルーターノード: クエリを適切なエージェントにルーティング"""
@@ -139,7 +134,7 @@ class MainWorkflow:
             "FacilityAgent": "facility",
             "EventAgent": "event",
             "SlideAgent": "slide",
-            "MemoryAgent": "general_knowledge",  # Memory未実装時はgeneral_knowledgeへ
+            "MemoryAgent": "memory_agent",
             "GeneralKnowledgeAgent": "general_knowledge",
             "ClarificationAgent": "clarification",
             "TimeAgent": "general_knowledge",  # Time未実装時はgeneral_knowledgeへ
@@ -165,46 +160,48 @@ class MainWorkflow:
     def _route_decision(
         self, state: WorkflowState
     ) -> Literal[
-        "clarification", "business_info", "facility", "event", "slide", "general_knowledge"
+        "clarification", "business_info", "facility", "event", "slide", "general_knowledge", "memory_agent"
     ]:
         """ルーティング決定"""
         return state.get("routed_to", "general_knowledge")
 
     async def _clarification_node(self, state: WorkflowState) -> dict:
         """明確化ノード: 曖昧なクエリを明確化"""
-        from backend.agents.clarification_agent import ClarificationAgent
 
-        agent = ClarificationAgent()
+        #agent = ClarificationAgent()
         query = state.get("query", "")
-        context = state.get("context", {})
+        #context = state.get("context", {})
+        language = state.get("language", "ja")
 
-        # ClarificationAgentで曖昧さを検出・明確化
-        result = await agent.process(query, context)
-
-        # 明確化が必要な場合、質問文を返す
-        if result.get("needs_clarification"):
-            return {
-                "answer": result.get(
-                    "clarification_question", "もう少し詳しく教えていただけますか？"
-                ),
-                "emotion": result.get("emotion", "neutral"),
-                "metadata": {
-                    **state.get("metadata", {}),
-                    "clarification": {
-                        "options": result.get("options", []),
-                        "needs_clarification": True,
-                    },
-                },
-            }
-
-        # 明確化不要の場合
+        # Router Agentから設定されたcategoryを取得
+        category = state.get("metadata", {}).get("routing", {}).get("category", "general-clarification-needed")
+        
+        # categoryがclarification系でない場合はデフォルトにフォールバック
+        if category not in [
+            "cafe-clarification-needed",
+            "meeting-room-clarification-needed",
+            "general-clarification-needed"
+        ]:
+            category = "general-clarification-needed"
+        
+        # ClarificationAgentを使用
+        result = await self.clarification_agent.handle_clarification(
+            query=query,
+            category=category,
+            language=language
+        )
+        
         return {
-            "answer": "質問内容を確認しました。",
-            "emotion": "neutral",
+            "answer": result["response"],
+            "emotion": result["emotion"],
             "metadata": {
                 **state.get("metadata", {}),
-                "clarification": {"needs_clarification": False},
-            },
+                "clarification": {
+                    **result["metadata"],
+                    "clarification_type": category,
+                },
+                "requires_followup": True,  # ユーザーの回答待ち
+            }
         }
 
     async def _business_info_node(self, state: WorkflowState) -> dict:
@@ -308,6 +305,29 @@ class MainWorkflow:
 
         # GeneralKnowledgeAgentで一般知識を処理
         result = await agent.answer_general_query(query, language, session_id)
+
+        return {
+            "answer": result.get("answer", ""),
+            "emotion": result.get("emotion", "neutral"),
+            "metadata": {**state.get("metadata", {}), **result.get("metadata", {})},
+        }
+
+    async def _memory_agent_node(self, state: WorkflowState) -> dict:
+        """
+        メモリエージェントノード: 会話履歴に関する質問に回答
+
+        「さっき何を聞いた？」「前に話したことを覚えてる？」などの
+        メモリ関連の質問に対してMemoryAgentが回答を生成する。
+        """
+        from backend.agents.memory_agent import MemoryAgent
+        from backend.utils.memory_helper import get_memory_helper
+
+        agent = MemoryAgent(memory_system=get_memory_helper())
+        query = state.get("query", "")
+        language = state.get("language", "ja")
+        session_id = state.get("session_id", "")
+
+        result = await agent.process_memory_query(query, session_id, language)
 
         return {
             "answer": result.get("answer", ""),
