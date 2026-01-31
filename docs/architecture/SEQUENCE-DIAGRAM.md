@@ -21,7 +21,7 @@ sequenceDiagram
     UI->>NextAPI: POST /api/voice または /api/qa
     NextAPI->>Backend: プロキシ（/api/voice または /api/chat）
     Backend->>Workflow: ainvoke(query, session_id, language)
-    Workflow->>Workflow: memory → router
+    Workflow->>Workflow: router → 専門エージェントへ振分け
     Workflow->>Agents: ルーティング先エージェント実行
     Agents-->>Workflow: answer, emotion, metadata
     Workflow-->>Backend: 応答
@@ -57,7 +57,7 @@ sequenceDiagram
     Page->>VoiceAPI: POST /api/qa（question: transcript） または Backend /api/chat へ直接
     VoiceAPI->>ChatAPI: プロキシ → Backend /api/chat
     ChatAPI->>Workflow: ainvoke(query, session_id, language)
-    Workflow->>Workflow: memory → router → 専門エージェント → format_response
+    Workflow->>Workflow: router → 専門エージェント → format_response
     Workflow-->>ChatAPI: answer, emotion, metadata
     ChatAPI-->>Page: answer, emotion
 
@@ -80,6 +80,8 @@ sequenceDiagram
 
 テキストのみの経路：質問 → /api/qa → /api/chat → MainWorkflow → 応答 → 表示・キャラクター。
 
+RouterAgent がバックエンドの窓口となり、MemoryAgent を含む専門エージェントへ振り分ける。MemoryAgent は直近の会話履歴の参照や、FAQ のように同種の問答があれば他専門エージェントを介さず回答を生成する役割を持つ。
+
 ```mermaid
 sequenceDiagram
     actor User as ユーザー
@@ -87,9 +89,8 @@ sequenceDiagram
     participant QA as /api/qa
     participant Backend as バックエンド<br/>/api/chat
     participant Workflow as MainWorkflow
-    participant Memory as memory node
-    participant Router as router node
-    participant Agent as 専門エージェント<br/>(1つにルーティング)
+    participant Router as RouterAgent
+    participant Agent as 専門エージェント<br/>（1つにルーティング）
     participant Format as format_response
 
     User->>UI: テキストで質問入力
@@ -97,8 +98,6 @@ sequenceDiagram
     QA->>Backend: POST /api/chat (query, session_id, language)
     Backend->>Workflow: ainvoke(input_data)
 
-    Workflow->>Memory: 会話履歴・コンテキスト取得
-    Memory-->>Workflow: context
     Workflow->>Router: ルーティング判定
     Router-->>Workflow: routed_to (clarification / business_info / facility / event / slide / general_knowledge / memory_agent)
     Workflow->>Agent: 該当エージェント実行
@@ -116,13 +115,12 @@ sequenceDiagram
 
 ## 4. バックエンド MainWorkflow（LangGraph）内部
 
-エージェントの繋ぎ込みとルーティングの流れ。
+RouterAgent が窓口となり、MemoryAgent を含む専門エージェントへ振り分ける流れ。MemoryAgent は直近会話履歴の参照や、同種問答（FAQ 的）の場合は他エージェントを介さず回答を生成する。
 
 ```mermaid
 sequenceDiagram
     participant Invoke as ainvoke(input)
-    participant Memory as memory
-    participant Router as router
+    participant Router as RouterAgent
     participant Cond as 条件分岐
     participant Clarify as clarification
     participant Business as business_info
@@ -130,11 +128,9 @@ sequenceDiagram
     participant Event as event
     participant Slide as slide
     participant General as general_knowledge
-    participant MemAgent as memory_agent
+    participant MemAgent as MemoryAgent
     participant Format as format_response
 
-    Invoke->>Memory: 会話履歴・コンテキスト取得
-    Memory-->>Invoke: context
     Invoke->>Router: クエリ・セッションでルーティング
     Router-->>Invoke: routed_to, metadata
     Invoke->>Cond: routed_to に応じて分岐
@@ -157,6 +153,8 @@ sequenceDiagram
     Format->>Format: messages に HumanMessage / AIMessage 追加
     Format-->>Invoke: 最終 state（answer, emotion, metadata）
 ```
+
+※ 実装では、Router の前に会話コンテキスト取得用の memory ノードを実行している場合がある。設計上の窓口は RouterAgent であり、MemoryAgent は専門エージェントの一つとして振り分け先となる。
 
 ---
 
@@ -190,7 +188,7 @@ sequenceDiagram
 | 種別 | 入力 | 主なAPI | バックエンド処理 | 出力 |
 |------|------|---------|------------------|------|
 | **音声** | マイク録音（base64） | POST /api/voice (speech_to_text, process_voice, text_to_speech) | /api/voice はプレースホルダー。QA 部分は /api/chat → MainWorkflow | テキスト表示・音声再生・VRMリップシンク・表情 |
-| **テキスト** | テキスト質問 | POST /api/qa → Backend /api/chat | MainWorkflow (memory → router → 専門エージェント → format_response) | テキスト表示・VRM表情 |
+| **テキスト** | テキスト質問 | POST /api/qa → Backend /api/chat | MainWorkflow (router → 専門エージェント → format_response) | テキスト表示・VRM表情 |
 | **画像** | 現状なし | — | — | 背景画像・スライド用画像は設定パネル/静的配置のみ。Q&A の画像入力は想定外 |
 | **スライド** | 操作・スライド内質問 | POST /api/slides | SlideAgent 直接 | スライド表示・ナレーション音声・回答表示 |
 
