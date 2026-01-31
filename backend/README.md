@@ -164,6 +164,7 @@ backend/
 ## 📖 関連ドキュメント
 
 - **[プロジェクト全体ドキュメント](../docs/README.md)** - 全ドキュメント一覧
+- **[シーケンス図（入力〜エージェント〜出力）](../docs/architecture/SEQUENCE-DIAGRAM.md)** - フロント・バックエンド間の処理フロー（Mermaid）
 - **[LangGraph開発ガイド](../docs/development/LANGGRAPH-DEVELOPMENT-GUIDE.md)** - LangGraph開発詳細
 - **[エージェント実装ガイド](../docs/development/AGENT-QUICKSTART.md)** - エージェント開発クイックスタート
 - **[API仕様](../docs/api/API.md)** - REST API仕様書
