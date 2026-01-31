@@ -104,7 +104,7 @@ class VisionAgent:
     # =====================================================
     # Public API（外部から呼ばれる）
     # =====================================================
-    async def run(self, input: Dict[str, Any]) -> Dict[str, Any]:
+    def run(self, input: Dict[str, Any]) -> Dict[str, Any]:
         """
         input:
           {
