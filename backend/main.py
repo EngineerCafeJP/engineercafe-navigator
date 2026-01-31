@@ -120,16 +120,69 @@ class VoiceResponse(BaseModel):
     error: Optional[str] = None
 
 
+# @app.post("/api/voice", response_model=VoiceResponse)
+# async def voice_api(request: VoiceRequest):
+#     """
+#     音声処理エンドポイント
+#     フロントエンドからのプロキシリクエストを処理
+#     """
+#     try:
+#         # TODO: 音声処理ロジックをLangGraphワークフローで実装
+#         # 現在はプレースホルダー
+#         if request.action == "process_voice":
+#             return VoiceResponse(
+#                 success=True,
+#                 transcript="音声処理中...",
+#                 response="音声処理機能は実装中です。",
+#                 emotion="neutral",
+#                 sessionId=request.sessionId,
+#             )
+#         elif request.action == "text_to_speech":
+#             return VoiceResponse(
+#                 success=True,
+#                 audioResponse="",  # base64 audio
+#                 sessionId=request.sessionId,
+#             )
+#         else:
+#             raise HTTPException(status_code=400, detail=f"Unknown action: {request.action}")
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=str(e))
+
+
+# backend/main.py（PR3差分イメージ）
+from agents.voice_agent import VoiceAgent  # 追加
+
+voice_agent = VoiceAgent()  # アプリ起動時に1回生成
+
 @app.post("/api/voice", response_model=VoiceResponse)
 async def voice_api(request: VoiceRequest):
-    """
-    音声処理エンドポイント
-    フロントエンドからのプロキシリクエストを処理
-    """
     try:
-        # TODO: 音声処理ロジックをLangGraphワークフローで実装
-        # 現在はプレースホルダー
-        if request.action == "process_voice":
+        if request.action == "text_to_speech":
+            if not request.text or not request.text.strip():
+                raise HTTPException(status_code=400, detail="Missing text for text_to_speech")
+
+            result = await voice_agent.text_to_speech(
+                text=request.text,
+                language=request.language or "ja",
+                emotion=None,  # request側でemotion渡す設計にするならここで拾う（現状VoiceRequestにはない） [3](https://scskinfo-my.sharepoint.com/personal/162179_cpsginfo_jp/Documents/Microsoft%20Copilot%20Chat%20%E3%83%95%E3%82%A1%E3%82%A4%E3%83%AB/emotion-mapping.txt)
+            )
+            if not result.get("success"):
+                return VoiceResponse(
+                    success=False,
+                    error=result.get("error", "TTS failed"),
+                    emotion=result.get("emotion"),
+                    sessionId=request.sessionId,
+                )
+
+            return VoiceResponse(
+                success=True,
+                audioResponse=result.get("audioResponse"),
+                emotion=result.get("emotion"),
+                sessionId=request.sessionId,
+            )
+
+        elif request.action == "process_voice":
+            # Phase1では未実装のままでOK
             return VoiceResponse(
                 success=True,
                 transcript="音声処理中...",
@@ -137,14 +190,12 @@ async def voice_api(request: VoiceRequest):
                 emotion="neutral",
                 sessionId=request.sessionId,
             )
-        elif request.action == "text_to_speech":
-            return VoiceResponse(
-                success=True,
-                audioResponse="",  # base64 audio
-                sessionId=request.sessionId,
-            )
+
         else:
             raise HTTPException(status_code=400, detail=f"Unknown action: {request.action}")
+
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
