@@ -59,12 +59,14 @@ def test_clean_text_for_tts_strips_markdown_links_code():
     assert "**" not in cleaned
     assert "*" not in cleaned
     assert "# " not in cleaned
+
+    # Markdownリンクはテキストだけ残る（URLは残らない）[1](blob:https://m365.cloud.microsoft/8fc42655-5bae-4093-b670-913df7f7bb55)
     assert "https://example.com" not in cleaned
     assert "リンク" in cleaned
+
     assert "`" not in cleaned
     assert "inline_code" in cleaned
     assert "print(" not in cleaned
-
 
 
 def test_truncate_by_bytes_over_limit():
