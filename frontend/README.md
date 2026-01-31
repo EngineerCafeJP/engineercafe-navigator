@@ -1147,6 +1147,7 @@ pnpm test                   # 統合テストスイート実行
 - **[🛠️ 開発ガイド](../docs/development/DEVELOPER-GUIDE.md)** - 開発者向け技術仕様
 - **[🚀 デプロイガイド](../docs/DEPLOYMENT.md)** - 本番環境デプロイ手順
 - **[🏛️ システムアーキテクチャ](../docs/architecture/SYSTEM-ARCHITECTURE.md)** - 8エージェント体制の詳細
+- **[📐 シーケンス図](../docs/architecture/SEQUENCE-DIAGRAM.md)** - 入力〜バックエンド〜出力の処理フロー（Mermaid）
 - **[🆘 トラブルシューティング](../docs/development/TROUBLESHOOTING.md)** - トラブルシューティングガイド
 
 ### セキュリティハイライト

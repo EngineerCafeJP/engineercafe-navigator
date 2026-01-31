@@ -48,6 +48,7 @@
 ### 🏗️ アーキテクチャ
 - **[architecture/SYSTEM-ARCHITECTURE.md](architecture/SYSTEM-ARCHITECTURE.md)** - システムアーキテクチャ詳細
 - **[architecture/UNIFIED-ARCHITECTURE.md](architecture/UNIFIED-ARCHITECTURE.md)** - 統合アーキテクチャ概要
+- **[architecture/SEQUENCE-DIAGRAM.md](architecture/SEQUENCE-DIAGRAM.md)** - 入力〜バックエンド処理〜出力のシーケンス図（Mermaid）
 
 ### 🔒 セキュリティ
 - **[SECURITY.md](SECURITY.md)** - セキュリティ対策・脅威分析
