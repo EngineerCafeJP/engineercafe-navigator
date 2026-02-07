@@ -21,7 +21,33 @@ Python版LangGraphを使用したAIエージェントバックエンドシステ
 
 ## セットアップ
 
-### Poetryを使用する場合
+### 方法1: Dockerを使用する場合（推奨）
+
+ローカル開発環境をDockerで起動します。PostgreSQLも同時に起動されるため、LangGraph Checkpointerのテストも可能です。
+
+```bash
+# プロジェクトルートで実行
+docker-compose up -d
+
+# バックエンドのみ起動
+docker-compose up -d backend postgres
+```
+
+### 方法2: uvを使用する場合
+
+[uv](https://github.com/astral-sh/uv) は高速なPythonパッケージマネージャーです。
+
+```bash
+cd backend
+
+# uvでインストール
+uv pip install -e ".[dev]"
+
+# または uv sync を使用
+uv sync
+```
+
+### 方法3: Poetryを使用する場合
 
 ```bash
 cd backend
@@ -29,13 +55,38 @@ poetry install
 poetry shell
 ```
 
-### pipを使用する場合
+### 方法4: pipを使用する場合
 
 ```bash
 cd backend
 python -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
+```
+
+### ローカルPostgreSQLセットアップ（LangGraph Checkpointer用）
+
+LangGraph Checkpointerを使用するには、Supabase Local（PostgreSQL含む）を使用します。
+
+```bash
+# Supabase CLIをインストール（未インストールの場合）
+brew install supabase/tap/supabase
+
+# Supabase Localを起動（PostgreSQL含む）
+supabase start
+
+# 起動後に表示される情報:
+#   DB URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+#   API URL: http://127.0.0.1:54321
+#   Studio URL: http://127.0.0.1:54323
+
+# .envに接続URIを設定
+SUPABASE_URL=http://127.0.0.1:54321
+SUPABASE_KEY=<表示されたservice_role key>
+SUPABASE_DB_URI=postgresql://postgres:postgres@127.0.0.1:54322/postgres
+
+# 停止する場合
+supabase stop
 ```
 
 ## 環境変数の設定
