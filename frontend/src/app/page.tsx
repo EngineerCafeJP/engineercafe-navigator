@@ -2,10 +2,11 @@
 
 import { audioStateManager } from '@/lib/audio-state-manager';
 import { preprocessTTS } from '@/utils/tts-preprocess';
-import { MessageSquare, Presentation, Settings, UserPlus, Volume2, VolumeX, X } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Gamepad2, MessageSquare, Presentation, Settings, UserPlus, Volume2, VolumeX, X } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import BackgroundSelector, { BackgroundOption } from './components/BackgroundSelector';
 import CharacterAvatar from './components/CharacterAvatar';
+import CharacterControlModal, { CharacterAnimationData } from './components/CharacterControlModal';
 import EnvironmentSettings from './components/EnvironmentSettings';
 import MarpViewer from './components/MarpViewer';
 import { EmotionMapping } from '@/lib/emotion-mapping';
@@ -26,6 +27,7 @@ export default function Home() {
   });
   const [lightingIntensity, setLightingIntensity] = useState(1);
   const [showSettings, setShowSettings] = useState(false);
+  const [showCharacterControlModal, setShowCharacterControlModal] = useState(false);
   
   // Audio control state
   const [isMuted, setIsMuted] = useState(false);
@@ -38,6 +40,7 @@ export default function Home() {
   const [isInitializingRecorder, setIsInitializingRecorder] = useState(false);
   const [setVisemeFunction, setSetVisemeFunction] = useState<((viseme: string, intensity: number) => void) | null>(null);
   const [setExpressionFunction, setSetExpressionFunction] = useState<((expression: string, weight: number) => void) | null>(null);
+  const playKeyframeAnimationRef = useRef<((animation: CharacterAnimationData) => void) | null>(null);
   
   // Loading state
   const [isProcessing, setIsProcessing] = useState(false);
@@ -636,6 +639,19 @@ export default function Home() {
     }
   };
 
+  // Apply greetings.json format keyframe animation from test modal
+  const handle_apply_character_control = useCallback((data: CharacterAnimationData) => {
+    try {
+      if (playKeyframeAnimationRef.current) {
+        playKeyframeAnimationRef.current(data);
+      } else {
+        console.warn('[Character Control] Keyframe animation not ready (character loading)');
+      }
+    } catch (error) {
+      console.error('[Character Control] Error applying keyframe animation:', error);
+    }
+  }, []);
+
   // Play audio with unified character control
   const playAudioWithLipSync = async (audioBase64: string, characterControlData?: any) => {
     try {
@@ -689,6 +705,13 @@ export default function Home() {
 
   return (
     <main className="min-h-screen relative" style={getBackgroundStyle()}>
+      {/* Character Control Test Modal */}
+      <CharacterControlModal
+        is_open={showCharacterControlModal}
+        on_close={() => setShowCharacterControlModal(false)}
+        on_apply_control={handle_apply_character_control}
+      />
+
       {/* Loading Overlay */}
       {isProcessing && (
         <div className="fixed inset-0 z-[100] bg-black/50 backdrop-blur-sm flex items-center justify-center">
@@ -760,6 +783,9 @@ export default function Home() {
                     onExpressionControl={(setExpression) => {
                       setSetExpressionFunction(() => setExpression);
                     }}
+                    onKeyframeAnimationControl={(playKeyframeAnimation) => {
+                      playKeyframeAnimationRef.current = playKeyframeAnimation;
+                    }}
                   />
                   
                   {/* Settings and test buttons */}
@@ -783,6 +809,13 @@ export default function Home() {
                           <div className="flex flex-col lg:flex-row lg:justify-between items-center lg:items-end gap-8 lg:gap-6">
                             {/* Japanese buttons group - left side */}
                             <div className="flex flex-col gap-6 w-full lg:w-auto">
+                              <button
+                                onClick={() => setShowCharacterControlModal(true)}
+                                className="flex items-center justify-center gap-0 md:gap-4 px-6 md:px-8 py-6 md:py-8 bg-gradient-to-r from-amber-500 to-orange-600 text-white rounded-2xl shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200 min-w-[56px] md:min-w-[320px] touch-manipulation"
+                              >
+                                <Gamepad2 className="w-6 h-6 md:w-8 md:h-8" />
+                                <span className="hidden md:inline text-lg md:text-xl font-semibold ml-2">キャラクターを操作する</span>
+                              </button>
                               <button
                                 onClick={async () => {
                                   await initializeAudioContext();
