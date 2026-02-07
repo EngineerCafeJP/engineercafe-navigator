@@ -22,10 +22,10 @@ Engineer Cafeに関する一般情報、AI・技術トピック、福岡のテ�
 import logging
 from typing import Dict, Any, List, Optional, Literal
 
-from llm.openrouter import OpenRouterProvider
-from llm.models import get_model_config
-from tools.enhanced_rag import EnhancedRAGSearch
-from tools.web_search import WebSearchTool
+from backend.llm.openrouter import OpenRouterProvider
+from backend.llm.models import get_model_config
+from backend.tools.enhanced_rag import EnhancedRAGSearch
+from backend.tools.web_search import WebSearchTool
 
 logger = logging.getLogger(__name__)
 
