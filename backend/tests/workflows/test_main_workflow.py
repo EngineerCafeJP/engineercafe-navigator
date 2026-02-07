@@ -1,7 +1,7 @@
 """
 MainWorkflow の統合テスト
 
-LangGraphワークフローとMemoryAgent統合をテスト
+LangGraphワークフローとSupervisor Pattern統合をテスト
 """
 
 import pytest
@@ -12,27 +12,14 @@ class TestMainWorkflowMemoryIntegration:
     """MainWorkflow のメモリ統合テスト"""
 
     @pytest.mark.asyncio
-    @patch("backend.workflows.main_workflow.RouterAgent")
-    @patch("backend.workflows.main_workflow.ClarificationAgent")
-    async def test_memory_node_retrieves_context(
-        self, mock_clarification, mock_router_class
-    ):
-        """memory_nodeが会話履歴を取得してstateに追加することを確認"""
+    @patch("backend.workflows.main_workflow.OrchestratorAgent")
+    async def test_memory_loader_node_retrieves_context(self, mock_orchestrator_class):
+        """memory_loader_nodeが会話履歴を取得してstateに追加することを確認"""
         from backend.workflows.main_workflow import MainWorkflow
 
-        # RouterAgentのモック
-        mock_router = AsyncMock()
-        mock_router.route_query = AsyncMock(
-            return_value=Mock(
-                agent="GeneralKnowledgeAgent",
-                category="general",
-                request_type=None,
-                language="ja",
-                confidence=0.9,
-                debug_info={},
-            )
-        )
-        mock_router_class.return_value = mock_router
+        # OrchestratorAgentのモック
+        mock_orchestrator = AsyncMock()
+        mock_orchestrator_class.return_value = mock_orchestrator
 
         with patch(
             "backend.utils.memory_helper.get_memory_helper"
@@ -52,7 +39,7 @@ class TestMainWorkflowMemoryIntegration:
 
             workflow = MainWorkflow()
 
-            # _memory_nodeを直接テスト
+            # _memory_loader_nodeを直接テスト
             state = {
                 "query": "テスト",
                 "session_id": "test-session",
@@ -60,58 +47,19 @@ class TestMainWorkflowMemoryIntegration:
                 "context": {},
             }
 
-            result = await workflow._memory_node(state)
+            result = await workflow._memory_loader_node(state)
 
             assert "context" in result
             assert "memory" in result["context"]
             mock_helper.get_context.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch("backend.workflows.main_workflow.RouterAgent")
-    @patch("backend.workflows.main_workflow.ClarificationAgent")
-    async def test_memory_agent_routing(self, mock_clarification, mock_router_class):
-        """MemoryAgentへのルーティングが正しく設定されていることを確認"""
-        from backend.workflows.main_workflow import MainWorkflow
-
-        # RouterAgentのモック - MemoryAgentにルーティング
-        mock_router = AsyncMock()
-        mock_router.route_query = AsyncMock(
-            return_value=Mock(
-                agent="MemoryAgent",
-                category="memory",
-                request_type="question_history",
-                language="ja",
-                confidence=0.95,
-                debug_info={},
-            )
-        )
-        mock_router_class.return_value = mock_router
-
-        workflow = MainWorkflow()
-
-        # _router_nodeをテスト
-        state = {
-            "query": "さっき何を聞いた？",
-            "session_id": "test-session",
-            "language": "ja",
-            "metadata": {},
-        }
-
-        result = await workflow._router_node(state)
-
-        assert result["routed_to"] == "memory_agent"
-        assert result["metadata"]["routing"]["agent"] == "MemoryAgent"
-
-    @pytest.mark.asyncio
-    @patch("backend.workflows.main_workflow.RouterAgent")
-    @patch("backend.workflows.main_workflow.ClarificationAgent")
-    async def test_memory_agent_node_processes_query(
-        self, mock_clarification, mock_router_class
-    ):
+    @patch("backend.workflows.main_workflow.OrchestratorAgent")
+    async def test_memory_agent_node_processes_query(self, mock_orchestrator_class):
         """_memory_agent_nodeがMemoryAgentを呼び出して回答を生成することを確認"""
         from backend.workflows.main_workflow import MainWorkflow
 
-        mock_router_class.return_value = AsyncMock()
+        mock_orchestrator_class.return_value = AsyncMock()
 
         with patch(
             "backend.utils.memory_helper.get_memory_helper"
@@ -141,6 +89,7 @@ class TestMainWorkflowMemoryIntegration:
                 "query": "さっき何を聞いた？",
                 "session_id": "test-session",
                 "language": "ja",
+                "routing": {},
                 "metadata": {},
             }
 
@@ -153,15 +102,12 @@ class TestMainWorkflowMemoryIntegration:
             )
 
     @pytest.mark.asyncio
-    @patch("backend.workflows.main_workflow.RouterAgent")
-    @patch("backend.workflows.main_workflow.ClarificationAgent")
-    async def test_memory_node_error_handling(
-        self, mock_clarification, mock_router_class
-    ):
-        """memory_nodeがエラー時にメモリなしで続行することを確認"""
+    @patch("backend.workflows.main_workflow.OrchestratorAgent")
+    async def test_memory_loader_node_error_handling(self, mock_orchestrator_class):
+        """memory_loader_nodeがエラー時にメモリなしで続行することを確認"""
         from backend.workflows.main_workflow import MainWorkflow
 
-        mock_router_class.return_value = AsyncMock()
+        mock_orchestrator_class.return_value = AsyncMock()
 
         with patch(
             "backend.utils.memory_helper.get_memory_helper"
@@ -179,50 +125,12 @@ class TestMainWorkflowMemoryIntegration:
                 "context": {"existing": "data"},
             }
 
-            result = await workflow._memory_node(state)
+            result = await workflow._memory_loader_node(state)
 
             # エラー時でもcontextが返される
             assert "context" in result
             assert result["context"]["memory"] == {}
             assert result["context"]["existing"] == "data"
-
-    def test_route_decision_returns_memory_agent(self):
-        """_route_decisionがmemory_agentを返せることを確認"""
-        from backend.workflows.main_workflow import MainWorkflow
-
-        with patch("backend.workflows.main_workflow.RouterAgent"), patch(
-            "backend.workflows.main_workflow.ClarificationAgent"
-        ):
-            workflow = MainWorkflow()
-
-            state = {"routed_to": "memory_agent"}
-            result = workflow._route_decision(state)
-
-            assert result == "memory_agent"
-
-    def test_agent_to_node_mapping_includes_memory_agent(self):
-        """エージェント→ノードのマッピングにMemoryAgentが含まれることを確認"""
-        # _router_node内のagent_to_nodeマッピングを確認
-        expected_mapping = {
-            "BusinessInfoAgent": "business_info",
-            "FacilityAgent": "facility",
-            "EventAgent": "event",
-            "SlideAgent": "slide",
-            "MemoryAgent": "memory_agent",
-            "GeneralKnowledgeAgent": "general_knowledge",
-            "ClarificationAgent": "clarification",
-            "TimeAgent": "general_knowledge",
-        }
-
-        # コードから直接マッピングを確認
-        from backend.workflows.main_workflow import MainWorkflow
-
-        with patch("backend.workflows.main_workflow.RouterAgent"), patch(
-            "backend.workflows.main_workflow.ClarificationAgent"
-        ):
-            workflow = MainWorkflow()
-            # MemoryAgentがmemory_agentにマッピングされていることを確認
-            assert expected_mapping["MemoryAgent"] == "memory_agent"
 
 
 class TestWorkflowGraphStructure:
@@ -232,9 +140,7 @@ class TestWorkflowGraphStructure:
         """ワークフローにmemory_agentノードが含まれることを確認"""
         from backend.workflows.main_workflow import MainWorkflow
 
-        with patch("backend.workflows.main_workflow.RouterAgent"), patch(
-            "backend.workflows.main_workflow.ClarificationAgent"
-        ):
+        with patch("backend.workflows.main_workflow.OrchestratorAgent"):
             workflow = MainWorkflow()
 
             # graphが存在することを確認
@@ -244,12 +150,133 @@ class TestWorkflowGraphStructure:
         """ワークフローが正常に初期化されることを確認"""
         from backend.workflows.main_workflow import MainWorkflow
 
-        with patch("backend.workflows.main_workflow.RouterAgent") as mock_router, patch(
-            "backend.workflows.main_workflow.ClarificationAgent"
-        ):
-            mock_router.return_value = Mock()
+        with patch("backend.workflows.main_workflow.OrchestratorAgent") as mock_orchestrator:
+            mock_orchestrator.return_value = Mock()
 
             workflow = MainWorkflow()
 
-            assert workflow.router_agent is not None
+            assert workflow.orchestrator is not None
             assert workflow.graph is not None
+
+    def test_workflow_initialization_with_checkpointer(self):
+        """Checkpointerを指定してワークフローが正常に初期化されることを確認"""
+        from backend.workflows.main_workflow import MainWorkflow
+        from langgraph.checkpoint.memory import MemorySaver
+
+        with patch("backend.workflows.main_workflow.OrchestratorAgent") as mock_orchestrator:
+            mock_orchestrator.return_value = Mock()
+            # 実際のCheckpointerインスタンスを使用
+            checkpointer = MemorySaver()
+
+            workflow = MainWorkflow(checkpointer=checkpointer)
+
+            assert workflow.orchestrator is not None
+            assert workflow.graph is not None
+            assert workflow.checkpointer == checkpointer
+
+
+class TestOrchestratorIntegration:
+    """OrchestratorAgent統合テスト"""
+
+    @pytest.mark.asyncio
+    @patch("backend.workflows.main_workflow.OrchestratorAgent")
+    async def test_orchestrator_node_calls_decide_next_agent(
+        self, mock_orchestrator_class
+    ):
+        """_orchestrator_nodeがdecide_next_agentを呼び出すことを確認"""
+        from backend.workflows.main_workflow import MainWorkflow
+        from backend.agents.orchestrator_agent import OrchestratorDecision
+
+        mock_decision = OrchestratorDecision(
+            next_agent="business_info",
+            language="ja",
+            category="business-hours",
+            request_type="hours",
+            confidence=0.95,
+            reasoning="営業時間の質問",
+            debug_info={},
+        )
+
+        mock_orchestrator = AsyncMock()
+        mock_orchestrator.decide_next_agent = AsyncMock(return_value=mock_decision)
+        mock_orchestrator_class.return_value = mock_orchestrator
+
+        workflow = MainWorkflow()
+
+        state = {
+            "query": "営業時間は？",
+            "session_id": "test-session",
+            "language": "ja",
+            "context": {"memory": {}},
+        }
+
+        result = await workflow._orchestrator_node(state)
+
+        # Command patternで結果が返されることを確認
+        mock_orchestrator.decide_next_agent.assert_called_once()
+        # Commandオブジェクトが返される
+        assert hasattr(result, "goto")
+        assert result.goto == "business_info"
+
+    @pytest.mark.asyncio
+    @patch("backend.workflows.main_workflow.OrchestratorAgent")
+    async def test_format_response_node(self, mock_orchestrator_class):
+        """_format_response_nodeが正しくメッセージをフォーマットすることを確認"""
+        from backend.workflows.main_workflow import MainWorkflow
+
+        mock_orchestrator_class.return_value = AsyncMock()
+
+        workflow = MainWorkflow()
+
+        state = {
+            "query": "営業時間は？",
+            "answer": "9時から22時です。",
+        }
+
+        result = workflow._format_response_node(state)
+
+        assert "messages" in result
+        assert len(result["messages"]) == 2
+        assert result["messages"][0].content == "営業時間は？"
+        assert result["messages"][1].content == "9時から22時です。"
+
+
+class TestAsyncWorkflowMethods:
+    """非同期ワークフローメソッドのテスト"""
+
+    @pytest.mark.asyncio
+    @patch("backend.workflows.main_workflow.OrchestratorAgent")
+    async def test_workflow_close(self, mock_orchestrator_class):
+        """closeメソッドがリソースをクリーンアップすることを確認"""
+        from backend.workflows.main_workflow import MainWorkflow
+
+        mock_orchestrator = AsyncMock()
+        mock_orchestrator.close = AsyncMock()
+        mock_orchestrator_class.return_value = mock_orchestrator
+
+        workflow = MainWorkflow()
+
+        await workflow.close()
+
+        mock_orchestrator.close.assert_called_once()
+
+    @pytest.mark.asyncio
+    @patch("backend.workflows.main_workflow.OrchestratorAgent")
+    async def test_workflow_close_with_checkpointer(self, mock_orchestrator_class):
+        """checkpointer付きのcloseメソッドが両方をクリーンアップすることを確認"""
+        from backend.workflows.main_workflow import MainWorkflow
+        from langgraph.checkpoint.memory import MemorySaver
+
+        mock_orchestrator = AsyncMock()
+        mock_orchestrator.close = AsyncMock()
+        mock_orchestrator_class.return_value = mock_orchestrator
+
+        # MemorySaverを使用（connがないので別のアプローチでテスト）
+        checkpointer = MemorySaver()
+
+        workflow = MainWorkflow(checkpointer=checkpointer)
+
+        # closeは例外なく完了すべき
+        await workflow.close()
+
+        mock_orchestrator.close.assert_called_once()
