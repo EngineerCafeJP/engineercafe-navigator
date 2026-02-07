@@ -5,8 +5,8 @@ LangGraphのSupervisor Agentパターンに従い、OrchestratorAgentが
 マルチエージェントシステムを動的に制御する。
 
 参考:
-- langgraph-reference/docs/docs/concepts/multi_agent.md
-- langgraph-reference/docs/docs/concepts/persistence.md
+- https://langchain-ai.github.io/langgraph/concepts/multi_agent/
+- https://langchain-ai.github.io/langgraph/concepts/persistence/
 """
 
 import asyncio

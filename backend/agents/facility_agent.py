@@ -3,9 +3,19 @@ FacilityAgent - 施設情報エージェント
 Wi-Fi、電源、設備、地下施設に関する質問に回答
 """
 
+import logging
 from typing import Dict, Optional
-from backend.tools.enhanced_rag import EnhancedRAGSearch
+
+from langchain_core.messages import HumanMessage
+
+from backend.config.prompts.facility_prompts import (
+    FACILITY_ENHANCEMENT_KEYWORDS,
+    build_facility_prompt,
+)
 from backend.llm import get_llm_provider, get_model_config
+from backend.tools.enhanced_rag import EnhancedRAGSearch
+
+logger = logging.getLogger(__name__)
 
 
 class FacilityAgent:
@@ -110,8 +120,8 @@ class FacilityAgent:
             - 地下施設の場合、特定施設名を含む段落のみに絞り込み
             - RAG検索失敗時はデフォルト応答を返す（confidence: 0.3）
         """
-        print(
-            f"[FacilityAgent] Processing query: {query}, request_type: {request_type}, language: {language}"
+        logger.info(
+            f"Processing query: {query[:50]}..., request_type: {request_type}, language: {language}"
         )
 
         # クエリ拡張（requestTypeに応じて）
@@ -145,7 +155,7 @@ class FacilityAgent:
         # LLM応答生成
         try:
             response_text = await self.llm_provider.generate(
-                messages=[{"role": "user", "content": prompt}],
+                messages=[HumanMessage(content=prompt)],
                 config=get_model_config("facility_info"),
             )
 
@@ -165,67 +175,16 @@ class FacilityAgent:
             }
 
         except Exception as e:
-            print(f"[FacilityAgent] LLM error: {e}")
+            logger.error(f"LLM error: {e}")
             return self._get_default_response(language, request_type)
 
     def _enhance_query(self, query: str, request_type: Optional[str], language: str) -> str:
-        """クエリ拡張ロジック
-
-        リクエストタイプに応じて関連キーワードを追加し、RAG検索の精度を向上させます。
-
-        Args:
-            query (str): 元のユーザークエリ
-            request_type (Optional[str]): リクエストタイプ
-            language (str): 言語（ja or en）
-
-        Returns:
-            str: 拡張されたクエリ
-
-        Examples:
-            >>> agent = FacilityAgent()
-            >>> enhanced = agent._enhance_query("Wi-Fiは？", "wifi", "ja")
-            >>> print(enhanced)
-            Wi-Fiは？ 無料Wi-Fi インターネット 接続方法 パスワード
-
-            >>> enhanced = agent._enhance_query("電源は？", "facility", "ja")
-            >>> print(enhanced)
-            電源は？ 設備 電源 コンセント プリンター 利用方法
-
-        Notes:
-            - ユーザークエリの後にキーワードを追加
-            - リクエストタイプに応じた適切なキーワードセットを使用
-            - リクエストタイプがない場合は元のクエリをそのまま返す
-        """
-        # requestTypeに応じたキーワード追加
-        enhancement_keywords = {
-            "wifi": {
-                "ja": "無料Wi-Fi インターネット 接続方法 パスワード",
-                "en": "free Wi-Fi internet connection method password",
-            },
-            "facility": {
-                "ja": "設備 電源 コンセント プリンター 利用方法",
-                "en": "facilities power outlet printer usage",
-            },
-            "basement": {
-                "ja": "地下 B1 MTGスペース 集中スペース アンダースペース Makersスペース 予約 利用方法",
-                "en": "basement B1 MTG space focus space under space makers space reservation",
-            },
-            "access": {
-                "ja": "アクセス 行き方 最寄り駅 天神駅 徒歩 道順 出口 帰り方",
-                "en": "access directions nearest station Tenjin walking route exit",
-            },
-            "building": {
-                "ja": "建物 赤煉瓦文化館 重要文化財 辰野金吾 歴史 明治",
-                "en": "building red brick cultural hall important cultural property history Meiji",
-            },
-        }
-
-        if request_type in enhancement_keywords:
-            keywords = enhancement_keywords[request_type].get(
-                language, enhancement_keywords[request_type].get("ja", "")
+        """クエリ拡張ロジック: リクエストタイプに応じて関連キーワードを追加"""
+        if request_type in FACILITY_ENHANCEMENT_KEYWORDS:
+            keywords = FACILITY_ENHANCEMENT_KEYWORDS[request_type].get(
+                language, FACILITY_ENHANCEMENT_KEYWORDS[request_type].get("ja", "")
             )
             return f"{query} {keywords}"
-
         return query
 
     def _filter_basement_context(self, context: str, query: str, language: str) -> str:
@@ -300,97 +259,12 @@ class FacilityAgent:
     def _build_prompt(
         self, query: str, context: str, request_type: Optional[str], language: str
     ) -> str:
-        """LLMプロンプトを構築
-
-        リクエストタイプと言語に応じて適切なプロンプトを生成します。
-        特定情報の抽出を指示し、簡潔な応答を促します。
-
-        Args:
-            query (str): ユーザークエリ
-            context (str): RAG検索で取得したコンテキスト
-            request_type (Optional[str]): リクエストタイプ
-            language (str): 言語（ja or en）
-
-        Returns:
-            str: 構築されたプロンプト
-
-        Examples:
-            >>> agent = FacilityAgent()
-            >>> prompt = agent._build_prompt(
-            ...     query="Wi-Fiは使えますか？",
-            ...     context="無料Wi-Fiをご利用いただけます。",
-            ...     request_type="wifi",
-            ...     language="ja"
-            ... )
-            >>> print(prompt)
-            次の情報からWi-Fi情報のみを抽出して質問に答えてください。
-
-            質問: Wi-Fiは使えますか？
-            情報: 無料Wi-Fiをご利用いただけます。
-
-            Wi-Fi情報のみを答えてください。最大2-3文。他の情報は含めないでください。
-            重要: 情報提供の場合は[relaxed]、良いニュースの場合は[happy]で回答を始めてください。
-
-        Notes:
-            - request_typeがある場合は特定情報の抽出を指示
-            - 感情タグの埋め込みを"重要"として強調
-            - 最大2-3文の簡潔な応答を促す
-        """
-        print(
-            f"[FacilityAgent] Building prompt with query_length: {len(query)}, context_length: {len(context)}, request_type: {request_type}, language: {language}"
+        """LLMプロンプトを構築（外部テンプレートに委譲）"""
+        logger.debug(
+            f"Building prompt: query_length={len(query)}, context_length={len(context)}, "
+            f"request_type={request_type}, language={language}"
         )
-
-        # requestTypeに応じたプロンプト
-        if request_type:
-            request_type_prompt = self._get_request_type_prompt(request_type, language)
-
-            if language == "en":
-                return f"""Extract ONLY the {request_type_prompt} from the following information to answer the question.
-
-Question: {query}
-Information: {context}
-
-Answer with ONLY the {request_type_prompt}. Maximum 2-3 sentences. Do not include any other information.
-IMPORTANT: Start your response with [relaxed] for information or [happy] for positive news."""
-            else:
-                return f"""次の情報から{request_type_prompt}のみを抽出して質問に答えてください。
-
-質問: {query}
-情報: {context}
-
-{request_type_prompt}のみを答えてください。最大2-3文。他の情報は含めないでください。
-重要: 情報提供の場合は[relaxed]、良いニュースの場合は[happy]で回答を始めてください。"""
-
-        else:
-            if language == "en":
-                return f"""Answer the question using the provided information. Be concise and direct.
-
-Question: {query}
-Information: {context}
-
-Answer briefly (2-3 sentences) with only the relevant information.
-IMPORTANT: Start your response with an emotion tag: [relaxed] for information, [happy] for positive news, [sad] for unavailable services."""
-            else:
-                return f"""提供された情報を使って質問に答えてください。簡潔で直接的に答えてください。
-
-質問: {query}
-情報: {context}
-
-関連する情報のみを簡潔に（2-3文）答えてください。
-重要: 感情タグで回答を始めてください: 情報提供は[relaxed]、良いニュースは[happy]、利用できないサービスは[sad]。"""
-
-    def _get_request_type_prompt(self, request_type: str, language: str) -> str:
-        """requestTypeに応じたプロンプト文言を取得"""
-        prompt_map = {
-            "wifi": {"en": "Wi-Fi information", "ja": "Wi-Fi情報"},
-            "facility": {"en": "facility information", "ja": "設備情報"},
-            "basement": {"en": "basement facility information", "ja": "地下施設情報"},
-        }
-
-        prompt = prompt_map.get(
-            request_type, {"en": "requested information", "ja": "要求された情報"}
-        )
-        return prompt.get(language, prompt.get("ja", ""))
+        return build_facility_prompt(query, context, request_type, language)
 
     def _determine_emotion(self, request_type: Optional[str], response_text: str) -> str:
         """感情タグを決定

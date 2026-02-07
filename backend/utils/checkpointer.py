@@ -4,7 +4,7 @@ Checkpointer基盤実装
 LangGraphの永続化機能を有効化するための AsyncPostgresSaver 実装。
 Supabase PostgreSQL を使用した langgraph-checkpoint-postgres 統合。
 
-参考: langgraph-reference/docs/docs/concepts/persistence.md
+参考: https://langchain-ai.github.io/langgraph/concepts/persistence/
 """
 
 import asyncio

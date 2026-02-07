@@ -4,7 +4,7 @@ OrchestratorAgent - Supervisor Pattern による Multi-Agent オーケストレ�
 LangGraph の Supervisor Agent パターンに従い、クエリを適切なエージェントに
 ルーティングし、エージェント間の制御フローを管理する。
 
-参考: langgraph-reference/docs/docs/concepts/multi_agent.md
+参考: https://langchain-ai.github.io/langgraph/concepts/multi_agent/
 
 責任範囲:
 - 言語検出
@@ -17,43 +17,45 @@ LangGraph の Supervisor Agent パターンに従い、クエリを適切なエ�
 import json
 import logging
 import os
-import re
 from dataclasses import dataclass, field
-from typing import Literal, Optional
+from typing import Optional
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import END
 from langgraph.types import Command
 
+from backend.config.routing_constants import (
+    AGENT_DESCRIPTIONS,
+    CATEGORY_TO_AGENT_MAP,
+    ACCESS_DIRECTION_KEYWORDS,
+    BASEMENT_KEYWORDS,
+    BUILDING_KEYWORDS,
+    BUSINESS_HOURS_KEYWORDS,
+    COMMUNITY_KEYWORDS,
+    CONSULTATION_KEYWORDS,
+    EVENT_KEYWORDS,
+    MEMORY_EXCLUSION_BUSINESS,
+    MEMORY_EXCLUSION_FACILITY,
+    MEMORY_KEYWORDS,
+    PRICING_KEYWORDS,
+    SLIDE_KEYWORDS,
+    WIFI_KEYWORDS,
+    AgentNodeName,
+    RoutingTarget,
+    extract_request_type,
+    match_keywords,
+)
 from backend.llm.models import ModelConfig, SupportedModel, get_model_config
 from backend.llm.openrouter import OpenRouterProvider
+from backend.utils.input_sanitizer import (
+    MAX_CONTEXT_LENGTH,
+    MAX_QUERY_LENGTH,
+    sanitize_input,
+)
 from backend.utils.language_processor import LanguageProcessor, SupportedLanguage
 from backend.utils.query_classifier import QueryClassifier
 
 logger = logging.getLogger(__name__)
-
-# エージェントノード名の型定義
-AgentNodeName = Literal[
-    "business_info",
-    "facility",
-    "event",
-    "memory_agent",
-    "general_knowledge",
-    "clarification",
-    "slide",
-]
-
-# 終了を含む完全なルーティングターゲット
-RoutingTarget = Literal[
-    "business_info",
-    "facility",
-    "event",
-    "memory_agent",
-    "general_knowledge",
-    "clarification",
-    "slide",
-    "__end__",
-]
 
 
 @dataclass
@@ -77,138 +79,6 @@ class OrchestratorAgent:
     クエリを適切な専門エージェントにルーティングし、
     エージェント間の制御フローを動的に管理する。
     """
-
-    # キーワード定数（テストと拡張のため）
-    WIFI_KEYWORDS = ["wi-fi", "wifi", "ワイファイ", "インターネット", "internet"]
-    BUSINESS_HOURS_KEYWORDS = [
-        "営業時間",
-        "何時まで",
-        "何時から",
-        "開いて",
-        "閉まる",
-        "opening hours",
-        "business hours",
-        "open",
-        "close",
-        "what time",
-        "when do you",
-    ]
-    PRICING_KEYWORDS = ["料金", "いくら", "値段", "価格", "cost", "price", "fee", "how much"]
-    BASEMENT_KEYWORDS = ["地下", "basement", "b1", "mtgスペース", "集中スペース"]
-    EVENT_KEYWORDS = [
-        "イベント",
-        "勉強会",
-        "セミナー",
-        "ミートアップ",
-        "event",
-        "workshop",
-        "meetup",
-        "seminar",
-    ]
-    SLIDE_KEYWORDS = [
-        "スライド",
-        "プレゼン",
-        "次のスライド",
-        "前のスライド",
-        "slide",
-        "presentation",
-    ]
-    CONSULTATION_KEYWORDS = [
-        "相談",
-        "アドバイス",
-        "カウンセリング",
-        "キャリア",
-        "スキルチェンジ",
-        "転職",
-        "コミュニティマネージャー",
-        "consultation",
-        "advice",
-        "career",
-        "counseling",
-    ]
-    ACCESS_DIRECTION_KEYWORDS = [
-        # FROM station TO cafe
-        "行き方",
-        "道順",
-        "最寄り駅",
-        "最寄り",
-        "たどり着",
-        "行く方法",
-        "来る方法",
-        "来方",
-        "directions",
-        "how to get",
-        # FROM cafe TO station (bidirectional - agent is at reception)
-        "駅まで",
-        "駅への",
-        "帰り方",
-        "帰り道",
-        "帰る方法",
-        "出口",
-        "最寄り駅まで",
-        "駅に行く",
-        "how to get to the station",
-        "nearest station from here",
-        "way to the station",
-        "exit",
-    ]
-    BUILDING_KEYWORDS = [
-        "建物",
-        "ビル",
-        "赤煉瓦",
-        "文化館",
-        "重要文化財",
-        "building",
-        "architecture",
-        "歴史的",
-    ]
-    COMMUNITY_KEYWORDS = [
-        "engineer cafe lab",
-        "エンジニアカフェlab",
-        "エンジニアカフェラボ",
-        "eic",
-        "会員制コミュニティ",
-    ]
-
-    BUSINESS_EXCLUSION_KEYWORDS = [
-        "メニュー",
-        "料金",
-        "営業時間",
-        "場所",
-        "設備",
-        "saino",
-        "エンジニアカフェ",
-    ]
-    FACILITY_EXCLUSION_KEYWORDS = ["地下", "スペース", "会議室", "施設"]
-    MEMORY_KEYWORDS = [
-        "さっき",
-        "前に",
-        "覚えて",
-        "記憶",
-        "聞いた",
-        "話した",
-        "何を",
-        "言った",
-        "会話",
-        "履歴",
-        "先ほど",
-        "remember",
-        "earlier",
-        "previous",
-        "asked",
-        "said",
-    ]
-
-    # エージェントの説明（LLMがルーティング決定に使用）
-    AGENT_DESCRIPTIONS = {
-        "business_info": "営業情報エージェント: 営業時間、料金、場所、相談（キャリア・スキルチェンジ等）、コミュニティ（Engineer Cafe Lab等）など施設の基本情報・サービスを回答",
-        "facility": "施設エージェント: Wi-Fi、電源、会議室、地下スペース、建物の歴史・構造、アクセス方法・行き方など設備・物理施設に関する情報を回答",
-        "event": "イベントエージェント: イベント情報、勉強会、セミナーなどの予定を回答",
-        "memory_agent": "メモリエージェント: 過去の会話履歴に関する質問に回答（「さっき何を聞いた？」など）",
-        "general_knowledge": "一般知識エージェント: 上記以外の一般的な質問に回答",
-        "clarification": "明確化エージェント: 曖昧な質問に対して詳細を確認",
-        "slide": "スライドエージェント: スライドのナレーション、操作、質問応答を処理",
-    }
 
     # ルーティング用システムプロンプト
     ROUTING_SYSTEM_PROMPT = """あなたはエンジニアカフェの受付AIアシスタントのオーケストレーターです。
@@ -234,19 +104,6 @@ class OrchestratorAgent:
     "request_type": "具体的なリクエストタイプ（wifi, hours, price等）またはnull"
 }}"""
 
-    # 入力サニタイズ設定
-    MAX_QUERY_LENGTH = 1000
-    MAX_CONTEXT_LENGTH = 500
-
-    # プロンプトインジェクション検出パターン
-    DANGEROUS_PATTERNS = [
-        r"(?i)(ignore|forget|disregard)\s*(the\s*)?(above|previous|instructions)",
-        r"(?i)system\s*prompt",
-        r"(?i)new\s*instructions?",
-        r"(?i)you\s*are\s*now",
-        r"(?i)act\s*as\s*if",
-    ]
-
     def __init__(self, api_key: Optional[str] = None, debug_mode: bool = False):
         """
         Args:
@@ -258,33 +115,6 @@ class OrchestratorAgent:
         self.language_processor = LanguageProcessor()
         self.debug_mode = debug_mode
         self._is_production = os.getenv("ENVIRONMENT") == "production"
-
-    def _sanitize_input(self, text: str, max_length: int) -> str:
-        """
-        ユーザー入力をサニタイズ
-
-        Args:
-            text: サニタイズする文字列
-            max_length: 最大長
-
-        Returns:
-            サニタイズされた文字列
-        """
-        if not text:
-            return ""
-
-        # 制御文字の除去
-        sanitized = re.sub(r"[\x00-\x1f\x7f-\x9f]", "", text)
-
-        # 長さ制限
-        if len(sanitized) > max_length:
-            sanitized = sanitized[:max_length]
-
-        # プロンプトインジェクションパターンの検出とフィルタリング
-        for pattern in self.DANGEROUS_PATTERNS:
-            sanitized = re.sub(pattern, "[FILTERED]", sanitized)
-
-        return sanitized
 
     def _parse_llm_response(self, content: str) -> dict:
         """
@@ -299,7 +129,6 @@ class OrchestratorAgent:
         Raises:
             ValueError: パースに失敗した場合
         """
-        # JSON部分を抽出
         try:
             if "```json" in content:
                 parts = content.split("```json")
@@ -314,20 +143,16 @@ class OrchestratorAgent:
         except (json.JSONDecodeError, IndexError) as e:
             raise ValueError(f"Invalid JSON response: {e}")
 
-        # 型検証
         if not isinstance(raw_decision, dict):
             raise ValueError("Response must be a JSON object")
 
-        # 必須フィールドの検証
         next_agent = raw_decision.get("next_agent")
         if not isinstance(next_agent, str):
             raise ValueError("next_agent must be a string")
 
-        # ホワイトリスト検証
-        if next_agent not in self.AGENT_DESCRIPTIONS:
+        if next_agent not in AGENT_DESCRIPTIONS:
             next_agent = "general_knowledge"
 
-        # 長さ制限を適用
         reasoning = str(raw_decision.get("reasoning", ""))[:200]
         category = str(raw_decision.get("category", "general"))[:50]
         request_type = raw_decision.get("request_type")
@@ -360,10 +185,8 @@ class OrchestratorAgent:
         Returns:
             OrchestratorDecision: オーケストレーターの決定結果
         """
-        # 入力サニタイズ
-        sanitized_query = self._sanitize_input(query, self.MAX_QUERY_LENGTH)
+        sanitized_query = sanitize_input(query, MAX_QUERY_LENGTH)
 
-        # 言語検出
         language_result = self.language_processor.detect_language(sanitized_query)
         response_language = self.language_processor.determine_response_language(language_result)
 
@@ -400,16 +223,16 @@ class OrchestratorAgent:
 
         # LLMによる動的ルーティング
         agent_descriptions = "\n".join(
-            f"- {name}: {desc}" for name, desc in self.AGENT_DESCRIPTIONS.items()
+            f"- {name}: {desc}" for name, desc in AGENT_DESCRIPTIONS.items()
         )
 
         system_prompt = self.ROUTING_SYSTEM_PROMPT.format(agent_descriptions=agent_descriptions)
 
         user_message = f"ユーザーの質問: {sanitized_query}"
         if memory_context:
-            sanitized_context = self._sanitize_input(
+            sanitized_context = sanitize_input(
                 str(memory_context.get("summary", "")),
-                self.MAX_CONTEXT_LENGTH,
+                MAX_CONTEXT_LENGTH,
             )
             user_message += f"\n\n会話コンテキスト: {sanitized_context}"
 
@@ -419,7 +242,6 @@ class OrchestratorAgent:
                 HumanMessage(content=user_message),
             ]
 
-            # ModelConfigを作成してgenerateを呼び出し
             routing_config = ModelConfig(
                 model_id=SupportedModel.GEMINI_3_FLASH,
                 temperature=0.0,
@@ -432,7 +254,6 @@ class OrchestratorAgent:
                 config=routing_config,
             )
 
-            # レスポンスを安全にパース
             decision = self._parse_llm_response(response_content)
 
             return OrchestratorDecision(
@@ -452,15 +273,14 @@ class OrchestratorAgent:
         except Exception as e:
             logger.warning(f"LLM routing failed: {e}")
 
-            # フォールバック: QueryClassifierを使用
             classification = await self.query_classifier.classify_with_details(sanitized_query)
-            next_agent = self._map_category_to_agent(classification.category)
+            next_agent = CATEGORY_TO_AGENT_MAP.get(classification.category, "general_knowledge")
 
             return OrchestratorDecision(
                 next_agent=next_agent,
                 language=response_language,
                 category=classification.category,
-                request_type=self._extract_request_type(sanitized_query),
+                request_type=extract_request_type(sanitized_query),
                 confidence=classification.confidence,
                 reasoning="Fallback to QueryClassifier",
                 debug_info=self._create_debug_info(
@@ -507,30 +327,20 @@ class OrchestratorAgent:
         agent_response: dict,
         original_query: str,
     ) -> RoutingTarget:
-        """
-        エージェント処理後に続行か終了かを決定
+        """エージェント処理後に続行か終了かを決定
 
-        Args:
-            agent_response: エージェントの応答
-            original_query: 元のクエリ
-
-        Returns:
-            "orchestrator": 再ルーティングが必要
-            END: 処理完了
+        requires_followup が True の場合は clarification エージェントに
+        再ルーティングし、そうでなければ終了する。
         """
-        # 明確化が必要な場合は続行（ユーザー入力待ち）
         if agent_response.get("metadata", {}).get("requires_followup"):
-            return END  # ユーザー入力を待つ
-
-        # 通常は終了
+            return "clarification"
         return END
 
     def _try_fast_routing(self, query: str) -> Optional[dict]:
         """キーワードベースの高速ルーティング"""
         lower_query = query.lower()
 
-        # Wi-Fi関連
-        if any(kw in lower_query for kw in self.WIFI_KEYWORDS):
+        if match_keywords(lower_query, WIFI_KEYWORDS):
             return {
                 "agent": "facility",
                 "category": "facility-info",
@@ -538,8 +348,7 @@ class OrchestratorAgent:
                 "reasoning": "Wi-Fi keyword detected",
             }
 
-        # 営業時間関連
-        if any(kw in lower_query for kw in self.BUSINESS_HOURS_KEYWORDS):
+        if match_keywords(lower_query, BUSINESS_HOURS_KEYWORDS):
             return {
                 "agent": "business_info",
                 "category": "business-hours",
@@ -547,8 +356,7 @@ class OrchestratorAgent:
                 "reasoning": "Business hours keyword detected",
             }
 
-        # 料金関連
-        if any(kw in lower_query for kw in self.PRICING_KEYWORDS):
+        if match_keywords(lower_query, PRICING_KEYWORDS):
             return {
                 "agent": "business_info",
                 "category": "pricing",
@@ -556,8 +364,7 @@ class OrchestratorAgent:
                 "reasoning": "Pricing keyword detected",
             }
 
-        # 地下施設関連
-        if any(kw in lower_query for kw in self.BASEMENT_KEYWORDS):
+        if match_keywords(lower_query, BASEMENT_KEYWORDS):
             return {
                 "agent": "facility",
                 "category": "basement-facility",
@@ -565,8 +372,7 @@ class OrchestratorAgent:
                 "reasoning": "Basement facility keyword detected",
             }
 
-        # イベント関連
-        if any(kw in lower_query for kw in self.EVENT_KEYWORDS):
+        if match_keywords(lower_query, EVENT_KEYWORDS):
             return {
                 "agent": "event",
                 "category": "events",
@@ -574,8 +380,7 @@ class OrchestratorAgent:
                 "reasoning": "Event keyword detected",
             }
 
-        # スライド関連
-        if any(kw in lower_query for kw in self.SLIDE_KEYWORDS):
+        if match_keywords(lower_query, SLIDE_KEYWORDS):
             return {
                 "agent": "slide",
                 "category": "slide",
@@ -583,9 +388,7 @@ class OrchestratorAgent:
                 "reasoning": "Slide keyword detected",
             }
 
-        # コミュニティ関連（Engineer Cafe Lab等）→ business_info
-        # ※ エンジニアカフェの施設検出より先にチェック
-        if any(kw in lower_query for kw in self.COMMUNITY_KEYWORDS):
+        if match_keywords(lower_query, COMMUNITY_KEYWORDS):
             return {
                 "agent": "business_info",
                 "category": "community",
@@ -593,8 +396,7 @@ class OrchestratorAgent:
                 "reasoning": "Community/program keyword detected",
             }
 
-        # 相談関連 → business_info
-        if any(kw in lower_query for kw in self.CONSULTATION_KEYWORDS):
+        if match_keywords(lower_query, CONSULTATION_KEYWORDS):
             return {
                 "agent": "business_info",
                 "category": "consultation",
@@ -602,8 +404,7 @@ class OrchestratorAgent:
                 "reasoning": "Consultation keyword detected",
             }
 
-        # アクセス・道案内関連 → facility
-        if any(kw in lower_query for kw in self.ACCESS_DIRECTION_KEYWORDS):
+        if match_keywords(lower_query, ACCESS_DIRECTION_KEYWORDS):
             return {
                 "agent": "facility",
                 "category": "facility-info",
@@ -611,8 +412,7 @@ class OrchestratorAgent:
                 "reasoning": "Access/direction keyword detected",
             }
 
-        # 建物関連 → facility
-        if any(kw in lower_query for kw in self.BUILDING_KEYWORDS):
+        if match_keywords(lower_query, BUILDING_KEYWORDS):
             return {
                 "agent": "facility",
                 "category": "facility-info",
@@ -620,7 +420,6 @@ class OrchestratorAgent:
                 "reasoning": "Building keyword detected",
             }
 
-        # 明確化が必要なパターン
         if any(kw in lower_query for kw in ["カフェ", "cafe"]) and "どっち" in lower_query:
             return {
                 "agent": "clarification",
@@ -635,70 +434,13 @@ class OrchestratorAgent:
         """メモリ関連の質問かどうかを判定"""
         lower_query = query.lower()
 
-        # ビジネス関連のキーワードは除外
-        if any(kw in lower_query for kw in self.BUSINESS_EXCLUSION_KEYWORDS):
+        if match_keywords(lower_query, MEMORY_EXCLUSION_BUSINESS):
             return False
 
-        # 施設関連のキーワードは除外
-        if any(kw in lower_query for kw in self.FACILITY_EXCLUSION_KEYWORDS):
+        if match_keywords(lower_query, MEMORY_EXCLUSION_FACILITY):
             return False
 
-        # メモリ関連のキーワード
-        return any(kw in lower_query for kw in self.MEMORY_KEYWORDS)
-
-    def _map_category_to_agent(self, category: str) -> AgentNodeName:
-        """カテゴリをエージェントノード名にマッピング"""
-        mapping = {
-            "facility-info": "facility",
-            "saino-cafe": "business_info",
-            "calendar": "event",
-            "events": "event",
-            "current-time": "general_knowledge",
-            "general": "general_knowledge",
-            "memory": "memory_agent",
-            "consultation": "business_info",
-            "community": "business_info",
-            "cafe-clarification-needed": "clarification",
-            "meeting-room-clarification-needed": "clarification",
-        }
-        return mapping.get(category, "general_knowledge")
-
-    def _extract_request_type(self, query: str) -> Optional[str]:
-        """クエリから具体的なリクエストタイプを抽出（キーワード定数と一貫性を保つ）"""
-        lower_query = query.lower()
-
-        if any(kw in lower_query for kw in self.WIFI_KEYWORDS):
-            return "wifi"
-        if any(kw in lower_query for kw in self.BUSINESS_HOURS_KEYWORDS):
-            return "hours"
-        if any(kw in lower_query for kw in self.PRICING_KEYWORDS):
-            return "price"
-        if any(kw in lower_query for kw in self.CONSULTATION_KEYWORDS):
-            return "consultation"
-        if any(kw in lower_query for kw in self.COMMUNITY_KEYWORDS):
-            return "community"
-        if any(kw in lower_query for kw in self.ACCESS_DIRECTION_KEYWORDS):
-            return "access"
-        if any(kw in lower_query for kw in self.BUILDING_KEYWORDS):
-            return "building"
-        if any(
-            kw in lower_query
-            for kw in ["場所", "どこ", "アクセス", "住所", "location", "where", "address"]
-        ):
-            return "location"
-        if any(
-            kw in lower_query
-            for kw in ["設備", "電源", "プリンター", "equipment", "outlet", "printer"]
-        ):
-            return "facility"
-        if any(kw in lower_query for kw in self.BASEMENT_KEYWORDS):
-            return "basement"
-        if any(kw in lower_query for kw in self.EVENT_KEYWORDS):
-            return "event"
-        if any(kw in lower_query for kw in self.SLIDE_KEYWORDS):
-            return "slide"
-
-        return None
+        return match_keywords(lower_query, MEMORY_KEYWORDS)
 
     async def close(self):
         """リソースのクリーンアップ"""

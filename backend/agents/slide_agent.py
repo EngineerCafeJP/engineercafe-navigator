@@ -4,9 +4,15 @@ SlideAgent - スライドナレーターエージェント
 """
 
 import json
+import logging
 import os
 from typing import Dict, Optional, Literal
+
+from langchain_core.messages import HumanMessage
+
 from backend.llm import get_llm_provider, get_model_config
+
+logger = logging.getLogger(__name__)
 
 
 SlideAction = Literal["narrate", "next", "previous", "goto", "question"]
@@ -16,7 +22,12 @@ class SlideAgent:
     """スライドナレーターエージェント"""
 
     def __init__(self):
-        """初期化"""
+        """初期化
+
+        Note: current_slide はインスタンスレベルの状態。
+        マルチセッション対応が必要な場合は session_id ベースの
+        状態管理に移行すること（TODO）。
+        """
         self.llm_provider = get_llm_provider()
         self.narration_data: Dict = {}
         self.current_slide = 1
@@ -57,17 +68,17 @@ class SlideAgent:
                     with open(narration_path, "r", encoding="utf-8") as f:
                         self.narration_data = json.load(f)
                         self.total_slides = len(self.narration_data.get("slides", []))
-                        print(
-                            f"[SlideAgent] Loaded narration from {narration_path}, total slides: {self.total_slides}"
+                        logger.info(
+                            f"Loaded narration from {narration_path}, total slides: {self.total_slides}"
                         )
                         return True
 
-            print(f"[SlideAgent] Narration file not found for language: {language}")
-            print(f"[SlideAgent] Searched paths: {narration_paths}")
+            logger.warning(f"Narration file not found for language: {language}")
+            logger.debug(f"Searched paths: {narration_paths}")
             return False
 
         except Exception as e:
-            print(f"[SlideAgent] Error loading narration: {e}")
+            logger.error(f"Error loading narration: {e}")
             return False
 
     async def handle_slide_action(
@@ -248,7 +259,7 @@ class SlideAgent:
             prompt = self._build_question_prompt(question, auto_narration, on_demand, language)
 
             response_text = await self.llm_provider.generate(
-                messages=[{"role": "user", "content": prompt}],
+                messages=[HumanMessage(content=prompt)],
                 config=get_model_config("qa_response"),
             )
 
@@ -264,7 +275,7 @@ class SlideAgent:
             }
 
         except Exception as e:
-            print(f"[SlideAgent] LLM error: {e}")
+            logger.error(f"LLM error: {e}")
             text = (
                 "申し訳ございません。回答を生成できませんでした。"
                 if language == "ja"

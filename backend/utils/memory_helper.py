@@ -14,6 +14,8 @@ import logging
 
 from supabase import create_client, Client
 
+from backend.config.routing_constants import extract_request_type
+
 logger = logging.getLogger(__name__)
 
 
@@ -172,6 +174,7 @@ class SimplifiedMemoryHelper:
                 .like("key", "message_%")
                 .gt("expires_at", current_time)
                 .order("created_at", desc=False)
+                .limit(self.max_entries)
                 .execute()
             )
 
@@ -183,16 +186,18 @@ class SimplifiedMemoryHelper:
             for item in response.data:
                 value = item.get("value", {})
                 if value.get("sessionId") == session_id:
-                    messages.append({
-                        "role": value.get("role"),
-                        "content": value.get("content"),
-                        "metadata": {
-                            "emotion": value.get("emotion"),
-                            "confidence": value.get("confidence"),
-                            "timestamp": value.get("timestamp"),
-                            "request_type": value.get("request_type"),
-                        },
-                    })
+                    messages.append(
+                        {
+                            "role": value.get("role"),
+                            "content": value.get("content"),
+                            "metadata": {
+                                "emotion": value.get("emotion"),
+                                "confidence": value.get("confidence"),
+                                "timestamp": value.get("timestamp"),
+                                "request_type": value.get("request_type"),
+                            },
+                        }
+                    )
 
             return messages
 
@@ -229,14 +234,16 @@ class SimplifiedMemoryHelper:
             lines.append(header)
 
             for msg in recent_messages:
+                role = msg.get("role", "unknown")
+                content = msg.get("content", "")
                 role_label = (
-                    ("ユーザー" if msg["role"] == "user" else "アシスタント")
+                    ("ユーザー" if role == "user" else "アシスタント")
                     if language == "ja"
-                    else ("User" if msg["role"] == "user" else "Assistant")
+                    else ("User" if role == "user" else "Assistant")
                 )
                 emotion = msg.get("metadata", {}).get("emotion")
                 emotion_info = f" [{emotion}]" if emotion else ""
-                lines.append(f"{role_label}: {msg['content']}{emotion_info}")
+                lines.append(f"{role_label}: {content}{emotion_info}")
 
         # ナレッジベース結果の追加
         if knowledge_results:
@@ -254,11 +261,7 @@ class SimplifiedMemoryHelper:
                 lines.append(f"{i}. {result.get('content', '')}{category_info}")
 
         if not lines:
-            return (
-                "会話履歴がありません。"
-                if language == "ja"
-                else "No conversation context."
-            )
+            return "会話履歴がありません。" if language == "ja" else "No conversation context."
 
         return "\n".join(lines)
 
@@ -291,7 +294,7 @@ class SimplifiedMemoryHelper:
 
         # リクエストタイプの自動抽出（user messageの場合）
         if role == "user" and "request_type" not in metadata:
-            metadata["request_type"] = self._extract_request_type(content)
+            metadata["request_type"] = extract_request_type(content)
 
         logger.info(
             f"Storing {role} message for session: {session_id}, "
@@ -311,17 +314,17 @@ class SimplifiedMemoryHelper:
             }
 
             # TTL設定
-            expires_at = (
-                datetime.now() + timedelta(seconds=self.ttl_seconds)
-            ).isoformat()
+            expires_at = (datetime.now() + timedelta(seconds=self.ttl_seconds)).isoformat()
 
             # agent_memoryテーブルにINSERT
-            self.supabase.table("agent_memory").insert({
-                "agent_name": self.agent_name,
-                "key": f"message_{timestamp}",
-                "value": message_data,
-                "expires_at": expires_at,
-            }).execute()
+            self.supabase.table("agent_memory").insert(
+                {
+                    "agent_name": self.agent_name,
+                    "key": f"message_{timestamp}",
+                    "value": message_data,
+                    "expires_at": expires_at,
+                }
+            ).execute()
 
             logger.info(f"Stored message with key: message_{timestamp}, expires_at: {expires_at}")
 
@@ -330,69 +333,8 @@ class SimplifiedMemoryHelper:
             raise
 
     def _extract_request_type(self, content: str) -> Optional[str]:
-        """
-        コンテンツからリクエストタイプを抽出（フロントエンド実装の移植）
-
-        Args:
-            content: ユーザーのメッセージ
-
-        Returns:
-            リクエストタイプ（hours, price, location, facility, events, booking など）
-            マッチしない場合は None
-        """
-        lower_content = content.lower()
-
-        # 営業時間系
-        if any(
-            keyword in lower_content
-            for keyword in [
-                "営業時間",
-                "hours",
-                "time",
-                "何時",
-                "いつまで",
-                "when",
-                "open",
-                "close",
-            ]
-        ):
-            return "hours"
-
-        # 料金系
-        if any(
-            keyword in lower_content
-            for keyword in ["料金", "cost", "price", "値段", "いくら", "how much"]
-        ):
-            return "price"
-
-        # 場所系
-        if any(
-            keyword in lower_content
-            for keyword in ["どこ", "where", "場所", "location", "アクセス", "address"]
-        ):
-            return "location"
-
-        # 予約系
-        if any(
-            keyword in lower_content for keyword in ["予約", "booking", "book", "reservation", "reserve"]
-        ):
-            return "booking"
-
-        # 設備系
-        if any(
-            keyword in lower_content
-            for keyword in ["設備", "facility", "facilities", "equipment", "何がある", "何があり", "利用できる"]
-        ):
-            return "facility"
-
-        # イベント系
-        if any(
-            keyword in lower_content
-            for keyword in ["イベント", "event", "勉強会", "セミナー", "workshop"]
-        ):
-            return "events"
-
-        return None
+        """リクエストタイプ抽出（routing_constantsに委譲）"""
+        return extract_request_type(content)
 
     async def cleanup(self) -> None:
         """
@@ -407,9 +349,9 @@ class SimplifiedMemoryHelper:
 
         try:
             current_time = datetime.now().isoformat()
-            self.supabase.table("agent_memory").delete().eq(
-                "agent_name", self.agent_name
-            ).lt("expires_at", current_time).execute()
+            self.supabase.table("agent_memory").delete().eq("agent_name", self.agent_name).lt(
+                "expires_at", current_time
+            ).execute()
 
             logger.info("Cleanup completed")
         except Exception as e:
@@ -476,9 +418,7 @@ class SimplifiedMemoryHelper:
             oldest_turn = min(timestamps) if timestamps else None
             newest_turn = max(timestamps) if timestamps else None
             time_span = (
-                (newest_turn - oldest_turn) / (1000 * 60)
-                if oldest_turn and newest_turn
-                else 0.0
+                (newest_turn - oldest_turn) / (1000 * 60) if oldest_turn and newest_turn else 0.0
             )
 
             # 最も多い感情を取得

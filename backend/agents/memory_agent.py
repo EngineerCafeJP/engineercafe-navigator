@@ -14,6 +14,7 @@ from typing import Dict, Any, Optional
 
 from langchain_core.messages import HumanMessage
 
+from backend.config.prompts.memory_prompts import build_memory_prompt
 from backend.llm import get_llm_provider, get_model_config, OpenRouterProvider
 from backend.utils.memory_interface import MemorySystemInterface
 
@@ -196,93 +197,8 @@ class MemoryAgent:
         query_type: str,
         language: str = "ja",
     ) -> str:
-        """
-        メモリコンテキストからプロンプトを構築
-
-        Args:
-            query: ユーザーのクエリ
-            context: メモリシステムから取得したコンテキスト
-            query_type: 質問タイプ
-            language: 言語設定
-
-        Returns:
-            構築されたプロンプト文字列
-        """
-        context_string = context.get("context_string", "")
-
-        # 質問タイプ別のプロンプトテンプレート
-        if language == "ja":
-            templates = {
-                "question_history": (
-                    "あなたはエンジニアカフェのアシスタントです。\n"
-                    "ユーザーが過去に何を質問したか尋ねています。\n"
-                    "以下の会話履歴を参照して、ユーザーの過去の質問を簡潔に教えてください。\n\n"
-                    f"会話履歴:\n{context_string}\n\n"
-                    f"ユーザーの質問: {query}\n\n"
-                    "回答（1-2文で簡潔に）:"
-                ),
-                "answer_history": (
-                    "あなたはエンジニアカフェのアシスタントです。\n"
-                    "ユーザーが過去の回答内容を尋ねています。\n"
-                    "以下の会話履歴を参照して、過去の回答を簡潔にまとめてください。\n\n"
-                    f"会話履歴:\n{context_string}\n\n"
-                    f"ユーザーの質問: {query}\n\n"
-                    "回答（1-2文で簡潔に）:"
-                ),
-                "other_option": (
-                    "あなたはエンジニアカフェのアシスタントです。\n"
-                    "ユーザーが「もう一つの方」や「別の選択肢」について尋ねています。\n"
-                    "以下の会話履歴から、言及された別の選択肢について説明してください。\n\n"
-                    f"会話履歴:\n{context_string}\n\n"
-                    f"ユーザーの質問: {query}\n\n"
-                    "回答（1-2文で簡潔に）:"
-                ),
-                "general_memory": (
-                    "あなたはエンジニアカフェのアシスタントです。\n"
-                    "ユーザーが会話の内容について質問しています。\n"
-                    "以下の会話履歴を参照して、適切に回答してください。\n\n"
-                    f"会話履歴:\n{context_string}\n\n"
-                    f"ユーザーの質問: {query}\n\n"
-                    "回答（1-2文で簡潔に）:"
-                ),
-            }
-        else:
-            templates = {
-                "question_history": (
-                    "You are an Engineer Cafe assistant.\n"
-                    "The user is asking about their previous questions.\n"
-                    "Refer to the conversation history and briefly tell them what they asked.\n\n"
-                    f"Conversation history:\n{context_string}\n\n"
-                    f"User's question: {query}\n\n"
-                    "Response (1-2 sentences):"
-                ),
-                "answer_history": (
-                    "You are an Engineer Cafe assistant.\n"
-                    "The user is asking about previous answers.\n"
-                    "Refer to the conversation history and summarize the previous answers.\n\n"
-                    f"Conversation history:\n{context_string}\n\n"
-                    f"User's question: {query}\n\n"
-                    "Response (1-2 sentences):"
-                ),
-                "other_option": (
-                    "You are an Engineer Cafe assistant.\n"
-                    "The user is asking about 'the other one' or alternative options.\n"
-                    "Explain the alternative mentioned in the conversation history.\n\n"
-                    f"Conversation history:\n{context_string}\n\n"
-                    f"User's question: {query}\n\n"
-                    "Response (1-2 sentences):"
-                ),
-                "general_memory": (
-                    "You are an Engineer Cafe assistant.\n"
-                    "The user is asking about the conversation.\n"
-                    "Refer to the history and respond appropriately.\n\n"
-                    f"Conversation history:\n{context_string}\n\n"
-                    f"User's question: {query}\n\n"
-                    "Response (1-2 sentences):"
-                ),
-            }
-
-        return templates.get(query_type, templates["general_memory"])
+        """メモリコンテキストからプロンプトを構築（外部テンプレートに委譲）"""
+        return build_memory_prompt(query, context, query_type, language)
 
     async def generate_response(self, prompt: str, language: str = "ja") -> str:
         """
