@@ -96,8 +96,8 @@ class RouterAgent:
                 confidence=1.0,
                 debug_info={
                     "language_detection": {
-                        "detected": language_result.detected,
-                        "confidence": language_result.confidence,
+                        "detected": language_result["detected"],
+                        "confidence": language_result["confidence"],
                     },
                     "classification": {"reason": "Memory-related question detected"},
                 },
@@ -134,8 +134,8 @@ class RouterAgent:
             confidence=classification.confidence,
             debug_info={
                 "language_detection": {
-                    "detected": language_result.detected,
-                    "confidence": language_result.confidence,
+                    "detected": language_result["detected"],
+                    "confidence": language_result["confidence"],
                 },
                 "classification": classification.debug_info,
             },
