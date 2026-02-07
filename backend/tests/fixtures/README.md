@@ -2,20 +2,27 @@
 
 評価テスト用のデータセットとローダーを提供します。
 
-## ⚠️ 重要な注意事項
+## データソース
 
-### ダミーデータについて
+`golden_datasets/` 内のデータは **実際のエンジニアカフェの公開情報** に基づいています。
 
-`golden_datasets/` 内のデータは**評価ロジックのテスト用ダミーデータ**です。
+| ソース | パス |
+|--------|------|
+| リファレンス資料 | `docs/reference/engineer-cafe-reference.md` |
+| 公式サイト | https://engineercafe.jp/ |
+| connpass | https://engineercafe.connpass.com/ |
 
-| 項目 | 説明 |
-|------|------|
-| Wi-Fiパスワード | ダミー値（`engineer2025`など） |
-| 営業時間 | ダミー値（実際とは異なる） |
-| イベント情報 | 架空のイベント |
-| 施設情報 | 簡略化されたダミー情報 |
+### 含まれる情報
 
-**これらは実際のエンジニアカフェの情報とは一致しません。**
+| 項目 | 内容 | ソース |
+|------|------|--------|
+| 営業時間 | 9:00〜22:00、相談受付13:00〜21:00 | リファレンス |
+| 休館日 | 毎月最終月曜日、12/29〜1/3 | リファレンス |
+| アクセス | 天神駅徒歩5分 | リファレンス |
+| MAKER'sスペース | レーザー加工機、3Dプリンター | リファレンス |
+| cafe&bar saino | 営業時間、定休日 | リファレンス |
+| 2階会議室 | 福岡市管理、コミネット予約 | リファレンス |
+| 建物情報 | 1909年建築、国の重要文化財 | リファレンス |
 
 ### 用途
 
@@ -24,14 +31,7 @@
 1. **評価ロジックの動作確認** - スコアリングが正しく動くか
 2. **意味的類似度のテスト** - 類似した文章を正しく判定できるか
 3. **ルーティング精度のテスト** - 適切なエージェントにルーティングされるか
-
-### 本番評価を行う場合
-
-実際のエンジニアカフェの回答品質を評価する場合は：
-
-1. 本番用データセットを別途作成（例: `answer_quality_production.json`）
-2. 施設情報DBやナレッジベースから正確な情報を取得
-3. 実際のユーザークエリログを使用
+4. **回答品質の評価** - 実際の情報に基づく回答精度の確認
 
 ## データセット一覧
 
@@ -47,11 +47,12 @@
 | `expected_category` | 期待されるカテゴリ |
 | `language` | 言語コード（ja, en, zh, ko） |
 | `tags` | 分類タグ（fast-path, memory, facilityなど） |
+| `note` | 補足情報（実際の施設情報） |
 
 **統計情報:**
-- 総テストケース数: 30件
+- 総テストケース数: 32件
 - 対応言語: 日本語(ja), 英語(en), 中国語(zh), 韓国語(ko)
-- 対応エージェント: facility, event, business_info, memory_agent, general
+- 対応エージェント: facility, event, business_info, memory_agent
 
 ### answer_quality.json
 
@@ -61,15 +62,15 @@ LLM Judge評価用のテストケース。
 |-----------|------|
 | `id` | テストケースID（aq-001, aq-002, ...） |
 | `question` | 質問 |
-| `expected_answer` | 期待される回答（ダミー） |
+| `expected_answer` | 期待される回答（実際の施設情報に基づく） |
 | `language` | 言語コード |
-| `category` | カテゴリ（facility, event, businessなど） |
+| `category` | カテゴリ（facility, event, business_infoなど） |
 | `context` | コンテキスト情報（オプション） |
 | `quality_expectations` | 期待される品質スコア閾値 |
 
 **統計情報:**
-- 総テストケース数: 10件
-- 対応言語: 日本語(ja), 英語(en), 中国語(zh), 韓国語(ko)
+- 総テストケース数: 12件
+- 対応言語: 日本語(ja), 英語(en), 韓国語(ko)
 
 ## DatasetLoader使用例
 
@@ -106,56 +107,21 @@ tests/fixtures/
 ├── __init__.py
 ├── dataset_loader.py          # DatasetLoaderクラス
 ├── golden_datasets/
-│   ├── routing_test_cases.json  # ルーティングテストケース
-│   └── answer_quality.json      # 回答品質テストケース
+│   ├── routing_test_cases.json  # ルーティングテストケース（実データ）
+│   └── answer_quality.json      # 回答品質テストケース（実データ）
 └── README.md                  # このファイル
 ```
 
-## 本番用データセット作成ガイド
+## リファレンス資料の更新
 
-本番環境で評価を行う場合の推奨手順：
+エンジニアカフェの情報が更新された場合：
 
-### 1. データ収集
-
-```python
-# 施設情報DBから取得
-facility_info = supabase.table("facilities").select("*").execute()
-
-# 実際のユーザークエリログから取得
-query_logs = supabase.table("chat_logs").select("query, response").execute()
-```
-
-### 2. 本番用データセット作成
-
-```json
-// golden_datasets/answer_quality_production.json
-{
-  "version": "1.0.0",
-  "description": "本番環境用回答品質テストデータ",
-  "data_source": "engineer-cafe-production-db",
-  "last_updated": "2025-02-07",
-  "test_cases": [
-    {
-      "id": "prod-001",
-      "question": "Wi-Fiのパスワードを教えてください",
-      "expected_answer": "【実際のパスワード情報】",
-      "language": "ja",
-      "category": "facility"
-    }
-  ]
-}
-```
-
-### 3. ローダー拡張
-
-```python
-@classmethod
-def load_production_cases(cls) -> List[AnswerQualityCase]:
-    """本番用テストケースを読み込み"""
-    return cls._load_json("answer_quality_production.json")
-```
+1. `docs/reference/engineer-cafe-reference.md` を更新
+2. `golden_datasets/*.json` を同期更新
+3. バージョン番号を更新（`version` フィールド）
 
 ## 関連ドキュメント
 
 - [評価フレームワーク README](../evaluation/README.md)
 - [LangSmith統合](../utils/langsmith_integration.py)
+- [エンジニアカフェリファレンス](../../../docs/reference/engineer-cafe-reference.md)

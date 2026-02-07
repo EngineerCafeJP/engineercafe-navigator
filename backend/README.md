@@ -132,7 +132,7 @@ poetry run pytest tests/evaluation/test_routing_accuracy.py -v
 poetry run pytest tests/evaluation/test_llm_judge.py -v --run-llm
 ```
 
-**⚠️ 注意**: `tests/fixtures/golden_datasets/` 内のデータは評価ロジックのテスト用**ダミーデータ**です。実際のエンジニアカフェの情報とは異なります。詳細は [tests/fixtures/README.md](tests/fixtures/README.md) を参照してください。
+テストデータは実際のエンジニアカフェの公開情報に基づいています。詳細は [tests/fixtures/README.md](tests/fixtures/README.md) を参照してください。
 
 ## コード品質
 
@@ -177,7 +177,7 @@ backend/
     ├── agents/             # エージェントテスト
     ├── evaluation/         # 評価テスト（LangChain Evaluations拡張）
     ├── fixtures/           # テストフィクスチャ・ゴールデンデータセット
-    │   └── golden_datasets/  # ⚠️ ダミーデータ（本番情報ではない）
+    │   └── golden_datasets/  # 実データ（リファレンス資料に基づく）
     └── utils/              # ユーティリティテスト
         └── evaluators/     # 評価器（LLM Judge, ルーティング精度）
 ```

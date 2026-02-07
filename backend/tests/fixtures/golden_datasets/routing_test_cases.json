@@ -1,7 +1,8 @@
 {
-  "version": "1.0.0",
-  "description": "ルーティングテストケース - マルチエージェントシステム用",
-  "created_at": "2025-02-07",
+  "version": "1.1.0",
+  "description": "ルーティングテストケース - マルチエージェントシステム用（実データ版）",
+  "created_at": "2026-02-07",
+  "source": "docs/reference/engineer-cafe-reference.md",
   "test_cases": [
     {
       "id": "rt-001",
@@ -9,7 +10,8 @@
       "expected_agent": "facility",
       "expected_category": "facility-info",
       "language": "ja",
-      "tags": ["fast-path", "keyword-match", "facility"]
+      "tags": ["fast-path", "keyword-match", "facility"],
+      "note": "フリーWi-Fi完備"
     },
     {
       "id": "rt-002",
@@ -33,23 +35,26 @@
       "expected_agent": "event",
       "expected_category": "event-info",
       "language": "ja",
-      "tags": ["event", "temporal"]
+      "tags": ["event", "temporal"],
+      "note": "connpassでイベント情報公開"
     },
     {
       "id": "rt-005",
       "query": "エンジニアカフェの営業時間は？",
-      "expected_agent": "facility",
-      "expected_category": "facility-info",
+      "expected_agent": "business_info",
+      "expected_category": "hours",
       "language": "ja",
-      "tags": ["facility", "hours"]
+      "tags": ["business_info", "hours"],
+      "note": "9:00〜22:00"
     },
     {
       "id": "rt-006",
-      "query": "福岡で起業したいのですが、相談できますか？",
+      "query": "キャリア相談できますか？",
       "expected_agent": "business_info",
-      "expected_category": "business",
+      "expected_category": "consultation",
       "language": "ja",
-      "tags": ["business", "consultation"]
+      "tags": ["business_info", "consultation"],
+      "note": "コミュニティマネージャー相談 13:00〜21:00"
     },
     {
       "id": "rt-007",
@@ -62,18 +67,20 @@
     {
       "id": "rt-008",
       "query": "ここは何時まで開いていますか？",
-      "expected_agent": "facility",
-      "expected_category": "facility-info",
+      "expected_agent": "business_info",
+      "expected_category": "hours",
       "language": "ja",
-      "tags": ["facility", "hours"]
+      "tags": ["business_info", "hours"],
+      "note": "22:00まで"
     },
     {
       "id": "rt-009",
-      "query": "スタートアップ向けの支援制度はありますか？",
-      "expected_agent": "business_info",
-      "expected_category": "business",
+      "query": "3Dプリンターを使いたいのですが",
+      "expected_agent": "facility",
+      "expected_category": "facility-info",
       "language": "ja",
-      "tags": ["business", "support"]
+      "tags": ["facility", "makers"],
+      "note": "MAKER'sスペース - Bambu Lab P1S、要予約・講習"
     },
     {
       "id": "rt-010",
@@ -85,19 +92,21 @@
     },
     {
       "id": "rt-011",
-      "query": "コーヒーは飲めますか？",
+      "query": "カフェでコーヒーは飲めますか？",
       "expected_agent": "facility",
       "expected_category": "facility-info",
       "language": "ja",
-      "tags": ["facility", "amenities"]
+      "tags": ["facility", "cafe"],
+      "note": "cafe&bar saino - 有料"
     },
     {
       "id": "rt-012",
-      "query": "福岡市のIT企業支援について教えて",
+      "query": "エンジニアになりたいのですが相談できますか？",
       "expected_agent": "business_info",
-      "expected_category": "business",
+      "expected_category": "consultation",
       "language": "ja",
-      "tags": ["business", "support", "government"]
+      "tags": ["business_info", "consultation"],
+      "note": "スキルチェンジ相談会開催"
     },
     {
       "id": "rt-013",
@@ -109,11 +118,12 @@
     },
     {
       "id": "rt-014",
-      "query": "会議室を借りたいのですが",
+      "query": "2階の会議室を借りたいのですが",
       "expected_agent": "facility",
       "expected_category": "facility-info",
       "language": "ja",
-      "tags": ["facility", "reservation"]
+      "tags": ["facility", "reservation"],
+      "note": "福岡市管理、コミネットで予約、有料"
     },
     {
       "id": "rt-015",
@@ -129,23 +139,26 @@
       "expected_agent": "facility",
       "expected_category": "facility-info",
       "language": "ja",
-      "tags": ["fast-path", "facility", "amenities"]
+      "tags": ["fast-path", "facility", "amenities"],
+      "note": "各席に電源タップ設置"
     },
     {
       "id": "rt-017",
-      "query": "投資家とのマッチングイベントはありますか？",
-      "expected_agent": "event",
-      "expected_category": "event-info",
+      "query": "レーザー加工機を使いたい",
+      "expected_agent": "facility",
+      "expected_category": "facility-info",
       "language": "ja",
-      "tags": ["event", "business", "networking"]
+      "tags": ["facility", "makers"],
+      "note": "MAKER'sスペース - trotec speedy100 C30、要予約・講習"
     },
     {
       "id": "rt-018",
-      "query": "創業融資について教えてください",
+      "query": "コミュニティマネージャーに相談したい",
       "expected_agent": "business_info",
-      "expected_category": "business",
+      "expected_category": "consultation",
       "language": "ja",
-      "tags": ["business", "funding"]
+      "tags": ["business_info", "consultation"],
+      "note": "相談受付 13:00〜21:00"
     },
     {
       "id": "rt-019",
@@ -153,11 +166,12 @@
       "expected_agent": "facility",
       "expected_category": "facility-info",
       "language": "ja",
-      "tags": ["facility", "access"]
+      "tags": ["facility", "access"],
+      "note": "天神駅徒歩5分"
     },
     {
       "id": "rt-020",
-      "query": "今日の予定を確認したい",
+      "query": "今日のイベントを確認したい",
       "expected_agent": "event",
       "expected_category": "event-info",
       "language": "ja",
@@ -173,7 +187,7 @@
     },
     {
       "id": "rt-022",
-      "query": "Are there any startup events this week?",
+      "query": "Are there any tech events this week?",
       "expected_agent": "event",
       "expected_category": "event-info",
       "language": "en",
@@ -189,11 +203,11 @@
     },
     {
       "id": "rt-024",
-      "query": "How can I get funding for my startup?",
+      "query": "Can I get career advice here?",
       "expected_agent": "business_info",
-      "expected_category": "business",
+      "expected_category": "consultation",
       "language": "en",
-      "tags": ["business", "funding", "english"]
+      "tags": ["business_info", "consultation", "english"]
     },
     {
       "id": "rt-025",
@@ -205,7 +219,7 @@
     },
     {
       "id": "rt-026",
-      "query": "有什么创业活动吗？",
+      "query": "有什么技术活动吗？",
       "expected_agent": "event",
       "expected_category": "event-info",
       "language": "zh",
@@ -221,7 +235,7 @@
     },
     {
       "id": "rt-028",
-      "query": "스타트업 이벤트가 있나요?",
+      "query": "개발자 이벤트가 있나요?",
       "expected_agent": "event",
       "expected_category": "event-info",
       "language": "ko",
@@ -229,19 +243,39 @@
     },
     {
       "id": "rt-029",
-      "query": "こんにちは",
-      "expected_agent": "general",
-      "expected_category": "greeting",
+      "query": "集中スペースは予約が必要ですか？",
+      "expected_agent": "facility",
+      "expected_category": "facility-info",
       "language": "ja",
-      "tags": ["greeting", "general"]
+      "tags": ["facility", "reservation"],
+      "note": "地下1階集中スペース - 予約不要、6席"
     },
     {
       "id": "rt-030",
-      "query": "ありがとうございました",
-      "expected_agent": "general",
-      "expected_category": "greeting",
+      "query": "休館日はいつですか？",
+      "expected_agent": "business_info",
+      "expected_category": "hours",
       "language": "ja",
-      "tags": ["greeting", "general"]
+      "tags": ["business_info", "hours"],
+      "note": "毎月最終月曜日（祝休日は翌平日）、12/29〜1/3"
+    },
+    {
+      "id": "rt-031",
+      "query": "この建物は何ですか？",
+      "expected_agent": "facility",
+      "expected_category": "facility-info",
+      "language": "ja",
+      "tags": ["facility", "building"],
+      "note": "福岡市赤煉瓦文化館 - 1909年建築、国の重要文化財"
+    },
+    {
+      "id": "rt-032",
+      "query": "Engineer Cafe Labって何ですか？",
+      "expected_agent": "business_info",
+      "expected_category": "community",
+      "language": "ja",
+      "tags": ["business_info", "community"],
+      "note": "2021年発足の会員制開発コミュニティ"
     }
   ]
 }
