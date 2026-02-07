@@ -58,9 +58,10 @@ make dev
 
 ```
 backend/
-├── agents/                      # エージェント実装
+├── agents/                      # エージェント実装（10種）
 │   ├── __init__.py             # エクスポート定義
-│   ├── router_agent.py         # ルーティングエージェント
+│   ├── orchestrator_agent.py   # Supervisor Pattern ルーティング
+│   ├── router_agent.py         # クエリルーティング（キーワードベース）
 │   ├── business_info_agent.py  # 営業情報エージェント ★参考実装
 │   ├── event_agent.py          # イベントエージェント ★参考実装
 │   ├── facility_agent.py       # 施設情報エージェント
@@ -69,13 +70,26 @@ backend/
 │   ├── slide_agent.py          # スライドエージェント
 │   ├── memory_agent.py         # メモリエージェント
 │   └── voice_agent.py          # 音声エージェント
+├── config/                      # 設定・共有定数 ★新規
+│   ├── routing_constants.py    # ルーティングキーワード・ヘルパー関数
+│   └── prompts/                # 共有プロンプトテンプレート
+│       ├── facility_prompts.py
+│       ├── event_prompts.py
+│       └── memory_prompts.py
 ├── tools/                       # 共有ツール
-│   ├── enhanced_rag.py         # Enhanced RAG検索
+│   ├── agent_tools.py          # LangChain Tool定義
 │   └── calendar_service.py     # カレンダーサービス
+├── utils/                       # ユーティリティ ★拡充
+│   ├── input_sanitizer.py      # 入力バリデーション
+│   ├── exceptions.py           # カスタム例外階層
+│   ├── memory_helper.py        # Supabaseメモリシステム
+│   └── query_classifier.py     # クエリ分類
 ├── workflows/                   # LangGraphワークフロー
 │   └── main_workflow.py        # メインワークフロー ★統合先
-├── llm.py                       # LLMプロバイダー
-└── tests/                       # テスト
+├── llm/                         # LLMプロバイダー
+│   ├── openrouter.py           # OpenRouter APIクライアント
+│   └── models.py               # モデル設定
+└── tests/                       # テスト（406件）
     └── templates/
         └── test_agent_template.py  # テストテンプレート ★参考
 ```
