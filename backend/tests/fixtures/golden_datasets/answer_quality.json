@@ -1,0 +1,138 @@
+{
+  "version": "1.0.0",
+  "description": "回答品質テストデータ - LLM-as-Judge評価用",
+  "created_at": "2025-02-07",
+  "test_cases": [
+    {
+      "id": "aq-001",
+      "question": "Wi-Fiのパスワードを教えてください",
+      "expected_answer": "Wi-Fiのパスワードは「engineer2025」です。接続方法がわからない場合はスタッフにお声がけください。",
+      "language": "ja",
+      "category": "facility",
+      "quality_expectations": {
+        "accuracy": 0.9,
+        "relevance": 0.9,
+        "completeness": 0.8,
+        "tone": 0.8
+      }
+    },
+    {
+      "id": "aq-002",
+      "question": "今週末のイベントは何がありますか？",
+      "expected_answer": "今週末は「Python勉強会」が土曜日14時から、「スタートアップピッチ会」が日曜日10時から開催予定です。参加をご希望の場合は、connpassからお申し込みください。",
+      "language": "ja",
+      "category": "event",
+      "quality_expectations": {
+        "accuracy": 0.8,
+        "relevance": 0.9,
+        "completeness": 0.9,
+        "tone": 0.8
+      }
+    },
+    {
+      "id": "aq-003",
+      "question": "福岡で起業したいのですが、相談できますか？",
+      "expected_answer": "はい、起業相談は大歓迎です！エンジニアカフェでは定期的に起業相談会を開催しています。また、福岡市のスタートアップ支援制度についてもご案内できます。まずはスタッフにお声がけください。",
+      "language": "ja",
+      "category": "business",
+      "quality_expectations": {
+        "accuracy": 0.8,
+        "relevance": 0.9,
+        "completeness": 0.8,
+        "tone": 0.9
+      }
+    },
+    {
+      "id": "aq-004",
+      "question": "さっき何を聞いたっけ？",
+      "expected_answer": "先ほどはWi-Fiのパスワードについてお尋ねでしたね。パスワードは「engineer2025」とお伝えしました。",
+      "language": "ja",
+      "category": "memory",
+      "context": "前の質問: Wi-Fiのパスワードを教えてください",
+      "quality_expectations": {
+        "accuracy": 0.9,
+        "relevance": 0.9,
+        "completeness": 0.9,
+        "tone": 0.8
+      }
+    },
+    {
+      "id": "aq-005",
+      "question": "What is the Wi-Fi password?",
+      "expected_answer": "The Wi-Fi password is 'engineer2025'. Please feel free to ask staff if you need help connecting.",
+      "language": "en",
+      "category": "facility",
+      "quality_expectations": {
+        "accuracy": 0.9,
+        "relevance": 0.9,
+        "completeness": 0.8,
+        "tone": 0.8
+      }
+    },
+    {
+      "id": "aq-006",
+      "question": "営業時間は何時までですか？",
+      "expected_answer": "エンジニアカフェの営業時間は平日10:00〜21:00、土日祝は10:00〜18:00です。年末年始はお休みをいただいております。",
+      "language": "ja",
+      "category": "facility",
+      "quality_expectations": {
+        "accuracy": 0.9,
+        "relevance": 0.9,
+        "completeness": 0.9,
+        "tone": 0.8
+      }
+    },
+    {
+      "id": "aq-007",
+      "question": "创业支持有什么项目？",
+      "expected_answer": "福岡市提供多种创业支持项目，包括创业咨询、融资支持、办公空间优惠等。详情请咨询工作人员。",
+      "language": "zh",
+      "category": "business",
+      "quality_expectations": {
+        "accuracy": 0.8,
+        "relevance": 0.9,
+        "completeness": 0.7,
+        "tone": 0.8
+      }
+    },
+    {
+      "id": "aq-008",
+      "question": "스타트업 지원 프로그램이 있나요?",
+      "expected_answer": "네, 후쿠오카시에서는 다양한 스타트업 지원 프로그램을 운영하고 있습니다. 창업 상담, 자금 지원, 사무실 공간 혜택 등이 있습니다.",
+      "language": "ko",
+      "category": "business",
+      "quality_expectations": {
+        "accuracy": 0.8,
+        "relevance": 0.9,
+        "completeness": 0.7,
+        "tone": 0.8
+      }
+    },
+    {
+      "id": "aq-009",
+      "question": "コーヒーは飲めますか？",
+      "expected_answer": "はい、エンジニアカフェではコーヒーをご提供しています。セルフサービスで無料でお飲みいただけます。",
+      "language": "ja",
+      "category": "facility",
+      "quality_expectations": {
+        "accuracy": 0.9,
+        "relevance": 0.9,
+        "completeness": 0.8,
+        "tone": 0.9
+      }
+    },
+    {
+      "id": "aq-010",
+      "question": "会議室を予約したいのですが",
+      "expected_answer": "会議室のご予約は、受付カウンターまたはオンライン予約システムから可能です。空き状況を確認しますので、ご希望の日時をお知らせください。",
+      "language": "ja",
+      "category": "facility",
+      "quality_expectations": {
+        "accuracy": 0.8,
+        "relevance": 0.9,
+        "completeness": 0.8,
+        "tone": 0.9
+      }
+    }
+  ]
+}
