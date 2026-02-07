@@ -48,23 +48,31 @@ class WebSearchTool:
         環境変数:
             GOOGLE_API_KEY: Gemini API Key
             GEMINI_MODEL: 使用するモデル名 (デフォルト: gemini-2.0-flash-exp)
+
+        Note:
+            APIキーが設定されていない場合は警告を出して初期化する。
+            実際の検索時にAPIキーがないとエラーを発生させる。
         """
         self.name = "web_search"
         self.description = "一般的な質問に対してGoogle検索で最新情報を取得"
+        self.model = None
+        self._api_key = None
+        self._model_name = os.getenv("GEMINI_MODEL", "gemini-2.0-flash-exp")
 
-        # API Key取得
+        # API Key取得（遅延初期化対応）
         api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GOOGLE_GENERATIVE_AI_API_KEY")
         if not api_key:
-            raise ValueError("GOOGLE_API_KEY or GOOGLE_GENERATIVE_AI_API_KEY is required")
-
-        # Gemini API設定
-        genai.configure(api_key=api_key)
-
-        # モデル初期化
-        model_name = os.getenv("GEMINI_MODEL", "gemini-2.0-flash-exp")
-        self.model = genai.GenerativeModel(model_name)
-
-        logger.info(f"WebSearchTool initialized with model: {model_name}")
+            logger.warning(
+                "GOOGLE_API_KEY or GOOGLE_GENERATIVE_AI_API_KEY not set. "
+                "Web search will fail at runtime."
+            )
+        else:
+            self._api_key = api_key
+            # Gemini API設定
+            genai.configure(api_key=api_key)
+            # モデル初期化
+            self.model = genai.GenerativeModel(self._model_name)
+            logger.info(f"WebSearchTool initialized with model: {self._model_name}")
 
     async def search(
         self, query: str, language: SupportedLanguage = "ja", context: Optional[str] = None
@@ -85,6 +93,16 @@ class WebSearchTool:
                 "error": Optional[str]
             }
         """
+        # APIキーチェック
+        if not self._api_key or not self.model:
+            logger.error("WebSearchTool: API key not configured")
+            return {
+                "success": False,
+                "text": "",
+                "sources": [],
+                "error": "GOOGLE_API_KEY or GOOGLE_GENERATIVE_AI_API_KEY is required",
+            }
+
         try:
             logger.info(f"Web search started: query={query[:50]}..., language={language}")
 

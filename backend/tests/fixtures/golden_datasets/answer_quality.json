@@ -1,0 +1,165 @@
+{
+  "version": "1.1.0",
+  "description": "回答品質テストデータ - LLM-as-Judge評価用（実データ版）",
+  "created_at": "2026-02-07",
+  "source": "docs/reference/engineer-cafe-reference.md",
+  "test_cases": [
+    {
+      "id": "aq-001",
+      "question": "Wi-Fiのパスワードを教えてください",
+      "expected_answer": "フリーWi-Fiを完備しています。接続方法やパスワードについては、1階受付のスタッフにお声がけください。",
+      "language": "ja",
+      "category": "facility",
+      "quality_expectations": {
+        "accuracy": 0.9,
+        "relevance": 0.9,
+        "completeness": 0.8,
+        "tone": 0.8
+      }
+    },
+    {
+      "id": "aq-002",
+      "question": "今週末のイベントは何がありますか？",
+      "expected_answer": "イベント情報はconnpass（https://engineercafe.connpass.com/）で公開しています。勉強会や交流イベントなど様々なイベントを開催していますので、ぜひご確認ください。",
+      "language": "ja",
+      "category": "event",
+      "quality_expectations": {
+        "accuracy": 0.8,
+        "relevance": 0.9,
+        "completeness": 0.9,
+        "tone": 0.8
+      }
+    },
+    {
+      "id": "aq-003",
+      "question": "エンジニアになりたいのですが相談できますか？",
+      "expected_answer": "はい、コミュニティマネージャーがキャリア相談に対応しています。「未経験からエンジニアになりたい社会人のためのスキルチェンジ相談会」も定期的に開催しています。相談受付時間は13:00〜21:00です。お気軽にお声がけください。",
+      "language": "ja",
+      "category": "business_info",
+      "quality_expectations": {
+        "accuracy": 0.9,
+        "relevance": 0.9,
+        "completeness": 0.9,
+        "tone": 0.9
+      }
+    },
+    {
+      "id": "aq-004",
+      "question": "さっき何を聞いたっけ？",
+      "expected_answer": "先ほどはWi-Fiのパスワードについてお尋ねでしたね。フリーWi-Fiを完備しており、詳細は受付でご案内しています。",
+      "language": "ja",
+      "category": "memory",
+      "context": "前の質問: Wi-Fiのパスワードを教えてください",
+      "quality_expectations": {
+        "accuracy": 0.9,
+        "relevance": 0.9,
+        "completeness": 0.9,
+        "tone": 0.8
+      }
+    },
+    {
+      "id": "aq-005",
+      "question": "What is the Wi-Fi password?",
+      "expected_answer": "We have free Wi-Fi available. Please ask the staff at the reception on the first floor for the password and connection details.",
+      "language": "en",
+      "category": "facility",
+      "quality_expectations": {
+        "accuracy": 0.9,
+        "relevance": 0.9,
+        "completeness": 0.8,
+        "tone": 0.8
+      }
+    },
+    {
+      "id": "aq-006",
+      "question": "営業時間は何時までですか？",
+      "expected_answer": "エンジニアカフェの開館時間は9:00〜22:00です。コミュニティマネージャーへの相談受付は13:00〜21:00となっています。休館日は毎月最終月曜日（祝休日の場合は翌平日）と12月29日〜1月3日です。",
+      "language": "ja",
+      "category": "business_info",
+      "quality_expectations": {
+        "accuracy": 0.9,
+        "relevance": 0.9,
+        "completeness": 0.9,
+        "tone": 0.8
+      }
+    },
+    {
+      "id": "aq-007",
+      "question": "3Dプリンターを使いたいのですが",
+      "expected_answer": "MAKER'sスペース（地下1階）で3Dプリンター（Bambu Lab P1S）をご利用いただけます。初回は約60〜120分の講習が必要です。Webから事前予約してください。利用可能時間は9:30〜21:30、最大2時間/回です。素材費は別途かかります。",
+      "language": "ja",
+      "category": "facility",
+      "quality_expectations": {
+        "accuracy": 0.9,
+        "relevance": 0.9,
+        "completeness": 0.9,
+        "tone": 0.8
+      }
+    },
+    {
+      "id": "aq-008",
+      "question": "카페에서 커피를 마실 수 있나요?",
+      "expected_answer": "네, 1층에 cafe&bar saino가 있습니다. 평일 12:00~20:00, 주말 11:00~20:00에 영업합니다. 정기휴일은 월요일과 수요일입니다.",
+      "language": "ko",
+      "category": "facility",
+      "quality_expectations": {
+        "accuracy": 0.8,
+        "relevance": 0.9,
+        "completeness": 0.8,
+        "tone": 0.8
+      }
+    },
+    {
+      "id": "aq-009",
+      "question": "カフェでコーヒーは飲めますか？",
+      "expected_answer": "1階にcafe&bar sainoがあります。昼はカフェ、夜はバーとして営業しています。平日は12:00〜17:00、18:00〜20:00、土日祝は11:00〜20:00です。定休日は月曜日・水曜日です。",
+      "language": "ja",
+      "category": "facility",
+      "quality_expectations": {
+        "accuracy": 0.9,
+        "relevance": 0.9,
+        "completeness": 0.9,
+        "tone": 0.9
+      }
+    },
+    {
+      "id": "aq-010",
+      "question": "2階の会議室を予約したいのですが",
+      "expected_answer": "2階の会議室は福岡市が管理する有料の貸し会議室です。予約は福岡市公共施設予約システム「コミネット」または電話（092-722-4666）で可能です。料金は3時間約1,600円〜（部屋により異なる）で、利用日の3カ月前から予約できます。",
+      "language": "ja",
+      "category": "facility",
+      "quality_expectations": {
+        "accuracy": 0.9,
+        "relevance": 0.9,
+        "completeness": 0.9,
+        "tone": 0.9
+      }
+    },
+    {
+      "id": "aq-011",
+      "question": "この建物について教えてください",
+      "expected_answer": "福岡市赤煉瓦文化館は1909年（明治42年）に日本生命保険株式会社九州支店として建てられました。設計は東京駅でも知られる辰野金吾・片岡安による「辰野式」の建築で、国の重要文化財に指定されています。赤煉瓦に白い花崗岩の帯、中央のドーム型塔屋が特徴です。",
+      "language": "ja",
+      "category": "facility",
+      "quality_expectations": {
+        "accuracy": 0.9,
+        "relevance": 0.9,
+        "completeness": 0.9,
+        "tone": 0.8
+      }
+    },
+    {
+      "id": "aq-012",
+      "question": "最寄り駅からの行き方を教えてください",
+      "expected_answer": "地下鉄空港線「天神駅」から徒歩約5分です。西鉄バスをご利用の場合は「天神4丁目」バス停下車すぐです。住所は福岡市中央区天神1丁目15番30号です。",
+      "language": "ja",
+      "category": "facility",
+      "quality_expectations": {
+        "accuracy": 0.9,
+        "relevance": 0.9,
+        "completeness": 0.9,
+        "tone": 0.8
+      }
+    }
+  ]
+}

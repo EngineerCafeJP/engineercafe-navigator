@@ -21,7 +21,33 @@ Python版LangGraphを使用したAIエージェントバックエンドシステ
 
 ## セットアップ
 
-### Poetryを使用する場合
+### 方法1: Dockerを使用する場合（推奨）
+
+ローカル開発環境をDockerで起動します。PostgreSQLも同時に起動されるため、LangGraph Checkpointerのテストも可能です。
+
+```bash
+# プロジェクトルートで実行
+docker-compose up -d
+
+# バックエンドのみ起動
+docker-compose up -d backend postgres
+```
+
+### 方法2: uvを使用する場合
+
+[uv](https://github.com/astral-sh/uv) は高速なPythonパッケージマネージャーです。
+
+```bash
+cd backend
+
+# uvでインストール
+uv pip install -e ".[dev]"
+
+# または uv sync を使用
+uv sync
+```
+
+### 方法3: Poetryを使用する場合
 
 ```bash
 cd backend
@@ -29,13 +55,38 @@ poetry install
 poetry shell
 ```
 
-### pipを使用する場合
+### 方法4: pipを使用する場合
 
 ```bash
 cd backend
 python -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
+```
+
+### ローカルPostgreSQLセットアップ（LangGraph Checkpointer用）
+
+LangGraph Checkpointerを使用するには、Supabase Local（PostgreSQL含む）を使用します。
+
+```bash
+# Supabase CLIをインストール（未インストールの場合）
+brew install supabase/tap/supabase
+
+# Supabase Localを起動（PostgreSQL含む）
+supabase start
+
+# 起動後に表示される情報:
+#   DB URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+#   API URL: http://127.0.0.1:54321
+#   Studio URL: http://127.0.0.1:54323
+
+# .envに接続URIを設定
+SUPABASE_URL=http://127.0.0.1:54321
+SUPABASE_KEY=<表示されたservice_role key>
+SUPABASE_DB_URI=postgresql://postgres:postgres@127.0.0.1:54322/postgres
+
+# 停止する場合
+supabase stop
 ```
 
 ## 環境変数の設定
@@ -117,6 +168,23 @@ poetry run pytest tests/agents/test_router_agent.py -v
 poetry run pytest --cov=agents --cov-report=html
 ```
 
+### 評価テスト（LangChain Evaluations拡張）
+
+マルチエージェントシステム向けのLLM-as-Judge評価とルーティング精度評価を実行できます。
+
+```bash
+# 評価テスト全体
+poetry run pytest tests/evaluation/ -v
+
+# ルーティング精度評価
+poetry run pytest tests/evaluation/test_routing_accuracy.py -v
+
+# LLM Judge評価（APIキー必要）
+poetry run pytest tests/evaluation/test_llm_judge.py -v --run-llm
+```
+
+テストデータは実際のエンジニアカフェの公開情報に基づいています。詳細は [tests/fixtures/README.md](tests/fixtures/README.md) を参照してください。
+
 ## コード品質
 
 ```bash
@@ -156,15 +224,18 @@ backend/
 │   └── ...
 ├── utils/                  # ユーティリティ
 │   └── ...
-└── tests/                  # テスト（62件）
+└── tests/                  # テスト
     ├── agents/             # エージェントテスト
+    ├── evaluation/         # 評価テスト（LangChain Evaluations拡張）
+    ├── fixtures/           # テストフィクスチャ・ゴールデンデータセット
+    │   └── golden_datasets/  # 実データ（リファレンス資料に基づく）
     └── utils/              # ユーティリティテスト
+        └── evaluators/     # 評価器（LLM Judge, ルーティング精度）
 ```
 
 ## 📖 関連ドキュメント
 
 - **[プロジェクト全体ドキュメント](../docs/README.md)** - 全ドキュメント一覧
-- **[シーケンス図（入力〜エージェント〜出力）](../docs/architecture/SEQUENCE-DIAGRAM.md)** - フロント・バックエンド間の処理フロー（Mermaid）
 - **[LangGraph開発ガイド](../docs/development/LANGGRAPH-DEVELOPMENT-GUIDE.md)** - LangGraph開発詳細
 - **[エージェント実装ガイド](../docs/development/AGENT-QUICKSTART.md)** - エージェント開発クイックスタート
 - **[API仕様](../docs/api/API.md)** - REST API仕様書
