@@ -386,8 +386,8 @@ class OrchestratorAgent:
 
         if language_result:
             info["language_detection"] = {
-                "detected": language_result.detected,
-                "confidence": language_result.confidence,
+                "detected": language_result["detected"],
+                "confidence": language_result["confidence"],
             }
 
         if llm_response_length is not None:
