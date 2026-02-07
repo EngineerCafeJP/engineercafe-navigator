@@ -10,6 +10,13 @@ import operator
 
 from backend.agents.router_agent import RouterAgent
 from backend.agents.clarification_agent import ClarificationAgent
+from backend.agents.business_info_agent import BusinessInfoAgent
+from backend.agents.facility_agent import FacilityAgent
+from backend.agents.event_agent import EventAgent
+from backend.agents.slide_agent import SlideAgent
+from backend.agents.general_knowledge_agent import GeneralKnowledgeAgent
+from backend.agents.memory_agent import MemoryAgent
+from backend.utils.memory_helper import get_memory_helper
 
 
 class WorkflowState(TypedDict):
@@ -30,9 +37,29 @@ class MainWorkflow:
     """メインLangGraphワークフロー"""
 
     def __init__(self):
+        """MainWorkflowを初期化
+
+        全エージェントをここで一度だけ初期化し、各ノードで再利用する。
+        これにより、リクエストごとのエージェント再生成を防止し、
+        パフォーマンスを向上させる。
+        """
+        # ルーティングエージェント
         self.router_agent = RouterAgent(debug_mode=True)
-        self.graph = self._build_graph()
         self.clarification_agent = ClarificationAgent()
+
+        # ドメインエージェント（全て事前初期化）
+        self.business_info_agent = BusinessInfoAgent()
+        self.facility_agent = FacilityAgent()
+        self.event_agent = EventAgent()
+        self.slide_agent = SlideAgent()
+        self.general_knowledge_agent = GeneralKnowledgeAgent()
+
+        # メモリエージェント
+        self._memory_helper = get_memory_helper()
+        self.memory_agent = MemoryAgent(memory_system=self._memory_helper)
+
+        # グラフ構築
+        self.graph = self._build_graph()
 
     def _build_graph(self) -> StateGraph:
         """グラフ構造を構築"""
@@ -157,10 +184,14 @@ class MainWorkflow:
             },
         }
 
-    def _route_decision(
-        self, state: WorkflowState
-    ) -> Literal[
-        "clarification", "business_info", "facility", "event", "slide", "general_knowledge", "memory_agent"
+    def _route_decision(self, state: WorkflowState) -> Literal[
+        "clarification",
+        "business_info",
+        "facility",
+        "event",
+        "slide",
+        "general_knowledge",
+        "memory_agent",
     ]:
         """ルーティング決定"""
         return state.get("routed_to", "general_knowledge")
@@ -168,29 +199,31 @@ class MainWorkflow:
     async def _clarification_node(self, state: WorkflowState) -> dict:
         """明確化ノード: 曖昧なクエリを明確化"""
 
-        #agent = ClarificationAgent()
+        # agent = ClarificationAgent()
         query = state.get("query", "")
-        #context = state.get("context", {})
+        # context = state.get("context", {})
         language = state.get("language", "ja")
 
         # Router Agentから設定されたcategoryを取得
-        category = state.get("metadata", {}).get("routing", {}).get("category", "general-clarification-needed")
-        
+        category = (
+            state.get("metadata", {})
+            .get("routing", {})
+            .get("category", "general-clarification-needed")
+        )
+
         # categoryがclarification系でない場合はデフォルトにフォールバック
         if category not in [
             "cafe-clarification-needed",
             "meeting-room-clarification-needed",
-            "general-clarification-needed"
+            "general-clarification-needed",
         ]:
             category = "general-clarification-needed"
-        
+
         # ClarificationAgentを使用
         result = await self.clarification_agent.handle_clarification(
-            query=query,
-            category=category,
-            language=language
+            query=query, category=category, language=language
         )
-        
+
         return {
             "answer": result["response"],
             "emotion": result["emotion"],
@@ -201,20 +234,19 @@ class MainWorkflow:
                     "clarification_type": category,
                 },
                 "requires_followup": True,  # ユーザーの回答待ち
-            }
+            },
         }
 
     async def _business_info_node(self, state: WorkflowState) -> dict:
         """営業情報ノード: 営業情報を処理"""
-        from backend.agents.business_info_agent import BusinessInfoAgent
-
-        agent = BusinessInfoAgent()
         query = state.get("query", "")
         language = state.get("language", "ja")
         session_id = state.get("session_id", "")
         request_type = state.get("metadata", {}).get("routing", {}).get("request_type")
 
-        result = await agent.answer_business_query(query, request_type, language, session_id)
+        result = await self.business_info_agent.answer_business_query(
+            query, request_type, language, session_id
+        )
 
         return {
             "answer": result.get("answer", ""),
@@ -224,15 +256,14 @@ class MainWorkflow:
 
     async def _facility_node(self, state: WorkflowState) -> dict:
         """施設ノード: 施設情報を処理"""
-        from backend.agents.facility_agent import FacilityAgent
-
-        agent = FacilityAgent()
         query = state.get("query", "")
         language = state.get("language", "ja")
         session_id = state.get("session_id", "")
         request_type = state.get("metadata", {}).get("routing", {}).get("request_type")
 
-        result = await agent.answer_facility_query(query, request_type, language, session_id)
+        result = await self.facility_agent.answer_facility_query(
+            query, request_type, language, session_id
+        )
 
         return {
             "answer": result.get("answer", ""),
@@ -242,14 +273,11 @@ class MainWorkflow:
 
     async def _event_node(self, state: WorkflowState) -> dict:
         """イベントノード: イベント情報を処理"""
-        from backend.agents.event_agent import EventAgent
-
-        agent = EventAgent()
         query = state.get("query", "")
         language = state.get("language", "ja")
         session_id = state.get("session_id", "")
 
-        result = await agent.answer_event_query(query, language, session_id)
+        result = await self.event_agent.answer_event_query(query, language, session_id)
 
         return {
             "answer": result.get("answer", ""),
@@ -259,9 +287,6 @@ class MainWorkflow:
 
     async def _slide_node(self, state: WorkflowState) -> dict:
         """スライドノード: スライドナレーションと質問応答を処理"""
-        from backend.agents.slide_agent import SlideAgent
-
-        agent = SlideAgent()
         query = state.get("query", "")
         language = state.get("language", "ja")
 
@@ -282,7 +307,7 @@ class MainWorkflow:
         slide_action = action_map.get(request_type, "narrate")
 
         # SlideAgentのhandle_slide_action呼び出し
-        result = await agent.handle_slide_action(
+        result = await self.slide_agent.handle_slide_action(
             action=slide_action,
             query=query if slide_action == "question" else None,
             language=language,
@@ -296,15 +321,14 @@ class MainWorkflow:
 
     async def _general_knowledge_node(self, state: WorkflowState) -> dict:
         """一般知識ノード: 一般的な知識を処理"""
-        from backend.agents.general_knowledge_agent import GeneralKnowledgeAgent
-
-        agent = GeneralKnowledgeAgent()
         query = state.get("query", "")
         language = state.get("language", "ja")
         session_id = state.get("session_id", "")
 
         # GeneralKnowledgeAgentで一般知識を処理
-        result = await agent.answer_general_query(query, language, session_id)
+        result = await self.general_knowledge_agent.answer_general_query(
+            query, language, session_id
+        )
 
         return {
             "answer": result.get("answer", ""),
@@ -319,15 +343,11 @@ class MainWorkflow:
         「さっき何を聞いた？」「前に話したことを覚えてる？」などの
         メモリ関連の質問に対してMemoryAgentが回答を生成する。
         """
-        from backend.agents.memory_agent import MemoryAgent
-        from backend.utils.memory_helper import get_memory_helper
-
-        agent = MemoryAgent(memory_system=get_memory_helper())
         query = state.get("query", "")
         language = state.get("language", "ja")
         session_id = state.get("session_id", "")
 
-        result = await agent.process_memory_query(query, session_id, language)
+        result = await self.memory_agent.process_memory_query(query, session_id, language)
 
         return {
             "answer": result.get("answer", ""),

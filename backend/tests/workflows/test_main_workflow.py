@@ -103,54 +103,64 @@ class TestMainWorkflowMemoryIntegration:
         assert result["metadata"]["routing"]["agent"] == "MemoryAgent"
 
     @pytest.mark.asyncio
+    @patch("backend.workflows.main_workflow.MemoryAgent")
+    @patch("backend.workflows.main_workflow.get_memory_helper")
+    @patch("backend.workflows.main_workflow.GeneralKnowledgeAgent")
+    @patch("backend.workflows.main_workflow.SlideAgent")
+    @patch("backend.workflows.main_workflow.EventAgent")
+    @patch("backend.workflows.main_workflow.FacilityAgent")
+    @patch("backend.workflows.main_workflow.BusinessInfoAgent")
     @patch("backend.workflows.main_workflow.RouterAgent")
     @patch("backend.workflows.main_workflow.ClarificationAgent")
     async def test_memory_agent_node_processes_query(
-        self, mock_clarification, mock_router_class
+        self,
+        mock_clarification,
+        mock_router_class,
+        mock_business_info,
+        mock_facility,
+        mock_event,
+        mock_slide,
+        mock_general_knowledge,
+        mock_get_helper,
+        mock_memory_agent_class,
     ):
         """_memory_agent_nodeがMemoryAgentを呼び出して回答を生成することを確認"""
         from backend.workflows.main_workflow import MainWorkflow
 
         mock_router_class.return_value = AsyncMock()
+        mock_helper = Mock()
+        mock_get_helper.return_value = mock_helper
 
-        with patch(
-            "backend.utils.memory_helper.get_memory_helper"
-        ) as mock_get_helper, patch(
-            "backend.agents.memory_agent.MemoryAgent"
-        ) as mock_memory_agent_class:
-            mock_helper = Mock()
-            mock_get_helper.return_value = mock_helper
-
-            mock_agent = AsyncMock()
-            mock_agent.process_memory_query = AsyncMock(
-                return_value={
-                    "answer": "営業時間について質問されていましたね。",
-                    "emotion": "relaxed",
-                    "metadata": {
-                        "agent": "MemoryAgent",
-                        "status": "success",
-                        "query_type": "question_history",
-                    },
-                }
-            )
-            mock_memory_agent_class.return_value = mock_agent
-
-            workflow = MainWorkflow()
-
-            state = {
-                "query": "さっき何を聞いた？",
-                "session_id": "test-session",
-                "language": "ja",
-                "metadata": {},
+        mock_agent = AsyncMock()
+        mock_agent.process_memory_query = AsyncMock(
+            return_value={
+                "answer": "営業時間について質問されていましたね。",
+                "emotion": "relaxed",
+                "metadata": {
+                    "agent": "MemoryAgent",
+                    "status": "success",
+                    "query_type": "question_history",
+                },
             }
+        )
+        mock_memory_agent_class.return_value = mock_agent
 
-            result = await workflow._memory_agent_node(state)
+        workflow = MainWorkflow()
 
-            assert result["answer"] == "営業時間について質問されていましたね。"
-            assert result["emotion"] == "relaxed"
-            mock_agent.process_memory_query.assert_called_once_with(
-                "さっき何を聞いた？", "test-session", "ja"
-            )
+        state = {
+            "query": "さっき何を聞いた？",
+            "session_id": "test-session",
+            "language": "ja",
+            "metadata": {},
+        }
+
+        result = await workflow._memory_agent_node(state)
+
+        assert result["answer"] == "営業時間について質問されていましたね。"
+        assert result["emotion"] == "relaxed"
+        mock_agent.process_memory_query.assert_called_once_with(
+            "さっき何を聞いた？", "test-session", "ja"
+        )
 
     @pytest.mark.asyncio
     @patch("backend.workflows.main_workflow.RouterAgent")
