@@ -119,22 +119,22 @@ class TestMemoryAgent:
 
     @pytest.mark.asyncio
     async def test_process_query_with_memory_system(self):
-        """メモリシステムありで処理（骨組みプレースホルダー確認）"""
+        """メモリシステムありで処理（Supabase未接続時は履歴なし応答）"""
         memory_helper = SimplifiedMemoryHelper()
         agent = MemoryAgent(memory_system=memory_helper)
         result = await agent.process_memory_query(
             query="さっき何を聞いた？", session_id="test_session", language="ja"
         )
-        # 骨組み実装ではプレースホルダーメッセージが返る
-        assert "実装中" in result["answer"]
-        assert result["metadata"]["status"] == "skeleton_implementation"
+        # 完全実装ではSupabase未接続時に「まだ会話履歴がありません」を返す
+        assert "まだ会話履歴がありません" in result["answer"]
+        assert result["metadata"]["status"] == "no_history"
 
     def test_detect_memory_query_type(self):
-        """メモリ関連質問タイプの判定（骨組み）"""
+        """メモリ関連質問タイプの判定"""
         agent = MemoryAgent()
-        # 骨組み実装では"general_memory"が返る
+        # 完全実装では"何を聞いた"キーワードにマッチして"question_history"を返す
         query_type = agent.detect_memory_query_type("さっき何を聞いた？")
-        assert query_type == "general_memory"
+        assert query_type == "question_history"
 
     def test_determine_emotion_no_history(self):
         """履歴なしの感情タグ判定"""

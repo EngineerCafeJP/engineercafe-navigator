@@ -153,6 +153,7 @@ class TestClarificationIntegration:
 
         for case in test_cases:
             # Router Agentがcategoryを設定する想定
+            # _clarification_nodeはstate.get("routing", {}).get("category")でトップレベルを参照
             state = {
                 "query": case["query"],
                 "session_id": "test_session",
@@ -161,6 +162,9 @@ class TestClarificationIntegration:
                 "routed_to": None,
                 "answer": None,
                 "emotion": None,
+                "routing": {
+                    "category": case["expected_category"],
+                },
                 "metadata": {
                     "routing": {
                         "category": case["expected_category"]
@@ -217,9 +221,12 @@ class TestClarificationIntegration:
             "routed_to": None,
             "answer": None,
             "emotion": None,
+            "routing": {
+                "category": "unknown-category",
+            },
             "metadata": {
                 "routing": {
-                    "category": "unknown-category"  # 未知のカテゴリ
+                    "category": "unknown-category"
                 }
             },
             "context": {},
@@ -245,7 +252,7 @@ class TestClarificationIntegration:
             "routed_to": None,
             "answer": None,
             "emotion": None,
-            "metadata": {},  # routing情報がない
+            "metadata": {},  # routing情報がない（トップレベルのroutingもない）
             "context": {},
         }
         
@@ -267,9 +274,12 @@ class TestClarificationIntegration:
             "routed_to": None,
             "answer": None,
             "emotion": None,
+            "routing": {
+                "category": "",
+            },
             "metadata": {
                 "routing": {
-                    "category": ""  # 空文字列
+                    "category": ""
                 }
             },
             "context": {},
