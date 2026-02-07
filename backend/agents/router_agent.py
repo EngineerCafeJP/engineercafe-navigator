@@ -175,11 +175,11 @@ class RouterAgent:
 
         # requestTypeに基づく特別なルーティング
         if request_type:
-            # 料金に関する質問はBusinessInfoAgentへ
-            if request_type in ["price", "hours", "location"]:
+            # 料金・営業時間・場所・相談・コミュニティはBusinessInfoAgentへ
+            if request_type in ["price", "hours", "location", "consultation", "community"]:
                 return "BusinessInfoAgent"
-            # Wi-Fi・設備に関する質問はFacilityAgentへ
-            if request_type in ["wifi", "facility", "basement"]:
+            # Wi-Fi・設備・建物・アクセス方法はFacilityAgentへ
+            if request_type in ["wifi", "facility", "basement", "access", "building"]:
                 return "FacilityAgent"
             # イベントに関する質問はEventAgentへ
             if request_type == "event":
@@ -217,7 +217,8 @@ class RouterAgent:
 
         # Wi-Fi関連
         if any(
-            keyword in lower_question for keyword in ["wi-fi", "wifi", "インターネット", "ネット"]
+            keyword in lower_question
+            for keyword in ["wi-fi", "wifi", "インターネット", "ネット", "internet"]
         ):
             return "wifi"
 
@@ -233,6 +234,10 @@ class RouterAgent:
                 "閉まる",
                 "open",
                 "close",
+                "opening hours",
+                "business hours",
+                "what time",
+                "when do you",
             ]
         ):
             return "hours"
@@ -247,9 +252,90 @@ class RouterAgent:
                 "値段",
                 "cost",
                 "fee",
+                "how much",
             ]
         ):
             return "price"
+
+        # 相談関連
+        if any(
+            keyword in lower_question
+            for keyword in [
+                "相談",
+                "アドバイス",
+                "カウンセリング",
+                "キャリア",
+                "スキルチェンジ",
+                "転職",
+                "コミュニティマネージャー",
+                "consultation",
+                "advice",
+                "career",
+                "counseling",
+            ]
+        ):
+            return "consultation"
+
+        # コミュニティ関連
+        if any(
+            keyword in lower_question
+            for keyword in [
+                "engineer cafe lab",
+                "エンジニアカフェlab",
+                "エンジニアカフェラボ",
+                "eic",
+                "会員制コミュニティ",
+            ]
+        ):
+            return "community"
+
+        # アクセス・道案内関連（場所関連より先にチェック、双方向対応）
+        if any(
+            keyword in lower_question
+            for keyword in [
+                # FROM station TO cafe
+                "行き方",
+                "道順",
+                "最寄り駅",
+                "最寄り",
+                "たどり着",
+                "行く方法",
+                "来る方法",
+                "来方",
+                "directions",
+                "how to get",
+                # FROM cafe TO station (受付配置のため双方向対応)
+                "駅まで",
+                "駅への",
+                "帰り方",
+                "帰り道",
+                "帰る方法",
+                "出口",
+                "最寄り駅まで",
+                "駅に行く",
+                "how to get to the station",
+                "nearest station from here",
+                "way to the station",
+                "exit",
+            ]
+        ):
+            return "access"
+
+        # 建物関連
+        if any(
+            keyword in lower_question
+            for keyword in [
+                "建物",
+                "ビル",
+                "赤煉瓦",
+                "文化館",
+                "重要文化財",
+                "building",
+                "architecture",
+                "歴史的",
+            ]
+        ):
+            return "building"
 
         # 場所関連
         if any(

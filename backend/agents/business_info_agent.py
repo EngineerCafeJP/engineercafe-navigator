@@ -163,7 +163,7 @@ class BusinessInfoAgent:
             request_type (Optional[str]): リクエストタイプ
 
         Returns:
-            str: RAGカテゴリ（hours, pricing, location, facility-info, general）
+            str: RAGカテゴリ（hours, pricing, location, consultation, community, facility-info, general）
 
         Examples:
             >>> agent = BusinessInfoAgent()
@@ -171,6 +171,10 @@ class BusinessInfoAgent:
             'hours'
             >>> agent._map_request_type_to_category("price")
             'pricing'
+            >>> agent._map_request_type_to_category("consultation")
+            'consultation'
+            >>> agent._map_request_type_to_category("community")
+            'community'
             >>> agent._map_request_type_to_category("wifi")
             'facility-info'
         """
@@ -179,6 +183,8 @@ class BusinessInfoAgent:
             "price": "pricing",
             "location": "location",
             "access": "location",
+            "consultation": "consultation",
+            "community": "community",
             "basement": "facility-info",
             "facility": "facility-info",
             "wifi": "facility-info",
@@ -275,6 +281,8 @@ IMPORTANT: Start your response with an emotion tag: [relaxed] for information, [
             "location": {"en": "location information", "ja": "場所情報"},
             "access": {"en": "access information", "ja": "アクセス情報"},
             "basement": {"en": "basement facility information", "ja": "地下施設情報"},
+            "consultation": {"en": "consultation and career advice services", "ja": "相談・キャリアアドバイスサービス"},
+            "community": {"en": "community membership (Engineer Cafe Lab, EIC)", "ja": "コミュニティ（Engineer Cafe Lab、EIC）"},
         }
 
         prompt = prompt_map.get(

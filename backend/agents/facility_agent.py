@@ -210,6 +210,14 @@ class FacilityAgent:
                 "ja": "地下 B1 MTGスペース 集中スペース アンダースペース Makersスペース 予約 利用方法",
                 "en": "basement B1 MTG space focus space under space makers space reservation",
             },
+            "access": {
+                "ja": "アクセス 行き方 最寄り駅 天神駅 徒歩 道順 出口 帰り方",
+                "en": "access directions nearest station Tenjin walking route exit",
+            },
+            "building": {
+                "ja": "建物 赤煉瓦文化館 重要文化財 辰野金吾 歴史 明治",
+                "en": "building red brick cultural hall important cultural property history Meiji",
+            },
         }
 
         if request_type in enhancement_keywords:

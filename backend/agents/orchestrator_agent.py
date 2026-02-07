@@ -79,27 +79,130 @@ class OrchestratorAgent:
     """
 
     # キーワード定数（テストと拡張のため）
-    WIFI_KEYWORDS = ["wi-fi", "wifi", "ワイファイ", "インターネット"]
-    BUSINESS_HOURS_KEYWORDS = ["営業時間", "何時まで", "何時から", "開いて", "閉まる"]
-    PRICING_KEYWORDS = ["料金", "いくら", "値段", "価格", "cost", "price"]
+    WIFI_KEYWORDS = ["wi-fi", "wifi", "ワイファイ", "インターネット", "internet"]
+    BUSINESS_HOURS_KEYWORDS = [
+        "営業時間",
+        "何時まで",
+        "何時から",
+        "開いて",
+        "閉まる",
+        "opening hours",
+        "business hours",
+        "open",
+        "close",
+        "what time",
+        "when do you",
+    ]
+    PRICING_KEYWORDS = ["料金", "いくら", "値段", "価格", "cost", "price", "fee", "how much"]
     BASEMENT_KEYWORDS = ["地下", "basement", "b1", "mtgスペース", "集中スペース"]
-    EVENT_KEYWORDS = ["イベント", "勉強会", "セミナー", "ミートアップ"]
-    SLIDE_KEYWORDS = ["スライド", "プレゼン", "次のスライド", "前のスライド"]
+    EVENT_KEYWORDS = [
+        "イベント",
+        "勉強会",
+        "セミナー",
+        "ミートアップ",
+        "event",
+        "workshop",
+        "meetup",
+        "seminar",
+    ]
+    SLIDE_KEYWORDS = [
+        "スライド",
+        "プレゼン",
+        "次のスライド",
+        "前のスライド",
+        "slide",
+        "presentation",
+    ]
+    CONSULTATION_KEYWORDS = [
+        "相談",
+        "アドバイス",
+        "カウンセリング",
+        "キャリア",
+        "スキルチェンジ",
+        "転職",
+        "コミュニティマネージャー",
+        "consultation",
+        "advice",
+        "career",
+        "counseling",
+    ]
+    ACCESS_DIRECTION_KEYWORDS = [
+        # FROM station TO cafe
+        "行き方",
+        "道順",
+        "最寄り駅",
+        "最寄り",
+        "たどり着",
+        "行く方法",
+        "来る方法",
+        "来方",
+        "directions",
+        "how to get",
+        # FROM cafe TO station (bidirectional - agent is at reception)
+        "駅まで",
+        "駅への",
+        "帰り方",
+        "帰り道",
+        "帰る方法",
+        "出口",
+        "最寄り駅まで",
+        "駅に行く",
+        "how to get to the station",
+        "nearest station from here",
+        "way to the station",
+        "exit",
+    ]
+    BUILDING_KEYWORDS = [
+        "建物",
+        "ビル",
+        "赤煉瓦",
+        "文化館",
+        "重要文化財",
+        "building",
+        "architecture",
+        "歴史的",
+    ]
+    COMMUNITY_KEYWORDS = [
+        "engineer cafe lab",
+        "エンジニアカフェlab",
+        "エンジニアカフェラボ",
+        "eic",
+        "会員制コミュニティ",
+    ]
 
     BUSINESS_EXCLUSION_KEYWORDS = [
-        "メニュー", "料金", "営業時間", "場所", "設備", "saino", "エンジニアカフェ"
+        "メニュー",
+        "料金",
+        "営業時間",
+        "場所",
+        "設備",
+        "saino",
+        "エンジニアカフェ",
     ]
     FACILITY_EXCLUSION_KEYWORDS = ["地下", "スペース", "会議室", "施設"]
     MEMORY_KEYWORDS = [
-        "さっき", "前に", "覚えて", "記憶", "聞いた", "話した",
-        "何を", "言った", "会話", "履歴", "先ほど",
-        "remember", "earlier", "previous", "asked", "said",
+        "さっき",
+        "前に",
+        "覚えて",
+        "記憶",
+        "聞いた",
+        "話した",
+        "何を",
+        "言った",
+        "会話",
+        "履歴",
+        "先ほど",
+        "remember",
+        "earlier",
+        "previous",
+        "asked",
+        "said",
     ]
 
     # エージェントの説明（LLMがルーティング決定に使用）
     AGENT_DESCRIPTIONS = {
-        "business_info": "営業情報エージェント: 営業時間、料金、場所、アクセス方法など施設の基本情報を回答",
-        "facility": "施設エージェント: Wi-Fi、電源、会議室、地下スペースなど設備に関する情報を回答",
+        "business_info": "営業情報エージェント: 営業時間、料金、場所、相談（キャリア・スキルチェンジ等）、コミュニティ（Engineer Cafe Lab等）など施設の基本情報・サービスを回答",
+        "facility": "施設エージェント: Wi-Fi、電源、会議室、地下スペース、建物の歴史・構造、アクセス方法・行き方など設備・物理施設に関する情報を回答",
         "event": "イベントエージェント: イベント情報、勉強会、セミナーなどの予定を回答",
         "memory_agent": "メモリエージェント: 過去の会話履歴に関する質問に回答（「さっき何を聞いた？」など）",
         "general_knowledge": "一般知識エージェント: 上記以外の一般的な質問に回答",
@@ -115,8 +218,8 @@ class OrchestratorAgent:
 {agent_descriptions}
 
 ルーティングルール:
-1. 営業時間、料金、場所に関する質問 → business_info
-2. Wi-Fi、電源、設備、地下スペースに関する質問 → facility
+1. 営業時間、料金、相談（キャリア相談・スキルチェンジ等）、コミュニティ（Engineer Cafe Lab等）に関する質問 → business_info
+2. Wi-Fi、電源、設備、地下スペース、建物の歴史・構造、アクセス方法・行き方に関する質問 → facility
 3. イベント、勉強会、セミナーに関する質問 → event
 4. 過去の会話や「さっき」「前に」などメモリ関連の質問 → memory_agent
 5. スライド操作やプレゼン関連の質問 → slide
@@ -300,9 +403,7 @@ class OrchestratorAgent:
             f"- {name}: {desc}" for name, desc in self.AGENT_DESCRIPTIONS.items()
         )
 
-        system_prompt = self.ROUTING_SYSTEM_PROMPT.format(
-            agent_descriptions=agent_descriptions
-        )
+        system_prompt = self.ROUTING_SYSTEM_PROMPT.format(agent_descriptions=agent_descriptions)
 
         user_message = f"ユーザーの質問: {sanitized_query}"
         if memory_context:
@@ -482,6 +583,43 @@ class OrchestratorAgent:
                 "reasoning": "Slide keyword detected",
             }
 
+        # コミュニティ関連（Engineer Cafe Lab等）→ business_info
+        # ※ エンジニアカフェの施設検出より先にチェック
+        if any(kw in lower_query for kw in self.COMMUNITY_KEYWORDS):
+            return {
+                "agent": "business_info",
+                "category": "community",
+                "request_type": "community",
+                "reasoning": "Community/program keyword detected",
+            }
+
+        # 相談関連 → business_info
+        if any(kw in lower_query for kw in self.CONSULTATION_KEYWORDS):
+            return {
+                "agent": "business_info",
+                "category": "consultation",
+                "request_type": "consultation",
+                "reasoning": "Consultation keyword detected",
+            }
+
+        # アクセス・道案内関連 → facility
+        if any(kw in lower_query for kw in self.ACCESS_DIRECTION_KEYWORDS):
+            return {
+                "agent": "facility",
+                "category": "facility-info",
+                "request_type": "access",
+                "reasoning": "Access/direction keyword detected",
+            }
+
+        # 建物関連 → facility
+        if any(kw in lower_query for kw in self.BUILDING_KEYWORDS):
+            return {
+                "agent": "facility",
+                "category": "facility-info",
+                "request_type": "building",
+                "reasoning": "Building keyword detected",
+            }
+
         # 明確化が必要なパターン
         if any(kw in lower_query for kw in ["カフェ", "cafe"]) and "どっち" in lower_query:
             return {
@@ -518,30 +656,46 @@ class OrchestratorAgent:
             "current-time": "general_knowledge",
             "general": "general_knowledge",
             "memory": "memory_agent",
+            "consultation": "business_info",
+            "community": "business_info",
             "cafe-clarification-needed": "clarification",
             "meeting-room-clarification-needed": "clarification",
         }
         return mapping.get(category, "general_knowledge")
 
     def _extract_request_type(self, query: str) -> Optional[str]:
-        """クエリから具体的なリクエストタイプを抽出"""
+        """クエリから具体的なリクエストタイプを抽出（キーワード定数と一貫性を保つ）"""
         lower_query = query.lower()
 
-        if any(kw in lower_query for kw in ["wi-fi", "wifi", "インターネット"]):
+        if any(kw in lower_query for kw in self.WIFI_KEYWORDS):
             return "wifi"
-        if any(kw in lower_query for kw in ["営業時間", "何時まで", "何時から"]):
+        if any(kw in lower_query for kw in self.BUSINESS_HOURS_KEYWORDS):
             return "hours"
-        if any(kw in lower_query for kw in ["料金", "いくら", "値段"]):
+        if any(kw in lower_query for kw in self.PRICING_KEYWORDS):
             return "price"
-        if any(kw in lower_query for kw in ["場所", "どこ", "アクセス", "住所"]):
+        if any(kw in lower_query for kw in self.CONSULTATION_KEYWORDS):
+            return "consultation"
+        if any(kw in lower_query for kw in self.COMMUNITY_KEYWORDS):
+            return "community"
+        if any(kw in lower_query for kw in self.ACCESS_DIRECTION_KEYWORDS):
+            return "access"
+        if any(kw in lower_query for kw in self.BUILDING_KEYWORDS):
+            return "building"
+        if any(
+            kw in lower_query
+            for kw in ["場所", "どこ", "アクセス", "住所", "location", "where", "address"]
+        ):
             return "location"
-        if any(kw in lower_query for kw in ["設備", "電源", "プリンター"]):
+        if any(
+            kw in lower_query
+            for kw in ["設備", "電源", "プリンター", "equipment", "outlet", "printer"]
+        ):
             return "facility"
-        if any(kw in lower_query for kw in ["地下", "basement"]):
+        if any(kw in lower_query for kw in self.BASEMENT_KEYWORDS):
             return "basement"
-        if any(kw in lower_query for kw in ["イベント", "勉強会"]):
+        if any(kw in lower_query for kw in self.EVENT_KEYWORDS):
             return "event"
-        if any(kw in lower_query for kw in ["スライド", "プレゼン"]):
+        if any(kw in lower_query for kw in self.SLIDE_KEYWORDS):
             return "slide"
 
         return None
