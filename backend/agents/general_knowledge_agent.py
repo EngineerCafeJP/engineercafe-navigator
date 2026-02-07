@@ -7,7 +7,6 @@ Engineer Cafeに関する一般情報、AI・技術トピック、福岡のテ�
 参考:
 - docs/migration/agents/general-knowledge-agent/README.md
 - docs/migration/agents/general-knowledge-agent/MIGRATION-GUIDE.md
-- frontend/src/_reference/mastra/agents/general-knowledge-agent.ts (元のTypeScript実装)
 
 実装済み機能:
 1. Web検索機能の実装(web_search.py統合) ✓

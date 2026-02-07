@@ -117,8 +117,6 @@ htmlcov/
 
 # Temporary directories
 langgraph-repo/
-# Note: langgraph-reference/ is a Git submodule and should be tracked
-engineer-cafe-navigator-repo/
 
 # Docker
 docker-compose.override.yml

@@ -18,7 +18,6 @@ VRMキャラクターの表情・モーションを制御するエージェン�
 
 参考:
 - docs/migration/agents/character-control-agent/README.md
-- frontend/src/_reference/mastra/agents/character-control-agent.ts (Mastra版)
 """
 
 import argparse

@@ -5,7 +5,6 @@ LanguageProcessor - 言語検出ユーティリティ
 「Hello」→英語、「こんにちは」→日本語
 
 参考:
-- engineer-cafe-navigator-repo/src/mastra/utils/language-classifier.ts (Mastra版)
 - docs/migration/agents/language-classifier/SPEC.md
 
 TODO (専門エンジニア - Chie):

@@ -6,7 +6,6 @@ ClarificationAgent骨組み（専門エンジニア向け）
 
 参考:
 - docs/migration/agents/clarification-agent/README.md
-- engineer-cafe-navigator-repo/src/mastra/agents/clarification-agent.ts (Mastra版)
 
 TODO (専門エンジニア - Chie):
 1. 曖昧さ検出ロジック実装

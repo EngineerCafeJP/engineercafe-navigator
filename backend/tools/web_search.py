@@ -5,7 +5,6 @@ Google Gemini APIのGoogle Search Grounding機能を使用したWeb検索ツー�
 最新情報や一般的な知識を取得するために使用される。
 
 参考:
-- frontend/src/_reference/mastra/tools/general-web-search.ts (元のTypeScript実装)
 - https://ai.google.dev/docs/grounding_with_google_search
 """
 
