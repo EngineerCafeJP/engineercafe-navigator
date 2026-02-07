@@ -1,3 +1,49 @@
+# pyproject.toml - Compatible with Poetry, pip, and uv
+# Usage:
+#   Poetry: poetry install
+#   pip:    pip install -e .
+#   uv:     uv pip install -e . or uv sync
+
+[project]
+name = "engineer-cafe-navigator-backend"
+version = "0.1.0"
+description = "Python LangGraph backend for Engineer Cafe Navigator"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+    { name = "EngineerCafeJP" }
+]
+dependencies = [
+    "langgraph>=0.2.0",
+    "langchain>=0.3.0",
+    "langchain-openai>=0.2.0",
+    "langsmith>=0.1.0",
+    "pydantic>=2.0.0",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "python-dotenv>=1.0.0",
+    "httpx>=0.27.0",
+    "supabase>=2.0.0",
+    "google-auth>=2.0.0",
+    "pykakasi>=1.2.0",
+    "numpy>=1.24.0,<2.0",
+    "scipy>=1.10.0",
+    # LangGraph Checkpointer (PostgreSQL)
+    "langgraph-checkpoint-postgres>=2.0.0",
+    "psycopg[binary]>=3.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
+    "black>=24.0.0",
+    "ruff>=0.5.0",
+    "mypy>=1.10.0",
+]
+
+# Poetry-specific configuration (for backwards compatibility)
 [tool.poetry]
 name = "engineer-cafe-navigator-backend"
 version = "0.1.0"
@@ -17,17 +63,35 @@ uvicorn = {extras = ["standard"], version = "^0.30.0"}
 python-dotenv = "^1.0.0"
 httpx = "^0.27.0"
 supabase = "^2.0.0"
+google-auth = "^2.0.0"
+pykakasi = "^1.2.0"
+numpy = "^1.24.0,<2.0"
+scipy = "^1.10.0"
+langgraph-checkpoint-postgres = "^2.0.0"
+psycopg = {extras = ["binary"], version = "^3.1.0"}
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"
 pytest-asyncio = "^0.23.0"
+pytest-cov = "^4.1.0"
 black = "^24.0.0"
 ruff = "^0.5.0"
 mypy = "^1.10.0"
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# uv configuration
+[tool.uv]
+dev-dependencies = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
+    "black>=24.0.0",
+    "ruff>=0.5.0",
+    "mypy>=1.10.0",
+]
 
 [tool.black]
 line-length = 100
@@ -44,4 +108,3 @@ warn_unused_configs = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-

@@ -21,7 +21,33 @@ Python版LangGraphを使用したAIエージェントバックエンドシステ
 
 ## セットアップ
 
-### Poetryを使用する場合
+### 方法1: Dockerを使用する場合（推奨）
+
+ローカル開発環境をDockerで起動します。PostgreSQLも同時に起動されるため、LangGraph Checkpointerのテストも可能です。
+
+```bash
+# プロジェクトルートで実行
+docker-compose up -d
+
+# バックエンドのみ起動
+docker-compose up -d backend postgres
+```
+
+### 方法2: uvを使用する場合
+
+[uv](https://github.com/astral-sh/uv) は高速なPythonパッケージマネージャーです。
+
+```bash
+cd backend
+
+# uvでインストール
+uv pip install -e ".[dev]"
+
+# または uv sync を使用
+uv sync
+```
+
+### 方法3: Poetryを使用する場合
 
 ```bash
 cd backend
@@ -29,13 +55,28 @@ poetry install
 poetry shell
 ```
 
-### pipを使用する場合
+### 方法4: pipを使用する場合
 
 ```bash
 cd backend
 python -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
+```
+
+### ローカルPostgreSQLセットアップ（LangGraph Checkpointer用）
+
+LangGraph Checkpointerを使用するには、PostgreSQLが必要です。
+
+```bash
+# Docker Composeで起動（推奨）
+docker-compose up -d postgres
+
+# 接続確認
+psql postgresql://postgres:postgres@localhost:5432/engineer_cafe
+
+# .envに接続URIを設定
+SUPABASE_DB_URI=postgresql://postgres:postgres@localhost:5432/engineer_cafe
 ```
 
 ## 環境変数の設定
