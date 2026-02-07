@@ -1,31 +1,13 @@
 # Docker Compose for Engineer Cafe Navigator
-# Frontend (Next.js) + Backend (FastAPI + LangGraph) + PostgreSQL (local dev)
+# Frontend (Next.js) + Backend (FastAPI + LangGraph)
+#
+# Note: For local PostgreSQL (LangGraph Checkpointer), use Supabase CLI:
+#   supabase start
+# This provides PostgreSQL at localhost:54322
 
 version: '3.8'
 
 services:
-  # PostgreSQL for local development (LangGraph Checkpointer)
-  postgres:
-    image: postgres:15-alpine
-    container_name: engineer-cafe-postgres
-    ports:
-      - "5432:5432"
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: engineer_cafe
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-      - ./backend/scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
-    networks:
-      - engineer-cafe-network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-
   # Frontend service - Next.js
   frontend:
     build:
@@ -64,15 +46,15 @@ services:
       - /app/__pycache__
     environment:
       - PYTHONUNBUFFERED=1
-      # Local PostgreSQL for LangGraph Checkpointer
-      - SUPABASE_DB_URI=postgresql://postgres:postgres@postgres:5432/engineer_cafe
     env_file:
       - ./backend/.env
     depends_on:
-      postgres:
-        condition: service_healthy
+      - frontend
     networks:
       - engineer-cafe-network
+    extra_hosts:
+      # Allow connection to Supabase Local PostgreSQL on host
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
 
 networks:
@@ -80,7 +62,6 @@ networks:
     driver: bridge
 
 volumes:
-  postgres-data:
   frontend-node-modules:
   frontend-next:
   backend-pycache:

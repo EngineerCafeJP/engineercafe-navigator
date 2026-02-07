@@ -66,17 +66,27 @@ pip install -r requirements.txt
 
 ### ローカルPostgreSQLセットアップ（LangGraph Checkpointer用）
 
-LangGraph Checkpointerを使用するには、PostgreSQLが必要です。
+LangGraph Checkpointerを使用するには、Supabase Local（PostgreSQL含む）を使用します。
 
 ```bash
-# Docker Composeで起動（推奨）
-docker-compose up -d postgres
+# Supabase CLIをインストール（未インストールの場合）
+brew install supabase/tap/supabase
 
-# 接続確認
-psql postgresql://postgres:postgres@localhost:5432/engineer_cafe
+# Supabase Localを起動（PostgreSQL含む）
+supabase start
+
+# 起動後に表示される情報:
+#   DB URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+#   API URL: http://127.0.0.1:54321
+#   Studio URL: http://127.0.0.1:54323
 
 # .envに接続URIを設定
-SUPABASE_DB_URI=postgresql://postgres:postgres@localhost:5432/engineer_cafe
+SUPABASE_URL=http://127.0.0.1:54321
+SUPABASE_KEY=<表示されたservice_role key>
+SUPABASE_DB_URI=postgresql://postgres:postgres@127.0.0.1:54322/postgres
+
+# 停止する場合
+supabase stop
 ```
 
 ## 環境変数の設定

@@ -126,3 +126,6 @@ docker-compose.override.yml
 # mise (version management tool)
 .mise/
 .mise.lock
+
+# Reference implementation (external git repo)
+reference-implementation/
