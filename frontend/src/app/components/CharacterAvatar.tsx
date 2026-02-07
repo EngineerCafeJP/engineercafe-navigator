@@ -47,6 +47,9 @@ interface CharacterAvatarProps {
   onEmotionUpdate?: (applyEmotion: (emotion: EmotionData) => void) => void;
   onVisemeControl?: (setViseme: (viseme: string, intensity: number) => void) => void;
   onExpressionControl?: (setExpression: (expression: string, weight: number) => void) => void;
+  onKeyframeAnimationControl?: (
+    playKeyframeAnimation: (animation: import('./CharacterControlModal').CharacterAnimationData) => void
+  ) => void;
 }
 
 export default function CharacterAvatar({
@@ -71,6 +74,7 @@ export default function CharacterAvatar({
   onEmotionUpdate,
   onVisemeControl,
   onExpressionControl,
+  onKeyframeAnimationControl,
 }: CharacterAvatarProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -90,6 +94,7 @@ export default function CharacterAvatar({
   const autoBlinkCleanupRef = useRef<(() => void) | null>(null);
   const currentExpressionRef = useRef<{ expression: string; weight: number }>({ expression: 'neutral', weight: 1.0 });
   const expressionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const keyframeAnimationTimeoutsRef = useRef<NodeJS.Timeout[]>([]);
 
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -792,10 +797,46 @@ useEffect(() => {
         console.error('[CharacterAvatar] Error setting initial neutral expression:', error);
       }
 
+      const playKeyframeAnimation = (
+        animation: import('./CharacterControlModal').CharacterAnimationData
+      ) => {
+        const vrmRef = charactersRef.current;
+        const blendShapeRef = blendShapeControllerRef.current;
+        if (!vrmRef || !blendShapeRef) return;
+
+        keyframeAnimationTimeoutsRef.current.forEach((id) => clearTimeout(id));
+        keyframeAnimationTimeoutsRef.current = [];
+
+        isPlayingSequence.current = true;
+
+        animation.keyframes.forEach((keyframe) => {
+          const timeout_id = setTimeout(() => {
+            if (keyframe.bones) {
+              Object.entries(keyframe.bones).forEach(([bone_name, bone_data]) => {
+                const rot = bone_data.rotation;
+                const euler = new THREE.Euler(rot.x, rot.y, rot.z);
+                VRMUtils.setHumanoidBoneRotation(vrmRef, bone_name, euler, 0);
+              });
+            }
+            if (keyframe.expressions && blendShapeControllerRef.current) {
+              blendShapeControllerRef.current.setExpressions(keyframe.expressions);
+            }
+          }, keyframe.time);
+          keyframeAnimationTimeoutsRef.current.push(timeout_id);
+        });
+
+        const end_timeout = setTimeout(() => {
+          keyframeAnimationTimeoutsRef.current = [];
+          isPlayingSequence.current = false;
+        }, animation.duration + 100);
+        keyframeAnimationTimeoutsRef.current.push(end_timeout);
+      };
+
       onCharacterLoad?.(vrm);
       onEmotionUpdate?.(applyEmotionToCharacter);
       onVisemeControl?.(setViseme);
       onExpressionControl?.(setExpression);
+      onKeyframeAnimationControl?.(playKeyframeAnimation);
       setIsLoading(false);
     } catch (error) {
       console.error('Error loading character:', error);
