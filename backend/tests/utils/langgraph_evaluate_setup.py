@@ -3,7 +3,7 @@ LangGraph Evaluate基本セットアップ
 
 LangGraphのエージェント評価に使用する基本的なセットアップとユーティリティを提供します。
 
-参考: langgraph-reference/docs/docs/testing/
+参考: https://langchain-ai.github.io/langgraph/concepts/testing/
 """
 
 from typing import Dict, Any, List, Optional, Callable

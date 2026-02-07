@@ -55,10 +55,12 @@ engineer-cafe-navigator2025/
 │   │   ├── lib/             # ユーティリティ
 │   │   └── slides/          # Marp スライド
 │   └── supabase/            # マイグレーション
-├── backend/                  # Python + LangGraph (移行中)
-│   ├── agents/
-│   ├── workflows/
-│   └── tests/
+├── backend/                  # Python + LangGraph
+│   ├── agents/              # エージェント実装（10種）
+│   ├── config/              # 設定（routing_constants, prompts/）
+│   ├── utils/               # ユーティリティ（input_sanitizer, exceptions等）
+│   ├── workflows/           # LangGraphワークフロー
+│   └── tests/               # テスト（406件）
 ├── docs/                     # ドキュメント
 │   ├── development/         # 開発ガイド
 │   │   ├── AGENTS.md        # このファイル
@@ -72,22 +74,31 @@ engineer-cafe-navigator2025/
 
 ---
 
-## エージェント一覧 (LangGraph 移行)
+## エージェント一覧 (LangGraph 実装)
 
 | エージェント | 担当者 | 役割 | ステータス |
 |-------------|--------|------|-----------|
-| RouterAgent | テリスケ | クエリルーティング | Mastra 実装済 |
-| BusinessInfoAgent | テリスケ | 営業時間・料金 | Mastra 実装済 |
-| FacilityAgent | Natsumi | 設備・地下施設 | Mastra 実装済 |
-| EventAgent | テリスケ | イベント・カレンダー | Mastra 実装済 |
-| MemoryAgent | takegg0311 | 会話履歴管理 | Mastra 実装済 |
-| ClarificationAgent | Chie | 曖昧さ解消 | Mastra 実装済 |
-| LanguageClassifier | Chie | 言語検出 | Mastra 実装済 |
-| GeneralKnowledgeAgent | テリスケ | Web 検索 | Mastra 実装済 |
-| CharacterControlAgent | takegg0311 | VRM キャラクター | Mastra 実装済 |
-| VoiceAgent | Chie | STT/TTS | Mastra 実装済 |
-| SlideAgent | テリスケ | スライドナレーション | Mastra 実装済 |
+| OrchestratorAgent | テリスケ | Supervisor Pattern ルーティング | LangGraph 実装済 |
+| RouterAgent | テリスケ | クエリルーティング（キーワードベース） | LangGraph 実装済 |
+| BusinessInfoAgent | テリスケ | 営業時間・料金 | LangGraph 実装済 |
+| FacilityAgent | Natsumi | 設備・地下施設 | LangGraph 実装済 |
+| EventAgent | テリスケ | イベント・カレンダー | LangGraph 実装済 |
+| MemoryAgent | takegg0311 | 会話履歴管理 | LangGraph 実装済 |
+| ClarificationAgent | Chie | 曖昧さ解消 | LangGraph 実装済 |
+| GeneralKnowledgeAgent | テリスケ | Web 検索 | LangGraph 実装済 |
+| CharacterControlAgent | takegg0311 | VRM キャラクター | LangGraph 実装済 |
+| VoiceAgent | Chie | STT/TTS | LangGraph 実装済 |
+| SlideAgent | テリスケ | スライドナレーション | LangGraph 実装済 |
 | OCRAgent | けいてぃー | 画像認識 | **新規** (LangGraph のみ) |
+
+### 共有インフラストラクチャ
+
+| モジュール | 目的 |
+|-----------|------|
+| `config/routing_constants.py` | ルーティングキーワード・エージェントマッピング・ヘルパー関数を集約 |
+| `config/prompts/` | エージェント固有のプロンプトテンプレート（facility, event, memory） |
+| `utils/input_sanitizer.py` | プロンプトインジェクション検出・入力バリデーション |
+| `utils/exceptions.py` | ドメイン固有カスタム例外階層 |
 
 ---
 

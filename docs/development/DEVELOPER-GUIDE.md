@@ -1,6 +1,6 @@
 # Engineer Cafe Navigator 開発者ガイド
 
-最終更新日: 2025年7月3日（RAGシステム完全近代化済み）
+最終更新日: 2026年2月7日（LangGraph バックエンド + 共有インフラストラクチャ整備済み）
 
 ## 📋 目次
 
@@ -29,38 +29,62 @@ Engineer Cafe Navigator は、福岡市中央区天神にあるエンジニア�
 - Web検索統合
 
 ### 技術スタック
-- **Frontend**: Next.js 15.3.2 + React 19.1.0 + TypeScript 5.8.3
+
+#### Frontend
+- **Framework**: Next.js 15.3 + React 19 + TypeScript
 - **AI Framework**: Mastra 0.10.5 (マルチエージェントオーケストレーション)
-- **AI Models**: 
-  - Google Gemini 2.0 Flash (応答生成)
-  - OpenAI text-embedding-3-small (1536次元埋め込みベクトル)
-- **Database**: PostgreSQL + pgvector (Supabase)
-- **Voice**: Google Cloud Speech/TTS (Service Account認証)
 - **3D Graphics**: Three.js + @pixiv/three-vrm
-- **Memory**: SimplifiedMemorySystem (3分間TTL)
+
+#### Backend (LangGraph)
+- **言語**: Python 3.12+
+- **AI Framework**: LangGraph (Supervisor Pattern)
+- **LLM Provider**: OpenRouter (google/gemini-2.0-flash-001)
+- **テスト**: pytest（406件パス）+ LangChain Evaluation
+
+#### 共通
+- **Database**: PostgreSQL + pgvector (Supabase)
+- **Voice**: Google Cloud Speech/TTS
+- **Embeddings**: OpenAI text-embedding-3-small (1536次元)
 
 ---
 
 ## 現在の状況
 
-### 現在のアーキテクチャ（本番稼働中）
+### デュアルスタックアーキテクチャ
 
-#### マルチエージェントシステム
-- **構成**: 6つの専門エージェント + ワークフロー
-  - **RouterAgent**: クエリルーティング（94.1%精度）
-  - **BusinessInfoAgent**: 営業時間・料金・場所（Enhanced RAG統合）
-  - **FacilityAgent**: 設備・Wi-Fi情報（地下施設完全対応）
-  - **MemoryAgent**: 会話履歴管理（3分間コンテキスト）
+本プロジェクトは **Frontend (Next.js + Mastra)** と **Backend (LangGraph)** のデュアルスタック構成です。
+2026年2月時点で、バックエンドの LangGraph 移行が進行中であり、結合テストフェーズに入っています。
+
+#### Backend: LangGraph エージェントシステム（開発中）
+- **構成**: 10+ エージェント（Supervisor Pattern）
+  - **OrchestratorAgent**: Supervisor Pattern によるルーティング・ワークフロー制御
+  - **RouterAgent**: キーワードベースクエリルーティング（28/28テストケースパス）
+  - **BusinessInfoAgent**: 営業時間・料金・場所（RAG統合）
+  - **FacilityAgent**: 設備・Wi-Fi情報（地下施設対応）
   - **EventAgent**: イベント・カレンダー連携
-  - **GeneralKnowledgeAgent**: 一般知識・Web検索
-  - **MainQAWorkflow**: 統合ワークフロー
+  - **MemoryAgent**: 会話履歴管理（Supabase統合）
+  - **ClarificationAgent**: 曖昧さ解消
+  - **GeneralKnowledgeAgent**: Web 検索
+  - **SlideAgent**: スライドナレーション
+  - **VoiceAgent**: STT/TTS
+  - **CharacterControlAgent**: VRM キャラクター制御
+  - **OCRAgent**: 画像認識（新規）
+
+#### 共有インフラストラクチャ（2026年2月整備）
+- `config/routing_constants.py`: ルーティングキーワード・マッピング・ヘルパー集約
+- `config/prompts/`: エージェント固有プロンプトテンプレート
+- `utils/input_sanitizer.py`: 入力バリデーション・サニタイズ
+- `utils/exceptions.py`: カスタム例外階層
 
 #### パフォーマンス指標
+- **バックエンドテスト**: 406件パス、2件スキップ
+- **ルーティング精度**: 28/28テストケース全パス
+- **LangChain Evaluation**: LLM Judge + ルーティング精度評価統合済み
+
+#### Frontend: Next.js + Mastra エージェントシステム（本番稼働中）
+- **構成**: 8つの専門エージェント + ワークフロー（Mastra によるオーケストレーション）
 - **テスト成功率**: 100%（セマンティック評価）
-- **平均応答時間**: 2.9秒
 - **RouterAgent精度**: 94.1%
-- **地下施設クエリ**: 完全対応
-- **文脈依存ルーティング**: 対応済み
 
 ---
 
@@ -97,16 +121,34 @@ curl -X POST http://localhost:3000/api/qa \
   -d '{"action": "ask_question", "question": "エンジニアカフェの営業時間は？", "language": "ja"}'
 ```
 
-### 3. テスト実行（5分）
+### 3. バックエンド（LangGraph）セットアップ
 
 ```bash
-# 統合テストスイートの実行
+cd backend
+
+# 依存関係インストール（uv 推奨）
+uv sync
+# または
+pip install -r requirements.txt
+
+# テスト実行
+pytest -v --tb=short
+
+# コード品質チェック
+ruff check . && black --check .
+```
+
+### 4. テスト実行
+
+```bash
+# Frontend テスト
 pnpm tsx scripts/tests/run-tests.ts
 
-# 個別テストの実行
-pnpm tsx scripts/tests/integrated-test-suite.ts
-pnpm tsx scripts/tests/router-agent-test.ts
-pnpm tsx scripts/tests/calendar-integration-test.ts
+# Backend テスト（406件）
+cd backend && pytest -v --tb=short
+
+# Backend ルーティング精度評価
+pytest backend/tests/evaluation/test_routing_accuracy.py -v
 ```
 
 ---

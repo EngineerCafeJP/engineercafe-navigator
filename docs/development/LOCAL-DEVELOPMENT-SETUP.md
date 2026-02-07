@@ -75,9 +75,8 @@ engineer-cafe-navigator2025/
 │   │   └── agents/       # LangGraphエージェント
 │   ├── requirements.txt  # Python依存関係
 │   └── .env.example      # 環境変数テンプレート
-├── docs/                 # ドキュメント
-│   └── migration/        # エージェント移行ドキュメント
-└── langgraph-reference/  # 参考実装
+└── docs/                 # ドキュメント
+    └── migration/        # エージェント移行ドキュメント（完了済み）
 ```
 
 ---

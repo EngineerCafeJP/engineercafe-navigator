@@ -88,9 +88,9 @@ class TestSimplifiedMemoryHelper:
         helper = SimplifiedMemoryHelper()
         helper.supabase = None
 
-        assert helper._extract_request_type("イベント情報") == "events"
-        assert helper._extract_request_type("Any events?") == "events"
-        assert helper._extract_request_type("勉強会ありますか？") == "events"
+        assert helper._extract_request_type("イベント情報") == "event"
+        assert helper._extract_request_type("Any events?") == "event"
+        assert helper._extract_request_type("勉強会ありますか？") == "event"
 
     def test_extract_request_type_none(self):
         """マッチしない場合はNone"""
@@ -265,14 +265,17 @@ class TestSimplifiedMemoryHelper:
         mock_gt = Mock()
         mock_order = Mock()
 
+        mock_limit = Mock()
+
         mock_client.table = Mock(return_value=mock_table)
         mock_table.select = Mock(return_value=mock_select)
         mock_select.eq = Mock(return_value=mock_eq)
         mock_eq.like = Mock(return_value=mock_like)
         mock_like.gt = Mock(return_value=mock_gt)
         mock_gt.order = Mock(return_value=mock_order)
+        mock_order.limit = Mock(return_value=mock_limit)
 
-        mock_order.execute = Mock(
+        mock_limit.execute = Mock(
             return_value=Mock(
                 data=[
                     {

@@ -12,25 +12,41 @@ frontend/src/mastra/agents/router-agent.ts
 - メモリ関連判定
 """
 
+import logging
 import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, Literal, Optional
+from typing import Any, Dict, Optional
 
+from backend.config.routing_constants import (
+    MEMORY_EXCLUSION_BUSINESS_EXTENDED,
+    MEMORY_EXCLUSION_FACILITY_EXTENDED,
+    MEMORY_KEYWORDS_EXTENDED,
+    OTHER_ONE_PATTERNS,
+    AgentName,
+    extract_request_type,
+    match_keywords,
+)
 from backend.llm.models import get_model_config
 from backend.llm.openrouter import OpenRouterProvider
 from backend.utils.language_processor import LanguageProcessor, SupportedLanguage
 from backend.utils.query_classifier import QueryClassifier
 
-# Type aliases
-AgentName = Literal[
-    "BusinessInfoAgent",
-    "FacilityAgent",
-    "EventAgent",
-    "MemoryAgent",
-    "GeneralKnowledgeAgent",
-    "ClarificationAgent",
-    "TimeAgent",
-    "SlideAgent",
+logger = logging.getLogger(__name__)
+
+# Pre-compiled context-dependent query patterns (MEDIUM-4)
+_CONTEXT_PATTERNS = [
+    re.compile(r"^土曜[日]?[はも].*", re.IGNORECASE),
+    re.compile(r"^日曜[日]?[はも].*", re.IGNORECASE),
+    re.compile(r"^平日[はも].*", re.IGNORECASE),
+    re.compile(r"^saino[のは方も]?.*", re.IGNORECASE),
+    re.compile(r"^そっち[のはも]?.*", re.IGNORECASE),
+    re.compile(r"^あっち[のはも]?.*", re.IGNORECASE),
+    re.compile(r"^それ[のはも]?.*", re.IGNORECASE),
+    re.compile(r"^そこ[のはも]?.*", re.IGNORECASE),
+    re.compile(r"^(じゃあ|それでは|では).*(エンジニア|engineer).*(カフェ|cafe)", re.IGNORECASE),
+    re.compile(r"^エンジニア.*(カフェ|cafe)[!！]?$", re.IGNORECASE),
+    re.compile(r"^(エンジニア|engineer).*(の方|にして|で)[!！]?$", re.IGNORECASE),
+    re.compile(r"^(じゃあ|それでは|では).*(saino|サイノ).*(カフェ|cafe|の方|方は)", re.IGNORECASE),
 ]
 
 
@@ -96,8 +112,8 @@ class RouterAgent:
                 confidence=1.0,
                 debug_info={
                     "language_detection": {
-                        "detected": language_result.detected,
-                        "confidence": language_result.confidence,
+                        "detected": language_result["detected"],
+                        "confidence": language_result["confidence"],
                     },
                     "classification": {"reason": "Memory-related question detected"},
                 },
@@ -119,9 +135,9 @@ class RouterAgent:
                     if previous_request_type:
                         request_type = previous_request_type
                         if self.debug_mode:
-                            print(f"[RouterAgent] Context inheritance: {query} -> {request_type}")
+                            logger.debug(f"Context inheritance: {query} -> {request_type}")
                 except Exception as error:
-                    print(f"[RouterAgent] Failed to get previous request type: {error}")
+                    logger.warning(f"Failed to get previous request type: {error}")
 
         # エージェント選択
         selected_agent = self._select_agent(classification.category, request_type, query)
@@ -134,8 +150,8 @@ class RouterAgent:
             confidence=classification.confidence,
             debug_info={
                 "language_detection": {
-                    "detected": language_result.detected,
-                    "confidence": language_result.confidence,
+                    "detected": language_result["detected"],
+                    "confidence": language_result["confidence"],
                 },
                 "classification": classification.debug_info,
             },
@@ -158,7 +174,7 @@ class RouterAgent:
         # Context-dependent queries: try to route to appropriate agent instead of memory
         if query and self._is_context_dependent_query(query):
             if self.debug_mode:
-                print(f"[RouterAgent] Context-dependent query detected: {query}")
+                logger.debug(f"Context-dependent query detected: {query}")
 
             # Check for specific entities/topics to determine agent
             lower_query = query.lower()
@@ -175,11 +191,11 @@ class RouterAgent:
 
         # requestTypeに基づく特別なルーティング
         if request_type:
-            # 料金に関する質問はBusinessInfoAgentへ
-            if request_type in ["price", "hours", "location"]:
+            # 料金・営業時間・場所・相談・コミュニティはBusinessInfoAgentへ
+            if request_type in ["price", "hours", "location", "consultation", "community"]:
                 return "BusinessInfoAgent"
-            # Wi-Fi・設備に関する質問はFacilityAgentへ
-            if request_type in ["wifi", "facility", "basement"]:
+            # Wi-Fi・設備・建物・アクセス方法はFacilityAgentへ
+            if request_type in ["wifi", "facility", "basement", "access", "building"]:
                 return "FacilityAgent"
             # イベントに関する質問はEventAgentへ
             if request_type == "event":
@@ -204,157 +220,8 @@ class RouterAgent:
         return agent_map.get(category, "GeneralKnowledgeAgent")
 
     def _extract_request_type(self, query: str) -> Optional[str]:
-        """
-        クエリから具体的なリクエストタイプを抽出
-
-        Args:
-            query: ユーザーからのクエリ
-
-        Returns:
-            Optional[str]: リクエストタイプ（wi-fi, hours, price等）
-        """
-        lower_question = query.lower()
-
-        # Wi-Fi関連
-        if any(
-            keyword in lower_question for keyword in ["wi-fi", "wifi", "インターネット", "ネット"]
-        ):
-            return "wifi"
-
-        # 営業時間関連
-        if any(
-            keyword in lower_question
-            for keyword in [
-                "営業時間",
-                "hours",
-                "何時まで",
-                "何時から",
-                "開いて",
-                "閉まる",
-                "open",
-                "close",
-            ]
-        ):
-            return "hours"
-
-        # 料金関連
-        if any(
-            keyword in lower_question
-            for keyword in [
-                "料金",
-                "price",
-                "いくら",
-                "値段",
-                "cost",
-                "fee",
-            ]
-        ):
-            return "price"
-
-        # 場所関連
-        if any(
-            keyword in lower_question
-            for keyword in [
-                "場所",
-                "location",
-                "どこ",
-                "where",
-                "アクセス",
-                "access",
-                "住所",
-                "address",
-            ]
-        ):
-            return "location"
-
-        # 設備関連
-        if any(
-            keyword in lower_question
-            for keyword in [
-                "設備",
-                "facility",
-                "equipment",
-                "電源",
-                "プリンター",
-                "printer",
-            ]
-        ):
-            return "facility"
-
-        # 地下施設関連 - Enhanced detection (prioritize over meeting-room)
-        basement_keywords = [
-            "地下",
-            "basement",
-            "b1",
-            "階下",
-            "ちか",
-            "チカ",  # Add speech recognition variations
-            "underground",
-            "mtgスペース",
-            "集中スペース",
-            "アンダースペース",
-            "makersスペース",
-            "focus space",
-            "meeting space",
-            "makers space",
-        ]
-        basement_patterns = [
-            r"地下.*スペース",
-            r"地下.*施設",
-            r"地下.*会議",
-            r"ちか.*ミーティング",
-            r"ちか.*スペース",
-        ]
-
-        if any(keyword in lower_question for keyword in basement_keywords) or any(
-            re.search(pattern, lower_question) for pattern in basement_patterns
-        ):
-            return "basement"
-
-        # 会議室関連 (but not if already caught by basement above)
-        if any(
-            keyword in lower_question
-            for keyword in [
-                "会議室",
-                "meeting room",
-                "ミーティングルーム",
-                "会議スペース",
-            ]
-        ):
-            return "meeting-room"
-
-        # イベント関連
-        if any(
-            keyword in lower_question
-            for keyword in [
-                "イベント",
-                "event",
-                "勉強会",
-                "セミナー",
-                "workshop",
-                "meetup",
-            ]
-        ):
-            return "event"
-
-        # スライド関連
-        if any(
-            keyword in lower_question
-            for keyword in [
-                "スライド",
-                "slide",
-                "プレゼン",
-                "presentation",
-                "次のスライド",
-                "前のスライド",
-                "説明して",
-                "ナレーション",
-                "narration",
-            ]
-        ):
-            return "slide"
-
-        return None
+        """クエリから具体的なリクエストタイプを抽出（routing_constantsに委譲）"""
+        return extract_request_type(query)
 
     def _is_memory_related_question(self, question: str) -> bool:
         """
@@ -368,99 +235,16 @@ class RouterAgent:
         """
         lower_question = question.lower()
 
-        # Exclude business-related questions even if they contain memory keywords like "どんな"
-        business_keywords = [
-            "メニュー",
-            "menu",
-            "料金",
-            "price",
-            "pricing",
-            "営業時間",
-            "hours",
-            "場所",
-            "location",
-            "アクセス",
-            "access",
-            "設備",
-            "facility",
-            "サイノカフェ",
-            "saino",
-            "エンジニアカフェ",
-            "engineer",
-        ]
-        if any(keyword in lower_question for keyword in business_keywords):
+        if match_keywords(lower_question, MEMORY_EXCLUSION_BUSINESS_EXTENDED):
             return False
 
-        # Exclude basement/facility-related questions even if they contain memory keywords
-        facility_keywords = [
-            "地下",
-            "basement",
-            "スペース",
-            "space",
-            "mtg",
-            "会議室",
-            "施設",
-            "facility",
-            "equipment",
-            "makers",
-        ]
-        if any(keyword in lower_question for keyword in facility_keywords):
+        if match_keywords(lower_question, MEMORY_EXCLUSION_FACILITY_EXTENDED):
             return False
 
-        # Check for "other one" patterns that refer to clarification options
-        other_one_patterns = [
-            # Japanese
-            "もう一つ",
-            "もうひとつ",
-            "もう1つ",
-            "もう一方",
-            "もう片方",
-            "他の方",
-            "ほかの方",
-            "別の方",
-            "そっち",
-            "あっち",
-            # English
-            "the other",
-            "other one",
-            "other option",
-            "the alternative",
-        ]
-
-        if any(pattern in lower_question for pattern in other_one_patterns):
+        if match_keywords(lower_question, OTHER_ONE_PATTERNS):
             return True
 
-        # Memory-related keywords (from EnhancedQAAgent)
-        memory_keywords = [
-            # Japanese
-            "さっき",
-            "前に",
-            "覚えて",
-            "記憶",
-            "質問",
-            "聞いた",
-            "話した",
-            "どんな",
-            "何を",
-            "言った",
-            "会話",
-            "履歴",
-            "先ほど",
-            # English
-            "remember",
-            "recall",
-            "earlier",
-            "before",
-            "previous",
-            "asked",
-            "said",
-            "mentioned",
-            "conversation",
-            "history",
-            "what did i",
-        ]
-
-        return any(keyword in lower_question for keyword in memory_keywords)
+        return match_keywords(lower_question, MEMORY_KEYWORDS_EXTENDED)
 
     def _is_context_dependent_query(self, question: str) -> bool:
         """
@@ -473,24 +257,7 @@ class RouterAgent:
             bool: 文脈依存クエリならTrue
         """
         trimmed = question.strip()
-
-        # Short questions that likely depend on context
-        context_patterns = [
-            r"^土曜[日]?[はも].*",  # 土曜日は... 土曜は... 土曜日も... 土曜も...
-            r"^日曜[日]?[はも].*",  # 日曜日は... 日曜は... 日曜日も... 日曜も...
-            r"^平日[はも].*",  # 平日は... 平日も...
-            r"^saino[のは方も]?.*",  # sainoの方は... sainoは... sainoも...
-            r"^そっち[のはも]?.*",  # そっちの方は... そっちは... そっちも...
-            r"^あっち[のはも]?.*",  # あっちの方は... あっちは... あっちも...
-            r"^それ[のはも]?.*",  # それの方は... それは... それも...
-            r"^そこ[のはも]?.*",  # そこの方は... そこは... そこも...
-            r"^(じゃあ|それでは|では).*(エンジニア|engineer).*(カフェ|cafe)",  # じゃあエンジニアカフェ！
-            r"^エンジニア.*(カフェ|cafe)[!！]?$",  # エンジニアカフェ！
-            r"^(エンジニア|engineer).*(の方|にして|で)[!！]?$",  # エンジニアの方で！
-            r"^(じゃあ|それでは|では).*(saino|サイノ).*(カフェ|cafe|の方|方は)",  # じゃあsainoカフェの方は？
-        ]
-
-        return any(re.search(pattern, trimmed, re.IGNORECASE) for pattern in context_patterns)
+        return any(p.search(trimmed) for p in _CONTEXT_PATTERNS)
 
     async def close(self):
         """リソースのクリーンアップ"""

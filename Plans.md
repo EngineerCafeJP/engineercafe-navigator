@@ -76,6 +76,9 @@
 | LangChain Evaluations拡張（LLM Judge, ルーティング精度評価） | #54 | テリスケ |
 | リファレンス資料の取り込み + テストデータ実データ化 | #54 | テリスケ |
 | Memory Agent LangGraph統合（RV依頼済み） | #55 | テリスケ |
+| バックエンドインフラリファクタリング（routing_constants, prompts, exceptions, input_sanitizer 集約） | #55 | テリスケ |
+| ルーティング精度改善（28/28テストケース全パス）+ 統合テスト修正 | #55 | テリスケ |
+| コード品質改善（dict→HumanMessage修正、print→logger移行、regex事前コンパイル、request_type統合） | #55 | テリスケ |
 
 ---
 

@@ -2,11 +2,12 @@
 
 Python版LangGraphを使用したAIエージェントバックエンドシステムです。
 
-## 🤖 実装済みエージェント（9種）
+## 🤖 実装済みエージェント（10種）
 
 | エージェント | ファイル | 責務 |
 |-------------|----------|------|
-| RouterAgent | `router_agent.py` | クエリルーティング・分類 |
+| OrchestratorAgent | `orchestrator_agent.py` | Supervisor Pattern によるルーティング（LLM動的ルーティング） |
+| RouterAgent | `router_agent.py` | クエリルーティング・分類（キーワードベース） |
 | BusinessInfoAgent | `business_info_agent.py` | 営業時間・料金・アクセス |
 | FacilityAgent | `facility_agent.py` | 設備・Wi-Fi・地下施設 |
 | EventAgent | `event_agent.py` | イベント・カレンダー |
@@ -17,7 +18,7 @@ Python版LangGraphを使用したAIエージェントバックエンドシステ
 | VoiceAgent | `voice_agent.py` | 音声処理（STT/TTS） |
 | CharacterControlAgent | `character_control_agent.py` | VRM制御 |
 
-**テスト状況**: 62件全パス ✅
+**テスト状況**: 406件パス、2件スキップ ✅（2026-02-07）
 
 ## セットアップ
 
@@ -203,9 +204,10 @@ poetry run mypy .
 ```
 backend/
 ├── main.py                 # FastAPIアプリケーション
-├── agents/                 # LangGraphエージェント（9種）
+├── agents/                 # LangGraphエージェント（10種）
 │   ├── __init__.py
-│   ├── router_agent.py           # クエリルーティング
+│   ├── orchestrator_agent.py     # Supervisor Pattern ルーティング
+│   ├── router_agent.py           # クエリルーティング（キーワードベース）
 │   ├── business_info_agent.py    # 営業情報
 │   ├── facility_agent.py         # 設備情報
 │   ├── event_agent.py            # イベント情報
@@ -215,23 +217,46 @@ backend/
 │   ├── clarification_agent.py    # 曖昧解消
 │   ├── voice_agent.py            # 音声処理
 │   └── character_control_agent.py # VRM制御
+├── config/                 # 設定・定数
+│   ├── routing_constants.py      # ルーティングキーワード・型定義・ヘルパー関数
+│   ├── settings.py               # アプリケーション設定
+│   └── prompts/                  # 共有プロンプトテンプレート
+│       ├── facility_prompts.py   # 施設エージェント用プロンプト
+│       ├── event_prompts.py      # イベントエージェント用プロンプト
+│       └── memory_prompts.py     # メモリエージェント用プロンプト
 ├── workflows/              # LangGraphワークフロー
 │   ├── __init__.py
 │   └── main_workflow.py
 ├── tools/                  # エージェントツール
+│   ├── agent_tools.py            # LangChain Tool定義
 │   └── ...
-├── models/                 # データモデル
-│   └── ...
+├── llm/                    # LLMプロバイダー抽象化
+│   ├── openrouter.py             # OpenRouter APIクライアント
+│   └── models.py                 # モデル設定・フォールバック定義
 ├── utils/                  # ユーティリティ
-│   └── ...
-└── tests/                  # テスト
+│   ├── input_sanitizer.py        # 入力バリデーション・サニタイズ
+│   ├── exceptions.py             # カスタム例外階層
+│   ├── memory_helper.py          # Supabaseメモリシステム
+│   ├── language_processor.py     # 言語検出・応答言語決定
+│   └── query_classifier.py       # クエリ分類
+└── tests/                  # テスト（406件）
     ├── agents/             # エージェントテスト
+    ├── integration/        # 統合テスト
     ├── evaluation/         # 評価テスト（LangChain Evaluations拡張）
     ├── fixtures/           # テストフィクスチャ・ゴールデンデータセット
     │   └── golden_datasets/  # 実データ（リファレンス資料に基づく）
     └── utils/              # ユーティリティテスト
         └── evaluators/     # 評価器（LLM Judge, ルーティング精度）
 ```
+
+### 共有インフラストラクチャモジュール
+
+| モジュール | 目的 |
+|-----------|------|
+| `config/routing_constants.py` | ルーティングキーワード、エージェントマッピング、`extract_request_type()` 等のヘルパー関数を集約。全エージェントが共通利用 |
+| `config/prompts/` | エージェント固有のプロンプトテンプレート。ロジックとプロンプトを分離し保守性向上 |
+| `utils/input_sanitizer.py` | プロンプトインジェクション検出、制御文字除去、長さ制限等のセキュリティ関連バリデーション |
+| `utils/exceptions.py` | `AgentSystemError` を基底とするドメイン固有例外階層（`RoutingError`, `LLMGenerationError`, `MemorySystemError` 等） |
 
 ## 📖 関連ドキュメント
 

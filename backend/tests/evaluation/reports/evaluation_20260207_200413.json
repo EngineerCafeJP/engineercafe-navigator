@@ -1,0 +1,206 @@
+{
+  "timestamp": "2026-02-07T20:04:13.217787",
+  "config": {
+    "max_cases": 32,
+    "model": "orchestrator"
+  },
+  "results": {
+    "total": 32,
+    "correct": 26,
+    "accuracy": 0.8125,
+    "avg_confidence": 0.8468750000000002,
+    "agent_metrics": {
+      "general_knowledge": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0
+      },
+      "business_info": {
+        "precision": 0.6666666666666666,
+        "recall": 0.5,
+        "f1": 0.5714285714285715
+      },
+      "facility": {
+        "precision": 0.9166666666666666,
+        "recall": 0.8461538461538461,
+        "f1": 0.8799999999999999
+      },
+      "event": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "memory_agent": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      }
+    },
+    "language_analysis": {
+      "ja": {
+        "accuracy": 0.7916666666666666,
+        "count": 24
+      },
+      "en": {
+        "accuracy": 0.75,
+        "count": 4
+      },
+      "zh": {
+        "accuracy": 1.0,
+        "count": 2
+      },
+      "ko": {
+        "accuracy": 1.0,
+        "count": 2
+      }
+    },
+    "tag_analysis": {
+      "fast-path": {
+        "accuracy": 1.0,
+        "count": 10
+      },
+      "keyword-match": {
+        "accuracy": 1.0,
+        "count": 2
+      },
+      "facility": {
+        "accuracy": 0.8461538461538461,
+        "count": 13
+      },
+      "memory": {
+        "accuracy": 1.0,
+        "count": 4
+      },
+      "event": {
+        "accuracy": 1.0,
+        "count": 7
+      },
+      "temporal": {
+        "accuracy": 1.0,
+        "count": 3
+      },
+      "business_info": {
+        "accuracy": 0.5,
+        "count": 8
+      },
+      "hours": {
+        "accuracy": 1.0,
+        "count": 3
+      },
+      "consultation": {
+        "accuracy": 0.25,
+        "count": 4
+      },
+      "technology": {
+        "accuracy": 1.0,
+        "count": 1
+      },
+      "makers": {
+        "accuracy": 1.0,
+        "count": 2
+      },
+      "cafe": {
+        "accuracy": 1.0,
+        "count": 1
+      },
+      "hackathon": {
+        "accuracy": 1.0,
+        "count": 1
+      },
+      "reservation": {
+        "accuracy": 1.0,
+        "count": 2
+      },
+      "context": {
+        "accuracy": 1.0,
+        "count": 1
+      },
+      "amenities": {
+        "accuracy": 1.0,
+        "count": 1
+      },
+      "access": {
+        "accuracy": 0.0,
+        "count": 1
+      },
+      "today": {
+        "accuracy": 1.0,
+        "count": 1
+      },
+      "english": {
+        "accuracy": 0.75,
+        "count": 4
+      },
+      "chinese": {
+        "accuracy": 1.0,
+        "count": 2
+      },
+      "korean": {
+        "accuracy": 1.0,
+        "count": 2
+      },
+      "building": {
+        "accuracy": 0.0,
+        "count": 1
+      },
+      "community": {
+        "accuracy": 0.0,
+        "count": 1
+      }
+    },
+    "threshold_analysis": {
+      "0.5": {
+        "coverage": 1.0,
+        "accuracy": 0.8125,
+        "count": 32
+      },
+      "0.7": {
+        "coverage": 1.0,
+        "accuracy": 0.8125,
+        "count": 32
+      },
+      "0.8": {
+        "coverage": 1.0,
+        "accuracy": 0.8125,
+        "count": 32
+      },
+      "0.9": {
+        "coverage": 0.375,
+        "accuracy": 1.0,
+        "count": 12
+      }
+    },
+    "errors": [
+      {
+        "id": "rt-006",
+        "expected": "business_info",
+        "actual": "general_knowledge"
+      },
+      {
+        "id": "rt-012",
+        "expected": "business_info",
+        "actual": "general_knowledge"
+      },
+      {
+        "id": "rt-019",
+        "expected": "facility",
+        "actual": "business_info"
+      },
+      {
+        "id": "rt-024",
+        "expected": "business_info",
+        "actual": "general_knowledge"
+      },
+      {
+        "id": "rt-031",
+        "expected": "facility",
+        "actual": "business_info"
+      },
+      {
+        "id": "rt-032",
+        "expected": "business_info",
+        "actual": "facility"
+      }
+    ]
+  }
+}
