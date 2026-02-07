@@ -168,6 +168,23 @@ poetry run pytest tests/agents/test_router_agent.py -v
 poetry run pytest --cov=agents --cov-report=html
 ```
 
+### 評価テスト（LangChain Evaluations拡張）
+
+マルチエージェントシステム向けのLLM-as-Judge評価とルーティング精度評価を実行できます。
+
+```bash
+# 評価テスト全体
+poetry run pytest tests/evaluation/ -v
+
+# ルーティング精度評価
+poetry run pytest tests/evaluation/test_routing_accuracy.py -v
+
+# LLM Judge評価（APIキー必要）
+poetry run pytest tests/evaluation/test_llm_judge.py -v --run-llm
+```
+
+テストデータは実際のエンジニアカフェの公開情報に基づいています。詳細は [tests/fixtures/README.md](tests/fixtures/README.md) を参照してください。
+
 ## コード品質
 
 ```bash
@@ -207,15 +224,18 @@ backend/
 │   └── ...
 ├── utils/                  # ユーティリティ
 │   └── ...
-└── tests/                  # テスト（62件）
+└── tests/                  # テスト
     ├── agents/             # エージェントテスト
+    ├── evaluation/         # 評価テスト（LangChain Evaluations拡張）
+    ├── fixtures/           # テストフィクスチャ・ゴールデンデータセット
+    │   └── golden_datasets/  # 実データ（リファレンス資料に基づく）
     └── utils/              # ユーティリティテスト
+        └── evaluators/     # 評価器（LLM Judge, ルーティング精度）
 ```
 
 ## 📖 関連ドキュメント
 
 - **[プロジェクト全体ドキュメント](../docs/README.md)** - 全ドキュメント一覧
-- **[シーケンス図（入力〜エージェント〜出力）](../docs/architecture/SEQUENCE-DIAGRAM.md)** - フロント・バックエンド間の処理フロー（Mermaid）
 - **[LangGraph開発ガイド](../docs/development/LANGGRAPH-DEVELOPMENT-GUIDE.md)** - LangGraph開発詳細
 - **[エージェント実装ガイド](../docs/development/AGENT-QUICKSTART.md)** - エージェント開発クイックスタート
 - **[API仕様](../docs/api/API.md)** - REST API仕様書

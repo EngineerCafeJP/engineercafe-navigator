@@ -340,3 +340,96 @@ async def run_agent_evaluation(
     """
     evaluator = create_langsmith_evaluator(project_name)
     return await evaluator.evaluate_agent(agent_name, test_cases)
+
+
+# ==============================================================================
+# 拡張評価器統合
+# ==============================================================================
+
+
+async def run_comprehensive_evaluation(
+    test_cases: List[Dict[str, Any]],
+    routing_results: Optional[List[Dict[str, Any]]] = None,
+    include_llm_judge: bool = False,
+    project_name: str = "engineer-cafe-navigator",
+) -> Dict[str, Any]:
+    """
+    包括的な評価を実行
+
+    LangSmith統合評価、ルーティング精度評価、LLM Judge評価を統合して実行します。
+
+    Args:
+        test_cases: テストケースのリスト
+        routing_results: ルーティング結果のリスト
+        include_llm_judge: LLM Judge評価を含めるか
+        project_name: プロジェクト名
+
+    Returns:
+        Dict[str, Any]: 統合評価結果
+    """
+    from tests.utils.evaluators.routing_accuracy import (
+        RoutingAccuracyEvaluator,
+        RoutingTestCase,
+    )
+    from tests.utils.evaluators.llm_judge import LLMJudgeEvaluator
+    from tests.utils.evaluators.report_generator import EvaluationReportGenerator
+
+    results: Dict[str, Any] = {
+        "timestamp": datetime.now().isoformat(),
+        "project_name": project_name,
+    }
+
+    # ルーティング精度評価
+    if routing_results:
+        routing_evaluator = RoutingAccuracyEvaluator()
+        routing_test_cases = [
+            RoutingTestCase(
+                id=tc.get("id", str(i)),
+                query=tc.get("query", ""),
+                expected_agent=tc.get("expected_agent", ""),
+                expected_category=tc.get("expected_category"),
+                language=tc.get("language", "ja"),
+                tags=tc.get("tags", []),
+            )
+            for i, tc in enumerate(test_cases)
+        ]
+
+        await routing_evaluator.evaluate_batch(
+            test_cases=routing_test_cases,
+            routing_results=routing_results,
+        )
+
+        results["routing_metrics"] = routing_evaluator.compute_metrics()
+        results["routing_results"] = routing_evaluator.results
+        results["confidence_analysis"] = routing_evaluator.analyze_confidence_thresholds()
+
+    # LLM Judge評価
+    if include_llm_judge:
+        llm_judge = LLMJudgeEvaluator()
+        if llm_judge.is_available:
+            llm_test_cases = [
+                {
+                    "question": tc.get("query", ""),
+                    "answer": tc.get("answer", ""),
+                    "language": tc.get("language", "ja"),
+                }
+                for tc in test_cases
+                if tc.get("answer")
+            ]
+
+            if llm_test_cases:
+                batch_results = await llm_judge.batch_evaluate(llm_test_cases)
+                results["llm_judge_results"] = batch_results
+
+    # レポート生成
+    report_generator = EvaluationReportGenerator()
+    report = report_generator.generate_report(
+        routing_metrics=results.get("routing_metrics"),
+        llm_judge_results=results.get("llm_judge_results"),
+        routing_results=results.get("routing_results"),
+        confidence_analysis=results.get("confidence_analysis"),
+        metadata={"project_name": project_name},
+    )
+
+    results["report"] = report
+    return results
