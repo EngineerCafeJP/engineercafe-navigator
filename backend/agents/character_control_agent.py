@@ -19,6 +19,7 @@ VRMキャラクターの表情・モーションを制御するエージェン�
 参考:
 - docs/migration/agents/character-control-agent/README.md
 """
+from __future__ import annotations
 
 import argparse
 import asyncio
@@ -923,34 +924,26 @@ class CharacterControlAgent:
             context: コンテキスト情報（オプション）
 
         Returns:
-            制御コマンド（出力フォーマット例に合わせた構造）
+            制御コマンド（greetings.json形式）
             {
-                "action": str,  # アクションタイプ（"speak"）
-                "vrm_control": {
-                    "expressions": [
-                        {
-                            "name": str,  # 表情名またはViseme名
-                            "value": float,  # 強度（0.0-1.0）
-                            "transition": float  # 遷移時間（秒）
-                        }
-                    ],
-                    "lookAt": {
-                        "position": {"x": float, "y": float, "z": float},
-                        "target": str
-                    },
-                    "humanoid": {
-                        "pose": Optional[str]  # ポーズ名
+                "name": str,  # アニメーション名（select_animationの戻り値）
+                "duration": int,  # 総時間（ミリ秒）
+                "keyframes": [
+                    {
+                        "time": int,  # ミリ秒
+                        "bones": {},  # 将来拡張用
+                        "expressions": {表情名: 強度, Viseme名: 強度}
                     }
-                },
+                ],
                 "text": Optional[str]  # 発話テキスト
             }
 
         Examples:
             >>> agent = CharacterControlAgent()
             >>> result = await agent.process("happy", "こんにちは", 1.0)
-            >>> result["action"]
-            'speak'
-            >>> "vrm_control" in result
+            >>> result["name"]
+            'greeting'
+            >>> "keyframes" in result
             True
 
         実行例:
@@ -959,23 +952,17 @@ class CharacterControlAgent:
             処理フロー:
             1. 感情マッピング: "describing" -> expression="neutral", intensity=0.8
             2. アニメーション選択: "describing" -> animation="idle"
-            3. VRM制御コマンド生成: neutral表情（強度0.8）を生成
-            4. リップシンクデータ生成:
-               - audio_duration未指定のため、文字数から自動計算（20文字 × 0.15秒 = 3.0秒）
-               - テキストから口の形状を推定（日本語対応）
-            5. Viseme抽出: リップシンクデータからViseme（"oh"など）を抽出して追加
+            3. リップシンクデータ生成（文字数から自動計算）
+            4. keyframes構築: 各フレームにtime, bones, expressionsを設定
             
             結果:
             {
-                "action": "speak",
-                "vrm_control": {
-                    "expressions": [
-                        {"name": "neutral", "value": 0.8, "transition": 2.0},
-                        {"name": "oh", "value": 0.47, "transition": 0.1}
-                    ],
-                    "lookAt": {"position": {"x": 0, "y": 1.5, "z": 2.0}, "target": "camera"},
-                    "humanoid": {"pose": "idle"}
-                },
+                "name": "idle",
+                "duration": 3000,
+                "keyframes": [
+                    {"time": 0, "bones": {}, "expressions": {"neutral": 0.8, "oh": 0.5}},
+                    ...
+                ],
                 "text": "こんにちは、エンジニアカフェへようこそ。"
             }
 
@@ -1040,61 +1027,63 @@ class CharacterControlAgent:
                         exc_info=True,
                     )
 
-            # 4. VRM制御コマンド生成（リップシンクがある場合は表情遷移時間を短くする）
-            # リップシンクがある場合、neutralの表情遷移を短くしてリップシンクと同時に開始
-            expression_transition = (
-                0.1 if has_lipsync else self.DEFAULT_EXPRESSION_DURATION
-            )
-            vrm_control = self.generate_vrm_command(
-                mapped_expression, expression_intensity, animation
-            )
-            # 表情遷移時間を調整
-            if vrm_control["expressions"] and len(vrm_control["expressions"]) > 0:
-                vrm_control["expressions"][0]["transition"] = expression_transition
+            # 4. keyframes構築（greetings.json形式）
+            keyframes: List[Dict[str, Any]] = []
 
-            # 5. リップシンクデータからVisemeを抽出してvrm_control.expressionsに追加
-            if has_lipsync:
-                try:
-                    viseme_expression = EmotionMapping.extract_viseme_from_lipsync_data(
-                        lipsync_data
+            base_expressions: Dict[str, float] = {}
+            if mapped_expression == "neutral":
+                base_expressions["neutral"] = 1.0
+            else:
+                base_expressions[mapped_expression] = expression_intensity
+                base_expressions["neutral"] = 1.0 - expression_intensity
+
+            if has_lipsync and lipsync_data:
+                for frame in lipsync_data:
+                    expressions = dict(base_expressions)
+                    mouth_shape = frame.get("mouthShape", "Closed")
+                    mouth_open = frame.get("mouthOpen", 0.0)
+                    viseme = EmotionMapping.VISEME_MAPPING.get(
+                        mouth_shape, "neutral"
                     )
-
-                    if viseme_expression:
-                        vrm_control["expressions"].append(viseme_expression)
-
-                        logger.info(
-                            f"Viseme追加: viseme={viseme_expression['name']}, "
-                            f"value={viseme_expression['value']}"
-                        )
-                except Exception as viseme_error:
-                    logger.warning(
-                        f"Viseme追加エラー: {viseme_error}, "
-                        "Visemeなしで続行します。",
-                        exc_info=True,
+                    expressions[viseme] = min(
+                        1.0, max(0.0, float(mouth_open))
                     )
+                    keyframes.append(
+                        {
+                            "time": int(frame["time"] * 1000),
+                            "bones": {},
+                            "expressions": expressions,
+                        }
+                    )
+            else:
+                keyframes.append(
+                    {
+                        "time": 0,
+                        "bones": {},
+                        "expressions": base_expressions,
+                    }
+                )
 
-            # 6. humanoid.poseをアニメーション名から設定
-            if animation:
-                vrm_control["humanoid"]["pose"] = animation
+            duration = (
+                keyframes[-1]["time"] if keyframes else 0
+            )
+            if duration == 0 and keyframes:
+                duration = 2000
 
-            # 7. 出力構造を生成（出力フォーマット例に合わせた構造）
+            # 5. 出力構造を生成（greetings.json形式）
             result: Dict[str, Any] = {
-                "action": "speak",
-                "vrm_control": vrm_control,
+                "name": animation if animation else "idle",
+                "duration": duration,
+                "keyframes": keyframes,
             }
 
-            # textパラメータがある場合は追加
             if text:
                 result["text"] = text
 
-            # リップシンクデータがある場合は追加（Mastra版のCharacterControlResponseに合わせる）
-            if has_lipsync and lipsync_data:
-                result["lipsync_data"] = lipsync_data
-
             logger.info(
-                f"CharacterControlAgent処理完了: action={result['action']}, "
-                f"expressions_count={len(vrm_control['expressions'])}, "
-                f"animation={animation}, "
+                f"CharacterControlAgent処理完了: name={result['name']}, "
+                f"keyframes_count={len(keyframes)}, "
+                f"duration={duration}, "
                 f"lipsync_frames={len(lipsync_data) if has_lipsync else 0}"
             )
 
@@ -1106,18 +1095,33 @@ class CharacterControlAgent:
                 f"text_length={len(text) if text else 0}, error={e}",
                 exc_info=True,
             )
-            # エラー時はデフォルト値を返す
             default_data = EmotionMapping.get_expression_with_intensity("neutral")
-            default_vrm_control = self.generate_vrm_command(
-                default_data["expression"], default_data["intensity"], "idle"
+            default_expr = default_data["expression"]
+            default_int = default_data["intensity"]
+            default_expressions: Dict[str, float] = (
+                {"neutral": 1.0}
+                if default_expr == "neutral"
+                else {
+                    default_expr: default_int,
+                    "neutral": 1.0 - default_int,
+                }
             )
-
-            return {
-                "action": "speak",
-                "vrm_control": default_vrm_control,
-                "text": text if text else None,
+            default_keyframes = [
+                {
+                    "time": 0,
+                    "bones": {},
+                    "expressions": default_expressions,
+                }
+            ]
+            result_error: Dict[str, Any] = {
+                "name": "idle",
+                "duration": 2000,
+                "keyframes": default_keyframes,
                 "error": str(e),
             }
+            if text:
+                result_error["text"] = text
+            return result_error
 
 
 async def main():
@@ -1131,23 +1135,12 @@ async def main():
 
     出力例（上記1つ目のコマンド実行時）:
         {
-          "action": "speak",
-          "vrm_control": {
-            "expressions": [
-              {"name": "neutral", "value": 1.0, "transition": 0.1},
-              {"name": "oh", "value": 0.326..., "transition": 0.1}
-            ],
-            "lookAt": {
-              "position": {"x": 0, "y": 1.5, "z": 2.0},
-              "target": "camera"
-            },
-            "humanoid": {"pose": "idle"}
-          },
+          "name": "idle",
+          "duration": 3000,
           "text": "こんにちは、エンジニアカフェへようこそ。",
-          "lipsync_data": [
-            {"time": 0.0, "volume": 0.326..., "mouthOpen": 0.326..., "mouthShape": "O"},
-            {"time": 0.05, "volume": 0.485..., "mouthOpen": 0.485..., "mouthShape": "O"},
-            {"time": 0.1, "volume": 0.669..., "mouthOpen": 0.669..., "mouthShape": "O"},
+          "keyframes": [
+            {"time": 0, "bones": {}, "expressions": {"neutral": 1.0, "oh": 0.33}},
+            {"time": 50, "bones": {}, "expressions": {"neutral": 1.0, "oh": 0.49}},
             ...
           ]
         }
