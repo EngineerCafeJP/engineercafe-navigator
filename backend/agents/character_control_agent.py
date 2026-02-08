@@ -1038,21 +1038,43 @@ class CharacterControlAgent:
                 base_expressions["neutral"] = 1.0 - expression_intensity
 
             if has_lipsync and lipsync_data:
+                prev_viseme: Optional[str] = None
+                viseme_names = {"aa", "ih", "ou", "ee", "oh"}
+
                 for frame in lipsync_data:
                     expressions = dict(base_expressions)
                     mouth_shape = frame.get("mouthShape", "Closed")
-                    mouth_open = frame.get("mouthOpen", 0.0)
+                    mouth_open = min(1.0, max(0.0, float(frame.get("mouthOpen", 0.0))))
                     viseme = EmotionMapping.VISEME_MAPPING.get(
                         mouth_shape, "neutral"
                     )
-                    expressions[viseme] = min(
-                        1.0, max(0.0, float(mouth_open))
-                    )
+
+                    if prev_viseme is not None and prev_viseme != viseme:
+                        expressions[prev_viseme] = 0.0
+
+                    if viseme in viseme_names:
+                        expressions[viseme] = mouth_open
+                        prev_viseme = viseme
+                    else:
+                        prev_viseme = None
+
                     keyframes.append(
                         {
                             "time": int(frame["time"] * 1000),
                             "bones": {},
                             "expressions": expressions,
+                        }
+                    )
+
+                if prev_viseme is not None:
+                    final_time = int(lipsync_data[-1]["time"] * 1000) + 50
+                    final_expressions = dict(base_expressions)
+                    final_expressions[prev_viseme] = 0.0
+                    keyframes.append(
+                        {
+                            "time": final_time,
+                            "bones": {},
+                            "expressions": final_expressions,
                         }
                     )
             else:
