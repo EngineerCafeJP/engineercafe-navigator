@@ -57,6 +57,26 @@ services:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped
 
+  # VoiceVox TTS Engine (Local) - for STT/TTS integration
+  voicevox:
+    image: voicevox/voicevox_engine:latest
+    container_name: engineer-cafe-voicevox
+    ports:
+      - "50021:50021"
+    environment:
+      - CPU_NUM_THREADS=4
+    volumes:
+      # Model cache persistence
+      - voicevox-cache:/root/.cache/voicevox_engine
+    networks:
+      - engineer-cafe-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:50021/version"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 networks:
   engineer-cafe-network:
     driver: bridge
@@ -65,3 +85,4 @@ volumes:
   frontend-node-modules:
   frontend-next:
   backend-pycache:
+  voicevox-cache:

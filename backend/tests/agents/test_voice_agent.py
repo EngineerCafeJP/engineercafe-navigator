@@ -96,7 +96,7 @@ async def test_text_to_speech_calls_tts_with_processed_text_and_emotion(monkeypa
     - audioResponse を返す
     を検証する
     """
-    agent = VoiceAgent()
+    agent = VoiceAgent(tts_provider="google")
     calls = {}
 
     async def fake_synth(text, lang, tts_emotion):
@@ -128,7 +128,7 @@ async def test_text_to_speech_calls_tts_with_processed_text_and_emotion(monkeypa
 @pytest.mark.asyncio
 async def test_text_to_speech_fallback_on_error(monkeypatch):
     """1回目のTTSが失敗したら、フォールバック文言で再試行することを検証"""
-    agent = VoiceAgent()
+    agent = VoiceAgent(tts_provider="google")
     state = {"n": 0}
 
     async def fake_synth(text, lang, tts_emotion):
