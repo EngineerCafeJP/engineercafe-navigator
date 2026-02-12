@@ -21,7 +21,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import type { CharacterAnimationData } from '../utils/character-animation-utils';
 import AudioSettings from './AudioSettings';
 import BackgroundSelector, { type BackgroundOption as BackgroundSelectorOption } from './BackgroundSelector';
-import ControlsSettings from './ControlsSettings';
+import ControlsSettings, { type VRMAnimationOption } from './ControlsSettings';
 import EnvironmentSettings from './EnvironmentSettings';
 import KeyframeSettings from './KeyframeSettings';
 
@@ -152,6 +152,7 @@ export default function CharacterAvatar({
   const [keyframeJsonInput, setKeyframeJsonInput] = useState('');
   const [keyframeJsonError, setKeyframeJsonError] = useState('');
   const [settingsPanelTab, setSettingsPanelTab] = useState<'controls' | 'keyframe' | 'background' | 'lighting' | 'audio'>('controls');
+  const [vrmAnimationOptions, setVrmAnimationOptions] = useState<VRMAnimationOption[]>([]);
 
   // Initialize Three.js scene
 // useEffect 内
@@ -915,6 +916,27 @@ useEffect(() => {
     }
   };
 
+  const fetchVrmAnimations = useCallback(async () => {
+    try {
+      const response = await fetch('/api/animations');
+      const result = await response.json();
+      setVrmAnimationOptions(result.animations ?? []);
+    } catch (error) {
+      console.error('Error fetching VRM animations:', error);
+    }
+  }, []);
+
+  const handle_play_vrm_animation = async (url: string, loop: boolean) => {
+    const vrm = charactersRef.current;
+    if (!vrm) return;
+    const is_idle = url.includes('idle_loop');
+    await loadVRMAnimation(url, vrm, loop, is_idle);
+  };
+
+  useEffect(() => {
+    fetchVrmAnimations();
+  }, [fetchVrmAnimations]);
+
   const updateCharacterExpression = async (expression: string) => {
     if (!charactersRef.current || !expression) return;
 
@@ -1288,9 +1310,9 @@ useEffect(() => {
               <ControlsSettings
                 state={characterState}
                 availableExpressions={availableExpressions}
-                availableAnimations={availableAnimations}
+                vrmAnimationOptions={vrmAnimationOptions}
                 onExpressionChange={updateCharacterExpression}
-                onAnimationChange={updateCharacterAnimation}
+                onPlayVRMAnimation={handle_play_vrm_animation}
                 onPositionChange={updateCharacterPosition}
                 onRotationChange={updateCharacterRotation}
               />

@@ -1,7 +1,7 @@
 'use client';
 
-import React from 'react';
-import { SlidersHorizontal } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Play, SlidersHorizontal } from 'lucide-react';
 
 export interface ControlsState {
   expression: string;
@@ -10,12 +10,19 @@ export interface ControlsState {
   rotation: { x: number; y: number; z: number };
 }
 
+export interface VRMAnimationOption {
+  value: string;
+  label: string;
+}
+
+const DEFAULT_VRM_ANIMATION = '/animations/idle_loop.vrma';
+
 interface ControlsSettingsProps {
   state: ControlsState;
   availableExpressions: string[];
-  availableAnimations: string[];
+  vrmAnimationOptions?: VRMAnimationOption[];
   onExpressionChange: (expression: string) => void;
-  onAnimationChange: (animation: string) => void;
+  onPlayVRMAnimation?: (url: string, loop: boolean) => void;
   onPositionChange: (position: ControlsState['position']) => void;
   onRotationChange: (rotation: ControlsState['rotation']) => void;
 }
@@ -23,12 +30,24 @@ interface ControlsSettingsProps {
 export default function ControlsSettings({
   state,
   availableExpressions,
-  availableAnimations,
+  vrmAnimationOptions = [],
   onExpressionChange,
-  onAnimationChange,
+  onPlayVRMAnimation,
   onPositionChange,
   onRotationChange,
 }: ControlsSettingsProps) {
+  const [selected_vrm_animation, set_selected_vrm_animation] = useState<string>(DEFAULT_VRM_ANIMATION);
+  const [vrm_animation_loop, set_vrm_animation_loop] = useState(true);
+
+  useEffect(() => {
+    if (vrmAnimationOptions.length === 0) return;
+    const in_list = vrmAnimationOptions.some((opt) => opt.value === selected_vrm_animation);
+    if (!in_list) {
+      const idle_option = vrmAnimationOptions.find((opt) => opt.value === DEFAULT_VRM_ANIMATION);
+      set_selected_vrm_animation(idle_option ? idle_option.value : vrmAnimationOptions[0].value);
+    }
+  }, [vrmAnimationOptions, selected_vrm_animation]);
+
   return (
     <div className="bg-white rounded-lg p-4 shadow-sm">
       <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
@@ -51,20 +70,45 @@ export default function ControlsSettings({
         </select>
       </div>
 
-      <div className="mb-4">
-        <label className="block text-xs font-medium text-gray-700 mb-2">Animation</label>
-        <select
-          value={state.animation}
-          onChange={(e) => onAnimationChange(e.target.value)}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          {availableAnimations.map((animation) => (
-            <option key={animation} value={animation}>
-              {animation.charAt(0).toUpperCase() + animation.slice(1)}
-            </option>
-          ))}
-        </select>
-      </div>
+      {vrmAnimationOptions.length > 0 && onPlayVRMAnimation && (
+        <div className="mb-4">
+          <label className="block text-xs font-medium text-gray-700 mb-2">
+            VRM Animation (public/animations)
+          </label>
+          <div className="flex gap-2 items-center">
+            <select
+              value={selected_vrm_animation}
+              onChange={(e) => set_selected_vrm_animation(e.target.value)}
+              className="flex-1 min-w-0 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs"
+            >
+              {vrmAnimationOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+            <label className="flex items-center gap-1 shrink-0 text-xs text-gray-700">
+              <input
+                type="checkbox"
+                checked={vrm_animation_loop}
+                onChange={(e) => set_vrm_animation_loop(e.target.checked)}
+                className="rounded border-gray-300"
+              />
+              Loop
+            </label>
+            <button
+              type="button"
+              onClick={() =>
+                selected_vrm_animation && onPlayVRMAnimation(selected_vrm_animation, vrm_animation_loop)
+              }
+              className="shrink-0 p-2 bg-blue-500 hover:bg-blue-600 text-white rounded-md transition-colors"
+              title="Play VRM animation"
+            >
+              <Play className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="mb-4">
         <label className="block text-xs font-medium text-gray-700 mb-2">Position</label>
