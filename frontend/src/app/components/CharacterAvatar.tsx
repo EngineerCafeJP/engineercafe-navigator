@@ -6,14 +6,24 @@ import { LipSyncAnalyzer } from '@/lib/lip-sync-analyzer';
 import { VRMBlendShapeController, VRMUtils } from '@/lib/vrm-utils';
 import { VRM, VRMLoaderPlugin } from '@pixiv/three-vrm';
 import { VRMAnimationLoaderPlugin, createVRMAnimationClip } from '@pixiv/three-vrm-animation';
-import { Settings, Volume2, VolumeX } from 'lucide-react';
+import {
+  Film,
+  Lightbulb,
+  Palette,
+  Settings,
+  SlidersHorizontal,
+  Volume2,
+  VolumeX,
+} from 'lucide-react';
 import { useEffect, useRef, useState, useCallback } from 'react';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import type { CharacterAnimationData } from '../utils/character-animation-utils';
-import { parse_character_animation_json, SAMPLE_JSON } from '../utils/character-animation-utils';
+import AudioSettings from './AudioSettings';
 import BackgroundSelector, { type BackgroundOption as BackgroundSelectorOption } from './BackgroundSelector';
+import ControlsSettings from './ControlsSettings';
 import EnvironmentSettings from './EnvironmentSettings';
+import KeyframeSettings from './KeyframeSettings';
 
 interface CharacterState {
   expression: string;
@@ -64,6 +74,17 @@ interface CharacterAvatarProps {
   isMuted?: boolean;
   onMuteToggle?: () => void;
 }
+
+const SETTINGS_TAB_LABELS: Record<
+  'controls' | 'keyframe' | 'background' | 'lighting' | 'audio',
+  string
+> = {
+  controls: 'Controls',
+  keyframe: 'Keyframe',
+  background: 'Background',
+  lighting: 'Lighting',
+  audio: 'Audio',
+};
 
 export default function CharacterAvatar({
   modelPath = '/characters/models/sakura.vrm',
@@ -1235,144 +1256,45 @@ useEffect(() => {
 
       {/* Settings Panel - right side, behind gear button (z-20) */}
       {showSettings && (
-        <div className="absolute top-4 right-4 z-20 bg-white bg-opacity-95 rounded-lg p-4 shadow-lg max-w-xs max-h-[85vh] overflow-y-auto flex flex-col">
+        <div className="absolute top-4 right-4 z-20 w-80 bg-white bg-opacity-95 rounded-lg p-4 shadow-lg max-h-[85vh] overflow-y-auto flex flex-col">
           <h3 className="font-semibold mb-3">Settings</h3>
 
-          {/* Tabs - wrap on narrow */}
+          {/* Tabs - wrap on narrow (icon only, title for tooltip) */}
           <div className="flex flex-wrap gap-1 border-b border-gray-200 mb-3">
             {(['controls', 'keyframe', 'background', 'lighting', 'audio'] as const).map((tab) => (
               <button
                 key={tab}
                 type="button"
+                title={SETTINGS_TAB_LABELS[tab]}
                 onClick={() => setSettingsPanelTab(tab)}
-                className={`px-2 py-1.5 text-xs font-medium rounded-t-md transition-colors ${
+                className={`p-2 rounded-t-md transition-colors ${
                   settingsPanelTab === tab
                     ? 'bg-blue-100 text-blue-700 border-b-2 border-blue-500'
                     : 'text-gray-600 hover:bg-gray-100'
                 }`}
               >
-                {tab === 'controls' && 'Controls'}
-                {tab === 'keyframe' && 'Keyframe'}
-                {tab === 'background' && 'Background'}
-                {tab === 'lighting' && 'Lighting'}
-                {tab === 'audio' && 'Audio'}
+                {tab === 'controls' && <SlidersHorizontal className="size-4" />}
+                {tab === 'keyframe' && <Film className="size-4" />}
+                {tab === 'background' && <Palette className="size-4" />}
+                {tab === 'lighting' && <Lightbulb className="size-4" />}
+                {tab === 'audio' && <Volume2 className="size-4" />}
               </button>
             ))}
           </div>
 
           {/* Tab: Controls */}
           {settingsPanelTab === 'controls' && (
-            <>
-              {/* Expression Control */}
-              <div className="mb-4">
-                <label className="block text-sm font-medium mb-2">Expression</label>
-                <select
-                  value={characterState.expression}
-                  onChange={(e) => updateCharacterExpression(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  {availableExpressions.map(expression => (
-                    <option key={expression} value={expression}>
-                      {expression.charAt(0).toUpperCase() + expression.slice(1)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Animation Control */}
-              <div className="mb-4">
-                <label className="block text-sm font-medium mb-2">Animation</label>
-                <select
-                  value={characterState.animation}
-                  onChange={(e) => updateCharacterAnimation(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  {availableAnimations.map(animation => (
-                    <option key={animation} value={animation}>
-                      {animation.charAt(0).toUpperCase() + animation.slice(1)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Position Controls */}
-              <div className="mb-4">
-                <label className="block text-sm font-medium mb-2">Position</label>
-                <div className="space-y-2">
-                  <div className="flex items-center space-x-2">
-                    <label className="text-xs w-4">X:</label>
-                    <input
-                      type="range"
-                      min="-2"
-                      max="2"
-                      step="0.1"
-                      value={characterState.position.x}
-                      onChange={(e) => updateCharacterPosition({
-                        ...characterState.position,
-                        x: parseFloat(e.target.value)
-                      })}
-                      className="flex-1"
-                    />
-                    <span className="text-xs w-12">{characterState.position.x.toFixed(1)}</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <label className="text-xs w-4">Y:</label>
-                    <input
-                      type="range"
-                      min="-2"
-                      max="2"
-                      step="0.1"
-                      value={characterState.position.y}
-                      onChange={(e) => updateCharacterPosition({
-                        ...characterState.position,
-                        y: parseFloat(e.target.value)
-                      })}
-                      className="flex-1"
-                    />
-                    <span className="text-xs w-12">{characterState.position.y.toFixed(1)}</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <label className="text-xs w-4">Z:</label>
-                    <input
-                      type="range"
-                      min="-2"
-                      max="2"
-                      step="0.1"
-                      value={characterState.position.z}
-                      onChange={(e) => updateCharacterPosition({
-                        ...characterState.position,
-                        z: parseFloat(e.target.value)
-                      })}
-                      className="flex-1"
-                    />
-                    <span className="text-xs w-12">{characterState.position.z.toFixed(1)}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Rotation Controls */}
-              <div className="mb-4">
-                <label className="block text-sm font-medium mb-2">Rotation</label>
-                <div className="space-y-2">
-                  <div className="flex items-center space-x-2">
-                    <label className="text-xs w-4">Y:</label>
-                    <input
-                      type="range"
-                      min="-3.14"
-                      max="3.14"
-                      step="0.1"
-                      value={characterState.rotation.y}
-                      onChange={(e) => updateCharacterRotation({
-                        ...characterState.rotation,
-                        y: parseFloat(e.target.value)
-                      })}
-                      className="flex-1"
-                    />
-                    <span className="text-xs w-12">{characterState.rotation.y.toFixed(1)}</span>
-                  </div>
-                </div>
-              </div>
-            </>
+            <div className="mb-4">
+              <ControlsSettings
+                state={characterState}
+                availableExpressions={availableExpressions}
+                availableAnimations={availableAnimations}
+                onExpressionChange={updateCharacterExpression}
+                onAnimationChange={updateCharacterAnimation}
+                onPositionChange={updateCharacterPosition}
+                onRotationChange={updateCharacterRotation}
+              />
+            </div>
           )}
 
           {/* Tab: Background (from left settings) */}
@@ -1398,76 +1320,30 @@ useEffect(() => {
             </div>
           )}
 
-          {/* Tab: Audio (from left settings) */}
+          {/* Tab: Audio */}
           {settingsPanelTab === 'audio' && (
             <div className="mb-4">
-              <h3 className="text-sm font-semibold text-gray-700 mb-2">Audio</h3>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => onMuteToggle?.()}
-                  className="p-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
-                  title={isMuted ? '音声をオンにする' : '音声をオフにする'}
-                >
-                  {isMuted ? (
-                    <VolumeX className="w-5 h-5 text-gray-600" />
-                  ) : (
-                    <Volume2 className="w-5 h-5 text-gray-600" />
-                  )}
-                </button>
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  value={volume}
-                  onChange={(e) => onVolumeChange?.(Number(e.target.value))}
-                  className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-                  title="音量調整"
-                />
-              </div>
+              <AudioSettings
+                volume={volume}
+                isMuted={isMuted}
+                onVolumeChange={(value) => onVolumeChange?.(value)}
+                onMuteToggle={() => onMuteToggle?.()}
+              />
             </div>
           )}
 
-          {/* Tab: Keyframe (greetings.json test) */}
+          {/* Tab: Keyframe */}
           {settingsPanelTab === 'keyframe' && (
             <div className="mb-4">
-              <label className="block text-sm font-medium mb-2">VRM keyframe test (greetings.json)</label>
-              <p className="text-xs text-gray-500 mb-1">name, duration, keyframes のJSONでVRMを制御</p>
-              <textarea
-                value={keyframeJsonInput}
-                onChange={(e) => {
-                  setKeyframeJsonInput(e.target.value);
-                  setKeyframeJsonError('');
-                }}
-                placeholder={SAMPLE_JSON}
-                className="w-full h-24 p-2 border border-gray-300 rounded-md font-mono text-xs resize-y focus:outline-none focus:ring-2 focus:ring-blue-500"
-                spellCheck={false}
+              <KeyframeSettings
+                jsonInput={keyframeJsonInput}
+                onJsonInputChange={setKeyframeJsonInput}
+                error={keyframeJsonError}
+                onError={setKeyframeJsonError}
+                onRunKeyframe={(animation) =>
+                  playKeyframeAnimationInternalRef.current?.(animation)
+                }
               />
-              {keyframeJsonError && (
-                <p className="text-xs text-red-600 mt-1">{keyframeJsonError}</p>
-              )}
-              <button
-                type="button"
-                onClick={() => {
-                  setKeyframeJsonError('');
-                  try {
-                    const trimmed = keyframeJsonInput.trim();
-                    if (!trimmed) {
-                      setKeyframeJsonError('JSONを入力してください。');
-                      return;
-                    }
-                    const parsed = parse_character_animation_json(trimmed);
-                    playKeyframeAnimationInternalRef.current?.(parsed);
-                  } catch (err) {
-                    setKeyframeJsonError(
-                      err instanceof Error ? err.message : 'JSONのパースに失敗しました。'
-                    );
-                  }
-                }}
-                className="w-full mt-2 px-3 py-2 bg-blue-500 hover:bg-blue-600 text-white text-sm rounded-md transition-colors"
-              >
-                Run keyframe
-              </button>
             </div>
           )}
 
