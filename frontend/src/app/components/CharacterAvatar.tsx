@@ -10,6 +10,8 @@ import { Settings } from 'lucide-react';
 import { useEffect, useRef, useState, useCallback } from 'react';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import type { CharacterAnimationData } from '../utils/character-animation-utils';
+import { parse_character_animation_json, SAMPLE_JSON } from '../utils/character-animation-utils';
 
 interface CharacterState {
   expression: string;
@@ -48,7 +50,7 @@ interface CharacterAvatarProps {
   onVisemeControl?: (setViseme: (viseme: string, intensity: number) => void) => void;
   onExpressionControl?: (setExpression: (expression: string, weight: number) => void) => void;
   onKeyframeAnimationControl?: (
-    playKeyframeAnimation: (animation: import('./CharacterControlModal').CharacterAnimationData) => void
+    playKeyframeAnimation: (animation: CharacterAnimationData) => void
   ) => void;
 }
 
@@ -95,6 +97,7 @@ export default function CharacterAvatar({
   const currentExpressionRef = useRef<{ expression: string; weight: number }>({ expression: 'neutral', weight: 1.0 });
   const expressionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const keyframeAnimationTimeoutsRef = useRef<NodeJS.Timeout[]>([]);
+  const playKeyframeAnimationInternalRef = useRef<((animation: CharacterAnimationData) => void) | null>(null);
 
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -108,6 +111,9 @@ export default function CharacterAvatar({
   const [showSettings, setShowSettings] = useState(false);
   const [availableExpressions, setAvailableExpressions] = useState<string[]>([]);
   const [availableAnimations, setAvailableAnimations] = useState<string[]>([]);
+  const [keyframeJsonInput, setKeyframeJsonInput] = useState('');
+  const [keyframeJsonError, setKeyframeJsonError] = useState('');
+  const [settingsPanelTab, setSettingsPanelTab] = useState<'controls' | 'keyframe'>('controls');
 
   // Initialize Three.js scene
 // useEffect 内
@@ -797,9 +803,7 @@ useEffect(() => {
         console.error('[CharacterAvatar] Error setting initial neutral expression:', error);
       }
 
-      const playKeyframeAnimation = (
-        animation: import('./CharacterControlModal').CharacterAnimationData
-      ) => {
+      const playKeyframeAnimation = (animation: CharacterAnimationData) => {
         const vrmRef = charactersRef.current;
         const blendShapeRef = blendShapeControllerRef.current;
         if (!vrmRef || !blendShapeRef) return;
@@ -832,6 +836,7 @@ useEffect(() => {
         keyframeAnimationTimeoutsRef.current.push(end_timeout);
       };
 
+      playKeyframeAnimationInternalRef.current = playKeyframeAnimation;
       onCharacterLoad?.(vrm);
       onEmotionUpdate?.(applyEmotionToCharacter);
       onVisemeControl?.(setViseme);
@@ -1122,6 +1127,10 @@ useEffect(() => {
       mixerRef.current = null;
     }
 
+    keyframeAnimationTimeoutsRef.current.forEach((id) => clearTimeout(id));
+    keyframeAnimationTimeoutsRef.current = [];
+    playKeyframeAnimationInternalRef.current = null;
+
     // Dispose of background texture if it exists
     if (sceneRef.current?.background instanceof THREE.Texture) {
       sceneRef.current.background.dispose();
@@ -1180,9 +1189,9 @@ useEffect(() => {
         </div>
       )}
 
-      {/* Controls */}
+      {/* Controls - z-30 so gear button stays in front of Settings Panel (z-20) */}
       {showControls && !isLoading && (
-        <div className="absolute top-4 right-4 flex flex-col space-y-2">
+        <div className="absolute top-4 right-4 z-30 flex flex-col space-y-2">
           <button
             onClick={() => setShowSettings(!showSettings)}
             className="p-2 bg-white bg-opacity-80 hover:bg-opacity-100 rounded-full shadow-md transition-colors"
@@ -1194,124 +1203,198 @@ useEffect(() => {
         </div>
       )}
 
-      {/* Settings Panel */}
+      {/* Settings Panel - right side, behind gear button (z-20) */}
       {showSettings && (
-        <div className="absolute top-4 left-4 bg-white bg-opacity-95 rounded-lg p-4 shadow-lg max-w-xs">
+        <div className="absolute top-4 right-4 z-20 bg-white bg-opacity-95 rounded-lg p-4 shadow-lg max-w-xs max-h-[85vh] overflow-y-auto flex flex-col">
           <h3 className="font-semibold mb-3">Character Settings</h3>
 
-          {/* Expression Control */}
-          <div className="mb-4">
-            <label className="block text-sm font-medium mb-2">Expression</label>
-            <select
-              value={characterState.expression}
-              onChange={(e) => updateCharacterExpression(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          {/* Tabs */}
+          <div className="flex border-b border-gray-200 mb-3">
+            <button
+              type="button"
+              onClick={() => setSettingsPanelTab('controls')}
+              className={`flex-1 px-3 py-2 text-sm font-medium rounded-t-md transition-colors ${
+                settingsPanelTab === 'controls'
+                  ? 'bg-blue-100 text-blue-700 border-b-2 border-blue-500'
+                  : 'text-gray-600 hover:bg-gray-100'
+              }`}
             >
-              {availableExpressions.map(expression => (
-                <option key={expression} value={expression}>
-                  {expression.charAt(0).toUpperCase() + expression.slice(1)}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Animation Control */}
-          <div className="mb-4">
-            <label className="block text-sm font-medium mb-2">Animation</label>
-            <select
-              value={characterState.animation}
-              onChange={(e) => updateCharacterAnimation(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              Controls
+            </button>
+            <button
+              type="button"
+              onClick={() => setSettingsPanelTab('keyframe')}
+              className={`flex-1 px-3 py-2 text-sm font-medium rounded-t-md transition-colors ${
+                settingsPanelTab === 'keyframe'
+                  ? 'bg-blue-100 text-blue-700 border-b-2 border-blue-500'
+                  : 'text-gray-600 hover:bg-gray-100'
+              }`}
             >
-              {availableAnimations.map(animation => (
-                <option key={animation} value={animation}>
-                  {animation.charAt(0).toUpperCase() + animation.slice(1)}
-                </option>
-              ))}
-            </select>
+              Keyframe
+            </button>
           </div>
 
-          {/* Position Controls */}
-          <div className="mb-4">
-            <label className="block text-sm font-medium mb-2">Position</label>
-            <div className="space-y-2">
-              <div className="flex items-center space-x-2">
-                <label className="text-xs w-4">X:</label>
-                <input
-                  type="range"
-                  min="-2"
-                  max="2"
-                  step="0.1"
-                  value={characterState.position.x}
-                  onChange={(e) => updateCharacterPosition({
-                    ...characterState.position,
-                    x: parseFloat(e.target.value)
-                  })}
-                  className="flex-1"
-                />
-                <span className="text-xs w-12">{characterState.position.x.toFixed(1)}</span>
+          {/* Tab: Controls */}
+          {settingsPanelTab === 'controls' && (
+            <>
+              {/* Expression Control */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-2">Expression</label>
+                <select
+                  value={characterState.expression}
+                  onChange={(e) => updateCharacterExpression(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {availableExpressions.map(expression => (
+                    <option key={expression} value={expression}>
+                      {expression.charAt(0).toUpperCase() + expression.slice(1)}
+                    </option>
+                  ))}
+                </select>
               </div>
-              <div className="flex items-center space-x-2">
-                <label className="text-xs w-4">Y:</label>
-                <input
-                  type="range"
-                  min="-2"
-                  max="2"
-                  step="0.1"
-                  value={characterState.position.y}
-                  onChange={(e) => updateCharacterPosition({
-                    ...characterState.position,
-                    y: parseFloat(e.target.value)
-                  })}
-                  className="flex-1"
-                />
-                <span className="text-xs w-12">{characterState.position.y.toFixed(1)}</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <label className="text-xs w-4">Z:</label>
-                <input
-                  type="range"
-                  min="-2"
-                  max="2"
-                  step="0.1"
-                  value={characterState.position.z}
-                  onChange={(e) => updateCharacterPosition({
-                    ...characterState.position,
-                    z: parseFloat(e.target.value)
-                  })}
-                  className="flex-1"
-                />
-                <span className="text-xs w-12">{characterState.position.z.toFixed(1)}</span>
-              </div>
-            </div>
-          </div>
 
-          {/* Rotation Controls */}
-          <div className="mb-4">
-            <label className="block text-sm font-medium mb-2">Rotation</label>
-            <div className="space-y-2">
-              <div className="flex items-center space-x-2">
-                <label className="text-xs w-4">Y:</label>
-                <input
-                  type="range"
-                  min="-3.14"
-                  max="3.14"
-                  step="0.1"
-                  value={characterState.rotation.y}
-                  onChange={(e) => updateCharacterRotation({
-                    ...characterState.rotation,
-                    y: parseFloat(e.target.value)
-                  })}
-                  className="flex-1"
-                />
-                <span className="text-xs w-12">{characterState.rotation.y.toFixed(1)}</span>
+              {/* Animation Control */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-2">Animation</label>
+                <select
+                  value={characterState.animation}
+                  onChange={(e) => updateCharacterAnimation(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {availableAnimations.map(animation => (
+                    <option key={animation} value={animation}>
+                      {animation.charAt(0).toUpperCase() + animation.slice(1)}
+                    </option>
+                  ))}
+                </select>
               </div>
+
+              {/* Position Controls */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-2">Position</label>
+                <div className="space-y-2">
+                  <div className="flex items-center space-x-2">
+                    <label className="text-xs w-4">X:</label>
+                    <input
+                      type="range"
+                      min="-2"
+                      max="2"
+                      step="0.1"
+                      value={characterState.position.x}
+                      onChange={(e) => updateCharacterPosition({
+                        ...characterState.position,
+                        x: parseFloat(e.target.value)
+                      })}
+                      className="flex-1"
+                    />
+                    <span className="text-xs w-12">{characterState.position.x.toFixed(1)}</span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <label className="text-xs w-4">Y:</label>
+                    <input
+                      type="range"
+                      min="-2"
+                      max="2"
+                      step="0.1"
+                      value={characterState.position.y}
+                      onChange={(e) => updateCharacterPosition({
+                        ...characterState.position,
+                        y: parseFloat(e.target.value)
+                      })}
+                      className="flex-1"
+                    />
+                    <span className="text-xs w-12">{characterState.position.y.toFixed(1)}</span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <label className="text-xs w-4">Z:</label>
+                    <input
+                      type="range"
+                      min="-2"
+                      max="2"
+                      step="0.1"
+                      value={characterState.position.z}
+                      onChange={(e) => updateCharacterPosition({
+                        ...characterState.position,
+                        z: parseFloat(e.target.value)
+                      })}
+                      className="flex-1"
+                    />
+                    <span className="text-xs w-12">{characterState.position.z.toFixed(1)}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Rotation Controls */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-2">Rotation</label>
+                <div className="space-y-2">
+                  <div className="flex items-center space-x-2">
+                    <label className="text-xs w-4">Y:</label>
+                    <input
+                      type="range"
+                      min="-3.14"
+                      max="3.14"
+                      step="0.1"
+                      value={characterState.rotation.y}
+                      onChange={(e) => updateCharacterRotation({
+                        ...characterState.rotation,
+                        y: parseFloat(e.target.value)
+                      })}
+                      className="flex-1"
+                    />
+                    <span className="text-xs w-12">{characterState.rotation.y.toFixed(1)}</span>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Tab: Keyframe (greetings.json test) */}
+          {settingsPanelTab === 'keyframe' && (
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-2">VRM keyframe test (greetings.json)</label>
+              <p className="text-xs text-gray-500 mb-1">name, duration, keyframes のJSONでVRMを制御</p>
+              <textarea
+                value={keyframeJsonInput}
+                onChange={(e) => {
+                  setKeyframeJsonInput(e.target.value);
+                  setKeyframeJsonError('');
+                }}
+                placeholder={SAMPLE_JSON}
+                className="w-full h-24 p-2 border border-gray-300 rounded-md font-mono text-xs resize-y focus:outline-none focus:ring-2 focus:ring-blue-500"
+                spellCheck={false}
+              />
+              {keyframeJsonError && (
+                <p className="text-xs text-red-600 mt-1">{keyframeJsonError}</p>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setKeyframeJsonError('');
+                  try {
+                    const trimmed = keyframeJsonInput.trim();
+                    if (!trimmed) {
+                      setKeyframeJsonError('JSONを入力してください。');
+                      return;
+                    }
+                    const parsed = parse_character_animation_json(trimmed);
+                    playKeyframeAnimationInternalRef.current?.(parsed);
+                  } catch (err) {
+                    setKeyframeJsonError(
+                      err instanceof Error ? err.message : 'JSONのパースに失敗しました。'
+                    );
+                  }
+                }}
+                className="w-full mt-2 px-3 py-2 bg-blue-500 hover:bg-blue-600 text-white text-sm rounded-md transition-colors"
+              >
+                Run keyframe
+              </button>
             </div>
-          </div>
+          )}
 
           <button
             onClick={() => setShowSettings(false)}
-            className="w-full px-3 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600 transition-colors"
+            className="w-full mt-auto px-3 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600 transition-colors"
           >
             Close
           </button>
