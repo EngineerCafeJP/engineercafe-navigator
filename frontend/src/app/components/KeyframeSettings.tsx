@@ -14,6 +14,7 @@ interface KeyframeSettingsProps {
   error: string;
   onError: (message: string) => void;
   onRunKeyframe: (animation: CharacterAnimationData) => void;
+  onRunKeyframeClick?: () => void;
 }
 
 export default function KeyframeSettings({
@@ -22,6 +23,7 @@ export default function KeyframeSettings({
   error,
   onError,
   onRunKeyframe,
+  onRunKeyframeClick,
 }: KeyframeSettingsProps) {
   const handle_run = () => {
     onError('');
@@ -33,6 +35,7 @@ export default function KeyframeSettings({
       }
       const parsed = parse_character_animation_json(trimmed);
       onRunKeyframe(parsed);
+      onRunKeyframeClick?.();
     } catch (err) {
       onError(
         err instanceof Error ? err.message : 'JSONのパースに失敗しました。'
@@ -70,6 +73,9 @@ export default function KeyframeSettings({
       >
         Run keyframe
       </button>
+      <p className="text-xs text-gray-500 mt-1.5">
+        実行成功時はControlsタブに遷移します。
+      </p>
     </div>
   );
 }

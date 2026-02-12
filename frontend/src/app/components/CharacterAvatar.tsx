@@ -136,6 +136,8 @@ export default function CharacterAvatar({
   const expressionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const keyframeAnimationTimeoutsRef = useRef<NodeJS.Timeout[]>([]);
   const playKeyframeAnimationInternalRef = useRef<((animation: CharacterAnimationData) => void) | null>(null);
+  const setExpressionWeightsRef = useRef<(weights: Record<string, number>) => void>(() => {});
+  const expressionWeightsSyncRef = useRef<Record<string, number>>({});
 
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -155,6 +157,8 @@ export default function CharacterAvatar({
   const [vrmAnimationOptions, setVrmAnimationOptions] = useState<VRMAnimationOption[]>([]);
   const [vrmExpressionNames, setVrmExpressionNames] = useState<string[]>([]);
   const [expressionWeights, setExpressionWeights] = useState<Record<string, number>>({});
+
+  setExpressionWeightsRef.current = setExpressionWeights;
 
   // Initialize Three.js scene
 // useEffect 内
@@ -879,6 +883,8 @@ useEffect(() => {
             }
             if (keyframe.expressions && blendShapeControllerRef.current) {
               blendShapeControllerRef.current.setExpressions(keyframe.expressions);
+              const current = blendShapeControllerRef.current.getCurrentExpressions();
+              setExpressionWeightsRef.current(current);
             }
           }, keyframe.time);
           keyframeAnimationTimeoutsRef.current.push(timeout_id);
@@ -1165,7 +1171,32 @@ useEffect(() => {
     // Update VRM
     if (charactersRef.current) {
       charactersRef.current.update(deltaTime);
-      
+
+      // Sync expression weights from VRM to Controls sliders (keyframe, .vrma, lip-sync, etc.)
+      const blend_shape = blendShapeControllerRef.current;
+      if (blend_shape) {
+        const current = blend_shape.getCurrentExpressions();
+        const last = expressionWeightsSyncRef.current;
+        const current_keys = Object.keys(current);
+        const last_keys = Object.keys(last);
+        let changed = current_keys.length !== last_keys.length;
+        if (!changed) {
+          for (let i = 0; i < current_keys.length; i++) {
+            const name = current_keys[i];
+            const a = current[name] ?? 0;
+            const b = last[name] ?? 0;
+            if (Math.abs(a - b) > 0.001) {
+              changed = true;
+              break;
+            }
+          }
+        }
+        if (changed) {
+          setExpressionWeightsRef.current(current);
+          expressionWeightsSyncRef.current = { ...current };
+        }
+      }
+
       // Ensure position offset is maintained every frame during animation
       if (isPlayingSequence.current) {
         charactersRef.current.scene.position.set(
@@ -1374,6 +1405,7 @@ useEffect(() => {
                 onRunKeyframe={(animation) =>
                   playKeyframeAnimationInternalRef.current?.(animation)
                 }
+                onRunKeyframeClick={() => setSettingsPanelTab('controls')}
               />
             </div>
           )}
