@@ -6,12 +6,14 @@ import { LipSyncAnalyzer } from '@/lib/lip-sync-analyzer';
 import { VRMBlendShapeController, VRMUtils } from '@/lib/vrm-utils';
 import { VRM, VRMLoaderPlugin } from '@pixiv/three-vrm';
 import { VRMAnimationLoaderPlugin, createVRMAnimationClip } from '@pixiv/three-vrm-animation';
-import { Settings } from 'lucide-react';
+import { Settings, Volume2, VolumeX } from 'lucide-react';
 import { useEffect, useRef, useState, useCallback } from 'react';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import type { CharacterAnimationData } from '../utils/character-animation-utils';
 import { parse_character_animation_json, SAMPLE_JSON } from '../utils/character-animation-utils';
+import BackgroundSelector, { type BackgroundOption as BackgroundSelectorOption } from './BackgroundSelector';
+import EnvironmentSettings from './EnvironmentSettings';
 
 interface CharacterState {
   expression: string;
@@ -52,6 +54,15 @@ interface CharacterAvatarProps {
   onKeyframeAnimationControl?: (
     playKeyframeAnimation: (animation: CharacterAnimationData) => void
   ) => void;
+  /** Called when user changes background from Settings panel (for parent state sync) */
+  onBackgroundChange?: (background: BackgroundSelectorOption) => void;
+  /** Called when user changes lighting intensity from Settings panel */
+  onLightingChange?: (intensity: number) => void;
+  /** Audio: volume 0–100, used when rendering Audio tab */
+  volume?: number;
+  onVolumeChange?: (value: number) => void;
+  isMuted?: boolean;
+  onMuteToggle?: () => void;
 }
 
 export default function CharacterAvatar({
@@ -77,6 +88,12 @@ export default function CharacterAvatar({
   onVisemeControl,
   onExpressionControl,
   onKeyframeAnimationControl,
+  onBackgroundChange,
+  onLightingChange,
+  volume = 80,
+  onVolumeChange,
+  isMuted = false,
+  onMuteToggle,
 }: CharacterAvatarProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -113,7 +130,7 @@ export default function CharacterAvatar({
   const [availableAnimations, setAvailableAnimations] = useState<string[]>([]);
   const [keyframeJsonInput, setKeyframeJsonInput] = useState('');
   const [keyframeJsonError, setKeyframeJsonError] = useState('');
-  const [settingsPanelTab, setSettingsPanelTab] = useState<'controls' | 'keyframe'>('controls');
+  const [settingsPanelTab, setSettingsPanelTab] = useState<'controls' | 'keyframe' | 'background' | 'lighting' | 'audio'>('controls');
 
   // Initialize Three.js scene
 // useEffect 内
@@ -262,6 +279,18 @@ useEffect(() => {
     return texture;
   };
 
+  /** Normalize BackgroundSelector-style option (gradient value as CSS) to scene format */
+  const normalizeBackgroundForScene = (options: BackgroundOption): BackgroundOption => {
+    if (options.type !== 'gradient' || options.color1) return options;
+    const css = options.value || '';
+    const angleMatch = css.match(/(\d+)deg/);
+    const angle = angleMatch ? Number(angleMatch[1]) : 135;
+    const colorMatches = css.match(/#[0-9a-fA-F]{6}|rgb\([^)]+\)|rgba\([^)]+\)/g);
+    const color1 = colorMatches?.[0] ?? '#e0e7ff';
+    const color2 = colorMatches?.[colorMatches.length - 1] ?? '#c7d2fe';
+    return { ...options, color1, color2, angle };
+  };
+
   const updateSceneBackground = (options: BackgroundOption) => {
     if (!sceneRef.current) return;
 
@@ -271,14 +300,15 @@ useEffect(() => {
       previousBackground.dispose();
     }
 
-    if (options.type === 'solid') {
-      const color = parseGradientColors(options.color1 || '#f5f5f5');
+    const normalized = normalizeBackgroundForScene(options);
+    if (normalized.type === 'solid') {
+      const color = parseGradientColors(normalized.color1 || normalized.value || '#f5f5f5');
       sceneRef.current.background = new THREE.Color(color);
-    } else if (options.type === 'gradient') {
-      sceneRef.current.background = createGradientTexture(options);
-    } else if (options.type === 'image' && (options.imageUrl || options.value)) {
+    } else if (normalized.type === 'gradient') {
+      sceneRef.current.background = createGradientTexture(normalized);
+    } else if (normalized.type === 'image' && (normalized.imageUrl || normalized.value)) {
       const loader = new THREE.TextureLoader();
-      const imageUrl = options.imageUrl || options.value || '';
+      const imageUrl = normalized.imageUrl || normalized.value || '';
       if (imageUrl) {
         loader.load(
           imageUrl,
@@ -1206,32 +1236,28 @@ useEffect(() => {
       {/* Settings Panel - right side, behind gear button (z-20) */}
       {showSettings && (
         <div className="absolute top-4 right-4 z-20 bg-white bg-opacity-95 rounded-lg p-4 shadow-lg max-w-xs max-h-[85vh] overflow-y-auto flex flex-col">
-          <h3 className="font-semibold mb-3">Character Settings</h3>
+          <h3 className="font-semibold mb-3">Settings</h3>
 
-          {/* Tabs */}
-          <div className="flex border-b border-gray-200 mb-3">
-            <button
-              type="button"
-              onClick={() => setSettingsPanelTab('controls')}
-              className={`flex-1 px-3 py-2 text-sm font-medium rounded-t-md transition-colors ${
-                settingsPanelTab === 'controls'
-                  ? 'bg-blue-100 text-blue-700 border-b-2 border-blue-500'
-                  : 'text-gray-600 hover:bg-gray-100'
-              }`}
-            >
-              Controls
-            </button>
-            <button
-              type="button"
-              onClick={() => setSettingsPanelTab('keyframe')}
-              className={`flex-1 px-3 py-2 text-sm font-medium rounded-t-md transition-colors ${
-                settingsPanelTab === 'keyframe'
-                  ? 'bg-blue-100 text-blue-700 border-b-2 border-blue-500'
-                  : 'text-gray-600 hover:bg-gray-100'
-              }`}
-            >
-              Keyframe
-            </button>
+          {/* Tabs - wrap on narrow */}
+          <div className="flex flex-wrap gap-1 border-b border-gray-200 mb-3">
+            {(['controls', 'keyframe', 'background', 'lighting', 'audio'] as const).map((tab) => (
+              <button
+                key={tab}
+                type="button"
+                onClick={() => setSettingsPanelTab(tab)}
+                className={`px-2 py-1.5 text-xs font-medium rounded-t-md transition-colors ${
+                  settingsPanelTab === tab
+                    ? 'bg-blue-100 text-blue-700 border-b-2 border-blue-500'
+                    : 'text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                {tab === 'controls' && 'Controls'}
+                {tab === 'keyframe' && 'Keyframe'}
+                {tab === 'background' && 'Background'}
+                {tab === 'lighting' && 'Lighting'}
+                {tab === 'audio' && 'Audio'}
+              </button>
+            ))}
           </div>
 
           {/* Tab: Controls */}
@@ -1349,6 +1375,59 @@ useEffect(() => {
             </>
           )}
 
+          {/* Tab: Background (from left settings) */}
+          {settingsPanelTab === 'background' && (
+            <div className="mb-4">
+              <BackgroundSelector
+                currentBackground={background as BackgroundSelectorOption}
+                onBackgroundChange={(bg) => {
+                  updateSceneBackground(bg);
+                  onBackgroundChange?.(bg);
+                }}
+              />
+            </div>
+          )}
+
+          {/* Tab: Lighting (from left settings) */}
+          {settingsPanelTab === 'lighting' && (
+            <div className="mb-4">
+              <EnvironmentSettings
+                lightingIntensity={lightingIntensity}
+                onLightingChange={onLightingChange ?? (() => {})}
+              />
+            </div>
+          )}
+
+          {/* Tab: Audio (from left settings) */}
+          {settingsPanelTab === 'audio' && (
+            <div className="mb-4">
+              <h3 className="text-sm font-semibold text-gray-700 mb-2">Audio</h3>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => onMuteToggle?.()}
+                  className="p-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                  title={isMuted ? '音声をオンにする' : '音声をオフにする'}
+                >
+                  {isMuted ? (
+                    <VolumeX className="w-5 h-5 text-gray-600" />
+                  ) : (
+                    <Volume2 className="w-5 h-5 text-gray-600" />
+                  )}
+                </button>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={volume}
+                  onChange={(e) => onVolumeChange?.(Number(e.target.value))}
+                  className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                  title="音量調整"
+                />
+              </div>
+            </div>
+          )}
+
           {/* Tab: Keyframe (greetings.json test) */}
           {settingsPanelTab === 'keyframe' && (
             <div className="mb-4">
@@ -1392,12 +1471,6 @@ useEffect(() => {
             </div>
           )}
 
-          <button
-            onClick={() => setShowSettings(false)}
-            className="w-full mt-auto px-3 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600 transition-colors"
-          >
-            Close
-          </button>
         </div>
       )}
     </div>
