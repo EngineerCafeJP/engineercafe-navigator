@@ -17,11 +17,22 @@ export interface VRMAnimationOption {
 
 const DEFAULT_VRM_ANIMATION = '/animations/idle_loop.vrma';
 
+const VISEME_NAMES = ['aa', 'ih', 'ou', 'ee', 'oh'];
+
+const VISEME_LABELS: Record<string, string> = {
+  aa: 'A',
+  ih: 'I',
+  ou: 'U',
+  ee: 'E',
+  oh: 'O',
+};
+
 interface ControlsSettingsProps {
   state: ControlsState;
-  availableExpressions: string[];
+  vrmExpressionNames: string[];
+  expressionWeights: Record<string, number>;
+  onExpressionWeightChange: (name: string, weight: number) => void;
   vrmAnimationOptions?: VRMAnimationOption[];
-  onExpressionChange: (expression: string) => void;
   onPlayVRMAnimation?: (url: string, loop: boolean) => void;
   onPositionChange: (position: ControlsState['position']) => void;
   onRotationChange: (rotation: ControlsState['rotation']) => void;
@@ -29,9 +40,10 @@ interface ControlsSettingsProps {
 
 export default function ControlsSettings({
   state,
-  availableExpressions,
+  vrmExpressionNames,
+  expressionWeights,
+  onExpressionWeightChange,
   vrmAnimationOptions = [],
-  onExpressionChange,
   onPlayVRMAnimation,
   onPositionChange,
   onRotationChange,
@@ -55,20 +67,68 @@ export default function ControlsSettings({
         Controls
       </h3>
 
-      <div className="mb-4">
-        <label className="block text-xs font-medium text-gray-700 mb-2">Expression</label>
-        <select
-          value={state.expression}
-          onChange={(e) => onExpressionChange(e.target.value)}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          {availableExpressions.map((expression) => (
-            <option key={expression} value={expression}>
-              {expression.charAt(0).toUpperCase() + expression.slice(1)}
-            </option>
-          ))}
-        </select>
-      </div>
+      {vrmExpressionNames.length > 0 && (
+        <>
+          <div className="mb-4">
+            <label className="block text-xs font-medium text-gray-700 mb-2">
+              Expression (VRM)
+            </label>
+            <div className="space-y-2">
+              {vrmExpressionNames
+                .filter((name) => !VISEME_NAMES.includes(name))
+                .map((name) => (
+                  <div key={name} className="flex items-center gap-2">
+                    <label className="text-xs text-gray-700 w-24 shrink-0 capitalize">
+                      {name}
+                    </label>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={Math.round((expressionWeights[name] ?? 0) * 100)}
+                      onChange={(e) =>
+                        onExpressionWeightChange(name, Number(e.target.value) / 100)
+                      }
+                      className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                    />
+                    <span className="text-xs w-8 text-right text-gray-500">
+                      {Math.round((expressionWeights[name] ?? 0) * 100)}%
+                    </span>
+                  </div>
+                ))}
+            </div>
+          </div>
+          <div className="mb-4">
+            <label className="block text-xs font-medium text-gray-700 mb-2">
+              Viseme (mouth shape / lip-sync)
+            </label>
+            <div className="space-y-2">
+              {vrmExpressionNames
+                .filter((name) => VISEME_NAMES.includes(name))
+                .map((name) => (
+                  <div key={name} className="flex items-center gap-2">
+                    <label className="text-xs text-gray-700 w-24 shrink-0">
+                      {VISEME_LABELS[name] ?? name} ({name})
+                    </label>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={Math.round((expressionWeights[name] ?? 0) * 100)}
+                      onChange={(e) =>
+                        onExpressionWeightChange(name, Number(e.target.value) / 100)
+                      }
+                      className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                    />
+                    <span className="text-xs w-8 text-right text-gray-500">
+                      {Math.round((expressionWeights[name] ?? 0) * 100)}%
+                    </span>
+                  </div>
+                ))}
+            </div>
+          </div>
+        </>
+      )}
 
       {vrmAnimationOptions.length > 0 && onPlayVRMAnimation && (
         <div className="mb-4">

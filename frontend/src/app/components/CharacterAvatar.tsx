@@ -153,6 +153,8 @@ export default function CharacterAvatar({
   const [keyframeJsonError, setKeyframeJsonError] = useState('');
   const [settingsPanelTab, setSettingsPanelTab] = useState<'controls' | 'keyframe' | 'background' | 'lighting' | 'audio'>('controls');
   const [vrmAnimationOptions, setVrmAnimationOptions] = useState<VRMAnimationOption[]>([]);
+  const [vrmExpressionNames, setVrmExpressionNames] = useState<string[]>([]);
+  const [expressionWeights, setExpressionWeights] = useState<Record<string, number>>({});
 
   // Initialize Three.js scene
 // useEffect 内
@@ -668,21 +670,22 @@ useEffect(() => {
       // Initialize LipSyncAnalyzer without AudioContext (will be initialized on first use)
       lipSyncAnalyzerRef.current = new LipSyncAnalyzer();
       
-      // Log available expressions
-      const availableExpressions = blendShapeControllerRef.current.getAvailableExpressions();
-      console.log('Available VRM expressions:', availableExpressions);
-      
-      // Debug: Check expression map directly
+      const available_expressions = blendShapeControllerRef.current.getAvailableExpressions();
+      console.log('Available VRM expressions:', available_expressions);
+      setVrmExpressionNames(available_expressions);
+      const initial_weights: Record<string, number> = {};
+      available_expressions.forEach((name) => {
+        initial_weights[name] = name === 'neutral' ? 1 : 0;
+      });
+      setExpressionWeights(initial_weights);
+
       if (vrm.expressionManager?.expressionMap) {
         console.log('Expression map keys:', Object.keys(vrm.expressionManager.expressionMap));
-        console.log('Full expression map:', vrm.expressionManager.expressionMap);
       }
-      
-      // Check if surprised exists
-      const hasSurprised = availableExpressions.includes('surprised');
-      if (!hasSurprised) {
+
+      const has_surprised = available_expressions.includes('surprised');
+      if (!has_surprised) {
         console.warn('⚠️ "surprised" expression not found in VRM model!');
-        console.log('Available expressions for mapping:', availableExpressions);
       }
 
       // Start automatic blinking
@@ -931,6 +934,11 @@ useEffect(() => {
     if (!vrm) return;
     const is_idle = url.includes('idle_loop');
     await loadVRMAnimation(url, vrm, loop, is_idle);
+  };
+
+  const handle_expression_weight_change = (name: string, weight: number) => {
+    setExpressionWeights((prev) => ({ ...prev, [name]: weight }));
+    blendShapeControllerRef.current?.setExpression(name, weight);
   };
 
   useEffect(() => {
@@ -1309,9 +1317,10 @@ useEffect(() => {
             <div className="mb-4">
               <ControlsSettings
                 state={characterState}
-                availableExpressions={availableExpressions}
+                vrmExpressionNames={vrmExpressionNames}
+                expressionWeights={expressionWeights}
+                onExpressionWeightChange={handle_expression_weight_change}
                 vrmAnimationOptions={vrmAnimationOptions}
-                onExpressionChange={updateCharacterExpression}
                 onPlayVRMAnimation={handle_play_vrm_animation}
                 onPositionChange={updateCharacterPosition}
                 onRotationChange={updateCharacterRotation}
