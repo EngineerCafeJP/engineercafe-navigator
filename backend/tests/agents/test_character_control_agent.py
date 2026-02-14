@@ -22,7 +22,7 @@ CharacterControlAgent のユニットテスト
 """
 
 import pytest
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 from backend.agents.character_control_agent import CharacterControlAgent
 from backend.utils.emotion_mapping import EmotionMapping
 
@@ -418,13 +418,7 @@ class TestCharacterControlAgent:
         result = await self.agent.process("happy")
         assert result["action"] == "speak"
         assert "text" not in result or result.get("text") is None
-        # Visemeは追加されない
-        viseme_expressions = [
-            expr
-            for expr in result["vrm_control"]["expressions"]
-            if expr["name"] in ["aa", "ih", "ou", "ee", "oh", "neutral"]
-        ]
-        # メイン表情のみ（Visemeなし）
+        # Visemeは追加されない（メイン表情のみ）
         assert len(result["vrm_control"]["expressions"]) == 1
 
     @pytest.mark.asyncio

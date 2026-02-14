@@ -150,7 +150,7 @@ class VoiceResponse(BaseModel):
 
 
 # backend/main.py（PR3差分イメージ）
-from agents.voice_agent import VoiceAgent  # 追加
+from agents.voice_agent import VoiceAgent  # noqa: E402 # 追加
 
 voice_agent = VoiceAgent()  # アプリ起動時に1回生成
 

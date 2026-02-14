@@ -4,7 +4,6 @@ EmotionTagger のユニットテスト
 感情タグ付与機能のテストケース
 """
 
-import pytest
 from backend.utils.emotion_tagger import add_emotion_tag
 
 

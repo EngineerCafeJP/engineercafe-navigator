@@ -1,5 +1,4 @@
 import base64
-import time
 from typing import TypedDict, List, Dict, Any
 
 import cv2
@@ -166,9 +165,7 @@ class VisionAgent:
             ]
         )
 
-        start = time.time()
         result = self.app.invoke({"messages": [message]})
-        elapsed = time.time() - start
 
         # ---------- Parse ----------
         text_result = {"success": False, "text": None, "error": None}

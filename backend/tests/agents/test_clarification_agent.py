@@ -178,7 +178,6 @@ class TestErrorHandling:
         # add_emotion_tagがエラーを起こした場合のテスト
         # clarification_agent.pyで直接インポートされているため、
         # clarification_agentモジュール内のadd_emotion_tagをパッチする
-        from backend.utils import emotion_tagger
 
         with patch(
             'backend.agents.clarification_agent.add_emotion_tag',
