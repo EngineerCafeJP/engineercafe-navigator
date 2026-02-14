@@ -276,36 +276,62 @@ class EventAgent:
             "metadata": {"agent": "EventAgent", "time_range": time_range, "event_count": 0},
         }
 
-    def _merge_events(self, calendar_result: Dict, connpass_result: Dict) -> List[Dict]:
-        """Google CalendarとConnpassのイベントをマージ
+    @staticmethod
+    def _normalize_title(title: str) -> str:
+        """イベントタイトルを正規化して重複比較に使用
 
-        両方のソースからイベントを取得し、開始日時順にソートして返します。
+        空白除去、全角→半角変換、エディション番号除去など
+        """
+        import re
+        import unicodedata
+
+        # NFKC正規化（全角→半角等）
+        normalized = unicodedata.normalize("NFKC", title)
+        # 小文字化
+        normalized = normalized.lower()
+        # エディション番号除去（#1, #2, Vol.1, vol.2等）
+        normalized = re.sub(r"[#＃]?\d+", "", normalized)
+        normalized = re.sub(r"vol\.?\s*\d*", "", normalized, flags=re.IGNORECASE)
+        # 余分な空白除去
+        normalized = re.sub(r"\s+", " ", normalized).strip()
+
+        return normalized
+
+    def _merge_events(self, calendar_result: Dict, connpass_result: Dict) -> List[Dict]:
+        """Google CalendarとConnpassのイベントをマージ（重複排除付き）
+
+        両方のソースからイベントを取得し、タイトルの正規化ベースで
+        重複を排除してから開始日時順にソートして返す。
+
+        Google Calendar優先: 重複時はGoogle Calendarの情報を優先する。
 
         Args:
             calendar_result: CalendarServiceの結果
             connpass_result: ConnpassServiceの結果
 
         Returns:
-            マージされたイベントのリスト（開始日時順）
-
-        Notes:
-            - 各イベントには "source" フィールド（google_calendar / connpass）が付与される
-            - 重複は除外されない（異なるソースのため基本的に重複しない想定）
+            重複排除済み、開始日時順のイベントリスト
         """
-        events = []
+        events: List[Dict] = []
+        seen_titles: set[str] = set()
 
-        # Google Calendarイベント
+        # Google Calendarイベント（優先: 先に登録）
         if calendar_result.get("success"):
             calendar_events = calendar_result.get("data", {}).get("events", [])
             for event in calendar_events:
-                events.append({**event, "source": "google_calendar"})
+                normalized = self._normalize_title(event.get("title", ""))
+                if normalized and normalized not in seen_titles:
+                    seen_titles.add(normalized)
+                    events.append({**event, "source": "google_calendar"})
 
-        # Connpassイベント
+        # Connpassイベント（重複時はスキップ）
         if connpass_result.get("success"):
             connpass_events = connpass_result.get("data", {}).get("events", [])
             for event in connpass_events:
-                # source は既にConnpassServiceで付与済み
-                events.append(event)
+                normalized = self._normalize_title(event.get("title", ""))
+                if normalized and normalized not in seen_titles:
+                    seen_titles.add(normalized)
+                    events.append(event)
 
         # 開始日時でソート
         events.sort(key=lambda e: e.get("start", "") or "")

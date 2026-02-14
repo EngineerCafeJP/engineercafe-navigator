@@ -84,3 +84,83 @@ class TestEventAgent:
             assert response_en["metadata"]["time_range"] == time_range
             assert response_ja["emotion"] == "sad"
             assert response_en["emotion"] == "sad"
+
+
+class TestEventDeduplication:
+    """イベント重複排除テスト"""
+
+    def setup_method(self):
+        """各テストメソッドの前に実行"""
+        self.agent = EventAgent()
+
+    def test_deduplicate_same_title_events(self):
+        """同じタイトルのイベントが重複排除されることを確認"""
+        calendar_result = {
+            "success": True,
+            "data": {
+                "events": [
+                    {
+                        "title": "Python Workshop #3",
+                        "start": "2025-02-15T14:00:00Z",
+                        "description": "From Calendar",
+                    }
+                ]
+            },
+        }
+        connpass_result = {
+            "success": True,
+            "data": {
+                "events": [
+                    {
+                        "title": "Python Workshop #3",
+                        "start": "2025-02-15T14:00:00Z",
+                        "description": "From Connpass",
+                        "source": "connpass",
+                    }
+                ]
+            },
+        }
+
+        events = self.agent._merge_events(calendar_result, connpass_result)
+
+        # 重複排除で1件になる
+        assert len(events) == 1
+        # Google Calendar優先
+        assert events[0].get("source") == "google_calendar"
+        assert events[0]["description"] == "From Calendar"
+
+    def test_keep_different_events(self):
+        """異なるタイトルのイベントは保持されることを確認"""
+        calendar_result = {
+            "success": True,
+            "data": {
+                "events": [
+                    {
+                        "title": "Python Workshop",
+                        "start": "2025-02-15T14:00:00Z",
+                        "description": "Python event",
+                    }
+                ]
+            },
+        }
+        connpass_result = {
+            "success": True,
+            "data": {
+                "events": [
+                    {
+                        "title": "React Meetup",
+                        "start": "2025-02-16T18:00:00Z",
+                        "description": "React event",
+                        "source": "connpass",
+                    }
+                ]
+            },
+        }
+
+        events = self.agent._merge_events(calendar_result, connpass_result)
+
+        # 異なるイベントなので2件
+        assert len(events) == 2
+        titles = [e["title"] for e in events]
+        assert "Python Workshop" in titles
+        assert "React Meetup" in titles
