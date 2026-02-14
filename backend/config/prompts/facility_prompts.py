@@ -29,6 +29,22 @@ FACILITY_ENHANCEMENT_KEYWORDS: Dict[str, Dict[str, str]] = {
         "ja": "建物 赤煉瓦文化館 重要文化財 辰野金吾 歴史 明治",
         "en": "building red brick cultural hall important cultural property history Meiji",
     },
+    "parking": {
+        "ja": "駐車場 パーキング 車 近隣 コインパーキング",
+        "en": "parking car park nearby coin parking",
+    },
+    "bicycle": {
+        "ja": "駐輪場 自転車 バイク置き場 公共駐輪場",
+        "en": "bicycle parking bike cycle public",
+    },
+    "smoking": {
+        "ja": "喫煙 タバコ 禁煙 喫煙所 全館禁煙",
+        "en": "smoking cigarette no smoking smoke area",
+    },
+    "food_drink": {
+        "ja": "飲食 食べ物 飲み物 持ち込み 軽食 ゴミ持ち帰り",
+        "en": "food drink beverage bring eat snack takeaway waste",
+    },
 }
 
 # requestTypeに応じたプロンプト文言
@@ -36,6 +52,12 @@ FACILITY_REQUEST_TYPE_PROMPTS: Dict[str, Dict[str, str]] = {
     "wifi": {"en": "Wi-Fi information", "ja": "Wi-Fi情報"},
     "facility": {"en": "facility information", "ja": "設備情報"},
     "basement": {"en": "basement facility information", "ja": "地下施設情報"},
+    "access": {"en": "access information", "ja": "アクセス情報"},
+    "building": {"en": "building information", "ja": "建物情報"},
+    "parking": {"en": "parking information", "ja": "駐車場情報"},
+    "bicycle": {"en": "bicycle parking information", "ja": "駐輪場情報"},
+    "smoking": {"en": "smoking policy", "ja": "喫煙ポリシー"},
+    "food_drink": {"en": "food and drink policy", "ja": "飲食ポリシー"},
 }
 
 
