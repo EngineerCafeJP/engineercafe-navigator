@@ -21,9 +21,9 @@ from typing import Dict, Any, List, Optional, Literal, TypedDict
 
 from backend.utils.emotion_tagger import add_emotion_tag
 
-# TODO: 実装時に必要なインポート
-# from llm.openrouter import OpenRouterProvider
-# from llm.models import get_model_config
+from backend.llm.openrouter import OpenRouterProvider
+from backend.llm.models import get_model_config
+from langchain_core.messages import HumanMessage, SystemMessage
 
 logger = logging.getLogger(__name__)
 
@@ -56,17 +56,43 @@ class ClarificationAgent:
     _AGENT_NAME = "ClarificationAgent"
     _DEFAULT_SOURCES = ["clarification_system"]
 
-    def __init__(self):
-        """
-        初期化
+    # 曖昧性検出キーワード
+    _AMBIGUITY_KEYWORDS = {
+        "cafe": {
+            "triggers": ["カフェ", "cafe", "喫茶"],
+            "specifics": ["エンジニアカフェ", "サイノ", "saino", "engineer cafe", "コワーキング"],
+        },
+        "meeting-room": {
+            "triggers": ["会議室", "meeting room", "ミーティングルーム"],
+            "specifics": ["2階", "二階", "2F", "地下", "B1", "有料", "無料", "MTG"],
+        },
+        "event": {
+            "triggers": ["イベント", "event"],
+            "specifics": ["勉強会", "セミナー", "ハッカソン", "ミートアップ", "workshop", "meetup"],
+        },
+    }
 
-        TODO:
-        - OpenRouterProviderの初期化
-        - モデル設定の取得（get_model_config("clarification")）
-        - 曖昧さ検出の閾値設定
-        """
-        logger.info("ClarificationAgent骨組み初期化")
-        # TODO: OpenRouterProvider等の初期化
+    # 曖昧性解消の選択肢
+    _CLARIFICATION_OPTIONS = {
+        "cafe": [
+            {"label": "エンジニアカフェ（コワーキングスペース）", "value": "engineer-cafe"},
+            {"label": "サイノカフェ（カフェ＆バー）", "value": "saino"},
+        ],
+        "meeting-room": [
+            {"label": "有料会議室（2階）", "value": "paid-meeting-room"},
+            {"label": "地下MTGスペース（無料）", "value": "free-meeting-space"},
+        ],
+        "event": [
+            {"label": "勉強会・セミナー", "value": "study-seminar"},
+            {"label": "ハッカソン・もくもく会", "value": "hackathon"},
+        ],
+    }
+
+    def __init__(self):
+        """初期化 - OpenRouterProvider + モデル設定"""
+        logger.info("ClarificationAgent初期化")
+        self.llm = OpenRouterProvider()
+        self.model_config = get_model_config("clarification")
 
     def _create_result(
         self,
@@ -164,59 +190,67 @@ class ClarificationAgent:
 
     async def detect_ambiguity(self, query: str, context: Optional[Dict[str, Any]] = None) -> bool:
         """
-        曖昧さを検出
+        曖昧さをキーワードベースで検出
 
         Args:
             query: ユーザーの質問
-            context: コンテキスト情報（オプショナル）
+            context: コンテキスト情報（前の会話で既に特定済みの場合はFalse）
 
         Returns:
             True: 曖昧な質問, False: 明確な質問
-
-        TODO:
-        - キーワードベース検出（「カフェ」「イベント」など複数候補がある語）
-        - LLMベース検出（複数の解釈が可能な質問）
-        - 閾値判定ロジック
         """
-        logger.info(f"曖昧さ検出（骨組み）: {query}")
+        logger.info(f"曖昧さ検出: {query}")
+        lower_query = query.lower()
 
-        # TODO: 実装
-        # プレースホルダー: 常にFalseを返す
+        # コンテキストで既に特定済みの場合はスキップ
+        if context and context.get("already_clarified"):
+            return False
+
+        for category, keywords in self._AMBIGUITY_KEYWORDS.items():
+            # トリガーキーワードが含まれている
+            has_trigger = any(kw.lower() in lower_query for kw in keywords["triggers"])
+            if not has_trigger:
+                continue
+
+            # 具体的なキーワードが含まれていない → 曖昧
+            has_specific = any(kw.lower() in lower_query for kw in keywords["specifics"])
+            if not has_specific:
+                logger.info(f"曖昧性検出: category={category}, query={query}")
+                return True
+
         return False
 
     async def generate_clarification_options(
         self, query: str, context: Optional[Dict[str, Any]] = None
     ) -> List[Dict[str, str]]:
         """
-        明確化のための選択肢を生成
+        曖昧性のカテゴリを検出し、対応する選択肢を返す
 
         Args:
             query: ユーザーの質問
-            context: コンテキスト情報（オプショナル）
+            context: コンテキスト情報
 
         Returns:
-            選択肢のリスト
-            例: [
-                {"label": "Engineer Cafe本郷", "value": "hongo"},
-                {"label": "Engineer Cafe秋葉原", "value": "akihabara"}
-            ]
-
-        TODO:
-        - データベースから候補を抽出
-        - LLMで自然な選択肢文を生成
-        - 選択肢の優先順位付け
+            選択肢のリスト [{label, value}, ...]
         """
-        logger.info(f"選択肢生成（骨組み）: {query}")
+        logger.info(f"選択肢生成: {query}")
+        lower_query = query.lower()
 
-        # TODO: 実装
-        # プレースホルダー: 空リストを返す
+        for category, keywords in self._AMBIGUITY_KEYWORDS.items():
+            has_trigger = any(kw.lower() in lower_query for kw in keywords["triggers"])
+            if has_trigger:
+                options = self._CLARIFICATION_OPTIONS.get(category, [])
+                if options:
+                    logger.info(f"選択肢生成完了: category={category}, options={len(options)}")
+                    return list(options)  # Return a copy
+
         return []
 
     async def format_clarification_question(
         self, original_query: str, options: List[Dict[str, str]]
     ) -> str:
         """
-        明確化の質問文をフォーマット
+        LLM呼出しで自然な質問文を生成（フォールバック付き）
 
         Args:
             original_query: 元の質問
@@ -224,65 +258,93 @@ class ClarificationAgent:
 
         Returns:
             フォーマットされた質問文
-            例: "「カフェ」について聞きたいことは、Engineer Cafe本郷ですか？それともEngineer Cafe秋葉原ですか？"
-
-        TODO:
-        - 自然な日本語での質問文生成
-        - 選択肢の埋め込み
-        - 感情タグの設定
         """
-        logger.info(f"質問文フォーマット（骨組み）: {original_query}")
+        logger.info(f"質問文フォーマット: {original_query}")
 
-        # TODO: 実装
-        # プレースホルダー
-        return "申し訳ありません。もう少し詳しく教えていただけますか？"
+        if not options:
+            return "申し訳ありません。もう少し詳しく教えていただけますか？"
+
+        # テンプレートフォールバック用
+        options_text = "\n".join(f"{i+1}. {opt['label']}" for i, opt in enumerate(options))
+        fallback_question = (
+            f"「{original_query}」について、以下のどちらについてお聞きですか？\n{options_text}"
+        )
+
+        try:
+            prompt = (
+                f"ユーザーが「{original_query}」と質問しました。\n"
+                f"以下の選択肢から選んでもらう質問文を、自然な日本語で生成してください。\n"
+                f"選択肢:\n{options_text}\n\n"
+                f"注意: 質問文のみを出力してください。余計な説明は不要です。"
+            )
+
+            messages = [
+                SystemMessage(
+                    content="あなたはエンジニアカフェの受付AIアシスタントです。丁寧で親しみやすい質問文を生成してください。"
+                ),
+                HumanMessage(content=prompt),
+            ]
+
+            response: str = await self.llm.generate(
+                messages=messages,
+                config=self.model_config,
+            )
+
+            if response and len(response.strip()) > 0:
+                return response.strip()
+
+        except Exception as e:
+            logger.warning(f"LLM質問文生成失敗、フォールバック使用: {e}")
+
+        return fallback_question
 
     async def process(self, query: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         明確化処理のメインエントリーポイント
 
+        detect_ambiguity → generate_options → format_question のパイプライン
+
         Args:
             query: ユーザーの質問
-            context: コンテキスト情報（オプショナル）
+            context: コンテキスト情報
 
         Returns:
-            処理結果
             {
                 "needs_clarification": bool,
                 "clarification_question": str,
                 "options": List[Dict[str, str]],
                 "emotion": str
             }
-
-        TODO:
-        - 曖昧さ検出 → 選択肢生成 → 質問文フォーマットの統合
-        - エラーハンドリング
-        - ログ出力
         """
-        logger.info(f"ClarificationAgent処理開始（骨組み）: {query}")
+        logger.info(f"ClarificationAgent処理開始: {query}")
 
         try:
-            # TODO: 実装
             # 1. 曖昧さ検出
             needs_clarification = await self.detect_ambiguity(query, context)
 
-            # 2. 明確化が必要な場合、選択肢を生成
-            options = []
-            clarification_question = ""
-            if needs_clarification:
-                options = await self.generate_clarification_options(query, context)
-                clarification_question = await self.format_clarification_question(query, options)
+            if not needs_clarification:
+                return {
+                    "needs_clarification": False,
+                    "clarification_question": "",
+                    "options": [],
+                    "emotion": "neutral",
+                }
+
+            # 2. 選択肢生成
+            options = await self.generate_clarification_options(query, context)
+
+            # 3. 質問文フォーマット
+            clarification_question = await self.format_clarification_question(query, options)
 
             return {
-                "needs_clarification": needs_clarification,
+                "needs_clarification": True,
                 "clarification_question": clarification_question,
                 "options": options,
-                "emotion": "neutral",  # TODO: 適切な感情タグ
+                "emotion": "surprised",
             }
 
         except Exception as e:
-            logger.error(f"ClarificationAgent処理エラー（骨組み）: {e}", exc_info=True)
-            # TODO: エラーハンドリング
+            logger.error(f"ClarificationAgent処理エラー: {e}", exc_info=True)
             return {
                 "needs_clarification": False,
                 "clarification_question": "",
