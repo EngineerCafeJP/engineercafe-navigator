@@ -91,9 +91,7 @@ class TestMemoryAgent:
         agent = MemoryAgent.__new__(MemoryAgent)
 
         context = {"context_string": "ユーザー: 営業時間は？\nアシスタント: 9時から22時です。"}
-        prompt = agent.build_memory_prompt(
-            "何を聞いた？", context, "question_history", "ja"
-        )
+        prompt = agent.build_memory_prompt("何を聞いた？", context, "question_history", "ja")
 
         assert "エンジニアカフェのアシスタント" in prompt
         assert "過去に何を質問したか" in prompt
@@ -104,9 +102,7 @@ class TestMemoryAgent:
         agent = MemoryAgent.__new__(MemoryAgent)
 
         context = {"context_string": "User: What are the hours?\nAssistant: 9am to 10pm."}
-        prompt = agent.build_memory_prompt(
-            "What did I ask?", context, "question_history", "en"
-        )
+        prompt = agent.build_memory_prompt("What did I ask?", context, "question_history", "en")
 
         assert "Engineer Cafe assistant" in prompt
         assert "previous questions" in prompt
@@ -216,17 +212,13 @@ class TestMemoryAgent:
     @pytest.mark.asyncio
     @patch("backend.agents.memory_agent.get_llm_provider")
     @patch("backend.agents.memory_agent.get_model_config")
-    async def test_process_memory_query_no_memory_system(
-        self, mock_get_config, mock_get_provider
-    ):
+    async def test_process_memory_query_no_memory_system(self, mock_get_config, mock_get_provider):
         """メモリシステムなしでのクエリ処理"""
         mock_get_config.return_value = Mock()
         mock_get_provider.return_value = Mock()
 
         agent = MemoryAgent(memory_system=None)
-        result = await agent.process_memory_query(
-            "何を聞いた？", "test-session", "ja"
-        )
+        result = await agent.process_memory_query("何を聞いた？", "test-session", "ja")
 
         assert result["metadata"]["status"] == "memory_unavailable"
         assert result["emotion"] == "sad"
@@ -234,9 +226,7 @@ class TestMemoryAgent:
     @pytest.mark.asyncio
     @patch("backend.agents.memory_agent.get_llm_provider")
     @patch("backend.agents.memory_agent.get_model_config")
-    async def test_process_memory_query_no_history(
-        self, mock_get_config, mock_get_provider
-    ):
+    async def test_process_memory_query_no_history(self, mock_get_config, mock_get_provider):
         """履歴なしでのクエリ処理"""
         mock_get_config.return_value = Mock()
         mock_get_provider.return_value = Mock()
@@ -251,9 +241,7 @@ class TestMemoryAgent:
         )
 
         agent = MemoryAgent(memory_system=mock_memory)
-        result = await agent.process_memory_query(
-            "何を聞いた？", "test-session", "ja"
-        )
+        result = await agent.process_memory_query("何を聞いた？", "test-session", "ja")
 
         assert result["metadata"]["status"] == "no_history"
         assert result["emotion"] == "sad"
@@ -261,9 +249,7 @@ class TestMemoryAgent:
     @pytest.mark.asyncio
     @patch("backend.agents.memory_agent.get_llm_provider")
     @patch("backend.agents.memory_agent.get_model_config")
-    async def test_process_memory_query_success(
-        self, mock_get_config, mock_get_provider
-    ):
+    async def test_process_memory_query_success(self, mock_get_config, mock_get_provider):
         """成功時のクエリ処理"""
         mock_config = Mock()
         mock_get_config.return_value = mock_config
@@ -285,9 +271,7 @@ class TestMemoryAgent:
         )
 
         agent = MemoryAgent(memory_system=mock_memory)
-        result = await agent.process_memory_query(
-            "何を聞いた？", "test-session", "ja"
-        )
+        result = await agent.process_memory_query("何を聞いた？", "test-session", "ja")
 
         assert result["metadata"]["status"] == "success"
         assert result["metadata"]["query_type"] == "question_history"
@@ -297,9 +281,7 @@ class TestMemoryAgent:
     @pytest.mark.asyncio
     @patch("backend.agents.memory_agent.get_llm_provider")
     @patch("backend.agents.memory_agent.get_model_config")
-    async def test_generate_response_no_provider(
-        self, mock_get_config, mock_get_provider
-    ):
+    async def test_generate_response_no_provider(self, mock_get_config, mock_get_provider):
         """プロバイダーなしでの回答生成"""
         mock_get_config.return_value = Mock()
         mock_get_provider.side_effect = ValueError("No API key")
@@ -312,9 +294,7 @@ class TestMemoryAgent:
     @pytest.mark.asyncio
     @patch("backend.agents.memory_agent.get_llm_provider")
     @patch("backend.agents.memory_agent.get_model_config")
-    async def test_generate_response_error(
-        self, mock_get_config, mock_get_provider
-    ):
+    async def test_generate_response_error(self, mock_get_config, mock_get_provider):
         """回答生成エラー"""
         mock_config = Mock()
         mock_get_config.return_value = mock_config
