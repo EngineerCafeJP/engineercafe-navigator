@@ -1,5 +1,5 @@
 {
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "ルーティングテストケース - マルチエージェントシステム用（実データ版）",
   "created_at": "2026-02-07",
   "source": "docs/reference/engineer-cafe-reference.md",
@@ -276,6 +276,60 @@
       "language": "ja",
       "tags": ["business_info", "community"],
       "note": "2021年発足の会員制開発コミュニティ"
+    },
+    {
+      "id": "rt-033",
+      "query": "近くに駐車場はありますか？",
+      "expected_agent": "facility",
+      "expected_category": "facility-info",
+      "language": "ja",
+      "tags": ["fast-path", "facility", "parking"],
+      "note": "専用駐車場なし、近隣コインパーキング利用"
+    },
+    {
+      "id": "rt-034",
+      "query": "自転車で来たのですが駐輪場はありますか？",
+      "expected_agent": "facility",
+      "expected_category": "facility-info",
+      "language": "ja",
+      "tags": ["fast-path", "facility", "bicycle"],
+      "note": "専用駐輪場なし、近隣公共駐輪場利用"
+    },
+    {
+      "id": "rt-035",
+      "query": "タバコを吸える場所はありますか？",
+      "expected_agent": "facility",
+      "expected_category": "facility-info",
+      "language": "ja",
+      "tags": ["fast-path", "facility", "smoking"],
+      "note": "全館禁煙"
+    },
+    {
+      "id": "rt-036",
+      "query": "お弁当を持ち込んで食べてもいいですか？",
+      "expected_agent": "facility",
+      "expected_category": "facility-info",
+      "language": "ja",
+      "tags": ["fast-path", "facility", "food_drink"],
+      "note": "1階は飲食可、ゴミは持ち帰り"
+    },
+    {
+      "id": "rt-037",
+      "query": "Is there parking available nearby?",
+      "expected_agent": "facility",
+      "expected_category": "facility-info",
+      "language": "en",
+      "tags": ["facility", "parking", "english"],
+      "note": "No dedicated parking, use nearby coin parking"
+    },
+    {
+      "id": "rt-038",
+      "query": "Can I bring my own food and drinks?",
+      "expected_agent": "facility",
+      "expected_category": "facility-info",
+      "language": "en",
+      "tags": ["facility", "food_drink", "english"],
+      "note": "Food allowed on 1st floor, take your trash with you"
     }
   ]
 }

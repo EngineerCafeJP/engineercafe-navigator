@@ -5,7 +5,7 @@ Connpass API v2連携によるイベント情報取得
 
 import os
 from datetime import datetime, timedelta
-from typing import List, Dict, Optional, Literal
+from typing import Any, List, Dict, Optional, Literal
 import httpx
 
 
@@ -221,7 +221,8 @@ class ConnpassService:
                     return []
 
                 data = response.json()
-                return data.get("events", [])
+                events: List[Dict[Any, Any]] = data.get("events", [])
+                return events
 
         except Exception as e:
             print(f"[ConnpassService] Fetch error: {e}")

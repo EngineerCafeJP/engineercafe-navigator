@@ -226,19 +226,27 @@ class TestOrchestratorIntegration:
 
         mock_orchestrator_class.return_value = AsyncMock()
 
-        workflow = MainWorkflow()
+        with patch(
+            "backend.utils.memory_helper.get_memory_helper"
+        ) as mock_get_helper:
+            mock_helper = AsyncMock()
+            mock_helper.store_message = AsyncMock()
+            mock_get_helper.return_value = mock_helper
 
-        state = {
-            "query": "営業時間は？",
-            "answer": "9時から22時です。",
-        }
+            workflow = MainWorkflow()
 
-        result = workflow._format_response_node(state)
+            state = {
+                "query": "営業時間は？",
+                "answer": "9時から22時です。",
+                "session_id": "test-session",
+            }
 
-        assert "messages" in result
-        assert len(result["messages"]) == 2
-        assert result["messages"][0].content == "営業時間は？"
-        assert result["messages"][1].content == "9時から22時です。"
+            result = await workflow._format_response_node(state)
+
+            assert "messages" in result
+            assert len(result["messages"]) == 2
+            assert result["messages"][0].content == "営業時間は？"
+            assert result["messages"][1].content == "9時から22時です。"
 
 
 class TestAsyncWorkflowMethods:
@@ -280,3 +288,141 @@ class TestAsyncWorkflowMethods:
         await workflow.close()
 
         mock_orchestrator.close.assert_called_once()
+
+
+class TestStoreMessageIntegration:
+    """store_message統合テスト"""
+
+    @pytest.mark.asyncio
+    @patch("backend.workflows.main_workflow.OrchestratorAgent")
+    async def test_memory_loader_stores_user_message(self, mock_orchestrator_class):
+        """memory_loader_nodeがユーザーメッセージをstore_message()で保存することを確認"""
+        from backend.workflows.main_workflow import MainWorkflow
+
+        # OrchestratorAgentのモック
+        mock_orchestrator = AsyncMock()
+        mock_orchestrator_class.return_value = mock_orchestrator
+
+        with patch(
+            "backend.utils.memory_helper.get_memory_helper"
+        ) as mock_get_helper:
+            mock_helper = AsyncMock()
+            mock_helper.get_context = AsyncMock(
+                return_value={
+                    "recent_messages": [],
+                    "context_string": "",
+                }
+            )
+            mock_helper.store_message = AsyncMock()
+            mock_get_helper.return_value = mock_helper
+
+            workflow = MainWorkflow()
+
+            state = {
+                "query": "営業時間は？",
+                "session_id": "test-session-123",
+                "language": "ja",
+                "context": {},
+            }
+
+            await workflow._memory_loader_node(state)
+
+            # store_messageが正しい引数で呼ばれたことを確認
+            mock_helper.store_message.assert_called_once_with(
+                session_id="test-session-123",
+                role="user",
+                content="営業時間は？",
+            )
+
+    @pytest.mark.asyncio
+    @patch("backend.workflows.main_workflow.OrchestratorAgent")
+    async def test_format_response_stores_assistant_message(
+        self, mock_orchestrator_class
+    ):
+        """format_response_nodeがアシスタント応答をstore_message()で保存することを確認"""
+        from backend.workflows.main_workflow import MainWorkflow
+
+        mock_orchestrator_class.return_value = AsyncMock()
+
+        with patch(
+            "backend.utils.memory_helper.get_memory_helper"
+        ) as mock_get_helper:
+            mock_helper = AsyncMock()
+            mock_helper.store_message = AsyncMock()
+            mock_get_helper.return_value = mock_helper
+
+            workflow = MainWorkflow()
+
+            state = {
+                "query": "営業時間は？",
+                "answer": "9時から22時までです。",
+                "session_id": "test-session-456",
+                "emotion": "neutral",
+                "routing": {},
+            }
+
+            await workflow._format_response_node(state)
+
+            # store_messageが正しい引数で呼ばれたことを確認
+            mock_helper.store_message.assert_called_once_with(
+                session_id="test-session-456",
+                role="assistant",
+                content="9時から22時までです。",
+            )
+
+    @pytest.mark.asyncio
+    @patch("backend.workflows.main_workflow.OrchestratorAgent")
+    async def test_store_message_failure_does_not_break_workflow(
+        self, mock_orchestrator_class
+    ):
+        """store_message()が失敗してもワークフローは正常に継続することを確認"""
+        from backend.workflows.main_workflow import MainWorkflow
+
+        mock_orchestrator = AsyncMock()
+        mock_orchestrator_class.return_value = mock_orchestrator
+
+        with patch(
+            "backend.utils.memory_helper.get_memory_helper"
+        ) as mock_get_helper:
+            mock_helper = AsyncMock()
+            # get_contextは正常に動作
+            mock_helper.get_context = AsyncMock(
+                return_value={
+                    "recent_messages": [],
+                    "context_string": "",
+                }
+            )
+            # store_messageは例外を投げる
+            mock_helper.store_message = AsyncMock(
+                side_effect=Exception("DB connection error")
+            )
+            mock_get_helper.return_value = mock_helper
+
+            workflow = MainWorkflow()
+
+            # memory_loader_nodeのテスト
+            state_loader = {
+                "query": "営業時間は？",
+                "session_id": "test-session-789",
+                "language": "ja",
+                "context": {},
+            }
+
+            result_loader = await workflow._memory_loader_node(state_loader)
+
+            # 例外が投げられても正常に結果が返ることを確認
+            assert "context" in result_loader
+            assert "memory" in result_loader["context"]
+
+            # format_response_nodeのテスト
+            state_format = {
+                "query": "営業時間は？",
+                "answer": "9時から22時までです。",
+                "session_id": "test-session-789",
+            }
+
+            result_format = await workflow._format_response_node(state_format)
+
+            # 例外が投げられても正常に結果が返ることを確認
+            assert "messages" in result_format
+            assert len(result_format["messages"]) == 2

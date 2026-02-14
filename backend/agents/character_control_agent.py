@@ -35,17 +35,16 @@ from typing import Dict, Any, Optional, List, Tuple
 logger = logging.getLogger(__name__)
 
 try:
-    import numpy as np
-    import scipy.signal
+    import numpy as np  # noqa: E402
     AUDIO_ANALYSIS_AVAILABLE = True
 except ImportError:
     AUDIO_ANALYSIS_AVAILABLE = False
     logger.warning(
-        "numpy or scipy not available. Audio-based lip sync will be disabled."
+        "numpy not available. Audio-based lip sync will be disabled."
     )
 
-from backend.utils.emotion_mapping import EmotionMapping, SupportedExpression
-from backend.utils.kanji_converter import KanjiConverter
+from backend.utils.emotion_mapping import EmotionMapping  # noqa: E402
+from backend.utils.kanji_converter import KanjiConverter  # noqa: E402
 
 # TODO: 実装時に必要なインポート
 # from llm.openrouter import OpenRouterProvider
@@ -350,7 +349,6 @@ class CharacterControlAgent:
         step = max(1, len(frame_data) // sample_points)
         sampled = frame_data[::step][:sample_points]
 
-        avg_value = np.mean(np.abs(sampled))
         variance = np.var(np.abs(sampled))
 
         # 簡易的なヒューリスティック

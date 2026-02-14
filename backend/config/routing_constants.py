@@ -284,6 +284,52 @@ OTHER_ONE_PATTERNS = [
     "the alternative",
 ]
 
+PARKING_KEYWORDS = [
+    "駐車場",
+    "駐車",
+    "パーキング",
+    "車を停め",
+    "車を止め",
+    "parking",
+    "park",
+    "car park",
+]
+
+BICYCLE_KEYWORDS = [
+    "駐輪場",
+    "駐輪",
+    "自転車",
+    "バイク置き場",
+    "bicycle",
+    "bike parking",
+    "cycle",
+]
+
+SMOKING_KEYWORDS = [
+    "喫煙",
+    "タバコ",
+    "たばこ",
+    "煙草",
+    "禁煙",
+    "smoking",
+    "cigarette",
+    "smoke",
+]
+
+FOOD_DRINK_KEYWORDS = [
+    "飲食",
+    "食べ物",
+    "飲み物",
+    "持ち込み",
+    "食事",
+    "ドリンク",
+    "food",
+    "drink",
+    "beverage",
+    "eating",
+    "bring food",
+]
+
 BOOKING_KEYWORDS = [
     "予約",
     "booking",
@@ -338,6 +384,10 @@ CATEGORY_TO_AGENT_MAP: Dict[str, AgentNodeName] = {
     "facilities": "facility",
     "access": "facility",
     "hours": "business_info",
+    "parking": "facility",
+    "bicycle": "facility",
+    "smoking": "facility",
+    "food_drink": "facility",
 }
 
 
@@ -384,6 +434,16 @@ def extract_request_type(query: str) -> Optional[str]:
         return "access"
     if match_keywords(lower_query, BUILDING_KEYWORDS):
         return "building"
+    # 新しいキーワード（bicycle, parking, smoking, food_drink）を LOCATION_KEYWORDS より優先
+    # Note: "bicycle parking" のような複合語では bicycle を優先するため、bicycleを先にチェック
+    if match_keywords(lower_query, BICYCLE_KEYWORDS):
+        return "bicycle"
+    if match_keywords(lower_query, PARKING_KEYWORDS):
+        return "parking"
+    if match_keywords(lower_query, SMOKING_KEYWORDS):
+        return "smoking"
+    if match_keywords(lower_query, FOOD_DRINK_KEYWORDS):
+        return "food_drink"
     if match_keywords(lower_query, LOCATION_KEYWORDS):
         return "location"
     if match_keywords(lower_query, BOOKING_KEYWORDS):

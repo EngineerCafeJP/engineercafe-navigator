@@ -25,8 +25,8 @@ sys.path.insert(0, str(backend_root))
 parent_root = backend_root.parent
 sys.path.insert(0, str(parent_root))
 
-from tests.fixtures.dataset_loader import DatasetLoader
-from tests.utils.evaluators.routing_accuracy import (
+from tests.fixtures.dataset_loader import DatasetLoader  # noqa: E402
+from tests.utils.evaluators.routing_accuracy import (  # noqa: E402
     RoutingAccuracyEvaluator,
     RoutingResult,
     RoutingTestCase,
@@ -56,7 +56,7 @@ async def evaluate_with_orchestrator(
     total = len(cases_to_test)
 
     print(f"\n{'='*60}")
-    print(f"OrchestratorAgent ルーティング評価")
+    print("OrchestratorAgent ルーティング評価")
     print(f"テストケース数: {total}")
     print(f"{'='*60}\n")
 

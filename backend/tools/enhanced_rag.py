@@ -1,12 +1,15 @@
 """
 Enhanced RAG Search Tool
-Supabase + OpenAI Embeddings統合による高精度RAG検索
+Supabase + OpenRouter Embeddings統合による高精度RAG検索
 """
 
 import os
 from typing import List, Dict, Optional
 import httpx
+import logging
 from supabase import create_client, Client
+
+logger = logging.getLogger(__name__)
 
 
 class EnhancedRAGSearch:
@@ -18,7 +21,7 @@ class EnhancedRAGSearch:
             os.getenv("SUPABASE_URL", ""),
             os.getenv("SUPABASE_KEY", ""),
         )
-        self.openai_api_key = os.getenv("OPENAI_API_KEY", "")
+        self.api_key = os.getenv("OPENROUTER_API_KEY", "")
 
     async def search(
         self,
@@ -42,8 +45,8 @@ class EnhancedRAGSearch:
             検索結果辞書 {success, data: {context, results, totalResults, topEntity}}
         """
         try:
-            print(f"[EnhancedRAGSearch] Starting search with query: {query}")
-            print(f"[EnhancedRAGSearch] Category: {category}, Language: {language}")
+            logger.info(f"Starting search with query: {query[:50]}")
+            logger.debug(f"Category: {category}, Language: {language}")
 
             # 1. OpenAI Embeddings APIでクエリをエンベディング化
             embedding = await self._generate_embedding(query)
@@ -70,13 +73,19 @@ class EnhancedRAGSearch:
                 }
 
             # 3. エンティティ認識とスコアリング
-            scored_results = self._score_results(search_results.data, query, category, language)
+            results_list: List[Dict] = (
+                list(search_results.data) if isinstance(search_results.data, list) else []
+            )
+            scored_results = self._score_results(results_list, query, category, language)
+
+            # 3.5. 品質グレーディング（軽量CRAG）
+            scored_results = self._grade_result_relevance(scored_results, query)
 
             # 4. トップ結果を取得
             top_results = scored_results[:max_results]
 
-            print(
-                f"[EnhancedRAGSearch] Top results after scoring: {[{'title': r.get('title'), 'entity': r.get('entity'), 'priority_score': r.get('priority_score')} for r in top_results]}"
+            logger.debug(
+                f"Top results after scoring: {[{'title': r.get('title'), 'entity': r.get('entity'), 'priority_score': r.get('priority_score')} for r in top_results]}"
             )
 
             # 5. コンテキストを構築
@@ -101,27 +110,33 @@ class EnhancedRAGSearch:
             }
 
         except Exception as e:
-            print(f"[EnhancedRAGSearch] Error: {e}")
+            logger.error(f"Search error: {e}")
             return {"success": False, "error": str(e)}
 
     async def _generate_embedding(self, text: str) -> List[float]:
-        """OpenAI APIでエンベディングを生成"""
+        """OpenRouter API経由でエンベディングを生成（openai/text-embedding-3-small, 1536d）"""
+        if not self.api_key:
+            logger.warning("OPENROUTER_API_KEY not set, skipping embedding generation")
+            return []
+
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                "https://api.openai.com/v1/embeddings",
+                "https://openrouter.ai/api/v1/embeddings",
                 headers={
-                    "Authorization": f"Bearer {self.openai_api_key}",
+                    "Authorization": f"Bearer {self.api_key}",
                     "Content-Type": "application/json",
                 },
-                json={"model": "text-embedding-3-small", "input": text},
+                json={"model": "openai/text-embedding-3-small", "input": text},
                 timeout=30.0,
             )
 
             if response.status_code != 200:
-                raise Exception(f"Embedding API error: {response.text}")
+                logger.error(f"Embedding API error: status={response.status_code}")
+                return []
 
             data = response.json()
-            return data["data"][0]["embedding"]
+            embedding: List[float] = data["data"][0]["embedding"]
+            return embedding
 
     def _score_results(
         self, results: List[Dict], query: str, category: str, language: str
@@ -162,17 +177,115 @@ class EnhancedRAGSearch:
 
         return scored_results
 
+    def _grade_result_relevance(self, scored_results: List[Dict], query: str) -> List[Dict]:
+        """スコアリング済み結果の品質グレーディング（軽量CRAG）
+
+        priority_scoreとクエリ用語マッチ率を基に、低品質な結果を除外する。
+
+        Grading criteria:
+        - HIGH (priority_score >= 0.8): 常に保持
+        - MEDIUM (0.6 <= priority_score < 0.8): クエリ用語マッチがある場合保持
+        - LOW (priority_score < 0.6): 除外
+
+        Args:
+            scored_results: _score_results()でスコアリング済みの結果リスト
+            query: 元のクエリ文字列
+
+        Returns:
+            品質フィルタリング済みの結果リスト
+        """
+        if not scored_results:
+            return []
+
+        query_lower = query.lower()
+
+        # Check if query contains CJK characters (Japanese/Chinese/Korean)
+        has_cjk = any(
+            "\u4e00" <= c <= "\u9fff" or "\u3040" <= c <= "\u309f" or "\u30a0" <= c <= "\u30ff"
+            for c in query_lower
+        )
+
+        if has_cjk:
+            # For Japanese: use 2-character sliding window matching
+            query_terms = [query_lower[i : i + 2] for i in range(len(query_lower) - 1)]
+            # Filter out particles and common characters
+            query_terms = [
+                t
+                for t in query_terms
+                if t
+                not in (
+                    "は",
+                    "の",
+                    "が",
+                    "を",
+                    "に",
+                    "で",
+                    "と",
+                    "も",
+                    "か",
+                    "です",
+                    "ます",
+                    "した",
+                    "ません",
+                    "まし",
+                    "ませ",
+                    "ありま",
+                    "りま",
+                )
+            ]
+        else:
+            query_terms = query_lower.split()
+
+        graded_results: List[Dict] = []
+
+        for result in scored_results:
+            score = result.get("priority_score", 0.0)
+
+            # HIGH: 常に保持
+            if score >= 0.8:
+                graded_results.append({**result, "grade": "HIGH"})
+                continue
+
+            # MEDIUM: クエリ用語マッチがある場合保持
+            if score >= 0.6:
+                content = result.get("content", "").lower()
+                title = result.get("title", "").lower()
+                combined = f"{title} {content}"
+
+                # クエリ用語のマッチ率を計算
+                if query_terms:
+                    match_count = sum(1 for term in query_terms if term in combined)
+                    match_ratio = match_count / len(query_terms)
+
+                    if match_ratio > 0.3:  # At least 30% of terms match
+                        graded_results.append({**result, "grade": "MEDIUM"})
+                        continue
+
+            # LOW: 除外（ログに記録）
+            logger.debug(
+                f"Filtered out low-relevance result: "
+                f"title={result.get('title', 'N/A')}, score={score:.3f}"
+            )
+
+        logger.info(
+            f"Grade results: {len(graded_results)}/{len(scored_results)} passed "
+            f"(HIGH: {sum(1 for r in graded_results if r.get('grade') == 'HIGH')}, "
+            f"MEDIUM: {sum(1 for r in graded_results if r.get('grade') == 'MEDIUM')})"
+        )
+
+        return graded_results
+
     def _detect_entity(self, result: Dict) -> str:
         """結果からエンティティを検出"""
-        content = result.get("content", "").lower()
-        title = result.get("title", "").lower()
+        content = str(result.get("content", "")).lower()
+        title = str(result.get("title", "")).lower()
         metadata = result.get("metadata", {})
 
         # メタデータからエンティティを取得
         if metadata and isinstance(metadata, dict):
             entity = metadata.get("entity", "")
-            if entity:
-                return entity
+            if entity and isinstance(entity, str):
+                return str(entity)
 
         # コンテンツからエンティティを推測
         if "engineer cafe" in content or "engineer cafe" in title or "エンジニアカフェ" in content:

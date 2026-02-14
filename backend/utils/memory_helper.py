@@ -8,6 +8,7 @@ Supabase agent_memoryテーブルを使用した3分間TTL付きメモリシス�
 """
 
 import os
+import uuid
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta
 import logging
@@ -136,8 +137,35 @@ class SimplifiedMemoryHelper:
         if inherit_context:
             inherited_request_type = await self.get_previous_request_type(session_id)
 
-        # ナレッジベース検索結果（現在は空、RAG統合時に実装）
+        # ナレッジベース検索
+        include_knowledge_base = options.get("include_knowledge_base", True)
         knowledge_results: List[Dict] = []
+
+        if include_knowledge_base:
+            try:
+                from backend.tools.enhanced_rag import EnhancedRAGSearch
+
+                rag = EnhancedRAGSearch()
+                # extract_request_typeでカテゴリを判定
+                request_type = extract_request_type(query) or "general"
+                rag_result = await rag.search(
+                    query=query,
+                    category=request_type,
+                    language=language,
+                    max_results=5,
+                )
+
+                if rag_result.get("success") and rag_result.get("data", {}).get("results"):
+                    knowledge_results = [
+                        {
+                            "content": r.get("content", ""),
+                            "category": r.get("entity", "general"),
+                        }
+                        for r in rag_result["data"]["results"]
+                    ]
+            except Exception as e:
+                logger.warning(f"Knowledge base search failed: {e}")
+                knowledge_results = []
 
         # コンテキスト文字列のフォーマット
         context_string = self._build_comprehensive_context(
@@ -316,17 +344,21 @@ class SimplifiedMemoryHelper:
             # TTL設定
             expires_at = (datetime.now() + timedelta(seconds=self.ttl_seconds)).isoformat()
 
+            # ユニークなキーを生成（タイムスタンプ + UUID）
+            unique_id = uuid.uuid4().hex[:8]
+            message_key = f"message_{timestamp}_{unique_id}"
+
             # agent_memoryテーブルにINSERT
             self.supabase.table("agent_memory").insert(
                 {
                     "agent_name": self.agent_name,
-                    "key": f"message_{timestamp}",
+                    "key": message_key,
                     "value": message_data,
                     "expires_at": expires_at,
                 }
             ).execute()
 
-            logger.info(f"Stored message with key: message_{timestamp}, expires_at: {expires_at}")
+            logger.info(f"Stored message with key: {message_key}, expires_at: {expires_at}")
 
         except Exception as e:
             logger.error(f"Error storing message: {e}")
