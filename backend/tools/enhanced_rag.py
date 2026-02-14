@@ -5,7 +5,6 @@ Supabase + OpenRouter Embeddings統合による高精度RAG検索
 
 import os
 from typing import List, Dict, Optional
-import httpx
 import logging
 from supabase import create_client, Client
 
@@ -114,29 +113,10 @@ class EnhancedRAGSearch:
             return {"success": False, "error": str(e)}
 
     async def _generate_embedding(self, text: str) -> List[float]:
-        """OpenRouter API経由でエンベディングを生成（openai/text-embedding-3-small, 1536d）"""
-        if not self.api_key:
-            logger.warning("OPENROUTER_API_KEY not set, skipping embedding generation")
-            return []
+        """OpenRouter API経由でエンベディングを生成（共通サービスに委譲）"""
+        from utils.embedding_service import generate_embedding
 
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                "https://openrouter.ai/api/v1/embeddings",
-                headers={
-                    "Authorization": f"Bearer {self.api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={"model": "openai/text-embedding-3-small", "input": text},
-                timeout=30.0,
-            )
-
-            if response.status_code != 200:
-                logger.error(f"Embedding API error: status={response.status_code}")
-                return []
-
-            data = response.json()
-            embedding: List[float] = data["data"][0]["embedding"]
-            return embedding
+        return await generate_embedding(text)
 
     def _score_results(
         self, results: List[Dict], query: str, category: str, language: str
