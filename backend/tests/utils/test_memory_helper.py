@@ -107,7 +107,11 @@ class TestSimplifiedMemoryHelper:
 
         messages = [
             {"role": "user", "content": "営業時間は？", "metadata": {"emotion": "curious"}},
-            {"role": "assistant", "content": "9時から22時です。", "metadata": {"emotion": "helpful"}},
+            {
+                "role": "assistant",
+                "content": "9時から22時です。",
+                "metadata": {"emotion": "helpful"},
+            },
         ]
 
         result = helper._build_comprehensive_context(messages, [], "ja")

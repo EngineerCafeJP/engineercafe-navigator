@@ -174,7 +174,9 @@ class SlideAgent:
         self._set_current_slide(session_id, current - 1)
         return self._handle_narrate_slide(current - 1, language, session_id)
 
-    def _handle_goto_slide(self, target_slide: int, language: str, session_id: str = "default") -> Dict:
+    def _handle_goto_slide(
+        self, target_slide: int, language: str, session_id: str = "default"
+    ) -> Dict:
         """指定スライドへ移動"""
         if target_slide < 1 or target_slide > self.total_slides:
             current = self._get_current_slide(session_id)
@@ -197,7 +199,9 @@ class SlideAgent:
         self._set_current_slide(session_id, target_slide)
         return self._handle_narrate_slide(target_slide, language, session_id)
 
-    def _handle_narrate_slide(self, slide_number: int, language: str, session_id: str = "default") -> Dict:
+    def _handle_narrate_slide(
+        self, slide_number: int, language: str, session_id: str = "default"
+    ) -> Dict:
         """スライドナレーションを取得"""
         slides = self.narration_data.get("slides", [])
 
@@ -235,7 +239,9 @@ class SlideAgent:
             "slideNumber": slide_number,
         }
 
-    async def _handle_slide_question(self, question: str, language: str, session_id: str = "default") -> Dict:
+    async def _handle_slide_question(
+        self, question: str, language: str, session_id: str = "default"
+    ) -> Dict:
         """スライドに関する質問に回答"""
         slides = self.narration_data.get("slides", [])
         current = self._get_current_slide(session_id)

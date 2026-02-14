@@ -30,13 +30,11 @@ class TestMessageContent:
     async def test_cafe_clarification_ja_content(self, agent):
         """カフェ曖昧性解消（日本語）のメッセージ内容を確認"""
         result = await agent.handle_clarification(
-            query="カフェの営業時間は？",
-            category="cafe-clarification-needed",
-            language="ja"
+            query="カフェの営業時間は？", category="cafe-clarification-needed", language="ja"
         )
-        
+
         response = result["response"]
-        
+
         # 必須要素の確認
         assert "エンジニアカフェ" in response
         assert "サイノカフェ" in response
@@ -48,13 +46,11 @@ class TestMessageContent:
     async def test_cafe_clarification_en_content(self, agent):
         """カフェ曖昧性解消（英語）のメッセージ内容を確認"""
         result = await agent.handle_clarification(
-            query="What are the cafe hours?",
-            category="cafe-clarification-needed",
-            language="en"
+            query="What are the cafe hours?", category="cafe-clarification-needed", language="en"
         )
-        
+
         response = result["response"]
-        
+
         # 必須要素の確認
         assert "Engineer Cafe" in response
         assert "Saino Cafe" in response
@@ -68,11 +64,11 @@ class TestMessageContent:
         result = await agent.handle_clarification(
             query="会議室の予約方法は？",
             category="meeting-room-clarification-needed",
-            language="ja"
+            language="ja",
         )
-        
+
         response = result["response"]
-        
+
         # 必須要素の確認
         assert "有料会議室" in response
         assert "地下MTGスペース" in response
@@ -86,11 +82,11 @@ class TestMessageContent:
         result = await agent.handle_clarification(
             query="How do I book a meeting room?",
             category="meeting-room-clarification-needed",
-            language="en"
+            language="en",
         )
-        
+
         response = result["response"]
-        
+
         # 必須要素の確認
         assert "Paid Meeting Rooms" in response
         assert "Basement Meeting Spaces" in response
@@ -110,22 +106,25 @@ class TestClarificationIntegration:
         # RouterAgentをモック（sys.modulesに登録してからインポート）
         mock_router_agent_class = MagicMock()
         mock_router_agent_instance = Mock()
-        mock_router_agent_instance.route_query = AsyncMock(return_value=Mock(
-            agent="ClarificationAgent",
-            category="cafe-clarification-needed",
-            request_type=None,
-            language="ja",
-            confidence=0.9,
-            debug_info={}
-        ))
+        mock_router_agent_instance.route_query = AsyncMock(
+            return_value=Mock(
+                agent="ClarificationAgent",
+                category="cafe-clarification-needed",
+                request_type=None,
+                language="ja",
+                confidence=0.9,
+                debug_info={},
+            )
+        )
         mock_router_agent_class.return_value = mock_router_agent_instance
-        
+
         # sys.modulesにモックを登録（インポート前に）
-        sys.modules['backend.agents.router_agent'] = MagicMock()
-        sys.modules['backend.agents.router_agent'].RouterAgent = mock_router_agent_class
-        
+        sys.modules["backend.agents.router_agent"] = MagicMock()
+        sys.modules["backend.agents.router_agent"].RouterAgent = mock_router_agent_class
+
         # これでMainWorkflowをインポートできる
         from backend.workflows.main_workflow import MainWorkflow
+
         self.workflow = MainWorkflow()
         # モックをインスタンスに設定
         self.workflow.router_agent = mock_router_agent_instance
@@ -137,17 +136,17 @@ class TestClarificationIntegration:
             {
                 "query": "カフェの営業時間は？",
                 "expected_category": "cafe-clarification-needed",
-                "language": "ja"
+                "language": "ja",
             },
             {
                 "query": "会議室の予約方法は？",
                 "expected_category": "meeting-room-clarification-needed",
-                "language": "ja"
+                "language": "ja",
             },
             {
                 "query": "What are the cafe hours?",
                 "expected_category": "cafe-clarification-needed",
-                "language": "en"
+                "language": "en",
             },
         ]
 
@@ -165,27 +164,26 @@ class TestClarificationIntegration:
                 "routing": {
                     "category": case["expected_category"],
                 },
-                "metadata": {
-                    "routing": {
-                        "category": case["expected_category"]
-                    }
-                },
+                "metadata": {"routing": {"category": case["expected_category"]}},
                 "context": {},
             }
-            
+
             # Clarificationノードを直接呼び出し（awaitが必要）
             result = await self.workflow._clarification_node(state)
-            
+
             # 基本アサーション
             assert result["answer"] is not None
             assert result["emotion"] == "surprised"
-            
+
             # メタデータ構造の確認（実装に合わせて修正）
             assert "clarification" in result["metadata"]
             assert result["metadata"]["clarification"]["agent"] == "ClarificationAgent"
             assert result["metadata"]["requires_followup"] is True
-            assert result["metadata"]["clarification"]["clarification_type"] == case["expected_category"]
-            
+            assert (
+                result["metadata"]["clarification"]["clarification_type"]
+                == case["expected_category"]
+            )
+
             # 感情タグが付与されていることを確認
             assert "[surprised]" in result["answer"]
 
@@ -193,16 +191,14 @@ class TestClarificationIntegration:
     async def test_full_workflow_with_clarification(self):
         """Clarificationを含む完全なワークフローのテスト（モック版）"""
         # Router AgentがClarificationAgentにルーティングする想定
-        result = await self.workflow.ainvoke({
-            "query": "カフェの営業時間は？",
-            "session_id": "test_session",
-            "language": "ja"
-        })
-        
+        result = await self.workflow.ainvoke(
+            {"query": "カフェの営業時間は？", "session_id": "test_session", "language": "ja"}
+        )
+
         # Router Agentが正しくClarificationAgentにルーティングすることを確認
         # （Router Agentの実装に依存）
         assert result["answer"] is not None
-        
+
         # ClarificationAgentにルーティングされた場合のみ確認
         if result["metadata"].get("routing", {}).get("agent") == "ClarificationAgent":
             assert "[surprised]" in result["answer"]
@@ -224,20 +220,19 @@ class TestClarificationIntegration:
             "routing": {
                 "category": "unknown-category",
             },
-            "metadata": {
-                "routing": {
-                    "category": "unknown-category"
-                }
-            },
+            "metadata": {"routing": {"category": "unknown-category"}},
             "context": {},
         }
-        
+
         result = await self.workflow._clarification_node(state)
-        
+
         # general-clarification-neededにフォールバックされることを確認
         assert result["answer"] is not None
         assert result["emotion"] == "surprised"
-        assert result["metadata"]["clarification"]["clarification_type"] == "general-clarification-needed"
+        assert (
+            result["metadata"]["clarification"]["clarification_type"]
+            == "general-clarification-needed"
+        )
         assert result["metadata"]["clarification"]["category"] == "general-clarification-needed"
         assert result["metadata"]["clarification"]["confidence"] == 0.7  # generalは0.7
 
@@ -255,13 +250,16 @@ class TestClarificationIntegration:
             "metadata": {},  # routing情報がない（トップレベルのroutingもない）
             "context": {},
         }
-        
+
         result = await self.workflow._clarification_node(state)
-        
+
         # general-clarification-neededにフォールバックされることを確認
         assert result["answer"] is not None
         assert result["emotion"] == "surprised"
-        assert result["metadata"]["clarification"]["clarification_type"] == "general-clarification-needed"
+        assert (
+            result["metadata"]["clarification"]["clarification_type"]
+            == "general-clarification-needed"
+        )
 
     @pytest.mark.asyncio
     async def test_clarification_empty_category(self):
@@ -277,20 +275,20 @@ class TestClarificationIntegration:
             "routing": {
                 "category": "",
             },
-            "metadata": {
-                "routing": {
-                    "category": ""
-                }
-            },
+            "metadata": {"routing": {"category": ""}},
             "context": {},
         }
-        
+
         result = await self.workflow._clarification_node(state)
-        
+
         # general-clarification-neededにフォールバックされることを確認
         assert result["answer"] is not None
         assert result["emotion"] == "surprised"
-        assert result["metadata"]["clarification"]["clarification_type"] == "general-clarification-needed"
+        assert (
+            result["metadata"]["clarification"]["clarification_type"]
+            == "general-clarification-needed"
+        )
+
 
 # ============================================================================
 # E2Eテスト（RouterAgent実装後に有効化）

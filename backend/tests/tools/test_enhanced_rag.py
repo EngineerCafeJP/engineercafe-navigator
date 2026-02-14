@@ -22,9 +22,7 @@ class TestEnhancedRAGSearch:
         # httpxのモック
         mock_response = Mock()
         mock_response.status_code = 200
-        mock_response.json.return_value = {
-            "data": [{"embedding": [0.1] * 1536}]
-        }
+        mock_response.json.return_value = {"data": [{"embedding": [0.1] * 1536}]}
 
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
@@ -61,8 +59,18 @@ class TestRAGQualityGrading:
     def test_high_score_results_kept(self):
         """priority_score >= 0.8の結果は常に保持されることを確認"""
         scored_results = [
-            {"title": "料金情報", "content": "無料です", "priority_score": 0.9, "entity": "engineer-cafe"},
-            {"title": "営業時間", "content": "9-22時", "priority_score": 0.85, "entity": "engineer-cafe"},
+            {
+                "title": "料金情報",
+                "content": "無料です",
+                "priority_score": 0.9,
+                "entity": "engineer-cafe",
+            },
+            {
+                "title": "営業時間",
+                "content": "9-22時",
+                "priority_score": 0.85,
+                "entity": "engineer-cafe",
+            },
         ]
 
         graded = self.rag._grade_result_relevance(scored_results, "料金はいくら")
@@ -73,9 +81,24 @@ class TestRAGQualityGrading:
     def test_low_score_results_filtered(self):
         """priority_score < 0.6の結果は除外されることを確認"""
         scored_results = [
-            {"title": "高スコア", "content": "料金は無料", "priority_score": 0.9, "entity": "engineer-cafe"},
-            {"title": "低スコア", "content": "関係ない情報", "priority_score": 0.4, "entity": "general"},
-            {"title": "もう一つ低い", "content": "全く関係ない", "priority_score": 0.3, "entity": "general"},
+            {
+                "title": "高スコア",
+                "content": "料金は無料",
+                "priority_score": 0.9,
+                "entity": "engineer-cafe",
+            },
+            {
+                "title": "低スコア",
+                "content": "関係ない情報",
+                "priority_score": 0.4,
+                "entity": "general",
+            },
+            {
+                "title": "もう一つ低い",
+                "content": "全く関係ない",
+                "priority_score": 0.3,
+                "entity": "general",
+            },
         ]
 
         graded = self.rag._grade_result_relevance(scored_results, "料金について")
