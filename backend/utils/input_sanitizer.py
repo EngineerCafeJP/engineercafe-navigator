@@ -10,7 +10,6 @@ Note: このモジュールはリーフ依存（他のエージェントモジ�
 import re
 from typing import List
 
-
 MAX_QUERY_LENGTH = 1000
 MAX_CONTEXT_LENGTH = 500
 

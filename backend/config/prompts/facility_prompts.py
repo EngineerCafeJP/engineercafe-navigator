@@ -6,7 +6,6 @@ FacilityAgent用プロンプトテンプレート
 
 from typing import Dict, Optional
 
-
 # クエリ拡張キーワード（requestType別）
 FACILITY_ENHANCEMENT_KEYWORDS: Dict[str, Dict[str, str]] = {
     "wifi": {

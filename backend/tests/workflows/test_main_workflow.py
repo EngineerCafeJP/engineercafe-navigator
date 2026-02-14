@@ -21,9 +21,7 @@ class TestMainWorkflowMemoryIntegration:
         mock_orchestrator = AsyncMock()
         mock_orchestrator_class.return_value = mock_orchestrator
 
-        with patch(
-            "backend.utils.memory_helper.get_memory_helper"
-        ) as mock_get_helper:
+        with patch("backend.utils.memory_helper.get_memory_helper") as mock_get_helper:
             mock_helper = AsyncMock()
             mock_helper.get_context = AsyncMock(
                 return_value={
@@ -61,11 +59,10 @@ class TestMainWorkflowMemoryIntegration:
 
         mock_orchestrator_class.return_value = AsyncMock()
 
-        with patch(
-            "backend.utils.memory_helper.get_memory_helper"
-        ) as mock_get_helper, patch(
-            "backend.agents.memory_agent.MemoryAgent"
-        ) as mock_memory_agent_class:
+        with (
+            patch("backend.utils.memory_helper.get_memory_helper") as mock_get_helper,
+            patch("backend.agents.memory_agent.MemoryAgent") as mock_memory_agent_class,
+        ):
             mock_helper = Mock()
             mock_get_helper.return_value = mock_helper
 
@@ -109,9 +106,7 @@ class TestMainWorkflowMemoryIntegration:
 
         mock_orchestrator_class.return_value = AsyncMock()
 
-        with patch(
-            "backend.utils.memory_helper.get_memory_helper"
-        ) as mock_get_helper:
+        with patch("backend.utils.memory_helper.get_memory_helper") as mock_get_helper:
             mock_helper = AsyncMock()
             mock_helper.get_context = AsyncMock(side_effect=Exception("DB Error"))
             mock_get_helper.return_value = mock_helper
@@ -180,9 +175,7 @@ class TestOrchestratorIntegration:
 
     @pytest.mark.asyncio
     @patch("backend.workflows.main_workflow.OrchestratorAgent")
-    async def test_orchestrator_node_calls_decide_next_agent(
-        self, mock_orchestrator_class
-    ):
+    async def test_orchestrator_node_calls_decide_next_agent(self, mock_orchestrator_class):
         """_orchestrator_nodeがdecide_next_agentを呼び出すことを確認"""
         from backend.workflows.main_workflow import MainWorkflow
         from backend.agents.orchestrator_agent import OrchestratorDecision
@@ -226,9 +219,7 @@ class TestOrchestratorIntegration:
 
         mock_orchestrator_class.return_value = AsyncMock()
 
-        with patch(
-            "backend.utils.memory_helper.get_memory_helper"
-        ) as mock_get_helper:
+        with patch("backend.utils.memory_helper.get_memory_helper") as mock_get_helper:
             mock_helper = AsyncMock()
             mock_helper.store_message = AsyncMock()
             mock_get_helper.return_value = mock_helper
@@ -303,9 +294,7 @@ class TestStoreMessageIntegration:
         mock_orchestrator = AsyncMock()
         mock_orchestrator_class.return_value = mock_orchestrator
 
-        with patch(
-            "backend.utils.memory_helper.get_memory_helper"
-        ) as mock_get_helper:
+        with patch("backend.utils.memory_helper.get_memory_helper") as mock_get_helper:
             mock_helper = AsyncMock()
             mock_helper.get_context = AsyncMock(
                 return_value={
@@ -336,17 +325,13 @@ class TestStoreMessageIntegration:
 
     @pytest.mark.asyncio
     @patch("backend.workflows.main_workflow.OrchestratorAgent")
-    async def test_format_response_stores_assistant_message(
-        self, mock_orchestrator_class
-    ):
+    async def test_format_response_stores_assistant_message(self, mock_orchestrator_class):
         """format_response_nodeがアシスタント応答をstore_message()で保存することを確認"""
         from backend.workflows.main_workflow import MainWorkflow
 
         mock_orchestrator_class.return_value = AsyncMock()
 
-        with patch(
-            "backend.utils.memory_helper.get_memory_helper"
-        ) as mock_get_helper:
+        with patch("backend.utils.memory_helper.get_memory_helper") as mock_get_helper:
             mock_helper = AsyncMock()
             mock_helper.store_message = AsyncMock()
             mock_get_helper.return_value = mock_helper
@@ -372,18 +357,14 @@ class TestStoreMessageIntegration:
 
     @pytest.mark.asyncio
     @patch("backend.workflows.main_workflow.OrchestratorAgent")
-    async def test_store_message_failure_does_not_break_workflow(
-        self, mock_orchestrator_class
-    ):
+    async def test_store_message_failure_does_not_break_workflow(self, mock_orchestrator_class):
         """store_message()が失敗してもワークフローは正常に継続することを確認"""
         from backend.workflows.main_workflow import MainWorkflow
 
         mock_orchestrator = AsyncMock()
         mock_orchestrator_class.return_value = mock_orchestrator
 
-        with patch(
-            "backend.utils.memory_helper.get_memory_helper"
-        ) as mock_get_helper:
+        with patch("backend.utils.memory_helper.get_memory_helper") as mock_get_helper:
             mock_helper = AsyncMock()
             # get_contextは正常に動作
             mock_helper.get_context = AsyncMock(
@@ -393,9 +374,7 @@ class TestStoreMessageIntegration:
                 }
             )
             # store_messageは例外を投げる
-            mock_helper.store_message = AsyncMock(
-                side_effect=Exception("DB connection error")
-            )
+            mock_helper.store_message = AsyncMock(side_effect=Exception("DB connection error"))
             mock_get_helper.return_value = mock_helper
 
             workflow = MainWorkflow()

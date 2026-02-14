@@ -16,51 +16,36 @@ class TestCategoryMessages:
     def agent(self):
         return ClarificationAgent()
 
-    @pytest.mark.parametrize("category,language,expected_keywords", [
-        # カフェの曖昧性解消（日本語）
-        (
-            "cafe-clarification-needed",
-            "ja",
-            ["エンジニアカフェ", "サイノカフェ", "どちらについて"]
-        ),
-        # カフェの曖昧性解消（英語）
-        (
-            "cafe-clarification-needed",
-            "en",
-            ["Engineer Cafe", "Saino Cafe", "which one"]
-        ),
-        # 会議室の曖昧性解消（日本語）
-        (
-            "meeting-room-clarification-needed",
-            "ja",
-            ["有料会議室", "地下MTGスペース", "2種類"]
-        ),
-        # 会議室の曖昧性解消（英語）
-        (
-            "meeting-room-clarification-needed",
-            "en",
-            ["Paid Meeting Rooms", "Basement Meeting Spaces", "two types"]
-        ),
-        # デフォルトの曖昧性解消（日本語）
-        (
-            "general-clarification-needed",
-            "ja",
-            ["もう少し詳しく"]
-        ),
-        # デフォルトの曖昧性解消（英語）
-        (
-            "general-clarification-needed",
-            "en",
-            ["more details"]
-        ),
-    ])
+    @pytest.mark.parametrize(
+        "category,language,expected_keywords",
+        [
+            # カフェの曖昧性解消（日本語）
+            (
+                "cafe-clarification-needed",
+                "ja",
+                ["エンジニアカフェ", "サイノカフェ", "どちらについて"],
+            ),
+            # カフェの曖昧性解消（英語）
+            ("cafe-clarification-needed", "en", ["Engineer Cafe", "Saino Cafe", "which one"]),
+            # 会議室の曖昧性解消（日本語）
+            ("meeting-room-clarification-needed", "ja", ["有料会議室", "地下MTGスペース", "2種類"]),
+            # 会議室の曖昧性解消（英語）
+            (
+                "meeting-room-clarification-needed",
+                "en",
+                ["Paid Meeting Rooms", "Basement Meeting Spaces", "two types"],
+            ),
+            # デフォルトの曖昧性解消（日本語）
+            ("general-clarification-needed", "ja", ["もう少し詳しく"]),
+            # デフォルトの曖昧性解消（英語）
+            ("general-clarification-needed", "en", ["more details"]),
+        ],
+    )
     @pytest.mark.asyncio
     async def test_category_messages(self, agent, category, language, expected_keywords):
         """カテゴリと言語に応じたメッセージが生成されることを確認"""
         result = await agent.handle_clarification(
-            query="test query",
-            category=category,
-            language=language
+            query="test query", category=category, language=language
         )
 
         response = result["response"]
@@ -80,21 +65,22 @@ class TestEmotionTag:
     def agent(self):
         return ClarificationAgent()
 
-    @pytest.mark.parametrize("category,language", [
-        ("cafe-clarification-needed", "ja"),
-        ("cafe-clarification-needed", "en"),
-        ("meeting-room-clarification-needed", "ja"),
-        ("meeting-room-clarification-needed", "en"),
-        ("general-clarification-needed", "ja"),
-        ("general-clarification-needed", "en"),
-    ])
+    @pytest.mark.parametrize(
+        "category,language",
+        [
+            ("cafe-clarification-needed", "ja"),
+            ("cafe-clarification-needed", "en"),
+            ("meeting-room-clarification-needed", "ja"),
+            ("meeting-room-clarification-needed", "en"),
+            ("general-clarification-needed", "ja"),
+            ("general-clarification-needed", "en"),
+        ],
+    )
     @pytest.mark.asyncio
     async def test_emotion_tag_always_surprised(self, agent, category, language):
         """すべての応答に[surprised]タグが付与されることを確認"""
         result = await agent.handle_clarification(
-            query="test query",
-            category=category,
-            language=language
+            query="test query", category=category, language=language
         )
 
         assert result["emotion"] == "surprised"
@@ -108,18 +94,19 @@ class TestMetadata:
     def agent(self):
         return ClarificationAgent()
 
-    @pytest.mark.parametrize("category,expected_confidence", [
-        ("cafe-clarification-needed", 0.9),
-        ("meeting-room-clarification-needed", 0.9),
-        ("general-clarification-needed", 0.7),
-    ])
+    @pytest.mark.parametrize(
+        "category,expected_confidence",
+        [
+            ("cafe-clarification-needed", 0.9),
+            ("meeting-room-clarification-needed", 0.9),
+            ("general-clarification-needed", 0.7),
+        ],
+    )
     @pytest.mark.asyncio
     async def test_metadata_structure(self, agent, category, expected_confidence):
         """メタデータが正しく設定されることを確認"""
         result = await agent.handle_clarification(
-            query="test query",
-            category=category,
-            language="ja"
+            query="test query", category=category, language="ja"
         )
 
         metadata = result["metadata"]
@@ -133,15 +120,11 @@ class TestMetadata:
     async def test_metadata_language(self, agent):
         """メタデータに言語情報が含まれることを確認（必要に応じて）"""
         result_ja = await agent.handle_clarification(
-            query="test",
-            category="cafe-clarification-needed",
-            language="ja"
+            query="test", category="cafe-clarification-needed", language="ja"
         )
 
         result_en = await agent.handle_clarification(
-            query="test",
-            category="cafe-clarification-needed",
-            language="en"
+            query="test", category="cafe-clarification-needed", language="en"
         )
 
         # 言語によってメッセージが異なることを確認
@@ -164,9 +147,7 @@ class TestErrorHandling:
 
         # 正常系のテスト
         result = await agent.handle_clarification(
-            query="test",
-            category="general-clarification-needed",
-            language="ja"
+            query="test", category="general-clarification-needed", language="ja"
         )
 
         assert result["response"] is not None
@@ -180,17 +161,16 @@ class TestErrorHandling:
         # clarification_agentモジュール内のadd_emotion_tagをパッチする
 
         with patch(
-            'backend.agents.clarification_agent.add_emotion_tag',
-            side_effect=Exception("Emotion tagger error")
+            "backend.agents.clarification_agent.add_emotion_tag",
+            side_effect=Exception("Emotion tagger error"),
         ):
 
             # 現在の実装ではエラーハンドリングがないため、例外が発生することを確認
             with pytest.raises(Exception, match="Emotion tagger error"):
                 await agent.handle_clarification(
-                    query="test",
-                    category="cafe-clarification-needed",
-                    language="ja"
+                    query="test", category="cafe-clarification-needed", language="ja"
                 )
+
 
 class TestMessageContent:
     """メッセージ内容の正確性テスト"""
@@ -203,9 +183,7 @@ class TestMessageContent:
     async def test_cafe_clarification_ja_content(self, agent):
         """カフェ曖昧性解消（日本語）のメッセージ内容を確認"""
         result = await agent.handle_clarification(
-            query="カフェの営業時間は？",
-            category="cafe-clarification-needed",
-            language="ja"
+            query="カフェの営業時間は？", category="cafe-clarification-needed", language="ja"
         )
 
         response = result["response"]
@@ -221,9 +199,7 @@ class TestMessageContent:
     async def test_cafe_clarification_en_content(self, agent):
         """カフェ曖昧性解消（英語）のメッセージ内容を確認"""
         result = await agent.handle_clarification(
-            query="What are the cafe hours?",
-            category="cafe-clarification-needed",
-            language="en"
+            query="What are the cafe hours?", category="cafe-clarification-needed", language="en"
         )
 
         response = result["response"]
@@ -241,7 +217,7 @@ class TestMessageContent:
         result = await agent.handle_clarification(
             query="会議室の予約方法は？",
             category="meeting-room-clarification-needed",
-            language="ja"
+            language="ja",
         )
 
         response = result["response"]
@@ -259,7 +235,7 @@ class TestMessageContent:
         result = await agent.handle_clarification(
             query="How do I book a meeting room?",
             category="meeting-room-clarification-needed",
-            language="en"
+            language="en",
         )
 
         response = result["response"]

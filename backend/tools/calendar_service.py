@@ -13,7 +13,6 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Literal, Optional
 import httpx
 
-
 TimeRange = Literal["today", "thisWeek", "nextWeek", "thisMonth"]
 
 
@@ -101,9 +100,7 @@ class CalendarService:
         week_end = week_start + timedelta(days=6, hours=23, minutes=59, seconds=59)
         return (week_start, week_end)
 
-    async def _fetch_ics_events(
-        self, time_min: datetime, time_max: datetime
-    ) -> List[Dict]:
+    async def _fetch_ics_events(self, time_min: datetime, time_max: datetime) -> List[Dict]:
         """
         ICSフィードからイベントを取得
 
@@ -130,14 +127,10 @@ class CalendarService:
                 all_events = self._parse_ics_content(ics_content)
 
                 # 時間範囲でフィルタリング
-                filtered_events = self._filter_events_by_time(
-                    all_events, time_min, time_max
-                )
+                filtered_events = self._filter_events_by_time(all_events, time_min, time_max)
 
                 # 開始日時でソート
-                filtered_events.sort(
-                    key=lambda e: e.get("start") or "", reverse=False
-                )
+                filtered_events.sort(key=lambda e: e.get("start") or "", reverse=False)
 
                 return filtered_events
 

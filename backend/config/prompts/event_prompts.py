@@ -6,7 +6,6 @@ EventAgent用プロンプトテンプレート
 
 from typing import Dict
 
-
 # 時間範囲ラベル
 TIME_RANGE_LABELS: Dict[str, Dict[str, str]] = {
     "today": {"ja": "本日", "en": "today"},

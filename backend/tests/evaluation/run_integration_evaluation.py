@@ -148,7 +148,7 @@ def print_evaluation_report(
         print("言語別精度")
         print(f"{'─'*60}")
         for lang, data in lang_analysis.items():
-            total = data.get('total', data.get('count', 0))
+            total = data.get("total", data.get("count", 0))
             print(f"  {lang}: {data['accuracy']:.2%} ({total}件)")
 
     # タグ別分析
@@ -160,7 +160,7 @@ def print_evaluation_report(
         for tag in ["fast-path", "memory", "facility", "event", "business_info"]:
             if tag in tag_analysis:
                 data = tag_analysis[tag]
-                total = data.get('total', data.get('count', 0))
+                total = data.get("total", data.get("count", 0))
                 print(f"  {tag}: {data['accuracy']:.2%} ({total}件)")
 
     # エラーケース
