@@ -63,6 +63,7 @@ class MainWorkflow:
 
         # SlideAgentをシングルトンインスタンスとして保持
         from backend.agents.slide_agent import SlideAgent
+
         self._slide_agent = SlideAgent()
 
         self.graph = self._build_graph()
@@ -152,9 +153,7 @@ class MainWorkflow:
             logger.warning(f"Memory loading failed: {e}")
             return {"context": {**state.get("context", {}), "memory": {}}}
 
-    async def _orchestrator_node(
-        self, state: WorkflowStateDict
-    ) -> Command[RoutingTarget]:
+    async def _orchestrator_node(self, state: WorkflowStateDict) -> Command[RoutingTarget]:
         """
         オーケストレーターノード（Supervisor）
 
@@ -196,9 +195,7 @@ class MainWorkflow:
         session_id = state.get("session_id", "")
         request_type = state.get("routing", {}).get("request_type")
 
-        result = await agent.answer_business_query(
-            query, request_type, language, session_id
-        )
+        result = await agent.answer_business_query(query, request_type, language, session_id)
 
         return {
             "answer": result.get("answer", ""),
@@ -216,9 +213,7 @@ class MainWorkflow:
         session_id = state.get("session_id", "")
         request_type = state.get("routing", {}).get("request_type")
 
-        result = await agent.answer_facility_query(
-            query, request_type, language, session_id
-        )
+        result = await agent.answer_facility_query(query, request_type, language, session_id)
 
         return {
             "answer": result.get("answer", ""),

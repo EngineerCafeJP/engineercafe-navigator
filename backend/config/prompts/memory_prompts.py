@@ -6,7 +6,6 @@ MemoryAgent用プロンプトテンプレート
 
 from typing import Dict, Any
 
-
 # 質問タイプ別プロンプトテンプレート
 _JA_TEMPLATES: Dict[str, str] = {
     "question_history": (

@@ -225,7 +225,7 @@ def truncate_by_bytes(text: str, max_bytes: int = 5000) -> str:
             if len(parts) > 1:
                 parts.pop()
                 truncated = "。".join(parts).strip()
-                if truncated and not truncated.endswith("。"): 
+                if truncated and not truncated.endswith("。"):
                     truncated += "。"
             else:
                 truncated = truncated[:-10]
@@ -394,14 +394,18 @@ class VoiceAgent:
         cleaned = clean_text_for_tts(parsed.clean_text)
         processed = preprocess_tts(cleaned, language)
 
-        vrm_emotion = map_to_vrm_emotion(emotion) if emotion else (parsed.primary_emotion or "neutral")
+        vrm_emotion = (
+            map_to_vrm_emotion(emotion) if emotion else (parsed.primary_emotion or "neutral")
+        )
         tts_emotion = map_vrm_to_tts_emotion(vrm_emotion)
 
         if len(processed.encode("utf-8")) > 5000:
             processed = truncate_by_bytes(processed, 5000)
 
         try:
-            audio_b64 = await self.tts_client.synthesize_mp3_base64(processed, language, tts_emotion)
+            audio_b64 = await self.tts_client.synthesize_mp3_base64(
+                processed, language, tts_emotion
+            )
             return {
                 "success": True,
                 "audioResponse": audio_b64,

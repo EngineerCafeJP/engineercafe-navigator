@@ -13,18 +13,18 @@ ClarificationAgent などで使用される、シンプルな感情タグ付与�
 def add_emotion_tag(message: str, emotion: str) -> str:
     """
     メッセージ先頭に感情タグを付与する
-    
+
     Args:
         message: 元のメッセージ
         emotion: 感情名（'surprised', 'happy', 'sad', 'angry', 'relaxed' など）
-    
+
     Returns:
         感情タグ付きメッセージ（例: "[surprised]お手伝いさせていただきます！..."）
-    
+
     Examples:
         >>> add_emotion_tag("こんにちは", "happy")
         '[happy]こんにちは'
-        
+
         >>> add_emotion_tag("どちらについてお聞きでしょうか？", "surprised")
         '[surprised]どちらについてお聞きでしょうか？'
     """

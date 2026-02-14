@@ -154,6 +154,7 @@ from agents.voice_agent import VoiceAgent  # noqa: E402 # 追加
 
 voice_agent = VoiceAgent()  # アプリ起動時に1回生成
 
+
 @app.post("/api/voice", response_model=VoiceResponse)
 async def voice_api(request: VoiceRequest):
     try:
@@ -291,6 +292,12 @@ async def character_api(request: CharacterRequest):
         return CharacterResponse(success=True, message="キャラクター制御機能は実装中です。")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# Knowledge CRUD API Router
+from api.knowledge import router as knowledge_router  # noqa: E402
+
+app.include_router(knowledge_router, prefix="/api")
 
 
 if __name__ == "__main__":

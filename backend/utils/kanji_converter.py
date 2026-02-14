@@ -20,10 +20,7 @@ logger = logging.getLogger(__name__)
 
 # pykakasiが利用できない場合の警告ログ（モジュール読み込み時）
 if pykakasi is None:
-    logger.warning(
-        "pykakasi is not installed. "
-        "Kanji to kana conversion will be disabled."
-    )
+    logger.warning("pykakasi is not installed. " "Kanji to kana conversion will be disabled.")
 
 
 class KanjiConverter:
@@ -58,13 +55,11 @@ class KanjiConverter:
                 logger.info("KanjiConverter初期化完了: 漢字→読みカナ変換が有効")
             except Exception as e:
                 logger.warning(
-                    f"KanjiConverter初期化エラー: {e}. "
-                    "漢字→読みカナ変換は無効になります。"
+                    f"KanjiConverter初期化エラー: {e}. " "漢字→読みカナ変換は無効になります。"
                 )
         else:
             logger.warning(
-                "KanjiConverter: pykakasiが利用できません。"
-                "漢字→読みカナ変換は無効になります。"
+                "KanjiConverter: pykakasiが利用できません。" "漢字→読みカナ変換は無効になります。"
             )
 
     def convert_to_kana(self, text: str) -> str:
@@ -99,15 +94,12 @@ class KanjiConverter:
         try:
             # 漢字をカタカナに変換（新API: convert() はリストで各要素に 'kana'/'orig' を持つ）
             result = self._kakasi.convert(text)
-            converted = "".join(
-                item.get("kana") or item.get("orig", "") for item in result
-            )
+            converted = "".join(item.get("kana") or item.get("orig", "") for item in result)
             logger.debug(f"漢字変換: '{text}' -> '{converted}'")
             return converted
         except Exception as e:
             logger.warning(
-                f"KanjiConverter変換エラー (text: '{text}'): {e}. "
-                "元のテキストを使用します。"
+                f"KanjiConverter変換エラー (text: '{text}'): {e}. " "元のテキストを使用します。"
             )
             return text
 
