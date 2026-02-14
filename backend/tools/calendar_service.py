@@ -13,7 +13,6 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Literal, Optional
 import httpx
 
-
 TimeRange = Literal["today", "thisWeek", "nextWeek", "thisMonth"]
 
 
