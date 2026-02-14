@@ -126,6 +126,17 @@ class MainWorkflow:
                 },
             )
 
+            # ユーザーメッセージを保存
+            if query:  # 空でないことを確認
+                try:
+                    await memory_helper.store_message(
+                        session_id=session_id,
+                        role="user",
+                        content=query,
+                    )
+                except Exception as store_error:
+                    logger.warning(f"Failed to store user message: {store_error}")
+
             return {
                 "context": {
                     **state.get("context", {}),
@@ -229,15 +240,16 @@ class MainWorkflow:
 
     async def _slide_node(self, state: WorkflowStateDict) -> dict:
         """スライドノード: スライドナレーションと質問応答を処理"""
-        from backend.agents.slide_agent import SlideAgent
+        from backend.agents.slide_agent import SlideAgent, SlideAction
 
         agent = SlideAgent()
         query = state.get("query", "")
         language = state.get("language", "ja")
+        session_id = state.get("session_id", "default")
         request_type = state.get("routing", {}).get("request_type", "narrate")
 
         # アクションマッピング
-        action_map = {
+        action_map: dict[str, SlideAction] = {
             "narrate": "narrate",
             "next": "next",
             "previous": "previous",
@@ -245,12 +257,13 @@ class MainWorkflow:
             "question": "question",
         }
 
-        slide_action = action_map.get(request_type, "narrate")
+        slide_action: SlideAction = action_map.get(request_type, "narrate")
 
         result = await agent.handle_slide_action(
             action=slide_action,
             query=query if slide_action == "question" else None,
             language=language,
+            session_id=session_id,
         )
 
         return {
@@ -335,10 +348,24 @@ class MainWorkflow:
             },
         }
 
-    def _format_response_node(self, state: WorkflowStateDict) -> dict:
+    async def _format_response_node(self, state: WorkflowStateDict) -> dict:
         """応答フォーマットノード: 最終的な応答をフォーマット"""
+        from backend.utils.memory_helper import get_memory_helper
+
         query = state.get("query", "")
         answer = state.get("answer", "回答を生成できませんでした。")
+        session_id = state.get("session_id", "")
+
+        # アシスタント応答を保存
+        try:
+            memory_helper = get_memory_helper()
+            await memory_helper.store_message(
+                session_id=session_id,
+                role="assistant",
+                content=answer,
+            )
+        except Exception as store_error:
+            logger.warning(f"Failed to store assistant message: {store_error}")
 
         return {
             "messages": [
