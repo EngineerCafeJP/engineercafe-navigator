@@ -21,17 +21,23 @@ import asyncio
 from datetime import datetime, timedelta
 
 # ローカルSupabase接続チェック
+_supabase_url = os.getenv("SUPABASE_URL", "")
+_is_local_supabase = any(
+    marker in _supabase_url
+    for marker in ["localhost", "127.0.0.1", "kong"]
+)
 _supabase_available = bool(
     os.getenv("SUPABASE_URL")
     and os.getenv("SUPABASE_KEY")
     and os.getenv("SUPABASE_KEY") != "test-key"
+    and _is_local_supabase
 )
 
 pytestmark = [
     pytest.mark.asyncio,
     pytest.mark.skipif(
         not _supabase_available,
-        reason="SUPABASE_URL/SUPABASE_KEY が未設定または test-key（実DB接続が必要）",
+        reason="SUPABASE_URL/SUPABASE_KEY が未設定、test-key、またはローカルSupabase以外（localhost/127.0.0.1/kong が必要）",
     ),
 ]
 
@@ -43,7 +49,7 @@ def unique_session_id():
 
 
 @pytest.fixture
-async def memory_helper():
+async def memory_helper(unique_session_id):
     """
     SimplifiedMemoryHelperの実インスタンスを提供し、
     テスト後にテストデータをクリーンアップする。
@@ -58,11 +64,30 @@ async def memory_helper():
 
     yield helper
 
-    # テスト後: テスト用エントリを削除
+    # テスト後: このテストセッションで作成されたエントリのみを削除
     try:
-        helper.supabase.table("agent_memory").delete().eq(
-            "agent_name", helper.agent_name
-        ).like("key", "message_%").execute()
+        # すべてのmessage_%エントリを取得してセッションIDでフィルタ
+        response = (
+            helper.supabase.table("agent_memory")
+            .select("id,value")
+            .eq("agent_name", helper.agent_name)
+            .like("key", "message_%")
+            .execute()
+        )
+
+        # このテストセッションで作成されたエントリのIDを収集
+        ids_to_delete = [
+            row["id"]
+            for row in response.data
+            if row.get("value", {}).get("sessionId", "").startswith("test_supabase_integration_")
+            or row.get("value", {}).get("sessionId") == unique_session_id
+        ]
+
+        # 該当するIDのみ削除
+        if ids_to_delete:
+            helper.supabase.table("agent_memory").delete().in_(
+                "id", ids_to_delete
+            ).execute()
     except Exception:
         pass
 

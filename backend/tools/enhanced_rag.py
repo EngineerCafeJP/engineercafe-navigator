@@ -73,7 +73,9 @@ class EnhancedRAGSearch:
                 }
 
             # 3. エンティティ認識とスコアリング
-            results_list: List[Dict] = list(search_results.data) if isinstance(search_results.data, list) else []
+            results_list: List[Dict] = (
+                list(search_results.data) if isinstance(search_results.data, list) else []
+            )
             scored_results = self._score_results(results_list, query, category, language)
 
             # 3.5. 品質グレーディング（軽量CRAG）
@@ -113,6 +115,10 @@ class EnhancedRAGSearch:
 
     async def _generate_embedding(self, text: str) -> List[float]:
         """OpenRouter API経由でエンベディングを生成（openai/text-embedding-3-small, 1536d）"""
+        if not self.api_key:
+            logger.warning("OPENROUTER_API_KEY not set, skipping embedding generation")
+            return []
+
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 "https://openrouter.ai/api/v1/embeddings",
@@ -125,7 +131,8 @@ class EnhancedRAGSearch:
             )
 
             if response.status_code != 200:
-                raise Exception(f"Embedding API error: {response.text}")
+                logger.error(f"Embedding API error: status={response.status_code}")
+                return []
 
             data = response.json()
             embedding: List[float] = data["data"][0]["embedding"]
@@ -170,9 +177,7 @@ class EnhancedRAGSearch:
 
         return scored_results
 
-    def _grade_result_relevance(
-        self, scored_results: List[Dict], query: str
-    ) -> List[Dict]:
+    def _grade_result_relevance(self, scored_results: List[Dict], query: str) -> List[Dict]:
         """スコアリング済み結果の品質グレーディング（軽量CRAG）
 
         priority_scoreとクエリ用語マッチ率を基に、低品質な結果を除外する。
@@ -192,7 +197,45 @@ class EnhancedRAGSearch:
         if not scored_results:
             return []
 
-        query_terms = set(query.lower().split())
+        query_lower = query.lower()
+
+        # Check if query contains CJK characters (Japanese/Chinese/Korean)
+        has_cjk = any(
+            "\u4e00" <= c <= "\u9fff" or "\u3040" <= c <= "\u309f" or "\u30a0" <= c <= "\u30ff"
+            for c in query_lower
+        )
+
+        if has_cjk:
+            # For Japanese: use 2-character sliding window matching
+            query_terms = [query_lower[i : i + 2] for i in range(len(query_lower) - 1)]
+            # Filter out particles and common characters
+            query_terms = [
+                t
+                for t in query_terms
+                if t
+                not in (
+                    "は",
+                    "の",
+                    "が",
+                    "を",
+                    "に",
+                    "で",
+                    "と",
+                    "も",
+                    "か",
+                    "です",
+                    "ます",
+                    "した",
+                    "ません",
+                    "まし",
+                    "ませ",
+                    "ありま",
+                    "りま",
+                )
+            ]
+        else:
+            query_terms = query_lower.split()
+
         graded_results: List[Dict] = []
 
         for result in scored_results:
@@ -214,7 +257,7 @@ class EnhancedRAGSearch:
                     match_count = sum(1 for term in query_terms if term in combined)
                     match_ratio = match_count / len(query_terms)
 
-                    if match_ratio > 0.0:  # 少なくとも1用語マッチ
+                    if match_ratio > 0.3:  # At least 30% of terms match
                         graded_results.append({**result, "grade": "MEDIUM"})
                         continue
 

@@ -288,12 +288,13 @@ class EventAgent:
         # NFKC正規化（全角→半角等）
         normalized = unicodedata.normalize("NFKC", title)
         # 小文字化
-        normalized = normalized.lower()
-        # エディション番号除去（#1, #2, Vol.1, vol.2等）
-        normalized = re.sub(r"[#＃]?\d+", "", normalized)
-        normalized = re.sub(r"vol\.?\s*\d*", "", normalized, flags=re.IGNORECASE)
-        # 余分な空白除去
-        normalized = re.sub(r"\s+", " ", normalized).strip()
+        normalized = normalized.lower().strip()
+        # Only strip trailing edition patterns, not all digits
+        normalized = re.sub(
+            r"\s*(第\d+回|vol\.?\s*\d+|#\d+|\(\d+\))\s*$", "", normalized, flags=re.IGNORECASE
+        )
+        # Remove extra whitespace
+        normalized = re.sub(r"\s+", " ", normalized)
 
         return normalized
 

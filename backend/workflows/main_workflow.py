@@ -60,6 +60,11 @@ class MainWorkflow:
         debug_mode = os.getenv("ORCHESTRATOR_DEBUG_MODE", "false").lower() == "true"
         self.orchestrator = OrchestratorAgent(debug_mode=debug_mode)
         self.checkpointer = checkpointer
+
+        # SlideAgentをシングルトンインスタンスとして保持
+        from backend.agents.slide_agent import SlideAgent
+        self._slide_agent = SlideAgent()
+
         self.graph = self._build_graph()
 
     def _build_graph(self) -> StateGraph:
@@ -240,9 +245,10 @@ class MainWorkflow:
 
     async def _slide_node(self, state: WorkflowStateDict) -> dict:
         """スライドノード: スライドナレーションと質問応答を処理"""
-        from backend.agents.slide_agent import SlideAgent, SlideAction
+        from backend.agents.slide_agent import SlideAction
 
-        agent = SlideAgent()
+        # シングルトンインスタンスを使用
+        agent = self._slide_agent
         query = state.get("query", "")
         language = state.get("language", "ja")
         session_id = state.get("session_id", "default")
