@@ -1,0 +1,186 @@
+{
+  "timestamp": "2026-02-14T19:50:22.506365",
+  "config": {
+    "max_cases": 38,
+    "model": "orchestrator"
+  },
+  "results": {
+    "total": 38,
+    "correct": 38,
+    "accuracy": 1.0,
+    "avg_confidence": 0.8789473684210524,
+    "agent_metrics": {
+      "business_info": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "event": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "memory_agent": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "facility": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      }
+    },
+    "language_analysis": {
+      "ja": {
+        "accuracy": 1.0,
+        "count": 28
+      },
+      "en": {
+        "accuracy": 1.0,
+        "count": 6
+      },
+      "zh": {
+        "accuracy": 1.0,
+        "count": 2
+      },
+      "ko": {
+        "accuracy": 1.0,
+        "count": 2
+      }
+    },
+    "tag_analysis": {
+      "fast-path": {
+        "accuracy": 1.0,
+        "count": 16
+      },
+      "keyword-match": {
+        "accuracy": 1.0,
+        "count": 2
+      },
+      "facility": {
+        "accuracy": 1.0,
+        "count": 19
+      },
+      "memory": {
+        "accuracy": 1.0,
+        "count": 4
+      },
+      "event": {
+        "accuracy": 1.0,
+        "count": 7
+      },
+      "temporal": {
+        "accuracy": 1.0,
+        "count": 3
+      },
+      "business_info": {
+        "accuracy": 1.0,
+        "count": 8
+      },
+      "hours": {
+        "accuracy": 1.0,
+        "count": 3
+      },
+      "consultation": {
+        "accuracy": 1.0,
+        "count": 4
+      },
+      "technology": {
+        "accuracy": 1.0,
+        "count": 1
+      },
+      "makers": {
+        "accuracy": 1.0,
+        "count": 2
+      },
+      "cafe": {
+        "accuracy": 1.0,
+        "count": 1
+      },
+      "hackathon": {
+        "accuracy": 1.0,
+        "count": 1
+      },
+      "reservation": {
+        "accuracy": 1.0,
+        "count": 2
+      },
+      "context": {
+        "accuracy": 1.0,
+        "count": 1
+      },
+      "amenities": {
+        "accuracy": 1.0,
+        "count": 1
+      },
+      "access": {
+        "accuracy": 1.0,
+        "count": 1
+      },
+      "today": {
+        "accuracy": 1.0,
+        "count": 1
+      },
+      "english": {
+        "accuracy": 1.0,
+        "count": 6
+      },
+      "chinese": {
+        "accuracy": 1.0,
+        "count": 2
+      },
+      "korean": {
+        "accuracy": 1.0,
+        "count": 2
+      },
+      "building": {
+        "accuracy": 1.0,
+        "count": 1
+      },
+      "community": {
+        "accuracy": 1.0,
+        "count": 1
+      },
+      "parking": {
+        "accuracy": 1.0,
+        "count": 2
+      },
+      "bicycle": {
+        "accuracy": 1.0,
+        "count": 1
+      },
+      "smoking": {
+        "accuracy": 1.0,
+        "count": 1
+      },
+      "food_drink": {
+        "accuracy": 1.0,
+        "count": 2
+      }
+    },
+    "threshold_analysis": {
+      "0.5": {
+        "coverage": 1.0,
+        "accuracy": 1.0,
+        "count": 38
+      },
+      "0.7": {
+        "coverage": 1.0,
+        "accuracy": 1.0,
+        "count": 38
+      },
+      "0.8": {
+        "coverage": 1.0,
+        "accuracy": 1.0,
+        "count": 38
+      },
+      "0.9": {
+        "coverage": 0.7105263157894737,
+        "accuracy": 1.0,
+        "count": 27
+      }
+    },
+    "errors": []
+  }
+}
