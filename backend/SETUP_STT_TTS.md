@@ -12,7 +12,7 @@ backend/
 ├── agents/
 │   ├── voice_agent.py          # TTS エージェント（VoiceVox 統合）
 │   ├── stt_agent.py            # STT エージェント（Vosk 統合）
-├── requirements.txt            # vosk, pysoundfile 追加済み
+├── requirements.txt            # vosk, soundfile 追加済み
 └── .gitignore                  # models/ は除外済み
 ```
 
@@ -29,7 +29,7 @@ uv pip install -r requirements.txt
 
 このコマンドで以下が自動実行されます：
 - `vosk>=0.3.45` — ローカル音声認識エンジン
-- `pysoundfile>=0.12.1` — WAV ファイル処理
+- `soundfile>=0.12.1` — WAV ファイル処理
 
 ### 2. Vosk モデルのダウンロード
 
@@ -195,7 +195,7 @@ curl http://localhost:50021/version
 |---------|------|
 | `backend/agents/stt_agent.py` | Vosk/Google STT クライアント実装 |
 | `backend/agents/voice_agent.py` | VoiceVox/Google TTS クライアント実装 |
-| `backend/requirements.txt` | vosk, pysoundfile 依存宣言 |
+| `backend/requirements.txt` | vosk, soundfile 依存宣言 |
 | `backend/pyproject.toml` | Poetry/uv 互換依存宣言 |
 | `docker-compose.yml` | VoiceVox サービス定義 |
 | `backend/models/` | Vosk モデルの配置先（.gitignore で除外） |

@@ -31,10 +31,7 @@ def test_parse_emotion_tags_removes_tags_and_maps_alias():
     assert parsed.emotions[0].intensity == 0.9
 
 
-@pytest.mark.parametrize(
-    "lang, expected",
-    [("ja", "ミーティング"), ("en", "meeting")]
-)
+@pytest.mark.parametrize("lang, expected", [("ja", "ミーティング"), ("en", "meeting")])
 def test_preprocess_tts_mtg(lang, expected):
     """preprocessTTS（TS）仕様：MTG を置換するだけ"""
     assert preprocess_tts("MTGがあります", lang).startswith(expected)
@@ -74,7 +71,6 @@ def test_truncate_by_bytes_over_limit():
     text = "あ" * 3000
     out = truncate_by_bytes(text, 5000)
     assert len(out.encode("utf-8")) <= 5000
-
 
 
 def test_map_vrm_to_tts_emotion():

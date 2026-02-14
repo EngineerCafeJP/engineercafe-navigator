@@ -15,7 +15,7 @@ scipy>=1.10.0
 google-generativeai>=0.8.0
 # Audio processing (STT/TTS)
 vosk>=0.3.45
-pysoundfile>=0.9.0
+soundfile>=0.12.1
 
 # LangGraph Checkpointer (PostgreSQL)
 langgraph-checkpoint-postgres>=2.0.0

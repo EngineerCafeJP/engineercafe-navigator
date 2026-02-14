@@ -8,7 +8,6 @@ from datetime import datetime, timedelta
 from typing import Any, List, Dict, Optional, Literal
 import httpx
 
-
 TimeRange = Literal["today", "thisWeek", "nextWeek", "thisMonth"]
 
 
@@ -85,7 +84,12 @@ class ConnpassService:
                 return {
                     "success": False,
                     "error": "CONNPASS_API_KEY not configured",
-                    "data": {"events": [], "timeRange": time_range, "eventCount": 0, "source": "connpass"},
+                    "data": {
+                        "events": [],
+                        "timeRange": time_range,
+                        "eventCount": 0,
+                        "source": "connpass",
+                    },
                 }
 
             # 時間範囲から日付リストを生成
@@ -117,7 +121,12 @@ class ConnpassService:
             return {
                 "success": False,
                 "error": str(e),
-                "data": {"events": [], "timeRange": time_range, "eventCount": 0, "source": "connpass"},
+                "data": {
+                    "events": [],
+                    "timeRange": time_range,
+                    "eventCount": 0,
+                    "source": "connpass",
+                },
             }
 
     def _get_ymd_list(self, time_range: TimeRange) -> List[str]:
@@ -162,7 +171,9 @@ class ConnpassService:
             else:
                 next_month = month_start.replace(month=month_start.month + 1)
             days_in_month = (next_month - month_start).days
-            return [(month_start + timedelta(days=i)).strftime("%Y%m%d") for i in range(days_in_month)]
+            return [
+                (month_start + timedelta(days=i)).strftime("%Y%m%d") for i in range(days_in_month)
+            ]
 
         # デフォルトは今週
         weekday = today.weekday()
@@ -259,7 +270,9 @@ class ConnpassService:
                 "limit": event.get("limit"),
                 "waiting": event.get("waiting", 0),
                 "owner_nickname": event.get("owner_nickname", ""),
-                "group_name": event.get("series", {}).get("title", "") if event.get("series") else "",
+                "group_name": (
+                    event.get("series", {}).get("title", "") if event.get("series") else ""
+                ),
             }
 
             formatted_events.append(formatted_event)
@@ -315,14 +328,41 @@ class ConnpassService:
         """
         # 技術キーワードのリスト
         tech_keywords = [
-            "Python", "JavaScript", "TypeScript", "React", "Vue", "Next.js",
-            "Go", "Rust", "Java", "Kotlin", "Swift", "Flutter",
-            "AWS", "GCP", "Azure", "Docker", "Kubernetes",
-            "AI", "機械学習", "ML", "LLM", "生成AI", "ChatGPT",
-            "データ分析", "データサイエンス",
-            "Web", "フロントエンド", "バックエンド", "インフラ",
-            "セキュリティ", "DevOps", "SRE",
-            "スタートアップ", "起業", "キャリア",
+            "Python",
+            "JavaScript",
+            "TypeScript",
+            "React",
+            "Vue",
+            "Next.js",
+            "Go",
+            "Rust",
+            "Java",
+            "Kotlin",
+            "Swift",
+            "Flutter",
+            "AWS",
+            "GCP",
+            "Azure",
+            "Docker",
+            "Kubernetes",
+            "AI",
+            "機械学習",
+            "ML",
+            "LLM",
+            "生成AI",
+            "ChatGPT",
+            "データ分析",
+            "データサイエンス",
+            "Web",
+            "フロントエンド",
+            "バックエンド",
+            "インフラ",
+            "セキュリティ",
+            "DevOps",
+            "SRE",
+            "スタートアップ",
+            "起業",
+            "キャリア",
         ]
 
         query_lower = query.lower()

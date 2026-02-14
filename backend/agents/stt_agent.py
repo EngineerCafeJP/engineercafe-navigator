@@ -30,11 +30,14 @@ logger = logging.getLogger(__name__)
 # Local Vosk STT Client
 # -----------------------------------------------------------------------------
 
+
 class LocalSTTClient:
     DEFAULT_MODEL_PATH_JA = "models/vosk-model-ja"
     DEFAULT_MODEL_PATH_EN = "models/vosk-model-en-us"
 
-    def __init__(self, model_path_ja: str = DEFAULT_MODEL_PATH_JA, model_path_en: str = DEFAULT_MODEL_PATH_EN):
+    def __init__(
+        self, model_path_ja: str = DEFAULT_MODEL_PATH_JA, model_path_en: str = DEFAULT_MODEL_PATH_EN
+    ):
         self.model_path_ja = model_path_ja
         self.model_path_en = model_path_en
         self._model_ja = None
@@ -120,9 +123,7 @@ class LocalSTTClient:
         try:
             loop = asyncio.get_running_loop()
             with concurrent.futures.ThreadPoolExecutor() as pool:
-                return await loop.run_in_executor(
-                    pool, self._sync_transcribe, audio_data, language
-                )
+                return await loop.run_in_executor(pool, self._sync_transcribe, audio_data, language)
         except Exception as e:
             logger.exception("Vosk transcription error: %s", e)
             raise
@@ -132,10 +133,13 @@ class LocalSTTClient:
 # Google Cloud STT Client (fallback)
 # -----------------------------------------------------------------------------
 
+
 class GoogleSTTClient:
     def __init__(self):
         self.project_id = os.getenv("GOOGLE_CLOUD_PROJECT_ID")
-        self.credentials_source = os.getenv("GOOGLE_CLOUD_CREDENTIALS") or os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+        self.credentials_source = os.getenv("GOOGLE_CLOUD_CREDENTIALS") or os.getenv(
+            "GOOGLE_APPLICATION_CREDENTIALS"
+        )
         logger.info("GoogleSTTClient initialized (credentials must be configured for use)")
 
     def _sync_transcribe(self, audio_data: bytes, language: str = "ja") -> str:
@@ -165,6 +169,7 @@ class GoogleSTTClient:
         loop = None
         try:
             import asyncio
+
             loop = asyncio.get_running_loop()
         except RuntimeError:
             loop = None
@@ -180,6 +185,7 @@ class GoogleSTTClient:
 # -----------------------------------------------------------------------------
 # STTAgent - provider switching
 # -----------------------------------------------------------------------------
+
 
 class STTAgent:
     def __init__(self, stt_provider: Optional[str] = None, stt_client: Optional[Any] = None):
@@ -202,7 +208,18 @@ class STTAgent:
         provider = self.stt_provider
         try:
             transcript = await self.stt_client.transcribe(audio_data, language)
-            return {"success": True, "transcript": transcript, "confidence": None, "provider": provider}
+            return {
+                "success": True,
+                "transcript": transcript,
+                "confidence": None,
+                "provider": provider,
+            }
         except Exception as e:
             logger.error(f"STT failed ({provider}): {e}")
-            return {"success": False, "transcript": "", "confidence": 0.0, "provider": provider, "error": str(e)}
+            return {
+                "success": False,
+                "transcript": "",
+                "confidence": 0.0,
+                "provider": provider,
+                "error": str(e),
+            }

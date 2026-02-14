@@ -132,24 +132,13 @@ def main():
                 "frames": lipsync_data,
             },
             "summary": {
-                "total_duration": (
-                    lipsync_data[-1]["time"]
-                    if lipsync_data
-                    else 0.0
-                ),
+                "total_duration": (lipsync_data[-1]["time"] if lipsync_data else 0.0),
                 "frame_interval": (
                     lipsync_data[1]["time"] - lipsync_data[0]["time"]
                     if len(lipsync_data) > 1
                     else 0.0
                 ),
-                "mouth_shapes": sorted(
-                    list(
-                        set(
-                            frame["mouthShape"]
-                            for frame in lipsync_data
-                        )
-                    )
-                ),
+                "mouth_shapes": sorted(list(set(frame["mouthShape"] for frame in lipsync_data))),
             },
         }
 

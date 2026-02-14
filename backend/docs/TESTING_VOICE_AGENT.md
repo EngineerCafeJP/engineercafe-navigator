@@ -66,7 +66,7 @@ uv sync
 pip install -e ".[dev]"
 ```
 
-vosk と pysoundfile が追加でインストールされます。
+vosk と soundfile が追加でインストールされます。
 
 ### 2.3 Voskモデルのダウンロード
 
@@ -630,7 +630,7 @@ docker compose logs voicevox --tail 20
 uv sync
 
 # pipの場合
-pip install vosk>=0.3.45 pysoundfile>=0.12.1
+pip install vosk>=0.3.45 soundfile>=0.12.1
 ```
 
 ### Q2: `RuntimeError: Vosk model not found: models/vosk-model-ja`

@@ -22,10 +22,7 @@ from datetime import datetime, timedelta
 
 # ローカルSupabase接続チェック
 _supabase_url = os.getenv("SUPABASE_URL", "")
-_is_local_supabase = any(
-    marker in _supabase_url
-    for marker in ["localhost", "127.0.0.1", "kong"]
-)
+_is_local_supabase = any(marker in _supabase_url for marker in ["localhost", "127.0.0.1", "kong"])
 _supabase_available = bool(
     os.getenv("SUPABASE_URL")
     and os.getenv("SUPABASE_KEY")
@@ -85,9 +82,7 @@ async def memory_helper(unique_session_id):
 
         # 該当するIDのみ削除
         if ids_to_delete:
-            helper.supabase.table("agent_memory").delete().in_(
-                "id", ids_to_delete
-            ).execute()
+            helper.supabase.table("agent_memory").delete().in_("id", ids_to_delete).execute()
     except Exception:
         pass
 
@@ -106,12 +101,7 @@ class TestSupabaseConnection:
 
     async def test_agent_memory_table_accessible(self, memory_helper):
         """agent_memoryテーブルにアクセスできることを確認"""
-        response = (
-            memory_helper.supabase.table("agent_memory")
-            .select("id")
-            .limit(1)
-            .execute()
-        )
+        response = memory_helper.supabase.table("agent_memory").select("id").limit(1).execute()
         # エラーなくレスポンスが返ることを確認（データの有無は問わない）
         assert response is not None
         assert hasattr(response, "data")
@@ -144,11 +134,7 @@ class TestStoreMessage:
         )
 
         # セッションIDでフィルタ
-        matching = [
-            r
-            for r in response.data
-            if r["value"].get("sessionId") == unique_session_id
-        ]
+        matching = [r for r in response.data if r["value"].get("sessionId") == unique_session_id]
         assert len(matching) == 1
 
         stored = matching[0]["value"]
@@ -175,11 +161,7 @@ class TestStoreMessage:
             .execute()
         )
 
-        matching = [
-            r
-            for r in response.data
-            if r["value"].get("sessionId") == unique_session_id
-        ]
+        matching = [r for r in response.data if r["value"].get("sessionId") == unique_session_id]
         assert len(matching) == 1
         assert matching[0]["value"]["role"] == "assistant"
         assert matching[0]["value"]["content"] == "営業時間は9時から22時です。"
@@ -202,20 +184,14 @@ class TestStoreMessage:
             .execute()
         )
 
-        matching = [
-            r
-            for r in response.data
-            if r["value"].get("sessionId") == unique_session_id
-        ]
+        matching = [r for r in response.data if r["value"].get("sessionId") == unique_session_id]
         assert len(matching) == 1
 
         expires_at = matching[0]["expires_at"]
         assert expires_at is not None
 
         # expires_at が now + TTL（180秒）の範囲内であることを確認
-        expires_dt = datetime.fromisoformat(expires_at.replace("Z", "+00:00")).replace(
-            tzinfo=None
-        )
+        expires_dt = datetime.fromisoformat(expires_at.replace("Z", "+00:00")).replace(tzinfo=None)
         expected_min = before + timedelta(seconds=170)  # 少しマージン
         expected_max = before + timedelta(seconds=190)
         assert expected_min <= expires_dt <= expected_max
@@ -249,16 +225,10 @@ class TestStoreMessage:
             .execute()
         )
 
-        matching = [
-            r
-            for r in response.data
-            if r["value"].get("sessionId") == unique_session_id
-        ]
+        matching = [r for r in response.data if r["value"].get("sessionId") == unique_session_id]
         assert len(matching) == 3
 
-    async def test_store_message_auto_extracts_request_type(
-        self, memory_helper, unique_session_id
-    ):
+    async def test_store_message_auto_extracts_request_type(self, memory_helper, unique_session_id):
         """ユーザーメッセージでrequest_typeが自動抽出される"""
         await memory_helper.store_message(
             role="user",
@@ -274,11 +244,7 @@ class TestStoreMessage:
             .execute()
         )
 
-        matching = [
-            r
-            for r in response.data
-            if r["value"].get("sessionId") == unique_session_id
-        ]
+        matching = [r for r in response.data if r["value"].get("sessionId") == unique_session_id]
         assert len(matching) == 1
         # request_typeが何かしら設定されていることを確認
         # （具体的な値はextract_request_typeの実装に依存）
@@ -293,9 +259,7 @@ class TestStoreMessage:
 class TestGetRecentMessages:
     """_get_recent_messages のDB結合テスト"""
 
-    async def test_get_messages_returns_stored_data(
-        self, memory_helper, unique_session_id
-    ):
+    async def test_get_messages_returns_stored_data(self, memory_helper, unique_session_id):
         """保存したメッセージが取得できる"""
         await memory_helper.store_message(
             role="user",
@@ -338,9 +302,7 @@ class TestGetRecentMessages:
         messages = await memory_helper._get_recent_messages("nonexistent_session_xyz")
         assert messages == []
 
-    async def test_get_messages_ordered_chronologically(
-        self, memory_helper, unique_session_id
-    ):
+    async def test_get_messages_ordered_chronologically(self, memory_helper, unique_session_id):
         """メッセージが時系列順で返される"""
         await memory_helper.store_message(
             role="user", content="最初の質問", session_id=unique_session_id
@@ -370,9 +332,7 @@ class TestGetRecentMessages:
 class TestGetContext:
     """get_context のDB結合テスト"""
 
-    async def test_get_context_with_messages(
-        self, memory_helper, unique_session_id
-    ):
+    async def test_get_context_with_messages(self, memory_helper, unique_session_id):
         """会話コンテキストが正しく構築される"""
         await memory_helper.store_message(
             role="user",
@@ -401,16 +361,12 @@ class TestGetContext:
 
     async def test_get_context_empty_session(self, memory_helper):
         """空のセッションではデフォルトコンテキストが返る"""
-        context = await memory_helper.get_context(
-            query="テスト", session_id="empty_session_xyz"
-        )
+        context = await memory_helper.get_context(query="テスト", session_id="empty_session_xyz")
 
         assert context["recent_messages"] == []
         assert "会話履歴がありません" in context["context_string"]
 
-    async def test_get_context_inherits_request_type(
-        self, memory_helper, unique_session_id
-    ):
+    async def test_get_context_inherits_request_type(self, memory_helper, unique_session_id):
         """前回のrequest_typeが継承される"""
         await memory_helper.store_message(
             role="user",
@@ -435,9 +391,7 @@ class TestGetContext:
 class TestGetPreviousRequestType:
     """get_previous_request_type のDB結合テスト"""
 
-    async def test_returns_latest_request_type(
-        self, memory_helper, unique_session_id
-    ):
+    async def test_returns_latest_request_type(self, memory_helper, unique_session_id):
         """最新のrequest_typeが返される"""
         await memory_helper.store_message(
             role="user",
@@ -555,40 +509,24 @@ class TestDatabaseSchema:
 
     async def test_agent_memory_table_exists(self, memory_helper):
         """agent_memoryテーブルが存在する"""
-        response = (
-            memory_helper.supabase.table("agent_memory")
-            .select("id")
-            .limit(0)
-            .execute()
-        )
+        response = memory_helper.supabase.table("agent_memory").select("id").limit(0).execute()
         assert response is not None
 
     async def test_conversation_sessions_table_exists(self, memory_helper):
         """conversation_sessionsテーブルが存在する"""
         response = (
-            memory_helper.supabase.table("conversation_sessions")
-            .select("id")
-            .limit(0)
-            .execute()
+            memory_helper.supabase.table("conversation_sessions").select("id").limit(0).execute()
         )
         assert response is not None
 
     async def test_knowledge_base_table_exists(self, memory_helper):
         """knowledge_baseテーブルが存在する"""
-        response = (
-            memory_helper.supabase.table("knowledge_base")
-            .select("id")
-            .limit(0)
-            .execute()
-        )
+        response = memory_helper.supabase.table("knowledge_base").select("id").limit(0).execute()
         assert response is not None
 
     async def test_conversation_history_table_exists(self, memory_helper):
         """conversation_historyテーブルが存在する"""
         response = (
-            memory_helper.supabase.table("conversation_history")
-            .select("id")
-            .limit(0)
-            .execute()
+            memory_helper.supabase.table("conversation_history").select("id").limit(0).execute()
         )
         assert response is not None

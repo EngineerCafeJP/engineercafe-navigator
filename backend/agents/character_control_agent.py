@@ -36,12 +36,11 @@ logger = logging.getLogger(__name__)
 
 try:
     import numpy as np  # noqa: E402
+
     AUDIO_ANALYSIS_AVAILABLE = True
 except ImportError:
     AUDIO_ANALYSIS_AVAILABLE = False
-    logger.warning(
-        "numpy not available. Audio-based lip sync will be disabled."
-    )
+    logger.warning("numpy not available. Audio-based lip sync will be disabled.")
 
 from backend.utils.emotion_mapping import EmotionMapping  # noqa: E402
 from backend.utils.kanji_converter import KanjiConverter  # noqa: E402
@@ -167,8 +166,7 @@ class CharacterControlAgent:
 
         except Exception as e:
             logger.error(
-                f"感情→表情マッピングエラー: emotion={emotion}, "
-                f"error={e}",
+                f"感情→表情マッピングエラー: emotion={emotion}, " f"error={e}",
                 exc_info=True,
             )
             # エラー時はデフォルト値を返す（EmotionMappingから取得）
@@ -217,9 +215,7 @@ class CharacterControlAgent:
             # 2. EmotionMappingを使用してアニメーション名を取得
             animation = EmotionMapping.get_animation_for_emotion(emotion)
 
-            logger.info(
-                f"アニメーション選択完了: emotion={emotion}, animation={animation}"
-            )
+            logger.info(f"アニメーション選択完了: emotion={emotion}, animation={animation}")
 
             return animation
 
@@ -231,9 +227,7 @@ class CharacterControlAgent:
             # エラー時はデフォルト値を返す
             return self.DEFAULT_ANIMATION
 
-    def _analyze_audio_data(
-        self, audio_data: str
-    ) -> Tuple[float, List[Dict[str, Any]]]:
+    def _analyze_audio_data(self, audio_data: str) -> Tuple[float, List[Dict[str, Any]]]:
         """
         Base64エンコードされた音声データを解析してリップシンクデータを生成
 
@@ -309,9 +303,7 @@ class CharacterControlAgent:
                 rms = np.sqrt(np.mean(frame_data**2))
 
                 # 簡易的な口の形状を決定
-                mouth_shape = self._determine_mouth_shape_simplified(
-                    rms, frame_data
-                )
+                mouth_shape = self._determine_mouth_shape_simplified(rms, frame_data)
 
                 frames.append(
                     {
@@ -328,9 +320,7 @@ class CharacterControlAgent:
             logger.error(f"音声データ解析エラー: {e}", exc_info=True)
             raise
 
-    def _determine_mouth_shape_simplified(
-        self, rms: float, frame_data: np.ndarray
-    ) -> str:
+    def _determine_mouth_shape_simplified(self, rms: float, frame_data: np.ndarray) -> str:
         """
         簡易的な口の形状を決定（音量と分散ベース）
 
@@ -445,8 +435,7 @@ class CharacterControlAgent:
             # textの検証
             if not text or not isinstance(text, str) or not text.strip():
                 logger.warning(
-                    f"テキストが空または無効です: text={text}. "
-                    "フォールバック実装を使用します。"
+                    f"テキストが空または無効です: text={text}. " "フォールバック実装を使用します。"
                 )
                 fallback_duration = audio_duration if audio_duration and audio_duration > 0 else 1.0
                 return self._generate_fallback_lipsync(fallback_duration)
@@ -517,8 +506,14 @@ class CharacterControlAgent:
             progress = time / duration if duration > 0 else 0
 
             # 現在の単語を決定
-            current_word_index = math.floor(progress * len(converted_words)) if converted_words else 0
-            current_word = converted_words[current_word_index] if current_word_index < len(converted_words) else ""
+            current_word_index = (
+                math.floor(progress * len(converted_words)) if converted_words else 0
+            )
+            current_word = (
+                converted_words[current_word_index]
+                if current_word_index < len(converted_words)
+                else ""
+            )
 
             # 単語内の位置に応じた口の形状を決定
             if current_word and current_word_index < len(word_vowel_maps):
@@ -671,9 +666,7 @@ class CharacterControlAgent:
 
         return None
 
-    def _get_vowel_at_position(
-        self, vowel_map: List[tuple[int, str]], position: int
-    ) -> str:
+    def _get_vowel_at_position(self, vowel_map: List[tuple[int, str]], position: int) -> str:
         """
         指定された文字位置に対応する母音を取得
 
@@ -955,7 +948,7 @@ class CharacterControlAgent:
 
         実行例:
             emotion="describing", text="こんにちは、エンジニアカフェへようこそ。"の場合:
-            
+
             処理フロー:
             1. 感情マッピング: "describing" -> expression="neutral", intensity=0.8
             2. アニメーション選択: "describing" -> animation="idle"
@@ -964,7 +957,7 @@ class CharacterControlAgent:
                - audio_duration未指定のため、文字数から自動計算（20文字 × 0.15秒 = 3.0秒）
                - テキストから口の形状を推定（日本語対応）
             5. Viseme抽出: リップシンクデータからViseme（"oh"など）を抽出して追加
-            
+
             結果:
             {
                 "action": "speak",
@@ -982,11 +975,11 @@ class CharacterControlAgent:
         実行手順:
             # テストスクリプトを使用
             python -m backend.tests.utils.test_process_output
-            
+
             # Pythonコードから直接実行
             import asyncio
             from backend.agents.character_control_agent import CharacterControlAgent
-            
+
             async def main():
                 agent = CharacterControlAgent()
                 result = await agent.process(
@@ -994,7 +987,7 @@ class CharacterControlAgent:
                     text="こんにちは、エンジニアカフェへようこそ。"
                 )
                 print(result)
-            
+
             asyncio.run(main())
         """
         logger.info(
@@ -1030,9 +1023,7 @@ class CharacterControlAgent:
 
                     if lipsync_data and len(lipsync_data) > 0:
                         has_lipsync = True
-                        logger.info(
-                            f"リップシンクデータ生成完了: frames={len(lipsync_data)}"
-                        )
+                        logger.info(f"リップシンクデータ生成完了: frames={len(lipsync_data)}")
                 except Exception as lipsync_error:
                     logger.warning(
                         f"リップシンクデータ生成エラー: {lipsync_error}, "
@@ -1042,9 +1033,7 @@ class CharacterControlAgent:
 
             # 4. VRM制御コマンド生成（リップシンクがある場合は表情遷移時間を短くする）
             # リップシンクがある場合、neutralの表情遷移を短くしてリップシンクと同時に開始
-            expression_transition = (
-                0.1 if has_lipsync else self.DEFAULT_EXPRESSION_DURATION
-            )
+            expression_transition = 0.1 if has_lipsync else self.DEFAULT_EXPRESSION_DURATION
             vrm_control = self.generate_vrm_command(
                 mapped_expression, expression_intensity, animation
             )
@@ -1068,8 +1057,7 @@ class CharacterControlAgent:
                         )
                 except Exception as viseme_error:
                     logger.warning(
-                        f"Viseme追加エラー: {viseme_error}, "
-                        "Visemeなしで続行します。",
+                        f"Viseme追加エラー: {viseme_error}, " "Visemeなしで続行します。",
                         exc_info=True,
                     )
 

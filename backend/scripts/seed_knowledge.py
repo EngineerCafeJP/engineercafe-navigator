@@ -20,7 +20,6 @@ import os
 import sys
 from typing import Any
 
-import httpx
 from supabase import create_client
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -113,34 +112,22 @@ KNOWLEDGE_BASE_DATA: list[dict[str, Any]] = [
 ]
 
 
-async def generate_embedding(text: str, api_key: str) -> list[float]:
-    """OpenRouter API経由でembeddingを生成
+async def generate_embedding_for_seed(text: str) -> list[float]:
+    """embedding生成（共通サービスに委譲）
 
     Args:
         text: エンベディング対象のテキスト
-        api_key: OpenRouter APIキー
 
     Returns:
         1536次元のembeddingベクトル
     """
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            "https://openrouter.ai/api/v1/embeddings",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json={"model": "openai/text-embedding-3-small", "input": text},
-            timeout=30.0,
-        )
+    from utils.embedding_service import generate_embedding
 
-        if response.status_code != 200:
-            raise Exception(f"Embedding API error ({response.status_code}): {response.text}")
-
-        data = response.json()
-        embedding = data["data"][0]["embedding"]
-        logger.info(f"Generated embedding: {len(embedding)} dimensions")
-        return embedding
+    result = await generate_embedding(text)
+    if not result:
+        raise Exception("Embedding generation failed (check OPENROUTER_API_KEY)")
+    logger.info(f"Generated embedding: {len(result)} dimensions")
+    return result
 
 
 async def seed_knowledge_base() -> None:
@@ -171,7 +158,7 @@ async def seed_knowledge_base() -> None:
             logger.info(f"Processing: {title}")
 
             # Embedding生成
-            embedding = await generate_embedding(f"{title}\n{content}", api_key)
+            embedding = await generate_embedding_for_seed(f"{title}\n{content}")
 
             # Upsert（titleで重複排除）
             upsert_data = {

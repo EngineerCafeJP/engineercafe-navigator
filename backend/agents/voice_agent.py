@@ -230,7 +230,7 @@ def truncate_by_bytes(text: str, max_bytes: int = 5000) -> str:
             if len(parts) > 1:
                 parts.pop()
                 truncated = "。".join(parts).strip()
-                if truncated and not truncated.endswith("。"): 
+                if truncated and not truncated.endswith("。"):
                     truncated += "。"
             else:
                 truncated = truncated[:-10]
@@ -411,9 +411,7 @@ class VoiceVoxClient:
         self._initialized_speakers: set[int] = set()
         logger.info(f"VoiceVoxClient initialized: {self.api_url}")
 
-    async def _ensure_speaker_initialized(
-        self, client: httpx.AsyncClient, speaker_id: int
-    ) -> None:
+    async def _ensure_speaker_initialized(self, client: httpx.AsyncClient, speaker_id: int) -> None:
         """初回遅延回避のためスピーカーを事前初期化 (公式推奨)"""
         if speaker_id in self._initialized_speakers:
             return
@@ -448,14 +446,12 @@ class VoiceVoxClient:
                     query_url,
                     params={"text": text, "speaker": speaker_id},
                 )
-                
+
                 if query_response.status_code >= 400:
-                    raise RuntimeError(
-                        f"VoiceVox audio_query failed: {query_response.status_code}"
-                    )
-                
+                    raise RuntimeError(f"VoiceVox audio_query failed: {query_response.status_code}")
+
                 query_data = query_response.json()
-                
+
                 # Step 2: 音声合成
                 synthesis_url = f"{self.api_url}/synthesis"
                 synthesis_response = await client.post(
@@ -464,18 +460,18 @@ class VoiceVoxClient:
                     json=query_data,
                     headers={"Content-Type": "application/json"},
                 )
-                
+
                 if synthesis_response.status_code >= 400:
                     raise RuntimeError(
                         f"VoiceVox synthesis failed: {synthesis_response.status_code}"
                     )
-                
+
                 wav_data = synthesis_response.content
                 wav_b64 = base64.b64encode(wav_data).decode("utf-8")
-                
+
                 logger.info(f"VoiceVox synthesis success: text_len={len(text)}")
                 return wav_b64
-                
+
         except httpx.TimeoutException as e:
             logger.error(f"VoiceVox timeout: {e}")
             raise RuntimeError(f"VoiceVox connection timeout: {e}")
@@ -501,7 +497,7 @@ class VoiceAgent:
         VoiceAgent with TTS provider switching + LanguageProcessor + ClarificationAgent integration
         """
         self.tts_provider = tts_provider
-        
+
         if tts_client:
             self.tts_client = tts_client
         elif tts_provider == "voicevox":
@@ -513,43 +509,43 @@ class VoiceAgent:
             logger.info("Using Google Cloud TTS")
         else:
             raise ValueError(f"Unknown TTS provider: {tts_provider}")
-        
+
         self.language_processor = language_processor or LanguageProcessor(default_language="ja")
         logger.info("LanguageProcessor initialized for voice_agent")
-        
+
         self.clarification_agent = clarification_agent or ClarificationAgent()
         logger.info("ClarificationAgent initialized for voice_agent")
-    
+
     def _detect_category(self, text: str, language: str) -> Optional[ClarificationCategory]:
         """
         テキストから曖昧性カテゴリを検出
         """
         text_lower = text.lower()
-        
+
         # カフェ関連キーワード
-        cafe_keywords = (
-            ["カフェ", "cafe"]
-            if language == "ja"
-            else ["cafe"]
-        )
-        
+        cafe_keywords = ["カフェ", "cafe"] if language == "ja" else ["cafe"]
+
         # 会議室関連キーワード
         meeting_keywords = (
-            ["会議室", "mtg", "ミーティング"]
-            if language == "ja"
-            else ["meeting", "room"]
+            ["会議室", "mtg", "ミーティング"] if language == "ja" else ["meeting", "room"]
         )
-        
+
         # カフェの曖昧性チェック
         if any(kw in text_lower for kw in cafe_keywords):
-            if any(word in text_lower for word in (["どこ", "どちら"] if language == "ja" else ["which", "where"])):
+            if any(
+                word in text_lower
+                for word in (["どこ", "どちら"] if language == "ja" else ["which", "where"])
+            ):
                 return "cafe-clarification-needed"
-        
+
         # 会議室の曖昧性チェック
         if any(kw in text_lower for kw in meeting_keywords):
-            if any(word in text_lower for word in (["どこ", "どちら"] if language == "ja" else ["which", "what"])):
+            if any(
+                word in text_lower
+                for word in (["どこ", "どちら"] if language == "ja" else ["which", "what"])
+            ):
                 return "meeting-room-clarification-needed"
-        
+
         return None
 
     async def text_to_speech(
@@ -560,7 +556,7 @@ class VoiceAgent:
     ) -> Dict[str, Any]:
         """
         テキストを音声に変換
-        
+
         - 言語自動検出（language未指定時）
         - 曖昧性チェック（ClarificationAgent統合）
         - TTSプロバイダ切り替え（voicevox / google）
@@ -573,14 +569,16 @@ class VoiceAgent:
             except Exception as e:
                 logger.warning(f"Language detection failed: {e}, using default 'ja'")
                 language = "ja"
-        
+
         # ステップ2: 感情タグパースとテキスト前処理
         parsed = parse_emotion_tags(text)
         cleaned = clean_text_for_tts(parsed.clean_text)
         processed = preprocess_tts(cleaned, language)
 
-        vrm_emotion = map_to_vrm_emotion(emotion) if emotion else (parsed.primary_emotion or "neutral")
-        
+        vrm_emotion = (
+            map_to_vrm_emotion(emotion) if emotion else (parsed.primary_emotion or "neutral")
+        )
+
         # ステップ3: 曖昧性チェック
         ambiguity_category = self._detect_category(text, language)
         if ambiguity_category:
@@ -597,7 +595,7 @@ class VoiceAgent:
                 vrm_emotion = clarification_result.get("emotion", "surprised")
             except Exception as e:
                 logger.error(f"Clarification handling failed: {e}, proceeding with original text")
-        
+
         # ステップ4: テキスト長チェック
         if len(processed.encode("utf-8")) > 5000:
             processed = truncate_by_bytes(processed, 5000)
@@ -609,8 +607,9 @@ class VoiceAgent:
                 audio_b64 = await self.tts_client.synthesize_wav_base64(processed, language)
             else:  # google
                 tts_emotion = map_vrm_to_tts_emotion(vrm_emotion)
-                audio_b64 = await self.tts_client.synthesize_mp3_base64(processed, language, tts_emotion)
-            
+                audio_b64 = await self.tts_client.synthesize_mp3_base64(
+                    processed, language, tts_emotion
+                )
             return {
                 "success": True,
                 "audioResponse": audio_b64,
@@ -627,8 +626,10 @@ class VoiceAgent:
                 if self.tts_provider == "voicevox":
                     audio_b64 = await self.tts_client.synthesize_wav_base64(fb_text, language)
                 else:
-                    audio_b64 = await self.tts_client.synthesize_mp3_base64(fb_text, language, "sad")
-                
+                    audio_b64 = await self.tts_client.synthesize_mp3_base64(
+                        fb_text, language, "sad"
+                    )
+
                 return {
                     "success": True,
                     "audioResponse": audio_b64,

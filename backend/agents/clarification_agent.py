@@ -21,7 +21,6 @@ from typing import Dict, Any, List, Optional, Literal, TypedDict
 
 from backend.utils.emotion_tagger import add_emotion_tag
 
-
 # TODO: 実装時に必要なインポート
 # from llm.openrouter import OpenRouterProvider
 # from llm.models import get_model_config
@@ -40,6 +39,7 @@ ClarificationCategory = Literal[
 
 class ClarificationResult(TypedDict):
     """Clarification Agentの出力結果"""
+
     response: str  # 感情タグ付きテキスト
     emotion: Literal["surprised"]
     metadata: dict  # agent名, category, confidence など
@@ -68,7 +68,6 @@ class ClarificationAgent:
         logger.info("ClarificationAgent骨組み初期化")
         # TODO: OpenRouterProvider等の初期化
 
-
     def _create_result(
         self,
         message: str,
@@ -77,16 +76,16 @@ class ClarificationAgent:
     ) -> ClarificationResult:
         """
         ClarificationResultを生成するヘルパーメソッド
-        
+
         Args:
             message: 応答メッセージ
             category: 曖昧性のカテゴリ
             confidence: 信頼度スコア（デフォルト：0.9）
-        
+
         Returns:
             ClarificationResult: 感情タグ付きの応答とメタデータ
         """
-        tagged_message = add_emotion_tag(message, 'surprised')
+        tagged_message = add_emotion_tag(message, "surprised")
         return {
             "response": tagged_message,
             "emotion": "surprised",
@@ -95,7 +94,7 @@ class ClarificationAgent:
                 "confidence": confidence,
                 "category": category,
                 "sources": self._DEFAULT_SOURCES,
-            }
+            },
         }
 
     async def handle_clarification(
@@ -118,36 +117,38 @@ class ClarificationAgent:
         Returns:
             ClarificationResult: 感情タグ付きの応答とメタデータ
         """
-        logger.info(f"ClarificationAgent.handle_clarification: query={query}, category={category}, language={language}")
+        logger.info(
+            f"ClarificationAgent.handle_clarification: query={query}, category={category}, language={language}"
+        )
 
         # カフェの曖昧性解消
-        if category == 'cafe-clarification-needed':
+        if category == "cafe-clarification-needed":
             clarification_message = (
                 "I'd be happy to help! Are you asking about:\n"
                 "1. **Engineer Cafe** (the coworking space) - hours, facilities, usage\n"
                 "2. **Saino Cafe** (the attached cafe & bar) - menu, hours, prices\n\n"
                 "Please let me know which one you're interested in!"
-                if language == 'en'
+                if language == "en"
                 else "お手伝いさせていただきます！どちらについてお聞きでしょうか：\n"
-                      "1. **エンジニアカフェ**（コワーキングスペース）- 営業時間、設備、利用方法\n"
-                      "2. **サイノカフェ**（併設のカフェ＆バー）- メニュー、営業時間、料金\n\n"
-                      "お聞かせください！"
+                "1. **エンジニアカフェ**（コワーキングスペース）- 営業時間、設備、利用方法\n"
+                "2. **サイノカフェ**（併設のカフェ＆バー）- メニュー、営業時間、料金\n\n"
+                "お聞かせください！"
             )
 
             return self._create_result(clarification_message, "cafe-clarification-needed")
 
         # 会議室の曖昧性解消
-        if category == 'meeting-room-clarification-needed':
+        if category == "meeting-room-clarification-needed":
             clarification_message = (
                 "I'd be happy to help! We have two types of meeting spaces:\n"
                 "1. **Paid Meeting Rooms (2F)** - Private rooms with advance booking required (fees apply)\n"
                 "2. **Basement Meeting Spaces (B1)** - Free open spaces for casual meetings\n\n"
                 "Which one would you like to know about?"
-                if language == 'en'
+                if language == "en"
                 else "お手伝いさせていただきます！会議スペースは2種類ございます：\n"
-                      "1. **有料会議室（2階）** - 事前予約制の個室（有料）\n"
-                      "2. **地下MTGスペース（地下1階）** - カジュアルな打ち合わせ用の無料スペース\n\n"
-                      "どちらについてお知りになりたいですか？"
+                "1. **有料会議室（2階）** - 事前予約制の個室（有料）\n"
+                "2. **地下MTGスペース（地下1階）** - カジュアルな打ち合わせ用の無料スペース\n\n"
+                "どちらについてお知りになりたいですか？"
             )
 
             return self._create_result(clarification_message, "meeting-room-clarification-needed")
@@ -155,12 +156,11 @@ class ClarificationAgent:
         # デフォルトの曖昧性解消
         default_message = (
             "I'd be happy to help! Could you please provide more details about what you'd like to know?"
-            if language == 'en'
+            if language == "en"
             else "お手伝いさせていただきます！もう少し詳しくお聞かせいただけますか？"
         )
 
         return self._create_result(default_message, "general-clarification-needed", confidence=0.7)
-
 
     async def detect_ambiguity(self, query: str, context: Optional[Dict[str, Any]] = None) -> bool:
         """
