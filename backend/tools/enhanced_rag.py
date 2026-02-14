@@ -10,6 +10,16 @@ from supabase import create_client, Client
 
 logger = logging.getLogger(__name__)
 
+# カテゴリ別品質グレーディング閾値
+CATEGORY_THRESHOLDS = {
+    "hours": {"high": 0.75, "medium": 0.55, "term_match": 0.25},
+    "pricing": {"high": 0.75, "medium": 0.55, "term_match": 0.25},
+    "facility-info": {"high": 0.80, "medium": 0.60, "term_match": 0.30},
+    "location": {"high": 0.70, "medium": 0.50, "term_match": 0.20},
+    "event": {"high": 0.80, "medium": 0.60, "term_match": 0.30},
+}
+DEFAULT_THRESHOLDS = {"high": 0.80, "medium": 0.60, "term_match": 0.30}
+
 
 class EnhancedRAGSearch:
     """Enhanced RAG検索ツール"""
@@ -77,7 +87,7 @@ class EnhancedRAGSearch:
             scored_results = self._score_results(results_list, query, category, language)
 
             # 3.5. 品質グレーディング（軽量CRAG）
-            scored_results = self._grade_result_relevance(scored_results, query)
+            scored_results = self._grade_result_relevance(scored_results, query, category)
 
             # 4. トップ結果を取得
             top_results = scored_results[:max_results]
@@ -156,25 +166,49 @@ class EnhancedRAGSearch:
 
         return scored_results
 
-    def _grade_result_relevance(self, scored_results: List[Dict], query: str) -> List[Dict]:
+    def _grade_result_relevance(
+        self, scored_results: List[Dict], query: str, category: str = "general"
+    ) -> List[Dict]:
         """スコアリング済み結果の品質グレーディング（軽量CRAG）
 
         priority_scoreとクエリ用語マッチ率を基に、低品質な結果を除外する。
 
         Grading criteria:
-        - HIGH (priority_score >= 0.8): 常に保持
-        - MEDIUM (0.6 <= priority_score < 0.8): クエリ用語マッチがある場合保持
-        - LOW (priority_score < 0.6): 除外
+        - HIGH (priority_score >= high_threshold): 常に保持
+        - MEDIUM (medium_threshold <= priority_score < high_threshold): クエリ用語マッチがある場合保持
+        - LOW (priority_score < medium_threshold): 除外
+
+        閾値はカテゴリとクエリ長により動的に調整される。
 
         Args:
             scored_results: _score_results()でスコアリング済みの結果リスト
             query: 元のクエリ文字列
+            category: クエリカテゴリ（hours, pricing, location等）
 
         Returns:
             品質フィルタリング済みの結果リスト
         """
         if not scored_results:
             return []
+
+        # カテゴリ別閾値を取得
+        thresholds = CATEGORY_THRESHOLDS.get(category, DEFAULT_THRESHOLDS)
+        high_threshold = thresholds["high"]
+        medium_threshold = thresholds["medium"]
+        term_match_threshold = thresholds["term_match"]
+
+        # クエリ長による閾値調整
+        query_len = len(query)
+        if query_len < 10:
+            # 短いクエリ: 情報が少ないため閾値を緩和
+            high_threshold -= 0.05
+            medium_threshold -= 0.05
+            term_match_threshold -= 0.05
+        elif query_len >= 50:
+            # 長いクエリ: 情報が多いため閾値を厳格化
+            high_threshold += 0.03
+            medium_threshold += 0.03
+            term_match_threshold += 0.03
 
         query_lower = query.lower()
 
@@ -221,12 +255,12 @@ class EnhancedRAGSearch:
             score = result.get("priority_score", 0.0)
 
             # HIGH: 常に保持
-            if score >= 0.8:
+            if score >= high_threshold:
                 graded_results.append({**result, "grade": "HIGH"})
                 continue
 
             # MEDIUM: クエリ用語マッチがある場合保持
-            if score >= 0.6:
+            if score >= medium_threshold:
                 content = result.get("content", "").lower()
                 title = result.get("title", "").lower()
                 combined = f"{title} {content}"
@@ -236,7 +270,7 @@ class EnhancedRAGSearch:
                     match_count = sum(1 for term in query_terms if term in combined)
                     match_ratio = match_count / len(query_terms)
 
-                    if match_ratio > 0.3:  # At least 30% of terms match
+                    if match_ratio > term_match_threshold:
                         graded_results.append({**result, "grade": "MEDIUM"})
                         continue
 
