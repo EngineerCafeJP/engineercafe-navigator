@@ -1215,13 +1215,17 @@ useEffect(() => {
     rendererRef.current.render(sceneRef.current, cameraRef.current);
   };
   
-  let frameCount = 0;
-
   const cleanup = () => {
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
     }
-    
+
+    // Stop auto-blink
+    if (autoBlinkCleanupRef.current) {
+      autoBlinkCleanupRef.current();
+      autoBlinkCleanupRef.current = null;
+    }
+
     // Clear expression timeout
     if (expressionTimeoutRef.current) {
       clearTimeout(expressionTimeoutRef.current);

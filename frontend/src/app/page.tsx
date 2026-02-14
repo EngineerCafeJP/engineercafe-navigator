@@ -48,7 +48,15 @@ export default function Home() {
     []
   );
 
+  const lipSyncTimeoutsRef = useRef<NodeJS.Timeout[]>([]);
   const prevVolumeRef = useRef<number>(80);
+
+  // Cleanup lip sync timeouts on unmount
+  useEffect(() => {
+    return () => {
+      lipSyncTimeoutsRef.current.forEach(id => clearTimeout(id));
+    };
+  }, []);
 
   // Sync audioStateManager when volume or mute changes
   useEffect(() => {
@@ -607,11 +615,15 @@ export default function Home() {
       }
       
       if (characterControlData.lipSyncData && setVisemeFunction) {
+        // Clear previous lip sync timeouts
+        lipSyncTimeoutsRef.current.forEach(id => clearTimeout(id));
+        lipSyncTimeoutsRef.current = [];
         // Apply lip sync data frame by frame
         characterControlData.lipSyncData.forEach((frame: any) => {
-          setTimeout(() => {
+          const id = setTimeout(() => {
             setVisemeFunction(frame.viseme, frame.intensity);
           }, frame.time);
+          lipSyncTimeoutsRef.current.push(id);
         });
       }
       
