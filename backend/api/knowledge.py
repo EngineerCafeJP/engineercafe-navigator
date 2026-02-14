@@ -4,10 +4,13 @@ Knowledge Base CRUD API Router
 ナレッジベースのCRUD操作とファイルアップロードを提供する。
 テキスト入力に加え、.mdと.pdfファイルのアップロードにも対応。
 embedding生成は自動で行われる。
+
+NOTE: 認証は別Issueで対応予定。現時点ではCORS制限のみ。
 """
 
 import logging
 import os
+import re
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
@@ -20,6 +23,9 @@ from utils.file_parser import detect_file_type, parse_markdown, parse_pdf
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["knowledge"])
+
+# 10MB upload size limit
+MAX_UPLOAD_SIZE = 10 * 1024 * 1024
 
 
 # =============================================================================
@@ -104,6 +110,25 @@ def _row_to_item(row: Dict[str, Any]) -> KnowledgeItem:
     )
 
 
+def _sanitize_keyword(keyword: str) -> str:
+    """PostgRESTフィルタに渡すキーワードをサニタイズ
+
+    PostgRESTのilike構文で特殊文字を安全にエスケープする。
+    """
+    # PostgREST filter DSLの特殊文字をエスケープ
+    # カンマ、ドット、括弧はフィルタ構文で意味を持つ
+    sanitized = re.sub(r"[,.()\[\]{}]", "", keyword)
+    # 先頭・末尾の空白除去、連続空白を1つに
+    sanitized = re.sub(r"\s+", " ", sanitized).strip()
+    return sanitized
+
+
+def _is_unique_violation(error: Exception) -> bool:
+    """Supabaseエラーがユニーク制約違反かを判定"""
+    error_str = str(error).lower()
+    return "unique" in error_str or "duplicate" in error_str or "23505" in error_str
+
+
 # =============================================================================
 # Endpoints
 # =============================================================================
@@ -112,8 +137,8 @@ def _row_to_item(row: Dict[str, Any]) -> KnowledgeItem:
 @router.get("/knowledge", response_model=KnowledgeListResponse)
 async def list_knowledge(
     category: Optional[str] = Query(None, description="カテゴリフィルタ"),
-    keyword: Optional[str] = Query(None, description="キーワード検索"),
-    language: Optional[str] = Query(None, description="言語フィルタ (ja/en)"),
+    keyword: Optional[str] = Query(None, max_length=200, description="キーワード検索"),
+    language: Optional[str] = Query(None, pattern=r"^(ja|en)$", description="言語フィルタ"),
     page: int = Query(1, ge=1, description="ページ番号"),
     limit: int = Query(20, ge=1, le=100, description="1ページあたりの件数"),
 ):
@@ -127,7 +152,9 @@ async def list_knowledge(
         if language:
             query = query.eq("language", language)
         if keyword:
-            query = query.or_(f"title.ilike.%{keyword}%,content.ilike.%{keyword}%")
+            safe_keyword = _sanitize_keyword(keyword)
+            if safe_keyword:
+                query = query.or_(f"title.ilike.%{safe_keyword}%,content.ilike.%{safe_keyword}%")
 
         offset = (page - 1) * limit
         query = query.order("created_at", desc=True).range(offset, offset + limit - 1)
@@ -149,7 +176,7 @@ async def list_knowledge(
         raise
     except Exception as e:
         logger.error(f"Failed to list knowledge: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Failed to list knowledge entries")
 
 
 @router.get("/knowledge/{knowledge_id}", response_model=KnowledgeResponse)
@@ -171,7 +198,7 @@ async def get_knowledge(knowledge_id: str):
         raise
     except Exception as e:
         logger.error(f"Failed to get knowledge {knowledge_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Failed to get knowledge entry")
 
 
 @router.post("/knowledge", response_model=KnowledgeResponse, status_code=201)
@@ -219,8 +246,13 @@ async def create_knowledge(request: KnowledgeCreateRequest):
     except HTTPException:
         raise
     except Exception as e:
+        if _is_unique_violation(e):
+            raise HTTPException(
+                status_code=409,
+                detail=f"Knowledge with title '{request.title}' already exists",
+            )
         logger.error(f"Failed to create knowledge: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Failed to create knowledge entry")
 
 
 @router.post("/knowledge/upload", response_model=KnowledgeResponse, status_code=201)
@@ -235,6 +267,14 @@ async def upload_knowledge(
         if not file.filename:
             raise HTTPException(status_code=400, detail="Filename is required")
 
+        # language バリデーション
+        if language not in ("ja", "en"):
+            raise HTTPException(status_code=400, detail="language must be 'ja' or 'en'")
+
+        # title長さバリデーション
+        if title and len(title) > 200:
+            raise HTTPException(status_code=400, detail="title must be 200 characters or less")
+
         file_type = detect_file_type(file.filename)
         if file_type not in ("markdown", "pdf"):
             raise HTTPException(
@@ -242,16 +282,24 @@ async def upload_knowledge(
                 detail=f"Unsupported file type: {file.filename}. Only .md and .pdf are supported.",
             )
 
-        # ファイル内容を読み取り
+        # ファイルサイズ制限チェック
         content_bytes = await file.read()
         if not content_bytes:
             raise HTTPException(status_code=400, detail="File is empty")
+        if len(content_bytes) > MAX_UPLOAD_SIZE:
+            raise HTTPException(
+                status_code=400,
+                detail=f"File too large. Maximum size is {MAX_UPLOAD_SIZE // (1024 * 1024)}MB.",
+            )
 
-        # パース
-        if file_type == "markdown":
-            parsed_content = parse_markdown(content_bytes)
-        else:
-            parsed_content = parse_pdf(content_bytes)
+        # パース（ValueErrorは400として処理）
+        try:
+            if file_type == "markdown":
+                parsed_content = parse_markdown(content_bytes)
+            else:
+                parsed_content = parse_pdf(content_bytes)
+        except ValueError as ve:
+            raise HTTPException(status_code=400, detail=str(ve))
 
         if not parsed_content.strip():
             raise HTTPException(status_code=400, detail="No text content extracted from file")
@@ -304,8 +352,13 @@ async def upload_knowledge(
     except HTTPException:
         raise
     except Exception as e:
+        if _is_unique_violation(e):
+            raise HTTPException(
+                status_code=409,
+                detail=f"Knowledge with title '{effective_title}' already exists",
+            )
         logger.error(f"Failed to upload knowledge: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Failed to upload knowledge entry")
 
 
 @router.put("/knowledge/{knowledge_id}", response_model=KnowledgeResponse)
@@ -375,8 +428,13 @@ async def update_knowledge(knowledge_id: str, request: KnowledgeUpdateRequest):
     except HTTPException:
         raise
     except Exception as e:
+        if _is_unique_violation(e):
+            raise HTTPException(
+                status_code=409,
+                detail=f"Knowledge with title '{request.title}' already exists",
+            )
         logger.error(f"Failed to update knowledge {knowledge_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Failed to update knowledge entry")
 
 
 @router.delete("/knowledge/{knowledge_id}", response_model=KnowledgeResponse)
@@ -401,4 +459,4 @@ async def delete_knowledge(knowledge_id: str):
         raise
     except Exception as e:
         logger.error(f"Failed to delete knowledge {knowledge_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Failed to delete knowledge entry")

@@ -48,12 +48,22 @@ async def generate_embedding(text: str) -> List[float]:
 
             if response.status_code != 200:
                 logger.error(
-                    f"Embedding API error: status={response.status_code}, body={response.text[:200]}"
+                    f"Embedding API error: status={response.status_code}, "
+                    f"body={response.text[:200]}"
                 )
                 return []
 
             data = response.json()
             embedding: List[float] = data["data"][0]["embedding"]
+
+            # 次元数バリデーション
+            if len(embedding) != EMBEDDING_DIMENSIONS:
+                logger.error(
+                    f"Unexpected embedding dimensions: got {len(embedding)}, "
+                    f"expected {EMBEDDING_DIMENSIONS}"
+                )
+                return []
+
             logger.info(f"Generated embedding: {len(embedding)} dimensions")
             return embedding
 

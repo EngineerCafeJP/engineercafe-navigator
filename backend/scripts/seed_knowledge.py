@@ -112,12 +112,11 @@ KNOWLEDGE_BASE_DATA: list[dict[str, Any]] = [
 ]
 
 
-async def generate_embedding_for_seed(text: str, api_key: str) -> list[float]:
+async def generate_embedding_for_seed(text: str) -> list[float]:
     """embedding生成（共通サービスに委譲）
 
     Args:
         text: エンベディング対象のテキスト
-        api_key: OpenRouter APIキー（互換性のため引数として保持、実際は環境変数から取得）
 
     Returns:
         1536次元のembeddingベクトル
@@ -159,7 +158,7 @@ async def seed_knowledge_base() -> None:
             logger.info(f"Processing: {title}")
 
             # Embedding生成
-            embedding = await generate_embedding_for_seed(f"{title}\n{content}", api_key)
+            embedding = await generate_embedding_for_seed(f"{title}\n{content}")
 
             # Upsert（titleで重複排除）
             upsert_data = {

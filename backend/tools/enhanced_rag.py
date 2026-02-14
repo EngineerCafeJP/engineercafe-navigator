@@ -20,7 +20,6 @@ class EnhancedRAGSearch:
             os.getenv("SUPABASE_URL", ""),
             os.getenv("SUPABASE_KEY", ""),
         )
-        self.api_key = os.getenv("OPENROUTER_API_KEY", "")
 
     async def search(
         self,

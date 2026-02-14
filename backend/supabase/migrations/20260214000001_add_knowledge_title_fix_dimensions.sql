@@ -6,10 +6,21 @@
 -- =============================================================================
 ALTER TABLE knowledge_base ADD COLUMN IF NOT EXISTS title varchar(200);
 
--- Populate title for existing rows using first 50 chars of content
-UPDATE knowledge_base
-SET title = LEFT(content, 50)
-WHERE title IS NULL;
+-- Populate title for existing rows, handling duplicate prefixes with row_number
+-- Each row gets a unique title based on first 50 chars + optional suffix
+WITH numbered AS (
+  SELECT id, LEFT(content, 50) AS base_title,
+         ROW_NUMBER() OVER (PARTITION BY LEFT(content, 50) ORDER BY created_at) AS rn
+  FROM knowledge_base
+  WHERE title IS NULL
+)
+UPDATE knowledge_base kb
+SET title = CASE
+  WHEN n.rn = 1 THEN n.base_title
+  ELSE n.base_title || ' (' || n.rn || ')'
+END
+FROM numbered n
+WHERE kb.id = n.id;
 
 -- Make title NOT NULL after populating
 ALTER TABLE knowledge_base ALTER COLUMN title SET NOT NULL;
@@ -33,8 +44,11 @@ CREATE INDEX idx_knowledge_base_embedding ON knowledge_base
 
 -- =============================================================================
 -- 3. Update search_knowledge_base() RPC to include title in results
+--    DROP first because OR REPLACE cannot change return type
 -- =============================================================================
-CREATE OR REPLACE FUNCTION search_knowledge_base(
+DROP FUNCTION IF EXISTS search_knowledge_base(vector, float, int);
+
+CREATE FUNCTION search_knowledge_base(
   query_embedding vector(1536),
   similarity_threshold float DEFAULT 0.7,
   match_count int DEFAULT 5
