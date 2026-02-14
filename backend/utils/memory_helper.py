@@ -132,6 +132,10 @@ class SimplifiedMemoryHelper:
         recent_messages = await self._get_recent_messages(session_id)
         logger.info(f"Found {len(recent_messages)} recent messages")
 
+        # メッセージをランキング
+        if recent_messages:
+            recent_messages = self._rank_messages(recent_messages, query)
+
         # リクエストタイプの継承
         inherited_request_type: Optional[str] = None
         if inherit_context:
@@ -232,6 +236,97 @@ class SimplifiedMemoryHelper:
         except Exception as e:
             logger.error(f"Error getting recent messages: {e}")
             return []
+
+    def _rank_messages(self, messages: List[Dict], current_query: str) -> List[Dict]:
+        """メッセージをrecency/frequency/relevanceの複合スコアでランキング
+
+        Args:
+            messages: メッセージリスト
+            current_query: 現在のクエリ
+
+        Returns:
+            _rank_score付きのソート済みメッセージリスト
+        """
+        if not messages:
+            return []
+
+        now = datetime.now()
+        scored = []
+
+        for msg in messages:
+            # Recency (0-1): 新しいほど高い（1週間で0に減衰）
+            timestamp = msg.get("metadata", {}).get("timestamp")
+            if timestamp:
+                age_hours = (now - datetime.fromtimestamp(timestamp / 1000)).total_seconds() / 3600
+            else:
+                age_hours = 168  # デフォルト: 1週間前
+            recency = max(0.0, 1.0 - age_hours / (24 * 7))
+
+            # Frequency (0-1): 同じトピックの出現頻度
+            topic_count = sum(1 for m in messages if self._topic_overlap(msg, m) > 0.3)
+            frequency = min(1.0, topic_count / max(len(messages), 1))
+
+            # Relevance (0-1): 現在のクエリとの関連性
+            relevance = self._compute_relevance(msg, current_query)
+
+            # 複合スコア（重み付き）
+            composite = 0.4 * recency + 0.2 * frequency + 0.4 * relevance
+
+            scored.append({**msg, "_rank_score": composite})
+
+        scored.sort(key=lambda x: x["_rank_score"], reverse=True)
+        return scored
+
+    def _topic_overlap(self, msg_a: Dict, msg_b: Dict) -> float:
+        """2メッセージのトピック類似度（bigramマッチ率）
+
+        Args:
+            msg_a: メッセージA
+            msg_b: メッセージB
+
+        Returns:
+            類似度スコア (0.0-1.0)
+        """
+        content_a = msg_a.get("content", "")
+        content_b = msg_b.get("content", "")
+
+        if not content_a or not content_b:
+            return 0.0
+
+        bigrams_a = set(content_a[i : i + 2] for i in range(len(content_a) - 1))
+        bigrams_b = set(content_b[i : i + 2] for i in range(len(content_b) - 1))
+
+        if not bigrams_a or not bigrams_b:
+            return 0.0
+
+        intersection = bigrams_a & bigrams_b
+        union = bigrams_a | bigrams_b
+
+        return len(intersection) / len(union) if union else 0.0
+
+    def _compute_relevance(self, msg: Dict, query: str) -> float:
+        """クエリとメッセージの関連度（用語マッチ率）
+
+        Args:
+            msg: メッセージ
+            query: クエリ文字列
+
+        Returns:
+            関連度スコア (0.0-1.0)
+        """
+        content = msg.get("content", "")
+        if not content or not query:
+            return 0.0
+
+        # 2文字sliding windowでbigramを生成
+        query_bigrams = set(query[i : i + 2] for i in range(len(query) - 1))
+        content_lower = content.lower()
+
+        if not query_bigrams:
+            return 0.0
+
+        match_count = sum(1 for bg in query_bigrams if bg in content_lower)
+        return match_count / len(query_bigrams)
 
     def _build_comprehensive_context(
         self,
