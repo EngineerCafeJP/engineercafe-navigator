@@ -96,7 +96,7 @@
       "expected_agent": "facility",
       "expected_category": "facility-info",
       "language": "ja",
-      "tags": ["facility", "cafe"],
+      "tags": ["fast-path", "facility", "cafe"],
       "note": "cafe&bar saino - 有料"
     },
     {
@@ -122,7 +122,7 @@
       "expected_agent": "facility",
       "expected_category": "facility-info",
       "language": "ja",
-      "tags": ["facility", "reservation"],
+      "tags": ["fast-path", "facility", "reservation"],
       "note": "福岡市管理、コミネットで予約、有料"
     },
     {

@@ -35,7 +35,10 @@ from backend.config.routing_constants import (
     COMMUNITY_KEYWORDS,
     CONSULTATION_KEYWORDS,
     EVENT_KEYWORDS,
+    FLOOR_KEYWORDS,
     FOOD_DRINK_KEYWORDS,
+    FOOD_DRINK_VERBS,
+    MEETING_ROOM_KEYWORDS,
     MEMORY_EXCLUSION_BUSINESS,
     MEMORY_EXCLUSION_FACILITY,
     MEMORY_KEYWORDS,
@@ -445,6 +448,26 @@ class OrchestratorAgent:
                 "category": "facility-info",
                 "request_type": "smoking",
                 "reasoning": "Smoking policy keyword detected",
+            }
+
+        # 会議室 + 階情報 → facility（具体的な質問なのでclarificationスキップ）
+        if any(kw in lower_query for kw in MEETING_ROOM_KEYWORDS) and any(
+            kw in lower_query for kw in FLOOR_KEYWORDS
+        ):
+            return {
+                "agent": "facility",
+                "category": "facility-info",
+                "request_type": "meeting_room",
+                "reasoning": "Meeting room with floor info detected",
+            }
+
+        # 飲食動詞（「飲めますか」「食べられますか」等）→ facility
+        if any(kw in lower_query for kw in FOOD_DRINK_VERBS):
+            return {
+                "agent": "facility",
+                "category": "facility-info",
+                "request_type": "food_drink",
+                "reasoning": "Food/drink verb detected",
             }
 
         if match_keywords(lower_query, FOOD_DRINK_KEYWORDS):
