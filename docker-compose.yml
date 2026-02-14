@@ -5,8 +5,6 @@
 #   supabase start
 # This provides PostgreSQL at localhost:54322
 
-version: '3.8'
-
 services:
   # Frontend service - Next.js
   frontend:
@@ -49,7 +47,8 @@ services:
     env_file:
       - ./backend/.env
     depends_on:
-      - frontend
+      voicevox:
+        condition: service_healthy
     networks:
       - engineer-cafe-network
     extra_hosts:

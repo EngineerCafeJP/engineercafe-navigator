@@ -392,13 +392,15 @@ class GoogleTTSClient:
 class VoiceVoxClient:
     """
     ローカルTTS: VoiceVox エンジン
-    
-    VoiceVox はオフライン対応の高品質音声合成エンジン。
+
+    VoiceVox はオフライン対応の高品質日本語音声合成エンジン。
     Docker で起動した VoiceVox REST API を使用します。
+
+    注意: VoiceVoxは日本語専用TTS。英語テキストはカタカナ読みになります。
     """
-    
-    DEFAULT_SPEAKER_JA = 1  # 四国めたおねえさん
-    DEFAULT_SPEAKER_EN = 4  # English speaker
+
+    DEFAULT_SPEAKER_JA = 3  # ずんだもん (ノーマル)
+    DEFAULT_SPEAKER_EN = 3  # VoiceVoxに英語話者なし。日本語話者でカタカナ読み
 
     def __init__(self, api_url: str = "http://localhost:50021"):
         """
@@ -406,7 +408,25 @@ class VoiceVoxClient:
             api_url: VoiceVox Engine API URL
         """
         self.api_url = api_url.rstrip("/")
+        self._initialized_speakers: set[int] = set()
         logger.info(f"VoiceVoxClient initialized: {self.api_url}")
+
+    async def _ensure_speaker_initialized(
+        self, client: httpx.AsyncClient, speaker_id: int
+    ) -> None:
+        """初回遅延回避のためスピーカーを事前初期化 (公式推奨)"""
+        if speaker_id in self._initialized_speakers:
+            return
+        try:
+            resp = await client.post(
+                f"{self.api_url}/initialize_speaker",
+                params={"speaker": speaker_id},
+            )
+            if resp.status_code < 400:
+                self._initialized_speakers.add(speaker_id)
+                logger.info(f"VoiceVox speaker {speaker_id} initialized")
+        except Exception as e:
+            logger.warning(f"VoiceVox speaker init failed (non-fatal): {e}")
 
     async def synthesize_wav_base64(
         self, text: str, lang: str, speaker_id: Optional[int] = None
@@ -419,6 +439,9 @@ class VoiceVoxClient:
 
         try:
             async with httpx.AsyncClient(timeout=30) as client:
+                # Step 0: スピーカー初期化 (初回のみ、公式推奨)
+                await self._ensure_speaker_initialized(client, speaker_id)
+
                 # Step 1: Query 作成
                 query_url = f"{self.api_url}/audio_query"
                 query_response = await client.post(
