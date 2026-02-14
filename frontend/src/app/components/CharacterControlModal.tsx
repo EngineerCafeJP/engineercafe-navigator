@@ -26,6 +26,9 @@ export interface CharacterControlModalProps {
   on_apply_control: (data: CharacterAnimationData) => void;
 }
 
+const MAX_DURATION_MS = 60000;
+const MAX_KEYFRAMES = 500;
+
 function parse_character_animation_json(json_string: string): CharacterAnimationData {
   const parsed = JSON.parse(json_string) as Record<string, unknown>;
 
@@ -34,14 +37,14 @@ function parse_character_animation_json(json_string: string): CharacterAnimation
   if (parsed.animations && Array.isArray(parsed.animations) && parsed.animations.length > 0) {
     const first = parsed.animations[0] as Record<string, unknown>;
     animation = {
-      name: (first.name as string) ?? 'animation',
-      duration: (first.duration as number) ?? 2000,
+      name: String(first.name ?? 'animation'),
+      duration: Math.max(0, Math.min(MAX_DURATION_MS, Number(first.duration ?? 2000))),
       keyframes: (first.keyframes as CharacterAnimationKeyframe[]) ?? [],
     };
   } else if (parsed.keyframes && Array.isArray(parsed.keyframes)) {
     animation = {
-      name: (parsed.name as string) ?? 'animation',
-      duration: (parsed.duration as number) ?? 2000,
+      name: String(parsed.name ?? 'animation'),
+      duration: Math.max(0, Math.min(MAX_DURATION_MS, Number(parsed.duration ?? 2000))),
       keyframes: parsed.keyframes as CharacterAnimationKeyframe[],
     };
   } else {
@@ -51,6 +54,16 @@ function parse_character_animation_json(json_string: string): CharacterAnimation
   if (!animation.keyframes || animation.keyframes.length === 0) {
     throw new Error('keyframes が空または無効です。');
   }
+
+  if (animation.keyframes.length > MAX_KEYFRAMES) {
+    throw new Error(`キーフレーム数は${MAX_KEYFRAMES}個以下にしてください。（現在: ${animation.keyframes.length}個）`);
+  }
+
+  // Validate and clamp each keyframe time value
+  animation.keyframes = animation.keyframes.map((kf) => ({
+    ...kf,
+    time: Math.max(0, Math.min(animation.duration, Number(kf.time ?? 0))),
+  }));
 
   return animation;
 }

@@ -806,6 +806,7 @@ useEffect(() => {
 
         keyframeAnimationTimeoutsRef.current.forEach((id) => clearTimeout(id));
         keyframeAnimationTimeoutsRef.current = [];
+        isPlayingSequence.current = false;
 
         isPlayingSequence.current = true;
 
@@ -1110,6 +1111,11 @@ useEffect(() => {
       clearTimeout(expressionTimeoutRef.current);
       expressionTimeoutRef.current = null;
     }
+
+    // Clear keyframe animation timeouts
+    keyframeAnimationTimeoutsRef.current.forEach((id) => clearTimeout(id));
+    keyframeAnimationTimeoutsRef.current = [];
+    isPlayingSequence.current = false;
     
     // Stop and clean up animations
     if (currentActionRef.current) {
