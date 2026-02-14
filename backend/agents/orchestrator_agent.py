@@ -29,23 +29,26 @@ from backend.config.routing_constants import (
     CATEGORY_TO_AGENT_MAP,
     ACCESS_DIRECTION_KEYWORDS,
     BASEMENT_KEYWORDS,
+    BICYCLE_KEYWORDS,
     BUILDING_KEYWORDS,
     BUSINESS_HOURS_KEYWORDS,
     COMMUNITY_KEYWORDS,
     CONSULTATION_KEYWORDS,
     EVENT_KEYWORDS,
+    FOOD_DRINK_KEYWORDS,
     MEMORY_EXCLUSION_BUSINESS,
     MEMORY_EXCLUSION_FACILITY,
     MEMORY_KEYWORDS,
+    PARKING_KEYWORDS,
     PRICING_KEYWORDS,
     SLIDE_KEYWORDS,
+    SMOKING_KEYWORDS,
     WIFI_KEYWORDS,
-    AgentNodeName,
     RoutingTarget,
     extract_request_type,
     match_keywords,
 )
-from backend.llm.models import ModelConfig, SupportedModel, get_model_config
+from backend.llm.models import ModelConfig, SupportedModel
 from backend.llm.openrouter import OpenRouterProvider
 from backend.utils.input_sanitizer import (
     MAX_CONTEXT_LENGTH,
@@ -418,6 +421,38 @@ class OrchestratorAgent:
                 "category": "facility-info",
                 "request_type": "building",
                 "reasoning": "Building keyword detected",
+            }
+
+        if match_keywords(lower_query, PARKING_KEYWORDS):
+            return {
+                "agent": "facility",
+                "category": "facility-info",
+                "request_type": "parking",
+                "reasoning": "Parking keyword detected",
+            }
+
+        if match_keywords(lower_query, BICYCLE_KEYWORDS):
+            return {
+                "agent": "facility",
+                "category": "facility-info",
+                "request_type": "bicycle",
+                "reasoning": "Bicycle parking keyword detected",
+            }
+
+        if match_keywords(lower_query, SMOKING_KEYWORDS):
+            return {
+                "agent": "facility",
+                "category": "facility-info",
+                "request_type": "smoking",
+                "reasoning": "Smoking policy keyword detected",
+            }
+
+        if match_keywords(lower_query, FOOD_DRINK_KEYWORDS):
+            return {
+                "agent": "facility",
+                "category": "facility-info",
+                "request_type": "food_drink",
+                "reasoning": "Food/drink policy keyword detected",
             }
 
         if any(kw in lower_query for kw in ["カフェ", "cafe"]) and "どっち" in lower_query:
