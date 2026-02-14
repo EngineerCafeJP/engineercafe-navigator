@@ -15,6 +15,7 @@ STTAgent - Speech-to-Text エージェント
 
 from __future__ import annotations
 
+import asyncio
 import io
 import json
 import logging
@@ -71,53 +72,57 @@ class LocalSTTClient:
                 logger.info(f"Loaded Vosk English model from {model_path}")
             return self._model_en
 
-    async def transcribe(self, audio_data: bytes, language: str = "ja") -> str:
-        """WAVバイト列を受け取り、テキストを返します。
+    def _sync_transcribe(self, audio_data: bytes, language: str = "ja") -> str:
+        """Synchronous Vosk transcription (called via thread pool).
 
         注意: 入力は WAV (PCM) で、可能であれば 16kHz, 16bit, mono を推奨します。
         """
+        import wave
+        from vosk import KaldiRecognizer
+
+        bio = io.BytesIO(audio_data)
+        with wave.open(bio, "rb") as wf:
+            sample_rate = wf.getframerate()
+            frames = wf.readframes(wf.getnframes())
+
+        if sample_rate != 16000:
+            logger.warning(
+                f"Received sample rate {sample_rate}Hz — Vosk expects 16000Hz."
+                " Provide 16kHz for best results."
+            )
+
+        model = self._load_model(language)
+        rec = KaldiRecognizer(model, sample_rate)
+        rec.AcceptWaveform(frames)
+        result_json = rec.FinalResult()
+
         try:
-            import wave
-            from vosk import KaldiRecognizer
+            result = json.loads(result_json)
+        except Exception:
+            logger.error(f"Failed to parse Vosk result: {result_json}")
+            raise RuntimeError("Failed to parse Vosk recognition result")
 
-            # 読み込み
-            bio = io.BytesIO(audio_data)
-            with wave.open(bio, "rb") as wf:
-                sample_rate = wf.getframerate()
-                channels = wf.getnchannels()
-                sampwidth = wf.getsampwidth()
-                frames = wf.readframes(wf.getnframes())
+        text = result.get("text", "")
+        if not text and isinstance(result.get("result"), list):
+            parts = [p.get("word", "") for p in result.get("result", [])]
+            text = " ".join([p for p in parts if p])
 
-            if sample_rate != 16000:
-                logger.warning(f"Received sample rate {sample_rate}Hz — Vosk expects 16000Hz. Provide 16kHz for best results.")
-                # We still attempt recognition with provided rate
+        text = (text or "").strip()
+        if not text:
+            logger.warning("Vosk returned empty transcript")
+            raise RuntimeError("Vosk returned empty recognition result")
 
-            model = self._load_model(language)
-            rec = KaldiRecognizer(model, sample_rate)
-            rec.AcceptWaveform(frames)
-            result_json = rec.FinalResult()
+        logger.info(f"Vosk transcription success: {text[:100]}")
+        return text
 
-            try:
-                result = json.loads(result_json)
-            except Exception:
-                logger.error(f"Failed to parse Vosk result: {result_json}")
-                raise RuntimeError("Failed to parse Vosk recognition result")
-
-            # 結果抽出
-            text = result.get("text", "")
-            if not text and isinstance(result.get("result"), list):
-                # 単語リストから結合
-                parts = [p.get("word", "") for p in result.get("result", [])]
-                text = " ".join([p for p in parts if p])
-
-            text = (text or "").strip()
-            if not text:
-                logger.warning("Vosk returned empty transcript")
-                raise RuntimeError("Vosk returned empty recognition result")
-
-            logger.info(f"Vosk transcription success: {text[:100]}")
-            return text
-
+    async def transcribe(self, audio_data: bytes, language: str = "ja") -> str:
+        """WAVバイト列を受け取り、テキストを返します (thread pool経由)。"""
+        try:
+            loop = asyncio.get_running_loop()
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                return await loop.run_in_executor(
+                    pool, self._sync_transcribe, audio_data, language
+                )
         except Exception as e:
             logger.exception("Vosk transcription error: %s", e)
             raise

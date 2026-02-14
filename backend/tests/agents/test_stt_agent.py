@@ -174,17 +174,13 @@ class TestSTTAgent:
             agent = STTAgent()
             assert agent.stt_provider == "vosk"
 
-    def test_init_env_var_provider(self):
+    def test_init_env_var_provider(self, monkeypatch):
         """STTAgent reads STT_PROVIDER from environment"""
-        import os
-        os.environ["STT_PROVIDER"] = "google"
-        
+        monkeypatch.setenv("STT_PROVIDER", "google")
+
         with patch("backend.agents.stt_agent.GoogleSTTClient"):
             agent = STTAgent()
             assert agent.stt_provider == "google"
-        
-        # Clean up
-        del os.environ["STT_PROVIDER"]
 
     def test_init_custom_provider(self):
         """STTAgent accepts custom provider name"""

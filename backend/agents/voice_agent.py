@@ -13,6 +13,7 @@ Note: Unit tests can monkeypatch `VoiceAgent.tts_client.synthesize_mp3_base64` t
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import logging
@@ -20,7 +21,7 @@ import os
 import re
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Literal
+from typing import Any, Dict, List, Optional
 
 import httpx
 
@@ -344,8 +345,13 @@ class GoogleTTSClient:
             "volumeGainDb": volume,
         }
 
+    async def _get_access_token_async(self) -> str:
+        """Get access token asynchronously (offloads blocking auth to thread pool)."""
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, self._get_access_token)
+
     async def synthesize_mp3_base64(self, text: str, lang: str, tts_emotion: str) -> str:
-        token = self._get_access_token()
+        token = await self._get_access_token_async()
         params = self._tts_params(lang, tts_emotion)
 
         payload = {
@@ -367,15 +373,15 @@ class GoogleTTSClient:
                 json=payload,
             )
 
-        if r.status_code >= 400:
-            raise RuntimeError(f"TTS API Error {r.status_code}: {r.text}")
+            if r.status_code >= 400:
+                raise RuntimeError(f"TTS API Error {r.status_code}: {r.text}")
 
-        data = r.json()
-        audio_b64 = data.get("audioContent")
-        if not audio_b64:
-            raise RuntimeError("No audioContent in TTS response")
+            data = r.json()
+            audio_b64 = data.get("audioContent")
+            if not audio_b64:
+                raise RuntimeError("No audioContent in TTS response")
 
-        return audio_b64
+            return audio_b64
 
 
 # =============================================================================
@@ -539,8 +545,7 @@ class VoiceAgent:
         # ステップ1: 言語自動検出（未指定時）
         if language is None:
             try:
-                detection_result = self.language_processor.detect(text)
-                language = detection_result["detected"]
+                language = await self.language_processor.detect(text)
                 logger.info(f"Language auto-detected: {language}")
             except Exception as e:
                 logger.warning(f"Language detection failed: {e}, using default 'ja'")
@@ -564,7 +569,7 @@ class VoiceAgent:
                     language=language,
                 )
                 clarification_text = clarification_result["response"]
-                logger.info(f"Using clarification response instead of original query")
+                logger.info("Using clarification response instead of original query")
                 processed = preprocess_tts(clarification_text, language)
                 vrm_emotion = clarification_result.get("emotion", "surprised")
             except Exception as e:
@@ -573,7 +578,7 @@ class VoiceAgent:
         # ステップ4: テキスト長チェック
         if len(processed.encode("utf-8")) > 5000:
             processed = truncate_by_bytes(processed, 5000)
-            logger.warning(f"Text truncated to 5000 bytes")
+            logger.warning("Text truncated to 5000 bytes")
 
         try:
             # ステップ5: Provider ごとの呼び出し分岐
