@@ -496,8 +496,10 @@ class TestGetMemoryStats:
 
     async def test_stats_empty(self, memory_helper):
         """メッセージがない場合の統計情報"""
-        # クリーンアップしてから確認
-        await memory_helper.cleanup()
+        # cleanup()は期限切れのみ削除するため、テスト用に全エントリを強制削除
+        memory_helper.supabase.table("agent_memory").delete().eq(
+            "agent_name", memory_helper.agent_name
+        ).like("key", "message_%").execute()
 
         stats = await memory_helper.get_memory_stats()
 
