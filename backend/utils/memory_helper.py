@@ -136,8 +136,35 @@ class SimplifiedMemoryHelper:
         if inherit_context:
             inherited_request_type = await self.get_previous_request_type(session_id)
 
-        # ナレッジベース検索結果（現在は空、RAG統合時に実装）
+        # ナレッジベース検索
+        include_knowledge_base = options.get("include_knowledge_base", True)
         knowledge_results: List[Dict] = []
+
+        if include_knowledge_base:
+            try:
+                from backend.tools.enhanced_rag import EnhancedRAGSearch
+
+                rag = EnhancedRAGSearch()
+                # extract_request_typeでカテゴリを判定
+                request_type = extract_request_type(query) or "general"
+                rag_result = await rag.search(
+                    query=query,
+                    category=request_type,
+                    language=language,
+                    max_results=5,
+                )
+
+                if rag_result.get("success") and rag_result.get("data", {}).get("results"):
+                    knowledge_results = [
+                        {
+                            "content": r.get("content", ""),
+                            "category": r.get("entity", "general"),
+                        }
+                        for r in rag_result["data"]["results"]
+                    ]
+            except Exception as e:
+                logger.warning(f"Knowledge base search failed: {e}")
+                knowledge_results = []
 
         # コンテキスト文字列のフォーマット
         context_string = self._build_comprehensive_context(
