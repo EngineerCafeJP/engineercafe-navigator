@@ -173,10 +173,11 @@ class TestClarificationIntegration:
         assert result["answer"] is not None
 
         # ClarificationAgentにルーティングされた場合のみ確認
-        if result["metadata"].get("routing", {}).get("agent") == "ClarificationAgent":
+        routing = result.get("routing", {})
+        if routing.get("agent") == "clarification":
             assert "[surprised]" in result["answer"]
             assert result["emotion"] == "surprised"
-            assert result["metadata"]["requires_followup"] is True
+            assert result["metadata"].get("requires_followup") is True
             assert "clarification" in result["metadata"]
 
     @pytest.mark.asyncio
