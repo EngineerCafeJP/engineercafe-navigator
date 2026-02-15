@@ -200,20 +200,20 @@ class TestStoreMessage:
         """複数メッセージが正しく保存される"""
         await memory_helper.store_message(
             role="user",
-            content="質問1",
+            content="WiFiのパスワードを教えてください",
             session_id=unique_session_id,
         )
         # タイムスタンプの衝突を避ける
         await asyncio.sleep(0.01)
         await memory_helper.store_message(
             role="assistant",
-            content="回答1",
+            content="WiFiのSSIDは「engnrcf-guest-5GHz」です。パスワードは受付でお渡しする名札の裏に記載しています。",
             session_id=unique_session_id,
         )
         await asyncio.sleep(0.01)
         await memory_helper.store_message(
             role="user",
-            content="質問2",
+            content="今週のイベントはありますか？",
             session_id=unique_session_id,
         )
 
@@ -305,23 +305,30 @@ class TestGetRecentMessages:
     async def test_get_messages_ordered_chronologically(self, memory_helper, unique_session_id):
         """メッセージが時系列順で返される"""
         await memory_helper.store_message(
-            role="user", content="最初の質問", session_id=unique_session_id
+            role="user",
+            content="初めて来ました。利用方法を教えてください",
+            session_id=unique_session_id,
         )
         await asyncio.sleep(0.02)
         await memory_helper.store_message(
-            role="assistant", content="最初の回答", session_id=unique_session_id
+            role="assistant",
+            content="ようこそ！1階は自由にご利用いただけます。WiFiと電源も完備しています。",
+            session_id=unique_session_id,
         )
         await asyncio.sleep(0.02)
         await memory_helper.store_message(
-            role="user", content="次の質問", session_id=unique_session_id
+            role="user", content="3Dプリンターも使えますか？", session_id=unique_session_id
         )
 
         messages = await memory_helper._get_recent_messages(unique_session_id)
 
         assert len(messages) == 3
-        assert messages[0]["content"] == "最初の質問"
-        assert messages[1]["content"] == "最初の回答"
-        assert messages[2]["content"] == "次の質問"
+        assert messages[0]["content"] == "初めて来ました。利用方法を教えてください"
+        assert (
+            messages[1]["content"]
+            == "ようこそ！1階は自由にご利用いただけます。WiFiと電源も完備しています。"
+        )
+        assert messages[2]["content"] == "3Dプリンターも使えますか？"
 
 
 # ==============================================================================

@@ -141,6 +141,12 @@ EVENT_KEYWORDS = [
     "勉強会",
     "セミナー",
     "ミートアップ",
+    "ハッカソン",
+    "LT会",
+    "もくもく会",
+    "交流会",
+    "ブロックチェーン",
+    "Web3",
     "event",
     "workshop",
     "meetup",
@@ -206,9 +212,14 @@ BUILDING_KEYWORDS = [
     "赤煉瓦",
     "文化館",
     "重要文化財",
+    "歴史",
+    "明治",
+    "1909",
     "building",
     "architecture",
     "歴史的",
+    "historic",
+    "brick",
 ]
 
 COMMUNITY_KEYWORDS = [
@@ -346,11 +357,15 @@ FOOD_DRINK_KEYWORDS = [
     "持ち込み",
     "食事",
     "ドリンク",
+    "メニュー",
+    "サイノ",
     "food",
     "drink",
     "beverage",
     "eating",
     "bring food",
+    "menu",
+    "saino",
 ]
 
 BOOKING_KEYWORDS = [
@@ -365,6 +380,10 @@ FACILITY_EQUIPMENT_KEYWORDS = [
     "設備",
     "電源",
     "プリンター",
+    "コンセント",
+    "モニター",
+    "3Dプリンター",
+    "レーザーカッター",
     "何がある",
     "何があり",
     "利用できる",
@@ -373,6 +392,16 @@ FACILITY_EQUIPMENT_KEYWORDS = [
     "facilities",
     "outlet",
     "printer",
+    "monitor",
+]
+
+EXCLUSIVE_RENTAL_KEYWORDS = [
+    "貸切",
+    "貸し切り",
+    "企業研修",
+    "exclusive",
+    "rental",
+    "研修",
 ]
 
 

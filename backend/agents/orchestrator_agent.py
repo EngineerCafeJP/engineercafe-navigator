@@ -34,7 +34,9 @@ from backend.config.routing_constants import (
     BUSINESS_HOURS_KEYWORDS,
     COMMUNITY_KEYWORDS,
     CONSULTATION_KEYWORDS,
+    EXCLUSIVE_RENTAL_KEYWORDS,
     EVENT_KEYWORDS,
+    FACILITY_EQUIPMENT_KEYWORDS,
     FLOOR_KEYWORDS,
     FOOD_DRINK_KEYWORDS,
     FOOD_DRINK_VERBS,
@@ -448,6 +450,22 @@ class OrchestratorAgent:
                 "category": "facility-info",
                 "request_type": "smoking",
                 "reasoning": "Smoking policy keyword detected",
+            }
+
+        if match_keywords(lower_query, EXCLUSIVE_RENTAL_KEYWORDS):
+            return {
+                "agent": "facility",
+                "category": "facility-info",
+                "request_type": "exclusive_rental",
+                "reasoning": "Exclusive rental keyword detected",
+            }
+
+        if match_keywords(lower_query, FACILITY_EQUIPMENT_KEYWORDS):
+            return {
+                "agent": "facility",
+                "category": "facility-info",
+                "request_type": "facility",
+                "reasoning": "Facility equipment keyword detected",
             }
 
         # 会議室 + 階情報 → facility（具体的な質問なのでclarificationスキップ）

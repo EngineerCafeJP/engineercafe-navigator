@@ -151,13 +151,13 @@ class ClarificationAgent:
         if category == "cafe-clarification-needed":
             clarification_message = (
                 "I'd be happy to help! Are you asking about:\n"
-                "1. **Engineer Cafe** (the coworking space) - hours, facilities, usage\n"
-                "2. **Saino Cafe** (the attached cafe & bar) - menu, hours, prices\n\n"
+                "1. **Engineer Cafe** (coworking space) - Open 9:00-22:00, free WiFi & power outlets\n"
+                "2. **Saino Cafe** (attached cafe & bar) - Weekdays 12:00-20:00, lunch & drink menu\n\n"
                 "Please let me know which one you're interested in!"
                 if language == "en"
                 else "お手伝いさせていただきます！どちらについてお聞きでしょうか：\n"
-                "1. **エンジニアカフェ**（コワーキングスペース）- 営業時間、設備、利用方法\n"
-                "2. **サイノカフェ**（併設のカフェ＆バー）- メニュー、営業時間、料金\n\n"
+                "1. **エンジニアカフェ**（コワーキングスペース）- 9:00-22:00、WiFi・電源完備、無料利用可\n"
+                "2. **サイノカフェ**（併設のカフェ＆バー）- 平日12:00-20:00、ランチ・ドリンクメニューあり\n\n"
                 "お聞かせください！"
             )
 
@@ -167,13 +167,13 @@ class ClarificationAgent:
         if category == "meeting-room-clarification-needed":
             clarification_message = (
                 "I'd be happy to help! We have two types of meeting spaces:\n"
-                "1. **Paid Meeting Rooms (2F)** - Private rooms with advance booking required (fees apply)\n"
-                "2. **Basement Meeting Spaces (B1)** - Free open spaces for casual meetings\n\n"
+                "1. **Paid Meeting Rooms (2F)** - Managed by Fukuoka City (Red Brick Cultural Hall reception, right side of 1F). Advance booking required\n"
+                "2. **Basement Meeting Spaces (B1)** - Free, reservation priority (2h blocks). Book by the day before; walk-in OK if available\n\n"
                 "Which one would you like to know about?"
                 if language == "en"
                 else "お手伝いさせていただきます！会議スペースは2種類ございます：\n"
-                "1. **有料会議室（2階）** - 事前予約制の個室（有料）\n"
-                "2. **地下MTGスペース（地下1階）** - カジュアルな打ち合わせ用の無料スペース\n\n"
+                "1. **有料会議室（2階）** - 福岡市の施設です。1F右手奥の赤煉瓦文化館受付でお手続きください（エンジニアカフェとは別管理）\n"
+                "2. **地下MTGスペース（地下1階）** - 無料・予約優先（2時間区切り）。前日までに予約可、空いていれば予約なしでも利用OK\n\n"
                 "どちらについてお知りになりたいですか？"
             )
 

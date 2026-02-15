@@ -90,23 +90,27 @@ class TestMemoryAgent:
         """質問履歴プロンプト構築（日本語）"""
         agent = MemoryAgent.__new__(MemoryAgent)
 
-        context = {"context_string": "ユーザー: 営業時間は？\nアシスタント: 9時から22時です。"}
+        context = {
+            "context_string": "ユーザー: WiFiのパスワードを教えてください\nアシスタント: WiFiのSSIDは「engnrcf-guest-5GHz」です。パスワードは受付でお渡しする名札の裏に記載しています。"
+        }
         prompt = agent.build_memory_prompt("何を聞いた？", context, "question_history", "ja")
 
         assert "エンジニアカフェのアシスタント" in prompt
         assert "過去に何を質問したか" in prompt
-        assert "営業時間は？" in prompt
+        assert "WiFiのパスワード" in prompt
 
     def test_build_memory_prompt_question_history_en(self):
         """質問履歴プロンプト構築（英語）"""
         agent = MemoryAgent.__new__(MemoryAgent)
 
-        context = {"context_string": "User: What are the hours?\nAssistant: 9am to 10pm."}
+        context = {
+            "context_string": "User: What's the WiFi password?\nAssistant: The SSID is 'engnrcf-guest-5GHz'. The password is on the back of the name tag you receive at reception."
+        }
         prompt = agent.build_memory_prompt("What did I ask?", context, "question_history", "en")
 
         assert "Engineer Cafe assistant" in prompt
         assert "previous questions" in prompt
-        assert "What are the hours?" in prompt
+        assert "WiFi password" in prompt
 
     def test_build_memory_prompt_answer_history(self):
         """回答履歴プロンプト構築"""
@@ -255,18 +259,23 @@ class TestMemoryAgent:
         mock_get_config.return_value = mock_config
 
         mock_provider = AsyncMock()
-        mock_provider.generate = AsyncMock(return_value="営業時間について質問されていましたね。")
+        mock_provider.generate = AsyncMock(
+            return_value="WiFiのパスワードについて質問されていましたね。"
+        )
         mock_get_provider.return_value = mock_provider
 
         mock_memory = AsyncMock()
         mock_memory.get_context = AsyncMock(
             return_value={
                 "recent_messages": [
-                    {"role": "user", "content": "営業時間は？"},
-                    {"role": "assistant", "content": "9時から22時です。"},
+                    {"role": "user", "content": "WiFiのパスワードを教えてください"},
+                    {
+                        "role": "assistant",
+                        "content": "WiFiのSSIDは「engnrcf-guest-5GHz」です。パスワードは受付でお渡しする名札の裏に記載しています。",
+                    },
                 ],
-                "context_string": "ユーザー: 営業時間は？\nアシスタント: 9時から22時です。",
-                "inherited_request_type": "hours",
+                "context_string": "ユーザー: WiFiのパスワードを教えてください\nアシスタント: WiFiのSSIDは「engnrcf-guest-5GHz」です。パスワードは受付でお渡しする名札の裏に記載しています。",
+                "inherited_request_type": "wifi",
             }
         )
 
@@ -276,7 +285,7 @@ class TestMemoryAgent:
         assert result["metadata"]["status"] == "success"
         assert result["metadata"]["query_type"] == "question_history"
         assert result["emotion"] == "relaxed"
-        assert "営業時間" in result["answer"]
+        assert "WiFi" in result["answer"]
 
     @pytest.mark.asyncio
     @patch("backend.agents.memory_agent.get_llm_provider")

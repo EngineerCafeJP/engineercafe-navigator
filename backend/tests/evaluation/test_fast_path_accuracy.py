@@ -1,13 +1,14 @@
 """
 Fast-path ルーティング精度テスト
 
-ゴールデンデータセット(38ケース)に対して _try_fast_routing と
+ゴールデンデータセット(48ケース)に対して _try_fast_routing と
 _is_memory_related_question を直接実行し、精度を定量的に測定する。
 LLM呼び出し不要のため、高速かつ再現性100%。
 
-改善前後の比較:
-  - 改善前: rt-011 (飲食動詞) FAIL, rt-014 (会議室+階情報) FAIL → fast-path 25/38
-  - 改善後: rt-011, rt-014 ともに PASS → fast-path 27/38
+改善履歴:
+  - v1.0: rt-011 (飲食動詞) FAIL, rt-014 (会議室+階情報) FAIL → fast-path 25/38
+  - v1.2: rt-011, rt-014 ともに PASS → fast-path 27/38
+  - v1.3: キーワード拡張+FACILITY_EQUIPMENT fast-path追加 → fast-path 39/48
 """
 
 import json
@@ -56,7 +57,7 @@ class TestFastPathAccuracy:
         return None
 
     def test_all_golden_cases_fast_path_accuracy(self, orchestrator, golden_cases):
-        """全38ケースに対するfast-path精度を算出"""
+        """全48ケースに対するfast-path精度を算出"""
         fast_hit = 0
         fast_correct = 0
         fast_wrong = 0
@@ -112,8 +113,8 @@ class TestFastPathAccuracy:
                 print(f"  {m}")
 
         # 精度アサーション
-        # 改善前: 25/38=65.8%, 改善後: 27/38=71.1%
-        assert fast_correct >= 27, f"fast-path正解数 {fast_correct} < 27 (改善後の期待値)"
+        # v1.2: 27/38=71.1%, v1.3: 39/48=81.3% (キーワード拡張+FACILITY_EQUIPMENT追加)
+        assert fast_correct >= 33, f"fast-path正解数 {fast_correct} < 33 (v1.3の期待値)"
         assert fast_wrong == 0, f"fast-pathで誤ルーティングが{fast_wrong}件: {details['wrong']}"
         assert precision == 1.0, f"fast-path精度(precision)が{precision:.1%} < 100%"
 
@@ -175,13 +176,12 @@ class TestFastPathCoverage:
 
         既知の未対応ケース（別Issue対応予定）:
           - rt-003: "トイレはどこですか？" - LOCATION_KEYWORDS未統合
-          - rt-016: "電源は使えますか？" - FACILITY_EQUIPMENT_KEYWORDS未統合
           - rt-023: "What did I ask before?" - 英語 "ask" vs "asked" 部分一致
           - rt-027: "와이파이 비밀번호가 뭐예요?" - 韓国語WiFi未対応
           - rt-036: "お弁当を持ち込んで食べてもいいですか？" - "持ち込んで" vs "持ち込み" 活用形
         """
         fp_cases = [c for c in golden_cases if "fast-path" in c.get("tags", [])]
-        assert len(fp_cases) >= 10, f"fast-pathタグ付きケースが{len(fp_cases)}件しかない"
+        assert len(fp_cases) >= 16, f"fast-pathタグ付きケースが{len(fp_cases)}件しかない"
 
         resolved = 0
         failed = []
@@ -197,9 +197,9 @@ class TestFastPathCoverage:
         if failed:
             print(f"  未解決: {failed}")
 
-        # 改善前: 9/16, 改善後: 11/16 (rt-011, rt-014 が追加解決)
-        # 残り5件は別Issue（LOCATION_KEYWORDS統合, 多言語対応, 活用形対応等）
-        assert resolved >= 11, f"fast-pathタグ付き解決数 {resolved} < 11 (改善後の期待値)"
+        # v1.2: 11/16, v1.3: 18/22 (rt-016解決+新規6ケース追加)
+        # 残り4件は別Issue（LOCATION_KEYWORDS統合, 多言語対応, 活用形対応等）
+        assert resolved >= 17, f"fast-pathタグ付き解決数 {resolved} < 17 (v1.3の期待値)"
         # 誤ルーティング(false positive)はゼロ
         for case in fp_cases:
             result = self._route_fast(orchestrator, case["query"])
@@ -233,5 +233,5 @@ class TestFastPathCoverage:
             print(f"{agent:<20} {stats['covered']:<8} {stats['total']:<8} {rate:.0%}")
 
         # facility と memory_agent はカバレッジ高いはず
-        assert agent_stats["facility"]["covered"] >= 10
+        assert agent_stats["facility"]["covered"] >= 13
         assert agent_stats["memory_agent"]["covered"] >= 3
