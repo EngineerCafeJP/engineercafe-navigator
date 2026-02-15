@@ -311,9 +311,7 @@ class TestCharacterControlAgent:
         # keyframes内のexpressionsにVisemeが含まれるか確認
         viseme_names = ["aa", "ih", "ou", "ee", "oh", "neutral"]
         has_viseme = any(
-            name in kf["expressions"]
-            for kf in result["keyframes"]
-            for name in viseme_names
+            name in kf["expressions"] for kf in result["keyframes"] for name in viseme_names
         )
         assert has_viseme
 
@@ -424,9 +422,7 @@ class TestCharacterControlAgent:
         assert len(result["keyframes"]) == 1
         # メイン表情のみ（Visemeなし）
         expressions = result["keyframes"][0]["expressions"]
-        viseme_count = sum(
-            1 for k in expressions if k in ["aa", "ih", "ou", "ee", "oh"]
-        )
+        viseme_count = sum(1 for k in expressions if k in ["aa", "ih", "ou", "ee", "oh"])
         assert viseme_count == 0
 
     @pytest.mark.asyncio

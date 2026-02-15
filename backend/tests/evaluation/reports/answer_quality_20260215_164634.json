@@ -1,0 +1,218 @@
+{
+  "timestamp": "2026-02-15T16:46:34.385556",
+  "total": 10,
+  "routing_accuracy": 1.0,
+  "pass_count": 8,
+  "partial_count": 2,
+  "fail_count": 0,
+  "avg_keyword_rate": 0.9166666666666666,
+  "agent_quality": {
+    "business_info": {
+      "total": 2,
+      "pass": 0,
+      "avg_keyword_rate": 0.5833333333333333
+    },
+    "facility": {
+      "total": 7,
+      "pass": 7,
+      "avg_keyword_rate": 1.0
+    },
+    "event": {
+      "total": 1,
+      "pass": 1,
+      "avg_keyword_rate": 1.0
+    }
+  },
+  "details": [
+    {
+      "id": "aq-001",
+      "question": "エンジニアカフェって何ですか？",
+      "routed_agent": "business_info",
+      "expected_agent": "business_info",
+      "routing_correct": true,
+      "answer_preview": "[relaxed] エンジニアカフェは、福岡市の「エンジニアフレンドリーシティ福岡」の中核施設として開設された、エンジニアのための無料コワーキング・交流スペースです。現役エンジニアだけでなく、エンジニアを目指す学生やフリーランスなど、エンジニアリングに関わる方が幅広く利用できます。",
+      "emotion": "relaxed",
+      "expected_keywords": [
+        "コワーキング",
+        "赤煉瓦",
+        "無料"
+      ],
+      "keyword_hits": {
+        "コワーキング": true,
+        "赤煉瓦": false,
+        "無料": true
+      },
+      "keyword_rate": 0.6666666666666666,
+      "status": "PARTIAL"
+    },
+    {
+      "id": "aq-002",
+      "question": "サイノカフェのランチは？",
+      "routed_agent": "facility",
+      "expected_agent": "facility",
+      "routing_correct": true,
+      "answer_preview": "[relaxed] cafe&bar saino（サイノカフェ）のランチタイムには、てりたまハンバーグサンドやツナチーズメルトサンド（各700円）、あんバター白玉サンド（650円）などのサンドイッチメニューが用意されています。平日は12:00から、土日祝は11:00から営業しており、ドリンクとセットで50円引き、ナゲットセットは960円で楽しむことができます。",
+      "emotion": "relaxed",
+      "expected_keywords": [
+        "メニュー",
+        "12:00"
+      ],
+      "keyword_hits": {
+        "メニュー": true,
+        "12:00": true
+      },
+      "keyword_rate": 1.0,
+      "status": "PASS"
+    },
+    {
+      "id": "aq-003",
+      "question": "ハッカソンの開催予定は？",
+      "routed_agent": "event",
+      "expected_agent": "event",
+      "routing_correct": true,
+      "answer_preview": "[happy] ご提示いただいた今週のイベント情報の中には、残念ながらハッカソンの開催予定は含まれていないようです。\n\n現在は勉強会や交流会、ハンズオンなどが中心ですが、エンジニア同士の繋がりを広げる素敵なチャンスがたくさんありますよ！興味のあるテーマがあれば、ぜひチェックしてみてくださいね。",
+      "emotion": "happy",
+      "expected_keywords": [
+        "イベント"
+      ],
+      "keyword_hits": {
+        "イベント": true
+      },
+      "keyword_rate": 1.0,
+      "status": "PASS"
+    },
+    {
+      "id": "aq-004",
+      "question": "3Dプリンターの使い方を教えてください",
+      "routed_agent": "facility",
+      "expected_agent": "facility",
+      "routing_correct": true,
+      "answer_preview": "[relaxed] 3Dプリンター（Bambu Lab P1S）を利用するには、まずWebサイトから予約を行い、初回利用時に約60〜120分の講習を受ける必要があります。機器の利用料は無料ですが、フィラメント代（例：バンブーPLAは3円/g）が別途必要で、利用後にcafe&bar sainoで精算する流れとなります。",
+      "emotion": "relaxed",
+      "expected_keywords": [
+        "予約",
+        "講習"
+      ],
+      "keyword_hits": {
+        "予約": true,
+        "講習": true
+      },
+      "keyword_rate": 1.0,
+      "status": "PASS"
+    },
+    {
+      "id": "aq-005",
+      "question": "この建物はいつ建てられましたか？",
+      "routed_agent": "facility",
+      "expected_agent": "facility",
+      "routing_correct": true,
+      "answer_preview": "[relaxed] この建物（福岡市赤煉瓦文化館）は、1909年（明治42年）に日本生命保険株式会社九州支店の社屋として建てられました。1994年には建築当時の内装を復元してリニューアルオープンし、2019年から現在のエンジニアカフェが開設されています。",
+      "emotion": "relaxed",
+      "expected_keywords": [
+        "1909",
+        "赤煉瓦"
+      ],
+      "keyword_hits": {
+        "1909": true,
+        "赤煉瓦": true
+      },
+      "keyword_rate": 1.0,
+      "status": "PASS"
+    },
+    {
+      "id": "aq-006",
+      "question": "エンジニアへの転職相談はできますか？",
+      "routed_agent": "business_info",
+      "expected_agent": "business_info",
+      "routing_correct": true,
+      "answer_preview": "[happy] エンジニアへの転職相談やスキルチェンジ支援に対応しており、未経験からエンジニアを目指す社会人のための相談会も定期開催されています。予約不要で、13:00〜21:00の間に対面またはオンラインで相談可能です。",
+      "emotion": "happy",
+      "expected_keywords": [
+        "相談",
+        "コミュニティマネージャー"
+      ],
+      "keyword_hits": {
+        "相談": true,
+        "コミュニティマネージャー": false
+      },
+      "keyword_rate": 0.5,
+      "status": "PARTIAL"
+    },
+    {
+      "id": "aq-007",
+      "question": "車椅子で利用できますか？",
+      "routed_agent": "facility",
+      "expected_agent": "facility",
+      "routing_correct": true,
+      "answer_preview": "[happy] 車椅子での利用は可能ですが、1909年築の建物で段差や階段が多いため、スタッフが仮設スロープの設置や移動のお手伝いをいたします。スムーズな案内のため、事前に電話（080-6742-7231）で連絡してスタッフの支援を活用することをおすすめします。",
+      "emotion": "happy",
+      "expected_keywords": [
+        "車椅子",
+        "スタッフ"
+      ],
+      "keyword_hits": {
+        "車椅子": true,
+        "スタッフ": true
+      },
+      "keyword_rate": 1.0,
+      "status": "PASS"
+    },
+    {
+      "id": "aq-008",
+      "question": "館内で写真を撮ってもいいですか？",
+      "routed_agent": "facility",
+      "expected_agent": "facility",
+      "routing_correct": true,
+      "answer_preview": "[relaxed] 一般利用時のスマートフォン等によるスナップ撮影は基本的に可能で、歴史的建造物である内観をSNSに投稿する方も多くいらっしゃいます。ただし、他の利用者の顔や作業内容が映り込まないよう配慮し、三脚やフラッシュの使用、商業目的の撮影については事前に許可が必要となる場合があります。",
+      "emotion": "relaxed",
+      "expected_keywords": [
+        "撮影",
+        "可能"
+      ],
+      "keyword_hits": {
+        "撮影": true,
+        "可能": true
+      },
+      "keyword_rate": 1.0,
+      "status": "PASS"
+    },
+    {
+      "id": "aq-009",
+      "question": "トイレはどこですか？",
+      "routed_agent": "facility",
+      "expected_agent": "facility",
+      "routing_correct": true,
+      "answer_preview": "[relaxed] トイレは1階のテラス奥にあり、館内から直接行くことはできないため、受付奥の通路から一度テラスに出てアクセスしてください。洋式トイレと温水洗浄便座を備えていますが、場所がわかりにくいため、不明な場合はスタッフにお尋ねください。",
+      "emotion": "relaxed",
+      "expected_keywords": [
+        "テラス",
+        "受付"
+      ],
+      "keyword_hits": {
+        "テラス": true,
+        "受付": true
+      },
+      "keyword_rate": 1.0,
+      "status": "PASS"
+    },
+    {
+      "id": "aq-010",
+      "question": "会議室の料金を教えてください",
+      "routed_agent": "facility",
+      "expected_agent": "facility",
+      "routing_correct": true,
+      "answer_preview": "[relaxed] 会議室の料金は、会議室1（定員12名）が800円〜3,300円、会議室2（定員8名）が500円〜2,000円、会議室3（定員30名）が1,700円〜7,000円となっており、利用する時間帯（午前・午後・夜間等）によって異なります。なお、エンジニア関連イベントとして1階メインホールや地下スペースを貸切利用する場合は、条件付きで無料で利用できるため詳細を相談してください。",
+      "emotion": "relaxed",
+      "expected_keywords": [
+        "会議室",
+        "円"
+      ],
+      "keyword_hits": {
+        "会議室": true,
+        "円": true
+      },
+      "keyword_rate": 1.0,
+      "status": "PASS"
+    }
+  ]
+}
