@@ -37,12 +37,12 @@
     {
       "id": "aq-004",
       "question": "3Dプリンターの使い方を教えてください",
-      "expected_answer": "3Dプリンターは1階のメイカーズスペースでご利用いただけます。初回はスタッフにお声がけください。",
-      "expected_keywords": ["メイカーズ", "スタッフ"],
+      "expected_answer": "3Dプリンターは地下1階のMAKER'sスペースでご利用いただけます。初回は講習が必要で、Web予約の上ご利用ください。",
+      "expected_keywords": ["予約", "講習"],
       "expected_agent": "facility",
       "language": "ja",
       "category": "facility_equipment",
-      "note": "設備利用方法の案内を確認"
+      "note": "3Dプリンターの利用手順（予約・講習）を確認"
     },
     {
       "id": "aq-005",
