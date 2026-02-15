@@ -1,0 +1,180 @@
+{
+  "timestamp": "2026-02-15T12:53:42.474427",
+  "total": 8,
+  "routing_accuracy": 1.0,
+  "pass_count": 7,
+  "partial_count": 0,
+  "fail_count": 1,
+  "avg_keyword_rate": 0.875,
+  "agent_quality": {
+    "business_info": {
+      "total": 2,
+      "pass": 2,
+      "avg_keyword_rate": 1.0
+    },
+    "facility": {
+      "total": 5,
+      "pass": 4,
+      "avg_keyword_rate": 0.8
+    },
+    "event": {
+      "total": 1,
+      "pass": 1,
+      "avg_keyword_rate": 1.0
+    }
+  },
+  "details": [
+    {
+      "id": "aq-001",
+      "question": "エンジニアカフェって何ですか？",
+      "routed_agent": "business_info",
+      "expected_agent": "business_info",
+      "routing_correct": true,
+      "answer_preview": "[relaxed] エンジニアカフェは、福岡市の赤煉瓦文化館内にある、エンジニアやエンジニアを目指す方のための無料コワーキング・交流スペースです。Wi-Fiや電源を完備し、イベントやコミュニティ活動を通じたエンジニア支援が行われています。",
+      "emotion": "relaxed",
+      "expected_keywords": [
+        "コワーキング",
+        "赤煉瓦",
+        "無料"
+      ],
+      "keyword_hits": {
+        "コワーキング": true,
+        "赤煉瓦": true,
+        "無料": true
+      },
+      "keyword_rate": 1.0,
+      "status": "PASS"
+    },
+    {
+      "id": "aq-002",
+      "question": "サイノカフェのランチは？",
+      "routed_agent": "facility",
+      "expected_agent": "facility",
+      "routing_correct": true,
+      "answer_preview": "[relaxed] サイノカフェのランチタイム（12:00〜17:00、土日祝は11:00〜）には、「てりたまハンバーグサンド（700円）」や「ツナチーズメルトサンド（700円）」などのサンドイッチメニューが楽しめます。これらのフードはドリンクとセットで50円引きになり、ナゲットセット（960円）にすることも可能です。",
+      "emotion": "relaxed",
+      "expected_keywords": [
+        "メニュー",
+        "12:00"
+      ],
+      "keyword_hits": {
+        "メニュー": true,
+        "12:00": true
+      },
+      "keyword_rate": 1.0,
+      "status": "PASS"
+    },
+    {
+      "id": "aq-003",
+      "question": "ハッカソンの開催予定は？",
+      "routed_agent": "event",
+      "expected_agent": "event",
+      "routing_correct": true,
+      "answer_preview": "[happy] ご提示いただいた今週のイベント情報の中には、残念ながらハッカソンの開催予定は含まれていないようです。\n\n現在は勉強会や交流会、ハンズオンなどが中心ですが、また新しいイベント情報が出てくるのを楽しみにしていてくださいね！",
+      "emotion": "happy",
+      "expected_keywords": [
+        "イベント"
+      ],
+      "keyword_hits": {
+        "イベント": true
+      },
+      "keyword_rate": 1.0,
+      "status": "PASS"
+    },
+    {
+      "id": "aq-004",
+      "question": "3Dプリンターの使い方を教えてください",
+      "routed_agent": "facility",
+      "expected_agent": "facility",
+      "routing_correct": true,
+      "answer_preview": "[relaxed] 3Dプリンター（Bambu Lab P1S）を利用するには、Web予約（https://select-type.com/rsv/?id=K8t7W9WWRbc）を行った上で、初回に約60〜120分の講習を受ける必要があります。利用時間は9:30〜21:30で、素材・材料費以外は無料で利用できますが、当日は1階受付での利用登録を忘れずに行ってください。",
+      "emotion": "relaxed",
+      "expected_keywords": [
+        "メイカーズ",
+        "スタッフ"
+      ],
+      "keyword_hits": {
+        "メイカーズ": false,
+        "スタッフ": false
+      },
+      "keyword_rate": 0.0,
+      "status": "FAIL"
+    },
+    {
+      "id": "aq-005",
+      "question": "この建物はいつ建てられましたか？",
+      "routed_agent": "facility",
+      "expected_agent": "facility",
+      "routing_correct": true,
+      "answer_preview": "[relaxed] この建物（福岡市赤煉瓦文化館）は、1909年（明治42年）に日本生命保険株式会社九州支店の社屋として建てられました。1994年には建築当時の内装を復元してリニューアルオープンし、2019年からエンジニアカフェとして活用されています。",
+      "emotion": "relaxed",
+      "expected_keywords": [
+        "1909",
+        "赤煉瓦"
+      ],
+      "keyword_hits": {
+        "1909": true,
+        "赤煉瓦": true
+      },
+      "keyword_rate": 1.0,
+      "status": "PASS"
+    },
+    {
+      "id": "aq-006",
+      "question": "エンジニアへの転職相談はできますか？",
+      "routed_agent": "business_info",
+      "expected_agent": "business_info",
+      "routing_correct": true,
+      "answer_preview": "[happy] エンジニアカフェでは、コミュニティマネージャーがエンジニアへの転職相談やスキルチェンジ支援、未経験者向けの相談会を毎日13:00〜21:00に予約不要で実施しています。オンラインでの相談も可能です。",
+      "emotion": "happy",
+      "expected_keywords": [
+        "相談",
+        "コミュニティマネージャー"
+      ],
+      "keyword_hits": {
+        "相談": true,
+        "コミュニティマネージャー": true
+      },
+      "keyword_rate": 1.0,
+      "status": "PASS"
+    },
+    {
+      "id": "aq-007",
+      "question": "車椅子で利用できますか？",
+      "routed_agent": "facility",
+      "expected_agent": "facility",
+      "routing_correct": true,
+      "answer_preview": "[relaxed] 歴史的建造物のため段差や階段があり、常設エレベーターは設置されていませんが、スタッフによる仮設スロープの設置や移動の介助を受けることで車椅子での利用が可能です。スムーズな案内のため、事前に電話（080-6742-7231）で連絡することをおすすめします。",
+      "emotion": "relaxed",
+      "expected_keywords": [
+        "車椅子",
+        "スタッフ"
+      ],
+      "keyword_hits": {
+        "車椅子": true,
+        "スタッフ": true
+      },
+      "keyword_rate": 1.0,
+      "status": "PASS"
+    },
+    {
+      "id": "aq-008",
+      "question": "館内で写真を撮ってもいいですか？",
+      "routed_agent": "facility",
+      "expected_agent": "facility",
+      "routing_correct": true,
+      "answer_preview": "[relaxed] エンジニアカフェでは、スマートフォン等による一般的なスナップ撮影は基本的に可能で、SNSへの投稿も歓迎されています。ただし、三脚やフラッシュの使用、商業目的の撮影には事前の許可が必要であり、他の利用者のプライバシーに配慮して撮影を行う必要があります。",
+      "emotion": "relaxed",
+      "expected_keywords": [
+        "撮影",
+        "可能"
+      ],
+      "keyword_hits": {
+        "撮影": true,
+        "可能": true
+      },
+      "keyword_rate": 1.0,
+      "status": "PASS"
+    }
+  ]
+}

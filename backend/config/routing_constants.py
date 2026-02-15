@@ -404,6 +404,58 @@ EXCLUSIVE_RENTAL_KEYWORDS = [
     "研修",
 ]
 
+TOILET_KEYWORDS = [
+    "トイレ",
+    "お手洗い",
+    "おてあらい",
+    "化粧室",
+    "洗面所",
+    "toilet",
+    "restroom",
+    "bathroom",
+    "lavatory",
+]
+
+ACCESSIBILITY_KEYWORDS = [
+    "車椅子",
+    "バリアフリー",
+    "エレベーター",
+    "段差",
+    "スロープ",
+    "wheelchair",
+    "accessible",
+    "accessibility",
+    "barrier-free",
+    "elevator",
+]
+
+PHOTOGRAPHY_KEYWORDS = [
+    "撮影",
+    "写真",
+    "カメラ",
+    "photo",
+    "photography",
+    "camera",
+]
+
+CHILDREN_NOISE_KEYWORDS = [
+    "子連れ",
+    "子供",
+    "ベビーカー",
+    "騒音",
+    "マナー",
+    "children",
+    "kids",
+    "stroller",
+    "noise",
+]
+
+POLICY_KEYWORDS = [
+    *ACCESSIBILITY_KEYWORDS,
+    *PHOTOGRAPHY_KEYWORDS,
+    *CHILDREN_NOISE_KEYWORDS,
+]
+
 
 # =============================================================================
 # エージェント説明・マッピング
@@ -440,6 +492,7 @@ CATEGORY_TO_AGENT_MAP: Dict[str, AgentNodeName] = {
     "bicycle": "facility",
     "smoking": "facility",
     "food_drink": "facility",
+    "policy": "facility",
 }
 
 
@@ -496,6 +549,14 @@ def extract_request_type(query: str) -> Optional[str]:
         return "smoking"
     if match_keywords(lower_query, FOOD_DRINK_KEYWORDS):
         return "food_drink"
+    if match_keywords(lower_query, TOILET_KEYWORDS):
+        return "toilet"
+    if match_keywords(lower_query, ACCESSIBILITY_KEYWORDS):
+        return "accessibility"
+    if match_keywords(lower_query, PHOTOGRAPHY_KEYWORDS):
+        return "photography"
+    if match_keywords(lower_query, CHILDREN_NOISE_KEYWORDS):
+        return "children_noise"
     if match_keywords(lower_query, LOCATION_KEYWORDS):
         return "location"
     if match_keywords(lower_query, BOOKING_KEYWORDS):

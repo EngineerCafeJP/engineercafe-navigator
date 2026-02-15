@@ -44,6 +44,26 @@ FACILITY_ENHANCEMENT_KEYWORDS: Dict[str, Dict[str, str]] = {
         "ja": "飲食 食べ物 飲み物 メニュー ランチ 料金 カフェ saino 持ち込み 軽食",
         "en": "food drink beverage menu lunch price cafe saino bring eat snack",
     },
+    "accessibility": {
+        "ja": "車椅子 バリアフリー エレベーター 段差 スロープ 対応",
+        "en": "wheelchair accessible elevator ramp barrier-free support",
+    },
+    "photography": {
+        "ja": "撮影 写真 カメラ SNS 撮影ポリシー 許可",
+        "en": "photography photo camera SNS photo policy permission",
+    },
+    "children_noise": {
+        "ja": "子連れ 子供 ベビーカー 騒音 マナー 利用ルール",
+        "en": "children kids stroller noise policy rules",
+    },
+    "meeting_room": {
+        "ja": "会議室 貸会議室 貸切 予約 コミネット 2階",
+        "en": "meeting room conference booking reservation 2nd floor",
+    },
+    "toilet": {
+        "ja": "トイレ お手洗い 化粧室 テラス 場所 行き方",
+        "en": "toilet restroom bathroom location terrace directions",
+    },
 }
 
 # requestTypeに応じたプロンプト文言
@@ -57,6 +77,17 @@ FACILITY_REQUEST_TYPE_PROMPTS: Dict[str, Dict[str, str]] = {
     "bicycle": {"en": "bicycle parking information", "ja": "駐輪場情報"},
     "smoking": {"en": "smoking policy", "ja": "喫煙ポリシー"},
     "food_drink": {"en": "food and drink menu/policy information", "ja": "飲食・メニュー情報"},
+    "accessibility": {
+        "en": "accessibility and wheelchair information",
+        "ja": "バリアフリー・車椅子対応情報",
+    },
+    "photography": {"en": "photography and filming policy", "ja": "撮影ポリシー"},
+    "children_noise": {"en": "children and noise policy", "ja": "子連れ利用・騒音ポリシー"},
+    "meeting_room": {"en": "meeting room information", "ja": "会議室情報"},
+    "toilet": {
+        "en": "toilet and restroom location information",
+        "ja": "トイレ・お手洗いの場所情報",
+    },
 }
 
 
