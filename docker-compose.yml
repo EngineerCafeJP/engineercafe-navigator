@@ -5,8 +5,6 @@
 #   supabase start
 # This provides PostgreSQL at localhost:54322
 
-version: '3.8'
-
 services:
   # Frontend service - Next.js
   frontend:
@@ -49,13 +47,34 @@ services:
     env_file:
       - ./backend/.env
     depends_on:
-      - frontend
+      voicevox:
+        condition: service_healthy
     networks:
       - engineer-cafe-network
     extra_hosts:
       # Allow connection to Supabase Local PostgreSQL on host
       - "host.docker.internal:host-gateway"
     restart: unless-stopped
+
+  # VoiceVox TTS Engine (Local) - for STT/TTS integration
+  voicevox:
+    image: voicevox/voicevox_engine:latest
+    container_name: engineer-cafe-voicevox
+    ports:
+      - "50021:50021"
+    environment:
+      - CPU_NUM_THREADS=4
+    volumes:
+      # Model cache persistence
+      - voicevox-cache:/root/.cache/voicevox_engine
+    networks:
+      - engineer-cafe-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:50021/version"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 networks:
   engineer-cafe-network:
@@ -65,3 +84,4 @@ volumes:
   frontend-node-modules:
   frontend-next:
   backend-pycache:
+  voicevox-cache:

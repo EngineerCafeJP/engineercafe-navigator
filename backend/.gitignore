@@ -49,3 +49,8 @@ poetry.lock
 .DS_Store
 Thumbs.db
 
+# Vosk/Audio models (large binary files)
+models/
+*.bin
+*.fst
+

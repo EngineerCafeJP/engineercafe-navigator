@@ -13,6 +13,8 @@ Note: Unit tests can monkeypatch `VoiceAgent.tts_client.synthesize_mp3_base64` t
 
 from __future__ import annotations
 
+import asyncio
+import base64
 import json
 import logging
 import os
@@ -22,6 +24,9 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 import httpx
+
+from backend.agents.clarification_agent import ClarificationAgent, ClarificationCategory
+from backend.utils.language_processor import LanguageProcessor
 
 logger = logging.getLogger(__name__)
 
@@ -340,8 +345,13 @@ class GoogleTTSClient:
             "volumeGainDb": volume,
         }
 
+    async def _get_access_token_async(self) -> str:
+        """Get access token asynchronously (offloads blocking auth to thread pool)."""
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, self._get_access_token)
+
     async def synthesize_mp3_base64(self, text: str, lang: str, tts_emotion: str) -> str:
-        token = self._get_access_token()
+        token = await self._get_access_token_async()
         params = self._tts_params(lang, tts_emotion)
 
         payload = {
@@ -363,33 +373,204 @@ class GoogleTTSClient:
                 json=payload,
             )
 
-        if r.status_code >= 400:
-            raise RuntimeError(f"TTS API Error {r.status_code}: {r.text}")
+            if r.status_code >= 400:
+                raise RuntimeError(f"TTS API Error {r.status_code}: {r.text}")
 
-        data = r.json()
-        audio_b64 = data.get("audioContent")
-        if not audio_b64:
-            raise RuntimeError("No audioContent in TTS response")
+            data = r.json()
+            audio_b64 = data.get("audioContent")
+            if not audio_b64:
+                raise RuntimeError("No audioContent in TTS response")
 
-        return audio_b64
+            return audio_b64
 
 
-# -----------------------------------------------------------------------------
-# VoiceAgent (Phase1: TTS only)
-# -----------------------------------------------------------------------------
+# =============================================================================
+# VoiceVox TTS Client (Local, WAV format)
+# =============================================================================
+
+
+class VoiceVoxClient:
+    """
+    ローカルTTS: VoiceVox エンジン
+
+    VoiceVox はオフライン対応の高品質日本語音声合成エンジン。
+    Docker で起動した VoiceVox REST API を使用します。
+
+    注意: VoiceVoxは日本語専用TTS。英語テキストはカタカナ読みになります。
+    """
+
+    DEFAULT_SPEAKER_JA = 3  # ずんだもん (ノーマル)
+    DEFAULT_SPEAKER_EN = 3  # VoiceVoxに英語話者なし。日本語話者でカタカナ読み
+
+    def __init__(self, api_url: str = "http://localhost:50021"):
+        """
+        Args:
+            api_url: VoiceVox Engine API URL
+        """
+        self.api_url = api_url.rstrip("/")
+        self._initialized_speakers: set[int] = set()
+        logger.info(f"VoiceVoxClient initialized: {self.api_url}")
+
+    async def _ensure_speaker_initialized(self, client: httpx.AsyncClient, speaker_id: int) -> None:
+        """初回遅延回避のためスピーカーを事前初期化 (公式推奨)"""
+        if speaker_id in self._initialized_speakers:
+            return
+        try:
+            resp = await client.post(
+                f"{self.api_url}/initialize_speaker",
+                params={"speaker": speaker_id},
+            )
+            if resp.status_code < 400:
+                self._initialized_speakers.add(speaker_id)
+                logger.info(f"VoiceVox speaker {speaker_id} initialized")
+        except Exception as e:
+            logger.warning(f"VoiceVox speaker init failed (non-fatal): {e}")
+
+    async def synthesize_wav_base64(
+        self, text: str, lang: str, speaker_id: Optional[int] = None
+    ) -> str:
+        """
+        テキストを音声に合成し、base64エンコードされたWAVを返す
+        """
+        if speaker_id is None:
+            speaker_id = self.DEFAULT_SPEAKER_JA if lang == "ja" else self.DEFAULT_SPEAKER_EN
+
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                # Step 0: スピーカー初期化 (初回のみ、公式推奨)
+                await self._ensure_speaker_initialized(client, speaker_id)
+
+                # Step 1: Query 作成
+                query_url = f"{self.api_url}/audio_query"
+                query_response = await client.post(
+                    query_url,
+                    params={"text": text, "speaker": speaker_id},
+                )
+
+                if query_response.status_code >= 400:
+                    raise RuntimeError(f"VoiceVox audio_query failed: {query_response.status_code}")
+
+                query_data = query_response.json()
+
+                # Step 2: 音声合成
+                synthesis_url = f"{self.api_url}/synthesis"
+                synthesis_response = await client.post(
+                    synthesis_url,
+                    params={"speaker": speaker_id},
+                    json=query_data,
+                    headers={"Content-Type": "application/json"},
+                )
+
+                if synthesis_response.status_code >= 400:
+                    raise RuntimeError(
+                        f"VoiceVox synthesis failed: {synthesis_response.status_code}"
+                    )
+
+                wav_data = synthesis_response.content
+                wav_b64 = base64.b64encode(wav_data).decode("utf-8")
+
+                logger.info(f"VoiceVox synthesis success: text_len={len(text)}")
+                return wav_b64
+
+        except httpx.TimeoutException as e:
+            logger.error(f"VoiceVox timeout: {e}")
+            raise RuntimeError(f"VoiceVox connection timeout: {e}")
+        except Exception as e:
+            logger.error(f"VoiceVox synthesis error: {e}", exc_info=True)
+            raise RuntimeError(f"VoiceVox synthesis error: {e}")
+
+
+# =============================================================================
+# VoiceAgent class (modified for provider switching + language detection + clarification)
+# =============================================================================
 
 
 class VoiceAgent:
-    def __init__(self, tts_client: Optional[GoogleTTSClient] = None):
-        # Dependency injection friendly for tests
-        self.tts_client = tts_client or GoogleTTSClient()
+    def __init__(
+        self,
+        tts_provider: str = "voicevox",
+        tts_client: Optional[Any] = None,
+        language_processor: Optional[LanguageProcessor] = None,
+        clarification_agent: Optional[ClarificationAgent] = None,
+    ):
+        """
+        VoiceAgent with TTS provider switching + LanguageProcessor + ClarificationAgent integration
+        """
+        self.tts_provider = tts_provider
+
+        if tts_client:
+            self.tts_client = tts_client
+        elif tts_provider == "voicevox":
+            voicevox_api_url = os.getenv("VOICEVOX_API_URL", "http://localhost:50021")
+            self.tts_client = VoiceVoxClient(api_url=voicevox_api_url)
+            logger.info(f"Using VoiceVox TTS: {voicevox_api_url}")
+        elif tts_provider == "google":
+            self.tts_client = GoogleTTSClient()
+            logger.info("Using Google Cloud TTS")
+        else:
+            raise ValueError(f"Unknown TTS provider: {tts_provider}")
+
+        self.language_processor = language_processor or LanguageProcessor(default_language="ja")
+        logger.info("LanguageProcessor initialized for voice_agent")
+
+        self.clarification_agent = clarification_agent or ClarificationAgent()
+        logger.info("ClarificationAgent initialized for voice_agent")
+
+    def _detect_category(self, text: str, language: str) -> Optional[ClarificationCategory]:
+        """
+        テキストから曖昧性カテゴリを検出
+        """
+        text_lower = text.lower()
+
+        # カフェ関連キーワード
+        cafe_keywords = ["カフェ", "cafe"] if language == "ja" else ["cafe"]
+
+        # 会議室関連キーワード
+        meeting_keywords = (
+            ["会議室", "mtg", "ミーティング"] if language == "ja" else ["meeting", "room"]
+        )
+
+        # カフェの曖昧性チェック
+        if any(kw in text_lower for kw in cafe_keywords):
+            if any(
+                word in text_lower
+                for word in (["どこ", "どちら"] if language == "ja" else ["which", "where"])
+            ):
+                return "cafe-clarification-needed"
+
+        # 会議室の曖昧性チェック
+        if any(kw in text_lower for kw in meeting_keywords):
+            if any(
+                word in text_lower
+                for word in (["どこ", "どちら"] if language == "ja" else ["which", "what"])
+            ):
+                return "meeting-room-clarification-needed"
+
+        return None
 
     async def text_to_speech(
         self,
         text: str,
-        language: str = "ja",
+        language: Optional[str] = None,
         emotion: Optional[str] = None,
     ) -> Dict[str, Any]:
+        """
+        テキストを音声に変換
+
+        - 言語自動検出（language未指定時）
+        - 曖昧性チェック（ClarificationAgent統合）
+        - TTSプロバイダ切り替え（voicevox / google）
+        """
+        # ステップ1: 言語自動検出（未指定時）
+        if language is None:
+            try:
+                language = await self.language_processor.detect(text)
+                logger.info(f"Language auto-detected: {language}")
+            except Exception as e:
+                logger.warning(f"Language detection failed: {e}, using default 'ja'")
+                language = "ja"
+
+        # ステップ2: 感情タグパースとテキスト前処理
         parsed = parse_emotion_tags(text)
         cleaned = clean_text_for_tts(parsed.clean_text)
         processed = preprocess_tts(cleaned, language)
@@ -397,34 +578,68 @@ class VoiceAgent:
         vrm_emotion = (
             map_to_vrm_emotion(emotion) if emotion else (parsed.primary_emotion or "neutral")
         )
-        tts_emotion = map_vrm_to_tts_emotion(vrm_emotion)
 
+        # ステップ3: 曖昧性チェック
+        ambiguity_category = self._detect_category(text, language)
+        if ambiguity_category:
+            logger.info(f"Ambiguity detected: {ambiguity_category}")
+            try:
+                clarification_result = await self.clarification_agent.handle_clarification(
+                    query=text,
+                    category=ambiguity_category,
+                    language=language,
+                )
+                clarification_text = clarification_result["response"]
+                logger.info("Using clarification response instead of original query")
+                processed = preprocess_tts(clarification_text, language)
+                vrm_emotion = clarification_result.get("emotion", "surprised")
+            except Exception as e:
+                logger.error(f"Clarification handling failed: {e}, proceeding with original text")
+
+        # ステップ4: テキスト長チェック
         if len(processed.encode("utf-8")) > 5000:
             processed = truncate_by_bytes(processed, 5000)
+            logger.warning("Text truncated to 5000 bytes")
 
         try:
-            audio_b64 = await self.tts_client.synthesize_mp3_base64(
-                processed, language, tts_emotion
-            )
+            # ステップ5: Provider ごとの呼び出し分岐
+            if self.tts_provider == "voicevox":
+                audio_b64 = await self.tts_client.synthesize_wav_base64(processed, language)
+            else:  # google
+                tts_emotion = map_vrm_to_tts_emotion(vrm_emotion)
+                audio_b64 = await self.tts_client.synthesize_mp3_base64(
+                    processed, language, tts_emotion
+                )
             return {
                 "success": True,
                 "audioResponse": audio_b64,
                 "emotion": vrm_emotion,
                 "cleanText": processed,
+                "format": "audio/wav" if self.tts_provider == "voicevox" else "audio/mpeg",
+                "language": language,
+                "ambiguity_resolved": ambiguity_category is not None,
             }
         except Exception as e:
             logger.exception("TTS failed, trying fallback: %s", e)
             fb_text = fallback_error_message(language)
             try:
-                audio_b64 = await self.tts_client.synthesize_mp3_base64(fb_text, language, "sad")
+                if self.tts_provider == "voicevox":
+                    audio_b64 = await self.tts_client.synthesize_wav_base64(fb_text, language)
+                else:
+                    audio_b64 = await self.tts_client.synthesize_mp3_base64(
+                        fb_text, language, "sad"
+                    )
+
                 return {
                     "success": True,
                     "audioResponse": audio_b64,
                     "emotion": "sad",
                     "cleanText": fb_text,
                     "error": str(e),
+                    "format": "audio/wav" if self.tts_provider == "voicevox" else "audio/mpeg",
                 }
-            except Exception:
+            except Exception as fallback_error:
+                logger.error(f"Fallback TTS also failed: {fallback_error}")
                 return {
                     "success": False,
                     "error": f"Failed to generate speech: {str(e)}",
