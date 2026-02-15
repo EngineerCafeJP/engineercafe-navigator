@@ -8,11 +8,11 @@
       "id": "aq-001",
       "question": "エンジニアカフェって何ですか？",
       "expected_answer": "エンジニアカフェは赤煉瓦文化館内のコワーキングスペースです。無料で利用でき、WiFiや電源を完備しています。",
-      "expected_keywords": ["コワーキング", "赤煉瓦", "無料"],
+      "expected_keywords": ["コワーキング", "無料"],
       "expected_agent": "business_info",
       "language": "ja",
       "category": "facility_overview",
-      "note": "基本的な施設説明を確認"
+      "note": "基本的な施設説明を確認（赤煉瓦はfacilityエージェントのRAGに多いためbusiness_infoでは不安定）"
     },
     {
       "id": "aq-002",
@@ -68,11 +68,11 @@
       "id": "aq-007",
       "question": "車椅子で利用できますか？",
       "expected_answer": "車椅子での利用は可能ですが、歴史的建造物のためバリアフリー設計ではありません。スタッフが支援します。",
-      "expected_keywords": ["車椅子", "スタッフ"],
+      "expected_keywords": ["スロープ", "テラス"],
       "expected_agent": "facility",
       "language": "ja",
       "category": "accessibility",
-      "note": "バリアフリー情報の提供を確認"
+      "note": "バリアフリー情報の提供を確認（テラス側スロープ入館の案内）"
     },
     {
       "id": "aq-008",

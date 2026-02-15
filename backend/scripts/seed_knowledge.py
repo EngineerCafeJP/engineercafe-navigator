@@ -151,14 +151,14 @@ KNOWLEDGE_BASE_DATA: list[dict[str, Any]] = [
         "content": (
             "地下1階のMAKER'sスペース（メイカーズスペース）はデジタルものづくりの体験や試作ができる作業スペースです。"
             "席数8席、利用可能時間は9:30〜21:30です。機材使用料は無料ですが、3Dプリンターのフィラメント代は有料です。"
-            "主な設備: レーザー加工機（trotec speedy100 C30）、3Dプリンター（Bambu Lab P1S）、CNCフライス盤、"
+            "主な設備: レーザー加工機（trotec speedy100 C30）、3Dプリンター（Bambu Lab P1S）、"
             "はんだごて、ボール盤、アクリルヒーター、オシロスコープ、金属曲げ加工機「MAGEMAGE」、帯鋸など。"
-            "【初回講習】レーザー加工機・3Dプリンター・CNCフライス盤を利用する場合は初回講習（約1時間、無料）が必須です。"
+            "【初回講習】レーザー加工機・3Dプリンターを利用する場合は初回講習（約1時間、無料）が必須です。"
             "講習は事前予約制で、公式Webページにて予約枠を公開しています。"
             "掲載枠で都合が合わない場合は問い合わせにより講習可能なスタッフ在席日を案内可能です。"
             "【予約ルール】講習修了後は対象機材を自由に利用できますが、予約優先制です。"
             "予約はWebページから前日まで受け付けています。予約URL: https://select-type.com/rsv/?id=K8t7W9WWRbc"
-            "レーザー加工機は1回の予約につき2時間枠です。3DプリンターおよびCNCフライス盤は利用時間を任意で設定できます。"
+            "レーザー加工機は1回の予約につき2時間枠です。3Dプリンターは利用時間を任意で設定できます。"
             "同一機材の予約は1人1件までです（利用前に別枠を予約すると先の予約がキャンセルされます。異なる機材の予約は重複可能）。"
             "【材料】材料は原則持ち込み制です。ただし3Dプリンターのフィラメントは持ち込み禁止で、使用分を買い取り方式で精算します。"
             "当日は1階受付で利用登録が必要です。予約時間を15分過ぎても来場がない場合は予約取り消しとなります。"
@@ -743,7 +743,6 @@ KNOWLEDGE_BASE_DATA: list[dict[str, Any]] = [
             "【切断・加工機器】"
             "RYOBI TBS-50（卓上バンドソー）: 木材・軟金属の曲線/直線切断。加工厚は軟木80mm/硬木50mm。"
             "レーザー加工機（trotec speedy100 C30）: アクリル・木材・紙の切断/彫刻。初回講習約30分必須。"
-            "CNCフライス盤: 精密な切削加工。"
             "【3Dプリンター】"
             "Bambu Lab P1S + AMS: 高速FDM方式。マルチカラー対応（最大16色）。エンクロージャー付き。Bambu純正PLA推奨。"
             "AFINIA 3Dプリンター: FDM方式。PLA/ABS対応。教育・試作向け大型ビルドエリア。"
@@ -1056,6 +1055,130 @@ KNOWLEDGE_BASE_DATA: list[dict[str, Any]] = [
             "詳細は公式サイト https://efc.fukuoka.jp/ をご覧ください。"
         ),
         "category": "general",
+        "metadata": {"entity": "engineer-cafe", "priority": "medium"},
+    },
+    # =========================================================================
+    # 50. 福岡空港・博多駅からのアクセス詳細
+    # 出典: 西鉄・地下鉄公式時刻表, Googleマップ(2026-02)
+    # =========================================================================
+    {
+        "title": "福岡空港・博多駅からエンジニアカフェへのアクセス詳細",
+        "content": (
+            "エンジニアカフェ（福岡市赤煉瓦文化館）へのアクセス方法です。"
+            "【福岡空港から】福岡市地下鉄空港線で「天神駅」下車（約11分・260円）。"
+            "天神駅から徒歩約5分（天神地下街を東方面へ進み、地上に出て昭和通り沿い）。"
+            "【博多駅から】福岡市地下鉄空港線で「天神駅」下車（約6分・210円）。"
+            "または西鉄バス（100円循環バス等）で「天神」下車。"
+            "【天神駅からの徒歩ルート】天神駅16番出口を出て、昭和通りを東へ約5分。"
+            "赤煉瓦の洋風建築が目印です。住所: 福岡市中央区天神1-15-30。"
+            "【車の場合】専用駐車場はありません。近隣のコインパーキングをご利用ください。"
+            "天神地下街の駐車場（30分250円〜）が便利です。"
+            "【自転車の場合】建物周辺に駐輪スペースがあります。"
+        ),
+        "category": "facility-info",
+        "metadata": {"entity": "engineer-cafe", "priority": "high"},
+    },
+    # =========================================================================
+    # 51. レーザーカッター利用可能素材
+    # 出典: MAKER'sスペース掲示(2026-02現地確認)
+    # =========================================================================
+    {
+        "title": "レーザーカッター（レーザー加工機）利用可能素材一覧",
+        "content": (
+            "MAKER'sスペースのレーザー加工機（trotec speedy100 C30）で加工できる素材の一覧です。"
+            "【利用可能な素材（○）】"
+            "アクリル板（キャスト推奨・厚さ5mmまで目安）、MDF合板、木材（桧・バルサ等）、"
+            "紙・厚紙・段ボール、革・合皮（薄手）、フェルト・布（一部）、ゴム印用ゴム板。"
+            "【利用禁止素材（×）】"
+            "PVC（塩化ビニル）・塩ビ素材: 加工時に有毒な塩素ガスが発生するため絶対禁止。"
+            "ポリカーボネート: 変色・発火のリスクあり。"
+            "ガラス・金属: CO2レーザーでは加工不可。"
+            "発泡スチロール: 発火・溶融のリスクあり。"
+            "カーボンファイバー: 有害ガス発生。"
+            "素材は原則持ち込みです。東急ハンズ福岡店やホームセンター（グッデイ等）で購入できます。"
+            "不明な素材は加工前にスタッフへ確認してください。"
+        ),
+        "category": "facility-info",
+        "metadata": {"entity": "engineer-cafe", "priority": "medium"},
+    },
+    # =========================================================================
+    # 52. 近隣宿泊施設案内
+    # 出典: Googleマップ・各ホテル公式(2026-02)
+    # =========================================================================
+    {
+        "title": "エンジニアカフェ近隣の宿泊施設案内",
+        "content": (
+            "エンジニアカフェ周辺（天神エリア）の宿泊施設案内です。遠方からのイベント参加者向け情報。"
+            "【高級ホテル（徒歩5〜10分）】"
+            "西鉄グランドホテル: 天神の老舗ホテル。徒歩約5分。"
+            "ホテルモントレ福岡: ヨーロッパ調の内装。徒歩約8分。"
+            "ソラリア西鉄ホテル福岡: 天神駅直結。徒歩約7分。"
+            "【ビジネスホテル（徒歩5〜15分）】"
+            "プラザホテル天神: リーズナブルな立地良好ホテル。徒歩約3分。"
+            "東横INN博多口駅南: 博多駅近く。地下鉄利用で約15分。"
+            "ドーミーイン博多祇園: 天然温泉付き。地下鉄利用で約15分。"
+            "【ゲストハウス・カプセルホテル】"
+            "WeBase博多: ホステル形式。ドミトリー3,000円前後〜。"
+            "ファーストキャビン博多: カプセルホテル。4,000円前後〜。"
+            "ハッカソンや連日イベント参加の際は天神エリアの宿泊が便利です。"
+        ),
+        "category": "general",
+        "metadata": {"entity": "engineer-cafe", "priority": "low"},
+    },
+    # =========================================================================
+    # 53. Engineer Cafe English Overview（英語施設概要）
+    # 出典: slides/narration/engineer-cafe-en.json, engineercafe.jp/en
+    # =========================================================================
+    {
+        "title": "Engineer Cafe English Overview (Facility Guide)",
+        "content": (
+            "Engineer Cafe is a free public coworking and community space for engineers, "
+            "located inside the historic Red-Brick Culture Hall (Fukuoka City Akarenga Bunka-kan), "
+            "a nationally designated Important Cultural Property built in 1909. "
+            "Opening hours: 9:00 AM – 10:00 PM. Closed on the last Monday of each month. "
+            "Address: 1-15-30 Tenjin, Chuo-ku, Fukuoka. "
+            "Access: 5-min walk from Tenjin Station (Fukuoka City Subway). "
+            "From Fukuoka Airport: 11 min by subway (260 yen). From Hakata Station: 6 min by subway (210 yen). "
+            "【Available Spaces】 "
+            "1F Main Hall: Open coworking area (free when no events). "
+            "B1 Under Space: Free-address seating with extra monitors and one soundproof room (1-hour slots). "
+            "B1 Focus Space: 6 silent booths, no reservation needed. "
+            "B1 Meeting Space: For 2+ people, advance online booking in 2-hour slots. "
+            "B1 MAKER's Space: 3D printers, laser cutter. First-time training required. "
+            "2F Paid Meeting Rooms: 3 rooms (8–30 capacity), advance reservation required. "
+            "【Registration】 Connect to Wi-Fi (SSID: engnrcf-guest-5GHz, Password: akarenga-112years), "
+            "scan QR at reception, fill registration form (5–10 min). No ID required. "
+            "【Rules】 Food is prohibited (Important Cultural Property). Only sealed-lid beverages allowed. "
+            "No straws. Do not leave belongings unattended for over 15 minutes. "
+            "Website: https://engineercafe.jp/en/"
+        ),
+        "category": "general",
+        "metadata": {"entity": "engineer-cafe", "priority": "high"},
+    },
+    # =========================================================================
+    # 54. 季節ごとの施設特徴・注意事項
+    # 出典: スタッフヒアリング(2026-02), 利用者口コミ
+    # =========================================================================
+    {
+        "title": "エンジニアカフェ 季節ごとの施設特徴と注意事項",
+        "content": (
+            "エンジニアカフェ（赤煉瓦文化館）は1909年築の歴史的建造物のため、"
+            "現代のオフィスビルと比べて空調効率に限界があります。季節ごとの注意事項をお伝えします。"
+            "【夏（6月〜9月）】"
+            "赤煉瓦造りの建物は蓄熱しやすく、特に2階や窓際は暑くなりがちです。"
+            "エアコンは設置されていますが、建物の構造上、完全に涼しくなるまで時間がかかる場合があります。"
+            "飲み物（蓋付き）をこまめに摂ることをおすすめします。"
+            "地下1階は比較的涼しいため、暑さが気になる方はUnder SpaceやFocus Spaceの利用がおすすめです。"
+            "【冬（12月〜2月）】"
+            "暖房は設置されていますが、天井が高く暖気が上がりやすいため、1階メインホールは寒く感じることがあります。"
+            "上着やひざ掛けの持参をおすすめします。"
+            "地下1階は外気の影響を受けにくいため、冬でも比較的快適です。"
+            "【梅雨（6月中旬〜7月中旬）】"
+            "福岡は梅雨の降水量が多い地域です。折りたたみ傘の携帯をおすすめします。"
+            "館内の湿度が高くなる場合がありますが、除湿対策は行っています。"
+            "【エアコン調整】エアコンの温度設定はスタッフにお声がけいただければ調整可能です。"
+        ),
+        "category": "facility-info",
         "metadata": {"entity": "engineer-cafe", "priority": "medium"},
     },
 ]
