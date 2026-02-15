@@ -1,5 +1,5 @@
 {
-  "version": "1.3.0",
+  "version": "1.5.0",
   "description": "ルーティングテストケース - マルチエージェントシステム用（実データ版）",
   "created_at": "2026-02-07",
   "source": "docs/reference/engineer-cafe-reference.md",
@@ -420,6 +420,108 @@
       "language": "ja",
       "tags": ["fast-path", "facility"],
       "note": "MAKER'sスペース - trotec speedy100 C30、要予約・講習"
+    },
+    {
+      "id": "rt-049",
+      "query": "車椅子で利用できますか？",
+      "expected_agent": "facility",
+      "expected_category": "facility-info",
+      "language": "ja",
+      "tags": ["fast-path", "facility", "accessibility"],
+      "note": "車椅子利用可、事前連絡推奨、スタッフ支援あり"
+    },
+    {
+      "id": "rt-050",
+      "query": "子供を連れて行っても大丈夫ですか？",
+      "expected_agent": "facility",
+      "expected_category": "facility-info",
+      "language": "ja",
+      "tags": ["fast-path", "facility", "policy"],
+      "note": "子連れ利用可、静かな空間なので配慮必要"
+    },
+    {
+      "id": "rt-051",
+      "query": "館内で写真を撮ってもいいですか？",
+      "expected_agent": "facility",
+      "expected_category": "facility-info",
+      "language": "ja",
+      "tags": ["fast-path", "facility", "policy"],
+      "note": "スナップ撮影可、他者のプライバシー配慮、商業撮影は要許可"
+    },
+    {
+      "id": "rt-052",
+      "query": "Is the building wheelchair accessible?",
+      "expected_agent": "facility",
+      "expected_category": "facility-info",
+      "language": "en",
+      "tags": ["fast-path", "english", "accessibility"],
+      "note": "Historic building, not fully accessible, staff support available"
+    },
+    {
+      "id": "rt-053",
+      "query": "エレベーターはありますか？",
+      "expected_agent": "facility",
+      "expected_category": "facility-info",
+      "language": "ja",
+      "tags": ["fast-path", "facility", "accessibility"],
+      "note": "常設エレベーターなし、歴史的建造物のため"
+    },
+    {
+      "id": "rt-054",
+      "query": "Can I take photos inside?",
+      "expected_agent": "facility",
+      "expected_category": "facility-info",
+      "language": "en",
+      "tags": ["fast-path", "english", "policy"],
+      "note": "Casual photography OK, respect privacy, commercial needs permission"
+    },
+    {
+      "id": "rt-055",
+      "query": "トイレはどこですか？",
+      "expected_agent": "facility",
+      "expected_category": "facility-info",
+      "tags": ["fast-path", "toilet"],
+      "language": "ja"
+    },
+    {
+      "id": "rt-056",
+      "query": "Where is the restroom?",
+      "expected_agent": "facility",
+      "expected_category": "facility-info",
+      "tags": ["fast-path", "toilet", "english"],
+      "language": "en"
+    },
+    {
+      "id": "rt-057",
+      "query": "受付はどこにありますか？",
+      "expected_agent": "facility",
+      "expected_category": "facility-info",
+      "tags": ["facility"],
+      "language": "ja"
+    },
+    {
+      "id": "rt-058",
+      "query": "会議室の料金を教えてください",
+      "expected_agent": "facility",
+      "expected_category": "facility-info",
+      "tags": ["fast-path", "meeting-room"],
+      "language": "ja"
+    },
+    {
+      "id": "rt-059",
+      "query": "お手洗いに行きたいのですが",
+      "expected_agent": "facility",
+      "expected_category": "facility-info",
+      "tags": ["fast-path", "toilet"],
+      "language": "ja"
+    },
+    {
+      "id": "rt-060",
+      "query": "1階のフロア構成を教えてください",
+      "expected_agent": "facility",
+      "expected_category": "facility-info",
+      "tags": ["facility"],
+      "language": "ja"
     }
   ]
 }

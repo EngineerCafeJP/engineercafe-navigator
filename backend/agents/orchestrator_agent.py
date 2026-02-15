@@ -25,6 +25,7 @@ from langgraph.graph import END
 from langgraph.types import Command
 
 from backend.config.routing_constants import (
+    ACCESSIBILITY_KEYWORDS,
     AGENT_DESCRIPTIONS,
     CATEGORY_TO_AGENT_MAP,
     ACCESS_DIRECTION_KEYWORDS,
@@ -32,6 +33,7 @@ from backend.config.routing_constants import (
     BICYCLE_KEYWORDS,
     BUILDING_KEYWORDS,
     BUSINESS_HOURS_KEYWORDS,
+    CHILDREN_NOISE_KEYWORDS,
     COMMUNITY_KEYWORDS,
     CONSULTATION_KEYWORDS,
     EXCLUSIVE_RENTAL_KEYWORDS,
@@ -45,9 +47,11 @@ from backend.config.routing_constants import (
     MEMORY_EXCLUSION_FACILITY,
     MEMORY_KEYWORDS,
     PARKING_KEYWORDS,
+    PHOTOGRAPHY_KEYWORDS,
     PRICING_KEYWORDS,
     SLIDE_KEYWORDS,
     SMOKING_KEYWORDS,
+    TOILET_KEYWORDS,
     WIFI_KEYWORDS,
     RoutingTarget,
     extract_request_type,
@@ -364,6 +368,17 @@ class OrchestratorAgent:
                 "reasoning": "Business hours keyword detected",
             }
 
+        # 会議室 + 料金 → facility（会議室の料金情報はfacilityが保持）
+        if any(kw in lower_query for kw in MEETING_ROOM_KEYWORDS) and match_keywords(
+            lower_query, PRICING_KEYWORDS
+        ):
+            return {
+                "agent": "facility",
+                "category": "facility-info",
+                "request_type": "meeting_room",
+                "reasoning": "Meeting room pricing query detected",
+            }
+
         if match_keywords(lower_query, PRICING_KEYWORDS):
             return {
                 "agent": "business_info",
@@ -458,6 +473,38 @@ class OrchestratorAgent:
                 "category": "facility-info",
                 "request_type": "exclusive_rental",
                 "reasoning": "Exclusive rental keyword detected",
+            }
+
+        if match_keywords(lower_query, TOILET_KEYWORDS):
+            return {
+                "agent": "facility",
+                "category": "facility-info",
+                "request_type": "toilet",
+                "reasoning": "Toilet/restroom keyword detected",
+            }
+
+        if match_keywords(lower_query, ACCESSIBILITY_KEYWORDS):
+            return {
+                "agent": "facility",
+                "category": "facility-info",
+                "request_type": "accessibility",
+                "reasoning": "Accessibility/wheelchair keyword detected",
+            }
+
+        if match_keywords(lower_query, PHOTOGRAPHY_KEYWORDS):
+            return {
+                "agent": "facility",
+                "category": "facility-info",
+                "request_type": "photography",
+                "reasoning": "Photography policy keyword detected",
+            }
+
+        if match_keywords(lower_query, CHILDREN_NOISE_KEYWORDS):
+            return {
+                "agent": "facility",
+                "category": "facility-info",
+                "request_type": "children_noise",
+                "reasoning": "Children/noise policy keyword detected",
             }
 
         if match_keywords(lower_query, FACILITY_EQUIPMENT_KEYWORDS):

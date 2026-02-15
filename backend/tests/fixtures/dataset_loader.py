@@ -18,9 +18,9 @@ class AnswerQualityCase:
 
     id: str
     question: str
-    expected_answer: str
     language: str
-    category: str
+    category: str = ""
+    expected_answer: str = ""
     context: Optional[str] = None
     quality_expectations: Optional[Dict[str, float]] = None
 
@@ -113,9 +113,9 @@ class DatasetLoader:
                 AnswerQualityCase(
                     id=case["id"],
                     question=case["question"],
-                    expected_answer=case["expected_answer"],
                     language=case.get("language", "ja"),
                     category=case.get("category", ""),
+                    expected_answer=case.get("expected_answer", ""),
                     context=case.get("context"),
                     quality_expectations=case.get("quality_expectations"),
                 )
@@ -168,7 +168,7 @@ class DatasetLoader:
                             "type": "answer_quality",
                             "id": case["id"],
                             "question": case["question"],
-                            "expected_answer": case["expected_answer"],
+                            "expected_answer": case.get("expected_answer", ""),
                             "category": case.get("category"),
                         }
                     )
