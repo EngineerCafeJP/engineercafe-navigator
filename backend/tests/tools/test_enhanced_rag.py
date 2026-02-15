@@ -111,3 +111,58 @@ class TestRAGQualityGrading:
         """空の入力に対して空リストが返ることを確認"""
         graded = self.rag._grade_result_relevance([], "テスト")
         assert graded == []
+
+    def test_category_specific_thresholds_hours(self):
+        """hours カテゴリでは閾値が緩和されることを確認"""
+        scored_results = [
+            {
+                "title": "営業時間情報",
+                "content": "営業時間は9時から22時です",
+                "priority_score": 0.76,  # Default HIGH(0.8)未満, hours HIGH(0.75)以上
+                "entity": "engineer-cafe",
+            },
+        ]
+
+        # hours カテゴリではHIGHになる
+        graded_hours = self.rag._grade_result_relevance(
+            scored_results, "営業時間はいつですか", "hours"
+        )
+
+        # hours カテゴリでは0.76がHIGH(>=0.75)
+        assert len(graded_hours) == 1
+        assert graded_hours[0]["grade"] == "HIGH"
+
+    def test_short_query_relaxed_thresholds(self):
+        """短いクエリ(10文字未満)で閾値が緩和されることを確認"""
+        scored_results = [
+            {
+                "title": "料金表",
+                "content": "利用料金は無料です",
+                "priority_score": 0.76,  # Default HIGH(0.8)未満
+                "entity": "engineer-cafe",
+            },
+        ]
+
+        # 短いクエリ "料金は?" (4文字) → 閾値 -0.05 → HIGH threshold = 0.75
+        graded = self.rag._grade_result_relevance(scored_results, "料金は?")
+
+        assert len(graded) == 1
+        assert graded[0]["grade"] == "HIGH"
+
+    def test_medium_with_term_match_category(self):
+        """MEDIUM結果がカテゴリ別term_match閾値で判定されることを確認"""
+        scored_results = [
+            {
+                "title": "場所案内",
+                "content": "天神駅から徒歩5分の場所にあります",
+                "priority_score": 0.55,  # Default MEDIUM(0.6)未満, location MEDIUM(0.50)以上
+                "entity": "engineer-cafe",
+            },
+        ]
+
+        # location カテゴリでは medium=0.50 なので MEDIUM 判定
+        graded = self.rag._grade_result_relevance(scored_results, "場所はどこ", "location")
+
+        # Content contains "場所" which matches query term
+        assert len(graded) == 1
+        assert graded[0]["grade"] == "MEDIUM"

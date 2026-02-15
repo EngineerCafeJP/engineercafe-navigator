@@ -41,8 +41,8 @@ FACILITY_ENHANCEMENT_KEYWORDS: Dict[str, Dict[str, str]] = {
         "en": "smoking cigarette no smoking smoke area",
     },
     "food_drink": {
-        "ja": "飲食 食べ物 飲み物 持ち込み 軽食 ゴミ持ち帰り",
-        "en": "food drink beverage bring eat snack takeaway waste",
+        "ja": "飲食 食べ物 飲み物 メニュー ランチ 料金 カフェ saino 持ち込み 軽食",
+        "en": "food drink beverage menu lunch price cafe saino bring eat snack",
     },
 }
 
@@ -56,7 +56,7 @@ FACILITY_REQUEST_TYPE_PROMPTS: Dict[str, Dict[str, str]] = {
     "parking": {"en": "parking information", "ja": "駐車場情報"},
     "bicycle": {"en": "bicycle parking information", "ja": "駐輪場情報"},
     "smoking": {"en": "smoking policy", "ja": "喫煙ポリシー"},
-    "food_drink": {"en": "food and drink policy", "ja": "飲食ポリシー"},
+    "food_drink": {"en": "food and drink menu/policy information", "ja": "飲食・メニュー情報"},
 }
 
 
@@ -81,20 +81,22 @@ def build_facility_prompt(
         request_type_prompt = prompt_info.get(language, prompt_info.get("ja", ""))
 
         if language == "en":
-            return f"""Extract ONLY the {request_type_prompt} from the following information to answer the question.
+            return f"""Answer the question directly using the {request_type_prompt} from the following information.
+Focus on what the user is specifically asking about. Include concrete details (prices, times, names) when available.
 
 Question: {query}
 Information: {context}
 
-Answer with ONLY the {request_type_prompt}. Maximum 2-3 sentences. Do not include any other information.
+Answer in 2-3 sentences with specific, relevant details. Do not include unrelated information.
 IMPORTANT: Start your response with [relaxed] for information or [happy] for positive news."""
         else:
-            return f"""次の情報から{request_type_prompt}のみを抽出して質問に答えてください。
+            return f"""質問に対して、以下の情報から{request_type_prompt}を使って直接回答してください。
+ユーザーが具体的に聞いていることに焦点を当て、具体的な情報（価格、時間、名前等）を含めてください。
 
 質問: {query}
 情報: {context}
 
-{request_type_prompt}のみを答えてください。最大2-3文。他の情報は含めないでください。
+具体的で関連性の高い情報を2-3文で答えてください。質問と無関係な情報は含めないでください。
 重要: 情報提供の場合は[relaxed]、良いニュースの場合は[happy]で回答を始めてください。"""
     else:
         if language == "en":

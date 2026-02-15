@@ -1,5 +1,5 @@
 {
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "ルーティングテストケース - マルチエージェントシステム用（実データ版）",
   "created_at": "2026-02-07",
   "source": "docs/reference/engineer-cafe-reference.md",
@@ -96,7 +96,7 @@
       "expected_agent": "facility",
       "expected_category": "facility-info",
       "language": "ja",
-      "tags": ["facility", "cafe"],
+      "tags": ["fast-path", "facility", "cafe"],
       "note": "cafe&bar saino - 有料"
     },
     {
@@ -122,7 +122,7 @@
       "expected_agent": "facility",
       "expected_category": "facility-info",
       "language": "ja",
-      "tags": ["facility", "reservation"],
+      "tags": ["fast-path", "facility", "reservation"],
       "note": "福岡市管理、コミネットで予約、有料"
     },
     {
@@ -330,6 +330,96 @@
       "language": "en",
       "tags": ["facility", "food_drink", "english"],
       "note": "Food allowed on 1st floor, take your trash with you"
+    },
+    {
+      "id": "rt-039",
+      "query": "2階を貸切で使いたいのですが",
+      "expected_agent": "facility",
+      "expected_category": "facility-info",
+      "language": "ja",
+      "tags": ["fast-path", "reservation"],
+      "note": "2Fは福岡市管理の赤煉瓦文化館会議室。エンジニアカフェとは別管理"
+    },
+    {
+      "id": "rt-040",
+      "query": "サイノカフェのメニューを教えて",
+      "expected_agent": "facility",
+      "expected_category": "facility-info",
+      "language": "ja",
+      "tags": ["fast-path", "food_drink"],
+      "note": "cafe&bar saino - 平日12:00-20:00"
+    },
+    {
+      "id": "rt-041",
+      "query": "ブロックチェーンの勉強会はありますか？",
+      "expected_agent": "event",
+      "expected_category": "event-info",
+      "language": "ja",
+      "tags": ["fast-path", "event"],
+      "note": "Web3・ブロックチェーン系勉強会の開催実績あり"
+    },
+    {
+      "id": "rt-042",
+      "query": "3Dプリンターは使えますか？",
+      "expected_agent": "facility",
+      "expected_category": "facility-info",
+      "language": "ja",
+      "tags": ["fast-path", "facility"],
+      "note": "1階メイカーズスペース - Bambu Lab P1S、初回スタッフ説明"
+    },
+    {
+      "id": "rt-043",
+      "query": "この建物の歴史について教えてください",
+      "expected_agent": "facility",
+      "expected_category": "facility-info",
+      "language": "ja",
+      "tags": ["fast-path", "building"],
+      "note": "1909年築 旧日本生命九州支店 赤煉瓦建築 国の重要文化財"
+    },
+    {
+      "id": "rt-044",
+      "query": "Can I use the coworking space for free?",
+      "expected_agent": "business_info",
+      "expected_category": "business-info",
+      "language": "en",
+      "tags": ["english"],
+      "note": "1F coworking is free, WiFi and power outlets available"
+    },
+    {
+      "id": "rt-045",
+      "query": "エンジニアへの転職相談はできますか？",
+      "expected_agent": "business_info",
+      "expected_category": "consultation",
+      "language": "ja",
+      "tags": ["consultation"],
+      "note": "コミュニティマネージャーによるキャリア相談 13:00-21:00"
+    },
+    {
+      "id": "rt-046",
+      "query": "What did we discuss earlier?",
+      "expected_agent": "memory_agent",
+      "expected_category": "memory",
+      "language": "en",
+      "tags": ["english", "memory"],
+      "note": "English memory recall query"
+    },
+    {
+      "id": "rt-047",
+      "query": "個人開発の交流会ってやってますか？",
+      "expected_agent": "event",
+      "expected_category": "event-info",
+      "language": "ja",
+      "tags": ["event", "community"],
+      "note": "もくもく会・交流会の開催実績あり"
+    },
+    {
+      "id": "rt-048",
+      "query": "レーザーカッターの予約方法は？",
+      "expected_agent": "facility",
+      "expected_category": "facility-info",
+      "language": "ja",
+      "tags": ["fast-path", "facility"],
+      "note": "MAKER'sスペース - trotec speedy100 C30、要予約・講習"
     }
   ]
 }

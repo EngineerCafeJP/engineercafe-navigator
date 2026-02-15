@@ -5,7 +5,7 @@ TESTING.mdに基づいた包括的なテストスイート
 """
 
 import pytest
-from unittest.mock import patch
+from unittest.mock import patch, Mock, AsyncMock
 from backend.agents.clarification_agent import ClarificationAgent
 
 
@@ -246,3 +246,157 @@ class TestMessageContent:
         assert "2F" in response or "2nd floor" in response
         assert "B1" in response or "basement" in response
         assert "two types" in response.lower()
+
+
+class TestDetectAmbiguity:
+    """曖昧性検出のテスト"""
+
+    @pytest.fixture
+    def agent(self):
+        with patch("backend.agents.clarification_agent.OpenRouterProvider"):
+            with patch("backend.agents.clarification_agent.get_model_config"):
+                return ClarificationAgent()
+
+    @pytest.mark.asyncio
+    async def test_detect_ambiguity_cafe(self, agent):
+        """「カフェ」で曖昧性検出"""
+        result = await agent.detect_ambiguity("カフェの営業時間は？")
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_detect_ambiguity_specific(self, agent):
+        """「エンジニアカフェ」で曖昧性なし"""
+        result = await agent.detect_ambiguity("エンジニアカフェの営業時間は？")
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_detect_ambiguity_meeting_room(self, agent):
+        """「会議室」で曖昧性検出"""
+        result = await agent.detect_ambiguity("会議室を使いたい")
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_detect_ambiguity_meeting_room_specific(self, agent):
+        """「2階の会議室」で曖昧性なし"""
+        result = await agent.detect_ambiguity("2階の会議室を使いたい")
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_detect_ambiguity_already_clarified(self, agent):
+        """既に特定済みの場合はFalse"""
+        result = await agent.detect_ambiguity(
+            "カフェの営業時間は？", context={"already_clarified": True}
+        )
+        assert result is False
+
+
+class TestGenerateOptions:
+    """選択肢生成のテスト"""
+
+    @pytest.fixture
+    def agent(self):
+        with patch("backend.agents.clarification_agent.OpenRouterProvider"):
+            with patch("backend.agents.clarification_agent.get_model_config"):
+                return ClarificationAgent()
+
+    @pytest.mark.asyncio
+    async def test_generate_options_cafe(self, agent):
+        """カフェ選択肢が2つ返る"""
+        options = await agent.generate_clarification_options("カフェの営業時間は？")
+        assert len(options) == 2
+        values = [opt["value"] for opt in options]
+        assert "engineer-cafe" in values
+        assert "saino" in values
+
+    @pytest.mark.asyncio
+    async def test_generate_options_meeting(self, agent):
+        """会議室選択肢が2つ返る"""
+        options = await agent.generate_clarification_options("会議室を使いたい")
+        assert len(options) == 2
+        values = [opt["value"] for opt in options]
+        assert "paid-meeting-room" in values
+        assert "free-meeting-space" in values
+
+    @pytest.mark.asyncio
+    async def test_generate_options_no_match(self, agent):
+        """マッチしない場合は空リスト"""
+        options = await agent.generate_clarification_options("天気はどうですか？")
+        assert options == []
+
+
+class TestFormatQuestion:
+    """質問文フォーマットのテスト"""
+
+    @pytest.fixture
+    def agent(self):
+        with patch("backend.agents.clarification_agent.OpenRouterProvider") as mock_provider_cls:
+            with patch("backend.agents.clarification_agent.get_model_config"):
+                mock_provider = Mock()
+                mock_provider.generate = AsyncMock(
+                    return_value="どちらのカフェについてお聞きですか？\n1. エンジニアカフェ\n2. サイノカフェ"
+                )
+                mock_provider_cls.return_value = mock_provider
+                return ClarificationAgent()
+
+    @pytest.mark.asyncio
+    async def test_format_question_llm_mock(self, agent):
+        """LLMモック呼出しで質問文生成"""
+        options = [
+            {"label": "エンジニアカフェ", "value": "engineer-cafe"},
+            {"label": "サイノカフェ", "value": "saino"},
+        ]
+        question = await agent.format_clarification_question("カフェの営業時間は？", options)
+        assert len(question) > 0
+        assert "カフェ" in question
+
+    @pytest.mark.asyncio
+    async def test_format_question_fallback(self):
+        """LLMエラー時はテンプレートにフォールバック"""
+        with patch("backend.agents.clarification_agent.OpenRouterProvider") as mock_provider_cls:
+            with patch("backend.agents.clarification_agent.get_model_config"):
+                mock_provider = Mock()
+                mock_provider.generate = AsyncMock(side_effect=Exception("API Error"))
+                mock_provider_cls.return_value = mock_provider
+                agent = ClarificationAgent()
+
+        options = [
+            {"label": "エンジニアカフェ", "value": "engineer-cafe"},
+            {"label": "サイノカフェ", "value": "saino"},
+        ]
+        question = await agent.format_clarification_question("カフェの営業時間は？", options)
+        assert "カフェの営業時間は？" in question
+        assert "エンジニアカフェ" in question
+
+
+class TestProcessPipeline:
+    """processメソッド統合テスト"""
+
+    @pytest.fixture
+    def agent(self):
+        with patch("backend.agents.clarification_agent.OpenRouterProvider") as mock_provider_cls:
+            with patch("backend.agents.clarification_agent.get_model_config"):
+                mock_provider = Mock()
+                mock_provider.generate = AsyncMock(
+                    return_value="どちらのカフェについてお聞きですか？"
+                )
+                mock_provider_cls.return_value = mock_provider
+                return ClarificationAgent()
+
+    @pytest.mark.asyncio
+    async def test_process_full_pipeline(self, agent):
+        """detect→generate→format全体テスト"""
+        result = await agent.process("カフェの営業時間は？")
+
+        assert result["needs_clarification"] is True
+        assert len(result["options"]) == 2
+        assert result["emotion"] == "surprised"
+        assert len(result["clarification_question"]) > 0
+
+    @pytest.mark.asyncio
+    async def test_process_no_ambiguity(self, agent):
+        """曖昧性なしの場合"""
+        result = await agent.process("エンジニアカフェの営業時間は？")
+
+        assert result["needs_clarification"] is False
+        assert result["options"] == []
+        assert result["emotion"] == "neutral"
