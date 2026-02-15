@@ -14,11 +14,14 @@ logger = logging.getLogger(__name__)
 CATEGORY_THRESHOLDS = {
     "hours": {"high": 0.75, "medium": 0.55, "term_match": 0.25},
     "pricing": {"high": 0.75, "medium": 0.55, "term_match": 0.25},
-    "facility-info": {"high": 0.80, "medium": 0.60, "term_match": 0.30},
+    "facility-info": {"high": 0.78, "medium": 0.58, "term_match": 0.25},
     "location": {"high": 0.70, "medium": 0.50, "term_match": 0.20},
     "event": {"high": 0.80, "medium": 0.60, "term_match": 0.30},
+    "general": {"high": 0.72, "medium": 0.52, "term_match": 0.20},
+    "consultation": {"high": 0.73, "medium": 0.53, "term_match": 0.20},
+    "community": {"high": 0.73, "medium": 0.53, "term_match": 0.20},
 }
-DEFAULT_THRESHOLDS = {"high": 0.80, "medium": 0.60, "term_match": 0.30}
+DEFAULT_THRESHOLDS = {"high": 0.78, "medium": 0.58, "term_match": 0.25}
 
 
 class EnhancedRAGSearch:
@@ -64,7 +67,7 @@ class EnhancedRAGSearch:
                 "search_knowledge_base",
                 {
                     "query_embedding": embedding,
-                    "similarity_threshold": 0.5,
+                    "similarity_threshold": 0.35,
                     "match_count": max_results * 2,  # スコアリング用に多めに取得
                 },
             ).execute()
@@ -312,8 +315,11 @@ class EnhancedRAGSearch:
 
     def _calculate_category_bonus(self, result: Dict, category: str) -> float:
         """カテゴリに基づくボーナススコア計算"""
-        metadata = result.get("metadata", {})
-        result_category = metadata.get("category", "") if isinstance(metadata, dict) else ""
+        # トップレベルのcategoryカラム（RPC結果）を優先、fallbackでmetadata.category
+        result_category = result.get("category", "")
+        if not result_category:
+            metadata = result.get("metadata", {})
+            result_category = metadata.get("category", "") if isinstance(metadata, dict) else ""
 
         # カテゴリマッピング
         category_mapping = {
@@ -321,6 +327,9 @@ class EnhancedRAGSearch:
             "pricing": ["pricing", "料金", "price", "cost"],
             "location": ["location", "access", "場所", "アクセス"],
             "facility-info": ["facility-info", "設備", "facilities"],
+            "general": ["general", "概要", "overview"],
+            "consultation": ["consultation", "相談", "キャリア"],
+            "community": ["community", "コミュニティ", "lab"],
         }
 
         if category in category_mapping:
