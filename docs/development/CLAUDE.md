@@ -69,7 +69,7 @@ pnpm metrics:dashboard      # View performance metrics
   - `config/prompts/` — エージェント固有プロンプトテンプレート（facility, event, memory）
   - `utils/input_sanitizer.py` — 入力バリデーション・プロンプトインジェクション検出
   - `utils/exceptions.py` — カスタム例外階層（AgentSystemError 基底）
-- **Testing**: pytest (406件パス) + LangChain Evaluation (28/28 ルーティング精度)
+- **Testing**: pytest + LangChain Evaluation (60/60 ルーティング精度, 10/10 E2E回答品質)
 - **Code Quality**: ruff + black
 
 #### Common
@@ -281,7 +281,7 @@ The application uses a sophisticated multi-language RAG (Retrieval-Augmented Gen
 
 ### Knowledge Base Structure
 
-The knowledge base contains 84+ entries organized by:
+The knowledge base contains 60 backend entries (staff-verified) + frontend entries organized by:
 - **Categories**: 設備/Facilities, 基本情報/General, 料金/Pricing, etc.
 - **Subcategories**: Specific facility types (地下MTGスペース, Basement Focus Space, etc.)
 - **Languages**: Japanese (ja) and English (en) versions
