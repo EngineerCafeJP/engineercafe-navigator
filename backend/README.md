@@ -2,12 +2,11 @@
 
 Python版LangGraphを使用したAIエージェントバックエンドシステムです。
 
-## 🤖 実装済みエージェント（10種）
+## 🤖 実装済みエージェント（9種）
 
 | エージェント | ファイル | 責務 |
 |-------------|----------|------|
 | OrchestratorAgent | `orchestrator_agent.py` | Supervisor Pattern によるルーティング（LLM動的ルーティング） |
-| RouterAgent | `router_agent.py` | クエリルーティング・分類（キーワードベース） |
 | BusinessInfoAgent | `business_info_agent.py` | 営業時間・料金・アクセス |
 | FacilityAgent | `facility_agent.py` | 設備・Wi-Fi・地下施設 |
 | EventAgent | `event_agent.py` | イベント・カレンダー |
@@ -163,7 +162,7 @@ python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
 poetry run pytest
 
 # 特定のエージェントテスト
-poetry run pytest tests/agents/test_router_agent.py -v
+poetry run pytest tests/agents/ -v
 
 # カバレッジ付き
 poetry run pytest --cov=agents --cov-report=html
@@ -204,10 +203,9 @@ poetry run mypy .
 ```
 backend/
 ├── main.py                 # FastAPIアプリケーション
-├── agents/                 # LangGraphエージェント（10種）
+├── agents/                 # LangGraphエージェント（9種）
 │   ├── __init__.py
 │   ├── orchestrator_agent.py     # Supervisor Pattern ルーティング
-│   ├── router_agent.py           # クエリルーティング（キーワードベース）
 │   ├── business_info_agent.py    # 営業情報
 │   ├── facility_agent.py         # 設備情報
 │   ├── event_agent.py            # イベント情報

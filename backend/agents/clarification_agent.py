@@ -132,12 +132,12 @@ class ClarificationAgent:
         """
         曖昧性解消の処理
 
-        RouterAgentからcategoryを受け取り、固定メッセージで曖昧性を解消します。
+        OrchestratorAgentからcategoryを受け取り、固定メッセージで曖昧性を解消します。
         LLMを使用せず、高速で一貫性のある応答を提供します。
 
         Args:
             query: ユーザーからの入力テキスト（現在は使用されないが、将来の拡張用）
-            category: 曖昧性の種類（RouterAgentが判定済み）
+            category: 曖昧性の種類（OrchestratorAgentが判定済み）
             language: 応答言語
 
         Returns:
