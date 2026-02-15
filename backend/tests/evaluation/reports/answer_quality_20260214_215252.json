@@ -1,0 +1,142 @@
+{
+  "timestamp": "2026-02-14T21:52:52.169221",
+  "total": 6,
+  "routing_accuracy": 1.0,
+  "pass_count": 4,
+  "partial_count": 1,
+  "fail_count": 1,
+  "avg_keyword_rate": 0.7777777777777777,
+  "agent_quality": {
+    "business_info": {
+      "total": 2,
+      "pass": 1,
+      "avg_keyword_rate": 0.8333333333333333
+    },
+    "facility": {
+      "total": 3,
+      "pass": 2,
+      "avg_keyword_rate": 0.6666666666666666
+    },
+    "event": {
+      "total": 1,
+      "pass": 1,
+      "avg_keyword_rate": 1.0
+    }
+  },
+  "details": [
+    {
+      "id": "aq-001",
+      "question": "エンジニアカフェって何ですか？",
+      "routed_agent": "business_info",
+      "expected_agent": "business_info",
+      "routing_correct": true,
+      "answer_preview": "[relaxed] エンジニアカフェは、福岡市の「エンジニアフレンドリーシティ福岡」の中核施設として開設された、エンジニアのための無料コワーキング・交流スペースです。現役エンジニアだけでなく、エンジニアを目指す学生やフリーランスなど、エンジニアリングに関わる方が幅広く利用できます。",
+      "emotion": "relaxed",
+      "expected_keywords": [
+        "コワーキング",
+        "赤煉瓦",
+        "無料"
+      ],
+      "keyword_hits": {
+        "コワーキング": true,
+        "赤煉瓦": false,
+        "無料": true
+      },
+      "keyword_rate": 0.6666666666666666,
+      "status": "PARTIAL"
+    },
+    {
+      "id": "aq-002",
+      "question": "サイノカフェのランチは？",
+      "routed_agent": "facility",
+      "expected_agent": "facility",
+      "routing_correct": true,
+      "answer_preview": "[relaxed] サイノカフェのランチタイム（12:00〜17:00）には、「てりたまハンバーグサンド（700円）」や「ツナチーズメルトサンド（700円）」などのサンドイッチメニューが提供されており、ナゲットセット（960円）にすることも可能です。ドリンクとセットで注文すると50円引きになり、イートインとテイクアウトの両方に対応しています。",
+      "emotion": "relaxed",
+      "expected_keywords": [
+        "メニュー",
+        "12:00"
+      ],
+      "keyword_hits": {
+        "メニュー": true,
+        "12:00": true
+      },
+      "keyword_rate": 1.0,
+      "status": "PASS"
+    },
+    {
+      "id": "aq-003",
+      "question": "ハッカソンの開催予定は？",
+      "routed_agent": "event",
+      "expected_agent": "event",
+      "routing_correct": true,
+      "answer_preview": "[happy] ご提示いただいた今週のイベント情報の中には、残念ながらハッカソンの開催予定は含まれていないようです。\n\n現在は勉強会や交流会、ハンズオンなどが中心ですが、また新しいイベント情報が出てくるのを楽しみにしていてくださいね！",
+      "emotion": "happy",
+      "expected_keywords": [
+        "イベント"
+      ],
+      "keyword_hits": {
+        "イベント": true
+      },
+      "keyword_rate": 1.0,
+      "status": "PASS"
+    },
+    {
+      "id": "aq-004",
+      "question": "3Dプリンターの使い方を教えてください",
+      "routed_agent": "facility",
+      "expected_agent": "facility",
+      "routing_correct": true,
+      "answer_preview": "[relaxed] 3Dプリンター（Bambu Lab P1S）を利用するには、まずWeb予約を行い、初回利用時に約60〜120分の講習を受ける必要があります。当日は1階受付で利用登録を済ませることで、素材・材料代を除き基本無料で利用可能です。",
+      "emotion": "relaxed",
+      "expected_keywords": [
+        "メイカーズ",
+        "スタッフ"
+      ],
+      "keyword_hits": {
+        "メイカーズ": false,
+        "スタッフ": false
+      },
+      "keyword_rate": 0.0,
+      "status": "FAIL"
+    },
+    {
+      "id": "aq-005",
+      "question": "この建物はいつ建てられましたか？",
+      "routed_agent": "facility",
+      "expected_agent": "facility",
+      "routing_correct": true,
+      "answer_preview": "[relaxed] エンジニアカフェが入居するこの建物は、1909年（明治42年）に日本生命保険株式会社九州支店の社屋として建てられました。1994年には建築当時の内装を復元し、福岡市赤煉瓦文化館としてリニューアルオープンしています。",
+      "emotion": "relaxed",
+      "expected_keywords": [
+        "1909",
+        "赤煉瓦"
+      ],
+      "keyword_hits": {
+        "1909": true,
+        "赤煉瓦": true
+      },
+      "keyword_rate": 1.0,
+      "status": "PASS"
+    },
+    {
+      "id": "aq-006",
+      "question": "エンジニアへの転職相談はできますか？",
+      "routed_agent": "business_info",
+      "expected_agent": "business_info",
+      "routing_correct": true,
+      "answer_preview": "[happy] エンジニアへの転職相談やスキルチェンジ支援が可能で、「未経験からエンジニアになりたい社会人のためのスキルチェンジ相談会」も定期開催されています。13:00〜21:00の間、予約不要でコミュニティマネージャーに直接またはオンラインで相談できます。",
+      "emotion": "happy",
+      "expected_keywords": [
+        "相談",
+        "コミュニティマネージャー"
+      ],
+      "keyword_hits": {
+        "相談": true,
+        "コミュニティマネージャー": true
+      },
+      "keyword_rate": 1.0,
+      "status": "PASS"
+    }
+  ]
+}
