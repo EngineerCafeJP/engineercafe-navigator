@@ -1,7 +1,7 @@
 """
 ルーティング定数・キーワード・ヘルパー関数の集約モジュール
 
-orchestrator_agent.py, router_agent.py, memory_helper.py で共通使用される
+orchestrator_agent.py, memory_helper.py で共通使用される
 キーワードリスト、マッピング、ヘルパー関数を一箇所に集約。
 
 Note: このモジュールはリーフ依存（他のエージェントモジュールをimportしない）
@@ -262,7 +262,7 @@ MEMORY_EXCLUSION_BUSINESS = [
 
 MEMORY_EXCLUSION_FACILITY = ["地下", "スペース", "会議室", "施設"]
 
-# RouterAgent用の拡張メモリキーワード
+# 拡張メモリキーワード
 MEMORY_KEYWORDS_EXTENDED = [
     *MEMORY_KEYWORDS,
     "質問",
@@ -276,7 +276,7 @@ MEMORY_KEYWORDS_EXTENDED = [
     "what did i",
 ]
 
-# RouterAgent用の拡張メモリ除外キーワード
+# 拡張メモリ除外キーワード
 MEMORY_EXCLUSION_BUSINESS_EXTENDED = [
     *MEMORY_EXCLUSION_BUSINESS,
     "menu",
@@ -300,7 +300,7 @@ MEMORY_EXCLUSION_FACILITY_EXTENDED = [
     "makers",
 ]
 
-# "もう一つ" 系パターン（RouterAgentで使用）
+# "もう一つ" 系パターン（OrchestratorAgentで使用）
 OTHER_ONE_PATTERNS = [
     "もう一つ",
     "もうひとつ",
@@ -514,7 +514,7 @@ def extract_request_type(query: str) -> Optional[str]:
     """
     クエリから具体的なリクエストタイプを抽出
 
-    RouterAgent と memory_helper で共通使用される統合版。
+    orchestrator_agent と memory_helper で共通使用される統合版。
     basement は regex パターンにも対応。
 
     Args:

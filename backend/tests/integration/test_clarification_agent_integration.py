@@ -1,7 +1,7 @@
 """
 ClarificationAgent統合テスト
 
-ClarificationAgentがMainWorkflowに統合され、RouterAgentから正しくルーティングされ、
+ClarificationAgentがMainWorkflowに統合され、OrchestratorAgentから正しくルーティングされ、
 適切な明確化メッセージを返すことを検証する統合テストスイート。
 
 テスト範囲:
@@ -13,9 +13,7 @@ ClarificationAgentがMainWorkflowに統合され、RouterAgentから正しくル
 """
 
 import os
-import sys
 import pytest
-from unittest.mock import Mock, AsyncMock, MagicMock
 from backend.agents.clarification_agent import ClarificationAgent
 
 
@@ -100,34 +98,11 @@ class TestClarificationIntegration:
 
     def setup_method(self):
         """各テストメソッドの前に実行"""
-        # テスト用のダミーAPIキーを設定
         os.environ["OPENROUTER_API_KEY"] = "test_dummy_api_key_for_testing"
 
-        # RouterAgentをモック（sys.modulesに登録してからインポート）
-        mock_router_agent_class = MagicMock()
-        mock_router_agent_instance = Mock()
-        mock_router_agent_instance.route_query = AsyncMock(
-            return_value=Mock(
-                agent="ClarificationAgent",
-                category="cafe-clarification-needed",
-                request_type=None,
-                language="ja",
-                confidence=0.9,
-                debug_info={},
-            )
-        )
-        mock_router_agent_class.return_value = mock_router_agent_instance
-
-        # sys.modulesにモックを登録（インポート前に）
-        sys.modules["backend.agents.router_agent"] = MagicMock()
-        sys.modules["backend.agents.router_agent"].RouterAgent = mock_router_agent_class
-
-        # これでMainWorkflowをインポートできる
         from backend.workflows.main_workflow import MainWorkflow
 
         self.workflow = MainWorkflow()
-        # モックをインスタンスに設定
-        self.workflow.router_agent = mock_router_agent_instance
 
     @pytest.mark.asyncio
     async def test_clarification_node_integration(self):
@@ -189,14 +164,12 @@ class TestClarificationIntegration:
 
     @pytest.mark.asyncio
     async def test_full_workflow_with_clarification(self):
-        """Clarificationを含む完全なワークフローのテスト（モック版）"""
-        # Router AgentがClarificationAgentにルーティングする想定
+        """Clarificationを含む完全なワークフローのテスト"""
         result = await self.workflow.ainvoke(
             {"query": "カフェの営業時間は？", "session_id": "test_session", "language": "ja"}
         )
 
-        # Router Agentが正しくClarificationAgentにルーティングすることを確認
-        # （Router Agentの実装に依存）
+        # OrchestratorAgentがルーティング先を決定
         assert result["answer"] is not None
 
         # ClarificationAgentにルーティングされた場合のみ確認
@@ -290,31 +263,3 @@ class TestClarificationIntegration:
         )
 
 
-# ============================================================================
-# E2Eテスト（RouterAgent実装後に有効化）
-# ============================================================================
-# 注意: RouterAgentが実装されたら、以下のテストクラスのコメントを外して使用してください
-
-"""
-class TestClarificationE2E:
-    \"\"\"ClarificationAgentのE2Eテスト（RouterAgent実装後に有効化）\"\"\"
-    
-    def setup_method(self):
-        # RouterAgentをモックしない（実装を使用）
-        from backend.workflows.main_workflow import MainWorkflow
-        self.workflow = MainWorkflow()
-    
-    @pytest.mark.asyncio
-    async def test_e2e_cafe_clarification_ja(self):
-        \"\"\"カフェが曖昧なクエリがClarificationAgentにルーティングされる（日本語）E2E\"\"\"
-        result = await self.workflow.ainvoke({
-            "query": "カフェの営業時間は？",  # RouterAgentが実際に検出
-            "session_id": "test_session",
-            "language": "ja"
-        })
-        
-        # RouterAgentが正しくClarificationAgentにルーティングすることを確認
-        assert result["metadata"]["routing"]["agent"] == "ClarificationAgent"
-        assert result["metadata"]["routing"]["category"] == "cafe-clarification-needed"
-        # ...
-"""

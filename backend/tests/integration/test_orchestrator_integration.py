@@ -1,5 +1,5 @@
 """
-RouterAgent統合テスト
+OrchestratorAgent統合テスト
 
 OrchestratorAgentが各エージェント（business_info, facility, event）に
 正しくルーティングし、MainWorkflowで完全なフローが動作することを検証する統合テストスイート。
@@ -31,8 +31,8 @@ def _make_state(
     }
 
 
-class TestRouterAgentIntegration:
-    """RouterAgent統合テスト - MainWorkflowとの統合"""
+class TestOrchestratorIntegration:
+    """OrchestratorAgent統合テスト - MainWorkflowとの統合"""
 
     def setup_method(self):
         """各テストメソッドの前に実行"""

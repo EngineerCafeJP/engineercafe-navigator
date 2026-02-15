@@ -1,7 +1,7 @@
 """
 メモリシステムインターフェース
 
-RouterAgentやその他のエージェントが使用する最小限のインターフェース。
+OrchestratorAgentやその他のエージェントが使用する最小限のインターフェース。
 オプショナルな連携を可能にする設計。
 
 参考: frontend/src/lib/simplified-memory.ts
