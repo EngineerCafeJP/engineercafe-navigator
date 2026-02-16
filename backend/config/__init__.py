@@ -12,7 +12,6 @@ from backend.config.settings import (
     get_supabase_config,
     get_openrouter_key,
     get_openai_key,
-    get_gemini_key,
 )
 
 __all__ = [
@@ -23,5 +22,4 @@ __all__ = [
     "get_supabase_config",
     "get_openrouter_key",
     "get_openai_key",
-    "get_gemini_key",
 ]

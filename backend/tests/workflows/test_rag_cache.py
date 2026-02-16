@@ -121,7 +121,7 @@ class TestAgentCacheUsage:
         with (
             patch("backend.tools.enhanced_rag.create_client"),
             patch("backend.llm.openrouter.OpenRouterProvider"),
-            patch("backend.tools.web_search.WebSearchTool.__init__", return_value=None),
+            patch("backend.agents.general_knowledge_agent.TavilySearchTool"),
         ):
             from backend.agents.general_knowledge_agent import GeneralKnowledgeAgent
 
@@ -134,6 +134,11 @@ class TestAgentCacheUsage:
 
             # RAG searchをモック（呼ばれないはず）
             agent.rag_search.search = AsyncMock()
+
+            # Web searchをモック（asyncメソッド）
+            agent.web_search.search = AsyncMock(
+                return_value={"success": False, "text": "", "results": [], "sources": []}
+            )
 
             state_context = {
                 "success": True,
@@ -157,12 +162,17 @@ class TestAgentCacheUsage:
         with (
             patch("backend.tools.enhanced_rag.create_client"),
             patch("backend.llm.openrouter.OpenRouterProvider"),
-            patch("backend.tools.web_search.WebSearchTool.__init__", return_value=None),
+            patch("backend.agents.general_knowledge_agent.TavilySearchTool"),
         ):
             from backend.agents.general_knowledge_agent import GeneralKnowledgeAgent
 
             agent = GeneralKnowledgeAgent()
             agent.provider.generate = AsyncMock(return_value="[relaxed]フレッシュ検索結果です")
+
+            # Web searchをモック（asyncメソッド）
+            agent.web_search.search = AsyncMock(
+                return_value={"success": False, "text": "", "results": [], "sources": []}
+            )
 
             # RAG searchをモック
             agent.rag_search.search = AsyncMock(

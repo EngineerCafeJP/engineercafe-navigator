@@ -14,7 +14,6 @@ class TestGeneralKnowledgeAgent:
     def setup_method(self):
         """各テストメソッドの前に実行"""
         # 環境変数を設定してモックする
-        os.environ["GOOGLE_API_KEY"] = "test_dummy_api_key"
         os.environ["OPENROUTER_API_KEY"] = "test_dummy_openrouter_key"
 
         # WebSearchToolとOpenRouterProviderをモック
@@ -120,7 +119,6 @@ class TestGeneralKnowledgeAgentIntegration:
 
     def setup_method(self):
         """各テストメソッドの前に実行"""
-        os.environ["GOOGLE_API_KEY"] = "test_dummy_api_key"
         os.environ["OPENROUTER_API_KEY"] = "test_dummy_openrouter_key"
 
         # 統合テスト用のモック（AsyncMock使用）

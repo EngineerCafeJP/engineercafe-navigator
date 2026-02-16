@@ -63,11 +63,6 @@ class Settings(BaseSettings):
     # ============================================
     # Google
     # ============================================
-    # Gemini API (Web検索用)
-    google_api_key: str = Field(default="", description="Google API Key (Gemini)")
-    google_generative_ai_api_key: str = Field(default="", description="Gemini API Key (代替)")
-    gemini_model: str = Field(default="gemini-2.0-flash-exp", description="使用するGeminiモデル")
-
     # Google Cloud (音声用)
     google_cloud_credentials: str = Field(
         default="", description="Google Cloud credentials path/JSON"
@@ -89,11 +84,6 @@ class Settings(BaseSettings):
     # ============================================
     # プロパティ（派生値）
     # ============================================
-
-    @property
-    def gemini_api_key(self) -> str:
-        """Gemini API Key (google_api_key または google_generative_ai_api_key)"""
-        return self.google_api_key or self.google_generative_ai_api_key
 
     @property
     def google_credentials(self) -> str:
@@ -226,17 +216,3 @@ def get_openai_key() -> str:
         ValueError: キーが設定されていない場合
     """
     return require_env("OPENAI_API_KEY", settings.openai_api_key)
-
-
-def get_gemini_key() -> str:
-    """
-    Gemini API Keyを取得
-
-    Returns:
-        API Key
-
-    Raises:
-        ValueError: キーが設定されていない場合
-    """
-    key = settings.gemini_api_key
-    return require_env("GOOGLE_API_KEY", key)
