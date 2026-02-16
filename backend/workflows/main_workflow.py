@@ -422,10 +422,12 @@ class MainWorkflow:
 
     async def _format_response_node(self, state: WorkflowStateDict) -> dict:
         """応答フォーマットノード: 最終的な応答をフォーマット"""
+        from backend.utils.emotion_utils import strip_emotion_tags
         from backend.utils.memory_helper import get_memory_helper
 
         query = state.get("query", "")
-        answer = state.get("answer", "回答を生成できませんでした。")
+        raw_answer = state.get("answer", "回答を生成できませんでした。")
+        answer = strip_emotion_tags(raw_answer)
         session_id = state.get("session_id", "")
 
         # アシスタント応答を保存
