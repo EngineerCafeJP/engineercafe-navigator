@@ -6,6 +6,7 @@ Supabase + OpenRouter Embeddings統合による高精度RAG検索
 import os
 from typing import List, Dict, Optional
 import logging
+import asyncio
 from supabase import create_client, Client
 
 logger = logging.getLogger(__name__)
@@ -35,6 +36,7 @@ RPC_SIMILARITY_THRESHOLDS: Dict[str, float] = {
     "community": 0.35,
 }
 DEFAULT_RPC_SIMILARITY_THRESHOLD = 0.35
+RPC_TIMEOUT_SECONDS = 10
 
 
 class EnhancedRAGSearch:
@@ -82,14 +84,31 @@ class EnhancedRAGSearch:
             embedding = await self._generate_embedding(query)
 
             # 2. Supabase RPCでベクトル検索
-            search_results = self.supabase.rpc(
-                "search_knowledge_base",
-                {
-                    "query_embedding": embedding,
-                    "similarity_threshold": self._get_rpc_threshold(category),
-                    "match_count": max_results * 2,  # スコアリング用に多めに取得
-                },
-            ).execute()
+            try:
+                search_results = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        lambda: self.supabase.rpc(
+                            "search_knowledge_base",
+                            {
+                                "query_embedding": embedding,
+                                "similarity_threshold": self._get_rpc_threshold(category),
+                                "match_count": max_results * 2,  # スコアリング用に多めに取得
+                            },
+                        ).execute()
+                    ),
+                    timeout=RPC_TIMEOUT_SECONDS,
+                )
+            except asyncio.TimeoutError:
+                logger.error("Supabase RPC timed out after %ds", RPC_TIMEOUT_SECONDS)
+                return {
+                    "success": False,
+                    "data": {
+                        "context": "",
+                        "results": [],
+                        "totalResults": 0,
+                        "topEntity": "general",
+                    },
+                }
 
             if not search_results.data:
                 return {
@@ -142,7 +161,7 @@ class EnhancedRAGSearch:
             }
 
         except Exception as e:
-            logger.error(f"Search error: {e}")
+            logger.error("Search error: %s", e, exc_info=True)
             return {"success": False, "error": str(e)}
 
     async def _generate_embedding(self, text: str) -> List[float]:
@@ -524,15 +543,20 @@ class EnhancedRAGSearch:
 
             # 2. Hierarchical RPC呼び出し（フォールバック付き）
             try:
-                search_results = self.supabase.rpc(
-                    "search_knowledge_base_hierarchical",
-                    {
-                        "query_embedding": embedding,
-                        "similarity_threshold": self._get_rpc_threshold(category),
-                        "match_count": max_results * 2,
-                        "filter_chunk_level": "chunk",
-                    },
-                ).execute()
+                search_results = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        lambda: self.supabase.rpc(
+                            "search_knowledge_base_hierarchical",
+                            {
+                                "query_embedding": embedding,
+                                "similarity_threshold": self._get_rpc_threshold(category),
+                                "match_count": max_results * 2,
+                                "filter_chunk_level": "chunk",
+                            },
+                        ).execute()
+                    ),
+                    timeout=RPC_TIMEOUT_SECONDS,
+                )
             except Exception as rpc_err:
                 logger.warning(
                     f"Hierarchical RPC not available, falling back to standard search: {rpc_err}"
@@ -596,7 +620,7 @@ class EnhancedRAGSearch:
             }
 
         except Exception as e:
-            logger.error(f"Hierarchical search error: {e}")
+            logger.error("Hierarchical search error: %s", e, exc_info=True)
             return {"success": False, "error": str(e)}
 
     def _expand_parent_context(self, chunk_results: List[Dict]) -> List[Dict]:
@@ -653,7 +677,7 @@ class EnhancedRAGSearch:
             return expanded
 
         except Exception as e:
-            logger.warning(f"Failed to expand parent context: {e}")
+            logger.warning("Failed to expand parent context: %s", e, exc_info=True)
             return chunk_results
 
     def _build_hierarchical_context(self, results: List[Dict], language: str = "ja") -> str:

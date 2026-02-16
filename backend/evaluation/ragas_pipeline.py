@@ -60,8 +60,19 @@ except ImportError:
     _RunConfig = None  # type: ignore[assignment,misc]
     logger.info("ragas is not installed. Install with: pip install -e '.[evaluation]'")
 
+
+def _safe_int_env(name: str, default: int) -> int:
+    """Safely parse an integer environment variable with fallback."""
+    raw = os.environ.get(name, str(default))
+    try:
+        return int(raw)
+    except (ValueError, TypeError):
+        logger.warning("Invalid %s value '%s', using default %d", name, raw, default)
+        return default
+
+
 # 評価ケース数の上限（LLM APIコスト制御）
-EVAL_MAX_CASES = int(os.environ.get("EVAL_MAX_CASES", "10"))
+EVAL_MAX_CASES = _safe_int_env("EVAL_MAX_CASES", 10)
 
 # Direct OpenAI 設定（OPENAI_API_KEY が設定されている場合に使用）
 OPENAI_EVAL_MODEL = os.environ.get("RAGAS_EVAL_MODEL", "gpt-5.2-2025-12-11")
@@ -76,9 +87,9 @@ OPENROUTER_EVAL_MAX_TOKENS = 8192
 
 # RAGAS RunConfig: answer_correctness/answer_similarity は複数回の LLM 分解呼び出しを行うため、
 # 十分なタイムアウトを確保する。直接 OpenAI API なら高速だが余裕を持って 600s に設定。
-RAGAS_TIMEOUT = int(os.environ.get("RAGAS_TIMEOUT", "600"))
-RAGAS_MAX_RETRIES = int(os.environ.get("RAGAS_MAX_RETRIES", "15"))
-RAGAS_MAX_WORKERS = int(os.environ.get("RAGAS_MAX_WORKERS", "16"))
+RAGAS_TIMEOUT = _safe_int_env("RAGAS_TIMEOUT", 600)
+RAGAS_MAX_RETRIES = _safe_int_env("RAGAS_MAX_RETRIES", 15)
+RAGAS_MAX_WORKERS = _safe_int_env("RAGAS_MAX_WORKERS", 16)
 
 # 全6メトリクス
 DEFAULT_METRICS = (

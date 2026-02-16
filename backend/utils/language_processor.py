@@ -237,8 +237,10 @@ class LanguageProcessor:
 
         # スコアがすべて 0 の場合はフォールバック
         if primary_score == 0:
+            # default_language は "unknown" を含む可能性があるため、明示的に "ja" を使用
+            default: SupportedLanguage = "ja" if self.default_language == "unknown" else self.default_language  # type: ignore
             return self._build_result(
-                language=self.default_language,
+                language=default,
                 confidence=0.5,
                 is_mixed=False,
             )
@@ -261,11 +263,14 @@ class LanguageProcessor:
         # ---------------------------------------------------------------------
         # 5. 結果構築（_build_result を使用）
         # ---------------------------------------------------------------------
+        # primary と secondary は scores の keys なので SupportedLanguage のいずれか
+        primary_lang: SupportedLanguage = primary  # type: ignore
+        secondary_lang: SupportedLanguage | None = secondary if is_mixed else None  # type: ignore
         return self._build_result(
-            language=primary,
+            language=primary_lang,
             confidence=confidence,
             is_mixed=is_mixed,
-            secondary=secondary if is_mixed else None,
+            secondary=secondary_lang,
         )
 
     async def detect(self, query: str, use_llm: bool = False) -> LanguageCode:

@@ -11,6 +11,7 @@ import logging
 from typing import Optional, Any
 
 # pykakasi for kanji to kana conversion
+pykakasi: Optional[Any]
 try:
     import pykakasi  # type: ignore
 except ImportError:

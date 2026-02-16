@@ -3,10 +3,13 @@ Connpass Service Tool
 Connpass API v2連携によるイベント情報取得
 """
 
+import logging
 import os
 from datetime import datetime, timedelta
 from typing import Any, List, Dict, Optional, Literal
 import httpx
+
+logger = logging.getLogger(__name__)
 
 TimeRange = Literal["today", "thisWeek", "nextWeek", "thisMonth"]
 
@@ -46,7 +49,7 @@ class ConnpassService:
         """
         self.api_key = os.getenv("CONNPASS_API_KEY", "")
         if not self.api_key:
-            print("[ConnpassService] Warning: CONNPASS_API_KEY not configured")
+            logger.warning("CONNPASS_API_KEY not configured")
 
     async def search_events(
         self,
@@ -77,10 +80,10 @@ class ConnpassService:
             True
         """
         try:
-            print(f"[ConnpassService] Searching events: time_range={time_range}, keyword={keyword}")
+            logger.info("Searching events: time_range=%s, keyword=%s", time_range, keyword)
 
             if not self.api_key:
-                print("[ConnpassService] API key not configured, returning empty result")
+                logger.warning("API key not configured, returning empty result")
                 return {
                     "success": False,
                     "error": "CONNPASS_API_KEY not configured",
@@ -117,7 +120,7 @@ class ConnpassService:
             }
 
         except Exception as e:
-            print(f"[ConnpassService] Error: {e}")
+            logger.error("ConnpassService error: %s", e, exc_info=True)
             return {
                 "success": False,
                 "error": str(e),
@@ -228,7 +231,9 @@ class ConnpassService:
                 )
 
                 if response.status_code != 200:
-                    print(f"[ConnpassService] API error: {response.status_code} - {response.text}")
+                    logger.error(
+                        "API error: status=%d, response=%s", response.status_code, response.text
+                    )
                     return []
 
                 data = response.json()
@@ -236,7 +241,7 @@ class ConnpassService:
                 return events
 
         except Exception as e:
-            print(f"[ConnpassService] Fetch error: {e}")
+            logger.error("Fetch error: %s", e, exc_info=True)
             return []
 
     def _format_events(self, events: List[Dict]) -> List[Dict]:
