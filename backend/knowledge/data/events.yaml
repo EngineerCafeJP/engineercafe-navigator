@@ -1,0 +1,37 @@
+version: "1.0.0"
+description: "イベント関連情報"
+entries:
+  - id: "event-hosting"
+    title: "エンジニアカフェ イベント開催について"
+    title_en: "Hosting Events at Engineer Cafe"
+    content: >
+      エンジニアカフェではハッカソン、LT会、もくもく会、勉強会、交流会、
+      AIワークショップ、ブロックチェーンミートアップなど、
+      様々なエンジニア向けイベントが定期的に開催されています。
+      イベント情報はconnpass（https://engineercafe.connpass.com/）で確認できます。
+      エンジニアカフェでイベントを開催したい場合は、事前に福岡市の許可が必要です。
+      スタッフまたはコミュニティマネージャーにご相談ください。
+      英語でのAIトレンド講演やHack Fukuokaなど、国際イベントも開催されています。
+    category: "event"
+    tags: ["event", "hackathon", "meetup", "engineer-cafe"]
+    priority: 90
+    source: "official"
+    verified: true
+
+  - id: "event-connpass-howto"
+    title: "エンジニアカフェ Connpass・イベント参加方法"
+    title_en: "How to Join Events via Connpass"
+    content: >
+      エンジニアカフェで開催されるイベントの参加方法です。
+      【イベント情報の確認方法】
+      Connpass: https://engineercafe.connpass.com/ （イベント一覧と参加申込ができます）。
+      公式イベントページ: https://engineercafe.jp/ja/event （エンジニアカフェ主催・共催イベント）。
+      公式サイト: https://site.engineercafe.jp/ （施設全体の情報とお知らせ）。
+      【参加方法】Connpassの場合はアカウント登録後、各イベントページから「参加する」ボタンで申し込みできます。
+      参加費無料のイベントがほとんどです。定員がある場合は先着順が多いため、早めの申込をおすすめします。
+      イベント当日は1階受付で利用登録（初回のみ）を行い、イベント参加者であることを伝えてください。
+    category: "event"
+    tags: ["event", "connpass", "registration", "engineer-cafe"]
+    priority: 90
+    source: "official"
+    verified: true

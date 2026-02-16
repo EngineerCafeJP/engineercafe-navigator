@@ -87,18 +87,41 @@ class LLMJudgeEvaluator:
         self._initialize_llm()
 
     def _initialize_llm(self) -> None:
-        """LLMクライアントを初期化"""
+        """LLMクライアントを初期化
+
+        Priority:
+            1. OPENAI_API_KEY → ChatOpenAI (直接)
+            2. OPENROUTER_API_KEY → ChatOpenAI (OpenRouter経由)
+        """
         if not LANGCHAIN_AVAILABLE:
             return
 
         api_key = os.getenv("OPENAI_API_KEY")
+        base_url = None
+        model_name = self.model_name
+
+        if not api_key:
+            api_key = os.getenv("OPENROUTER_API_KEY")
+            if api_key:
+                base_url = "https://openrouter.ai/api/v1"
+                # OpenRouter requires provider-prefixed model names
+                _openrouter_model_map = {
+                    "gpt-4o-mini": "openai/gpt-4o-mini",
+                    "gpt-4o": "openai/gpt-4o",
+                    "gpt-4": "openai/gpt-4",
+                }
+                model_name = _openrouter_model_map.get(model_name, model_name)
+
         if api_key:
             try:
-                self._llm = ChatOpenAI(
-                    model=self.model_name,
-                    temperature=self.temperature,
-                    api_key=api_key,
-                )
+                kwargs = {
+                    "model": model_name,
+                    "temperature": self.temperature,
+                    "api_key": api_key,
+                }
+                if base_url:
+                    kwargs["openai_api_base"] = base_url
+                self._llm = ChatOpenAI(**kwargs)
             except Exception:
                 self._llm = None
 

@@ -1,0 +1,177 @@
+version: "1.0.0"
+description: "利用ポリシー・ルール関連情報"
+entries:
+  - id: "policy-food-drink"
+    title: "エンジニアカフェ 飲食ポリシー"
+    title_en: "Engineer Cafe Food and Drink Policy"
+    content: >
+      エンジニアカフェでの飲食ルールは場所によって異なります。
+      【基本ルール】外部からの食べ物の持ち込みは原則禁止です。
+      cafe&bar sainoで購入した飲食物のみ、指定エリアでお召し上がりいただけます。
+      【飲食可能エリア】cafe&bar saino店内、談話室、テラスではsaino購入品の飲食が可能です。
+      【飲食不可エリア】メインホール、集中スペース、地下スペースでの飲食は禁止です。
+      イベント開催時は事前申請・許可があれば例外的に飲食可能です。
+      【2階会議室】蓋付き容器の飲み物（アルコール以外）のみ持ち込み可能です。食べ物は持ち込めません。
+      重要文化財の建物ですので、汚損には十分お気をつけください。
+    category: "food_drink"
+    tags: ["food", "drink", "rules", "engineer-cafe"]
+    priority: 60
+    source: "official"
+    verified: true
+
+  - id: "policy-smoking"
+    title: "エンジニアカフェ 喫煙ポリシー"
+    title_en: "Engineer Cafe Smoking Policy"
+    content: >
+      エンジニアカフェは全館禁煙です。施設内での喫煙はできません。
+      喫煙される方は、近隣の喫煙所をご利用ください。
+    category: "smoking"
+    tags: ["smoking", "rules", "engineer-cafe"]
+    priority: 60
+    source: "official"
+    verified: true
+
+  - id: "policy-parking"
+    title: "エンジニアカフェ 駐車場情報"
+    title_en: "Engineer Cafe Parking Information"
+    content: >
+      エンジニアカフェには専用駐車場はありません。
+      近隣のコインパーキングをご利用ください。公共交通機関でのお越しをおすすめします。
+    category: "parking"
+    tags: ["parking", "access", "engineer-cafe"]
+    priority: 60
+    source: "official"
+    verified: true
+
+  - id: "policy-bicycle"
+    title: "エンジニアカフェ 駐輪場情報"
+    title_en: "Engineer Cafe Bicycle Parking"
+    content: >
+      エンジニアカフェには専用の駐輪場はありません。
+      近隣の公共駐輪場をご利用ください。
+    category: "bicycle"
+    tags: ["bicycle", "parking", "access", "engineer-cafe"]
+    priority: 60
+    source: "official"
+    verified: true
+
+  - id: "policy-children-noise"
+    title: "エンジニアカフェ 子連れ利用・騒音ポリシー"
+    title_en: "Children and Noise Policy"
+    content: >
+      お子様を連れての利用に関して、特別な年齢制限は設けていません。保護者同伴での利用は可能です。
+      ただし安全管理の観点から、お子様から目を離さないようお願いします。
+      館内には機材や備品が設置されているため、走り回る行為や大きな声での会話など、
+      他の利用者の集中を妨げる行為があった場合は、利用をお断りすることがあります。
+      お子様用の椅子などの専用備品は設置していません。
+      授乳室やおむつ交換台も館内にはありませんので、あらかじめご了承ください。
+      地下1階の集中スペースでは会話・電話は禁止です。
+      イベント時は行動規範が適用され、妨害行為は禁止されています。
+      一般利用時は常識的な配慮をお願いします。
+    category: "policy"
+    tags: ["children", "noise", "rules", "engineer-cafe"]
+    priority: 60
+    source: "official"
+    verified: true
+
+  - id: "policy-photography"
+    title: "エンジニアカフェ 撮影ポリシー"
+    title_en: "Engineer Cafe Photography Policy"
+    content: >
+      エンジニアカフェでの撮影についてのガイドラインです。
+      一般利用時のスナップ撮影（スマートフォン等）は基本的に可能です。
+      赤煉瓦文化館は歴史的建造物として人気があり、多くの利用者が内観写真をSNSに投稿しています。
+      撮影時の注意点:
+      他の利用者の顔や作業内容が映り込む場合はプライバシーに配慮し、許可を取るか映り込みを避けてください。
+      いやがらせ目的の撮影・録音は禁止です。
+      赤煉瓦文化館は国の重要文化財のため、商業撮影や三脚・フラッシュの使用、
+      大規模な撮影は事前に許可が必要な場合があります。
+      一般的な観光・記録レベルの撮影は問題ありません。
+      イベント時は撮影OKの場合が多く、公式広報用に活用されることがあります。
+      撮影が気になる方はスタッフにご相談ください。
+    category: "policy"
+    tags: ["photography", "privacy", "rules", "engineer-cafe"]
+    priority: 60
+    source: "official"
+    verified: true
+
+  - id: "policy-lost-found"
+    title: "エンジニアカフェ 忘れ物・落とし物の対応"
+    title_en: "Lost and Found Policy"
+    content: >
+      エンジニアカフェでの忘れ物・落とし物の対応についてです。
+      コワーキングスペースやカフェエリアでの忘れ物はエンジニアカフェ受付で保管しています。
+      2階会議室やトイレなど共用部での忘れ物は赤煉瓦文化館受付で保管される場合があります。
+      お心当たりのある方は電話（080-6742-7231）でお問い合わせください。
+      貴重品は必ず自己管理をお願いします。施設側は紛失の責任を負いかねます。
+    category: "policy"
+    tags: ["lost-found", "belongings", "engineer-cafe"]
+    priority: 90
+    source: "official"
+    verified: true
+
+  - id: "policy-emergency"
+    title: "エンジニアカフェ 緊急時対応・避難経路"
+    title_en: "Emergency Response and Evacuation"
+    content: >
+      エンジニアカフェでの緊急時対応と避難経路についてです。
+      【AED】施設内にAEDは設置されていません。
+      【避難経路】1階正面玄関と地下1階の職員通路の2箇所から避難できます。
+      歴史的建造物のため避難経路が限られています。スタッフの指示に従ってください。
+      【最寄り病院】アクロス福岡側のクリニック群（徒歩1〜3分）が最寄りです。
+      麻生クリニック（アクロス福岡4F）、黒田クリニック（天神1-15-2）。
+      体調不良や怪我をされた場合は、すぐにスタッフにお声がけください。
+      緊急の場合は119番（救急）、110番（警察）に通報してください。
+    category: "policy"
+    tags: ["emergency", "evacuation", "safety", "engineer-cafe"]
+    priority: 90
+    source: "official"
+    verified: true
+
+  - id: "policy-community-manners"
+    title: "エンジニアカフェ コミュニティ文化・利用マナー"
+    title_en: "Community Culture and Etiquette"
+    content: >
+      エンジニアカフェのコミュニティ文化と利用マナーについてです。
+      エンジニア同士の交流が活発で、イベント後の名刺交換やカジュアルな技術トークが自然に生まれる雰囲気です。
+      初めての方でも気軽に利用できますが、以下のマナーをお守りください。
+      営利目的の勧誘、強引な名刺交換、セールス行為は禁止です（公的施設のルール）。
+      周囲の作業者への配慮をお願いします。大声での長時間の会話は控えめに。
+      ゴミは各自でお持ち帰りください。
+      共有テーブルの長時間独占（荷物での席取り等）はお控えください。
+      仮眠や昼寝はご遠慮ください。コワーキングスペースの趣旨から外れるため、スタッフから注意を受けることがあります。
+    category: "policy"
+    tags: ["manners", "etiquette", "community", "engineer-cafe"]
+    priority: 60
+    source: "official"
+    verified: true
+
+  - id: "policy-corporate-use"
+    title: "エンジニアカフェ 法人利用・請求書・郵便物受取"
+    title_en: "Corporate Use, Invoicing, and Mail"
+    content: >
+      エンジニアカフェの法人利用と各種手続きについてです。
+      【コワーキング利用】無料のため領収書は発行できません。
+      【2階会議室利用】有料のため領収書・請求書の発行が可能です（赤煉瓦文化館受付で対応）。
+      法人名義での予約も可能です。
+      【郵便物・宅配受取】施設での郵便物や宅配便の受取はできません。
+      住所をビジネス利用（名刺記載等）することもできません。
+    category: "policy"
+    tags: ["corporate", "invoice", "business", "engineer-cafe"]
+    priority: 60
+    source: "official"
+    verified: true
+
+  - id: "policy-pets"
+    title: "エンジニアカフェ ペット同伴について"
+    title_en: "Pet Policy"
+    content: >
+      エンジニアカフェへのペット同伴についてです。
+      盲導犬・聴導犬・介助犬などの補助犬は同伴可能です。
+      それ以外のペットの同伴はご遠慮いただいています。
+      テラス席を含め、施設全域でペットの持ち込みは不可です。
+    category: "policy"
+    tags: ["pets", "service-dogs", "rules", "engineer-cafe"]
+    priority: 30
+    source: "official"
+    verified: true

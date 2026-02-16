@@ -226,6 +226,53 @@ class TestLLMJudgeWithAPI:
         assert accuracy_result.score > 0.5
 
 
+class TestLLMJudgeOpenRouterFallback:
+    """OpenRouter フォールバックのテスト"""
+
+    def test_openrouter_fallback_initializes_llm(self):
+        """OPENROUTER_API_KEY のみでも LLM が初期化される"""
+        env = {"OPENROUTER_API_KEY": "sk-or-test-key"}
+        with patch.dict("os.environ", env, clear=True):
+            with patch("tests.utils.evaluators.llm_judge.ChatOpenAI") as mock_chat:
+                mock_chat.return_value = "mock_llm"
+                LLMJudgeEvaluator()
+                mock_chat.assert_called_once()
+                call_kwargs = mock_chat.call_args[1]
+                assert call_kwargs["api_key"] == "sk-or-test-key"
+                assert call_kwargs["openai_api_base"] == "https://openrouter.ai/api/v1"
+                assert call_kwargs["model"] == "openai/gpt-4o-mini"
+
+    def test_openrouter_model_name_mapping(self):
+        """OpenRouter 使用時にモデル名がプロバイダープレフィックス付きに変換される"""
+        env = {"OPENROUTER_API_KEY": "sk-or-test-key"}
+        with patch.dict("os.environ", env, clear=True):
+            with patch("tests.utils.evaluators.llm_judge.ChatOpenAI") as mock_chat:
+                mock_chat.return_value = "mock_llm"
+                LLMJudgeEvaluator(model_name="gpt-4o")
+                call_kwargs = mock_chat.call_args[1]
+                assert call_kwargs["model"] == "openai/gpt-4o"
+
+    def test_openai_key_takes_priority(self):
+        """OPENAI_API_KEY と OPENROUTER_API_KEY の両方がある場合は OPENAI が優先"""
+        env = {
+            "OPENAI_API_KEY": "sk-openai-test",
+            "OPENROUTER_API_KEY": "sk-or-test",
+        }
+        with patch.dict("os.environ", env, clear=True):
+            with patch("tests.utils.evaluators.llm_judge.ChatOpenAI") as mock_chat:
+                mock_chat.return_value = "mock_llm"
+                LLMJudgeEvaluator()
+                call_kwargs = mock_chat.call_args[1]
+                assert call_kwargs["api_key"] == "sk-openai-test"
+                assert "openai_api_base" not in call_kwargs
+
+    def test_no_keys_no_llm(self):
+        """API キーが未設定の場合は LLM なし"""
+        with patch.dict("os.environ", {}, clear=True):
+            evaluator = LLMJudgeEvaluator()
+            assert evaluator.is_available is False
+
+
 class TestJudgeResult:
     """JudgeResultのテスト"""
 

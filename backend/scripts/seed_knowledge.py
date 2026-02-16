@@ -1239,6 +1239,8 @@ async def seed_knowledge_base() -> None:
                 "category": category,
                 "metadata": metadata,
                 "content_embedding": embedding,
+                "chunk_level": "document",
+                "chunk_index": 0,
             }
 
             supabase.table("knowledge_base").upsert(
@@ -1256,5 +1258,49 @@ async def seed_knowledge_base() -> None:
     logger.info(f"\nSeed complete: {success_count} success, {error_count} errors")
 
 
+async def seed_from_yaml_files() -> None:
+    """YAML ファイルベースのシーディング（新方式）
+
+    backend/knowledge/data/*.yaml を読み込み、Hierarchical チャンキング +
+    embedding 生成 → Supabase upsert を行う。
+    """
+    from backend.knowledge.loader import SeedResult, seed_from_yaml
+
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_key = os.getenv("SUPABASE_KEY")
+
+    if not supabase_url or not supabase_key:
+        raise RuntimeError("SUPABASE_URL and SUPABASE_KEY must be set")
+
+    supabase = create_client(supabase_url, supabase_key)
+    data_dir = Path(__file__).resolve().parent.parent / "knowledge" / "data"
+
+    logger.info("Starting YAML-based seed from: %s", data_dir)
+    result: SeedResult = await seed_from_yaml(supabase, data_dir)
+
+    logger.info(
+        "YAML seed complete: success=%d, errors=%d, total_chunks=%d, skipped=%d",
+        result.success_count,
+        result.error_count,
+        result.total_chunks,
+        result.skipped_count,
+    )
+    if result.error_count > 0:
+        raise RuntimeError(f"YAML seed completed with {result.error_count} errors")
+
+
 if __name__ == "__main__":
-    asyncio.run(seed_knowledge_base())
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Seed knowledge base")
+    parser.add_argument(
+        "--yaml",
+        action="store_true",
+        help="Use YAML-based seeding (new method with hierarchical chunking)",
+    )
+    args = parser.parse_args()
+
+    if args.yaml:
+        asyncio.run(seed_from_yaml_files())
+    else:
+        asyncio.run(seed_knowledge_base())

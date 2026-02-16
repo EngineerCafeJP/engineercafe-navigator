@@ -18,9 +18,7 @@ AgentNodeName = Literal[
     "business_info",
     "facility",
     "event",
-    "memory_agent",
     "general_knowledge",
-    "clarification",
     "slide",
 ]
 
@@ -28,9 +26,7 @@ RoutingTarget = Literal[
     "business_info",
     "facility",
     "event",
-    "memory_agent",
     "general_knowledge",
-    "clarification",
     "slide",
     "__end__",
 ]
@@ -39,9 +35,7 @@ AgentName = Literal[
     "BusinessInfoAgent",
     "FacilityAgent",
     "EventAgent",
-    "MemoryAgent",
     "GeneralKnowledgeAgent",
-    "ClarificationAgent",
     "TimeAgent",
     "SlideAgent",
 ]
@@ -409,9 +403,7 @@ AGENT_DESCRIPTIONS: Dict[str, str] = {
     "business_info": "営業情報エージェント: 営業時間、料金、場所、相談（キャリア・スキルチェンジ等）、コミュニティ（Engineer Cafe Lab等）など施設の基本情報・サービスを回答",
     "facility": "施設エージェント: Wi-Fi、電源、会議室、地下スペース、建物の歴史・構造、アクセス方法・行き方など設備・物理施設に関する情報を回答",
     "event": "イベントエージェント: イベント情報、勉強会、セミナーなどの予定を回答",
-    "memory_agent": "メモリエージェント: 過去の会話履歴に関する質問に回答（「さっき何を聞いた？」など）",
-    "general_knowledge": "一般知識エージェント: 上記以外の一般的な質問に回答",
-    "clarification": "明確化エージェント: 曖昧な質問に対して詳細を確認",
+    "general_knowledge": "一般知識エージェント: 上記以外の一般的な質問、および過去の会話履歴に関する質問に回答",
     "slide": "スライドエージェント: スライドのナレーション、操作、質問応答を処理",
 }
 
@@ -422,11 +414,11 @@ CATEGORY_TO_AGENT_MAP: Dict[str, AgentNodeName] = {
     "events": "event",
     "current-time": "general_knowledge",
     "general": "general_knowledge",
-    "memory": "memory_agent",
+    "memory": "general_knowledge",
     "consultation": "business_info",
     "community": "business_info",
-    "cafe-clarification-needed": "clarification",
-    "meeting-room-clarification-needed": "clarification",
+    "cafe-clarification-needed": "general_knowledge",
+    "meeting-room-clarification-needed": "general_knowledge",
     # query_classifier._detect_specific_category が返すカテゴリ
     "pricing": "business_info",
     "facilities": "facility",

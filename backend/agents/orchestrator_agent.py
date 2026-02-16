@@ -103,10 +103,9 @@ class OrchestratorAgent:
 1. 営業時間、料金、相談（キャリア相談・スキルチェンジ等）、コミュニティ（Engineer Cafe Lab等）に関する質問 → business_info
 2. Wi-Fi、電源、設備、地下スペース、建物の歴史・構造、アクセス方法・行き方に関する質問 → facility
 3. イベント、勉強会、セミナーに関する質問 → event
-4. 過去の会話や「さっき」「前に」などメモリ関連の質問 → memory_agent
+4. 過去の会話や「さっき」「前に」などメモリ関連の質問 → general_knowledge (request_type: memory)
 5. スライド操作やプレゼン関連の質問 → slide
-6. 曖昧で詳細確認が必要な質問 → clarification
-7. その他の一般的な質問 → general_knowledge
+6. その他の一般的な質問 → general_knowledge
 
 次のJSON形式で回答してください:
 {{
@@ -205,12 +204,12 @@ class OrchestratorAgent:
         # 高速パス: メモリ関連の質問は即座にルーティング
         if self._is_memory_related_question(sanitized_query):
             return OrchestratorDecision(
-                next_agent="memory_agent",
+                next_agent="general_knowledge",
                 language=response_language,
                 category="memory",
-                request_type=None,
+                request_type="memory",
                 confidence=1.0,
-                reasoning="Memory-related question detected",
+                reasoning="Memory-related question detected, routing to GKA",
                 debug_info=self._create_debug_info(
                     fast_path=True,
                     language_result=language_result,
@@ -339,18 +338,24 @@ class OrchestratorAgent:
         agent_response: dict,
         original_query: str,
     ) -> RoutingTarget:
-        """エージェント処理後に続行か終了かを決定
-
-        requires_followup が True の場合は clarification エージェントに
-        再ルーティングし、そうでなければ終了する。
-        """
-        if agent_response.get("metadata", {}).get("requires_followup"):
-            return "clarification"
+        """エージェント処理後に続行か終了かを決定"""
         return END
 
     def _try_fast_routing(self, query: str) -> Optional[dict]:
         """キーワードベースの高速ルーティング"""
         lower_query = query.lower()
+
+        # カフェ曖昧性: "カフェ" + "どっち/どちら/which" → clarification
+        # (orchestrator_node がcategory基準でインライン処理する)
+        if any(kw in lower_query for kw in ["カフェ", "cafe"]) and any(
+            kw in lower_query for kw in ["どっち", "どちら", "which"]
+        ):
+            return {
+                "agent": "general_knowledge",
+                "category": "cafe-clarification-needed",
+                "request_type": "clarification",
+                "reasoning": "Ambiguous cafe reference detected",
+            }
 
         if match_keywords(lower_query, WIFI_KEYWORDS):
             return {
@@ -541,14 +546,6 @@ class OrchestratorAgent:
                 "category": "facility-info",
                 "request_type": "food_drink",
                 "reasoning": "Food/drink policy keyword detected",
-            }
-
-        if any(kw in lower_query for kw in ["カフェ", "cafe"]) and "どっち" in lower_query:
-            return {
-                "agent": "clarification",
-                "category": "cafe-clarification-needed",
-                "request_type": None,
-                "reasoning": "Cafe clarification needed",
             }
 
         return None

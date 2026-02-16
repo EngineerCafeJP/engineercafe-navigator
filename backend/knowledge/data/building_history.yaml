@@ -1,0 +1,62 @@
+version: "1.0.0"
+description: "赤煉瓦文化館の歴史・周辺施設情報"
+entries:
+  - id: "building-akarenga-history"
+    title: "赤煉瓦文化館の歴史と建築"
+    title_en: "History and Architecture of the Red Brick Culture Hall"
+    content: >
+      エンジニアカフェが入居する福岡市赤煉瓦文化館は、
+      1909年（明治42年）に日本生命保険株式会社九州支店の社屋として建てられました。
+      設計は東京駅の設計でも知られる辰野金吾・片岡安による辰野片岡建築事務所です。
+      赤煉瓦に白い花崗岩の帯を装飾的に配した外壁と、
+      中央にドームを載せた八角の塔屋が特徴的な「辰野式」と呼ばれる様式の建物です。
+      煉瓦造、地上2階・地下1階建て、建築面積約282㎡。
+      内部には照明器具、階段の装飾、鉄柵などにアールヌーボーの影響が見られ、
+      大理石の玄関やカーテンは建築当時の仕様に復元されています。
+      1969年に国の重要文化財に指定され福岡市に譲渡。
+      1994年に建築当時の内装を復元し「福岡市赤煉瓦文化館」としてリニューアルオープン。
+      2019年にエンジニアカフェが開設されました。夜間にはライトアップも行われます。
+    category: "facility-info"
+    tags: ["history", "architecture", "akarenga", "cultural-property"]
+    priority: 90
+    source: "official"
+    verified: true
+
+  - id: "surrounding-nearby-facilities"
+    title: "エンジニアカフェ 周辺施設案内（コンビニ・ATM・薬局・病院）"
+    title_en: "Nearby Facilities Guide"
+    content: >
+      エンジニアカフェ周辺の便利な施設案内です。
+      【コンビニ（徒歩1〜3分）】
+      ファミリーマート天神一丁目店（天神1-15-2、24時間）、
+      ファミリーマート福岡天神四丁目店（天神4-1-7、24時間）、
+      ローソンS天神ブリック店（天神1-14-18）。
+      【ATM】上記コンビニ内のATM、天神地下街にも複数あります。
+      【薬局】天神地下街のマツモトキヨシ、アクロス福岡ビル内にも調剤薬局があります。
+      【病院・クリニック（徒歩1〜3分）】
+      麻生クリニック（アクロス福岡4F）、
+      あやすぎビルクリニック（天神1-15-6 7F）、
+      黒田クリニック（天神1-15-2）。
+      総合病院は博多方面となります。
+    category: "surrounding"
+    tags: ["surrounding", "convenience", "hospital", "atm"]
+    priority: 90
+    source: "official"
+    verified: true
+
+  - id: "surrounding-lunch-spots"
+    title: "エンジニアカフェ 周辺ランチ・飲食スポット"
+    title_en: "Nearby Lunch and Dining Spots"
+    content: >
+      エンジニアカフェ周辺（天神エリア）のランチ・飲食スポットです。
+      cafe&bar saino以外で食事をしたい場合の選択肢です。
+      天神地下街（徒歩3〜5分）: 多数の飲食店が集結。ラーメン、定食、カフェ等。
+      西中洲エリア（徒歩5分）: 居酒屋、レストランが多数。
+      アクロス福岡ビル内: カフェ、レストランあり。
+      天神中央公園: 天気が良い日はテイクアウトしてのランチにも最適です。
+      最寄りのコンビニ（ファミリーマート天神一丁目店等）でも軽食が購入できます。
+    category: "surrounding"
+    tags: ["surrounding", "lunch", "dining", "tenjin"]
+    priority: 30
+    source: "official"
+    verified: true

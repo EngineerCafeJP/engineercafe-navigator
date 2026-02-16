@@ -127,3 +127,8 @@ docker-compose.override.yml
 
 # Reference implementation (external git repo)
 reference-implementation/
+
+# RAGAS evaluation reports (generated artifacts)
+backend/reports/
+backend/tests/reports/
+backend/tests/evaluation/reports/

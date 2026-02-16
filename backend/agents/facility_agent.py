@@ -58,6 +58,8 @@ class FacilityAgent:
         request_type: Optional[str] = None,
         language: str = "ja",
         session_id: Optional[str] = None,
+        state_context: Optional[Dict] = None,
+        context_signals=None,
     ) -> Dict:
         """施設情報クエリに回答
 
@@ -124,23 +126,30 @@ class FacilityAgent:
             f"Processing query: {query[:50]}..., request_type: {request_type}, language: {language}"
         )
 
-        # クエリ拡張（requestTypeに応じて）
-        enhanced_query = self._enhance_query(query, request_type, language)
+        # Check cached RAG results
+        cached = state_context if state_context else None
+        if cached and cached.get("success") and cached.get("category") == "facility-info":
+            context = cached.get("context_string", "")
+            logger.info("Using cached RAG results for facility-info")
+        else:
+            # クエリ拡張（requestTypeに応じて）
+            enhanced_query = self._enhance_query(query, request_type, language)
 
-        # Enhanced RAG検索
-        rag_result = await self.enhanced_rag.search(
-            query=enhanced_query,
-            category="facility-info",
-            language=language,
-            include_advice=True,
-            max_results=10,
-        )
+            # Enhanced RAG検索
+            rag_result = await self.enhanced_rag.search(
+                query=enhanced_query,
+                category="facility-info",
+                language=language,
+                include_advice=True,
+                max_results=10,
+                context_signals=context_signals,
+            )
 
-        if not rag_result.get("success"):
-            return self._get_default_response(language, request_type)
+            if not rag_result.get("success"):
+                return self._get_default_response(language, request_type)
 
-        # コンテキスト取得
-        context = rag_result.get("data", {}).get("context", "")
+            # コンテキスト取得
+            context = rag_result.get("data", {}).get("context", "")
 
         if not context:
             return self._get_default_response(language, request_type)
