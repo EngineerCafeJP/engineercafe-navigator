@@ -36,11 +36,31 @@ backend/tests/
 │   ├── test_business_info_agent.py
 │   ├── test_memory_agent.py
 │   └── ...
-├── utils/                         # テストユーティリティ
+├── tools/                         # ツールテスト
+│   ├── test_calendar.py
+│   ├── test_connpass.py
+│   └── test_web_search.py
+├── workflows/                     # ワークフローテスト
+│   └── test_main_workflow.py
+├── config/                        # 設定テスト
+│   ├── test_settings.py
+│   └── test_prompts.py
+├── utils/                         # ユーティリティテスト
+│   ├── test_exceptions.py
+│   ├── test_clarification.py
 │   ├── test_helpers.py           # テストヘルパー関数
 │   ├── mock_helpers.py           # モック作成ヘルパー
 │   ├── assertion_helpers.py      # カスタムアサート関数
-│   └── langgraph_evaluate_setup.py  # LangGraph Evaluate設定
+│   └── evaluators/                # カスタム評価器
+├── integration/                   # 統合テスト
+├── evaluation/                    # 評価テスト
+│   ├── test_llm_judge.py
+│   ├── test_routing_accuracy.py
+│   ├── test_report_generator.py
+│   ├── test_ragas_pipeline.py     # RAGAS評価
+│   └── reports/                   # 生成レポート（gitignore対象）
+├── fixtures/                      # テストフィクスチャとゴールデンデータセット
+│   └── golden_datasets/
 └── templates/                     # テストテンプレート
     └── test_agent_template.py    # エージェントテストテンプレート
 ```
@@ -53,6 +73,10 @@ backend/tests/
 
 ```bash
 cd backend
+# Recommended: uv run
+uv run pytest
+
+# Fallback: pip
 pip install -r requirements.txt
 ```
 
@@ -70,24 +94,28 @@ ENVIRONMENT=test
 
 ### 3. テストの実行
 
+**現在のテスト数**: 1166 tests collected
+
 ```bash
 # すべてのテストを実行
-pytest
+uv run python -m pytest
+# または
+uv run pytest
 
 # 詳細な出力で実行
-pytest -v
+uv run pytest -v
 
 # 特定のテストファイルを実行
-pytest tests/agents/test_router_agent.py
+uv run pytest tests/agents/test_router_agent.py
 
 # 特定のテストクラスを実行
-pytest tests/agents/test_router_agent.py::TestRouterAgent
+uv run pytest tests/agents/test_router_agent.py::TestRouterAgent
 
 # 特定のテストメソッドを実行
-pytest tests/agents/test_router_agent.py::TestRouterAgent::test_basic_routing
+uv run pytest tests/agents/test_router_agent.py::TestRouterAgent::test_basic_routing
 
 # カバレッジレポートを生成
-pytest --cov=backend --cov-report=html
+uv run pytest --cov=backend --cov-report=html
 ```
 
 ---
@@ -442,6 +470,37 @@ print(f"Pass rate: {summary['pass_rate']:.2%}")
 
 ---
 
+## RAGAS評価テスト
+
+RAGシステムの品質評価にRAGASフレームワークを使用しています。
+
+### 実行方法
+
+```bash
+# RAGAS評価テスト
+uv run python -m pytest tests/evaluation/test_ragas_pipeline.py -v
+
+# ゴールデンデータセット評価
+uv run python -m pytest tests/evaluation/test_ragas_pipeline.py -v -k "golden"
+
+# ライブ評価（APIキー必要）
+uv run python -m pytest tests/evaluation/test_ragas_pipeline.py -v --run-llm
+```
+
+### 評価メトリクス
+
+| メトリクス | 説明 | 閾値 |
+|-----------|------|------|
+| Faithfulness | コンテキストに対する忠実度 | ≥ 0.7 |
+| Answer Correctness | 回答の正確性 | ≥ 0.5 |
+| Context Relevance | コンテキストの関連性 | ≥ 0.5 |
+
+### レポート生成
+
+評価レポートは `tests/evaluation/reports/` に自動生成されます（gitignore対象）。
+
+---
+
 ## ベストプラクティス
 
 ### 1. テストの命名規則
@@ -522,7 +581,20 @@ def test_with_real_api():
     assert result is not None
 ```
 
-### 6. テストカバレッジ
+### 6. カスタム例外のテスト
+
+Sprint 3で導入されたカスタム例外階層のテスト例:
+
+```python
+from backend.utils.exceptions import AgentSystemError, RoutingError
+
+def test_routing_error_is_agent_system_error():
+    error = RoutingError("Test error")
+    assert isinstance(error, AgentSystemError)
+    assert str(error) == "Test error"
+```
+
+### 7. テストカバレッジ
 
 重要なコードパスは必ずテストでカバーします:
 
@@ -575,8 +647,8 @@ def my_fixture():
 3. 並列実行を有効化（`pytest-xdist`）
 
 ```bash
-pip install pytest-xdist
-pytest -n auto  # 自動的にワーカー数を決定
+uv run pip install pytest-xdist
+uv run pytest -n auto  # 自動的にワーカー数を決定
 ```
 
 ### 問題: カバレッジレポートが生成されない
@@ -584,8 +656,8 @@ pytest -n auto  # 自動的にワーカー数を決定
 **解決策**: `pytest-cov`がインストールされているか確認
 
 ```bash
-pip install pytest-cov
-pytest --cov=backend --cov-report=html
+uv run pip install pytest-cov
+uv run pytest --cov=backend --cov-report=html
 ```
 
 ---

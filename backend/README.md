@@ -1,23 +1,25 @@
 # Engineer Cafe Navigator Backend
 
-Python版LangGraphを使用したAIエージェントバックエンドシステムです。
+Python + FastAPI + LangGraph 1.0.8 を使用したAIエージェントバックエンドシステムです。
 
-## 🤖 実装済みエージェント（9種）
+## 🤖 実装済みエージェント（12種）
 
 | エージェント | ファイル | 責務 |
 |-------------|----------|------|
 | OrchestratorAgent | `orchestrator_agent.py` | Supervisor Pattern によるルーティング（LLM動的ルーティング） |
 | BusinessInfoAgent | `business_info_agent.py` | 営業時間・料金・アクセス |
 | FacilityAgent | `facility_agent.py` | 設備・Wi-Fi・地下施設 |
-| EventAgent | `event_agent.py` | イベント・カレンダー |
+| EventAgent | `event_agent.py` | カレンダー・Connpassイベント |
 | SlideAgent | `slide_agent.py` | スライド表示・ナレーション |
-| GeneralKnowledgeAgent | `general_knowledge_agent.py` | Web検索（範囲外質問） |
-| MemoryAgent | `memory_agent.py` | 会話履歴・コンテキスト |
+| GeneralKnowledgeAgent | `general_knowledge_agent.py` | Web検索 + メモリクエリ（範囲外質問） |
 | ClarificationAgent | `clarification_agent.py` | 曖昧解消 |
-| VoiceAgent | `voice_agent.py` | 音声処理（STT/TTS） |
+| VoiceAgent | `voice_agent.py` | TTS（VoiceVox/Google） |
+| STTAgent | `stt_agent.py` | STT（Vosk/Google） |
 | CharacterControlAgent | `character_control_agent.py` | VRM制御 |
+| OCRAgent | `ocr_agent.py` | OCR処理 |
+| MemoryAgent | `memory_agent.py` | **DEPRECATED** → GeneralKnowledgeAgent に統合 |
 
-**テスト状況**: 406件パス、2件スキップ ✅（2026-02-07）
+**テスト状況**: 1166件収集 ✅（2026-02-16）
 
 ## セットアップ
 
@@ -33,9 +35,9 @@ docker-compose up -d
 docker-compose up -d backend postgres
 ```
 
-### 方法2: uvを使用する場合
+### 方法2: uvを使用する場合（推奨）
 
-[uv](https://github.com/astral-sh/uv) は高速なPythonパッケージマネージャーです。
+[uv](https://github.com/astral-sh/uv) は高速なPythonパッケージマネージャーです。プライマリパッケージマネージャーとして使用します。
 
 ```bash
 cd backend
@@ -91,25 +93,33 @@ supabase stop
 
 ## 環境変数の設定
 
-`.env`ファイルを作成し、以下の環境変数を設定してください：
+`.env`ファイルを作成し、以下の環境変数を設定してください（`.env.example` を参照）：
 
 ```env
 # OpenRouter API (Required - Primary AI Provider)
-# All AI models (Router, QA, etc.) use OpenRouter API
+# 統一されたLLMアクセスポイント（ルーティング、QA等すべてのモデルに使用）
 # Get your key at: https://openrouter.ai/keys
 OPENROUTER_API_KEY=your_openrouter_api_key
 
-# Google API (GeneralKnowledgeAgent用)
+# OpenAI API (Optional - Embeddings/Evaluation用)
+OPENAI_API_KEY=your_openai_api_key
+
+# Google API (Optional - Gemini Grounding Search用)
 GOOGLE_API_KEY=your_google_api_key
 
-# Supabase
+# Google Calendar ICS Feed
+GOOGLE_CALENDAR_ICAL_URL=your_calendar_ical_url
+
+# Connpass API
+CONNPASS_API_KEY=your_connpass_api_key
+
+# Supabase（RAG + Checkpointer）
 SUPABASE_URL=your_supabase_url
 SUPABASE_KEY=your_supabase_key
+SUPABASE_DB_URI=postgresql://postgres:postgres@127.0.0.1:54322/postgres
 
-# LangSmith（評価・トレーシング）
-LANGCHAIN_TRACING_V2=true
-LANGCHAIN_API_KEY=your_langsmith_api_key
-LANGCHAIN_PROJECT=engineer-cafe-navigator
+# LangSmith（Optional - トレーシング・評価）
+LANGSMITH_API_KEY=your_langsmith_api_key
 
 # その他
 ENVIRONMENT=development
@@ -140,12 +150,13 @@ OpenRouter APIは自動フォールバック機能を持っています：
 ### 開発サーバーの起動
 
 ```bash
+# プライマリ: uv run を使用
+uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
+
+# または poetry を使用
 poetry run uvicorn main:app --reload --host 0.0.0.0 --port 8000
-```
 
-または
-
-```bash
+# または直接実行
 python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
@@ -158,29 +169,34 @@ python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ## テスト
 
 ```bash
-# 全テスト実行
+# 全テスト実行（1166件収集）
+uv run pytest
+# または
 poetry run pytest
 
 # 特定のエージェントテスト
-poetry run pytest tests/agents/ -v
+uv run pytest tests/agents/ -v
+
+# ツールテスト
+uv run pytest tests/tools/ -v
 
 # カバレッジ付き
-poetry run pytest --cov=agents --cov-report=html
+uv run pytest --cov=agents --cov=tools --cov=workflows --cov-report=html
 ```
 
-### 評価テスト（LangChain Evaluations拡張）
+### 評価テスト（RAGAS + LLM-as-Judge）
 
-マルチエージェントシステム向けのLLM-as-Judge評価とルーティング精度評価を実行できます。
+マルチエージェントシステム向けのRAGAS評価とLLM-as-Judge評価を実行できます。
 
 ```bash
-# 評価テスト全体
-poetry run pytest tests/evaluation/ -v
-
-# ルーティング精度評価
-poetry run pytest tests/evaluation/test_routing_accuracy.py -v
+# RAGAS評価パイプライン（Faithfulness, Answer Correctness, Context Relevance）
+uv run pytest tests/evaluation/test_ragas_pipeline.py -v
 
 # LLM Judge評価（APIキー必要）
-poetry run pytest tests/evaluation/test_llm_judge.py -v --run-llm
+uv run pytest tests/evaluation/test_llm_judge.py -v --run-llm
+
+# ルーティング精度評価
+uv run pytest tests/evaluation/test_routing_accuracy.py -v
 ```
 
 テストデータは実際のエンジニアカフェの公開情報に基づいています。詳細は [tests/fixtures/README.md](tests/fixtures/README.md) を参照してください。
@@ -188,13 +204,18 @@ poetry run pytest tests/evaluation/test_llm_judge.py -v --run-llm
 ## コード品質
 
 ```bash
-# フォーマット
-poetry run black .
+# リンター（プライマリ: uv run）
+uv run ruff check .
 
-# リンター
-poetry run ruff check .
+# フォーマット
+uv run black .
 
 # 型チェック
+uv run mypy .
+
+# または poetry を使用
+poetry run ruff check .
+poetry run black .
 poetry run mypy .
 ```
 
@@ -203,49 +224,76 @@ poetry run mypy .
 ```
 backend/
 ├── main.py                 # FastAPIアプリケーション
-├── agents/                 # LangGraphエージェント（9種）
-│   ├── __init__.py
+├── agents/                 # LangGraphエージェント（12種）
 │   ├── orchestrator_agent.py     # Supervisor Pattern ルーティング
 │   ├── business_info_agent.py    # 営業情報
 │   ├── facility_agent.py         # 設備情報
 │   ├── event_agent.py            # イベント情報
 │   ├── slide_agent.py            # スライド表示
-│   ├── general_knowledge_agent.py # Web検索
-│   ├── memory_agent.py           # 会話履歴
+│   ├── general_knowledge_agent.py # Web検索 + メモリクエリ
 │   ├── clarification_agent.py    # 曖昧解消
-│   ├── voice_agent.py            # 音声処理
-│   └── character_control_agent.py # VRM制御
+│   ├── voice_agent.py            # TTS
+│   ├── stt_agent.py              # STT
+│   ├── character_control_agent.py # VRM制御
+│   ├── ocr_agent.py              # OCR処理
+│   ├── memory_agent.py           # DEPRECATED（GeneralKnowledgeAgentに統合）
+│   └── agent_tools.py            # LangChain Tool定義
 ├── config/                 # 設定・定数
-│   ├── routing_constants.py      # ルーティングキーワード・型定義・ヘルパー関数
-│   ├── settings.py               # アプリケーション設定
-│   └── prompts/                  # 共有プロンプトテンプレート
-│       ├── facility_prompts.py   # 施設エージェント用プロンプト
-│       ├── event_prompts.py      # イベントエージェント用プロンプト
-│       └── memory_prompts.py     # メモリエージェント用プロンプト
+│   ├── routing_constants.py
+│   ├── settings.py               # Pydantic BaseSettings
+│   └── prompts/                  # プロンプトテンプレート
 ├── workflows/              # LangGraphワークフロー
-│   ├── __init__.py
-│   └── main_workflow.py
+│   └── main_workflow.py          # StateGraph + RetryPolicy
 ├── tools/                  # エージェントツール
-│   ├── agent_tools.py            # LangChain Tool定義
-│   └── ...
+│   ├── enhanced_rag.py           # RAG（Supabase + 階層検索 + セクションチャンキング）
+│   ├── calendar_service.py       # Google Calendar ICS Feed
+│   ├── connpass_service.py       # Connpass API v2
+│   ├── web_search.py             # Google Gemini Grounding Search
+│   └── tavily_search.py          # Tavily Search
 ├── llm/                    # LLMプロバイダー抽象化
 │   ├── openrouter.py             # OpenRouter APIクライアント
 │   └── models.py                 # モデル設定・フォールバック定義
 ├── utils/                  # ユーティリティ
+│   ├── exceptions.py             # カスタム例外階層（AgentSystemError等）
 │   ├── input_sanitizer.py        # 入力バリデーション・サニタイズ
-│   ├── exceptions.py             # カスタム例外階層
-│   ├── memory_helper.py          # Supabaseメモリシステム
+│   ├── memory_interface.py       # メモリシステムインターフェース
+│   ├── checkpointer.py           # AsyncPostgresSaver シングルトン
 │   ├── language_processor.py     # 言語検出・応答言語決定
-│   └── query_classifier.py       # クエリ分類
-└── tests/                  # テスト（406件）
+│   └── clarification_templates.py # 曖昧解消テンプレート
+├── evaluation/             # RAGAS評価パイプライン
+│   └── ragas_pipeline.py
+└── tests/                  # テスト（1166件収集）
     ├── agents/             # エージェントテスト
+    ├── tools/              # ツールテスト
+    ├── workflows/          # ワークフローテスト
     ├── integration/        # 統合テスト
-    ├── evaluation/         # 評価テスト（LangChain Evaluations拡張）
-    ├── fixtures/           # テストフィクスチャ・ゴールデンデータセット
-    │   └── golden_datasets/  # 実データ（リファレンス資料に基づく）
-    └── utils/              # ユーティリティテスト
-        └── evaluators/     # 評価器（LLM Judge, ルーティング精度）
+    ├── evaluation/         # 評価テスト（LLM Judge, RAGAS）
+    ├── config/             # 設定テスト
+    ├── utils/              # ユーティリティテスト
+    └── fixtures/           # テストフィクスチャ・ゴールデンデータセット
 ```
+
+### 主要機能
+
+#### 1. RetryPolicy（LangGraph）
+LLMノードに `RetryPolicy` を適用し、一時的な障害に対する自動リトライを実現（`max_attempts=3`）。
+
+#### 2. ストリーミング対応
+`astream()` メソッドでServer-Sent Events（SSE）によるリアルタイム応答をサポート。
+
+#### 3. カスタム例外階層
+`AgentSystemError` を基底とするドメイン固有例外（`RoutingError`, `LLMGenerationError`, `MemorySystemError` 等）でエラーハンドリングを標準化。
+
+#### 4. RAGAS評価パイプライン
+- **Faithfulness**: 回答の忠実性（コンテキストとの一貫性）
+- **Answer Correctness**: 回答の正確性（Ground Truthとの比較）
+- **Context Relevance**: コンテキストの関連性（質問との適合度）
+
+#### 5. Enhanced RAG（強化版RAG）
+- **セクションチャンキング**: ドキュメントを意味的なセクションに分割
+- **カテゴリ別検索戦略**: カテゴリごとに最適な検索パラメータを適用
+- **適応的閾値調整**: クエリタイプに応じた類似度閾値の動的調整
+- **階層的検索**: Supabase `pgvector` による高速ベクトル検索
 
 ### 共有インフラストラクチャモジュール
 
@@ -255,6 +303,7 @@ backend/
 | `config/prompts/` | エージェント固有のプロンプトテンプレート。ロジックとプロンプトを分離し保守性向上 |
 | `utils/input_sanitizer.py` | プロンプトインジェクション検出、制御文字除去、長さ制限等のセキュリティ関連バリデーション |
 | `utils/exceptions.py` | `AgentSystemError` を基底とするドメイン固有例外階層（`RoutingError`, `LLMGenerationError`, `MemorySystemError` 等） |
+| `utils/checkpointer.py` | LangGraph用 `AsyncPostgresSaver` シングルトン（Supabase PostgreSQL使用） |
 
 ## 📖 関連ドキュメント
 
