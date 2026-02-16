@@ -1,0 +1,171 @@
+"""Tests for backend/main.py endpoint fixes (Sprint 5)"""
+
+import pytest
+from unittest.mock import AsyncMock, patch
+from fastapi.testclient import TestClient
+
+
+class TestHealthCheck:
+    def test_health_check_returns_200(self):
+        from backend.main import app
+
+        client = TestClient(app)
+        response = client.get("/health")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "ok"
+        assert data["service"] == "engineer-cafe-navigator-backend"
+
+
+class TestChatEndpoint:
+    @pytest.mark.asyncio
+    async def test_chat_awaits_get_workflow(self):
+        """get_workflow() must be awaited (it's async)"""
+        mock_workflow = AsyncMock()
+        mock_workflow.ainvoke = AsyncMock(
+            return_value={
+                "answer": "テスト回答",
+                "emotion": "neutral",
+                "metadata": {},
+            }
+        )
+
+        with patch(
+            "workflows.main_workflow.get_workflow",
+            new_callable=AsyncMock,
+            return_value=mock_workflow,
+        ):
+            from backend.main import chat, ChatRequest
+
+            request = ChatRequest(query="テスト", session_id="s1")
+            response = await chat(request)
+            assert response.answer == "テスト回答"
+
+    @pytest.mark.asyncio
+    async def test_chat_error_no_leak(self):
+        """Exception detail should NOT contain internal error message"""
+        with patch(
+            "workflows.main_workflow.get_workflow",
+            new_callable=AsyncMock,
+            side_effect=Exception("DB connection failed: password=secret123"),
+        ):
+            from backend.main import chat, ChatRequest
+            from fastapi import HTTPException
+
+            request = ChatRequest(query="テスト", session_id="s1")
+            with pytest.raises(HTTPException) as exc_info:
+                await chat(request)
+            assert exc_info.value.status_code == 500
+            assert "secret" not in exc_info.value.detail
+            assert "internal error" in exc_info.value.detail.lower()
+
+
+class TestInvokeEndpoint:
+    @pytest.mark.asyncio
+    async def test_invoke_success(self):
+        mock_workflow = AsyncMock()
+        mock_workflow.ainvoke = AsyncMock(
+            return_value={
+                "answer": "回答",
+                "emotion": "neutral",
+                "metadata": {},
+            }
+        )
+        with patch(
+            "workflows.main_workflow.get_workflow",
+            new_callable=AsyncMock,
+            return_value=mock_workflow,
+        ):
+            from backend.main import invoke_agent, ChatRequest
+
+            request = ChatRequest(query="テスト", session_id="s1")
+            response = await invoke_agent(request)
+            assert response["status"] == "success"
+
+    @pytest.mark.asyncio
+    async def test_invoke_error_no_leak(self):
+        with patch(
+            "workflows.main_workflow.get_workflow",
+            new_callable=AsyncMock,
+            side_effect=Exception("Internal DB error"),
+        ):
+            from backend.main import invoke_agent, ChatRequest
+            from fastapi import HTTPException
+
+            request = ChatRequest(query="テスト", session_id="s1")
+            with pytest.raises(HTTPException) as exc_info:
+                await invoke_agent(request)
+            assert "Internal DB error" not in exc_info.value.detail
+
+
+class TestVoiceEndpoint:
+    @pytest.mark.asyncio
+    async def test_voice_error_no_leak(self):
+        """Voice endpoint should not leak internal errors"""
+        with patch("backend.main.voice_agent") as mock_agent:
+            mock_agent.text_to_speech = AsyncMock(side_effect=Exception("GCP credential expired"))
+            from backend.main import voice_api, VoiceRequest
+            from fastapi import HTTPException
+
+            request = VoiceRequest(action="text_to_speech", text="hello")
+            with pytest.raises(HTTPException) as exc_info:
+                await voice_api(request)
+            assert "credential" not in exc_info.value.detail.lower()
+
+
+class TestSlidesEndpoint:
+    @pytest.mark.asyncio
+    async def test_slides_error_no_leak(self):
+        with patch("backend.agents.slide_agent.SlideAgent") as mock_class:
+            mock_class.return_value.handle_slide_action = AsyncMock(
+                side_effect=Exception("Slide DB error")
+            )
+            from backend.main import slides_api, SlidesRequest
+            from fastapi import HTTPException
+
+            request = SlidesRequest(action="narrate")
+            with pytest.raises(HTTPException) as exc_info:
+                await slides_api(request)
+            assert "Slide DB error" not in exc_info.value.detail
+
+
+class TestCORSConfiguration:
+    def test_cors_default_origins(self, monkeypatch):
+        """Without ALLOWED_ORIGINS env var, defaults are used"""
+        monkeypatch.delenv("ALLOWED_ORIGINS", raising=False)
+        import importlib
+        import backend.main
+
+        importlib.reload(backend.main)
+        assert "http://localhost:3000" in backend.main._allowed_origins
+        assert "http://localhost:3001" in backend.main._allowed_origins
+
+    def test_cors_custom_origins(self, monkeypatch):
+        """With ALLOWED_ORIGINS set, custom origins are used"""
+        monkeypatch.setenv("ALLOWED_ORIGINS", "https://example.com,https://app.example.com")
+        import importlib
+        import backend.main
+
+        importlib.reload(backend.main)
+        assert "https://example.com" in backend.main._allowed_origins
+        assert "https://app.example.com" in backend.main._allowed_origins
+        # Restore
+        monkeypatch.delenv("ALLOWED_ORIGINS", raising=False)
+        importlib.reload(backend.main)
+
+
+class TestCharacterEndpoint:
+    @pytest.mark.asyncio
+    async def test_character_error_no_leak(self):
+        from backend.main import character_api, CharacterRequest
+
+        # character_api currently has a simple try/except with detail=str(e)
+        # After fix, it should use generic message
+        # We need to mock to force an exception
+        with patch("backend.main.CharacterResponse", side_effect=Exception("Some internal error")):
+            from fastapi import HTTPException
+
+            request = CharacterRequest(action="test")
+            with pytest.raises(HTTPException) as exc_info:
+                await character_api(request)
+            assert "Some internal error" not in exc_info.value.detail
