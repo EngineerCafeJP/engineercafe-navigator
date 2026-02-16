@@ -446,10 +446,9 @@ class MainWorkflow:
             ]
         }
 
-    async def ainvoke(self, input_data: dict) -> dict:
-        """ワークフローを非同期実行"""
+    def _prepare_state(self, input_data: dict) -> tuple[WorkflowStateDict, dict | None]:
+        """ainvoke/astream共通: 入力データからstate + configを構築"""
         session_id = input_data.get("session_id", "default")
-
         state: WorkflowStateDict = {
             "messages": [],
             "query": input_data.get("query", ""),
@@ -461,12 +460,14 @@ class MainWorkflow:
             "metadata": {},
             "context": input_data.get("context", {}),
         }
-
-        # Checkpointer使用時はthread_idを設定してセッション分離
         config = None
         if self.checkpointer:
             config = {"configurable": {"thread_id": session_id}}
+        return state, config
 
+    async def ainvoke(self, input_data: dict) -> dict:
+        """ワークフローを非同期実行"""
+        state, config = self._prepare_state(input_data)
         result = await self.graph.ainvoke(state, config=config)
 
         return {
@@ -488,23 +489,7 @@ class MainWorkflow:
         Yields:
             dict: {"type": "token", "content": str} or {"type": "complete", "data": dict}
         """
-        session_id = input_data.get("session_id", "default")
-
-        state: WorkflowStateDict = {
-            "messages": [],
-            "query": input_data.get("query", ""),
-            "session_id": session_id,
-            "language": input_data.get("language", "ja"),
-            "routing": {},
-            "answer": None,
-            "emotion": None,
-            "metadata": {},
-            "context": input_data.get("context", {}),
-        }
-
-        config = None
-        if self.checkpointer:
-            config = {"configurable": {"thread_id": session_id}}
+        state, config = self._prepare_state(input_data)
 
         async for event in self.graph.astream_events(state, config=config, version="v2"):
             kind = event["event"]

@@ -26,12 +26,6 @@ from backend.utils.memory_interface import MemorySystemInterface
 
 logger = logging.getLogger(__name__)
 
-warnings.warn(
-    "MemoryAgent is deprecated. Use GeneralKnowledgeAgent with query_type='memory' instead.",
-    DeprecationWarning,
-    stacklevel=2,
-)
-
 
 class MemoryAgent:
     """
@@ -48,6 +42,11 @@ class MemoryAgent:
             memory_system: メモリシステムのインスタンス（オプショナル）
                           Noneの場合、メモリ機能なしで動作
         """
+        warnings.warn(
+            "MemoryAgent is deprecated. Use GeneralKnowledgeAgent with query_type='memory' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.memory_system = memory_system
         self.provider: Optional[OpenRouterProvider] = None
         self.config = get_model_config("qa_response")
