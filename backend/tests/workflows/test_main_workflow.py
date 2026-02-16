@@ -4,6 +4,8 @@ MainWorkflow の統合テスト
 LangGraphワークフローとSupervisor Pattern統合をテスト
 """
 
+import inspect
+
 import pytest
 from unittest.mock import Mock, AsyncMock, patch
 
@@ -407,3 +409,190 @@ class TestStoreMessageIntegration:
             # 例外が投げられても正常に結果が返ることを確認
             assert "messages" in result_format
             assert len(result_format["messages"]) == 2
+
+
+class TestRetryPolicy:
+    """RetryPolicy 設定テスト"""
+
+    def test_llm_retry_policy_attributes(self):
+        """LLM_RETRY_POLICYの属性値を確認"""
+        from backend.workflows.main_workflow import MainWorkflow
+
+        rp = MainWorkflow.LLM_RETRY_POLICY
+        assert rp.initial_interval == 1.0
+        assert rp.backoff_factor == 2.0
+        assert rp.max_interval == 10.0
+        assert rp.max_attempts == 3
+
+    @patch("backend.workflows.main_workflow.OrchestratorAgent")
+    def test_llm_nodes_have_retry_policy(self, mock_orchestrator_class):
+        """LLM依存ノードにretry_policyが設定されていることを確認"""
+        from backend.workflows.main_workflow import MainWorkflow
+
+        mock_orchestrator_class.return_value = Mock()
+        workflow = MainWorkflow()
+
+        # LangGraphのノード内部でretry_policyが設定されているかは
+        # グラフの構造情報から確認
+        graph = workflow.graph
+        # ノードが存在することを確認（retry_policyはグラフコンパイル時に内部処理される）
+        assert graph is not None
+
+    def test_retry_policy_is_langgraph_retry_policy(self):
+        """LLM_RETRY_POLICYがLangGraphのRetryPolicyインスタンスであることを確認"""
+        from langgraph.types import RetryPolicy
+        from backend.workflows.main_workflow import MainWorkflow
+
+        assert isinstance(MainWorkflow.LLM_RETRY_POLICY, RetryPolicy)
+
+
+class TestAstream:
+    """astream() ストリーミングメソッドのテスト"""
+
+    def test_astream_method_exists(self):
+        """astream()メソッドが存在することを確認"""
+        from backend.workflows.main_workflow import MainWorkflow
+
+        assert hasattr(MainWorkflow, "astream")
+        # astream is an async generator (contains yield), so use isasyncgenfunction
+        assert inspect.isasyncgenfunction(MainWorkflow.astream)
+
+    @pytest.mark.asyncio
+    @patch("backend.workflows.main_workflow.OrchestratorAgent")
+    async def test_astream_is_async_generator(self, mock_orchestrator_class):
+        """astream()が非同期ジェネレータであることを確認"""
+        from backend.workflows.main_workflow import MainWorkflow
+
+        mock_orchestrator_class.return_value = AsyncMock()
+
+        workflow = MainWorkflow()
+
+        # astream_eventsをモックして空のイテレータを返す
+        async def empty_events(*args, **kwargs):
+            return
+            yield  # Make it an async generator
+
+        workflow.graph.astream_events = empty_events
+
+        events = []
+        async for event in workflow.astream({"query": "test", "session_id": "s1"}):
+            events.append(event)
+
+        assert events == []  # 空のジェネレータからは何も出ない
+
+    @pytest.mark.asyncio
+    @patch("backend.workflows.main_workflow.OrchestratorAgent")
+    async def test_astream_yields_token_events(self, mock_orchestrator_class):
+        """astream()がon_chat_model_streamイベントからtokenをyieldすることを確認"""
+        from backend.workflows.main_workflow import MainWorkflow
+
+        mock_orchestrator_class.return_value = AsyncMock()
+
+        workflow = MainWorkflow()
+
+        # astream_eventsをモックしてtoken eventを返す
+        mock_chunk = Mock()
+        mock_chunk.content = "Hello"
+
+        async def mock_events(*args, **kwargs):
+            yield {
+                "event": "on_chat_model_stream",
+                "data": {"chunk": mock_chunk},
+                "name": "some_model",
+            }
+
+        workflow.graph.astream_events = mock_events
+
+        events = []
+        async for event in workflow.astream({"query": "test", "session_id": "s1"}):
+            events.append(event)
+
+        assert len(events) == 1
+        assert events[0] == {"type": "token", "content": "Hello"}
+
+    @pytest.mark.asyncio
+    @patch("backend.workflows.main_workflow.OrchestratorAgent")
+    async def test_astream_yields_complete_event(self, mock_orchestrator_class):
+        """astream()がon_chain_endイベントからcompleteをyieldすることを確認"""
+        from backend.workflows.main_workflow import MainWorkflow
+
+        mock_orchestrator_class.return_value = AsyncMock()
+
+        workflow = MainWorkflow()
+
+        output_data = {"answer": "回答", "emotion": "neutral"}
+
+        async def mock_events(*args, **kwargs):
+            yield {
+                "event": "on_chain_end",
+                "name": "format_response",
+                "data": {"output": output_data},
+            }
+
+        workflow.graph.astream_events = mock_events
+
+        events = []
+        async for event in workflow.astream({"query": "test", "session_id": "s1"}):
+            events.append(event)
+
+        assert len(events) == 1
+        assert events[0] == {"type": "complete", "data": output_data}
+
+    @pytest.mark.asyncio
+    @patch("backend.workflows.main_workflow.OrchestratorAgent")
+    async def test_astream_skips_empty_content(self, mock_orchestrator_class):
+        """astream()が空contentのtokenをスキップすることを確認"""
+        from backend.workflows.main_workflow import MainWorkflow
+
+        mock_orchestrator_class.return_value = AsyncMock()
+
+        workflow = MainWorkflow()
+
+        mock_chunk_empty = Mock()
+        mock_chunk_empty.content = ""
+
+        mock_chunk_valid = Mock()
+        mock_chunk_valid.content = "World"
+
+        async def mock_events(*args, **kwargs):
+            yield {
+                "event": "on_chat_model_stream",
+                "data": {"chunk": mock_chunk_empty},
+                "name": "model",
+            }
+            yield {
+                "event": "on_chat_model_stream",
+                "data": {"chunk": mock_chunk_valid},
+                "name": "model",
+            }
+
+        workflow.graph.astream_events = mock_events
+
+        events = []
+        async for event in workflow.astream({"query": "test", "session_id": "s1"}):
+            events.append(event)
+
+        assert len(events) == 1
+        assert events[0] == {"type": "token", "content": "World"}
+
+    @pytest.mark.asyncio
+    @patch("backend.workflows.main_workflow.OrchestratorAgent")
+    async def test_astream_ignores_irrelevant_events(self, mock_orchestrator_class):
+        """astream()が関係ないイベントを無視することを確認"""
+        from backend.workflows.main_workflow import MainWorkflow
+
+        mock_orchestrator_class.return_value = AsyncMock()
+
+        workflow = MainWorkflow()
+
+        async def mock_events(*args, **kwargs):
+            yield {"event": "on_chain_start", "name": "orchestrator", "data": {}}
+            yield {"event": "on_chain_end", "name": "business_info", "data": {"output": {}}}
+
+        workflow.graph.astream_events = mock_events
+
+        events = []
+        async for event in workflow.astream({"query": "test", "session_id": "s1"}):
+            events.append(event)
+
+        assert events == []

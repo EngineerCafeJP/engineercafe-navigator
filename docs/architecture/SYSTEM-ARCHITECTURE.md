@@ -12,164 +12,248 @@ Engineer Cafe Navigator is a multilingual AI navigation system for the Engineer 
 - **3D Avatar**: Three.js with VRM support
 - **Audio**: Web Audio API with mobile compatibility
 
-### 2. AI Agent Layer (8-Agent Architecture)
-- **Framework**: Mastra 0.10.5
-- **Response Model**: Google Gemini 2.5 Flash Preview
-- **Embedding Model**: OpenAI text-embedding-3-small (1536 dims)
-- **Coordinator**: MainQAWorkflow
-- **Specialized Agents**:
-  - RouterAgent: Query classification and routing
-  - BusinessInfoAgent: Hours, pricing, location
-  - FacilityAgent: Equipment, facilities, basement spaces
-  - MemoryAgent: Conversation history management
-  - EventAgent: Calendar and events
-  - GeneralKnowledgeAgent: General queries via web search
-  - ClarificationAgent: Ambiguity resolution
-  - RealtimeAgent: Voice interaction processing
-- **Supporting Agents**: WelcomeAgent, SlideNarrator
+### 2. Backend AI Agent Layer (Python)
+- **Framework**: LangGraph 1.0.8 (StateGraph with Supervisor Pattern)
+- **API**: FastAPI with async/await support
+- **LLM Provider**: OpenRouter API (unified access to Google Gemini, OpenAI, Anthropic, etc.)
+- **Embedding Model**: OpenAI text-embedding-3-small (1536 dims) via Supabase
+- **Orchestration**: OrchestratorAgent (Supervisor Pattern with LLM dynamic routing)
+- **Checkpointer**: LangGraph AsyncPostgresSaver (PostgreSQL-based state management)
+- **RetryPolicy**: Applied to all LLM-dependent nodes (max_attempts=3)
+- **Streaming**: astream() method for future SSE support
+- **Error Handling**: Custom exception hierarchy (AgentSystemError → RoutingError, LLMGenerationError, RAGSearchError, etc.)
+- **Logging**: Structured logging with exc_info=True on all error paths
 
 ### 3. Data Layer
-- **Database**: PostgreSQL with pgvector
-- **Backend**: Supabase 2.49.8
-- **Vector Search**: 1536-dimensional embeddings
-- **Memory**: 3-minute conversation context
+- **Database**: PostgreSQL with pgvector (via Supabase)
+- **Checkpointer**: LangGraph AsyncPostgresSaver for conversation state
+- **Vector Search**: 1536-dimensional embeddings with cosine similarity
+- **RAG Strategy**: Section chunking, parent context expansion, category-specific strategies, adaptive thresholds
+- **Memory**: 3-minute conversation context window
 
 ### 4. Integration Layer
-- **Calendar**: Google Calendar API (public iCal)
-- **Web Search**: Gemini with grounding
-- **Voice**: Google Cloud Speech-to-Text/Text-to-Speech
+- **Calendar**: Google Calendar (public ICS feed) + Connpass API v2 (Fukuoka events)
+- **Web Search**: Gemini grounding + Tavily API
+- **Voice TTS**: VoiceVox (local Docker) + Google Cloud fallback
+- **Voice STT**: Vosk (local) + Google Cloud fallback
+- **OCR**: OCR processing capabilities
 
 ## 🔑 Key Components
 
-### RAG System
-- **Knowledge Base**: 93+ entries (JA/EN)
-- **Embedding**: OpenAI text-embedding-3-small
-- **Search**: Cosine similarity with threshold
-- **Categories**: Facilities, Hours, Pricing, etc.
+### Enhanced RAG System
+- **Knowledge Base**: YAML-based with schema validation, bilingual (JA/EN)
+- **Embedding**: OpenAI text-embedding-3-small (1536 dims)
+- **Search Strategy**:
+  - Section chunking (title + section pairs)
+  - Parent context expansion (category-wide context retrieval)
+  - Category-specific strategies (business_hours, facilities, pricing, etc.)
+  - Adaptive similarity thresholds (0.35-0.70 depending on category)
+  - Context priority (context_weight: 0.85 for knowledge + 0.15 for conversation)
+- **Categories**: Facilities, Business Hours, Pricing, Access, Basement, etc.
 
-### Memory System
-- **SimplifiedMemorySystem**: Unified memory management
-- **Short-term**: 3-minute conversation window
-- **Context**: Combines memory + knowledge base
-- **Isolation**: Separate namespaces per agent
+### LangGraph State Management
+- **Checkpointer**: AsyncPostgresSaver (PostgreSQL-based)
+- **Thread Management**: Conversation threads with automatic state persistence
+- **Context Window**: 3-minute conversation memory
+- **State Schema**: ConversationState (messages, context, query, intermediate_steps, current_agent)
 
-### Audio System
-- **AudioPlaybackService**: Unified audio handling
-- **MobileAudioService**: iOS/Android compatibility
-- **LipSync**: Optimized with caching
-- **Fallback**: Graceful degradation
+### Agent Architecture (12 Agents)
+1. **OrchestratorAgent**: Supervisor Pattern with LLM-based dynamic routing
+2. **BusinessInfoAgent**: Business hours, pricing, access (Enhanced RAG)
+3. **FacilityAgent**: Facilities, equipment, basement (Enhanced RAG)
+4. **EventAgent**: Google Calendar ICS + Connpass API v2
+5. **SlideAgent**: Slide display and narration
+6. **GeneralKnowledgeAgent**: Web search + memory queries (merged from MemoryAgent)
+7. **ClarificationAgent**: Ambiguity resolution (context-aware)
+8. **VoiceAgent**: TTS (VoiceVox local / Google Cloud)
+9. **STTAgent**: STT (Vosk local / Google Cloud)
+10. **CharacterControlAgent**: VRM character control
+11. **OCRAgent**: OCR processing
+12. **MemoryAgent**: DEPRECATED (merged into GeneralKnowledgeAgent)
 
 ## 📊 Data Flow
 
 ```
-User Query → STT → RealtimeAgent → MainQAWorkflow → RouterAgent
-                                            ↓
-                        [Route to Appropriate Specialized Agent]
-                                            ↓
-                    Agent Processing (with Enhanced RAG if needed)
-                                            ↓
-                    Response Generation → TTS → Audio Playback → Avatar Animation
+User Query → Frontend → FastAPI Backend (Python)
+    ↓
+OrchestratorAgent (LLM-based Supervisor Pattern routing)
+    ↓
+[Route to Appropriate Specialized Agent]
+    ├─→ BusinessInfoAgent (Enhanced RAG: section chunking, parent context)
+    ├─→ FacilityAgent (Enhanced RAG: category-specific strategies)
+    ├─→ EventAgent (Google Calendar ICS + Connpass API v2)
+    ├─→ GeneralKnowledgeAgent (Web search: Gemini grounding + Tavily)
+    ├─→ ClarificationAgent (Context-aware ambiguity resolution)
+    └─→ [Other Specialized Agents]
+    ↓
+Response Generation (OpenRouter LLM)
+    ↓
+Frontend (Avatar + TTS + UI)
 ```
 
-### Query Processing Pipeline
-1. Speech recognition with STT corrections
-2. Language detection (JA/EN)
-3. RouterAgent classification:
-   - Ambiguity detection (clarification needed?)
-   - Request type extraction (hours, pricing, etc.)
-   - Context-dependent routing
-   - Memory-aware classification
-4. Specialized agent processing:
-   - Memory context retrieval (MemoryAgent)
-   - Enhanced RAG search (BusinessInfo/FacilityAgent)
-   - External data fetch (EventAgent)
-   - Web search (GeneralKnowledgeAgent)
-   - Clarification dialog (ClarificationAgent)
-5. Response generation with Gemini
-6. Audio synthesis with Google TTS
-7. Character animation sync
+### Query Processing Pipeline (LangGraph)
+1. **STT Processing**: Speech recognition with STT corrections (Vosk local / Google Cloud)
+2. **Language Detection**: Japanese/English with multi-language support
+3. **OrchestratorAgent** (Supervisor Pattern):
+   - LLM-based dynamic routing decision
+   - Ambiguity detection (route to ClarificationAgent if needed)
+   - Request type extraction (hours, pricing, facilities, events, etc.)
+   - Context-aware routing (conversation history + user intent)
+   - Automatic retry on LLM failures (RetryPolicy: max_attempts=3)
+4. **Specialized Agent Processing**:
+   - **Enhanced RAG** (BusinessInfo/FacilityAgent):
+     - Section chunking (title + section pairs)
+     - Parent context expansion (category-wide context)
+     - Adaptive similarity thresholds (0.35-0.70)
+     - Context priority weighting (knowledge: 0.85, conversation: 0.15)
+   - **External API Integration** (EventAgent):
+     - Google Calendar ICS feed parsing
+     - Connpass API v2 for Fukuoka events
+   - **Web Search** (GeneralKnowledgeAgent):
+     - Gemini grounding search
+     - Tavily API fallback
+   - **Clarification Dialog** (ClarificationAgent):
+     - Context-aware disambiguation
+     - Multi-turn conversation support
+5. **Response Generation**: OpenRouter LLM (Gemini, GPT, Claude, etc.)
+6. **TTS Synthesis**: VoiceVox (local Docker) / Google Cloud fallback
+7. **Character Animation**: VRM avatar sync with lip-sync
 
 ## 🎯 Critical Features
 
 ### Multi-language Support
 - Japanese and English UI
 - Cross-language RAG search
-- STT corrections for Japanese terms
+- STT corrections for Japanese technical terms
+- Bilingual knowledge base (YAML-based)
 
 ### Contextual Understanding
-- Single entity query inheritance
-- Memory-aware responses
-- Request type tracking
-- Ambiguity resolution with clarification
+- LangGraph AsyncPostgresSaver for conversation state persistence
+- Context priority weighting (knowledge: 0.85, conversation: 0.15)
+- Memory-aware responses (3-minute conversation window)
+- Request type tracking across turns
+- Ambiguity resolution with ClarificationAgent
 
-### 8-Agent Architecture Details
+### 12-Agent Architecture Details
 
-#### MainQAWorkflow (Coordinator)
-- Central orchestration of all specialized agents
+#### OrchestratorAgent (Supervisor Pattern)
+- LLM-based dynamic routing (replaces rule-based RouterAgent)
+- Central orchestration with StateGraph
 - Session management and context propagation
-- Unified error handling and fallback strategies
+- Unified error handling with custom exception hierarchy
+- Automatic retry on LLM failures (RetryPolicy: max_attempts=3)
 
 #### Specialized Agent Responsibilities
-1. **RouterAgent**: First-line query analysis and routing decisions
-2. **BusinessInfoAgent**: Engineer Cafe operational information with Enhanced RAG
-3. **FacilityAgent**: Physical facilities and equipment queries with basement focus
-4. **MemoryAgent**: Conversation history, "What did I ask?" queries
-5. **EventAgent**: Real-time calendar integration and event listings
-6. **GeneralKnowledgeAgent**: Fallback for out-of-scope queries using web search
-7. **ClarificationAgent**: Disambiguates cafe/meeting room queries
-8. **RealtimeAgent**: Voice interaction and emotion detection
+1. **OrchestratorAgent**: LLM-based Supervisor Pattern routing
+2. **BusinessInfoAgent**: Engineer Cafe operational information with Enhanced RAG (section chunking, parent context)
+3. **FacilityAgent**: Physical facilities and equipment queries with basement focus (category-specific strategies)
+4. **EventAgent**: Real-time calendar integration (Google Calendar ICS + Connpass API v2)
+5. **SlideAgent**: Slide display and narration
+6. **GeneralKnowledgeAgent**: Web search (Gemini grounding + Tavily) + memory queries (merged from MemoryAgent)
+7. **ClarificationAgent**: Context-aware ambiguity resolution
+8. **VoiceAgent**: TTS (VoiceVox local / Google Cloud fallback)
+9. **STTAgent**: STT (Vosk local / Google Cloud fallback)
+10. **CharacterControlAgent**: VRM character control
+11. **OCRAgent**: OCR processing
+12. **MemoryAgent**: DEPRECATED (functionality merged into GeneralKnowledgeAgent)
+
+### Enhanced RAG Features
+- **Section Chunking**: Title + section pairs for precise retrieval
+- **Parent Context Expansion**: Category-wide context retrieval
+- **Adaptive Thresholds**: 0.35-0.70 similarity thresholds (category-specific)
+- **Context Priority**: Knowledge (0.85) + Conversation (0.15) weighted merging
+- **Category-Specific Strategies**: Business hours, facilities, pricing, access, etc.
 
 ### Integration Features
-- Real-time calendar events
-- Web search for general queries
-- External system webhooks
+- **Google Calendar**: Public ICS feed parsing
+- **Connpass API v2**: Fukuoka event listings
+- **Web Search**: Gemini grounding + Tavily API
+- **Voice Services**: VoiceVox (local Docker) + Vosk (local) + Google Cloud (fallback)
+- **LangGraph Checkpointer**: PostgreSQL-based state persistence
+
+### Quality Assurance
+- **RAGAS Evaluation Pipeline**: Faithfulness, answer correctness, context relevance
+- **CI/CD Integration**: Automated evaluation on every commit
+- **Test Suite**: 1166 tests (unit, integration, evaluation, RAGAS)
 
 ## 🔧 Configuration
 
 ### Environment Variables
 ```env
-# AI Services
-OPENAI_API_KEY=              # Embeddings
-GOOGLE_GENERATIVE_AI_API_KEY= # Gemini responses
+# Primary AI Provider
+OPENROUTER_API_KEY=           # Required - unified LLM access (Gemini, GPT, Claude, etc.)
 
-# Database
-NEXT_PUBLIC_SUPABASE_URL=
-SUPABASE_SERVICE_ROLE_KEY=
+# Database (Supabase)
+SUPABASE_URL=                 # PostgreSQL with pgvector
+SUPABASE_KEY=                 # Service role key
+SUPABASE_DB_URI=              # LangGraph AsyncPostgresSaver checkpointer
 
-# Integrations
-GOOGLE_CALENDAR_ICAL_URL=    # Public calendar
-GOOGLE_CLOUD_PROJECT_ID=     # Voice services
+# Optional AI Services
+OPENAI_API_KEY=               # Embeddings (text-embedding-3-small) & RAGAS evaluation
+GOOGLE_API_KEY=               # Gemini grounding search (fallback)
+
+# External Integrations
+GOOGLE_CALENDAR_ICAL_URL=     # Public calendar ICS feed
+CONNPASS_API_KEY=             # Connpass API v2 for Fukuoka events
+TAVILY_API_KEY=               # Tavily web search (fallback)
+
+# Voice Services (Local + Cloud Fallback)
+# VoiceVox: Local Docker (primary TTS)
+# Vosk: Local (primary STT)
+GOOGLE_CLOUD_PROJECT_ID=      # Google Cloud fallback for TTS/STT
 ```
 
-### Key Endpoints
-- `/api/voice` - Voice processing
-- `/api/qa` - Q&A interactions  
-- `/api/calendar` - Calendar proxy
-- `/admin/knowledge` - Knowledge management
+### Key Endpoints (FastAPI Backend)
+- `/api/chat` - Main Q&A interactions (LangGraph StateGraph)
+- `/api/voice/tts` - Text-to-Speech (VoiceVox / Google Cloud)
+- `/api/voice/stt` - Speech-to-Text (Vosk / Google Cloud)
+- `/api/calendar/events` - Calendar events (Google Calendar + Connpass)
+- `/admin/knowledge` - Knowledge base management (YAML)
 
 ## 📈 Performance
 
 ### Optimization Strategies
-- Embedding caching
-- Lip-sync pre-computation
-- Memory indexing
-- Query normalization
+- **LangGraph Checkpointer**: PostgreSQL-based state persistence (AsyncPostgresSaver)
+- **Embedding Caching**: Cached similarity searches in Supabase
+- **Adaptive Thresholds**: Category-specific similarity thresholds (0.35-0.70)
+- **Context Priority**: Weighted merging (knowledge: 0.85, conversation: 0.15)
+- **Local Voice Services**: VoiceVox (Docker) + Vosk (local) for reduced latency
+- **RetryPolicy**: Automatic retry on LLM failures (max_attempts=3)
+- **Structured Logging**: exc_info=True on all error paths for debugging
 
 ### Monitoring
-- RAG search metrics
-- Audio playback success rates
-- Memory operation latency
-- External API usage
+- **RAG Metrics**: Section chunking effectiveness, parent context expansion impact
+- **RAGAS Evaluation**: Faithfulness, answer correctness, context relevance (CI/CD pipeline)
+- **LLM Usage**: OpenRouter API call patterns and retry rates
+- **External API**: Google Calendar ICS, Connpass API v2, Tavily web search
+- **Voice Services**: VoiceVox/Vosk local vs. Google Cloud fallback usage
+
+## 🧪 Testing
+
+### Test Suite (1166 Tests)
+- **Unit Tests**: Individual agent logic, RAG strategies, utilities
+- **Integration Tests**: LangGraph StateGraph, FastAPI endpoints, database operations
+- **Evaluation Tests**: RAGAS pipeline (faithfulness, answer correctness, context relevance)
+- **End-to-End Tests**: Full conversation flows with LangGraph checkpointer
+
+### RAGAS Evaluation Pipeline
+- **Metrics**: Faithfulness, Answer Correctness, Context Precision, Context Recall
+- **Dataset**: 13 evaluation scenarios (business hours, facilities, events, etc.)
+- **LLM**: GPT-4 / GPT-5.2 for evaluation
+- **CI/CD**: Automated evaluation on every commit
 
 ## 🚀 Deployment
 
 ### Production Requirements
-- Node.js 20+
-- PostgreSQL with pgvector
-- 2GB+ RAM recommended
-- HTTPS for audio APIs
+- **Frontend**: Node.js 20+ (Next.js 15)
+- **Backend**: Python 3.11+ (FastAPI + LangGraph)
+- **Database**: PostgreSQL 15+ with pgvector extension
+- **Voice Services**: VoiceVox (Docker) + Vosk (local)
+- **RAM**: 4GB+ recommended (LangGraph + local voice models)
+- **HTTPS**: Required for audio APIs
 
 ### Health Checks
-- `/api/health` - System status
-- `/api/health/knowledge` - RAG integrity
-- `/api/monitoring/dashboard` - Metrics
+- `/api/health` - System status (FastAPI)
+- `/api/health/database` - PostgreSQL + pgvector connectivity
+- `/api/health/agents` - LangGraph StateGraph status
+- `/api/monitoring/ragas` - RAGAS evaluation metrics

@@ -267,6 +267,9 @@ async def upload_knowledge(
         if not file.filename:
             raise HTTPException(status_code=400, detail="Filename is required")
 
+        # Set default effective_title early so it's defined in all exception paths
+        effective_title = title or (file.filename.rsplit(".", 1)[0] if file.filename else "unknown")
+
         # language バリデーション
         if language not in ("ja", "en"):
             raise HTTPException(status_code=400, detail="language must be 'ja' or 'en'")

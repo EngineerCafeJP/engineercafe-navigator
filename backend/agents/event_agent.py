@@ -171,7 +171,7 @@ class EventAgent:
             }
 
         except Exception as e:
-            logger.error(f"LLM error: {e}")
+            logger.error("LLM error: %s", e, exc_info=True)
             return self._get_no_events_response(language, time_range)
 
     def _format_calendar_events(self, events: list, language: str) -> str:

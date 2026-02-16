@@ -282,7 +282,7 @@ class OrchestratorAgent:
             )
 
         except Exception as e:
-            logger.warning(f"LLM routing failed: {e}")
+            logger.warning("LLM routing failed: %s", e, exc_info=True)
 
             classification = await self.query_classifier.classify_with_details(sanitized_query)
             next_agent = CATEGORY_TO_AGENT_MAP.get(classification.category, "general_knowledge")

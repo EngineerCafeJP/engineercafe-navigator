@@ -17,7 +17,7 @@ from typing import Annotated, Optional, TypedDict
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
-from langgraph.types import Command
+from langgraph.types import Command, RetryPolicy
 
 from backend.agents.orchestrator_agent import (
     OrchestratorAgent,
@@ -79,25 +79,37 @@ class MainWorkflow:
 
             memory_system = get_memory_helper()
         except Exception as e:
-            logger.warning(f"Memory system unavailable for GKA: {e}")
+            logger.warning("Memory system unavailable for GKA: %s", e, exc_info=True)
             memory_system = None
         self._general_knowledge_agent = GeneralKnowledgeAgent(memory_system=memory_system)
 
         self.graph = self._build_graph()
+
+    # LLMノード用リトライポリシー: 一時的な障害(レート制限, タイムアウト等)に対応
+    LLM_RETRY_POLICY = RetryPolicy(
+        initial_interval=1.0,
+        backoff_factor=2.0,
+        max_interval=10.0,
+        max_attempts=3,
+    )
 
     def _build_graph(self) -> StateGraph:
         """Supervisor Patternに基づくグラフ構造を構築"""
         workflow = StateGraph(WorkflowStateDict)
 
         # ノードの追加
+        # memory_loader, format_response: LLM非依存のためリトライ不要
         workflow.add_node("memory_loader", self._memory_loader_node)
-        workflow.add_node("orchestrator", self._orchestrator_node)
-        workflow.add_node("business_info", self._business_info_node)
-        workflow.add_node("facility", self._facility_node)
-        workflow.add_node("event", self._event_node)
-        workflow.add_node("slide", self._slide_node)
-        workflow.add_node("general_knowledge", self._general_knowledge_node)
         workflow.add_node("format_response", self._format_response_node)
+
+        # LLM依存ノード: retry_policyを適用
+        llm_retry = self.LLM_RETRY_POLICY
+        workflow.add_node("orchestrator", self._orchestrator_node, retry_policy=llm_retry)
+        workflow.add_node("business_info", self._business_info_node, retry_policy=llm_retry)
+        workflow.add_node("facility", self._facility_node, retry_policy=llm_retry)
+        workflow.add_node("event", self._event_node, retry_policy=llm_retry)
+        workflow.add_node("slide", self._slide_node, retry_policy=llm_retry)
+        workflow.add_node("general_knowledge", self._general_knowledge_node, retry_policy=llm_retry)
 
         # エッジの定義（Supervisor Pattern）
         # START → memory_loader → orchestrator
@@ -434,10 +446,9 @@ class MainWorkflow:
             ]
         }
 
-    async def ainvoke(self, input_data: dict) -> dict:
-        """ワークフローを非同期実行"""
+    def _prepare_state(self, input_data: dict) -> tuple[WorkflowStateDict, dict | None]:
+        """ainvoke/astream共通: 入力データからstate + configを構築"""
         session_id = input_data.get("session_id", "default")
-
         state: WorkflowStateDict = {
             "messages": [],
             "query": input_data.get("query", ""),
@@ -449,12 +460,14 @@ class MainWorkflow:
             "metadata": {},
             "context": input_data.get("context", {}),
         }
-
-        # Checkpointer使用時はthread_idを設定してセッション分離
         config = None
         if self.checkpointer:
             config = {"configurable": {"thread_id": session_id}}
+        return state, config
 
+    async def ainvoke(self, input_data: dict) -> dict:
+        """ワークフローを非同期実行"""
+        state, config = self._prepare_state(input_data)
         result = await self.graph.ainvoke(state, config=config)
 
         return {
@@ -462,6 +475,30 @@ class MainWorkflow:
             "emotion": result.get("emotion", "neutral"),
             "metadata": result.get("metadata", {}),
         }
+
+    async def astream(self, input_data: dict):
+        """
+        ストリーミング実行 - astream_events() によるイベント発行
+
+        将来のフロントエンド SSE 対応のための基盤。
+        LLMノードの中間トークンと最終結果をyieldする。
+
+        Args:
+            input_data: ainvoke() と同じ入力データ
+
+        Yields:
+            dict: {"type": "token", "content": str} or {"type": "complete", "data": dict}
+        """
+        state, config = self._prepare_state(input_data)
+
+        async for event in self.graph.astream_events(state, config=config, version="v2"):
+            kind = event["event"]
+            if kind == "on_chat_model_stream":
+                content = event["data"]["chunk"].content
+                if content:
+                    yield {"type": "token", "content": content}
+            elif kind == "on_chain_end" and event.get("name") == "format_response":
+                yield {"type": "complete", "data": event["data"].get("output", {})}
 
     async def close(self):
         """リソースのクリーンアップ"""

@@ -172,7 +172,7 @@ class BusinessInfoAgent:
             }
 
         except Exception as e:
-            logger.error(f"LLM error: {e}")
+            logger.error("LLM error: %s", e, exc_info=True)
             return self._get_default_response(language, request_type)
 
     def _map_request_type_to_category(self, request_type: Optional[str]) -> str:

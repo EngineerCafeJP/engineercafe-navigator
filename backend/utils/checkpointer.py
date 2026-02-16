@@ -80,7 +80,7 @@ async def create_checkpointer() -> AsyncPostgresSaver:
         logger.info("AsyncPostgresSaver created and initialized successfully")
         return checkpointer
     except Exception as e:
-        logger.error(f"Failed to create AsyncPostgresSaver: {e}")
+        logger.error("Failed to create AsyncPostgresSaver: %s", e, exc_info=True)
         raise ConnectionError(f"Failed to connect to Supabase PostgreSQL: {e}") from e
 
 
@@ -177,7 +177,7 @@ async def close_checkpointer() -> None:
                 await _checkpointer_instance.conn.close()
             logger.info("Checkpointer singleton instance closed")
         except Exception as e:
-            logger.warning(f"Error closing checkpointer: {e}")
+            logger.warning("Error closing checkpointer: %s", e, exc_info=True)
         finally:
             _checkpointer_instance = None
 

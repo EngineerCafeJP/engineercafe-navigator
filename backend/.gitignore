@@ -41,6 +41,7 @@ ENV/
 .pytest_cache/
 .coverage
 htmlcov/
+tests/evaluation/reports/
 
 # Poetry
 poetry.lock
