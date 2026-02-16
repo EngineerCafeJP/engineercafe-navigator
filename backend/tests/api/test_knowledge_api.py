@@ -3,6 +3,10 @@
 import io
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
+pytest.importorskip("fastapi", reason="fastapi not installed")
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 

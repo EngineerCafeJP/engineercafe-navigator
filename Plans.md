@@ -9,154 +9,119 @@
 
 | 項目 | 状態 |
 |------|------|
-| **フェーズ** | 2月: 結合テスト + RAGナレッジベース強化 |
+| **フェーズ** | ✅ 全フェーズ完了 (A/B/C/D/E) |
 | **CI/CD** | ✅ グリーン |
-| **単体テスト** | ✅ 481 passed / 0 failed |
-| **E2E回答品質** | ✅ 10/10 PASS, 平均KW率 100% |
-| **オープン PR** | PR #76 (backend-internal-improvements) |
-| **ベースブランチ** | develop |
+| **テスト** | ✅ 852 passed (25 skipped), E2E 10/10 PASS (KW率100%) |
+| **オープン PR** | #78 (RouterAgent削除 + クリーンアップ) |
+| **エージェント数** | 8種（RouterAgent削除済み、ClarificationAgent・MemoryAgent吸収済み） |
 
 ---
 
-## 2月マイルストーン: 結合テスト
+## アーキテクチャ決定事項（2026-02-15 PM承認済み）
 
-### チーム編成と担当範囲
+| カテゴリ | 決定 | 要点 |
+|----------|------|------|
+| **メモリ** | 2層構成 (Session短期 + pgvector長期) | LangGraph Store不採用、knowledge_base拡張 |
+| **RAG** | Hierarchical RAG (pgvector) | document→section→chunk 3層、Adaptive RAG |
+| **インジェスション** | LLM自動分類 + 5000字制限撤廃 | 重複排除もLLM自動判定 |
+| **検索優先度** | コンテキスト駆動 + RAGキャッシュ | memory_loader二重検索解消 |
+| **評価** | RAGAS (メモリ再設計後) | Faithfulness, Context P/R, CI/CD統合 |
+| **Web検索** | Tavily移行 | Gemini Direct API廃止、結果はRAG非保存 |
+| **実装順序** | A+D並列 → B → C | エージェント統合はメモリ完了後 |
 
-| チーム | 担当者 | 対象エージェント | 主なタスク |
-|--------|--------|-----------------|-----------|
-| **実務系統括記憶** | テリスケ | Router, Memory, BusinessInfo, Event, Facility, Slide, GeneralKnowledge | Supabase統合、DB結合テスト |
-| **音声系** | Jun, Chie, たけがわ | LanguageClassifier, ClarificationAgent, VoiceAgent | STT/TTS連携、音声フロー統合 |
-| **OCR系** | けいてぃー, たけがわ | OCRAgent + 関連エージェント | 画像認識→ルーター連携 |
-| **フロント系** | takegg0311, 中村 | CharacterControlAgent, フロントエンド | VRM制御、API移行 |
-
-### 重要タスク
-
-1. **環境変数の統一** - 各エージェントで異なる変数名を統一
-2. **用語の標準化** - 感情(emotion) vs 表情(expression) など
-3. **API移行** - フロントエンド(Next.js)からバックエンド(FastAPI)へ
+> 詳細: [docs/architecture/HIERARCHICAL-RAG-ARCHITECTURE.md](docs/architecture/HIERARCHICAL-RAG-ARCHITECTURE.md)
 
 ---
 
-## エージェント実装状況
+## 実装ロードマップ
 
-### 単体テスト完了（マージ済み）
+### Phase A: メモリシステム再設計 ✅ COMPLETE
 
-| エージェント | 系統 | メイン実装 | PR |
-|-------------|------|-----------|-----|
-| router-agent | 統括 | テリスケ | - |
-| business-info-agent | 実務系 | テリスケ | - |
-| event-agent | 実務系 | テリスケ | #48 |
-| facility-agent | 実務系 | テリスケ | - |
-| slide-agent | 実務系 | テリスケ | - |
-| general-knowledge-agent | 実務系 | テリスケ | #31 |
-| clarification-agent | 音声系 | Chie | #34 |
-| language-classifier | 音声系 | たけがわ | #44 |
-| voice-agent | 音声系 | たけがわ | #45 |
-| character-control-agent | UI/フロント系 | takegg0311 | #47 |
+| タスク | 状態 | 依存 |
+|--------|------|------|
+| A-1: knowledge_base テーブル拡張 (parent_id, chunk_level等) | ✅ 完了（Supabase適用済み） | - |
+| A-2: Hierarchical検索RPC関数作成 | ✅ 完了（A-1マイグレーション内に含む） | A-1 |
+| A-3: session-based TTL に memory_helper 書き換え | ✅ 完了（セッション境界ベース） | - |
+| A-4: memory_loader RAGキャッシュ（二重検索解消） | ✅ 完了（RAGキャッシュ実装済み） | A-3 |
+| A-5: EnhancedRAGSearch Hierarchical対応 | ✅ 完了（Hierarchical RAG対応済み） | A-2 |
+| A-6: Tavily Web Search 移行 | ✅ 完了（Tavily移行済み） | - |
 
-### レビュー中
+### Phase D: RAGAS評価（Phase Aと並列） ✅ COMPLETE (D-1/D-2/D-3)
 
-| エージェント | 系統 | メイン実装 | レビュアー | PR |
-|-------------|------|-----------|-----------|-----|
-| memory-agent | 記憶系 | YukitoLyn | takegg0311 | #55 |
-| ocr-agent | 画像系 | けいてぃー | たけがわ | - |
+| タスク | 状態 | 依存 |
+|--------|------|------|
+| D-1: ground_truth データセット作成（60件+新規） | ✅ 完了 | - |
+| D-2: RAGAS評価パイプライン構築 | ✅ 完了 | D-1 |
+| D-3: CI/CD統合（GitHub Actions） | ✅ 完了（ragas-evaluation.yml + CI mode） | D-2 |
 
-### 実装中
+### Phase B: YAML分離 + Hierarchical Chunking ✅ COMPLETE
 
-| 項目 | 担当 | 備考 |
-|------|------|------|
-| フロントエンド整備・更新 | 中村 | API移行調査中 |
+| タスク | 状態 | 依存 |
+|--------|------|------|
+| B-1: Hierarchical チャンキングエンジン (loader.py) | ✅ 完了（391行、24テスト、レビュー修正済み） | A-1 |
+| B-2: LLM自動分類パイプライン | ✅ 完了（classifier.py + 18テスト、セキュリティ対策済み） | B-1 |
+| B-3: seed_knowledge.py → カテゴリ別YAML分離 | ✅ 完了（7ファイル、60エントリ、110テスト） | B-1 |
+| B-3p: YAML Schema設計 (schema.py) | ✅ 完了（18テスト） | - |
 
----
+### Phase C: 動的検索優先度 ✅ COMPLETE (C-1/C-2)
 
-## 今週完了したタスク（2026-02-15）
+| タスク | 状態 | 依存 |
+|--------|------|------|
+| C-1: コンテキスト駆動優先度エンジン | ✅ 完了 | A-5 |
+| C-2: Adaptive RAG ルーティング | ✅ 完了（context_signals配線 + 適応的Web検索、8テスト） | C-1 |
 
-| タスク | PR | 担当 |
-|--------|-----|------|
-| X投稿分析に基づくルーティングキーワード拡張（貸切/建物/イベント/設備等） | #76 | テリスケ |
-| ClarificationAgent実践メッセージ化（saino営業時間/会議室タイプ） | #76 | テリスケ |
-| ゴールデンデータセット拡張（38→60ケース、100%正解維持） | #76 | テリスケ |
-| RAGカテゴリボーナスバグ修正 + 類似度閾値チューニング(0.5→0.35) | #76 | テリスケ |
-| ナレッジベース拡充 20→60エントリ（受付実務情報の網羅的収録） | #76 | テリスケ |
-| 施設プロンプト改善（メニュー対応 + 具体的情報指示） | #76 | テリスケ |
-| E2E回答品質評価ツール作成（run_answer_quality_evaluation.py） | #76 | テリスケ |
-| E2E回答品質: 1/6 PASS → 10/10 PASS 改善（KW率100%） | #76 | テリスケ |
-| スタッフ検証済み知識データ更新（利用登録/MAKER's/バリアフリー等7件） | #76 | テリスケ |
-| CNC不在確認 → 参照削除、英語概要/季節情報/アクセス等5件追加 | #76 | テリスケ |
+### Phase E: エージェント統合（Phase A完了後）
+
+| タスク | 状態 | 依存 |
+|--------|------|------|
+| E-1: ClarificationAgent → OrchestratorAgent 統合 | ✅ 前倒し完了（テンプレート化+インライン処理） | - |
+| E-2: MemoryAgent → GeneralKnowledgeAgent 統合 | ✅ 完了（GKA統合済み） | A |
+| E-3: エージェント構造最適化（Singleton化） | ✅ 前倒し完了 | - |
 
 ---
 
-## 次フェーズ: プロダクションRAGシステム構築
+## エージェント実装状況（8種）
 
-### スコープ
+| エージェント | 系統 | 備考 |
+|-------------|------|------|
+| orchestrator-agent | 統括 | RouterAgent機能統合済み |
+| business-info-agent | 実務系 | |
+| event-agent | 実務系 | |
+| facility-agent | 実務系 | |
+| slide-agent | 実務系 | |
+| general-knowledge-agent | 実務系 | Web検索Tavily移行済み、メモリクエリ処理統合済み |
+| ~~clarification-agent~~ | 音声系 | ✅ ワークフロー吸収済み（voice_agentのみ参照） |
+| voice-agent | 音声系 | |
+| character-control-agent | UI系 | |
 
-1. **Hierarchical RAG採用**: 親ドキュメント→子チャンク→リランカー構成
-2. **PDF/MDアップロード抽出・補完**: 自動分析・分類・ナレッジ追加
-3. **RAGAS評価フレームワーク導入**: RAG品質の定量的評価
-4. **動的ナレッジ優先度管理**: プロダクションレベルのRAGシステム
+レビュー中: ocr-agent
+統合済み: ~~memory-agent~~ → general-knowledge-agent (#55)
+削除済み: ~~router-agent~~ (#78, -793行)
 
-### ナレッジベース構造化（次フェーズで実施）
+---
 
-現在: `scripts/seed_knowledge.py` に全60エントリを単一ファイル管理
-提案: カテゴリ別YAML/JSONファイルに分離
+## チーム編成
 
-```
-backend/knowledge/
-├── data/
-│   ├── general.yaml          # 基本概要、連絡先
-│   ├── facilities.yaml       # メインホール、MAKER's、集中スペース、会議室
-│   ├── saino_cafe.yaml       # 営業情報、フード、ドリンク、バー
-│   ├── community.yaml        # CM相談、Lab、EIC
-│   ├── building_history.yaml # 赤煉瓦文化館
-│   └── policies.yaml         # 飲食、喫煙、駐車場、駐輪場
-├── loader.py                 # YAML読み込み→Supabase seed
-└── schema.py                 # エントリのバリデーションスキーマ
-```
-
-メリット:
-- カテゴリ別管理で編集・レビューが容易
-- PDF/MD自動処理パイプラインとの統合が自然
-- マージコンフリクトの最小化
-
-### 収集済みナレッジ（2026-02-15 完了）
-
-| 項目 | 優先度 | 状態 |
-|------|--------|------|
-| MAKER's素材・材料費の具体価格 | 高 | ✅ 収集済み（フィラメント2円/g、持込禁止、学生無料） |
-| バリアフリー情報（車椅子・エレベーター） | 中 | ✅ 収集済み（テラス側スロープ、1F限定、多目的トイレなし） |
-| 子連れ利用・騒音ポリシー | 中 | ✅ 収集済み（年齢制限なし、子供用椅子/授乳室なし） |
-| 撮影ポリシー（一般利用時） | 低 | ✅ 収集済み（スナップOK、三脚/フラッシュ要許可） |
-| 初回利用登録の詳細フロー | 中 | ✅ 収集済み（5-10分、Web入力、ID不要、目的確認） |
-| 福岡空港/博多駅からのアクセス | 中 | ✅ 収集済み（空港11分260円、博多6分210円） |
-| レーザーカッター利用可能素材 | 中 | ✅ 収集済み（アクリル/木材OK、PVC禁止） |
-| 近隣宿泊施設案内 | 低 | ✅ 収集済み（西鉄グランド、モントレ等） |
-| 英語施設概要 | 低 | ✅ 収集済み（スライドナレーションJSON準拠） |
-| 季節ごとの施設特徴 | 低 | ✅ 収集済み（夏暑い/冬寒い、地下推奨） |
-| Connpass・イベント参加方法 | 中 | ✅ 収集済み（3公式URL） |
-| EFC（エンジニアフレンドリーシティ福岡） | 低 | ✅ 収集済み（efc.fukuoka.jp） |
-| 飲料・ウォーターサーバー | 中 | ✅ 収集済み（なし、サイノカフェで購入） |
-| CNCフライス盤 | - | ❌ 存在しない（写真検証により確認、参照削除済み） |
+| チーム | 担当者 | 主なタスク |
+|--------|--------|-----------|
+| 実務系統括記憶 | テリスケ | Supabase統合、Memory/RAG再設計 |
+| 音声系 | Jun, Chie, たけがわ | STT/TTS連携、音声フロー |
+| OCR系 | けいてぃー, たけがわ | 画像認識→ルーター連携 |
+| フロント系 | takegg0311, 中村 | VRM制御、API移行 |
 
 ---
 
 ## CI/CD チェックリスト
 
-PR 作成・更新時に以下を確認:
-
-- [ ] `pnpm lint` (frontend) - ESLint
-- [ ] `pnpm typecheck` (frontend) - TypeScript
-- [ ] `pnpm build` (frontend) - Next.js ビルド
-- [ ] `ruff check .` (backend) - Python リンター
-- [ ] `black --check .` (backend) - Python フォーマット
+- [ ] `ruff check .` / `black --check .` (backend)
+- [ ] `pnpm lint` / `pnpm typecheck` / `pnpm build` (frontend)
+- [ ] RAGAS評価スコア確認（Phase D完了後に追加）
 
 ---
 
-## リファレンス・SSOT
+## リファレンス
 
-- `docs/reference/engineer-cafe-reference.md` - エンジニアカフェ公式情報
-- `docs/development/AGENT-QUICKSTART.md` - エージェント開発クイックスタート
-- `docs/development/ENVIRONMENT-VARIABLES.md` - 環境変数ガイド
-- `.claude/memory/decisions.md` - 決定事項 (SSOT)
-- [`.claude/memory/archive/Plans-archive.md`](.claude/memory/archive/Plans-archive.md) - 完了済みフェーズ
-
-> 環境変数統一: `OPENROUTER_API_KEY`, `SUPABASE_URL`, `emotion`, `expression`, `language` に統一済み
+- [アーキテクチャ設計書](docs/architecture/HIERARCHICAL-RAG-ARCHITECTURE.md)
+- [エンジニアカフェ公式情報](docs/reference/engineer-cafe-reference.md)
+- [決定事項 SSOT](.claude/memory/decisions.md)
+- [完了済みフェーズ](.claude/memory/archive/Plans-archive.md)
