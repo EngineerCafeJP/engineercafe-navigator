@@ -4,6 +4,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+pytest.importorskip("pymupdf", reason="pymupdf not installed")
+
 from utils.file_parser import detect_file_type, parse_markdown, parse_pdf
 
 

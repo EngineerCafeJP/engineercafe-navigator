@@ -1,0 +1,113 @@
+name: RAGAS Evaluation
+
+on:
+  schedule:
+    - cron: '0 9 * * 1'  # 毎週月曜 9:00 UTC
+  workflow_dispatch:
+    inputs:
+      max_cases:
+        description: 'Max evaluation cases'
+        default: '20'
+        type: string
+  pull_request:
+    branches: [main]
+    paths:
+      - 'backend/tools/enhanced_rag.py'
+      - 'backend/knowledge/**'
+      - 'backend/evaluation/**'
+      - 'backend/tests/fixtures/golden_datasets/**'
+
+concurrency:
+  group: ragas-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  pull-requests: write
+  contents: read
+
+jobs:
+  ragas-eval:
+    name: RAGAS Quality Evaluation
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Install dependencies
+        working-directory: backend
+        run: |
+          uv pip install -e ".[evaluation]" --system
+
+      - name: Run RAGAS evaluation
+        id: ragas
+        working-directory: backend
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: |
+          python -m tests.evaluation.run_ragas_evaluation \
+            --max-cases ${{ github.event.inputs.max_cases || '20' }} \
+            --output-dir ./reports \
+            --ci-mode
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ragas-reports-${{ github.run_number }}
+          path: backend/reports/
+          retention-days: 30
+
+      - name: Comment PR with results
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+
+            // Read the latest report
+            const reportsDir = 'backend/reports';
+            let summaryContent = '## RAGAS Evaluation Results\n\n';
+
+            try {
+              const files = fs.readdirSync(reportsDir).filter(f => f.startsWith('ragas_report_'));
+              if (files.length > 0) {
+                const latestReport = files.sort().pop();
+                const report = JSON.parse(fs.readFileSync(path.join(reportsDir, latestReport), 'utf8'));
+
+                if (report.metrics) {
+                  summaryContent += '| Metric | Score |\n|--------|-------|\n';
+                  for (const [metric, score] of Object.entries(report.metrics)) {
+                    summaryContent += `| ${metric} | ${typeof score === 'number' ? score.toFixed(3) : score} |\n`;
+                  }
+                  summaryContent += `\n**Cases**: ${report.evaluated_cases || 0} evaluated, ${report.skipped_cases || 0} skipped\n`;
+                } else {
+                  summaryContent += '_No metrics available. Check the evaluation logs._\n';
+                }
+              } else {
+                summaryContent += '_No report files found._\n';
+              }
+            } catch (e) {
+              summaryContent += `_Error reading report: ${e.message}_\n`;
+            }
+
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: summaryContent
+            });

@@ -16,7 +16,7 @@
     {
       "id": "rt-002",
       "query": "さっき何を聞いたっけ？",
-      "expected_agent": "memory_agent",
+      "expected_agent": "general_knowledge",
       "expected_category": "memory",
       "language": "ja",
       "tags": ["fast-path", "memory"]
@@ -85,7 +85,7 @@
     {
       "id": "rt-010",
       "query": "前に話したことを覚えている？",
-      "expected_agent": "memory_agent",
+      "expected_agent": "general_knowledge",
       "expected_category": "memory",
       "language": "ja",
       "tags": ["fast-path", "memory"]
@@ -128,7 +128,7 @@
     {
       "id": "rt-015",
       "query": "さっきの話の続きをして",
-      "expected_agent": "memory_agent",
+      "expected_agent": "general_knowledge",
       "expected_category": "memory",
       "language": "ja",
       "tags": ["fast-path", "memory", "context"]
@@ -196,7 +196,7 @@
     {
       "id": "rt-023",
       "query": "What did I ask before?",
-      "expected_agent": "memory_agent",
+      "expected_agent": "general_knowledge",
       "expected_category": "memory",
       "language": "en",
       "tags": ["fast-path", "memory", "english"]
@@ -397,7 +397,7 @@
     {
       "id": "rt-046",
       "query": "What did we discuss earlier?",
-      "expected_agent": "memory_agent",
+      "expected_agent": "general_knowledge",
       "expected_category": "memory",
       "language": "en",
       "tags": ["english", "memory"],

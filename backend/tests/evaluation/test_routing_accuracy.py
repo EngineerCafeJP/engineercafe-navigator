@@ -184,7 +184,7 @@ class TestRoutingAccuracyEvaluator:
             RoutingTestCase(
                 id="rt-002",
                 query="さっき何を聞いたっけ",
-                expected_agent="memory_agent",
+                expected_agent="general_knowledge",
                 language="ja",
             ),
         ]
@@ -193,7 +193,7 @@ class TestRoutingAccuracyEvaluator:
 
         assert len(results) == 2
         assert results[0].actual_agent == "facility"
-        assert results[1].actual_agent == "memory_agent"
+        assert results[1].actual_agent == "general_knowledge"
 
     def test_compute_metrics(self, routing_evaluator):
         """メトリクス計算"""

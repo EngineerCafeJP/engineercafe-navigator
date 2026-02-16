@@ -94,7 +94,7 @@ def sample_routing_results() -> List[Dict[str, Any]]:
     """サンプルルーティング結果"""
     return [
         {"agent": "facility", "category": "facility-info", "confidence": 0.95},
-        {"agent": "memory_agent", "category": "memory", "confidence": 0.88},
+        {"agent": "general_knowledge", "category": "memory", "confidence": 0.88},
         {"agent": "facility", "category": "facility-info", "confidence": 0.92},
         {"agent": "event", "category": "event-info", "confidence": 0.85},
         {"agent": "facility", "category": "facility-info", "confidence": 0.90},
@@ -115,9 +115,9 @@ def mock_router_func():
             "勉強会": ("event", "event-info"),
             "起業": ("business_info", "business"),
             "スタートアップ": ("business_info", "business"),
-            "さっき": ("memory_agent", "memory"),
-            "覚えて": ("memory_agent", "memory"),
-            "前に": ("memory_agent", "memory"),
+            "さっき": ("general_knowledge", "memory"),
+            "覚えて": ("general_knowledge", "memory"),
+            "前に": ("general_knowledge", "memory"),
         }
 
         query_lower = query.lower()

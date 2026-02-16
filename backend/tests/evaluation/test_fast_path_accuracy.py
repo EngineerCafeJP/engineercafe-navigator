@@ -50,7 +50,7 @@ class TestFastPathAccuracy:
         # 2) memory
         if orchestrator._is_memory_related_question(query):
             return {
-                "agent": "memory_agent",
+                "agent": "general_knowledge",
                 "category": "memory",
                 "request_type": "memory",
                 "reasoning": "Memory keyword detected",
@@ -143,7 +143,7 @@ class TestFastPathAccuracy:
         memory_cases_ja = [
             c
             for c in golden_cases
-            if c["expected_agent"] == "memory_agent" and c["language"] == "ja"
+            if c["expected_agent"] == "general_knowledge" and c["language"] == "ja"
         ]
         assert len(memory_cases_ja) >= 3, "ゴールデンデータに日本語メモリケースが不足"
 
@@ -170,7 +170,7 @@ class TestFastPathCoverage:
         if result:
             return result
         if orchestrator._is_memory_related_question(query):
-            return {"agent": "memory_agent"}
+            return {"agent": "general_knowledge"}
         return None
 
     def test_fast_path_tagged_cases_coverage(self, orchestrator, golden_cases):
@@ -236,6 +236,6 @@ class TestFastPathCoverage:
             rate = stats["covered"] / stats["total"] if stats["total"] > 0 else 0
             print(f"{agent:<20} {stats['covered']:<8} {stats['total']:<8} {rate:.0%}")
 
-        # facility と memory_agent はカバレッジ高いはず
+        # facility と general_knowledge はカバレッジ高いはず
         assert agent_stats["facility"]["covered"] >= 25
-        assert agent_stats["memory_agent"]["covered"] >= 3
+        assert agent_stats["general_knowledge"]["covered"] >= 3

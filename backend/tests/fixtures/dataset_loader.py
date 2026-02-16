@@ -5,9 +5,9 @@
 """
 
 import json
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Dict, Any, Optional
-from dataclasses import dataclass
+from typing import Any, Dict, List, Optional
 
 from tests.utils.evaluators.routing_accuracy import RoutingTestCase
 
@@ -23,6 +23,19 @@ class AnswerQualityCase:
     expected_answer: str = ""
     context: Optional[str] = None
     quality_expectations: Optional[Dict[str, float]] = None
+
+
+@dataclass
+class GroundTruthCase:
+    """RAGAS評価用Ground Truthテストケース"""
+
+    id: str
+    question: str
+    answer: str
+    contexts: List[str] = field(default_factory=list)
+    ground_truth: str = ""
+    language: str = "ja"
+    category: str = ""
 
 
 class DatasetLoader:
@@ -118,6 +131,47 @@ class DatasetLoader:
                     expected_answer=case.get("expected_answer", ""),
                     context=case.get("context"),
                     quality_expectations=case.get("quality_expectations"),
+                )
+            )
+
+        return result
+
+    @classmethod
+    def load_ground_truth_cases(
+        cls,
+        language: Optional[str] = None,
+        category: Optional[str] = None,
+    ) -> List[GroundTruthCase]:
+        """
+        Ground Truthテストケースを読み込み
+
+        Args:
+            language: フィルタする言語コード（None で全言語）
+            category: フィルタするカテゴリ
+
+        Returns:
+            List[GroundTruthCase]: テストケースのリスト
+        """
+        data = cls._load_json("ground_truth.json")
+        test_cases = data.get("test_cases", [])
+
+        result = []
+        for case in test_cases:
+            if language and case.get("language") != language:
+                continue
+
+            if category and case.get("category") != category:
+                continue
+
+            result.append(
+                GroundTruthCase(
+                    id=case["id"],
+                    question=case["question"],
+                    answer=case["answer"],
+                    contexts=case.get("contexts", []),
+                    ground_truth=case.get("ground_truth", ""),
+                    language=case.get("language", "ja"),
+                    category=case.get("category", ""),
                 )
             )
 
@@ -285,6 +339,23 @@ def load_answer_quality_cases(
         List[AnswerQualityCase]: テストケースのリスト
     """
     return DatasetLoader.load_answer_quality_cases(language=language, category=category)
+
+
+def load_ground_truth_cases(
+    language: Optional[str] = None,
+    category: Optional[str] = None,
+) -> List[GroundTruthCase]:
+    """
+    Ground Truthテストケースを読み込み（便利関数）
+
+    Args:
+        language: フィルタする言語コード
+        category: フィルタするカテゴリ
+
+    Returns:
+        List[GroundTruthCase]: テストケースのリスト
+    """
+    return DatasetLoader.load_ground_truth_cases(language=language, category=category)
 
 
 def load_multilingual_cases(

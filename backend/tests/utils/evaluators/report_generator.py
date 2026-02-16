@@ -50,6 +50,7 @@ class ComprehensiveEvaluationReport:
     language_analysis: Optional[Dict[str, Any]] = None
     tag_analysis: Optional[Dict[str, Any]] = None
     error_summary: Optional[Dict[str, Any]] = None
+    ragas_metrics: Optional[Dict[str, float]] = None
     recommendations: List[str] = field(default_factory=list)
     metadata: Dict[str, Any] = field(default_factory=dict)
 
