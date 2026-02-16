@@ -14,7 +14,6 @@ from backend.config.settings import (
     get_supabase_config,
     get_openrouter_key,
     get_openai_key,
-    get_gemini_key,
 )
 
 # ============================================
@@ -50,14 +49,6 @@ class TestSettingsDefaults:
             supabase_key="test-key",
         )
         assert s.debug is False
-
-    def test_default_gemini_model(self):
-        """デフォルトのGeminiモデルはgemini-2.0-flash-exp"""
-        s = Settings(
-            supabase_url="http://test",
-            supabase_key="test-key",
-        )
-        assert s.gemini_model == "gemini-2.0-flash-exp"
 
 
 # ============================================
@@ -131,27 +122,6 @@ class TestSettingsProperties:
             supabase_key="test-key",
         )
         assert s.is_test is True
-
-    def test_gemini_api_key_returns_google_api_key(self):
-        """gemini_api_keyはgoogle_api_keyを返す"""
-        s = Settings(
-            google_api_key="test-google-key",
-            supabase_url="http://test",
-            supabase_key="test-key",
-        )
-        assert s.gemini_api_key == "test-google-key"
-
-    def test_gemini_api_key_returns_google_generative_ai_api_key_when_google_api_key_empty(
-        self,
-    ):
-        """google_api_keyが空の場合、gemini_api_keyはgoogle_generative_ai_api_keyを返す"""
-        s = Settings(
-            google_api_key="",
-            google_generative_ai_api_key="test-gemini-key",
-            supabase_url="http://test",
-            supabase_key="test-key",
-        )
-        assert s.gemini_api_key == "test-gemini-key"
 
     def test_google_credentials_returns_google_cloud_credentials(self):
         """google_credentialsはgoogle_cloud_credentialsを返す"""
@@ -340,30 +310,4 @@ class TestHelperFunctions:
         )
         with patch("backend.config.settings.settings", mock_settings):
             key = get_openai_key()
-            assert key == test_key
-
-    def test_get_gemini_key_raises_valueerror_when_missing(self):
-        """get_gemini_keyはキーが空の場合ValueErrorを発生させる"""
-        mock_settings = Settings(
-            _env_file=None,
-            supabase_url="http://test",
-            supabase_key="test-key",
-            google_api_key="",
-            google_generative_ai_api_key="",
-        )
-        with patch("backend.config.settings.settings", mock_settings):
-            with pytest.raises(ValueError, match="環境変数 GOOGLE_API_KEY が設定されていません"):
-                get_gemini_key()
-
-    def test_get_gemini_key_returns_key_when_set(self):
-        """get_gemini_keyはキーが設定されている場合、値を返す"""
-        test_key = "test-gemini-key-12345"
-        mock_settings = Settings(
-            _env_file=None,
-            supabase_url="http://test",
-            supabase_key="test-key",
-            google_api_key=test_key,
-        )
-        with patch("backend.config.settings.settings", mock_settings):
-            key = get_gemini_key()
             assert key == test_key

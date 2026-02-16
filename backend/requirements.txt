@@ -12,7 +12,6 @@ supabase>=2.0.0
 pykakasi>=1.2.0
 numpy>=1.24.0,<2.0
 scipy>=1.10.0
-google-generativeai>=0.8.0
 # Audio processing (STT/TTS)
 vosk>=0.3.45
 soundfile>=0.12.1

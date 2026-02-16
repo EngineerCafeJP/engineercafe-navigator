@@ -1,7 +1,7 @@
 """TavilySearchTool のユニットテスト"""
 
 import pytest
-from unittest.mock import Mock, AsyncMock, patch
+from unittest.mock import Mock, patch
 
 
 class TestTavilySearchToolInit:
@@ -87,27 +87,22 @@ class TestTavilySearchToolSearch:
         assert len(result["sources"]) == 2
 
     @pytest.mark.asyncio
-    async def test_search_fallback_on_no_client(self):
-        """クライアントなしの場合フォールバック"""
+    async def test_search_returns_empty_when_no_client(self):
+        """クライアントなしの場合空結果を返す"""
         from backend.tools.tavily_search import TavilySearchTool
 
         tool = TavilySearchTool.__new__(TavilySearchTool)
         tool.name = "tavily_search"
         tool.client = None
 
-        with patch("backend.tools.web_search.WebSearchTool") as mock_ws_class:
-            mock_instance = mock_ws_class.return_value
-            mock_instance.search = AsyncMock(
-                return_value={"success": True, "text": "fallback結果", "sources": []}
-            )
-
-            result = await tool.search("テスト")
-            assert result["success"] is True
-            assert result["text"] == "fallback結果"
+        result = await tool.search("テスト")
+        assert result["success"] is False
+        assert result["text"] == ""
+        assert result["results"] == []
 
     @pytest.mark.asyncio
-    async def test_search_fallback_on_error(self):
-        """Tavilyエラー時のフォールバック"""
+    async def test_search_returns_empty_on_error(self):
+        """Tavilyエラー時も空結果を返す"""
         from backend.tools.tavily_search import TavilySearchTool
 
         tool = TavilySearchTool.__new__(TavilySearchTool)
@@ -115,49 +110,25 @@ class TestTavilySearchToolSearch:
         tool.client = Mock()
         tool.client.search.side_effect = Exception("API Error")
 
-        with patch("backend.tools.web_search.WebSearchTool") as mock_ws_class:
-            mock_instance = mock_ws_class.return_value
-            mock_instance.search = AsyncMock(
-                return_value={"success": True, "text": "fallback", "sources": []}
-            )
-
-            result = await tool.search("テスト")
-            assert result["success"] is True
-            assert result["text"] == "fallback"
-
-    @pytest.mark.asyncio
-    async def test_search_both_fail(self):
-        """Tavilyとフォールバック両方失敗"""
-        from backend.tools.tavily_search import TavilySearchTool
-
-        tool = TavilySearchTool.__new__(TavilySearchTool)
-        tool.name = "tavily_search"
-        tool.client = None
-
-        with patch("backend.tools.web_search.WebSearchTool") as mock_ws_class:
-            mock_ws_class.side_effect = Exception("Import Error")
-
-            result = await tool.search("テスト")
-            assert result["success"] is False
-            assert result["text"] == ""
+        result = await tool.search("テスト")
+        assert result["success"] is False
+        assert result["text"] == ""
 
 
 class TestTavilySearchToolShouldUseWebSearch:
     """should_use_web_search テスト"""
 
     def test_should_use_web_search_delegates(self):
-        """Web検索判定がWebSearchToolに委譲されること"""
+        """Web検索判定がweb_searchモジュールに委譲されること"""
         from backend.tools.tavily_search import TavilySearchTool
 
-        with patch("backend.tools.web_search.WebSearchTool") as mock_ws_class:
-            mock_ws_class.should_use_web_search.return_value = True
+        with patch("backend.tools.web_search.should_use_web_search", return_value=True) as mock_fn:
             assert TavilySearchTool.should_use_web_search("最新ニュース") is True
-            mock_ws_class.should_use_web_search.assert_called_once_with("最新ニュース")
+            mock_fn.assert_called_once_with("最新ニュース")
 
     def test_should_not_use_web_search(self):
         """Web検索不要と判定"""
         from backend.tools.tavily_search import TavilySearchTool
 
-        with patch("backend.tools.web_search.WebSearchTool") as mock_ws_class:
-            mock_ws_class.should_use_web_search.return_value = False
+        with patch("backend.tools.web_search.should_use_web_search", return_value=False):
             assert TavilySearchTool.should_use_web_search("エンジニアカフェとは") is False

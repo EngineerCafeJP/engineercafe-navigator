@@ -9,7 +9,6 @@ class TestGKAMemoryInit:
     """GKA メモリ初期化テスト"""
 
     def setup_method(self):
-        os.environ["GOOGLE_API_KEY"] = "test_dummy_api_key"
         os.environ["OPENROUTER_API_KEY"] = "test_dummy_openrouter_key"
 
     def test_gka_init_with_memory_system(self):
@@ -38,7 +37,6 @@ class TestGKAAnswerQueryDispatch:
     """answer_query ディスパッチテスト"""
 
     def setup_method(self):
-        os.environ["GOOGLE_API_KEY"] = "test_dummy_api_key"
         os.environ["OPENROUTER_API_KEY"] = "test_dummy_openrouter_key"
 
     def _create_agent(self, memory_system=None):
@@ -78,7 +76,6 @@ class TestGKAHandleMemoryQuery:
     """メモリクエリ処理テスト"""
 
     def setup_method(self):
-        os.environ["GOOGLE_API_KEY"] = "test_dummy_api_key"
         os.environ["OPENROUTER_API_KEY"] = "test_dummy_openrouter_key"
 
     def _create_agent(self, memory_system=None):
@@ -146,7 +143,6 @@ class TestGKADetectMemoryQueryType:
     """メモリ質問タイプ判定テスト"""
 
     def setup_method(self):
-        os.environ["GOOGLE_API_KEY"] = "test_dummy_api_key"
         os.environ["OPENROUTER_API_KEY"] = "test_dummy_openrouter_key"
 
     def _create_agent(self):
@@ -182,7 +178,6 @@ class TestGKADetermineMemoryEmotion:
     """メモリ感情決定テスト"""
 
     def setup_method(self):
-        os.environ["GOOGLE_API_KEY"] = "test_dummy_api_key"
         os.environ["OPENROUTER_API_KEY"] = "test_dummy_openrouter_key"
 
     def _create_agent(self):

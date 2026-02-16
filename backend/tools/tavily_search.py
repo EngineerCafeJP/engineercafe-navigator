@@ -2,7 +2,6 @@
 Tavily Web Search Tool
 
 Tavily APIを使用したWeb検索ツール。
-既存のWebSearchTool(Gemini)を置き換え、より精度の高い検索を提供。
 """
 
 import logging
@@ -19,7 +18,7 @@ class TavilySearchTool:
     Tavily APIを使用したWeb検索ツール
 
     TAVILY_API_KEY が設定されていない場合は client=None で初期化し、
-    search() 時に WebSearchTool(Gemini) にフォールバック。
+    search() 時に空結果を返す。
     """
 
     def __init__(self):
@@ -34,11 +33,11 @@ class TavilySearchTool:
                 self.client = TavilyClient(api_key=api_key)
                 logger.info("TavilySearchTool initialized with API key")
             except ImportError:
-                logger.warning("tavily-python not installed, falling back to WebSearchTool")
+                logger.warning("tavily-python not installed")
             except Exception as e:
-                logger.warning(f"Tavily client init failed: {e}")
+                logger.warning("Tavily client init failed: %s", e)
         else:
-            logger.warning("TAVILY_API_KEY not set, will fall back to WebSearchTool")
+            logger.warning("TAVILY_API_KEY not set, web search unavailable")
 
     async def search(
         self,
@@ -46,17 +45,9 @@ class TavilySearchTool:
         language: SupportedLanguage = "ja",
         max_results: int = 5,
     ) -> Dict[str, Any]:
-        """
-        Web検索を実行
-
-        Tavily client が利用可能な場合はTavily APIを使用。
-        利用不可の場合はWebSearchTool(Gemini)にフォールバック。
-
-        Returns:
-            {"success": bool, "text": str, "results": List[Dict], "sources": List[Dict]}
-        """
+        """Web検索を実行"""
         if not self.client:
-            return await self._fallback_search(query, language)
+            return {"success": False, "text": "", "results": [], "sources": []}
 
         try:
             search_params = {
@@ -87,7 +78,7 @@ class TavilySearchTool:
 
             text = "\n\n".join(text_parts)
 
-            logger.info(f"Tavily search completed: {len(text)} chars, {len(sources)} sources")
+            logger.info("Tavily search completed: %d chars, %d sources", len(text), len(sources))
 
             return {
                 "success": True,
@@ -97,32 +88,12 @@ class TavilySearchTool:
             }
 
         except Exception as e:
-            logger.error(f"Tavily search error: {e}", exc_info=True)
-            return await self._fallback_search(query, language)
-
-    async def _fallback_search(
-        self, query: str, language: SupportedLanguage = "ja"
-    ) -> Dict[str, Any]:
-        """WebSearchTool(Gemini)にフォールバック"""
-        try:
-            from backend.tools.web_search import WebSearchTool
-
-            fallback = WebSearchTool()
-            result = await fallback.search(query=query, language=language)
-            logger.info("Fell back to WebSearchTool (Gemini)")
-            return {
-                "success": result.get("success", False),
-                "text": result.get("text", ""),
-                "results": [],
-                "sources": result.get("sources", []),
-            }
-        except Exception as e:
-            logger.error(f"Fallback search also failed: {e}")
+            logger.error("Tavily search error: %s", e, exc_info=True)
             return {"success": False, "text": "", "results": [], "sources": []}
 
     @staticmethod
     def should_use_web_search(query: str) -> bool:
-        """Web検索が必要かどうか判定（WebSearchToolに委譲）"""
-        from backend.tools.web_search import WebSearchTool
+        """Web検索が必要かどうか判定"""
+        from backend.tools.web_search import should_use_web_search
 
-        return WebSearchTool.should_use_web_search(query)
+        return should_use_web_search(query)
