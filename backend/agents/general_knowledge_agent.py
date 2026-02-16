@@ -3,28 +3,32 @@ GeneralKnowledgeAgent完全実装
 
 一般的な質問に対応するエージェント。
 Engineer Cafeに関する一般情報、AI・技術トピック、福岡のテックシーンなどに回答。
+メモリ関連クエリ（旧MemoryAgentの責務）も統合して処理する。
 
 参考:
 - docs/migration/agents/general-knowledge-agent/README.md
 - docs/migration/agents/general-knowledge-agent/MIGRATION-GUIDE.md
 
 実装済み機能:
-1. Web検索機能の実装(web_search.py統合) ✓
+1. Web検索機能の実装(tavily_search.py統合) ✓
 2. OpenRouter APIを使用した回答生成 ✓
 3. ナレッジベースとWeb検索の組み合わせ ✓
 4. should_use_web_search()ロジック実装 ✓
 5. 信頼度計算の最適化 ✓
 6. 感情タグの適切な設定 ✓
 7. エラーハンドリングとフォールバック ✓
+8. メモリクエリハンドリング（旧MemoryAgent統合） ✓
 """
 
 import logging
 from typing import Dict, Any, List, Optional, Literal
 
+from backend.config.prompts.memory_prompts import build_memory_prompt
 from backend.llm.openrouter import OpenRouterProvider
 from backend.llm.models import get_model_config
 from backend.tools.enhanced_rag import EnhancedRAGSearch
-from backend.tools.web_search import WebSearchTool
+from backend.tools.tavily_search import TavilySearchTool
+from backend.utils.memory_interface import MemorySystemInterface
 
 logger = logging.getLogger(__name__)
 
@@ -38,36 +42,53 @@ class GeneralKnowledgeAgent:
 
     一般的な質問に対応し、ナレッジベースとWeb検索を組み合わせて回答を生成します。
     Engineer Cafeに関する一般情報、AI・技術トピック、福岡のテックシーンなどに対応。
+    メモリ関連クエリ（会話履歴の参照）も統合して処理します。
     """
 
-    def __init__(self):
+    def __init__(self, memory_system: Optional[MemorySystemInterface] = None):
         """
         初期化
 
-        - OpenRouterProviderの初期化
-        - モデル設定の取得(get_model_config("qa_response"))
-        - Web検索ツールの初期化
-        - RAG検索ツールの初期化
+        Args:
+            memory_system: メモリシステムのインスタンス（オプショナル）
         """
         self.name = "GeneralKnowledgeAgent"
-        logger.info("GeneralKnowledgeAgent完全実装初期化")
+        logger.info("GeneralKnowledgeAgent初期化")
 
-        # OpenRouterProvider初期化
         self.provider = OpenRouterProvider()
-
-        # モデル設定取得
         self.model_config = get_model_config("qa_response")
-
-        # Web検索ツール初期化
-        self.web_search = WebSearchTool()
-
-        # RAG検索ツール初期化
+        self.web_search = TavilySearchTool()
         self.rag_search = EnhancedRAGSearch()
+        self.memory_system = memory_system
 
-        logger.info(f"GeneralKnowledgeAgent initialized with model: {self.model_config.model_id}")
+        logger.info(
+            f"GeneralKnowledgeAgent initialized with model: {self.model_config.model_id}, "
+            f"memory: {'enabled' if memory_system else 'disabled'}"
+        )
+
+    async def answer_query(
+        self,
+        query: str,
+        language: SupportedLanguage = "ja",
+        session_id: Optional[str] = None,
+        query_type: str = "general",
+        state_context: Optional[Dict] = None,
+        context_signals=None,
+    ) -> Dict[str, Any]:
+        """統合クエリハンドラ: query_typeに応じて処理を分岐"""
+        if query_type == "memory":
+            return await self._handle_memory_query(query, session_id or "", language)
+        return await self.answer_general_query(
+            query, language, session_id, state_context, context_signals
+        )
 
     async def answer_general_query(
-        self, query: str, language: SupportedLanguage = "ja", session_id: Optional[str] = None
+        self,
+        query: str,
+        language: SupportedLanguage = "ja",
+        session_id: Optional[str] = None,
+        state_context: Optional[Dict] = None,
+        context_signals=None,
     ) -> Dict[str, Any]:
         """
         一般的な質問に回答
@@ -76,42 +97,40 @@ class GeneralKnowledgeAgent:
             query: ユーザーからの質問
             language: 言語設定("ja" or "en")
             session_id: セッションID(オプショナル)
+            state_context: RAGキャッシュからのコンテキスト（オプショナル）
 
         Returns:
-            {
-                "answer": str,  # 回答テキスト
-                "emotion": str,  # 感情タグ
-                "metadata": Dict  # メタデータ(信頼度、ソースなど)
-            }
-
-        TODO (専門エンジニア向け):
-        1. Web検索が必要かどうか判定(_should_use_web_search)
-        2. ナレッジベース検索の実行(rag_search_tool)
-        3. 必要に応じてWeb検索の実行(general_web_search)
-        4. プロンプトの構築(_build_general_prompt)
-        5. OpenRouter APIで回答生成
-        6. 信頼度の計算(_calculate_confidence)
-        7. 感情タグの抽出(_extract_emotion)
+            {"answer": str, "emotion": str, "metadata": Dict}
         """
         logger.info(f"一般質問処理開始: query={query[:50]}..., language={language}")
 
         try:
-            # 1. Web検索の必要性判定
-            needs_web_search = self._should_use_web_search(query)
+            # 1. Web検索の必要性判定（適応的）
+            needs_web_search = self._should_use_web_search_adaptive(query, context_signals)
             logger.info(f"Web検索必要性判定: {needs_web_search}")
 
-            # 2. ナレッジベース検索
-            kb_result = await self.rag_search.search(
-                query=query, category="general", language=language, max_results=5
-            )
-
+            # 2. ナレッジベース検索（キャッシュチェック付き）
             context = ""
-            sources = []
+            sources: List[str] = []
 
-            if kb_result.get("success") and kb_result.get("data"):
-                context = kb_result["data"].get("context", "")
-                sources.append("knowledge_base")
-                logger.info(f"ナレッジベース検索成功: {len(context)} chars")
+            cached = state_context if state_context else None
+            if cached and cached.get("success") and cached.get("category") == "general":
+                context = cached.get("context_string", "")
+                sources.append("knowledge_base_cached")
+                logger.info(f"Using cached RAG results: {len(context)} chars")
+            else:
+                kb_result = await self.rag_search.search(
+                    query=query,
+                    category="general",
+                    language=language,
+                    max_results=5,
+                    context_signals=context_signals,
+                )
+
+                if kb_result.get("success") and kb_result.get("data"):
+                    context = kb_result["data"].get("context", "")
+                    sources.append("knowledge_base")
+                    logger.info(f"ナレッジベース検索成功: {len(context)} chars")
 
             # 3. Web検索(条件付き)
             if needs_web_search or not context:
@@ -123,7 +142,6 @@ class GeneralKnowledgeAgent:
                     web_sources = web_result.get("sources", [])
 
                     if web_text:
-                        # コンテキストに追加
                         if context:
                             context += f"\n\n【Web検索結果】\n{web_text}"
                         else:
@@ -172,46 +190,186 @@ class GeneralKnowledgeAgent:
             logger.error(f"GeneralKnowledgeAgent処理エラー: {e}", exc_info=True)
             return self._handle_error(language)
 
+    # =========================================================================
+    # メモリクエリ処理（旧MemoryAgentから統合）
+    # =========================================================================
+
+    async def _handle_memory_query(
+        self, query: str, session_id: str, language: str = "ja"
+    ) -> Dict[str, Any]:
+        """メモリ関連クエリを処理"""
+        if not self.memory_system:
+            return self._handle_no_memory_system(language)
+
+        try:
+            query_type = self._detect_memory_query_type(query)
+            context = await self.memory_system.get_context(
+                query, session_id, {"language": language, "inherit_context": True}
+            )
+
+            if not context.get("recent_messages"):
+                return self._no_history_response(language)
+
+            prompt = self._build_memory_prompt(query, context, query_type, language)
+
+            from langchain_core.messages import HumanMessage
+
+            messages = [HumanMessage(content=prompt)]
+            answer = await self.provider.generate(messages=messages, config=self.model_config)
+
+            emotion = self._determine_memory_emotion(context, query_type)
+
+            return {
+                "answer": answer,
+                "emotion": emotion,
+                "metadata": {
+                    "agent": self.name,
+                    "status": "success",
+                    "query_type": query_type,
+                    "message_count": len(context.get("recent_messages", [])),
+                    "inherited_request_type": context.get("inherited_request_type"),
+                },
+            }
+        except Exception as e:
+            logger.error(f"Memory query error: {e}", exc_info=True)
+            return {
+                "answer": (
+                    "メモリの処理中にエラーが発生しました。"
+                    if language == "ja"
+                    else "An error occurred while processing memory."
+                ),
+                "emotion": "surprised",
+                "metadata": {"agent": self.name, "status": "error", "error": str(e)},
+            }
+
+    def _detect_memory_query_type(self, query: str) -> str:
+        """メモリ質問タイプの判定"""
+        lower_query = query.lower()
+
+        question_keywords = [
+            "何を聞いた",
+            "何聞いた",
+            "質問した",
+            "さっき聞いた",
+            "前に聞いた",
+            "what did i ask",
+            "what i asked",
+            "my question",
+            "previous question",
+        ]
+        if any(kw in lower_query for kw in question_keywords):
+            return "question_history"
+
+        answer_keywords = [
+            "答え",
+            "回答",
+            "何て言った",
+            "何と言った",
+            "教えてくれた",
+            "answer",
+            "response",
+            "what did you say",
+            "you told me",
+            "your answer",
+        ]
+        if any(kw in lower_query for kw in answer_keywords):
+            return "answer_history"
+
+        other_keywords = [
+            "もう一つの方",
+            "もう一つ",
+            "もうひとつ",
+            "他の方",
+            "別の方",
+            "the other one",
+            "the other",
+            "another one",
+            "alternative",
+        ]
+        if any(kw in lower_query for kw in other_keywords):
+            return "other_option"
+
+        return "general_memory"
+
+    def _build_memory_prompt(
+        self, query: str, context: Dict, query_type: str, language: str
+    ) -> str:
+        """メモリプロンプト構築（memory_prompts.pyに委譲）"""
+        return build_memory_prompt(query, context, query_type, language)
+
+    def _determine_memory_emotion(self, context: Dict, query_type: str) -> str:
+        """メモリクエリの感情タグ決定"""
+        if not context.get("recent_messages"):
+            return "sad"
+        if query_type == "other_option":
+            return "happy"
+        if query_type in ["question_history", "answer_history"]:
+            return "relaxed"
+        return "neutral"
+
+    def _handle_no_memory_system(self, language: str) -> Dict[str, Any]:
+        """メモリシステム利用不可時の応答"""
+        message = (
+            "メモリシステムが利用できません。しばらくしてからもう一度お試しください。"
+            if language == "ja"
+            else "Memory system is not available at the moment. Please try again later."
+        )
+        return {
+            "answer": message,
+            "emotion": "sad",
+            "metadata": {
+                "agent": self.name,
+                "status": "memory_unavailable",
+                "error": "no_memory_system",
+            },
+        }
+
+    def _no_history_response(self, language: str) -> Dict[str, Any]:
+        """会話履歴なし時の応答"""
+        message = (
+            "まだ会話履歴がありません。何か質問してみてください！"
+            if language == "ja"
+            else "I don't have any conversation history yet. Let's start chatting!"
+        )
+        return {
+            "answer": message,
+            "emotion": "sad",
+            "metadata": {"agent": self.name, "status": "no_history", "query_type": "memory"},
+        }
+
+    # =========================================================================
+    # 一般クエリ ヘルパーメソッド
+    # =========================================================================
+
+    def _should_use_web_search_adaptive(self, query: str, context_signals=None) -> bool:
+        """適応的Web検索判定
+
+        context_signals が None の場合は静的判定にフォールバック。
+        RAGキャッシュスコア高い + 具体性高い → Web検索不要
+        RAGキャッシュスコア低い + 会話浅い → Web検索推奨
+        """
+        if context_signals is None:
+            return self._should_use_web_search(query)
+
+        # High confidence RAG + specific query → skip web
+        if context_signals.rag_cache_top_score > 0.8 and context_signals.request_specificity > 0.7:
+            return False
+
+        # Low confidence + shallow conversation → try web
+        if context_signals.rag_cache_top_score < 0.5 and context_signals.conversation_depth < 3:
+            return True
+
+        # Otherwise fall back to static heuristic
+        return self._should_use_web_search(query)
+
     def _should_use_web_search(self, query: str) -> bool:
-        """
-        Web検索が必要かどうか判定
-
-        Args:
-            query: ユーザーの質問
-
-        Returns:
-            True: Web検索が必要, False: ナレッジベースのみで十分
-
-        キーワードベース判定(最新、ニュース、トレンド、スタートアップなど)
-        日本語・英語両対応
-
-        参考キーワード:
-        日本語: 最新、現在、今、ニュース、トレンド、スタートアップ、ベンチャー、技術、AI、人工知能、機械学習
-        英語: latest, current, now, news, trend, startup, venture, technology, ai, artificial intelligence, machine learning
-        """
-        # WebSearchToolの静的メソッドを使用
-        return WebSearchTool.should_use_web_search(query)
+        """Web検索が必要かどうか判定"""
+        return TavilySearchTool.should_use_web_search(query)
 
     def _build_general_prompt(
         self, query: str, context: str, sources: List[str], language: SupportedLanguage
     ) -> str:
-        """
-        プロンプトを構築
-
-        Args:
-            query: ユーザーの質問
-            context: コンテキスト情報(ナレッジベース + Web検索結果)
-            sources: 情報ソースのリスト
-            language: 言語設定
-
-        Returns:
-            構築されたプロンプト文字列
-
-        - 質問タイプ別のプロンプトテンプレート
-        - ソース情報の適切な埋め込み
-        - 感情タグ指示の追加
-        - 日本語・英語両対応
-        """
+        """プロンプトを構築"""
         source_info = " and ".join(sources) if sources else "available information"
 
         if language == "en":
@@ -252,25 +410,7 @@ Provide a comprehensive but concise answer. If the information is from web searc
 包括的だが簡潔な回答を提供してください。情報がウェブ検索からのものである場合は、それが最新の情報であることを述べてください。役立つ情報を提供してください。"""
 
     def _calculate_confidence(self, sources: List[str]) -> float:
-        """
-        信頼度を計算
-
-        Args:
-            sources: 情報ソースのリスト
-
-        Returns:
-            信頼度スコア(0.0-1.0)
-
-        ルール:
-        - ナレッジベース + Web検索: 0.9
-        - ナレッジベースのみ: 0.8
-        - Web検索のみ: 0.6
-        - フォールバック: 0.3
-
-        TODO:
-        - ソースの質による重み付け
-        - コンテキストの充実度による調整
-        """
+        """信頼度を計算"""
         has_kb = "knowledge_base" in sources
         has_web = "web_search" in sources
 
@@ -284,20 +424,7 @@ Provide a comprehensive but concise answer. If the information is from web searc
             return 0.3
 
     def _extract_emotion(self, text: str) -> EmotionType:
-        """
-        テキストから感情タグを抽出
-
-        Args:
-            text: LLMの応答テキスト
-
-        Returns:
-            感情タグ(helpful, apologetic, neutral, happy, sad, relaxed, surprised)
-
-        TODO:
-        - LLMの応答から[emotion]タグを抽出
-        - タグがない場合のデフォルト値
-        - コンテキストに応じた感情の自動判定
-        """
+        """テキストから感情タグを抽出"""
         if "[sad]" in text:
             return "sad"
         elif "[happy]" in text:
@@ -312,15 +439,7 @@ Provide a comprehensive but concise answer. If the information is from web searc
             return "neutral"
 
     def _handle_error(self, language: SupportedLanguage) -> Dict[str, Any]:
-        """
-        エラー時の処理
-
-        Args:
-            language: 言語設定
-
-        Returns:
-            エラーメッセージを含む応答
-        """
+        """エラー時の処理"""
         if language == "en":
             message = "I'm sorry, something went wrong. Please try again later."
         else:

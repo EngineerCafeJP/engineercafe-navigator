@@ -1,6 +1,11 @@
 """
-MemoryAgent - 完全実装
+MemoryAgent - DEPRECATED
 
+このモジュールは GeneralKnowledgeAgent に統合されました。
+次のスプリントで削除予定です。
+新しいコードでは GeneralKnowledgeAgent.answer_query(query_type="memory") を使用してください。
+
+旧説明:
 会話履歴・記憶に関する質問に回答するエージェント。
 「さっき何を聞いた？」「前に話したことを覚えてる？」といった質問を処理。
 
@@ -10,6 +15,7 @@ MemoryAgent - 完全実装
 """
 
 import logging
+import warnings
 from typing import Dict, Any, Optional
 
 from langchain_core.messages import HumanMessage
@@ -19,6 +25,12 @@ from backend.llm import get_llm_provider, get_model_config, OpenRouterProvider
 from backend.utils.memory_interface import MemorySystemInterface
 
 logger = logging.getLogger(__name__)
+
+warnings.warn(
+    "MemoryAgent is deprecated. Use GeneralKnowledgeAgent with query_type='memory' instead.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 
 class MemoryAgent:

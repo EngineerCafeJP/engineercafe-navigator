@@ -61,10 +61,27 @@ class MainWorkflow:
         self.orchestrator = OrchestratorAgent(debug_mode=debug_mode)
         self.checkpointer = checkpointer
 
-        # SlideAgentをシングルトンインスタンスとして保持
+        # 全エージェントをシングルトンインスタンスとして保持
+        from backend.agents.business_info_agent import BusinessInfoAgent
+        from backend.agents.event_agent import EventAgent
+        from backend.agents.facility_agent import FacilityAgent
+        from backend.agents.general_knowledge_agent import GeneralKnowledgeAgent
         from backend.agents.slide_agent import SlideAgent
 
+        self._business_info_agent = BusinessInfoAgent()
+        self._facility_agent = FacilityAgent()
+        self._event_agent = EventAgent()
         self._slide_agent = SlideAgent()
+
+        # GKAにメモリシステムを注入（Supabase依存のため安全にtry/except）
+        try:
+            from backend.utils.memory_helper import get_memory_helper
+
+            memory_system = get_memory_helper()
+        except Exception as e:
+            logger.warning(f"Memory system unavailable for GKA: {e}")
+            memory_system = None
+        self._general_knowledge_agent = GeneralKnowledgeAgent(memory_system=memory_system)
 
         self.graph = self._build_graph()
 
@@ -80,8 +97,6 @@ class MainWorkflow:
         workflow.add_node("event", self._event_node)
         workflow.add_node("slide", self._slide_node)
         workflow.add_node("general_knowledge", self._general_knowledge_node)
-        workflow.add_node("memory_agent", self._memory_agent_node)
-        workflow.add_node("clarification", self._clarification_node)
         workflow.add_node("format_response", self._format_response_node)
 
         # エッジの定義（Supervisor Pattern）
@@ -95,8 +110,6 @@ class MainWorkflow:
         workflow.add_edge("event", "format_response")
         workflow.add_edge("slide", "format_response")
         workflow.add_edge("general_knowledge", "format_response")
-        workflow.add_edge("memory_agent", "format_response")
-        workflow.add_edge("clarification", "format_response")
         workflow.add_edge("format_response", END)
 
         # Checkpointerが指定されている場合は永続化を有効化
@@ -143,10 +156,58 @@ class MainWorkflow:
                 except Exception as store_error:
                     logger.warning(f"Failed to store user message: {store_error}")
 
+            # RAG pre-fetch and cache in state
+            try:
+                from backend.tools.enhanced_rag import EnhancedRAGSearch
+                from backend.utils.query_classifier import QueryClassifier
+
+                classifier = QueryClassifier()
+                classification = await classifier.classify_with_details(query)
+                category = (
+                    classification.category if hasattr(classification, "category") else "general"
+                )
+
+                rag = EnhancedRAGSearch()
+                rag_result = await rag.search(
+                    query=query, category=category, language=language, max_results=10
+                )
+
+                knowledge_results = {
+                    "success": rag_result.get("success", False),
+                    "results": rag_result.get("data", {}).get("results", []),
+                    "context_string": rag_result.get("data", {}).get("context", ""),
+                    "category": category,
+                    "query": query,
+                }
+            except Exception as e:
+                logger.warning(f"RAG pre-fetch failed: {e}")
+                knowledge_results = {
+                    "success": False,
+                    "results": [],
+                    "context_string": "",
+                    "category": "general",
+                    "query": query,
+                }
+
+            # Extract context priority signals
+            priority_signals = None
+            try:
+                from backend.utils.context_priority import ContextPriorityEngine
+
+                engine = ContextPriorityEngine()
+                priority_signals = engine.extract_signals_from_context(
+                    memory_context=memory_context,
+                    knowledge_results=knowledge_results,
+                )
+            except Exception as sig_err:
+                logger.debug(f"Priority signal extraction skipped: {sig_err}")
+
             return {
                 "context": {
                     **state.get("context", {}),
                     "memory": memory_context,
+                    "knowledge_results": knowledge_results,
+                    "priority_signals": priority_signals,
                 }
             }
         except Exception as e:
@@ -159,7 +220,11 @@ class MainWorkflow:
 
         OrchestratorAgentを使用してクエリを分析し、
         適切なエージェントにCommand patternでルーティング。
+        clarification カテゴリはインラインでテンプレート応答を生成し、
+        format_response に直接ルーティングする。
         """
+        from backend.utils.clarification_templates import get_clarification_response
+
         query = state.get("query", "")
         session_id = state.get("session_id", "")
         memory_context = state.get("context", {}).get("memory")
@@ -169,6 +234,41 @@ class MainWorkflow:
             session_id=session_id,
             memory_context=memory_context,
         )
+
+        # clarification カテゴリをインライン処理
+        if decision.category in (
+            "cafe-clarification-needed",
+            "meeting-room-clarification-needed",
+            "general-clarification-needed",
+        ):
+            result = get_clarification_response(
+                category=decision.category,
+                language=decision.language,
+            )
+            return Command(
+                goto="format_response",
+                update={
+                    "language": decision.language,
+                    "routing": {
+                        "agent": "orchestrator_inline",
+                        "category": decision.category,
+                        "request_type": decision.request_type,
+                        "confidence": decision.confidence,
+                        "reasoning": decision.reasoning,
+                        "debug_info": decision.debug_info,
+                    },
+                    "answer": result["response"],
+                    "emotion": result["emotion"],
+                    "metadata": {
+                        **state.get("metadata", {}),
+                        "clarification": {
+                            **result["metadata"],
+                            "clarification_type": decision.category,
+                        },
+                        "requires_followup": True,
+                    },
+                },
+            )
 
         return Command(
             goto=decision.next_agent,
@@ -187,15 +287,23 @@ class MainWorkflow:
 
     async def _business_info_node(self, state: WorkflowStateDict) -> dict:
         """営業情報ノード: 営業情報を処理"""
-        from backend.agents.business_info_agent import BusinessInfoAgent
-
-        agent = BusinessInfoAgent()
         query = state.get("query", "")
         language = state.get("language", "ja")
         session_id = state.get("session_id", "")
         request_type = state.get("routing", {}).get("request_type")
 
-        result = await agent.answer_business_query(query, request_type, language, session_id)
+        # Get cached knowledge results from state
+        state_context = state.get("context", {}).get("knowledge_results")
+        priority_signals = state.get("context", {}).get("priority_signals")
+
+        result = await self._business_info_agent.answer_business_query(
+            query,
+            request_type,
+            language,
+            session_id,
+            state_context=state_context,
+            context_signals=priority_signals,
+        )
 
         return {
             "answer": result.get("answer", ""),
@@ -205,15 +313,23 @@ class MainWorkflow:
 
     async def _facility_node(self, state: WorkflowStateDict) -> dict:
         """施設ノード: 施設情報を処理"""
-        from backend.agents.facility_agent import FacilityAgent
-
-        agent = FacilityAgent()
         query = state.get("query", "")
         language = state.get("language", "ja")
         session_id = state.get("session_id", "")
         request_type = state.get("routing", {}).get("request_type")
 
-        result = await agent.answer_facility_query(query, request_type, language, session_id)
+        # Get cached knowledge results from state
+        state_context = state.get("context", {}).get("knowledge_results")
+        priority_signals = state.get("context", {}).get("priority_signals")
+
+        result = await self._facility_agent.answer_facility_query(
+            query,
+            request_type,
+            language,
+            session_id,
+            state_context=state_context,
+            context_signals=priority_signals,
+        )
 
         return {
             "answer": result.get("answer", ""),
@@ -223,14 +339,11 @@ class MainWorkflow:
 
     async def _event_node(self, state: WorkflowStateDict) -> dict:
         """イベントノード: イベント情報を処理"""
-        from backend.agents.event_agent import EventAgent
-
-        agent = EventAgent()
         query = state.get("query", "")
         language = state.get("language", "ja")
         session_id = state.get("session_id", "")
 
-        result = await agent.answer_event_query(query, language, session_id)
+        result = await self._event_agent.answer_event_query(query, language, session_id)
 
         return {
             "answer": result.get("answer", ""),
@@ -242,8 +355,6 @@ class MainWorkflow:
         """スライドノード: スライドナレーションと質問応答を処理"""
         from backend.agents.slide_agent import SlideAction
 
-        # シングルトンインスタンスを使用
-        agent = self._slide_agent
         query = state.get("query", "")
         language = state.get("language", "ja")
         session_id = state.get("session_id", "default")
@@ -260,7 +371,7 @@ class MainWorkflow:
 
         slide_action: SlideAction = action_map.get(request_type, "narrate")
 
-        result = await agent.handle_slide_action(
+        result = await self._slide_agent.handle_slide_action(
             action=slide_action,
             query=query if slide_action == "question" else None,
             language=language,
@@ -274,79 +385,27 @@ class MainWorkflow:
         }
 
     async def _general_knowledge_node(self, state: WorkflowStateDict) -> dict:
-        """一般知識ノード: 一般的な知識を処理"""
-        from backend.agents.general_knowledge_agent import GeneralKnowledgeAgent
-
-        agent = GeneralKnowledgeAgent()
+        """一般知識ノード: 一般的な知識およびメモリクエリを処理"""
         query = state.get("query", "")
         language = state.get("language", "ja")
         session_id = state.get("session_id", "")
+        query_type = state.get("routing", {}).get("request_type", "general")
+        state_context = state.get("context", {}).get("knowledge_results")
+        priority_signals = state.get("context", {}).get("priority_signals")
 
-        result = await agent.answer_general_query(query, language, session_id)
-
-        return {
-            "answer": result.get("answer", ""),
-            "emotion": result.get("emotion", "neutral"),
-            "metadata": {**state.get("metadata", {}), **result.get("metadata", {})},
-        }
-
-    async def _memory_agent_node(self, state: WorkflowStateDict) -> dict:
-        """
-        メモリエージェントノード: 会話履歴に関する質問に回答
-
-        「さっき何を聞いた？」「前に話したことを覚えてる？」などの
-        メモリ関連の質問に対してMemoryAgentが回答を生成する。
-        """
-        from backend.agents.memory_agent import MemoryAgent
-        from backend.utils.memory_helper import get_memory_helper
-
-        agent = MemoryAgent(memory_system=get_memory_helper())
-        query = state.get("query", "")
-        language = state.get("language", "ja")
-        session_id = state.get("session_id", "")
-
-        result = await agent.process_memory_query(query, session_id, language)
-
-        return {
-            "answer": result.get("answer", ""),
-            "emotion": result.get("emotion", "neutral"),
-            "metadata": {**state.get("metadata", {}), **result.get("metadata", {})},
-        }
-
-    async def _clarification_node(self, state: WorkflowStateDict) -> dict:
-        """明確化ノード: 曖昧なクエリを明確化"""
-        from backend.agents.clarification_agent import ClarificationAgent
-
-        agent = ClarificationAgent()
-        query = state.get("query", "")
-        language = state.get("language", "ja")
-        category = state.get("routing", {}).get("category", "general-clarification-needed")
-
-        # categoryがclarification系でない場合はデフォルトにフォールバック
-        if category not in [
-            "cafe-clarification-needed",
-            "meeting-room-clarification-needed",
-            "general-clarification-needed",
-        ]:
-            category = "general-clarification-needed"
-
-        result = await agent.handle_clarification(
+        result = await self._general_knowledge_agent.answer_query(
             query=query,
-            category=category,
             language=language,
+            session_id=session_id,
+            query_type=query_type,
+            state_context=state_context,
+            context_signals=priority_signals,
         )
 
         return {
-            "answer": result["response"],
-            "emotion": result["emotion"],
-            "metadata": {
-                **state.get("metadata", {}),
-                "clarification": {
-                    **result["metadata"],
-                    "clarification_type": category,
-                },
-                "requires_followup": True,
-            },
+            "answer": result.get("answer", ""),
+            "emotion": result.get("emotion", "neutral"),
+            "metadata": {**state.get("metadata", {}), **result.get("metadata", {})},
         }
 
     async def _format_response_node(self, state: WorkflowStateDict) -> dict:

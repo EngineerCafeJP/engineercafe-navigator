@@ -18,7 +18,6 @@ import os
 import uuid
 import pytest
 import asyncio
-from datetime import datetime, timedelta
 
 # ローカルSupabase接続チェック
 _supabase_url = os.getenv("SUPABASE_URL", "")
@@ -166,13 +165,11 @@ class TestStoreMessage:
         assert matching[0]["value"]["role"] == "assistant"
         assert matching[0]["value"]["content"] == "営業時間は9時から22時です。"
 
-    async def test_store_message_has_ttl(self, memory_helper, unique_session_id):
-        """保存されたメッセージにTTL（expires_at）が設定される"""
-        before = datetime.now()
-
+    async def test_store_message_no_expires_at(self, memory_helper, unique_session_id):
+        """セッションベース: メッセージにexpires_atが設定されない"""
         await memory_helper.store_message(
             role="user",
-            content="テストTTL",
+            content="テストセッション",
             session_id=unique_session_id,
         )
 
@@ -187,14 +184,9 @@ class TestStoreMessage:
         matching = [r for r in response.data if r["value"].get("sessionId") == unique_session_id]
         assert len(matching) == 1
 
-        expires_at = matching[0]["expires_at"]
-        assert expires_at is not None
-
-        # expires_at が now + TTL（180秒）の範囲内であることを確認
-        expires_dt = datetime.fromisoformat(expires_at.replace("Z", "+00:00")).replace(tzinfo=None)
-        expected_min = before + timedelta(seconds=170)  # 少しマージン
-        expected_max = before + timedelta(seconds=190)
-        assert expected_min <= expires_dt <= expected_max
+        # セッションベースではexpires_atが設定されない
+        expires_at = matching[0].get("expires_at")
+        assert expires_at is None
 
     async def test_store_multiple_messages(self, memory_helper, unique_session_id):
         """複数メッセージが正しく保存される"""
@@ -477,33 +469,37 @@ class TestGetMemoryStats:
 class TestCleanup:
     """cleanup のDB結合テスト"""
 
-    async def test_cleanup_removes_expired_entries(self, memory_helper):
-        """期限切れエントリが削除される"""
+    async def test_cleanup_session_removes_messages(self, memory_helper):
+        """セッション単位のクリーンアップでメッセージが削除される"""
         session = f"cleanup_test_{uuid.uuid4().hex[:8]}"
 
-        # 期限切れのエントリを手動挿入
-        expired_time = (datetime.now() - timedelta(seconds=60)).isoformat()
+        # テストメッセージを挿入
         memory_helper.supabase.table("agent_memory").insert(
             {
                 "agent_name": memory_helper.agent_name,
-                "key": f"message_expired_{uuid.uuid4().hex[:8]}",
+                "key": f"message_cleanup_{uuid.uuid4().hex[:8]}",
                 "value": {
                     "role": "user",
-                    "content": "expired message",
+                    "content": "cleanup target message",
                     "sessionId": session,
                     "timestamp": 1000000,
                 },
-                "expires_at": expired_time,
             }
         ).execute()
 
-        # クリーンアップ実行
-        await memory_helper.cleanup()
+        # セッション単位のクリーンアップ実行
+        await memory_helper.cleanup_session(session)
 
-        # 期限切れメッセージが取得されないことを確認
-        messages = await memory_helper._get_recent_messages(session)
-        expired_msgs = [m for m in messages if m["content"] == "expired message"]
-        assert len(expired_msgs) == 0
+        # メッセージが削除されたことを確認
+        response = (
+            memory_helper.supabase.table("agent_memory")
+            .select("*")
+            .eq("agent_name", memory_helper.agent_name)
+            .like("key", "message_%")
+            .execute()
+        )
+        remaining = [r for r in response.data if r["value"].get("sessionId") == session]
+        assert len(remaining) == 0
 
 
 # ==============================================================================

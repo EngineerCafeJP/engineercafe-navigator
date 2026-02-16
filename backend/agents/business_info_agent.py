@@ -53,6 +53,8 @@ class BusinessInfoAgent:
         request_type: Optional[str] = None,
         language: str = "ja",
         session_id: Optional[str] = None,
+        state_context: Optional[Dict] = None,
+        context_signals=None,
     ) -> Dict:
         """営業情報クエリに回答
 
@@ -119,16 +121,27 @@ class BusinessInfoAgent:
         # requestTypeをcategoryにマッピング
         category = self._map_request_type_to_category(request_type)
 
-        # Enhanced RAG検索
-        rag_result = await self.enhanced_rag.search(
-            query=query, category=category, language=language, include_advice=True, max_results=10
-        )
+        # Check cached RAG results
+        cached = state_context if state_context else None
+        if cached and cached.get("success") and cached.get("category") == category:
+            context = cached.get("context_string", "")
+            logger.info(f"Using cached RAG results for {category}")
+        else:
+            # Enhanced RAG検索
+            rag_result = await self.enhanced_rag.search(
+                query=query,
+                category=category,
+                language=language,
+                include_advice=True,
+                max_results=10,
+                context_signals=context_signals,
+            )
 
-        if not rag_result.get("success"):
-            return self._get_default_response(language, request_type)
+            if not rag_result.get("success"):
+                return self._get_default_response(language, request_type)
 
-        # コンテキスト取得
-        context = rag_result.get("data", {}).get("context", "")
+            # コンテキスト取得
+            context = rag_result.get("data", {}).get("context", "")
 
         if not context:
             return self._get_default_response(language, request_type)

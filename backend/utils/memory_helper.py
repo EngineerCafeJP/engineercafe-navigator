@@ -1,8 +1,9 @@
 """
-SimplifiedMemoryHelper - 完全実装
+SimplifiedMemoryHelper - セッションベースメモリ実装
 
-Supabase agent_memoryテーブルを使用した3分間TTL付きメモリシステム。
-フロントエンドのSimplifiedMemorySystemを参考にしたPython実装。
+Supabase agent_memoryテーブルを使用したセッションベースメモリシステム。
+conversation_sessionsテーブルでセッション境界を判定し、
+セッション単位でメッセージをスコープする。
 
 参考: frontend/src/lib/simplified-memory.ts
 """
@@ -10,7 +11,7 @@ Supabase agent_memoryテーブルを使用した3分間TTL付きメモリシス�
 import os
 import uuid
 from typing import Optional, Dict, Any, List
-from datetime import datetime, timedelta
+from datetime import datetime
 import logging
 
 from supabase import create_client, Client
@@ -24,8 +25,8 @@ class SimplifiedMemoryHelper:
     """
     Supabase agent_memoryテーブルを使用したメモリシステム
 
-    3分間のTTL（有効期限）付きで会話履歴を管理。
-    フロントエンドのSimplifiedMemorySystemと同様のインターフェースを提供。
+    セッション単位でメッセージをスコープし、セッションが有効な間は
+    全履歴を保持する。セッション終了後は新しいセッションでフレッシュスタート。
     """
 
     def __init__(self):
@@ -46,10 +47,41 @@ class SimplifiedMemoryHelper:
             self.supabase: Optional[Client] = create_client(supabase_url, supabase_key)
 
         self.agent_name = "langgraph_memory"
-        self.ttl_seconds = 180  # 3 minutes（フロントエンドと同じ）
         self.max_entries = 100  # メッセージ数の上限
 
-        logger.info(f"SimplifiedMemoryHelper initialized with TTL={self.ttl_seconds}s")
+        logger.info("SimplifiedMemoryHelper initialized (session-based)")
+
+    async def _is_session_active(self, session_id: str) -> bool:
+        """
+        セッションがアクティブかどうかを確認
+
+        Args:
+            session_id: セッションID
+
+        Returns:
+            セッションがアクティブならTrue
+        """
+        if not self.supabase:
+            return False
+
+        try:
+            response = (
+                self.supabase.table("conversation_sessions")
+                .select("id, status")
+                .eq("id", session_id)
+                .execute()
+            )
+
+            if not response.data:
+                return False
+
+            session = response.data[0]
+            return session.get("status") == "active"
+
+        except Exception as e:
+            logger.warning(f"Error checking session status: {e}")
+            # セッション情報取得に失敗した場合はフォールバックとしてTrue
+            return True
 
     async def get_previous_request_type(self, session_id: str) -> Optional[str]:
         """
@@ -69,15 +101,12 @@ class SimplifiedMemoryHelper:
             return None
 
         try:
-            current_time = datetime.now().isoformat()
-
-            # agent_memoryテーブルから有効なメッセージを取得
+            # セッションIDでスコープしたメッセージを取得
             response = (
                 self.supabase.table("agent_memory")
                 .select("*")
                 .eq("agent_name", self.agent_name)
                 .like("key", "message_%")
-                .gt("expires_at", current_time)
                 .order("created_at", desc=True)
                 .execute()
             )
@@ -185,26 +214,32 @@ class SimplifiedMemoryHelper:
 
     async def _get_recent_messages(self, session_id: str) -> List[Dict]:
         """
-        agent_memoryテーブルから有効なメッセージを取得
+        agent_memoryテーブルからセッションに属するメッセージを取得
+
+        セッションがアクティブな場合はそのセッションの全メッセージを返す。
+        セッションが非アクティブまたは不明な場合は空リストを返す。
 
         Args:
             session_id: セッションID
 
         Returns:
-            最近のメッセージのリスト
+            セッション内のメッセージリスト
         """
         if not self.supabase:
             return []
 
         try:
-            current_time = datetime.now().isoformat()
+            # セッションの有効性を確認
+            session_active = await self._is_session_active(session_id)
+            if not session_active:
+                logger.info(f"Session {session_id} is not active, returning empty messages")
+                return []
 
             response = (
                 self.supabase.table("agent_memory")
                 .select("*")
                 .eq("agent_name", self.agent_name)
                 .like("key", "message_%")
-                .gt("expires_at", current_time)
                 .order("created_at", desc=False)
                 .limit(self.max_entries)
                 .execute()
@@ -350,9 +385,7 @@ class SimplifiedMemoryHelper:
         # 会話履歴の追加
         if recent_messages:
             header = (
-                "最近の会話履歴（直近3分）:"
-                if language == "ja"
-                else "Recent conversation (last 3 minutes):"
+                "セッション内の会話履歴:" if language == "ja" else "Session conversation history:"
             )
             lines.append(header)
 
@@ -398,6 +431,9 @@ class SimplifiedMemoryHelper:
         """
         メッセージを保存
 
+        セッションIDに紐づけて保存する。TTLベースのexpires_atは設定せず、
+        セッション境界でメッセージのスコープを管理する。
+
         Args:
             role: ロール ("user" or "assistant")
             content: メッセージ内容
@@ -436,24 +472,20 @@ class SimplifiedMemoryHelper:
                 "request_type": metadata.get("request_type"),
             }
 
-            # TTL設定
-            expires_at = (datetime.now() + timedelta(seconds=self.ttl_seconds)).isoformat()
-
             # ユニークなキーを生成（タイムスタンプ + UUID）
             unique_id = uuid.uuid4().hex[:8]
             message_key = f"message_{timestamp}_{unique_id}"
 
-            # agent_memoryテーブルにINSERT
+            # agent_memoryテーブルにINSERT（expires_atなし: セッション境界で管理）
             self.supabase.table("agent_memory").insert(
                 {
                     "agent_name": self.agent_name,
                     "key": message_key,
                     "value": message_data,
-                    "expires_at": expires_at,
                 }
             ).execute()
 
-            logger.info(f"Stored message with key: {message_key}, expires_at: {expires_at}")
+            logger.info(f"Stored message with key: {message_key}, session: {session_id}")
 
         except Exception as e:
             logger.error(f"Error storing message: {e}")
@@ -463,30 +495,110 @@ class SimplifiedMemoryHelper:
         """リクエストタイプ抽出（routing_constantsに委譲）"""
         return extract_request_type(content)
 
-    async def cleanup(self) -> None:
+    async def cleanup_session(self, session_id: str) -> None:
         """
-        期限切れエントリのクリーンアップ
+        セッション終了時のメッセージアーカイブ
 
-        Supabaseが自動的にTTLで削除するが、手動でも実行可能。
+        セッションに紐づくメッセージを削除（またはアーカイブ）する。
+        conversation_sessionsのstatus更新と連動して呼ぶことを想定。
+
+        Args:
+            session_id: セッションID
         """
-        logger.info("Running cleanup for expired memory entries")
+        logger.info(f"Cleaning up messages for session: {session_id}")
 
         if not self.supabase:
             return
 
         try:
-            current_time = datetime.now().isoformat()
-            self.supabase.table("agent_memory").delete().eq("agent_name", self.agent_name).lt(
-                "expires_at", current_time
-            ).execute()
+            # セッションに紐づくメッセージを取得して削除
+            response = (
+                self.supabase.table("agent_memory")
+                .select("id, value")
+                .eq("agent_name", self.agent_name)
+                .like("key", "message_%")
+                .execute()
+            )
 
-            logger.info("Cleanup completed")
+            if not response.data:
+                return
+
+            # session_idに一致するメッセージのIDを収集
+            ids_to_delete = [
+                item["id"]
+                for item in response.data
+                if item.get("value", {}).get("sessionId") == session_id
+            ]
+
+            if ids_to_delete:
+                for record_id in ids_to_delete:
+                    self.supabase.table("agent_memory").delete().eq("id", record_id).execute()
+
+                logger.info(f"Cleaned up {len(ids_to_delete)} messages for session: {session_id}")
+
+        except Exception as e:
+            logger.error(f"Error during session cleanup: {e}")
+
+    async def cleanup(self) -> None:
+        """
+        非アクティブセッションのメッセージクリーンアップ
+
+        conversation_sessionsテーブルでステータスが'ended'のセッションに
+        紐づくメッセージを削除する。
+        """
+        logger.info("Running cleanup for ended session messages")
+
+        if not self.supabase:
+            return
+
+        try:
+            # 終了済みセッションのIDを取得
+            sessions_response = (
+                self.supabase.table("conversation_sessions")
+                .select("id")
+                .neq("status", "active")
+                .execute()
+            )
+
+            if not sessions_response.data:
+                logger.info("No ended sessions to clean up")
+                return
+
+            ended_session_ids = {s["id"] for s in sessions_response.data}
+
+            # 全メッセージを取得してフィルタリング
+            messages_response = (
+                self.supabase.table("agent_memory")
+                .select("id, value")
+                .eq("agent_name", self.agent_name)
+                .like("key", "message_%")
+                .execute()
+            )
+
+            if not messages_response.data:
+                return
+
+            ids_to_delete = [
+                item["id"]
+                for item in messages_response.data
+                if item.get("value", {}).get("sessionId") in ended_session_ids
+            ]
+
+            if ids_to_delete:
+                for record_id in ids_to_delete:
+                    self.supabase.table("agent_memory").delete().eq("id", record_id).execute()
+
+                logger.info(f"Cleaned up {len(ids_to_delete)} messages from ended sessions")
+
         except Exception as e:
             logger.error(f"Error during cleanup: {e}")
 
-    async def get_memory_stats(self) -> Dict[str, Any]:
+    async def get_memory_stats(self, session_id: Optional[str] = None) -> Dict[str, Any]:
         """
         メモリ統計を取得
+
+        Args:
+            session_id: 特定セッションの統計を取得（Noneなら全体）
 
         Returns:
             {
@@ -509,14 +621,11 @@ class SimplifiedMemoryHelper:
             }
 
         try:
-            current_time = datetime.now().isoformat()
-
             response = (
                 self.supabase.table("agent_memory")
                 .select("*")
                 .eq("agent_name", self.agent_name)
                 .like("key", "message_%")
-                .gt("expires_at", current_time)
                 .execute()
             )
 
@@ -529,11 +638,27 @@ class SimplifiedMemoryHelper:
                     "time_span": 0.0,
                 }
 
+            # セッションIDでフィルタリング（指定時）
+            items = response.data
+            if session_id:
+                items = [
+                    item for item in items if item.get("value", {}).get("sessionId") == session_id
+                ]
+
+            if not items:
+                return {
+                    "active_turns": 0,
+                    "oldest_turn": None,
+                    "newest_turn": None,
+                    "dominant_emotion": None,
+                    "time_span": 0.0,
+                }
+
             # 統計情報を計算
             timestamps = []
             emotions = []
 
-            for item in response.data:
+            for item in items:
                 value = item.get("value", {})
                 ts = value.get("timestamp")
                 if ts:
@@ -557,7 +682,7 @@ class SimplifiedMemoryHelper:
                 dominant_emotion = max(emotion_counts, key=lambda k: emotion_counts[k])
 
             return {
-                "active_turns": len(response.data),
+                "active_turns": len(items),
                 "oldest_turn": oldest_turn,
                 "newest_turn": newest_turn,
                 "dominant_emotion": dominant_emotion,

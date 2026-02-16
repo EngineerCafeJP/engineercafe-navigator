@@ -42,7 +42,6 @@ class TestSimplifiedMemoryHelper:
         """初期化が正常に動作するか確認"""
         helper = SimplifiedMemoryHelper()
         assert helper.agent_name == "langgraph_memory"
-        assert helper.ttl_seconds == 180  # 3 minutes
         assert helper.max_entries == 100
 
     def test_singleton_instance(self):

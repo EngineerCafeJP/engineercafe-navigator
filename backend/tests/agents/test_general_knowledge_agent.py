@@ -18,7 +18,7 @@ class TestGeneralKnowledgeAgent:
         os.environ["OPENROUTER_API_KEY"] = "test_dummy_openrouter_key"
 
         # WebSearchToolとOpenRouterProviderをモック
-        with patch("backend.agents.general_knowledge_agent.WebSearchTool"):
+        with patch("backend.agents.general_knowledge_agent.TavilySearchTool"):
             with patch("backend.agents.general_knowledge_agent.OpenRouterProvider"):
                 with patch("backend.agents.general_knowledge_agent.EnhancedRAGSearch"):
                     self.agent = GeneralKnowledgeAgent()
@@ -151,7 +151,7 @@ class TestGeneralKnowledgeAgentIntegration:
 
         # エージェント初期化
         with patch(
-            "backend.agents.general_knowledge_agent.WebSearchTool",
+            "backend.agents.general_knowledge_agent.TavilySearchTool",
             return_value=self.mock_web_search,
         ):
             with patch(

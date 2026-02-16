@@ -41,6 +41,7 @@ class EnhancedRAGSearch:
         language: str = "ja",
         include_advice: bool = True,
         max_results: int = 10,
+        context_signals=None,
     ) -> Dict:
         """
         Enhanced RAG検索を実行
@@ -51,6 +52,7 @@ class EnhancedRAGSearch:
             language: 言語（ja or en）
             include_advice: 実用的なアドバイスを含めるか
             max_results: 最大結果数
+            context_signals: コンテキストシグナル（Noneの場合は静的閾値を使用）
 
         Returns:
             検索結果辞書 {success, data: {context, results, totalResults, topEntity}}
@@ -90,7 +92,9 @@ class EnhancedRAGSearch:
             scored_results = self._score_results(results_list, query, category, language)
 
             # 3.5. 品質グレーディング（軽量CRAG）
-            scored_results = self._grade_result_relevance(scored_results, query, category)
+            scored_results = self._grade_result_relevance(
+                scored_results, query, category, context_signals=context_signals
+            )
 
             # 4. トップ結果を取得
             top_results = scored_results[:max_results]
@@ -170,7 +174,11 @@ class EnhancedRAGSearch:
         return scored_results
 
     def _grade_result_relevance(
-        self, scored_results: List[Dict], query: str, category: str = "general"
+        self,
+        scored_results: List[Dict],
+        query: str,
+        category: str = "general",
+        context_signals=None,
     ) -> List[Dict]:
         """スコアリング済み結果の品質グレーディング（軽量CRAG）
 
@@ -187,6 +195,7 @@ class EnhancedRAGSearch:
             scored_results: _score_results()でスコアリング済みの結果リスト
             query: 元のクエリ文字列
             category: クエリカテゴリ（hours, pricing, location等）
+            context_signals: コンテキストシグナル（Noneの場合は静的閾値を使用）
 
         Returns:
             品質フィルタリング済みの結果リスト
@@ -196,6 +205,23 @@ class EnhancedRAGSearch:
 
         # カテゴリ別閾値を取得
         thresholds = CATEGORY_THRESHOLDS.get(category, DEFAULT_THRESHOLDS)
+
+        # コンテキストシグナルがある場合は動的調整
+        if context_signals is not None:
+            try:
+                from backend.utils.context_priority import ContextPriorityEngine
+
+                engine = ContextPriorityEngine()
+                thresholds = engine.compute_adjusted_thresholds(
+                    category=category,
+                    query=query,
+                    signals=context_signals,
+                    base_thresholds=thresholds,
+                )
+            except Exception as e:
+                logger.warning(f"Context priority adjustment failed, using static thresholds: {e}")
+                thresholds = CATEGORY_THRESHOLDS.get(category, DEFAULT_THRESHOLDS)
+
         high_threshold = thresholds["high"]
         medium_threshold = thresholds["medium"]
         term_match_threshold = thresholds["term_match"]
@@ -446,3 +472,208 @@ class EnhancedRAGSearch:
             return advice_templates[category].get(language, advice_templates[category].get("ja"))
 
         return None
+
+    async def search_hierarchical(
+        self,
+        query: str,
+        category: str,
+        language: str = "ja",
+        include_advice: bool = True,
+        max_results: int = 10,
+        context_signals=None,
+    ) -> Dict:
+        """
+        Hierarchical RAG検索を実行
+
+        チャンクレベルの検索を行い、親チャンクのコンテキストを展開して
+        より豊富なコンテキストを提供する。
+
+        Args:
+            query: 検索クエリ
+            category: クエリカテゴリ
+            language: 言語（ja or en）
+            include_advice: 実用的なアドバイスを含めるか
+            max_results: 最大結果数
+            context_signals: コンテキストシグナル（Noneの場合は静的閾値を使用）
+
+        Returns:
+            検索結果辞書 {success, data: {context, results, totalResults, topEntity}}
+        """
+        try:
+            logger.info(f"Starting hierarchical search: {query[:50]}")
+
+            # 1. Embedding生成
+            embedding = await self._generate_embedding(query)
+
+            # 2. Hierarchical RPC呼び出し（フォールバック付き）
+            try:
+                search_results = self.supabase.rpc(
+                    "search_knowledge_base_hierarchical",
+                    {
+                        "query_embedding": embedding,
+                        "similarity_threshold": 0.35,
+                        "match_count": max_results * 2,
+                        "filter_chunk_level": "chunk",
+                    },
+                ).execute()
+            except Exception as rpc_err:
+                logger.warning(
+                    f"Hierarchical RPC not available, falling back to standard search: {rpc_err}"
+                )
+                return await self.search(
+                    query=query,
+                    category=category,
+                    language=language,
+                    include_advice=include_advice,
+                    max_results=max_results,
+                    context_signals=context_signals,
+                )
+
+            if not search_results.data:
+                return {
+                    "success": True,
+                    "data": {
+                        "context": "",
+                        "results": [],
+                        "totalResults": 0,
+                        "topEntity": "general",
+                    },
+                }
+
+            # 3. スコアリング
+            results_list: List[Dict] = (
+                list(search_results.data) if isinstance(search_results.data, list) else []
+            )
+            scored_results = self._score_results(results_list, query, category, language)
+
+            # 4. 親チャンク展開
+            scored_results = self._expand_parent_context(scored_results)
+
+            # 5. 品質グレーディング
+            scored_results = self._grade_result_relevance(
+                scored_results, query, category, context_signals=context_signals
+            )
+
+            # 6. トップ結果
+            top_results = scored_results[:max_results]
+
+            # 7. Hierarchicalコンテキスト構築
+            context = self._build_hierarchical_context(top_results, language)
+
+            # 8. アドバイス追加
+            if include_advice:
+                advice = self._generate_practical_advice(top_results, query, category, language)
+                if advice:
+                    context += f"\n\n{advice}"
+
+            return {
+                "success": True,
+                "data": {
+                    "context": context,
+                    "results": top_results,
+                    "totalResults": len(scored_results),
+                    "topEntity": (
+                        top_results[0].get("entity", "general") if top_results else "general"
+                    ),
+                },
+            }
+
+        except Exception as e:
+            logger.error(f"Hierarchical search error: {e}")
+            return {"success": False, "error": str(e)}
+
+    def _expand_parent_context(self, chunk_results: List[Dict]) -> List[Dict]:
+        """親チャンクのコンテキストを展開
+
+        チャンク結果からparent_idを抽出し、親ドキュメントの内容を
+        各チャンクに付与する。
+
+        Args:
+            chunk_results: チャンクレベルの検索結果
+
+        Returns:
+            親コンテキストが付与された結果リスト
+        """
+        if not chunk_results:
+            return chunk_results
+
+        # parent_idを抽出（重複排除）
+        parent_ids = list({r.get("parent_id") for r in chunk_results if r.get("parent_id")})
+
+        if not parent_ids:
+            return chunk_results
+
+        try:
+            # 親ドキュメントをbatch SELECT
+            parent_response = (
+                self.supabase.table("knowledge_base")
+                .select("id, title, content")
+                .in_("id", parent_ids)
+                .execute()
+            )
+
+            # 親データをID→データのマップに変換
+            parent_map: Dict = {}
+            if parent_response.data:
+                for parent in parent_response.data:
+                    parent_map[parent["id"]] = parent
+
+            # 各チャンクに親コンテンツを付与
+            expanded: List[Dict] = []
+            for result in chunk_results:
+                pid = result.get("parent_id")
+                if pid and pid in parent_map:
+                    expanded.append(
+                        {
+                            **result,
+                            "parent_content": parent_map[pid].get("content", ""),
+                            "parent_title": parent_map[pid].get("title", ""),
+                        }
+                    )
+                else:
+                    expanded.append(result)
+
+            return expanded
+
+        except Exception as e:
+            logger.warning(f"Failed to expand parent context: {e}")
+            return chunk_results
+
+    def _build_hierarchical_context(self, results: List[Dict], language: str = "ja") -> str:
+        """Hierarchical結果からコンテキストを構築
+
+        親チャンクでグループ化し、階層的なコンテキストを生成する。
+
+        Args:
+            results: 親コンテキスト付きの検索結果
+            language: 言語
+
+        Returns:
+            構築されたコンテキスト文字列
+        """
+        if not results:
+            return ""
+
+        # parent_idでグルーピング
+        groups: Dict[Optional[str], List[Dict]] = {}
+        for result in results:
+            pid = result.get("parent_id")
+            if pid not in groups:
+                groups[pid] = []
+            groups[pid].append(result)
+
+        # コンテキスト構築
+        context_parts: List[str] = []
+
+        for pid, group in groups.items():
+            if pid and group[0].get("parent_title"):
+                # 親がある場合: 親タイトルでグループ化
+                parent_title = group[0]["parent_title"]
+                chunk_contents = "\n".join(r.get("content", "") for r in group)
+                context_parts.append(f"\u3010{parent_title}\u3011\n{chunk_contents}")
+            else:
+                # 親がない場合: 通常のコンテンツ
+                for r in group:
+                    context_parts.append(r.get("content", ""))
+
+        return "\n\n".join(context_parts)

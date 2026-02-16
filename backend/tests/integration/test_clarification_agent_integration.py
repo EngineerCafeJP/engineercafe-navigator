@@ -1,35 +1,28 @@
 """
-ClarificationAgent統合テスト
+Clarification テンプレート統合テスト
 
-ClarificationAgentがMainWorkflowに統合され、OrchestratorAgentから正しくルーティングされ、
-適切な明確化メッセージを返すことを検証する統合テストスイート。
+clarification_templates ユーティリティがワークフローと正しく統合され、
+オーケストレーターノードからインラインで適切な明確化メッセージを返すことを検証する。
 
 テスト範囲:
-- ClarificationAgentとMainWorkflowの統合
-- カテゴリ別（cafe, meeting-room, general）の明確化メッセージ
+- clarification_templates のカテゴリ別テンプレート応答
 - 日本語/英語の両言語対応
-- 異常系（フォールバック処理）
 - メタデータ構造の検証
+- ワークフロー _orchestrator_node のインライン処理
 """
 
 import os
 import pytest
-from backend.agents.clarification_agent import ClarificationAgent
+from backend.utils.clarification_templates import get_clarification_response
 
 
 class TestMessageContent:
     """メッセージ内容の正確性テスト"""
 
-    @pytest.fixture
-    def agent(self):
-        return ClarificationAgent()
-
     @pytest.mark.asyncio
-    async def test_cafe_clarification_ja_content(self, agent):
+    async def test_cafe_clarification_ja_content(self):
         """カフェ曖昧性解消（日本語）のメッセージ内容を確認"""
-        result = await agent.handle_clarification(
-            query="カフェの営業時間は？", category="cafe-clarification-needed", language="ja"
-        )
+        result = get_clarification_response(category="cafe-clarification-needed", language="ja")
 
         response = result["response"]
 
@@ -41,11 +34,9 @@ class TestMessageContent:
         assert "どちらについて" in response
 
     @pytest.mark.asyncio
-    async def test_cafe_clarification_en_content(self, agent):
+    async def test_cafe_clarification_en_content(self):
         """カフェ曖昧性解消（英語）のメッセージ内容を確認"""
-        result = await agent.handle_clarification(
-            query="What are the cafe hours?", category="cafe-clarification-needed", language="en"
-        )
+        result = get_clarification_response(category="cafe-clarification-needed", language="en")
 
         response = result["response"]
 
@@ -57,10 +48,9 @@ class TestMessageContent:
         assert "which one" in response.lower()
 
     @pytest.mark.asyncio
-    async def test_meeting_room_clarification_ja_content(self, agent):
+    async def test_meeting_room_clarification_ja_content(self):
         """会議室曖昧性解消（日本語）のメッセージ内容を確認"""
-        result = await agent.handle_clarification(
-            query="会議室の予約方法は？",
+        result = get_clarification_response(
             category="meeting-room-clarification-needed",
             language="ja",
         )
@@ -75,10 +65,9 @@ class TestMessageContent:
         assert "2種類" in response
 
     @pytest.mark.asyncio
-    async def test_meeting_room_clarification_en_content(self, agent):
+    async def test_meeting_room_clarification_en_content(self):
         """会議室曖昧性解消（英語）のメッセージ内容を確認"""
-        result = await agent.handle_clarification(
-            query="How do I book a meeting room?",
+        result = get_clarification_response(
             category="meeting-room-clarification-needed",
             language="en",
         )
@@ -93,8 +82,104 @@ class TestMessageContent:
         assert "two types" in response.lower()
 
 
+class TestClarificationTemplates:
+    """clarification_templates ユニットテスト"""
+
+    @pytest.mark.parametrize(
+        "category,language,expected_keywords",
+        [
+            (
+                "cafe-clarification-needed",
+                "ja",
+                ["エンジニアカフェ", "サイノカフェ", "どちらについて"],
+            ),
+            (
+                "cafe-clarification-needed",
+                "en",
+                ["Engineer Cafe", "Saino Cafe", "which one"],
+            ),
+            (
+                "meeting-room-clarification-needed",
+                "ja",
+                ["有料会議室", "地下MTGスペース", "2種類"],
+            ),
+            (
+                "meeting-room-clarification-needed",
+                "en",
+                ["Paid Meeting Rooms", "Basement Meeting Spaces", "two types"],
+            ),
+            ("general-clarification-needed", "ja", ["もう少し詳しく"]),
+            ("general-clarification-needed", "en", ["more details"]),
+        ],
+    )
+    def test_template_keywords(self, category, language, expected_keywords):
+        """カテゴリと言語に応じたテンプレートメッセージが正しいことを確認"""
+        result = get_clarification_response(category=category, language=language)
+        response = result["response"]
+
+        for keyword in expected_keywords:
+            assert keyword in response, f"Keyword '{keyword}' not found in response"
+
+        # 感情タグが付与されていることを確認
+        assert response.startswith("[surprised]"), "Emotion tag not found"
+
+    @pytest.mark.parametrize(
+        "category,language",
+        [
+            ("cafe-clarification-needed", "ja"),
+            ("cafe-clarification-needed", "en"),
+            ("meeting-room-clarification-needed", "ja"),
+            ("meeting-room-clarification-needed", "en"),
+            ("general-clarification-needed", "ja"),
+            ("general-clarification-needed", "en"),
+        ],
+    )
+    def test_emotion_tag_always_surprised(self, category, language):
+        """すべての応答に[surprised]タグが付与されることを確認"""
+        result = get_clarification_response(category=category, language=language)
+        assert result["emotion"] == "surprised"
+        assert result["response"].startswith("[surprised]")
+
+    @pytest.mark.parametrize(
+        "category,expected_confidence",
+        [
+            ("cafe-clarification-needed", 0.9),
+            ("meeting-room-clarification-needed", 0.9),
+            ("general-clarification-needed", 0.7),
+        ],
+    )
+    def test_metadata_structure(self, category, expected_confidence):
+        """メタデータが正しく設定されることを確認"""
+        result = get_clarification_response(category=category, language="ja")
+        metadata = result["metadata"]
+
+        assert metadata["agent"] == "ClarificationAgent"
+        assert metadata["confidence"] == expected_confidence
+        assert metadata["category"] == category
+        assert metadata["sources"] == ["clarification_system"]
+
+    def test_unknown_category_fallback(self):
+        """未知のカテゴリが general-clarification-needed にフォールバックされる"""
+        # 型チェック回避で直接呼ぶ
+        result = get_clarification_response(
+            category="unknown-category",  # type: ignore[arg-type]
+            language="ja",
+        )
+
+        assert result["response"] is not None
+        assert result["emotion"] == "surprised"
+        assert result["metadata"]["confidence"] == 0.7
+
+    def test_language_difference(self):
+        """言語によってメッセージが異なることを確認"""
+        result_ja = get_clarification_response(category="cafe-clarification-needed", language="ja")
+        result_en = get_clarification_response(category="cafe-clarification-needed", language="en")
+
+        assert result_ja["response"] != result_en["response"]
+
+
 class TestClarificationIntegration:
-    """ClarificationAgentとワークフローの統合テスト（擬似E2E）"""
+    """ワークフローとの統合テスト（オーケストレーターのインライン処理）"""
 
     def setup_method(self):
         """各テストメソッドの前に実行"""
@@ -103,64 +188,6 @@ class TestClarificationIntegration:
         from backend.workflows.main_workflow import MainWorkflow
 
         self.workflow = MainWorkflow()
-
-    @pytest.mark.asyncio
-    async def test_clarification_node_integration(self):
-        """Clarificationノードの統合テスト"""
-        test_cases = [
-            {
-                "query": "カフェの営業時間は？",
-                "expected_category": "cafe-clarification-needed",
-                "language": "ja",
-            },
-            {
-                "query": "会議室の予約方法は？",
-                "expected_category": "meeting-room-clarification-needed",
-                "language": "ja",
-            },
-            {
-                "query": "What are the cafe hours?",
-                "expected_category": "cafe-clarification-needed",
-                "language": "en",
-            },
-        ]
-
-        for case in test_cases:
-            # Router Agentがcategoryを設定する想定
-            # _clarification_nodeはstate.get("routing", {}).get("category")でトップレベルを参照
-            state = {
-                "query": case["query"],
-                "session_id": "test_session",
-                "language": case["language"],
-                "messages": [],
-                "routed_to": None,
-                "answer": None,
-                "emotion": None,
-                "routing": {
-                    "category": case["expected_category"],
-                },
-                "metadata": {"routing": {"category": case["expected_category"]}},
-                "context": {},
-            }
-
-            # Clarificationノードを直接呼び出し（awaitが必要）
-            result = await self.workflow._clarification_node(state)
-
-            # 基本アサーション
-            assert result["answer"] is not None
-            assert result["emotion"] == "surprised"
-
-            # メタデータ構造の確認（実装に合わせて修正）
-            assert "clarification" in result["metadata"]
-            assert result["metadata"]["clarification"]["agent"] == "ClarificationAgent"
-            assert result["metadata"]["requires_followup"] is True
-            assert (
-                result["metadata"]["clarification"]["clarification_type"]
-                == case["expected_category"]
-            )
-
-            # 感情タグが付与されていることを確認
-            assert "[surprised]" in result["answer"]
 
     @pytest.mark.asyncio
     async def test_full_workflow_with_clarification(self):
@@ -173,94 +200,8 @@ class TestClarificationIntegration:
         assert result["answer"] is not None
 
         # ClarificationAgentにルーティングされた場合のみ確認
-        routing = result.get("routing", {})
-        if routing.get("agent") == "clarification":
+        metadata = result.get("metadata", {})
+        if metadata.get("requires_followup"):
             assert "[surprised]" in result["answer"]
             assert result["emotion"] == "surprised"
-            assert result["metadata"].get("requires_followup") is True
-            assert "clarification" in result["metadata"]
-
-    @pytest.mark.asyncio
-    async def test_clarification_fallback_to_general(self):
-        """未知のcategoryがgeneral-clarification-neededにフォールバックされる"""
-        state = {
-            "query": "test query",
-            "session_id": "test_session",
-            "language": "ja",
-            "messages": [],
-            "routed_to": None,
-            "answer": None,
-            "emotion": None,
-            "routing": {
-                "category": "unknown-category",
-            },
-            "metadata": {"routing": {"category": "unknown-category"}},
-            "context": {},
-        }
-
-        result = await self.workflow._clarification_node(state)
-
-        # general-clarification-neededにフォールバックされることを確認
-        assert result["answer"] is not None
-        assert result["emotion"] == "surprised"
-        assert (
-            result["metadata"]["clarification"]["clarification_type"]
-            == "general-clarification-needed"
-        )
-        assert result["metadata"]["clarification"]["category"] == "general-clarification-needed"
-        assert result["metadata"]["clarification"]["confidence"] == 0.7  # generalは0.7
-
-    @pytest.mark.asyncio
-    async def test_clarification_missing_routing_metadata(self):
-        """routing metadataが欠けている場合のフォールバック"""
-        state = {
-            "query": "test query",
-            "session_id": "test_session",
-            "language": "ja",
-            "messages": [],
-            "routed_to": None,
-            "answer": None,
-            "emotion": None,
-            "metadata": {},  # routing情報がない（トップレベルのroutingもない）
-            "context": {},
-        }
-
-        result = await self.workflow._clarification_node(state)
-
-        # general-clarification-neededにフォールバックされることを確認
-        assert result["answer"] is not None
-        assert result["emotion"] == "surprised"
-        assert (
-            result["metadata"]["clarification"]["clarification_type"]
-            == "general-clarification-needed"
-        )
-
-    @pytest.mark.asyncio
-    async def test_clarification_empty_category(self):
-        """categoryが空文字列の場合のフォールバック"""
-        state = {
-            "query": "test query",
-            "session_id": "test_session",
-            "language": "ja",
-            "messages": [],
-            "routed_to": None,
-            "answer": None,
-            "emotion": None,
-            "routing": {
-                "category": "",
-            },
-            "metadata": {"routing": {"category": ""}},
-            "context": {},
-        }
-
-        result = await self.workflow._clarification_node(state)
-
-        # general-clarification-neededにフォールバックされることを確認
-        assert result["answer"] is not None
-        assert result["emotion"] == "surprised"
-        assert (
-            result["metadata"]["clarification"]["clarification_type"]
-            == "general-clarification-needed"
-        )
-
-
+            assert "clarification" in metadata

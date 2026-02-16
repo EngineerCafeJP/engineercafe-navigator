@@ -53,49 +53,51 @@ class TestMainWorkflowMemoryIntegration:
 
     @pytest.mark.asyncio
     @patch("backend.workflows.main_workflow.OrchestratorAgent")
-    async def test_memory_agent_node_processes_query(self, mock_orchestrator_class):
-        """_memory_agent_nodeがMemoryAgentを呼び出して回答を生成することを確認"""
+    async def test_general_knowledge_node_handles_memory_query(self, mock_orchestrator_class):
+        """_general_knowledge_nodeがmemoryクエリをGKA経由で処理することを確認"""
         from backend.workflows.main_workflow import MainWorkflow
 
         mock_orchestrator_class.return_value = AsyncMock()
 
-        with (
-            patch("backend.utils.memory_helper.get_memory_helper") as mock_get_helper,
-            patch("backend.agents.memory_agent.MemoryAgent") as mock_memory_agent_class,
-        ):
-            mock_helper = Mock()
+        with patch("backend.utils.memory_helper.get_memory_helper") as mock_get_helper:
+            mock_helper = AsyncMock()
             mock_get_helper.return_value = mock_helper
 
-            mock_agent = AsyncMock()
-            mock_agent.process_memory_query = AsyncMock(
+            workflow = MainWorkflow()
+
+            # GKAのanswer_queryをモック
+            workflow._general_knowledge_agent.answer_query = AsyncMock(
                 return_value={
                     "answer": "営業時間について質問されていましたね。",
                     "emotion": "relaxed",
                     "metadata": {
-                        "agent": "MemoryAgent",
+                        "agent": "GeneralKnowledgeAgent",
                         "status": "success",
                         "query_type": "question_history",
                     },
                 }
             )
-            mock_memory_agent_class.return_value = mock_agent
-
-            workflow = MainWorkflow()
 
             state = {
                 "query": "さっき何を聞いた？",
                 "session_id": "test-session",
                 "language": "ja",
-                "routing": {},
+                "routing": {"request_type": "memory"},
                 "metadata": {},
+                "context": {},
             }
 
-            result = await workflow._memory_agent_node(state)
+            result = await workflow._general_knowledge_node(state)
 
             assert result["answer"] == "営業時間について質問されていましたね。"
             assert result["emotion"] == "relaxed"
-            mock_agent.process_memory_query.assert_called_once_with(
-                "さっき何を聞いた？", "test-session", "ja"
+            workflow._general_knowledge_agent.answer_query.assert_called_once_with(
+                query="さっき何を聞いた？",
+                language="ja",
+                session_id="test-session",
+                query_type="memory",
+                state_context=None,
+                context_signals=None,
             )
 
     @pytest.mark.asyncio
@@ -131,8 +133,8 @@ class TestMainWorkflowMemoryIntegration:
 class TestWorkflowGraphStructure:
     """ワークフローグラフ構造のテスト"""
 
-    def test_workflow_has_memory_agent_node(self):
-        """ワークフローにmemory_agentノードが含まれることを確認"""
+    def test_workflow_has_required_nodes(self):
+        """ワークフローに必要なノードが含まれることを確認"""
         from backend.workflows.main_workflow import MainWorkflow
 
         with patch("backend.workflows.main_workflow.OrchestratorAgent"):
