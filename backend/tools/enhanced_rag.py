@@ -23,6 +23,19 @@ CATEGORY_THRESHOLDS = {
 }
 DEFAULT_THRESHOLDS = {"high": 0.78, "medium": 0.58, "term_match": 0.25}
 
+# カテゴリ別RPC類似度閾値
+RPC_SIMILARITY_THRESHOLDS: Dict[str, float] = {
+    "hours": 0.30,
+    "pricing": 0.30,
+    "location": 0.30,
+    "facility-info": 0.35,
+    "event": 0.40,
+    "general": 0.35,
+    "consultation": 0.35,
+    "community": 0.35,
+}
+DEFAULT_RPC_SIMILARITY_THRESHOLD = 0.35
+
 
 class EnhancedRAGSearch:
     """Enhanced RAG検索ツール"""
@@ -33,6 +46,10 @@ class EnhancedRAGSearch:
             os.getenv("SUPABASE_URL", ""),
             os.getenv("SUPABASE_KEY", ""),
         )
+
+    def _get_rpc_threshold(self, category: str) -> float:
+        """カテゴリに基づくRPC類似度閾値を取得"""
+        return RPC_SIMILARITY_THRESHOLDS.get(category, DEFAULT_RPC_SIMILARITY_THRESHOLD)
 
     async def search(
         self,
@@ -69,7 +86,7 @@ class EnhancedRAGSearch:
                 "search_knowledge_base",
                 {
                     "query_embedding": embedding,
-                    "similarity_threshold": 0.35,
+                    "similarity_threshold": self._get_rpc_threshold(category),
                     "match_count": max_results * 2,  # スコアリング用に多めに取得
                 },
             ).execute()
@@ -511,7 +528,7 @@ class EnhancedRAGSearch:
                     "search_knowledge_base_hierarchical",
                     {
                         "query_embedding": embedding,
-                        "similarity_threshold": 0.35,
+                        "similarity_threshold": self._get_rpc_threshold(category),
                         "match_count": max_results * 2,
                         "filter_chunk_level": "chunk",
                     },

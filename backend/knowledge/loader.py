@@ -35,6 +35,14 @@ class ChunkingStrategy:
     min_chunk_tokens: int = 50
 
 
+CATEGORY_CHUNKING_STRATEGIES: dict[str, ChunkingStrategy] = {
+    "hours": ChunkingStrategy(max_tokens=300, overlap_tokens=30, min_chunk_tokens=40),
+    "pricing": ChunkingStrategy(max_tokens=300, overlap_tokens=30, min_chunk_tokens=40),
+    "facility-info": ChunkingStrategy(max_tokens=400, overlap_tokens=40, min_chunk_tokens=50),
+    "event": ChunkingStrategy(max_tokens=400, overlap_tokens=40, min_chunk_tokens=50),
+}
+
+
 @dataclass(frozen=True)
 class KnowledgeChunk:
     """A single chunk produced by the chunking engine.
@@ -84,6 +92,16 @@ def _is_japanese_char(ch: str) -> bool:
             return True
     cat = unicodedata.category(ch)
     return cat.startswith("Lo") and ord(ch) > 0x2E7F
+
+
+def get_strategy_for_category(
+    category: str,
+    override: ChunkingStrategy | None = None,
+) -> ChunkingStrategy:
+    """Return the chunking strategy for *category*, or *override* if given."""
+    if override is not None:
+        return override
+    return CATEGORY_CHUNKING_STRATEGIES.get(category, ChunkingStrategy())
 
 
 def count_tokens(text: str) -> int:
@@ -144,6 +162,29 @@ def load_all_yaml_files(data_dir: Path) -> list[KnowledgeSection]:
 # ---------------------------------------------------------------------------
 
 _SENTENCE_RE = re.compile(r"(?<=[。．.!?！？\n])")
+_SECTION_HEADING_RE = re.compile(r"(?m)^(?:#{2,3}\s+.+|(?:\d+[\.\)]\s+.+))")
+
+
+def _split_into_sections(content: str) -> list[tuple[str, str]]:
+    """Split content into sections by markdown headings or numbered items.
+
+    Returns a list of ``(heading, body)`` tuples.  If fewer than two
+    headings are found the content is considered non-sectioned and an
+    empty list is returned so callers fall back to the default path.
+    """
+    headings = list(_SECTION_HEADING_RE.finditer(content))
+    if len(headings) < 2:
+        return []
+
+    sections: list[tuple[str, str]] = []
+    for i, match in enumerate(headings):
+        heading = match.group().strip().lstrip("#").strip()
+        start = match.end()
+        end = headings[i + 1].start() if i + 1 < len(headings) else len(content)
+        body = content[start:end].strip()
+        if body:
+            sections.append((heading, body))
+    return sections
 
 
 def _split_sentences(text: str) -> list[str]:
@@ -202,6 +243,72 @@ def _split_and_merge(content: str, strategy: ChunkingStrategy) -> list[str]:
     return _apply_overlap(merged, strategy.overlap_tokens)
 
 
+def _chunk_with_sections(
+    entry: KnowledgeEntry,
+    sections: list[tuple[str, str]],
+    strategy: ChunkingStrategy,
+) -> list[KnowledgeChunk]:
+    """Produce document + section-level (and optionally chunk-level) chunks."""
+    # Document-level summary (same as existing large-entry pattern)
+    summary = entry.content[:200].rstrip() + "..."
+    chunks: list[KnowledgeChunk] = [
+        KnowledgeChunk(
+            entry_id=entry.id,
+            chunk_level="document",
+            chunk_index=0,
+            title=entry.title,
+            content=summary,
+            token_count=count_tokens(summary),
+            category=entry.category,
+            metadata=_build_metadata(entry),
+        )
+    ]
+
+    child_index = 1
+    for heading, body in sections:
+        tc = count_tokens(body)
+        section_title = f"{entry.title} - {heading}"
+        meta = {**_build_metadata(entry), "section": heading}
+
+        if tc <= strategy.max_tokens:
+            # Section fits in one chunk
+            chunks.append(
+                KnowledgeChunk(
+                    entry_id=entry.id,
+                    chunk_level="section",
+                    chunk_index=child_index,
+                    title=section_title,
+                    content=body,
+                    token_count=tc,
+                    category=entry.category,
+                    metadata=meta,
+                )
+            )
+            child_index += 1
+        else:
+            # Section too large -> split into chunk-level pieces
+            merged = _split_and_merge(body, strategy)
+            for text in merged:
+                sub_tc = count_tokens(text)
+                if sub_tc < strategy.min_chunk_tokens:
+                    continue
+                chunks.append(
+                    KnowledgeChunk(
+                        entry_id=entry.id,
+                        chunk_level="chunk",
+                        chunk_index=child_index,
+                        title=section_title,
+                        content=text,
+                        token_count=sub_tc,
+                        category=entry.category,
+                        metadata=meta,
+                    )
+                )
+                child_index += 1
+
+    return chunks
+
+
 # ---------------------------------------------------------------------------
 # Chunking
 # ---------------------------------------------------------------------------
@@ -229,6 +336,11 @@ def chunk_entry(
                 metadata=_build_metadata(entry),
             )
         ]
+
+    # Check for section headings in large entries
+    sections = _split_into_sections(entry.content)
+    if sections:
+        return _chunk_with_sections(entry, sections, strategy)
 
     # Large entry -> parent document + child chunks
     summary = entry.content[:200].rstrip() + "..."
@@ -353,13 +465,14 @@ async def seed_from_yaml(
     strategy: ChunkingStrategy | None = None,
 ) -> SeedResult:
     """Load YAML, chunk, embed, and upsert everything to Supabase."""
-    strategy = strategy or ChunkingStrategy()
+    default_strategy = strategy  # May be None; per-entry override
 
     sections = load_all_yaml_files(data_dir)
     all_chunks: list[KnowledgeChunk] = []
     for section in sections:
         for entry in section.entries:
-            all_chunks.extend(chunk_entry(entry, strategy))
+            entry_strategy = get_strategy_for_category(entry.category, default_strategy)
+            all_chunks.extend(chunk_entry(entry, entry_strategy))
 
     if not all_chunks:
         logger.warning("No chunks produced – nothing to seed")

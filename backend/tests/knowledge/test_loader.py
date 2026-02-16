@@ -12,6 +12,7 @@ from backend.knowledge.loader import (
     ChunkingStrategy,
     KnowledgeChunk,
     SeedResult,
+    _split_into_sections,
     chunk_entry,
     count_tokens,
     generate_chunks_with_embeddings,
@@ -519,3 +520,100 @@ class TestSeedFromYaml:
             result.total_chunks
         )
         assert result.error_count == 0
+
+
+# ===================================================================
+# TestSectionChunking
+# ===================================================================
+
+
+class TestSectionChunking:
+    """Tests for section-level chunking."""
+
+    def test_markdown_headings_detected(self):
+        """## headings are detected by _split_into_sections."""
+        content = "Intro\n\n## Section One\nBody one.\n\n## Section Two\nBody two."
+        sections = _split_into_sections(content)
+        assert len(sections) == 2
+        assert sections[0][0] == "Section One"
+        assert sections[1][0] == "Section Two"
+
+    def test_numbered_sections_detected(self):
+        """1. numbered sections are detected."""
+        content = "1. First Item\nDescription of first.\n\n2. Second Item\nDescription of second."
+        sections = _split_into_sections(content)
+        assert len(sections) == 2
+
+    def test_no_headings_returns_empty(self):
+        """Content without headings returns empty list."""
+        content = "Just plain text without any headings or structure."
+        sections = _split_into_sections(content)
+        assert sections == []
+
+    def test_single_heading_returns_empty(self):
+        """Single heading is not enough for section splitting."""
+        content = "## Only One Heading\nSome body text."
+        sections = _split_into_sections(content)
+        assert sections == []
+
+    def test_section_level_chunks_produced(self):
+        """Entries with headings produce section-level chunks."""
+        content = (
+            "## セクション1\n"
+            + "テスト内容です。" * 80
+            + "\n\n## セクション2\n"
+            + "別の内容です。" * 80
+        )
+        entry = _make_entry(content=content)
+        strategy = ChunkingStrategy(max_tokens=500)
+        chunks = chunk_entry(entry, strategy)
+
+        section_chunks = [c for c in chunks if c.chunk_level == "section"]
+        assert len(section_chunks) >= 2
+
+    def test_large_section_splits_to_chunks(self):
+        """Sections larger than max_tokens split into chunk-level pieces."""
+        large_body = "これは非常に長いセクションの内容です。" * 100
+        content = f"## 大きいセクション\n{large_body}\n\n## 小さいセクション\n短い内容。"
+        entry = _make_entry(content=content)
+        strategy = ChunkingStrategy(max_tokens=100)
+        chunks = chunk_entry(entry, strategy)
+
+        chunk_level_chunks = [c for c in chunks if c.chunk_level == "chunk"]
+        assert len(chunk_level_chunks) >= 1
+
+    def test_section_metadata_includes_heading(self):
+        """Section chunks include heading in metadata."""
+        content = (
+            "## セクションA\n"
+            + "セクションAの内容です。" * 60
+            + "\n\n## セクションB\n"
+            + "セクションBの内容です。" * 60
+        )
+        entry = _make_entry(content=content)
+        strategy = ChunkingStrategy(max_tokens=500)
+        chunks = chunk_entry(entry, strategy)
+
+        section_chunks = [c for c in chunks if c.chunk_level == "section"]
+        assert len(section_chunks) >= 1
+        assert "section" in section_chunks[0].metadata
+        assert section_chunks[0].metadata["section"] in ("セクションA", "セクションB")
+
+    def test_section_title_includes_heading(self):
+        """Section chunk title includes entry title and heading."""
+        content = (
+            "## Features\n"
+            + "テスト機能の詳細な説明文です。" * 80
+            + "\n\n## Pricing\n"
+            + "テスト料金の詳細な説明文です。" * 80
+        )
+        entry = _make_entry(title="Service Info", content=content)
+        strategy = ChunkingStrategy(max_tokens=500)
+        chunks = chunk_entry(entry, strategy)
+
+        # Section or chunk-level pieces derived from sections carry the heading title
+        non_doc = [c for c in chunks if c.chunk_level in ("section", "chunk")]
+        assert (
+            len(non_doc) >= 1
+        ), f"Expected section/chunk children, got levels: {[c.chunk_level for c in chunks]}"
+        assert any("Service Info - " in c.title for c in non_doc)
