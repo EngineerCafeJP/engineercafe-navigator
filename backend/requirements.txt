@@ -4,6 +4,7 @@ langchain>=0.3.0
 langchain-openai>=0.2.0
 langsmith>=0.1.0
 pydantic>=2.0.0
+pydantic-settings>=2.0.0
 fastapi>=0.115.0
 uvicorn[standard]>=0.30.0
 python-dotenv>=1.0.0
@@ -14,7 +15,7 @@ numpy>=1.24.0,<2.0
 scipy>=1.10.0
 google-generativeai>=0.8.0
 # Audio processing (STT/TTS)
-vosk>=0.3.45
+vosk>=0.3.44
 soundfile>=0.12.1
 
 # LangGraph Checkpointer (PostgreSQL)

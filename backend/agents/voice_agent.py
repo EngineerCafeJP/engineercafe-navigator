@@ -481,6 +481,77 @@ class VoiceVoxClient:
 
 
 # =============================================================================
+# Kokoro TTS Client (Local, WAV format)
+# =============================================================================
+
+
+class KokoroTTSClient:
+    """
+    英語TTS: Kokoro TTS エンジン
+
+    Kokoro TTSは英語・日本語・中国語に対応した軽量TTSエンジン。
+    Dockerで起動したKokoro FastAPI REST APIを使用します。
+    """
+
+    DEFAULT_VOICE_EN = "af_bella"  # 英語用デフォルトボイス
+
+    def __init__(self, api_url: str = "http://localhost:8880"):
+        """
+        Args:
+            api_url: Kokoro TTS Engine API URL
+        """
+        self.api_url = api_url.rstrip("/")
+        logger.info(f"KokoroTTSClient initialized: {self.api_url}")
+
+    async def synthesize_wav_base64(
+        self, text: str, lang: str, voice: Optional[str] = None
+    ) -> str:
+        """
+        テキストを音声に合成し、base64エンコードされたWAVを返す
+
+        Args:
+            text: 合成するテキスト
+            lang: 言語コード（現在は使用されないが、将来の拡張のために保持）
+            voice: ボイス名（未指定時はデフォルトボイスを使用）
+
+        Returns:
+            base64エンコードされたWAVデータ
+        """
+        if voice is None:
+            voice = self.DEFAULT_VOICE_EN
+
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                response = await client.post(
+                    f"{self.api_url}/v1/audio/speech",
+                    json={
+                        "model": "kokoro",
+                        "input": text,
+                        "voice": voice,
+                        "response_format": "wav",
+                    },
+                )
+
+                if response.status_code >= 400:
+                    raise RuntimeError(
+                        f"Kokoro TTS API Error {response.status_code}: {response.text}"
+                    )
+
+                wav_data = response.content
+                wav_b64 = base64.b64encode(wav_data).decode("utf-8")
+
+                logger.info(f"Kokoro TTS synthesis success: text_len={len(text)}")
+                return wav_b64
+
+        except httpx.TimeoutException as e:
+            logger.error(f"Kokoro TTS timeout: {e}")
+            raise RuntimeError(f"Kokoro TTS connection timeout: {e}")
+        except Exception as e:
+            logger.error(f"Kokoro TTS synthesis error: {e}", exc_info=True)
+            raise RuntimeError(f"Kokoro TTS synthesis error: {e}")
+
+
+# =============================================================================
 # VoiceAgent class (modified for provider switching + language detection + clarification)
 # =============================================================================
 
@@ -515,6 +586,11 @@ class VoiceAgent:
 
         self.clarification_agent = clarification_agent or ClarificationAgent()
         logger.info("ClarificationAgent initialized for voice_agent")
+
+        # Kokoro TTSクライアントを追加（英語TTS用）
+        kokoro_api_url = os.getenv("KOKORO_API_URL", "http://localhost:8880")
+        self.kokoro_client = KokoroTTSClient(api_url=kokoro_api_url)
+        logger.info(f"Kokoro TTS client initialized: {kokoro_api_url}")
 
     def _detect_category(self, text: str, language: str) -> Optional[ClarificationCategory]:
         """
@@ -602,20 +678,29 @@ class VoiceAgent:
             logger.warning("Text truncated to 5000 bytes")
 
         try:
-            # ステップ5: Provider ごとの呼び出し分岐
-            if self.tts_provider == "voicevox":
+            # ステップ5: 言語に基づいてTTSエンジンを選択
+            if language == "en":
+                # 英語 → Kokoro TTS
+                audio_b64 = await self.kokoro_client.synthesize_wav_base64(processed, language)
+                audio_format = "audio/wav"
+            elif self.tts_provider == "voicevox":
+                # 日本語 → VoiceVox
                 audio_b64 = await self.tts_client.synthesize_wav_base64(processed, language)
+                audio_format = "audio/wav"
             else:  # google
+                # Google TTS（既存のロジック）
                 tts_emotion = map_vrm_to_tts_emotion(vrm_emotion)
                 audio_b64 = await self.tts_client.synthesize_mp3_base64(
                     processed, language, tts_emotion
                 )
+                audio_format = "audio/mpeg"
+
             return {
                 "success": True,
                 "audioResponse": audio_b64,
                 "emotion": vrm_emotion,
                 "cleanText": processed,
-                "format": "audio/wav" if self.tts_provider == "voicevox" else "audio/mpeg",
+                "format": audio_format,
                 "language": language,
                 "ambiguity_resolved": ambiguity_category is not None,
             }
@@ -623,12 +708,20 @@ class VoiceAgent:
             logger.exception("TTS failed, trying fallback: %s", e)
             fb_text = fallback_error_message(language)
             try:
-                if self.tts_provider == "voicevox":
+                if language == "en":
+                    # 英語フォールバック → Kokoro TTS
+                    audio_b64 = await self.kokoro_client.synthesize_wav_base64(fb_text, language)
+                    audio_format = "audio/wav"
+                elif self.tts_provider == "voicevox":
+                    # 日本語フォールバック → VoiceVox
                     audio_b64 = await self.tts_client.synthesize_wav_base64(fb_text, language)
+                    audio_format = "audio/wav"
                 else:
+                    # Google TTSフォールバック
                     audio_b64 = await self.tts_client.synthesize_mp3_base64(
                         fb_text, language, "sad"
                     )
+                    audio_format = "audio/mpeg"
 
                 return {
                     "success": True,
@@ -636,7 +729,7 @@ class VoiceAgent:
                     "emotion": "sad",
                     "cleanText": fb_text,
                     "error": str(e),
-                    "format": "audio/wav" if self.tts_provider == "voicevox" else "audio/mpeg",
+                    "format": audio_format,
                 }
             except Exception as fallback_error:
                 logger.error(f"Fallback TTS also failed: {fallback_error}")
