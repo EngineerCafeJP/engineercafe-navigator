@@ -123,6 +123,7 @@ class VoiceRequest(BaseModel):
     language: Optional[str] = "ja"
     text: Optional[str] = None
     streaming: Optional[bool] = False
+    conversationStage: Optional[str] = None
 
 
 class VoiceResponse(BaseModel):
@@ -133,6 +134,8 @@ class VoiceResponse(BaseModel):
     emotion: Optional[str] = None
     sessionId: Optional[str] = None
     error: Optional[str] = None
+    detectedLanguage: Optional[str] = None
+    confidence: Optional[float] = None
 
 
 # @app.post("/api/voice", response_model=VoiceResponse)
@@ -166,8 +169,10 @@ class VoiceResponse(BaseModel):
 
 # backend/main.py（PR3差分イメージ）
 from agents.voice_agent import VoiceAgent  # noqa: E402 # 追加
+from agents.stt_agent import STTAgent  # noqa: E402
 
 voice_agent = VoiceAgent()  # アプリ起動時に1回生成
+stt_agent = STTAgent()  # STT: Vosk自動言語切換え対応
 
 
 @app.post("/api/voice", response_model=VoiceResponse)
@@ -198,12 +203,32 @@ async def voice_api(request: VoiceRequest):
             )
 
         elif request.action == "process_voice":
-            # Phase1では未実装のままでOK
+            if not request.audioData:
+                raise HTTPException(status_code=400, detail="Missing audioData for process_voice")
+
+            import base64
+
+            audio_bytes = base64.b64decode(request.audioData)
+
+            stt_result = await stt_agent.speech_to_text(
+                audio_bytes,
+                language=request.language,
+                conversation_stage=request.conversationStage,
+            )
+
+            if not stt_result["success"]:
+                return VoiceResponse(
+                    success=False,
+                    error=stt_result.get("error", "STT failed"),
+                    sessionId=request.sessionId,
+                )
+
             return VoiceResponse(
                 success=True,
-                transcript="音声処理中...",
-                response="音声処理機能は実装中です。",
+                transcript=stt_result["transcript"],
                 emotion="neutral",
+                detectedLanguage=stt_result.get("language"),
+                confidence=stt_result.get("confidence"),
                 sessionId=request.sessionId,
             )
 

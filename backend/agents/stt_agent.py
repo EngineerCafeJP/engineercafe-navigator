@@ -5,7 +5,12 @@ STTAgent - Speech-to-Text エージェント
 
 仕様:
 - 入力: WAV バイナリ（16kHz, 16bit, mono 推奨）
-- 出力: dict {success, transcript, confidence, provider, error}
+- 出力: dict {success, transcript, confidence, language, provider, error}
+
+機能:
+- 日英Voskモデル自動切換え（language=None 時に両モデル並列実行、confidence比較で選択）
+- word-level confidence 取得
+- ドメイン固有語彙のGrammarサポート（opt-in）
 
 注意:
 - Vosk モデルが存在しない場合は RuntimeError を投げ、ダウンロード案内を出します。
@@ -20,10 +25,193 @@ import io
 import json
 import logging
 import os
-from typing import Any, Dict, Optional
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional
 import concurrent.futures
 
 logger = logging.getLogger(__name__)
+
+
+# -----------------------------------------------------------------------------
+# TranscriptionResult
+# -----------------------------------------------------------------------------
+
+
+@dataclass
+class TranscriptionResult:
+    """Vosk 認識結果（confidence 付き）"""
+
+    text: str
+    confidence: Optional[float]  # 平均 word confidence (0.0-1.0)
+    language: str
+    word_confidences: List[Dict[str, Any]] = field(default_factory=list)
+
+
+# -----------------------------------------------------------------------------
+# Domain-specific grammar for Engineer Cafe (opt-in)
+# -----------------------------------------------------------------------------
+
+ENGINEER_CAFE_GRAMMAR: Dict[str, List[str]] = {
+    "ja": [
+        "エンジニアカフェ",
+        "エンジニアカフェラボ",
+        "営業時間",
+        "会議室",
+        "ミーティング",
+        "ミートアップ",
+        "集中スペース",
+        "メーカーズスペース",
+        "地下",
+        "赤煉瓦",
+        "天神",
+        "博多",
+        "ハカタ",
+        "福岡",
+        "ワイファイ",
+        "Wi-Fi",
+        "イベント",
+        "コワーキング",
+        "コワーキングスペース",
+        "予約",
+        "受付",
+        "料金",
+        "無料",
+        "駐車場",
+        "駐輪場",
+        "サイノ",
+    ],
+    "en": [
+        "engineer cafe",
+        "engineer cafe lab",
+        "business hours",
+        "meeting room",
+        "focus space",
+        "makers space",
+        "basement",
+        "red brick",
+        "tenjin",
+        "hakata",
+        "fukuoka",
+        "wifi",
+        "event",
+        "meetup",
+        "coworking",
+        "coworking space",
+        "reservation",
+        "reception",
+        "price",
+        "free",
+        "parking",
+        "saino",
+    ],
+}
+
+
+# -----------------------------------------------------------------------------
+# Stage-specific grammars (greeting -> service_selection -> confirmation)
+# -----------------------------------------------------------------------------
+
+STAGE_GRAMMARS: Dict[str, Dict[str, List[str]]] = {
+    "greeting": {
+        "ja": [
+            "こんにちは",
+            "おはようございます",
+            "こんばんは",
+            "すみません",
+            "はじめまして",
+            "エンジニアカフェ",
+            "受付",
+            "サイノ",
+        ],
+        "en": [
+            "hello",
+            "hi",
+            "good morning",
+            "good afternoon",
+            "excuse me",
+            "engineer cafe",
+            "reception",
+            "saino",
+        ],
+    },
+    "service_selection": {
+        "ja": [
+            "会議室",
+            "コワーキングスペース",
+            "コワーキング",
+            "集中スペース",
+            "メーカーズスペース",
+            "Wi-Fi",
+            "ワイファイ",
+            "イベント",
+            "ミートアップ",
+            "ミーティング",
+            "予約",
+            "料金",
+            "営業時間",
+            "駐車場",
+            "駐輪場",
+            "エンジニアカフェラボ",
+            "サイノ",
+        ],
+        "en": [
+            "meeting room",
+            "coworking space",
+            "coworking",
+            "focus space",
+            "makers space",
+            "wifi",
+            "event",
+            "meetup",
+            "reservation",
+            "price",
+            "business hours",
+            "parking",
+            "engineer cafe lab",
+            "saino",
+        ],
+    },
+    "confirmation": {
+        "ja": [
+            "はい",
+            "いいえ",
+            "そうです",
+            "違います",
+            "お願いします",
+            "キャンセル",
+            "ありがとう",
+            "ありがとうございます",
+            "了解",
+            "わかりました",
+        ],
+        "en": [
+            "yes",
+            "no",
+            "correct",
+            "that's right",
+            "cancel",
+            "please",
+            "thank you",
+            "thanks",
+            "okay",
+            "understood",
+        ],
+    },
+}
+
+VALID_STAGES = tuple(STAGE_GRAMMARS.keys())
+
+
+# -----------------------------------------------------------------------------
+# Default model paths
+# -----------------------------------------------------------------------------
+
+DEFAULT_MODEL_PATHS: Dict[str, str] = {
+    "ja": "models/vosk-model-ja",
+    "en": "models/vosk-model-en-us",
+}
+
+SUPPORTED_LANGUAGES = ("ja", "en")
 
 
 # -----------------------------------------------------------------------------
@@ -32,55 +220,50 @@ logger = logging.getLogger(__name__)
 
 
 class LocalSTTClient:
-    DEFAULT_MODEL_PATH_JA = "models/vosk-model-ja"
-    DEFAULT_MODEL_PATH_EN = "models/vosk-model-en-us"
-
-    def __init__(
-        self, model_path_ja: str = DEFAULT_MODEL_PATH_JA, model_path_en: str = DEFAULT_MODEL_PATH_EN
-    ):
-        self.model_path_ja = model_path_ja
-        self.model_path_en = model_path_en
-        self._model_ja = None
-        self._model_en = None
+    def __init__(self, model_paths: Optional[Dict[str, str]] = None):
+        self.model_paths = {**DEFAULT_MODEL_PATHS, **(model_paths or {})}
+        self._models: Dict[str, Any] = {}
         logger.info("LocalSTTClient initialized (models will be loaded on first use)")
 
     def _load_model(self, lang: str):
+        if lang not in self.model_paths:
+            raise ValueError(
+                f"Unsupported language: {lang}. Supported: {list(self.model_paths.keys())}"
+            )
+
+        if lang in self._models:
+            return self._models[lang]
+
         try:
             from vosk import Model
         except ImportError:
             logger.error("Vosk not installed. Install with: pip install vosk")
             raise RuntimeError("Vosk not installed. Install with: pip install vosk")
 
-        if lang == "ja":
-            if self._model_ja is None:
-                model_path = os.path.expanduser(self.model_path_ja)
-                if not os.path.exists(model_path):
-                    logger.warning(f"Vosk model not found at {model_path}")
-                    raise RuntimeError(
-                        f"Vosk model not found: {model_path}. Download from https://alphacephei.com/vosk/models"
-                    )
-                self._model_ja = Model(model_path)
-                logger.info(f"Loaded Vosk Japanese model from {model_path}")
-            return self._model_ja
+        model_path = os.path.expanduser(self.model_paths[lang])
+        if not os.path.exists(model_path):
+            logger.warning(f"Vosk model not found at {model_path}")
+            raise RuntimeError(
+                f"Vosk model not found: {model_path}. "
+                f"Download from https://alphacephei.com/vosk/models"
+            )
 
-        else:
-            if self._model_en is None:
-                model_path = os.path.expanduser(self.model_path_en)
-                if not os.path.exists(model_path):
-                    logger.warning(f"Vosk model not found at {model_path}")
-                    raise RuntimeError(
-                        f"Vosk model not found: {model_path}. Download from https://alphacephei.com/vosk/models"
-                    )
-                self._model_en = Model(model_path)
-                logger.info(f"Loaded Vosk English model from {model_path}")
-            return self._model_en
+        self._models[lang] = Model(model_path)
+        logger.info(f"Loaded Vosk {lang} model from {model_path}")
+        return self._models[lang]
 
-    def _sync_transcribe(self, audio_data: bytes, language: str = "ja") -> str:
+    def _sync_transcribe(
+        self,
+        audio_data: bytes,
+        language: str = "ja",
+        grammar: Optional[List[str]] = None,
+    ) -> TranscriptionResult:
         """Synchronous Vosk transcription (called via thread pool).
 
         注意: 入力は WAV (PCM) で、可能であれば 16kHz, 16bit, mono を推奨します。
         """
         import wave
+
         from vosk import KaldiRecognizer
 
         bio = io.BytesIO(audio_data)
@@ -95,7 +278,14 @@ class LocalSTTClient:
             )
 
         model = self._load_model(language)
-        rec = KaldiRecognizer(model, sample_rate)
+
+        if grammar:
+            grammar_json = json.dumps(grammar)
+            rec = KaldiRecognizer(model, sample_rate, grammar_json)
+        else:
+            rec = KaldiRecognizer(model, sample_rate)
+
+        rec.SetWords(True)
         rec.AcceptWaveform(frames)
         result_json = rec.FinalResult()
 
@@ -106,9 +296,22 @@ class LocalSTTClient:
             raise RuntimeError("Failed to parse Vosk recognition result")
 
         text = result.get("text", "")
-        if not text and isinstance(result.get("result"), list):
-            parts = [p.get("word", "") for p in result.get("result", [])]
-            text = " ".join([p for p in parts if p])
+
+        # Extract word-level confidences
+        word_results = result.get("result", [])
+        word_confidences = [
+            {"word": w.get("word", ""), "conf": w.get("conf", 0.0)} for w in word_results
+        ]
+
+        # Compute average confidence
+        if word_confidences:
+            avg_confidence = sum(w["conf"] for w in word_confidences) / len(word_confidences)
+        else:
+            avg_confidence = None
+
+        # Fallback: assemble text from word results
+        if not text and word_results:
+            text = " ".join(w.get("word", "") for w in word_results).strip()
 
         text = (text or "").strip()
         if not text:
@@ -116,17 +319,79 @@ class LocalSTTClient:
             raise RuntimeError("Vosk returned empty recognition result")
 
         logger.info(f"Vosk transcription success: {text[:100]}")
-        return text
+        return TranscriptionResult(
+            text=text,
+            confidence=avg_confidence,
+            language=language,
+            word_confidences=word_confidences,
+        )
 
-    async def transcribe(self, audio_data: bytes, language: str = "ja") -> str:
-        """WAVバイト列を受け取り、テキストを返します (thread pool経由)。"""
+    async def transcribe(
+        self,
+        audio_data: bytes,
+        language: str = "ja",
+        grammar: Optional[List[str]] = None,
+    ) -> TranscriptionResult:
+        """WAVバイト列を受け取り、TranscriptionResult を返します (thread pool経由)。"""
         try:
             loop = asyncio.get_running_loop()
             with concurrent.futures.ThreadPoolExecutor() as pool:
-                return await loop.run_in_executor(pool, self._sync_transcribe, audio_data, language)
+                return await loop.run_in_executor(
+                    pool,
+                    lambda: self._sync_transcribe(audio_data, language, grammar),
+                )
         except Exception as e:
             logger.exception("Vosk transcription error: %s", e)
             raise
+
+    async def transcribe_auto_detect(
+        self,
+        audio_data: bytes,
+        grammar: Optional[Dict[str, List[str]]] = None,
+    ) -> TranscriptionResult:
+        """日英両モデルで並列認識し、confidence が高い方の結果を返す。
+
+        Args:
+            audio_data: WAV bytes
+            grammar: 言語別 grammar dict, e.g. {"ja": [...], "en": [...]}
+
+        Returns:
+            confidence が高い方の TranscriptionResult
+        """
+
+        async def _run_model(lang: str) -> Optional[TranscriptionResult]:
+            lang_grammar = (grammar or {}).get(lang)
+            try:
+                return await self.transcribe(audio_data, lang, grammar=lang_grammar)
+            except RuntimeError as e:
+                logger.debug(f"Auto-detect: {lang} model returned error: {e}")
+                return None
+
+        results = await asyncio.gather(
+            _run_model("ja"),
+            _run_model("en"),
+        )
+
+        valid_results = [r for r in results if r is not None]
+
+        if not valid_results:
+            raise RuntimeError(
+                "Auto-detect failed: neither Japanese nor English model produced a result"
+            )
+
+        if len(valid_results) == 1:
+            return valid_results[0]
+
+        best = max(
+            valid_results,
+            key=lambda r: r.confidence if r.confidence is not None else 0.0,
+        )
+        other_langs = [r.language for r in valid_results if r is not best]
+        logger.info(
+            f"Auto-detect: selected {best.language} "
+            f"(confidence={best.confidence:.3f}) over {other_langs}"
+        )
+        return best
 
 
 # -----------------------------------------------------------------------------
@@ -141,6 +406,10 @@ class GoogleSTTClient:
             "GOOGLE_APPLICATION_CREDENTIALS"
         )
         logger.info("GoogleSTTClient initialized (credentials must be configured for use)")
+
+    def is_available(self) -> bool:
+        """Google Cloud STT の認証情報が設定されているか確認"""
+        return bool(self.credentials_source)
 
     def _sync_transcribe(self, audio_data: bytes, language: str = "ja") -> str:
         # Synchronous blocking call to Google Cloud Speech API
@@ -183,13 +452,23 @@ class GoogleSTTClient:
 
 
 # -----------------------------------------------------------------------------
-# STTAgent - provider switching
+# STTAgent - provider switching with auto-detection
 # -----------------------------------------------------------------------------
 
 
 class STTAgent:
-    def __init__(self, stt_provider: Optional[str] = None, stt_client: Optional[Any] = None):
+    def __init__(
+        self,
+        stt_provider: Optional[str] = None,
+        stt_client: Optional[Any] = None,
+        use_grammar: bool = False,
+        language_processor: Optional[Any] = None,
+        confidence_threshold: float = 0.4,
+        fallback_client: Optional[Any] = None,
+    ):
         self.stt_provider = stt_provider or os.getenv("STT_PROVIDER", "vosk")
+        self.use_grammar = use_grammar
+        self.confidence_threshold = confidence_threshold
         if stt_client:
             self.stt_client = stt_client
         elif self.stt_provider == "vosk":
@@ -199,27 +478,199 @@ class STTAgent:
         else:
             raise ValueError(f"Unknown STT provider: {self.stt_provider}")
 
-    async def speech_to_text(self, audio_data: bytes, language: str = "ja") -> Dict[str, Any]:
-        """Unified interface for speech-to-text
+        # #9: Fallback client (Google STT) for low-confidence Vosk results
+        if fallback_client is not None:
+            self.fallback_client = fallback_client
+        elif self.stt_provider == "vosk":
+            self.fallback_client = GoogleSTTClient()
+        else:
+            self.fallback_client = None
+
+        # #1: LanguageProcessor for post-validation of Vosk language detection
+        if language_processor is not None:
+            self.language_processor = language_processor
+        else:
+            try:
+                from backend.utils.language_processor import LanguageProcessor
+
+                self.language_processor = LanguageProcessor(default_language="ja")
+            except ImportError:
+                logger.warning("LanguageProcessor not available, skipping language validation")
+                self.language_processor = None
+
+    async def _validate_language(
+        self,
+        result: TranscriptionResult,
+        audio_data: bytes,
+    ) -> TranscriptionResult:
+        """LanguageProcessor で Vosk の言語選択を後検証し、不一致なら再認識を試行する。"""
+        if self.language_processor is None:
+            return result
+        if not isinstance(self.stt_client, LocalSTTClient):
+            return result
+
+        try:
+            lp_result = self.language_processor.detect_language(result.text)
+        except Exception as e:
+            logger.debug(f"LanguageProcessor failed: {e}")
+            return result
+
+        lp_lang = lp_result["detected"]
+        lp_confidence = lp_result["confidence"]
+
+        # 言語が一致、または LP の confidence が低ければそのまま返す
+        if lp_lang == result.language or lp_confidence < 0.7:
+            return result
+
+        # LP が ja/en 以外を示す場合は Vosk 結果を信頼
+        if lp_lang not in SUPPORTED_LANGUAGES:
+            return result
+
+        logger.info(
+            f"LanguageProcessor suggests '{lp_lang}' (conf={lp_confidence:.2f}) "
+            f"instead of Vosk '{result.language}', re-transcribing..."
+        )
+
+        try:
+            grammar_list = ENGINEER_CAFE_GRAMMAR.get(lp_lang) if self.use_grammar else None
+            alt_result = await self.stt_client.transcribe(audio_data, lp_lang, grammar=grammar_list)
+            if alt_result.confidence is not None and (
+                result.confidence is None or alt_result.confidence > result.confidence
+            ):
+                logger.info(
+                    f"Language corrected: {result.language} -> {lp_lang} "
+                    f"(conf {result.confidence} -> {alt_result.confidence})"
+                )
+                return alt_result
+        except RuntimeError as e:
+            logger.debug(f"Re-transcription with {lp_lang} failed: {e}")
+
+        return result
+
+    async def _try_fallback(
+        self,
+        audio_data: bytes,
+        language: str,
+        vosk_result: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """低信頼度の場合に Google STT でフォールバックを試行する。"""
+        if self.fallback_client is None:
+            return vosk_result
+
+        if (
+            hasattr(self.fallback_client, "is_available")
+            and not self.fallback_client.is_available()
+        ):
+            logger.debug("Google STT credentials not configured, skipping fallback")
+            return vosk_result
+
+        vosk_confidence = vosk_result.get("confidence")
+        if vosk_confidence is None or vosk_confidence >= self.confidence_threshold:
+            return vosk_result
+
+        logger.info(
+            f"Vosk confidence {vosk_confidence:.3f} < threshold {self.confidence_threshold}, "
+            f"attempting Google STT fallback..."
+        )
+
+        try:
+            google_transcript = await self.fallback_client.transcribe(audio_data, language)
+            if google_transcript and google_transcript.strip():
+                logger.info(f"Google STT fallback succeeded: {google_transcript[:100]}")
+                return {
+                    "success": True,
+                    "transcript": google_transcript,
+                    "confidence": None,
+                    "language": language,
+                    "provider": "google-fallback",
+                    "fallback_used": True,
+                    "original_confidence": vosk_confidence,
+                }
+        except Exception as e:
+            logger.warning(f"Google STT fallback failed: {e}, using Vosk result")
+
+        return vosk_result
+
+    def _resolve_grammar(self, conversation_stage: Optional[str]) -> Optional[Dict[str, List[str]]]:
+        """会話ステージに応じた Grammar 辞書を解決する。
+
+        優先順位:
+        1. conversation_stage 指定あり → STAGE_GRAMMARS[stage]
+        2. use_grammar=True → ENGINEER_CAFE_GRAMMAR
+        3. それ以外 → None
+        """
+        if conversation_stage and conversation_stage in STAGE_GRAMMARS:
+            return STAGE_GRAMMARS[conversation_stage]
+        if conversation_stage and conversation_stage not in STAGE_GRAMMARS:
+            logger.warning(
+                f"Unknown conversation_stage '{conversation_stage}', "
+                f"falling back to ENGINEER_CAFE_GRAMMAR"
+            )
+            return ENGINEER_CAFE_GRAMMAR
+        if self.use_grammar:
+            return ENGINEER_CAFE_GRAMMAR
+        return None
+
+    async def speech_to_text(
+        self,
+        audio_data: bytes,
+        language: Optional[str] = "ja",
+        conversation_stage: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Unified interface for speech-to-text.
+
+        Args:
+            audio_data: WAV bytes
+            language: "ja", "en", or None for auto-detection
+            conversation_stage: "greeting", "service_selection", "confirmation", or None
 
         Returns:
-            {success: bool, transcript: str, confidence: Optional[float], provider: str, error: Optional[str]}
+            {success, transcript, confidence, language, provider, error}
         """
         provider = self.stt_provider
+        grammar = self._resolve_grammar(conversation_stage)
         try:
-            transcript = await self.stt_client.transcribe(audio_data, language)
-            return {
-                "success": True,
-                "transcript": transcript,
-                "confidence": None,
-                "provider": provider,
-            }
+            if language is None and isinstance(self.stt_client, LocalSTTClient):
+                result = await self.stt_client.transcribe_auto_detect(audio_data, grammar=grammar)
+            else:
+                lang = language or "ja"
+                if isinstance(self.stt_client, LocalSTTClient):
+                    grammar_list = (grammar or {}).get(lang) if grammar else None
+                    result = await self.stt_client.transcribe(
+                        audio_data, lang, grammar=grammar_list
+                    )
+                else:
+                    result = await self.stt_client.transcribe(audio_data, lang)
+
+            # Handle TranscriptionResult vs str (GoogleSTTClient returns str)
+            if isinstance(result, TranscriptionResult):
+                # #1: LanguageProcessor post-validation
+                validated = await self._validate_language(result, audio_data)
+                response = {
+                    "success": True,
+                    "transcript": validated.text,
+                    "confidence": validated.confidence,
+                    "language": validated.language,
+                    "provider": provider,
+                    "language_validated": validated is not result,
+                }
+                # #9: Low-confidence fallback to Google STT
+                return await self._try_fallback(audio_data, validated.language, response)
+            else:
+                return {
+                    "success": True,
+                    "transcript": result,
+                    "confidence": None,
+                    "language": language or "ja",
+                    "provider": provider,
+                }
         except Exception as e:
             logger.error(f"STT failed ({provider}): {e}")
             return {
                 "success": False,
                 "transcript": "",
                 "confidence": 0.0,
+                "language": language or "unknown",
                 "provider": provider,
                 "error": str(e),
             }
