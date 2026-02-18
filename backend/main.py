@@ -32,7 +32,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=_allowed_origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization"],
 )
 
@@ -347,6 +347,11 @@ async def character_api(request: CharacterRequest):
 from api.knowledge import router as knowledge_router  # noqa: E402
 
 app.include_router(knowledge_router, prefix="/api")
+
+# STT Custom Vocabulary API Router
+from api.stt_vocabulary import router as stt_vocabulary_router  # noqa: E402
+
+app.include_router(stt_vocabulary_router, prefix="/api")
 
 
 if __name__ == "__main__":

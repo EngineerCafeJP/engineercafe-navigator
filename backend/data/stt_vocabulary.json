@@ -1,0 +1,58 @@
+{
+  "vocabulary": [
+    {
+      "id": "a1b2c3d4-0001-0000-0000-000000000001",
+      "word": "エンジニアカフェ",
+      "reading": "えんじにあかふぇ",
+      "category": "facility",
+      "priority": 10,
+      "created_at": "2026-02-19T00:00:00Z",
+      "updated_at": "2026-02-19T00:00:00Z"
+    },
+    {
+      "id": "a1b2c3d4-0001-0000-0000-000000000002",
+      "word": "博多",
+      "reading": "はかた",
+      "category": "location",
+      "priority": 8,
+      "created_at": "2026-02-19T00:00:00Z",
+      "updated_at": "2026-02-19T00:00:00Z"
+    },
+    {
+      "id": "a1b2c3d4-0001-0000-0000-000000000003",
+      "word": "天神",
+      "reading": "てんじん",
+      "category": "location",
+      "priority": 8,
+      "created_at": "2026-02-19T00:00:00Z",
+      "updated_at": "2026-02-19T00:00:00Z"
+    },
+    {
+      "id": "a1b2c3d4-0001-0000-0000-000000000004",
+      "word": "コワーキングスペース",
+      "reading": "こわーきんぐすぺーす",
+      "category": "service",
+      "priority": 7,
+      "created_at": "2026-02-19T00:00:00Z",
+      "updated_at": "2026-02-19T00:00:00Z"
+    },
+    {
+      "id": "a1b2c3d4-0001-0000-0000-000000000005",
+      "word": "ミートアップ",
+      "reading": "みーとあっぷ",
+      "category": "event",
+      "priority": 7,
+      "created_at": "2026-02-19T00:00:00Z",
+      "updated_at": "2026-02-19T00:00:00Z"
+    },
+    {
+      "id": "a1b2c3d4-0001-0000-0000-000000000006",
+      "word": "Wi-Fi",
+      "reading": "わいふぁい",
+      "category": "service",
+      "priority": 6,
+      "created_at": "2026-02-19T00:00:00Z",
+      "updated_at": "2026-02-19T00:00:00Z"
+    }
+  ]
+}

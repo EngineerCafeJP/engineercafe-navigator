@@ -591,24 +591,46 @@ class STTAgent:
 
         return vosk_result
 
+    def _load_custom_vocabulary(self) -> List[str]:
+        """JSONファイルからカスタム語彙の単語リストを同期的に読み込む。
+
+        ファイルが存在しない場合やエラー時は空リストを返す。
+        """
+        try:
+            from api.stt_vocabulary import _load_vocabulary_sync
+
+            vocabulary = _load_vocabulary_sync()
+            return [v["word"] for v in vocabulary]
+        except Exception as e:
+            logger.warning(f"Failed to load custom vocabulary from JSON: {e}")
+            return []
+
     def _resolve_grammar(self, conversation_stage: Optional[str]) -> Optional[Dict[str, List[str]]]:
         """会話ステージに応じた Grammar 辞書を解決する。
 
+        JSONファイルのカスタム語彙をベースに、ステージ固有ワードを合成する。
+
         優先順位:
-        1. conversation_stage 指定あり → STAGE_GRAMMARS[stage]
-        2. use_grammar=True → ENGINEER_CAFE_GRAMMAR
+        1. conversation_stage 指定あり → STAGE_GRAMMARS[stage] + カスタム語彙
+        2. use_grammar=True → ENGINEER_CAFE_GRAMMAR + カスタム語彙
         3. それ以外 → None
         """
+        custom_words = self._load_custom_vocabulary()
+
+        def _merge(base: Dict[str, List[str]]) -> Dict[str, List[str]]:
+            """ベースgrammarにカスタム語彙を重複なしでマージする。"""
+            return {lang: list(dict.fromkeys(words + custom_words)) for lang, words in base.items()}
+
         if conversation_stage and conversation_stage in STAGE_GRAMMARS:
-            return STAGE_GRAMMARS[conversation_stage]
+            return _merge(STAGE_GRAMMARS[conversation_stage])
         if conversation_stage and conversation_stage not in STAGE_GRAMMARS:
             logger.warning(
                 f"Unknown conversation_stage '{conversation_stage}', "
                 f"falling back to ENGINEER_CAFE_GRAMMAR"
             )
-            return ENGINEER_CAFE_GRAMMAR
+            return _merge(ENGINEER_CAFE_GRAMMAR)
         if self.use_grammar:
-            return ENGINEER_CAFE_GRAMMAR
+            return _merge(ENGINEER_CAFE_GRAMMAR)
         return None
 
     async def speech_to_text(
