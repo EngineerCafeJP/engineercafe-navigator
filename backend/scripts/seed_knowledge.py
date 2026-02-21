@@ -1198,7 +1198,7 @@ async def generate_embedding_for_seed(text: str) -> list[float]:
     result = await generate_embedding(text)
     if not result:
         raise Exception("Embedding generation failed (check OPENROUTER_API_KEY)")
-    logger.info(f"Generated embedding: {len(result)} dimensions")
+    logger.info("Generated embedding: %d dimensions", len(result))
     return result
 
 
@@ -1227,7 +1227,7 @@ async def seed_knowledge_base() -> None:
         metadata = item.get("metadata", {})
 
         try:
-            logger.info(f"Processing: {title}")
+            logger.info("Processing: %s", title)
 
             # Embedding生成
             embedding = await generate_embedding_for_seed(f"{title}\n{content}")
@@ -1248,14 +1248,14 @@ async def seed_knowledge_base() -> None:
                 on_conflict="title",
             ).execute()
 
-            logger.info(f"  ✓ Upserted: {title}")
+            logger.info("  ✓ Upserted: %s", title)
             success_count += 1
 
         except Exception as e:
-            logger.error(f"  ✗ Failed: {title} - {e}")
+            logger.error("  ✗ Failed: %s - %s", title, e)
             error_count += 1
 
-    logger.info(f"\nSeed complete: {success_count} success, {error_count} errors")
+    logger.info("\nSeed complete: %d success, %d errors", success_count, error_count)
 
 
 async def seed_from_yaml_files() -> None:

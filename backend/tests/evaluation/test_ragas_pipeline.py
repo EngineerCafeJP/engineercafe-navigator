@@ -17,6 +17,7 @@ from backend.evaluation.ragas_pipeline import (
     RagasEvaluator,
     RagasReport,
     RagasResult,
+    _ragas_available,
 )
 
 # =============================================================================
@@ -293,6 +294,7 @@ class TestRagasEvaluatorIsAvailable:
 class TestResolveEvaluationLLM:
     """_resolve_evaluation_llm のOpenRouter フォールバックテスト"""
 
+    @pytest.mark.skipif(not _ragas_available, reason="ragas not installed")
     def test_openai_key_creates_direct_llm(self):
         """OPENAI_API_KEY が設定されている場合は LangchainLLMWrapper を返す"""
         env = {"OPENAI_API_KEY": "sk-test"}
@@ -318,6 +320,7 @@ class TestResolveEvaluationLLM:
             result = RagasEvaluator._resolve_evaluation_llm()
             assert result is None
 
+    @pytest.mark.skipif(not _ragas_available, reason="ragas not installed")
     def test_openrouter_key_creates_llm_with_client(self):
         """OPENROUTER_API_KEY 使用時は OpenAI client + llm_factory"""
         env = {"OPENROUTER_API_KEY": "sk-or-test"}
@@ -453,12 +456,14 @@ class TestExtractScores:
 class TestGetMetricObjects:
     """_get_metric_objects テスト"""
 
+    @pytest.mark.skipif(not _ragas_available, reason="ragas not installed")
     def test_returns_six_metric_instances(self):
         """デフォルトで6つのメトリクスインスタンスを返す"""
         evaluator = RagasEvaluator()
         metrics = evaluator._get_metric_objects()
         assert len(metrics) == 6
 
+    @pytest.mark.skipif(not _ragas_available, reason="ragas not installed")
     def test_returns_custom_subset(self):
         """カスタムメトリクス指定で部分集合を返す"""
         evaluator = RagasEvaluator(metrics=("faithfulness", "answer_similarity"))
@@ -475,7 +480,7 @@ class TestReportRagasMetrics:
     """ComprehensiveEvaluationReport に ragas_metrics フィールドが追加されていること"""
 
     def test_ragas_metrics_field_exists(self):
-        from tests.utils.evaluators.report_generator import ComprehensiveEvaluationReport
+        from backend.tests.utils.evaluators.report_generator import ComprehensiveEvaluationReport
 
         report = ComprehensiveEvaluationReport(
             report_id="test",
@@ -492,7 +497,7 @@ class TestReportRagasMetrics:
         assert report.ragas_metrics["answer_correctness"] == 0.75
 
     def test_ragas_metrics_defaults_to_none(self):
-        from tests.utils.evaluators.report_generator import ComprehensiveEvaluationReport
+        from backend.tests.utils.evaluators.report_generator import ComprehensiveEvaluationReport
 
         report = ComprehensiveEvaluationReport(
             report_id="test",

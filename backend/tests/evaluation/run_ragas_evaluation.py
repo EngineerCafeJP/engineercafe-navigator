@@ -35,7 +35,7 @@ _project_root = str(Path(__file__).parent.parent.parent.parent)
 sys.path.insert(0, _project_root)
 sys.path.insert(0, _backend_dir)
 
-from tests.fixtures.dataset_loader import DatasetLoader, GroundTruthCase  # noqa: E402
+from backend.tests.fixtures.dataset_loader import DatasetLoader, GroundTruthCase  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -68,7 +68,7 @@ async def _generate_live_response(
         )
 
         if not result.get("success") or not result.get("data"):
-            logger.warning(f"RAG search returned no results for: {question[:50]}")
+            logger.warning("RAG search returned no results for: %s", question[:50])
             return "", []
 
         context_text = result["data"].get("context", "")
@@ -101,11 +101,11 @@ async def _generate_live_response(
         messages = [HumanMessage(content=prompt)]
         answer = await provider.generate(messages=messages, config=model_config)
 
-        logger.info(f"Live response generated: {len(answer)} chars, {len(contexts)} contexts")
+        logger.info("Live response generated: %d chars, %d contexts", len(answer), len(contexts))
         return answer, contexts
 
     except Exception as e:
-        logger.error(f"Failed to generate live response for '{question[:50]}': {e}")
+        logger.error("Failed to generate live response for %s: %s", question[:50], e)
         return "", []
 
 
@@ -138,7 +138,7 @@ async def _build_eval_dicts_live(
     target_cases = cases[:max_cases]
 
     for i, c in enumerate(target_cases):
-        logger.info(f"[{i + 1}/{len(target_cases)}] Live query: {c.question[:50]}...")
+        logger.info("[%d/%d] Live query: %s...", i + 1, len(target_cases), c.question[:50])
         answer, contexts = await _generate_live_response(
             question=c.question,
             language=c.language,
@@ -146,7 +146,7 @@ async def _build_eval_dicts_live(
         )
 
         if not answer or not contexts:
-            logger.warning(f"Skipping case {c.id}: no live response generated")
+            logger.warning("Skipping case %s: no live response generated", c.id)
             continue
 
         eval_dicts.append(
@@ -191,7 +191,7 @@ async def run_evaluation(
         logger.error("No ground truth cases found.")
         return {"error": "no cases found"}
 
-    logger.info(f"Loaded {len(cases)} ground truth cases (mode={mode})")
+    logger.info("Loaded %d ground truth cases (mode=%s)", len(cases), mode)
 
     # RagasEvaluator をインポート（ragas 未インストール時は graceful fallback）
     try:
@@ -222,7 +222,7 @@ async def run_evaluation(
         logger.error("No evaluation cases could be prepared.")
         return {"error": "no eval cases prepared", "mode": mode}
 
-    logger.info(f"Running RAGAS evaluation on {len(eval_dicts)} cases...")
+    logger.info("Running RAGAS evaluation on %d cases...", len(eval_dicts))
     report = await evaluator.evaluate_batch(eval_dicts)
 
     # サマリー
@@ -262,8 +262,8 @@ async def run_evaluation(
     with open(report_path, "w", encoding="utf-8") as f:
         json.dump(summary, f, ensure_ascii=False, indent=2)
 
-    logger.info(f"Report saved to: {report_path}")
-    logger.info(f"Metrics: {summary['metrics']}")
+    logger.info("Report saved to: %s", report_path)
+    logger.info("Metrics: %s", summary["metrics"])
 
     return summary
 
@@ -284,9 +284,9 @@ def _write_github_outputs(result: Dict) -> None:
             f.write(f"skipped_cases={result.get('skipped_cases', 0)}\n")
             f.write(f"status={result.get('status', 'unknown')}\n")
             f.write(f"mode={result.get('mode', 'unknown')}\n")
-        logger.info(f"Wrote {len(metrics) + 4} outputs to GITHUB_OUTPUT")
+        logger.info("Wrote %d outputs to GITHUB_OUTPUT", len(metrics) + 4)
     except Exception as e:
-        logger.warning(f"Failed to write GITHUB_OUTPUT: {e}")
+        logger.warning("Failed to write GITHUB_OUTPUT: %s", e)
 
 
 def _write_github_summary(result: Dict) -> None:
@@ -316,7 +316,7 @@ def _write_github_summary(result: Dict) -> None:
             f.write("\n".join(lines) + "\n")
         logger.info("Wrote evaluation summary to GITHUB_STEP_SUMMARY")
     except Exception as e:
-        logger.warning(f"Failed to write GITHUB_STEP_SUMMARY: {e}")
+        logger.warning("Failed to write GITHUB_STEP_SUMMARY: %s", e)
 
 
 def main():
@@ -356,7 +356,7 @@ def main():
     elif result.get("status") == "skipped":
         logger.info("Evaluation skipped (ragas not installed).")
     else:
-        logger.error(f"Evaluation failed: {result}")
+        logger.error("Evaluation failed: %s", result)
         sys.exit(1)
 
 

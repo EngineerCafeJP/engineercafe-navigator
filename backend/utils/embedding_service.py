@@ -48,8 +48,9 @@ async def generate_embedding(text: str) -> List[float]:
 
             if response.status_code != 200:
                 logger.error(
-                    f"Embedding API error: status={response.status_code}, "
-                    f"body={response.text[:200]}"
+                    "Embedding API error: status=%s, body=%s",
+                    response.status_code,
+                    response.text[:200],
                 )
                 return []
 
@@ -59,17 +60,18 @@ async def generate_embedding(text: str) -> List[float]:
             # 次元数バリデーション
             if len(embedding) != EMBEDDING_DIMENSIONS:
                 logger.error(
-                    f"Unexpected embedding dimensions: got {len(embedding)}, "
-                    f"expected {EMBEDDING_DIMENSIONS}"
+                    "Unexpected embedding dimensions: got %d, expected %d",
+                    len(embedding),
+                    EMBEDDING_DIMENSIONS,
                 )
                 return []
 
-            logger.info(f"Generated embedding: {len(embedding)} dimensions")
+            logger.info("Generated embedding: %d dimensions", len(embedding))
             return embedding
 
     except httpx.TimeoutException:
         logger.error("Embedding API request timed out")
         return []
     except Exception as e:
-        logger.error(f"Embedding generation failed: {e}")
+        logger.error("Embedding generation failed: %s", e)
         return []

@@ -55,11 +55,12 @@ class MemoryAgent:
         try:
             self.provider = get_llm_provider()
         except ValueError as e:
-            logger.warning(f"OpenRouter provider not available: {e}")
+            logger.warning("OpenRouter provider not available: %s", e)
 
+        memory_status = "enabled" if memory_system else "disabled"
         logger.info(
-            f"MemoryAgent initialized with memory_system: "
-            f"{'enabled' if memory_system else 'disabled'}"
+            "MemoryAgent initialized with memory_system: %s",
+            memory_status,
         )
 
     async def process_memory_query(
@@ -80,7 +81,7 @@ class MemoryAgent:
                 "metadata": Dict  # その他のメタデータ
             }
         """
-        logger.info(f"Processing memory query: '{query[:50]}...', session: {session_id}")
+        logger.info("Processing memory query: '%s...', session: %s", query[:50], session_id)
 
         # 1. メモリシステムの可用性チェック
         if not self.memory_system:
@@ -89,7 +90,7 @@ class MemoryAgent:
         try:
             # 2. 質問タイプの判定
             query_type = self.detect_memory_query_type(query)
-            logger.info(f"Detected query type: {query_type}")
+            logger.info("Detected query type: %s", query_type)
 
             # 3. 会話履歴の取得
             context = await self.memory_system.get_context(
@@ -122,7 +123,7 @@ class MemoryAgent:
             }
 
         except Exception as e:
-            logger.error(f"Error processing memory query: {e}")
+            logger.error("Error processing memory query: %s", e)
             return {
                 "answer": (
                     "メモリの処理中にエラーが発生しました。"
@@ -236,7 +237,7 @@ class MemoryAgent:
             return response
 
         except Exception as e:
-            logger.error(f"Error generating response: {e}")
+            logger.error("Error generating response: %s", e)
             return (
                 "回答の生成中にエラーが発生しました。"
                 if language == "ja"

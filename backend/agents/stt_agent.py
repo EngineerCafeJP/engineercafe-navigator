@@ -242,14 +242,14 @@ class LocalSTTClient:
 
         model_path = os.path.expanduser(self.model_paths[lang])
         if not os.path.exists(model_path):
-            logger.warning(f"Vosk model not found at {model_path}")
+            logger.warning("Vosk model not found at %s", model_path)
             raise RuntimeError(
                 f"Vosk model not found: {model_path}. "
                 f"Download from https://alphacephei.com/vosk/models"
             )
 
         self._models[lang] = Model(model_path)
-        logger.info(f"Loaded Vosk {lang} model from {model_path}")
+        logger.info("Loaded Vosk %s model from %s", lang, model_path)
         return self._models[lang]
 
     def _sync_transcribe(
@@ -273,8 +273,8 @@ class LocalSTTClient:
 
         if sample_rate != 16000:
             logger.warning(
-                f"Received sample rate {sample_rate}Hz — Vosk expects 16000Hz."
-                " Provide 16kHz for best results."
+                "Received sample rate %dHz — Vosk expects 16000Hz. Provide 16kHz for best results.",
+                sample_rate,
             )
 
         model = self._load_model(language)
@@ -292,7 +292,7 @@ class LocalSTTClient:
         try:
             result = json.loads(result_json)
         except Exception:
-            logger.error(f"Failed to parse Vosk result: {result_json}")
+            logger.error("Failed to parse Vosk result: %s", result_json)
             raise RuntimeError("Failed to parse Vosk recognition result")
 
         text = result.get("text", "")
@@ -318,7 +318,7 @@ class LocalSTTClient:
             logger.warning("Vosk returned empty transcript")
             raise RuntimeError("Vosk returned empty recognition result")
 
-        logger.info(f"Vosk transcription success: {text[:100]}")
+        logger.info("Vosk transcription success: %s", text[:100])
         return TranscriptionResult(
             text=text,
             confidence=avg_confidence,
@@ -364,7 +364,7 @@ class LocalSTTClient:
             try:
                 return await self.transcribe(audio_data, lang, grammar=lang_grammar)
             except RuntimeError as e:
-                logger.debug(f"Auto-detect: {lang} model returned error: {e}")
+                logger.debug("Auto-detect: %s model returned error: %s", lang, e)
                 return None
 
         results = await asyncio.gather(
@@ -388,8 +388,10 @@ class LocalSTTClient:
         )
         other_langs = [r.language for r in valid_results if r is not best]
         logger.info(
-            f"Auto-detect: selected {best.language} "
-            f"(confidence={best.confidence:.3f}) over {other_langs}"
+            "Auto-detect: selected %s (confidence=%.3f) over %s",
+            best.language,
+            best.confidence if best.confidence is not None else 0.0,
+            other_langs,
         )
         return best
 
@@ -466,6 +468,16 @@ class STTAgent:
         confidence_threshold: float = 0.4,
         fallback_client: Optional[Any] = None,
     ):
+        """Initialize STTAgent with provider selection and fallback support.
+
+        Args:
+            stt_provider: STT provider name ('vosk' or 'google'). If None, uses STT_PROVIDER env var or defaults to 'vosk'.
+            stt_client: Custom STT client instance. If None, creates default client based on provider.
+            use_grammar: Whether to use domain-specific grammar for recognition. Defaults to False.
+            language_processor: LanguageProcessor instance for post-validation. If None, creates default instance.
+            confidence_threshold: Minimum confidence threshold for Vosk results before triggering Google fallback. Defaults to 0.4.
+            fallback_client: Google STT client for fallback. If None and provider is 'vosk', creates GoogleSTTClient.
+        """
         self.stt_provider = stt_provider or os.getenv("STT_PROVIDER", "vosk")
         self.use_grammar = use_grammar
         self.confidence_threshold = confidence_threshold
@@ -512,7 +524,7 @@ class STTAgent:
         try:
             lp_result = self.language_processor.detect_language(result.text)
         except Exception as e:
-            logger.debug(f"LanguageProcessor failed: {e}")
+            logger.debug("LanguageProcessor failed: %s", e)
             return result
 
         lp_lang = lp_result["detected"]
@@ -527,8 +539,10 @@ class STTAgent:
             return result
 
         logger.info(
-            f"LanguageProcessor suggests '{lp_lang}' (conf={lp_confidence:.2f}) "
-            f"instead of Vosk '{result.language}', re-transcribing..."
+            "LanguageProcessor suggests '%s' (conf=%.2f) instead of Vosk '%s', re-transcribing...",
+            lp_lang,
+            lp_confidence,
+            result.language,
         )
 
         try:
@@ -538,12 +552,15 @@ class STTAgent:
                 result.confidence is None or alt_result.confidence > result.confidence
             ):
                 logger.info(
-                    f"Language corrected: {result.language} -> {lp_lang} "
-                    f"(conf {result.confidence} -> {alt_result.confidence})"
+                    "Language corrected: %s -> %s (conf %s -> %s)",
+                    result.language,
+                    lp_lang,
+                    result.confidence,
+                    alt_result.confidence,
                 )
                 return alt_result
         except RuntimeError as e:
-            logger.debug(f"Re-transcription with {lp_lang} failed: {e}")
+            logger.debug("Re-transcription with %s failed: %s", lp_lang, e)
 
         return result
 
@@ -569,14 +586,15 @@ class STTAgent:
             return vosk_result
 
         logger.info(
-            f"Vosk confidence {vosk_confidence:.3f} < threshold {self.confidence_threshold}, "
-            f"attempting Google STT fallback..."
+            "Vosk confidence %.3f < threshold %s, attempting Google STT fallback...",
+            vosk_confidence,
+            self.confidence_threshold,
         )
 
         try:
             google_transcript = await self.fallback_client.transcribe(audio_data, language)
             if google_transcript and google_transcript.strip():
-                logger.info(f"Google STT fallback succeeded: {google_transcript[:100]}")
+                logger.info("Google STT fallback succeeded: %s", google_transcript[:100])
                 return {
                     "success": True,
                     "transcript": google_transcript,
@@ -587,7 +605,7 @@ class STTAgent:
                     "original_confidence": vosk_confidence,
                 }
         except Exception as e:
-            logger.warning(f"Google STT fallback failed: {e}, using Vosk result")
+            logger.warning("Google STT fallback failed: %s, using Vosk result", e)
 
         return vosk_result
 
@@ -602,7 +620,7 @@ class STTAgent:
             vocabulary = _load_vocabulary_sync()
             return [v["word"] for v in vocabulary]
         except Exception as e:
-            logger.warning(f"Failed to load custom vocabulary from JSON: {e}")
+            logger.warning("Failed to load custom vocabulary from JSON: %s", e)
             return []
 
     def _resolve_grammar(self, conversation_stage: Optional[str]) -> Optional[Dict[str, List[str]]]:
@@ -625,8 +643,8 @@ class STTAgent:
             return _merge(STAGE_GRAMMARS[conversation_stage])
         if conversation_stage and conversation_stage not in STAGE_GRAMMARS:
             logger.warning(
-                f"Unknown conversation_stage '{conversation_stage}', "
-                f"falling back to ENGINEER_CAFE_GRAMMAR"
+                "Unknown conversation_stage '%s', falling back to ENGINEER_CAFE_GRAMMAR",
+                conversation_stage,
             )
             return _merge(ENGINEER_CAFE_GRAMMAR)
         if self.use_grammar:
@@ -639,15 +657,22 @@ class STTAgent:
         language: Optional[str] = "ja",
         conversation_stage: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Unified interface for speech-to-text.
+        """Unified interface for speech-to-text recognition.
 
         Args:
-            audio_data: WAV bytes
-            language: "ja", "en", or None for auto-detection
-            conversation_stage: "greeting", "service_selection", "confirmation", or None
+            audio_data: WAV audio bytes (16kHz, 16bit, mono recommended).
+            language: Language code ('ja', 'en', or None for auto-detection).
+            conversation_stage: Conversation stage for stage-specific grammar ('greeting', 'service_selection', 'confirmation', or None).
 
         Returns:
-            {success, transcript, confidence, language, provider, error}
+            Recognition result dict with keys:
+                - success (bool): Whether recognition succeeded.
+                - transcript (str): Recognized text.
+                - confidence (float): Recognition confidence (0.0-1.0). None for Google STT.
+                - language (str): Detected language code.
+                - provider (str): STT provider used ('vosk' or 'google').
+                - error (str): Error message if failed. Optional.
+                - fallback_used (bool): Whether Google fallback was used. Optional.
         """
         provider = self.stt_provider
         grammar = self._resolve_grammar(conversation_stage)
@@ -687,7 +712,7 @@ class STTAgent:
                     "provider": provider,
                 }
         except Exception as e:
-            logger.error(f"STT failed ({provider}): {e}")
+            logger.error("STT failed (%s): %s", provider, e)
             return {
                 "success": False,
                 "transcript": "",

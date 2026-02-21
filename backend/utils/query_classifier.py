@@ -466,6 +466,9 @@ class QueryClassifier:
         """デバッグ情報を含めてログ出力"""
         if self.debug_mode:
             logger.debug(
-                f"Classification result: query={query}, category={result.category}, "
-                f"confidence={result.confidence}, debug_info={result.debug_info}"
+                "Classification result: query=%s, category=%s, " "confidence=%s, debug_info=%s",
+                query,
+                result.category,
+                result.confidence,
+                result.debug_info,
             )

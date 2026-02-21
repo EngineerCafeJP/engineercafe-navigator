@@ -72,6 +72,104 @@ LLM Judge評価用のテストケース。
 - 総テストケース数: 12件
 - 対応言語: 日本語(ja), 英語(en), 韓国語(ko)
 
+## モックファクトリ（新規追加）
+
+### mock_agents.py
+
+テスト用のエージェントモックを生成します。
+
+```python
+from tests.fixtures import (
+    create_mock_orchestrator,
+    create_mock_business_info_agent,
+    create_mock_vision_agent,
+)
+
+# オーケストレーターモック
+mock_orch = create_mock_orchestrator(
+    next_agent="facility",
+    category="wifi",
+    confidence=0.95
+)
+decision = await mock_orch.decide_next_agent("Wi-Fiは？")
+# decision.next_agent == "facility"
+
+# ビジネス情報エージェントモック
+mock_agent = create_mock_business_info_agent(
+    answer="営業時間は10:00-22:00です",
+    emotion="informative"
+)
+result = await mock_agent.answer_business_query("営業時間は？")
+# result["answer"] == "営業時間は10:00-22:00です"
+```
+
+**利用可能なモック:**
+- `create_mock_orchestrator()` - ルーティング決定
+- `create_mock_business_info_agent()` - 営業情報エージェント
+- `create_mock_facility_agent()` - 施設情報エージェント
+- `create_mock_event_agent()` - イベント情報エージェント
+- `create_mock_vision_agent()` - OCR/顔認識
+- `create_mock_stt_agent()` - 音声認識
+- `create_mock_voice_agent()` - 音声合成
+
+### mock_llm.py
+
+LLMプロバイダーとレスポンスのモックを生成します。
+
+```python
+from tests.fixtures import create_mock_llm, create_mock_rag_search
+
+# LLMモック（予測可能なレスポンス）
+mock_llm = create_mock_llm(content="テストレスポンス")
+response = await mock_llm.ainvoke([HumanMessage(content="test")])
+# response.content == "テストレスポンス"
+
+# RAG検索モック
+mock_rag = create_mock_rag_search(
+    results=[{"content": "営業時間は10:00-22:00です", "score": 0.95}]
+)
+results = await mock_rag.search("営業時間")
+```
+
+### sample_states.py
+
+ワークフロー状態のサンプルデータを生成します。
+
+```python
+from tests.fixtures import create_text_query_state, create_routing_decision
+
+# テキストクエリ状態
+state = create_text_query_state(
+    query="営業時間は？",
+    language="ja",
+    session_id="test-123"
+)
+
+# ルーティング決定
+routing = create_routing_decision(
+    agent="facility",
+    category="facility",
+    request_type="wifi"
+)
+```
+
+### sample_images.py
+
+テスト用の合成画像を生成します。
+
+```python
+from tests.fixtures import create_blank_image, create_wide_image
+
+# 空白画像（100x100x3）
+img = create_blank_image(width=100, height=100)
+
+# 大きな画像（リサイズテスト用）
+img = create_wide_image(1920, 1080)  # 1920x1080
+
+# QRコード風パターン
+img = create_qr_like_image()
+```
+
 ## DatasetLoader使用例
 
 ```python
@@ -106,6 +204,11 @@ print(f"対応エージェント: {info['agents']}")
 tests/fixtures/
 ├── __init__.py
 ├── dataset_loader.py          # DatasetLoaderクラス
+├── mock_agents.py             # エージェントモックファクトリ
+├── mock_llm.py                # LLMモックファクトリ
+├── sample_states.py           # ワークフロー状態ファクトリ
+├── sample_images.py           # テスト画像ジェネレーター
+├── test_fixtures_validation.py # フィクスチャ検証テスト
 ├── golden_datasets/
 │   ├── routing_test_cases.json  # ルーティングテストケース（実データ）
 │   └── answer_quality.json      # 回答品質テストケース（実データ）

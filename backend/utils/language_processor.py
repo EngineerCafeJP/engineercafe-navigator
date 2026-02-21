@@ -208,7 +208,7 @@ class LanguageProcessor:
         primary / secondary を決定する。
         """
         if self.debug_mode:
-            logger.debug(f"言語検出開始: {query[:50]}")
+            logger.debug("言語検出開始: %s", query[:50])
 
         a = self._analyze_text(query)
 
@@ -301,7 +301,7 @@ class LanguageProcessor:
             return result["detected"]
 
         except Exception as e:
-            logger.error(f"言語検出エラー: {e}", exc_info=True)
+            logger.exception("言語検出エラー: %s", e)
             return self.default_language
 
     async def _detect_by_llm(self, query: str) -> Optional[LanguageCode]:
@@ -313,7 +313,7 @@ class LanguageProcessor:
         - プロンプト: "Detect the language of the following text: {query}"
         - レスポンスから言語コードを抽出
         """
-        logger.debug(f"LLMベース検出（未実装）: {query[:50]}...")
+        logger.debug("LLMベース検出（未実装）: %s...", query[:50])
         # TODO: 実装
         return None
 

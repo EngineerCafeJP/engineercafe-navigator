@@ -10,18 +10,27 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
-from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
-
-# 環境変数の読み込み
-load_dotenv()
 
 app = FastAPI(
     title="Engineer Cafe Navigator Backend",
     description="Python LangGraph backend for Engineer Cafe Navigator",
     version="0.1.0",
 )
+
+
+@app.on_event("startup")
+async def startup_event():
+    """アプリケーション起動時の環境変数バリデーション"""
+    from backend.utils.env_validator import validate_startup
+
+    try:
+        validate_startup()
+    except ValueError:
+        logger.error("起動時バリデーション失敗。環境変数を確認してください。")
+        raise
+
 
 # CORS設定
 _default_origins = ["http://localhost:3000", "http://localhost:3001"]
@@ -83,7 +92,7 @@ async def chat(request: ChatRequest):
             ),
         )
     except Exception as e:
-        logger.error("Endpoint error: %s", e, exc_info=True)
+        logger.exception("Endpoint error: %s", e)
         raise HTTPException(
             status_code=500, detail="An internal error occurred. Please try again later."
         )
@@ -109,7 +118,7 @@ async def invoke_agent(request: ChatRequest):
 
         return {"status": "success", "result": result}
     except Exception as e:
-        logger.error("Endpoint error: %s", e, exc_info=True)
+        logger.exception("Endpoint error: %s", e)
         raise HTTPException(
             status_code=500, detail="An internal error occurred. Please try again later."
         )
@@ -238,7 +247,7 @@ async def voice_api(request: VoiceRequest):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("Endpoint error: %s", e, exc_info=True)
+        logger.exception("Endpoint error: %s", e)
         raise HTTPException(
             status_code=500, detail="An internal error occurred. Please try again later."
         )
@@ -307,7 +316,7 @@ async def slides_api(request: SlidesRequest):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("Endpoint error: %s", e, exc_info=True)
+        logger.exception("Endpoint error: %s", e)
         raise HTTPException(
             status_code=500, detail="An internal error occurred. Please try again later."
         )
@@ -337,7 +346,7 @@ async def character_api(request: CharacterRequest):
         # 現在はプレースホルダー
         return CharacterResponse(success=True, message="キャラクター制御機能は実装中です。")
     except Exception as e:
-        logger.error("Endpoint error: %s", e, exc_info=True)
+        logger.exception("Endpoint error: %s", e)
         raise HTTPException(
             status_code=500, detail="An internal error occurred. Please try again later."
         )

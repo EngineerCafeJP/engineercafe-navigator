@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.fixtures.dataset_loader import DatasetLoader, GroundTruthCase
+from backend.tests.fixtures.dataset_loader import DatasetLoader, GroundTruthCase
 
 GROUND_TRUTH_PATH = (
     Path(__file__).parent.parent / "fixtures" / "golden_datasets" / "ground_truth.json"

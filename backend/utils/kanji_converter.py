@@ -56,7 +56,7 @@ class KanjiConverter:
                 logger.info("KanjiConverter初期化完了: 漢字→読みカナ変換が有効")
             except Exception as e:
                 logger.warning(
-                    f"KanjiConverter初期化エラー: {e}. " "漢字→読みカナ変換は無効になります。"
+                    "KanjiConverter初期化エラー: %s. 漢字→読みカナ変換は無効になります。", e
                 )
         else:
             logger.warning(
@@ -96,11 +96,13 @@ class KanjiConverter:
             # 漢字をカタカナに変換（新API: convert() はリストで各要素に 'kana'/'orig' を持つ）
             result = self._kakasi.convert(text)
             converted = "".join(item.get("kana") or item.get("orig", "") for item in result)
-            logger.debug(f"漢字変換: '{text}' -> '{converted}'")
+            logger.debug("漢字変換: '%s' -> '%s'", text, converted)
             return converted
         except Exception as e:
             logger.warning(
-                f"KanjiConverter変換エラー (text: '{text}'): {e}. " "元のテキストを使用します。"
+                "KanjiConverter変換エラー (text: '%s'): %s. 元のテキストを使用します。",
+                text,
+                e,
             )
             return text
 

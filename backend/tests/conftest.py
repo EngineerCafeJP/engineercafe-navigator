@@ -11,7 +11,16 @@ import asyncio
 project_root = Path(__file__).parent.parent.parent  # engineer-cafe-navigator2025/
 sys.path.insert(0, str(project_root))
 
-# Set test environment variables
+# Load .env.local first (real API keys for integration/RAGAS tests),
+# then fall back to dummy values for pure unit tests.
+_backend_dir = Path(__file__).parent.parent
+_env_local = _backend_dir / ".env.local"
+if _env_local.exists():
+    from dotenv import load_dotenv
+
+    load_dotenv(_env_local, override=False)
+
+# Fallback defaults for CI / environments without .env.local
 os.environ.setdefault("SUPABASE_URL", "http://localhost:54321")
 os.environ.setdefault("SUPABASE_KEY", "test-key")
 os.environ.setdefault("OPENAI_API_KEY", "test-openai-key")

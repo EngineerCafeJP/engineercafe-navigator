@@ -120,7 +120,7 @@ class ConnpassService:
             }
 
         except Exception as e:
-            logger.error("ConnpassService error: %s", e, exc_info=True)
+            logger.exception("ConnpassService error: %s", e)
             return {
                 "success": False,
                 "error": str(e),
@@ -241,7 +241,7 @@ class ConnpassService:
                 return events
 
         except Exception as e:
-            logger.error("Fetch error: %s", e, exc_info=True)
+            logger.exception("Fetch error: %s", e)
             return []
 
     def _format_events(self, events: List[Dict]) -> List[Dict]:

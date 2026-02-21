@@ -5,18 +5,22 @@
 import pytest
 from typing import List, Dict, Any
 
-from tests.utils.evaluators.llm_judge import LLMJudgeEvaluator, QualityDimension
-from tests.utils.evaluators.routing_accuracy import (
+from backend.tests.utils.evaluators.llm_judge import LLMJudgeEvaluator, QualityDimension
+from backend.tests.utils.evaluators.routing_accuracy import (
     RoutingAccuracyEvaluator,
     RoutingTestCase,
 )
-from tests.utils.evaluators.report_generator import EvaluationReportGenerator
-from tests.fixtures.dataset_loader import DatasetLoader
+from backend.tests.utils.evaluators.report_generator import EvaluationReportGenerator
+from backend.tests.fixtures.dataset_loader import DatasetLoader
 
 
 def pytest_configure(config):
     """pytest設定"""
     config.addinivalue_line("markers", "run_llm: mark test as requiring LLM API")
+    config.addinivalue_line(
+        "markers",
+        "ragas: RAGAS evaluation tests (require OPENAI_API_KEY or OPENROUTER_API_KEY)",
+    )
 
 
 def pytest_collection_modifyitems(config, items):

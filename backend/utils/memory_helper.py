@@ -79,7 +79,7 @@ class SimplifiedMemoryHelper:
             return session.get("status") == "active"
 
         except Exception as e:
-            logger.warning(f"Error checking session status: {e}")
+            logger.warning("Error checking session status: %s", e)
             # セッション情報取得に失敗した場合はフォールバックとしてTrue
             return True
 
@@ -94,7 +94,7 @@ class SimplifiedMemoryHelper:
             前回のリクエストタイプ（hours, price, location など）
             存在しない場合は None
         """
-        logger.info(f"Getting previous request type for session: {session_id}")
+        logger.info("Getting previous request type for session: %s", session_id)
 
         if not self.supabase:
             logger.warning("Supabase not available")
@@ -120,13 +120,13 @@ class SimplifiedMemoryHelper:
                 if value.get("role") == "user" and value.get("sessionId") == session_id:
                     request_type = value.get("request_type")
                     if request_type:
-                        logger.info(f"Found previous request type: {request_type}")
+                        logger.info("Found previous request type: %s", request_type)
                         return request_type
 
             return None
 
         except Exception as e:
-            logger.error(f"Error getting previous request type: {e}")
+            logger.error("Error getting previous request type: %s", e)
             return None
 
     async def get_context(
@@ -155,11 +155,11 @@ class SimplifiedMemoryHelper:
         language = options.get("language", "ja")
         inherit_context = options.get("inherit_context", True)
 
-        logger.info(f"Getting context for query: '{query[:50]}...', session: {session_id}")
+        logger.info("Getting context for query: '%s...', session: %s", query[:50], session_id)
 
         # 最近のメッセージを取得
         recent_messages = await self._get_recent_messages(session_id)
-        logger.info(f"Found {len(recent_messages)} recent messages")
+        logger.info("Found %d recent messages", len(recent_messages))
 
         # メッセージをランキング
         if recent_messages:
@@ -197,7 +197,7 @@ class SimplifiedMemoryHelper:
                         for r in rag_result["data"]["results"]
                     ]
             except Exception as e:
-                logger.warning(f"Knowledge base search failed: {e}")
+                logger.warning("Knowledge base search failed: %s", e)
                 knowledge_results = []
 
         # コンテキスト文字列のフォーマット
@@ -232,7 +232,7 @@ class SimplifiedMemoryHelper:
             # セッションの有効性を確認
             session_active = await self._is_session_active(session_id)
             if not session_active:
-                logger.info(f"Session {session_id} is not active, returning empty messages")
+                logger.info("Session %s is not active, returning empty messages", session_id)
                 return []
 
             response = (
@@ -269,7 +269,7 @@ class SimplifiedMemoryHelper:
             return messages
 
         except Exception as e:
-            logger.error(f"Error getting recent messages: {e}")
+            logger.error("Error getting recent messages: %s", e)
             return []
 
     def _rank_messages(self, messages: List[Dict], current_query: str) -> List[Dict]:
@@ -456,8 +456,10 @@ class SimplifiedMemoryHelper:
             metadata["request_type"] = extract_request_type(content)
 
         logger.info(
-            f"Storing {role} message for session: {session_id}, "
-            f"request_type: {metadata.get('request_type')}"
+            "Storing %s message for session: %s, request_type: %s",
+            role,
+            session_id,
+            metadata.get("request_type"),
         )
 
         try:
@@ -485,10 +487,10 @@ class SimplifiedMemoryHelper:
                 }
             ).execute()
 
-            logger.info(f"Stored message with key: {message_key}, session: {session_id}")
+            logger.info("Stored message with key: %s, session: %s", message_key, session_id)
 
         except Exception as e:
-            logger.error(f"Error storing message: {e}")
+            logger.error("Error storing message: %s", e)
             raise
 
     def _extract_request_type(self, content: str) -> Optional[str]:
@@ -505,7 +507,7 @@ class SimplifiedMemoryHelper:
         Args:
             session_id: セッションID
         """
-        logger.info(f"Cleaning up messages for session: {session_id}")
+        logger.info("Cleaning up messages for session: %s", session_id)
 
         if not self.supabase:
             return
@@ -534,10 +536,12 @@ class SimplifiedMemoryHelper:
                 for record_id in ids_to_delete:
                     self.supabase.table("agent_memory").delete().eq("id", record_id).execute()
 
-                logger.info(f"Cleaned up {len(ids_to_delete)} messages for session: {session_id}")
+                logger.info(
+                    "Cleaned up %d messages for session: %s", len(ids_to_delete), session_id
+                )
 
         except Exception as e:
-            logger.error(f"Error during session cleanup: {e}")
+            logger.error("Error during session cleanup: %s", e)
 
     async def cleanup(self) -> None:
         """
@@ -588,10 +592,10 @@ class SimplifiedMemoryHelper:
                 for record_id in ids_to_delete:
                     self.supabase.table("agent_memory").delete().eq("id", record_id).execute()
 
-                logger.info(f"Cleaned up {len(ids_to_delete)} messages from ended sessions")
+                logger.info("Cleaned up %d messages from ended sessions", len(ids_to_delete))
 
         except Exception as e:
-            logger.error(f"Error during cleanup: {e}")
+            logger.error("Error during cleanup: %s", e)
 
     async def get_memory_stats(self, session_id: Optional[str] = None) -> Dict[str, Any]:
         """
@@ -690,7 +694,7 @@ class SimplifiedMemoryHelper:
             }
 
         except Exception as e:
-            logger.error(f"Error getting memory stats: {e}")
+            logger.error("Error getting memory stats: %s", e)
             return {
                 "active_turns": 0,
                 "oldest_turn": None,

@@ -55,7 +55,7 @@ class CalendarService:
             }
 
         except Exception as e:
-            logger.error("CalendarService error: %s", e, exc_info=True)
+            logger.exception("CalendarService error: %s", e)
             return {"success": False, "error": str(e)}
 
     def _calculate_time_range(self, time_range: TimeRange) -> tuple[datetime, datetime]:
@@ -138,7 +138,7 @@ class CalendarService:
                 return filtered_events
 
         except Exception as e:
-            logger.error("ICS fetch error: %s", e, exc_info=True)
+            logger.exception("ICS fetch error: %s", e)
             return []
 
     def _parse_ics_content(self, content: str) -> List[Dict]:
@@ -230,7 +230,7 @@ class CalendarService:
             }
 
         except Exception as e:
-            logger.error("VEVENT parse error: %s", e, exc_info=True)
+            logger.exception("VEVENT parse error: %s", e)
             return None
 
     def _parse_ics_date(self, date_str: str) -> str:
@@ -271,7 +271,7 @@ class CalendarService:
             return dt.date().isoformat()
 
         except Exception as e:
-            logger.error("Date parse error: %s - %s", date_str, e, exc_info=True)
+            logger.exception("Date parse error: %s - %s", date_str, e)
             return date_str
 
     def _filter_events_by_time(
@@ -311,7 +311,7 @@ class CalendarService:
                     filtered.append(event)
 
             except Exception as e:
-                logger.error("Filter error: %s - %s", start_str, e, exc_info=True)
+                logger.exception("Filter error: %s - %s", start_str, e)
                 continue
 
         return filtered

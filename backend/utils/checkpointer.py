@@ -72,7 +72,7 @@ async def create_checkpointer() -> AsyncPostgresSaver:
 
     # 接続文字列をマスクしてログ出力（パスワード漏洩防止）
     masked_uri = _mask_connection_string(db_uri)
-    logger.info(f"Creating AsyncPostgresSaver with connection: {masked_uri}")
+    logger.info("Creating AsyncPostgresSaver with connection: %s", masked_uri)
 
     try:
         checkpointer = await AsyncPostgresSaver.from_conn_string(db_uri)
@@ -80,7 +80,7 @@ async def create_checkpointer() -> AsyncPostgresSaver:
         logger.info("AsyncPostgresSaver created and initialized successfully")
         return checkpointer
     except Exception as e:
-        logger.error("Failed to create AsyncPostgresSaver: %s", e, exc_info=True)
+        logger.exception("Failed to create AsyncPostgresSaver: %s", e)
         raise ConnectionError(f"Failed to connect to Supabase PostgreSQL: {e}") from e
 
 

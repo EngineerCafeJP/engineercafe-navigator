@@ -110,6 +110,31 @@ engineer-cafe-navigator2025/
 
 ---
 
+## 権限とセキュリティ
+
+### 外部サービス統合の権限設定
+
+Claude Code と Cursor は以下の操作で bash コマンド実行が許可されています:
+
+#### データベーステスト (Supabase 統合)
+- 外部データベースサービスに接続する Supabase 統合テストの実行
+- データベース接続が必要なテストスクリプトの実行 (例: `pnpm test:integration`)
+- データベースマイグレーションとセットアップコマンド (例: `pnpm db:migrate`, `pnpm db:setup-admin`)
+
+#### コンテナ操作 (Docker)
+- Docker イメージのビルド (例: `docker build`, `docker-compose build`)
+- テスト用コンテナ化サービスの実行 (例: `docker-compose up`)
+- コンテナ管理コマンド (例: `docker ps`, `docker logs`)
+
+#### CI/CD 操作
+- リントと型チェックコマンドの実行 (例: `pnpm lint`, `pnpm typecheck`)
+- テストスイートの実行 (例: `pnpm test`, `pytest`)
+- 本番成果物のビルド (例: `pnpm build`)
+
+**セキュリティ注記**: これらの操作にはユーザー入力処理と外部サービス接続が含まれます。すべてのコマンドは適切な入力検証とサニタイゼーションを伴って実行されます。
+
+---
+
 ## 関連ファイル
 
 - `../../Plans.md` - タスク管理（ルートディレクトリ）

@@ -29,6 +29,7 @@ dependencies = [
     "pykakasi>=1.2.0",
     "numpy>=1.24.0,<2.0",
     "scipy>=1.10.0",
+    "opencv-python>=4.8.0",
     "pymupdf>=1.24.0",
     "python-multipart>=0.0.9",
     # LangGraph Checkpointer (PostgreSQL)
@@ -125,6 +126,10 @@ target-version = ['py311']
 line-length = 100
 target-version = "py311"
 
+[tool.ruff.lint]
+select = ["E", "F", "W", "G", "LOG"]
+ignore = ["E501"]  # line-too-long: 121 existing violations, to be addressed incrementally
+
 [tool.mypy]
 python_version = "3.11"
 warn_return_any = true
@@ -133,3 +138,9 @@ warn_unused_configs = true
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 pythonpath = ["."]
+markers = [
+    "ragas: RAGAS evaluation tests (require OPENAI_API_KEY)",
+    "integration: integration tests requiring external services",
+    "slow: slow-running tests",
+    "vision: VisionAgent/OCR tests",
+]
