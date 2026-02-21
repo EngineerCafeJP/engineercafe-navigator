@@ -144,3 +144,93 @@ async def test_text_to_speech_fallback_on_error(monkeypatch):
     assert result["success"] is True
     assert result["audioResponse"] == "FALLBACK_BASE64"
     assert state["n"] == 2  # 1回失敗 + フォールバックで1回成功
+
+
+@pytest.mark.asyncio
+async def test_text_to_speech_routes_english_to_kokoro(monkeypatch):
+    """英語テキストがKokoro TTSにルーティングされることを確認"""
+    agent = VoiceAgent(tts_provider="voicevox")
+    kokoro_called = {"called": False}
+
+    async def fake_kokoro_synth(text, lang, voice=None):
+        kokoro_called["called"] = True
+        return "KOKORO_BASE64_WAV"
+
+    monkeypatch.setattr(agent.kokoro_client, "synthesize_wav_base64", fake_kokoro_synth)
+
+    result = await agent.text_to_speech(
+        text="Hello, how are you?",
+        language="en",
+    )
+
+    assert kokoro_called["called"] is True
+    assert result["success"] is True
+    assert result["audioResponse"] == "KOKORO_BASE64_WAV"
+    assert result["format"] == "audio/wav"
+    assert result["language"] == "en"
+
+
+@pytest.mark.asyncio
+async def test_text_to_speech_routes_japanese_to_voicevox(monkeypatch):
+    """日本語テキストがVoiceVoxにルーティングされることを確認"""
+    agent = VoiceAgent(tts_provider="voicevox")
+    voicevox_called = {"called": False}
+
+    async def fake_voicevox_synth(text, lang, speaker_id=None):
+        voicevox_called["called"] = True
+        return "VOICEVOX_BASE64_WAV"
+
+    monkeypatch.setattr(agent.tts_client, "synthesize_wav_base64", fake_voicevox_synth)
+
+    result = await agent.text_to_speech(
+        text="こんにちは、元気ですか？",
+        language="ja",
+    )
+
+    assert voicevox_called["called"] is True
+    assert result["success"] is True
+    assert result["audioResponse"] == "VOICEVOX_BASE64_WAV"
+    assert result["format"] == "audio/wav"
+    assert result["language"] == "ja"
+
+
+@pytest.mark.asyncio
+async def test_text_to_speech_auto_detects_language_and_routes(monkeypatch):
+    """言語自動検出が正しく動作し、適切なTTSエンジンにルーティングされることを確認"""
+    agent = VoiceAgent(tts_provider="voicevox")
+    kokoro_called = {"called": False}
+    voicevox_called = {"called": False}
+
+    async def fake_kokoro_synth(text, lang, voice=None):
+        kokoro_called["called"] = True
+        return "KOKORO_BASE64_WAV"
+
+    async def fake_voicevox_synth(text, lang, speaker_id=None):
+        voicevox_called["called"] = True
+        return "VOICEVOX_BASE64_WAV"
+
+    monkeypatch.setattr(agent.kokoro_client, "synthesize_wav_base64", fake_kokoro_synth)
+    monkeypatch.setattr(agent.tts_client, "synthesize_wav_base64", fake_voicevox_synth)
+
+    # 英語テキスト（言語未指定）
+    result_en = await agent.text_to_speech(
+        text="Hello, welcome to Engineer Cafe!",
+        language=None,  # 自動検出
+    )
+
+    assert kokoro_called["called"] is True
+    assert result_en["success"] is True
+    assert result_en["language"] == "en"
+
+    # リセット
+    kokoro_called["called"] = False
+
+    # 日本語テキスト（言語未指定）
+    result_ja = await agent.text_to_speech(
+        text="こんにちは、エンジニアカフェへようこそ！",
+        language=None,  # 自動検出
+    )
+
+    assert voicevox_called["called"] is True
+    assert result_ja["success"] is True
+    assert result_ja["language"] == "ja"
