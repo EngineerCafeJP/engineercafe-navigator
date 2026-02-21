@@ -48,6 +48,9 @@ class SupportedModel(str, Enum):
     MISTRAL_SMALL = "mistralai/mistral-small-creative"
     DEVSTRAL = "mistralai/devstral-2512"
 
+    # Vision Models (lightweight, tool-use capable)
+    GPT_4_1_NANO = "openai/gpt-4.1-nano"
+
 
 @dataclass
 class ModelConfig:
@@ -130,6 +133,14 @@ MODEL_CONFIGS: dict[str, ModelConfig] = {
         model_id=SupportedModel.GEMINI_3_FLASH,
         temperature=0.5,
         max_tokens=768,
+        fallback_model=SupportedModel.GPT_4O_MINI,
+    ),
+    # Vision/OCR: Low temperature for deterministic recognition
+    # GPT-4.1-nano is lightweight and supports vision + tool-use
+    "vision": ModelConfig(
+        model_id=SupportedModel.GPT_4_1_NANO,
+        temperature=0.0,
+        max_tokens=512,
         fallback_model=SupportedModel.GPT_4O_MINI,
     ),
 }

@@ -1,22 +1,19 @@
 import base64
+import logging
 from typing import Annotated, Dict, Any, TypedDict
 
 import cv2
 import numpy as np
-from dotenv import load_dotenv
-from langchain_openai import ChatOpenAI
 from langchain_core.messages import BaseMessage, HumanMessage, ToolMessage
 from langchain_core.tools import tool
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
-from langgraph.prebuilt import ToolNode
-import os
+from langgraph.prebuilt import ToolNode, tools_condition
 
-# =====================================================
-# Env
-# =====================================================
-load_dotenv()
-API_KEY = os.getenv("OPENROUTER_API_KEY")
+from backend.llm.openrouter import OpenRouterProvider
+from backend.llm.models import get_model_config
+
+logger = logging.getLogger(__name__)
 
 
 # =====================================================
@@ -68,11 +65,9 @@ class VisionAgent:
     """
 
     def __init__(self):
-        self.llm = ChatOpenAI(
-            model="gpt-4.1-nano",
-            temperature=0.0,
-            api_key=API_KEY,
-        )
+        provider = OpenRouterProvider()
+        vision_config = get_model_config("vision")
+        self.llm = provider.get_langchain_llm(config=vision_config)
 
         self.vision_llm = self.llm.bind_tools([face_recognition, text_recognition])
 
@@ -88,8 +83,11 @@ class VisionAgent:
         graph.add_node("tools", ToolNode([face_recognition, text_recognition]))
 
         graph.add_edge(START, "vision")
-        graph.add_edge("vision", "tools")
-        graph.add_edge("tools", END)
+        graph.add_conditional_edges(
+            "vision",
+            tools_condition,
+        )
+        graph.add_edge("tools", "vision")
 
         return graph.compile()
 
