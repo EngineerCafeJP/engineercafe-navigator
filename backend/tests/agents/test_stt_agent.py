@@ -570,7 +570,8 @@ class TestSTTAgentAutoDetect:
         mock_client.transcribe.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_auto_detect_with_grammar_enabled(self):
+    @patch.object(STTAgent, "_load_custom_vocabulary", return_value=[])
+    async def test_auto_detect_with_grammar_enabled(self, _mock_vocab):
         """STTAgent with use_grammar=True passes grammar to auto-detect"""
         mock_client = MagicMock(spec=LocalSTTClient)
         mock_client.transcribe_auto_detect = AsyncMock(
@@ -861,7 +862,8 @@ class TestStageGrammar:
             assert stage in VALID_STAGES
 
     @pytest.mark.asyncio
-    async def test_stage_grammar_greeting(self):
+    @patch.object(STTAgent, "_load_custom_vocabulary", return_value=[])
+    async def test_stage_grammar_greeting(self, _mock_vocab):
         """greeting stage uses STAGE_GRAMMARS['greeting']"""
         mock_client = MagicMock(spec=LocalSTTClient)
         mock_client.transcribe = AsyncMock(
@@ -886,7 +888,8 @@ class TestStageGrammar:
         assert grammar_arg == STAGE_GRAMMARS["greeting"]["ja"]
 
     @pytest.mark.asyncio
-    async def test_stage_grammar_service_selection(self):
+    @patch.object(STTAgent, "_load_custom_vocabulary", return_value=[])
+    async def test_stage_grammar_service_selection(self, _mock_vocab):
         """service_selection stage uses STAGE_GRAMMARS['service_selection']"""
         mock_client = MagicMock(spec=LocalSTTClient)
         mock_client.transcribe = AsyncMock(
@@ -911,7 +914,8 @@ class TestStageGrammar:
         assert grammar_arg == STAGE_GRAMMARS["service_selection"]["en"]
 
     @pytest.mark.asyncio
-    async def test_stage_grammar_confirmation(self):
+    @patch.object(STTAgent, "_load_custom_vocabulary", return_value=[])
+    async def test_stage_grammar_confirmation(self, _mock_vocab):
         """confirmation stage uses STAGE_GRAMMARS['confirmation']"""
         mock_client = MagicMock(spec=LocalSTTClient)
         mock_client.transcribe = AsyncMock(
