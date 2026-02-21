@@ -49,6 +49,8 @@ services:
     depends_on:
       voicevox:
         condition: service_healthy
+      kokoro-tts:
+        condition: service_healthy
     networks:
       - engineer-cafe-network
     extra_hosts:
@@ -72,6 +74,21 @@ services:
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:50021/version"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Kokoro TTS Engine (Local) - for English TTS
+  kokoro-tts:
+    image: ghcr.io/remsky/kokoro-fastapi-cpu:latest
+    container_name: engineer-cafe-kokoro-tts
+    ports:
+      - "8880:8880"
+    networks:
+      - engineer-cafe-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8880/v1/audio/voices"]
       interval: 10s
       timeout: 5s
       retries: 5
