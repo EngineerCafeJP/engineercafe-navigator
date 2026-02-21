@@ -14,7 +14,6 @@ from langchain_core.messages import BaseMessage
 
 from backend.llm.provider import LLMProvider, get_llm_provider, reset_provider
 
-
 # ---------------------------------------------------------------------------
 # フィクスチャ
 # ---------------------------------------------------------------------------

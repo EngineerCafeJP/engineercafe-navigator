@@ -20,7 +20,6 @@ from unittest.mock import Mock, AsyncMock, patch, MagicMock
 import backend.utils.memory_helper as memory_helper_module
 from backend.utils.memory_helper import SimplifiedMemoryHelper, get_memory_helper
 
-
 # =============================================================================
 # フィクスチャ
 # =============================================================================

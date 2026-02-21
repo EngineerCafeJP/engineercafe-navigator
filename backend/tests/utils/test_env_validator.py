@@ -17,7 +17,6 @@ from backend.utils.env_validator import (
     validate_startup,
 )
 
-
 # ============================================
 # Helper: mock Settings factory
 # ============================================

@@ -21,7 +21,6 @@ from langgraph.checkpoint.memory import MemorySaver
 
 from backend.agents.orchestrator_agent import OrchestratorDecision
 
-
 # ---------------------------------------------------------------------------
 # Shared fixtures & helpers (same pattern as test_multi_agent_scenarios.py)
 # ---------------------------------------------------------------------------

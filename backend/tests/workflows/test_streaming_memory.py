@@ -13,7 +13,6 @@ from unittest.mock import AsyncMock, Mock, patch
 from backend.agents.orchestrator_agent import OrchestratorDecision
 from backend.workflows.main_workflow import MainWorkflow, get_workflow, reset_workflow
 
-
 # ---------------------------------------------------------------------------
 # Helper: 全外部依存をまとめてモックするコンテキストマネージャ
 # ---------------------------------------------------------------------------

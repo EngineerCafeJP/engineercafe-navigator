@@ -17,7 +17,6 @@ from langgraph.checkpoint.memory import MemorySaver
 
 from backend.agents.orchestrator_agent import OrchestratorDecision
 
-
 # ---------------------------------------------------------------------------
 # Shared fixtures
 # ---------------------------------------------------------------------------
