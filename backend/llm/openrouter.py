@@ -9,6 +9,7 @@ See: https://openrouter.ai/docs
 """
 
 import json
+import logging
 import os
 from typing import AsyncGenerator, Dict, List, Optional
 
@@ -23,6 +24,8 @@ from langchain_openai import ChatOpenAI
 
 from .models import MODEL_CONFIGS, ModelConfig
 from .provider import LLMProvider
+
+logger = logging.getLogger(__name__)
 
 
 class OpenRouterError(Exception):
@@ -171,8 +174,8 @@ class OpenRouterProvider(LLMProvider):
         except httpx.HTTPStatusError as e:
             # Try fallback model if available (prevent infinite loop)
             if config.fallback_model and _fallback_count < 1:
-                print(
-                    f"[OpenRouter] HTTP error (status {e.response.status_code}), trying fallback: {config.fallback_model.value}"
+                logger.warning(
+                    f"HTTP error (status {e.response.status_code}), trying fallback: {config.fallback_model.value}"
                 )
                 fallback_config = ModelConfig(
                     model_id=config.fallback_model,
@@ -192,7 +195,7 @@ class OpenRouterProvider(LLMProvider):
         except httpx.RequestError as e:
             # Try fallback model for network errors (prevent infinite loop)
             if config.fallback_model and _fallback_count < 1:
-                print(f"[OpenRouter] Network error, trying fallback: {config.fallback_model.value}")
+                logger.warning(f"Network error, trying fallback: {config.fallback_model.value}")
                 fallback_config = ModelConfig(
                     model_id=config.fallback_model,
                     temperature=config.temperature,

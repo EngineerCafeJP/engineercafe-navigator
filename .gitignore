@@ -73,12 +73,22 @@ Thumbs.db
 
 # - Keep shared Claude Code config/rules/memory, ignore local state and local overrides.
 .claude/state/
+.claude/logs/
+.claude/sessions/
 .claude/settings.local.json
 .claude/memory/session-log*.md
+
+# Backend-specific Claude Code artifacts
+backend/.claude/state/
+backend/.claude/logs/
+backend/.claude/sessions/
 
 # Claude Code harness (local)
 .claude-code-harness/
 .claude-code-harness-version
+
+# Serena (local project config)
+.serena/
 
 # Test coverage
 coverage/
@@ -107,8 +117,6 @@ htmlcov/
 
 # Temporary directories
 langgraph-repo/
-# Note: langgraph-reference/ is a Git submodule and should be tracked
-engineer-cafe-navigator-repo/
 
 # Docker
 docker-compose.override.yml
@@ -116,3 +124,11 @@ docker-compose.override.yml
 # mise (version management tool)
 .mise/
 .mise.lock
+
+# Reference implementation (external git repo)
+reference-implementation/
+
+# RAGAS evaluation reports (generated artifacts)
+backend/reports/
+backend/tests/reports/
+backend/tests/evaluation/reports/

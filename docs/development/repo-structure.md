@@ -1,8 +1,11 @@
 # リポジトリ構成ガイド
 
+> 最終更新: 2026-02-07（参照コード削除、クリーンモノレポ化）
+
 ## 概要
 
-このリポジトリには、Engineer Cafe Navigator 2025の新実装と、旧実装の参照コードが含まれています。
+Engineer Cafe Navigator 2025 のモノレポ構成です。
+Frontend (Next.js) + Backend (Python/LangGraph) + DB (Supabase) の3層アーキテクチャ。
 
 ## ディレクトリ構成
 
@@ -12,56 +15,46 @@ engineer-cafe-navigator2025/
 ├── README-EN.md                     # 英語版README
 ├── Plans.md                         # タスク管理（ルートに保持）
 │
-├── frontend/                        # 新Frontend実装
+├── frontend/                        # Frontend（Next.js）
 │   └── src/
-│       └── mastra/                  # Mastra AIエージェント
-│           └── agents/              # 12エージェント実装
+│       ├── app/                     # App Router + API Routes
+│       ├── components/              # React コンポーネント
+│       └── lib/                     # ユーティリティ
 │
-├── backend/                         # 新Backend実装（LangGraph）
-│   ├── agents/                      # LangGraphエージェント
-│   ├── llm/                         # OpenRouter LLMプロバイダー
-│   ├── tools/                       # ツール実装
-│   ├── workflows/                   # LangGraphワークフロー
+├── backend/                         # Backend（Python + LangGraph）
+│   ├── agents/                      # LangGraph エージェント（12種）
+│   ├── config/                      # 設定・定数
+│   │   ├── routing_constants.py     # ルーティングキーワード・型定義・ヘルパー
+│   │   ├── settings.py              # アプリケーション設定
+│   │   └── prompts/                 # 共有プロンプトテンプレート
+│   │       ├── facility_prompts.py
+│   │       ├── event_prompts.py
+│   │       └── memory_prompts.py
+│   ├── llm/                         # OpenRouter LLM プロバイダー
+│   ├── tools/                       # ツール実装（agent_tools, web_search）
+│   ├── utils/                       # ユーティリティ
+│   │   ├── input_sanitizer.py       # 入力バリデーション・サニタイズ
+│   │   ├── exceptions.py            # カスタム例外階層
+│   │   ├── memory_helper.py         # Supabase メモリシステム
+│   │   ├── language_processor.py    # 言語検出
+│   │   └── query_classifier.py      # クエリ分類
+│   ├── workflows/                   # LangGraph ワークフロー
+│   ├── tests/                       # テスト（406件）
+│   │   ├── agents/                  # 単体テスト
+│   │   ├── integration/             # 統合テスト
+│   │   └── evaluation/              # LangChain Evaluation
 │   ├── slides/                      # スライドファイル
-│   └── supabase/                    # Supabase設定・マイグレーション
+│   └── supabase/                    # Supabase 設定・マイグレーション
 │
-├── docs/                            # ドキュメント（整理済み）
-│   ├── development/                 # 開発ガイド
-│   │   ├── AGENTS.md
-│   │   ├── CLAUDE.md
-│   │   ├── CONTRIBUTING.md
-│   │   ├── DEVELOPER-GUIDE.md
-│   │   ├── LANGGRAPH-DEVELOPMENT-GUIDE.md
-│   │   ├── LOCAL-DEVELOPMENT-SETUP.md
-│   │   ├── MAINTENANCE-GUIDE.md
-│   │   ├── BRANCH-PROTECTION-SETUP.md
-│   │   ├── AGILE-AI-DEVELOPMENT.md
-│   │   ├── IMPLEMENTATION-LIMITATIONS.md
-│   │   ├── memory-rag-integration.md
-│   │   ├── stt-correction-coverage.md
-│   │   ├── data-input-guide.md
-│   │   └── repo-structure.md        # このファイル
-│   ├── api/                         # API仕様
-│   │   ├── API.md
-│   │   ├── API-ja.md
-│   │   └── api-setup-guide.md
-│   ├── architecture/                # アーキテクチャ
-│   │   ├── SYSTEM-ARCHITECTURE.md
-│   │   └── UNIFIED-ARCHITECTURE.md
-│   ├── migration/                   # 移行ガイド
-│   │   └── agents/                  # エージェント別移行ガイド
-│   ├── archive/                     # 古いドキュメント
-│   │   ├── DEVELOPMENT-old.md
-│   │   ├── fix-double-tts-call.md
-│   │   ├── fix-summary-report.md
-│   │   └── ...
-│   ├── blog/                        # ブログ記事
-│   ├── wiki/                        # Backlog Wiki テンプレート
-│   └── CHANGELOG.md                 # 変更履歴
-│
-└── engineer-cafe-navigator-repo/    # 旧実装（参照用）
-    ├── src/                         # 旧Mastra実装
-    └── docs/                        # 旧ドキュメント
+└── docs/                            # ドキュメント
+    ├── development/                 # 開発ガイド
+    ├── api/                         # API仕様
+    ├── architecture/                # アーキテクチャ
+    ├── migration/                   # 移行ガイド（完了済み・履歴）
+    ├── archive/                     # 古いドキュメント
+    ├── blog/                        # ブログ記事
+    ├── wiki/                        # Backlog Wiki テンプレート
+    └── CHANGELOG.md                 # 変更履歴
 ```
 
 ## 各ディレクトリの役割
@@ -70,60 +63,21 @@ engineer-cafe-navigator2025/
 
 | ディレクトリ | 用途 | 技術スタック |
 |-------------|------|-------------|
-| `frontend/` | 新Frontend | Next.js 15.3 + Mastra 0.10.5 |
-| `backend/` | 新Backend | Python + LangGraph + OpenRouter |
+| `frontend/` | Frontend | Next.js 15.3 + React 19 + TypeScript |
+| `backend/` | Backend | Python 3.12 + LangGraph + OpenRouter |
 | `backend/supabase/` | DB設定・マイグレーション | PostgreSQL + pgvector |
 
 ### ドキュメント
 
 | ディレクトリ | 用途 |
 |-------------|------|
-| `docs/development/` | 開発ガイド、CLAUDE.md、AGENTS.md等 |
+| `docs/development/` | 開発ガイド、CLAUDE.md、AGENTS.md 等 |
 | `docs/api/` | API仕様（API.md, API-ja.md） |
 | `docs/architecture/` | システムアーキテクチャドキュメント |
-| `docs/migration/` | MastraからLangGraphへの移行ガイド |
+| `docs/migration/` | Mastra→LangGraph 移行ガイド（完了済み・履歴として保持） |
 | `docs/archive/` | 古いドキュメント・完了レポート |
 | `docs/blog/` | ブログ記事 |
-| `docs/wiki/` | Backlog Wiki向けテンプレート |
-
-### 参照コード（編集禁止）
-
-| ディレクトリ | 用途 | 注意事項 |
-|-------------|------|---------|
-| `engineer-cafe-navigator-repo/` | 旧実装の参照 | **編集禁止** |
-
-## engineer-cafe-navigator-repo について
-
-### 目的
-
-- 旧Mastra実装のロジックを参照するため
-- 新LangGraph実装への移行時の参考資料
-- エージェントのルーティングロジック等のポート元
-
-### 重要な参照ファイル
-
-| ファイル | 内容 |
-|---------|------|
-| `src/mastra/agents/router-agent.ts` | RouterAgentの完全実装（290行） |
-| `src/mastra/agents/` | 12エージェントのMastra実装 |
-| `src/lib/simplified-memory.ts` | メモリシステム実装 |
-| `CLAUDE.md` | 旧プロジェクトのAI向け指示書（現在は`docs/development/CLAUDE.md`に移動） |
-
-### 使い方
-
-```bash
-# 参照時
-cat engineer-cafe-navigator-repo/src/mastra/agents/router-agent.ts
-
-# 検索時
-grep -r "memoryKeywordsJa" engineer-cafe-navigator-repo/src/
-```
-
-### 禁止事項
-
-- `engineer-cafe-navigator-repo/`内のファイルを編集しない
-- このディレクトリに新規ファイルを追加しない
-- ネストされた`.git`を復元しない
+| `docs/wiki/` | Backlog Wiki 向けテンプレート |
 
 ## Git管理
 
@@ -137,25 +91,18 @@ grep -r "memoryKeywordsJa" engineer-cafe-navigator-repo/src/
 - feature/*: 機能開発
 ```
 
-### .gitignore
+## 移行履歴
 
-`engineer-cafe-navigator-repo/`は追跡対象ですが、内部の`.git`は除外されています:
+Mastra (TypeScript) → LangGraph (Python) への移行は 2026年2月に完了しました。
 
-```gitignore
-# Nested git directories are removed, not ignored
-# engineer-cafe-navigator-repo/ is tracked as reference code
-```
-
-## 移行完了後
-
-LangGraph移行が完全に完了した後:
-
-1. `engineer-cafe-navigator-repo/`は削除可能
-2. 移行完了をチームで確認
-3. 必要に応じてアーカイブを作成
+- 旧参照コード（`engineer-cafe-navigator-repo/`）は削除済み
+- 旧 LangGraph リファレンス（`langgraph-reference/` submodule）は削除済み
+- 旧 Mastra エージェントアーカイブ（`frontend/src/_reference/mastra/`）は削除済み
+- 移行ガイド（`docs/migration/agents/`）は履歴として保持
 
 ## 関連ドキュメント
 
-- [ブランチ戦略](../wiki/development/branch-strategy.md)
-- [ローカルセットアップ](../wiki/development/local-setup.md)
-- [エージェントアーキテクチャ](../wiki/agents/overview.md)
+- [開発ガイド](DEVELOPER-GUIDE.md)
+- [エージェント一覧](AGENTS.md)
+- [LangGraph開発ガイド](LANGGRAPH-DEVELOPMENT-GUIDE.md)
+- [エージェント開発クイックスタート](AGENT-QUICKSTART.md)

@@ -2,11 +2,10 @@
 
 import { audioStateManager } from '@/lib/audio-state-manager';
 import { preprocessTTS } from '@/utils/tts-preprocess';
-import { MessageSquare, Presentation, Settings, UserPlus, Volume2, VolumeX, X } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import BackgroundSelector, { BackgroundOption } from './components/BackgroundSelector';
+import { MessageSquare, Presentation, UserPlus, X } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { BackgroundOption } from './components/BackgroundSelector';
 import CharacterAvatar from './components/CharacterAvatar';
-import EnvironmentSettings from './components/EnvironmentSettings';
 import MarpViewer from './components/MarpViewer';
 import { EmotionMapping } from '@/lib/emotion-mapping';
 
@@ -25,8 +24,6 @@ export default function Home() {
     value: '#000000',
   });
   const [lightingIntensity, setLightingIntensity] = useState(1);
-  const [showSettings, setShowSettings] = useState(false);
-  
   // Audio control state
   const [isMuted, setIsMuted] = useState(false);
   const [volume, setVolume] = useState(80);
@@ -38,7 +35,6 @@ export default function Home() {
   const [isInitializingRecorder, setIsInitializingRecorder] = useState(false);
   const [setVisemeFunction, setSetVisemeFunction] = useState<((viseme: string, intensity: number) => void) | null>(null);
   const [setExpressionFunction, setSetExpressionFunction] = useState<((expression: string, weight: number) => void) | null>(null);
-  
   // Loading state
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingMessage, setProcessingMessage] = useState('');
@@ -52,7 +48,15 @@ export default function Home() {
     []
   );
 
+  const lipSyncTimeoutsRef = useRef<NodeJS.Timeout[]>([]);
   const prevVolumeRef = useRef<number>(80);
+
+  // Cleanup lip sync timeouts on unmount
+  useEffect(() => {
+    return () => {
+      lipSyncTimeoutsRef.current.forEach(id => clearTimeout(id));
+    };
+  }, []);
 
   // Sync audioStateManager when volume or mute changes
   useEffect(() => {
@@ -611,11 +615,15 @@ export default function Home() {
       }
       
       if (characterControlData.lipSyncData && setVisemeFunction) {
+        // Clear previous lip sync timeouts
+        lipSyncTimeoutsRef.current.forEach(id => clearTimeout(id));
+        lipSyncTimeoutsRef.current = [];
         // Apply lip sync data frame by frame
         characterControlData.lipSyncData.forEach((frame: any) => {
-          setTimeout(() => {
+          const id = setTimeout(() => {
             setVisemeFunction(frame.viseme, frame.intensity);
           }, frame.time);
+          lipSyncTimeoutsRef.current.push(id);
         });
       }
       
@@ -760,20 +768,14 @@ export default function Home() {
                     onExpressionControl={(setExpression) => {
                       setSetExpressionFunction(() => setExpression);
                     }}
+                    onBackgroundChange={handleBackgroundChange}
+                    onLightingChange={setLightingIntensity}
+                    volume={volume}
+                    onVolumeChange={handleVolumeChange}
+                    isMuted={isMuted}
+                    onMuteToggle={toggleMute}
                   />
-                  
-                  {/* Settings and test buttons */}
-                  <div className="absolute top-4 left-4 flex flex-col gap-2">
-                    <button
-                      onClick={() => setShowSettings(!showSettings)}
-                      className="p-3 bg-white/90 backdrop-blur-sm rounded-lg shadow-md hover:bg-white transition-colors"
-                      title="Settings"
-                    >
-                      <Settings className="w-6 h-6 text-gray-600" />
-                    </button>
-                    
-                  </div>
-                  
+
                   {/* Voice interaction controls - only show when not in slide mode */}
                   {!showSlideMode && (
                     <div className="absolute bottom-12 md:bottom-16 left-0 right-0 px-8 md:px-12">
@@ -902,49 +904,6 @@ export default function Home() {
                     </div>
                   )}
                   
-                  {/* Settings Panel */}
-                  {showSettings && (
-                    <div className="absolute top-20 left-4 z-10 w-80 max-h-96 overflow-y-auto">
-                      <div className="bg-white rounded-lg shadow-lg border border-gray-200 p-4">
-                        <BackgroundSelector
-                          onBackgroundChange={handleBackgroundChange}
-                          currentBackground={selectedBackground}
-                        />
-                        <div className="mt-4">
-                          <EnvironmentSettings
-                            lightingIntensity={lightingIntensity}
-                            onLightingChange={setLightingIntensity}
-                          />
-                        </div>
-                        {/* Audio Controls inside settings */}
-                        <div className="mt-4">
-                          <h3 className="text-sm font-semibold text-gray-700 mb-2">Audio</h3>
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={toggleMute}
-                              className="p-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
-                              title={isMuted ? '音声をオンにする' : '音声をオフにする'}
-                            >
-                              {isMuted ? (
-                                <VolumeX className="w-5 h-5 text-gray-600" />
-                              ) : (
-                                <Volume2 className="w-5 h-5 text-gray-600" />
-                              )}
-                            </button>
-                            <input
-                              type="range"
-                              min="0"
-                              max="100"
-                              value={volume}
-                              onChange={(e) => handleVolumeChange(Number(e.target.value))}
-                              className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-                              title="音量調整"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
                 </div>
               </div>
             </div>

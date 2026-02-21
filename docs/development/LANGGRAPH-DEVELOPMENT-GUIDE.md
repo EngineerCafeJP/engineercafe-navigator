@@ -45,41 +45,57 @@ LangGraph は LangChain をベースとしたワークフローエンジンで�
 
 ```
 backend/
-├── src/
-│   ├── main.py              # FastAPI エントリーポイント
-│   ├── agents/              # エージェント実装
-│   │   ├── __init__.py
-│   │   ├── router_agent.py  # ルーターエージェント
-│   │   ├── business_info_agent.py
-│   │   ├── facility_agent.py
-│   │   ├── event_agent.py
-│   │   ├── memory_agent.py
-│   │   ├── clarification_agent.py
-│   │   ├── general_knowledge_agent.py
-│   │   └── nodes/           # 共有ノード
-│   │       ├── __init__.py
-│   │       ├── rag_search.py
-│   │       └── llm_response.py
-│   ├── models/              # Pydantic モデル
-│   │   ├── __init__.py
-│   │   ├── state.py         # ワークフロー状態
-│   │   ├── request.py       # API リクエスト
-│   │   └── response.py      # API レスポンス
-│   ├── tools/               # LangChain ツール
-│   │   ├── __init__.py
-│   │   ├── rag_search.py    # RAG 検索ツール
-│   │   └── supabase.py      # Supabase クライアント
-│   └── config/              # 設定
-│       ├── __init__.py
-│       └── settings.py
-├── tests/                   # テスト
+├── main.py                  # FastAPI エントリーポイント
+├── agents/                  # エージェント実装（10種）
 │   ├── __init__.py
-│   ├── test_router.py
-│   └── test_agents/
-├── requirements.txt
+│   ├── orchestrator_agent.py  # Supervisor Pattern ルーティング
+│   ├── router_agent.py      # クエリルーティング（キーワードベース）
+│   ├── business_info_agent.py
+│   ├── facility_agent.py
+│   ├── event_agent.py
+│   ├── memory_agent.py
+│   ├── clarification_agent.py
+│   ├── general_knowledge_agent.py
+│   └── slide_agent.py
+├── config/                  # 設定・共有定数
+│   ├── routing_constants.py # ルーティングキーワード・型定義・ヘルパー
+│   ├── settings.py          # アプリケーション設定
+│   └── prompts/             # 共有プロンプトテンプレート
+│       ├── facility_prompts.py
+│       ├── event_prompts.py
+│       └── memory_prompts.py
+├── llm/                     # LLM プロバイダー
+│   ├── openrouter.py        # OpenRouter API クライアント
+│   └── models.py            # モデル設定・フォールバック
+├── tools/                   # LangChain ツール
+│   ├── agent_tools.py       # LangChain Tool 定義
+│   └── calendar_service.py  # カレンダーサービス
+├── utils/                   # ユーティリティ
+│   ├── input_sanitizer.py   # 入力バリデーション・サニタイズ
+│   ├── exceptions.py        # カスタム例外階層
+│   ├── memory_helper.py     # Supabase メモリシステム
+│   ├── language_processor.py # 言語検出
+│   └── query_classifier.py  # クエリ分類
+├── workflows/               # LangGraph ワークフロー
+│   └── main_workflow.py
+├── tests/                   # テスト（406件）
+│   ├── agents/
+│   ├── integration/
+│   ├── evaluation/
+│   └── utils/
+├── pyproject.toml
 ├── .env.example
 └── README.md
 ```
+
+### 新規エージェント開発時のベストプラクティス
+
+- ルーティングキーワードは `config/routing_constants.py` から import する（ローカル定義しない）
+- ユーザー入力は `utils/input_sanitizer.sanitize_input()` でバリデーション
+- カスタム例外は `utils/exceptions.py` から import（`RoutingError`, `LLMGenerationError` 等）
+- プロンプトテンプレートは `config/prompts/` に配置し、ロジックと分離
+- LLM へのメッセージは `HumanMessage(content=...)` を使用（dict は不可）
+- ログ出力は `logger` を使用（`print()` は使用禁止）
 
 ---
 
@@ -586,46 +602,6 @@ def rag_search_node(state: WorkflowState) -> dict:
     logger.debug(f"Top result: {results[0] if results else 'None'}")
 
     return {"context": "\n".join([r["content"] for r in results])}
-```
-
----
-
-## 参考実装
-
-### langgraph-reference ディレクトリ
-
-プロジェクト内の `langgraph-reference/coworking-space-system/` に完全な参考実装があります：
-
-```
-langgraph-reference/coworking-space-system/
-├── docker-compose.yml       # ローカル DB 環境
-├── .env.example             # 環境変数テンプレート
-├── database/
-│   ├── schema.sql           # DB スキーマ
-│   └── demo_data.sql        # デモデータ
-├── backend/
-│   ├── main.py              # FastAPI エントリー
-│   ├── agents/              # エージェント実装
-│   │   ├── router.py
-│   │   ├── business_info.py
-│   │   └── facility.py
-│   └── tools/
-│       └── rag.py           # RAG ツール
-└── README.md
-```
-
-### 参考実装の起動
-
-```bash
-cd langgraph-reference/coworking-space-system
-
-# Docker 起動
-docker-compose up -d
-
-# バックエンド起動
-cd backend
-pip install -r requirements.txt
-uvicorn main:app --reload
 ```
 
 ---

@@ -5,7 +5,7 @@ TESTING.mdに基づいた包括的なテストスイート
 """
 
 import pytest
-from unittest.mock import patch
+from unittest.mock import patch, Mock, AsyncMock
 from backend.agents.clarification_agent import ClarificationAgent
 
 
@@ -16,51 +16,36 @@ class TestCategoryMessages:
     def agent(self):
         return ClarificationAgent()
 
-    @pytest.mark.parametrize("category,language,expected_keywords", [
-        # カフェの曖昧性解消（日本語）
-        (
-            "cafe-clarification-needed",
-            "ja",
-            ["エンジニアカフェ", "サイノカフェ", "どちらについて"]
-        ),
-        # カフェの曖昧性解消（英語）
-        (
-            "cafe-clarification-needed",
-            "en",
-            ["Engineer Cafe", "Saino Cafe", "which one"]
-        ),
-        # 会議室の曖昧性解消（日本語）
-        (
-            "meeting-room-clarification-needed",
-            "ja",
-            ["有料会議室", "地下MTGスペース", "2種類"]
-        ),
-        # 会議室の曖昧性解消（英語）
-        (
-            "meeting-room-clarification-needed",
-            "en",
-            ["Paid Meeting Rooms", "Basement Meeting Spaces", "two types"]
-        ),
-        # デフォルトの曖昧性解消（日本語）
-        (
-            "general-clarification-needed",
-            "ja",
-            ["もう少し詳しく"]
-        ),
-        # デフォルトの曖昧性解消（英語）
-        (
-            "general-clarification-needed",
-            "en",
-            ["more details"]
-        ),
-    ])
+    @pytest.mark.parametrize(
+        "category,language,expected_keywords",
+        [
+            # カフェの曖昧性解消（日本語）
+            (
+                "cafe-clarification-needed",
+                "ja",
+                ["エンジニアカフェ", "サイノカフェ", "どちらについて"],
+            ),
+            # カフェの曖昧性解消（英語）
+            ("cafe-clarification-needed", "en", ["Engineer Cafe", "Saino Cafe", "which one"]),
+            # 会議室の曖昧性解消（日本語）
+            ("meeting-room-clarification-needed", "ja", ["有料会議室", "地下MTGスペース", "2種類"]),
+            # 会議室の曖昧性解消（英語）
+            (
+                "meeting-room-clarification-needed",
+                "en",
+                ["Paid Meeting Rooms", "Basement Meeting Spaces", "two types"],
+            ),
+            # デフォルトの曖昧性解消（日本語）
+            ("general-clarification-needed", "ja", ["もう少し詳しく"]),
+            # デフォルトの曖昧性解消（英語）
+            ("general-clarification-needed", "en", ["more details"]),
+        ],
+    )
     @pytest.mark.asyncio
     async def test_category_messages(self, agent, category, language, expected_keywords):
         """カテゴリと言語に応じたメッセージが生成されることを確認"""
         result = await agent.handle_clarification(
-            query="test query",
-            category=category,
-            language=language
+            query="test query", category=category, language=language
         )
 
         response = result["response"]
@@ -80,21 +65,22 @@ class TestEmotionTag:
     def agent(self):
         return ClarificationAgent()
 
-    @pytest.mark.parametrize("category,language", [
-        ("cafe-clarification-needed", "ja"),
-        ("cafe-clarification-needed", "en"),
-        ("meeting-room-clarification-needed", "ja"),
-        ("meeting-room-clarification-needed", "en"),
-        ("general-clarification-needed", "ja"),
-        ("general-clarification-needed", "en"),
-    ])
+    @pytest.mark.parametrize(
+        "category,language",
+        [
+            ("cafe-clarification-needed", "ja"),
+            ("cafe-clarification-needed", "en"),
+            ("meeting-room-clarification-needed", "ja"),
+            ("meeting-room-clarification-needed", "en"),
+            ("general-clarification-needed", "ja"),
+            ("general-clarification-needed", "en"),
+        ],
+    )
     @pytest.mark.asyncio
     async def test_emotion_tag_always_surprised(self, agent, category, language):
         """すべての応答に[surprised]タグが付与されることを確認"""
         result = await agent.handle_clarification(
-            query="test query",
-            category=category,
-            language=language
+            query="test query", category=category, language=language
         )
 
         assert result["emotion"] == "surprised"
@@ -108,18 +94,19 @@ class TestMetadata:
     def agent(self):
         return ClarificationAgent()
 
-    @pytest.mark.parametrize("category,expected_confidence", [
-        ("cafe-clarification-needed", 0.9),
-        ("meeting-room-clarification-needed", 0.9),
-        ("general-clarification-needed", 0.7),
-    ])
+    @pytest.mark.parametrize(
+        "category,expected_confidence",
+        [
+            ("cafe-clarification-needed", 0.9),
+            ("meeting-room-clarification-needed", 0.9),
+            ("general-clarification-needed", 0.7),
+        ],
+    )
     @pytest.mark.asyncio
     async def test_metadata_structure(self, agent, category, expected_confidence):
         """メタデータが正しく設定されることを確認"""
         result = await agent.handle_clarification(
-            query="test query",
-            category=category,
-            language="ja"
+            query="test query", category=category, language="ja"
         )
 
         metadata = result["metadata"]
@@ -133,15 +120,11 @@ class TestMetadata:
     async def test_metadata_language(self, agent):
         """メタデータに言語情報が含まれることを確認（必要に応じて）"""
         result_ja = await agent.handle_clarification(
-            query="test",
-            category="cafe-clarification-needed",
-            language="ja"
+            query="test", category="cafe-clarification-needed", language="ja"
         )
 
         result_en = await agent.handle_clarification(
-            query="test",
-            category="cafe-clarification-needed",
-            language="en"
+            query="test", category="cafe-clarification-needed", language="en"
         )
 
         # 言語によってメッセージが異なることを確認
@@ -164,9 +147,7 @@ class TestErrorHandling:
 
         # 正常系のテスト
         result = await agent.handle_clarification(
-            query="test",
-            category="general-clarification-needed",
-            language="ja"
+            query="test", category="general-clarification-needed", language="ja"
         )
 
         assert result["response"] is not None
@@ -178,20 +159,18 @@ class TestErrorHandling:
         # add_emotion_tagがエラーを起こした場合のテスト
         # clarification_agent.pyで直接インポートされているため、
         # clarification_agentモジュール内のadd_emotion_tagをパッチする
-        from backend.utils import emotion_tagger
 
         with patch(
-            'backend.agents.clarification_agent.add_emotion_tag',
-            side_effect=Exception("Emotion tagger error")
+            "backend.agents.clarification_agent.add_emotion_tag",
+            side_effect=Exception("Emotion tagger error"),
         ):
 
             # 現在の実装ではエラーハンドリングがないため、例外が発生することを確認
             with pytest.raises(Exception, match="Emotion tagger error"):
                 await agent.handle_clarification(
-                    query="test",
-                    category="cafe-clarification-needed",
-                    language="ja"
+                    query="test", category="cafe-clarification-needed", language="ja"
                 )
+
 
 class TestMessageContent:
     """メッセージ内容の正確性テスト"""
@@ -204,9 +183,7 @@ class TestMessageContent:
     async def test_cafe_clarification_ja_content(self, agent):
         """カフェ曖昧性解消（日本語）のメッセージ内容を確認"""
         result = await agent.handle_clarification(
-            query="カフェの営業時間は？",
-            category="cafe-clarification-needed",
-            language="ja"
+            query="カフェの営業時間は？", category="cafe-clarification-needed", language="ja"
         )
 
         response = result["response"]
@@ -222,9 +199,7 @@ class TestMessageContent:
     async def test_cafe_clarification_en_content(self, agent):
         """カフェ曖昧性解消（英語）のメッセージ内容を確認"""
         result = await agent.handle_clarification(
-            query="What are the cafe hours?",
-            category="cafe-clarification-needed",
-            language="en"
+            query="What are the cafe hours?", category="cafe-clarification-needed", language="en"
         )
 
         response = result["response"]
@@ -242,7 +217,7 @@ class TestMessageContent:
         result = await agent.handle_clarification(
             query="会議室の予約方法は？",
             category="meeting-room-clarification-needed",
-            language="ja"
+            language="ja",
         )
 
         response = result["response"]
@@ -260,7 +235,7 @@ class TestMessageContent:
         result = await agent.handle_clarification(
             query="How do I book a meeting room?",
             category="meeting-room-clarification-needed",
-            language="en"
+            language="en",
         )
 
         response = result["response"]
@@ -271,3 +246,157 @@ class TestMessageContent:
         assert "2F" in response or "2nd floor" in response
         assert "B1" in response or "basement" in response
         assert "two types" in response.lower()
+
+
+class TestDetectAmbiguity:
+    """曖昧性検出のテスト"""
+
+    @pytest.fixture
+    def agent(self):
+        with patch("backend.agents.clarification_agent.OpenRouterProvider"):
+            with patch("backend.agents.clarification_agent.get_model_config"):
+                return ClarificationAgent()
+
+    @pytest.mark.asyncio
+    async def test_detect_ambiguity_cafe(self, agent):
+        """「カフェ」で曖昧性検出"""
+        result = await agent.detect_ambiguity("カフェの営業時間は？")
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_detect_ambiguity_specific(self, agent):
+        """「エンジニアカフェ」で曖昧性なし"""
+        result = await agent.detect_ambiguity("エンジニアカフェの営業時間は？")
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_detect_ambiguity_meeting_room(self, agent):
+        """「会議室」で曖昧性検出"""
+        result = await agent.detect_ambiguity("会議室を使いたい")
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_detect_ambiguity_meeting_room_specific(self, agent):
+        """「2階の会議室」で曖昧性なし"""
+        result = await agent.detect_ambiguity("2階の会議室を使いたい")
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_detect_ambiguity_already_clarified(self, agent):
+        """既に特定済みの場合はFalse"""
+        result = await agent.detect_ambiguity(
+            "カフェの営業時間は？", context={"already_clarified": True}
+        )
+        assert result is False
+
+
+class TestGenerateOptions:
+    """選択肢生成のテスト"""
+
+    @pytest.fixture
+    def agent(self):
+        with patch("backend.agents.clarification_agent.OpenRouterProvider"):
+            with patch("backend.agents.clarification_agent.get_model_config"):
+                return ClarificationAgent()
+
+    @pytest.mark.asyncio
+    async def test_generate_options_cafe(self, agent):
+        """カフェ選択肢が2つ返る"""
+        options = await agent.generate_clarification_options("カフェの営業時間は？")
+        assert len(options) == 2
+        values = [opt["value"] for opt in options]
+        assert "engineer-cafe" in values
+        assert "saino" in values
+
+    @pytest.mark.asyncio
+    async def test_generate_options_meeting(self, agent):
+        """会議室選択肢が2つ返る"""
+        options = await agent.generate_clarification_options("会議室を使いたい")
+        assert len(options) == 2
+        values = [opt["value"] for opt in options]
+        assert "paid-meeting-room" in values
+        assert "free-meeting-space" in values
+
+    @pytest.mark.asyncio
+    async def test_generate_options_no_match(self, agent):
+        """マッチしない場合は空リスト"""
+        options = await agent.generate_clarification_options("天気はどうですか？")
+        assert options == []
+
+
+class TestFormatQuestion:
+    """質問文フォーマットのテスト"""
+
+    @pytest.fixture
+    def agent(self):
+        with patch("backend.agents.clarification_agent.OpenRouterProvider") as mock_provider_cls:
+            with patch("backend.agents.clarification_agent.get_model_config"):
+                mock_provider = Mock()
+                mock_provider.generate = AsyncMock(
+                    return_value="どちらのカフェについてお聞きですか？\n1. エンジニアカフェ\n2. サイノカフェ"
+                )
+                mock_provider_cls.return_value = mock_provider
+                return ClarificationAgent()
+
+    @pytest.mark.asyncio
+    async def test_format_question_llm_mock(self, agent):
+        """LLMモック呼出しで質問文生成"""
+        options = [
+            {"label": "エンジニアカフェ", "value": "engineer-cafe"},
+            {"label": "サイノカフェ", "value": "saino"},
+        ]
+        question = await agent.format_clarification_question("カフェの営業時間は？", options)
+        assert len(question) > 0
+        assert "カフェ" in question
+
+    @pytest.mark.asyncio
+    async def test_format_question_fallback(self):
+        """LLMエラー時はテンプレートにフォールバック"""
+        with patch("backend.agents.clarification_agent.OpenRouterProvider") as mock_provider_cls:
+            with patch("backend.agents.clarification_agent.get_model_config"):
+                mock_provider = Mock()
+                mock_provider.generate = AsyncMock(side_effect=Exception("API Error"))
+                mock_provider_cls.return_value = mock_provider
+                agent = ClarificationAgent()
+
+        options = [
+            {"label": "エンジニアカフェ", "value": "engineer-cafe"},
+            {"label": "サイノカフェ", "value": "saino"},
+        ]
+        question = await agent.format_clarification_question("カフェの営業時間は？", options)
+        assert "カフェの営業時間は？" in question
+        assert "エンジニアカフェ" in question
+
+
+class TestProcessPipeline:
+    """processメソッド統合テスト"""
+
+    @pytest.fixture
+    def agent(self):
+        with patch("backend.agents.clarification_agent.OpenRouterProvider") as mock_provider_cls:
+            with patch("backend.agents.clarification_agent.get_model_config"):
+                mock_provider = Mock()
+                mock_provider.generate = AsyncMock(
+                    return_value="どちらのカフェについてお聞きですか？"
+                )
+                mock_provider_cls.return_value = mock_provider
+                return ClarificationAgent()
+
+    @pytest.mark.asyncio
+    async def test_process_full_pipeline(self, agent):
+        """detect→generate→format全体テスト"""
+        result = await agent.process("カフェの営業時間は？")
+
+        assert result["needs_clarification"] is True
+        assert len(result["options"]) == 2
+        assert result["emotion"] == "surprised"
+        assert len(result["clarification_question"]) > 0
+
+    @pytest.mark.asyncio
+    async def test_process_no_ambiguity(self, agent):
+        """曖昧性なしの場合"""
+        result = await agent.process("エンジニアカフェの営業時間は？")
+
+        assert result["needs_clarification"] is False
+        assert result["options"] == []
+        assert result["emotion"] == "neutral"

@@ -3,9 +3,15 @@ BusinessInfoAgent - 営業情報エージェント
 営業時間、料金、場所に関する質問に回答
 """
 
+import logging
 from typing import Dict, Optional
-from backend.tools.enhanced_rag import EnhancedRAGSearch
+
+from langchain_core.messages import HumanMessage
+
 from backend.llm import get_llm_provider, get_model_config
+from backend.tools.enhanced_rag import EnhancedRAGSearch
+
+logger = logging.getLogger(__name__)
 
 
 class BusinessInfoAgent:
@@ -47,6 +53,8 @@ class BusinessInfoAgent:
         request_type: Optional[str] = None,
         language: str = "ja",
         session_id: Optional[str] = None,
+        state_context: Optional[Dict] = None,
+        context_signals=None,
     ) -> Dict:
         """営業情報クエリに回答
 
@@ -106,23 +114,34 @@ class BusinessInfoAgent:
             - LLMエラー時もフォールバック処理を実行
             - 感情タグはLLM応答から抽出、または request_type に基づいて決定
         """
-        print(
-            f"[BusinessInfoAgent] Processing query: {query}, request_type: {request_type}, language: {language}"
+        logger.info(
+            f"Processing query: {query[:50]}..., request_type: {request_type}, language: {language}"
         )
 
         # requestTypeをcategoryにマッピング
         category = self._map_request_type_to_category(request_type)
 
-        # Enhanced RAG検索
-        rag_result = await self.enhanced_rag.search(
-            query=query, category=category, language=language, include_advice=True, max_results=10
-        )
+        # Check cached RAG results
+        cached = state_context if state_context else None
+        if cached and cached.get("success") and cached.get("category") == category:
+            context = cached.get("context_string", "")
+            logger.info(f"Using cached RAG results for {category}")
+        else:
+            # Enhanced RAG検索
+            rag_result = await self.enhanced_rag.search(
+                query=query,
+                category=category,
+                language=language,
+                include_advice=True,
+                max_results=10,
+                context_signals=context_signals,
+            )
 
-        if not rag_result.get("success"):
-            return self._get_default_response(language, request_type)
+            if not rag_result.get("success"):
+                return self._get_default_response(language, request_type)
 
-        # コンテキスト取得
-        context = rag_result.get("data", {}).get("context", "")
+            # コンテキスト取得
+            context = rag_result.get("data", {}).get("context", "")
 
         if not context:
             return self._get_default_response(language, request_type)
@@ -133,7 +152,7 @@ class BusinessInfoAgent:
         # LLM応答生成
         try:
             response_text = await self.llm_provider.generate(
-                messages=[{"role": "user", "content": prompt}],
+                messages=[HumanMessage(content=prompt)],
                 config=get_model_config("facility_info"),
             )
 
@@ -153,7 +172,7 @@ class BusinessInfoAgent:
             }
 
         except Exception as e:
-            print(f"[BusinessInfoAgent] LLM error: {e}")
+            logger.error("LLM error: %s", e, exc_info=True)
             return self._get_default_response(language, request_type)
 
     def _map_request_type_to_category(self, request_type: Optional[str]) -> str:
@@ -163,7 +182,7 @@ class BusinessInfoAgent:
             request_type (Optional[str]): リクエストタイプ
 
         Returns:
-            str: RAGカテゴリ（hours, pricing, location, facility-info, general）
+            str: RAGカテゴリ（hours, pricing, location, consultation, community, facility-info, general）
 
         Examples:
             >>> agent = BusinessInfoAgent()
@@ -171,6 +190,10 @@ class BusinessInfoAgent:
             'hours'
             >>> agent._map_request_type_to_category("price")
             'pricing'
+            >>> agent._map_request_type_to_category("consultation")
+            'consultation'
+            >>> agent._map_request_type_to_category("community")
+            'community'
             >>> agent._map_request_type_to_category("wifi")
             'facility-info'
         """
@@ -179,6 +202,8 @@ class BusinessInfoAgent:
             "price": "pricing",
             "location": "location",
             "access": "location",
+            "consultation": "consultation",
+            "community": "community",
             "basement": "facility-info",
             "facility": "facility-info",
             "wifi": "facility-info",
@@ -225,8 +250,9 @@ class BusinessInfoAgent:
             - 感情タグの埋め込みを"重要"として強調
             - 最大1-2文の簡潔な応答を促す
         """
-        print(
-            f"[BusinessInfoAgent] Building prompt with query_length: {len(query)}, context_length: {len(context)}, request_type: {request_type}, language: {language}"
+        logger.debug(
+            f"Building prompt: query_length={len(query)}, context_length={len(context)}, "
+            f"request_type={request_type}, language={language}"
         )
 
         if request_type:
@@ -275,6 +301,14 @@ IMPORTANT: Start your response with an emotion tag: [relaxed] for information, [
             "location": {"en": "location information", "ja": "場所情報"},
             "access": {"en": "access information", "ja": "アクセス情報"},
             "basement": {"en": "basement facility information", "ja": "地下施設情報"},
+            "consultation": {
+                "en": "consultation and career advice services",
+                "ja": "相談・キャリアアドバイスサービス",
+            },
+            "community": {
+                "en": "community membership (Engineer Cafe Lab, EIC)",
+                "ja": "コミュニティ（Engineer Cafe Lab、EIC）",
+            },
         }
 
         prompt = prompt_map.get(

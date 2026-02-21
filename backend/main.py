@@ -3,11 +3,16 @@ Engineer Cafe Navigator Backend
 FastAPIアプリケーションとLangGraphエージェントの統合
 """
 
+import logging
+import os
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
 from dotenv import load_dotenv
+
+logger = logging.getLogger(__name__)
 
 # 環境変数の読み込み
 load_dotenv()
@@ -19,12 +24,16 @@ app = FastAPI(
 )
 
 # CORS設定
+_default_origins = ["http://localhost:3000", "http://localhost:3001"]
+_allowed_origins = [
+    o.strip() for o in os.getenv("ALLOWED_ORIGINS", "").split(",") if o.strip()
+] or _default_origins
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3001"],  # NextJSのデフォルトポート
+    allow_origins=_allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 
@@ -56,7 +65,7 @@ async def chat(request: ChatRequest):
     try:
         from workflows.main_workflow import get_workflow
 
-        workflow = get_workflow()
+        workflow = await get_workflow()
         result = await workflow.ainvoke(
             {
                 "query": request.query,
@@ -74,7 +83,10 @@ async def chat(request: ChatRequest):
             ),
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Endpoint error: %s", e, exc_info=True)
+        raise HTTPException(
+            status_code=500, detail="An internal error occurred. Please try again later."
+        )
 
 
 @app.post("/api/agent/invoke")
@@ -85,7 +97,7 @@ async def invoke_agent(request: ChatRequest):
     try:
         from workflows.main_workflow import get_workflow
 
-        workflow = get_workflow()
+        workflow = await get_workflow()
         result = await workflow.ainvoke(
             {
                 "query": request.query,
@@ -97,7 +109,10 @@ async def invoke_agent(request: ChatRequest):
 
         return {"status": "success", "result": result}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Endpoint error: %s", e, exc_info=True)
+        raise HTTPException(
+            status_code=500, detail="An internal error occurred. Please try again later."
+        )
 
 
 # Voice API Models
@@ -120,16 +135,70 @@ class VoiceResponse(BaseModel):
     error: Optional[str] = None
 
 
+# @app.post("/api/voice", response_model=VoiceResponse)
+# async def voice_api(request: VoiceRequest):
+#     """
+#     音声処理エンドポイント
+#     フロントエンドからのプロキシリクエストを処理
+#     """
+#     try:
+#         # TODO: 音声処理ロジックをLangGraphワークフローで実装
+#         # 現在はプレースホルダー
+#         if request.action == "process_voice":
+#             return VoiceResponse(
+#                 success=True,
+#                 transcript="音声処理中...",
+#                 response="音声処理機能は実装中です。",
+#                 emotion="neutral",
+#                 sessionId=request.sessionId,
+#             )
+#         elif request.action == "text_to_speech":
+#             return VoiceResponse(
+#                 success=True,
+#                 audioResponse="",  # base64 audio
+#                 sessionId=request.sessionId,
+#             )
+#         else:
+#             raise HTTPException(status_code=400, detail=f"Unknown action: {request.action}")
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=str(e))
+
+
+# backend/main.py（PR3差分イメージ）
+from agents.voice_agent import VoiceAgent  # noqa: E402 # 追加
+
+voice_agent = VoiceAgent()  # アプリ起動時に1回生成
+
+
 @app.post("/api/voice", response_model=VoiceResponse)
 async def voice_api(request: VoiceRequest):
-    """
-    音声処理エンドポイント
-    フロントエンドからのプロキシリクエストを処理
-    """
     try:
-        # TODO: 音声処理ロジックをLangGraphワークフローで実装
-        # 現在はプレースホルダー
-        if request.action == "process_voice":
+        if request.action == "text_to_speech":
+            if not request.text or not request.text.strip():
+                raise HTTPException(status_code=400, detail="Missing text for text_to_speech")
+
+            result = await voice_agent.text_to_speech(
+                text=request.text,
+                language=request.language or "ja",
+                emotion=None,  # request側でemotion渡す設計にするならここで拾う（現状VoiceRequestにはない） [3](https://scskinfo-my.sharepoint.com/personal/162179_cpsginfo_jp/Documents/Microsoft%20Copilot%20Chat%20%E3%83%95%E3%82%A1%E3%82%A4%E3%83%AB/emotion-mapping.txt)
+            )
+            if not result.get("success"):
+                return VoiceResponse(
+                    success=False,
+                    error=result.get("error", "TTS failed"),
+                    emotion=result.get("emotion"),
+                    sessionId=request.sessionId,
+                )
+
+            return VoiceResponse(
+                success=True,
+                audioResponse=result.get("audioResponse"),
+                emotion=result.get("emotion"),
+                sessionId=request.sessionId,
+            )
+
+        elif request.action == "process_voice":
+            # Phase1では未実装のままでOK
             return VoiceResponse(
                 success=True,
                 transcript="音声処理中...",
@@ -137,16 +206,17 @@ async def voice_api(request: VoiceRequest):
                 emotion="neutral",
                 sessionId=request.sessionId,
             )
-        elif request.action == "text_to_speech":
-            return VoiceResponse(
-                success=True,
-                audioResponse="",  # base64 audio
-                sessionId=request.sessionId,
-            )
+
         else:
             raise HTTPException(status_code=400, detail=f"Unknown action: {request.action}")
+
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Endpoint error: %s", e, exc_info=True)
+        raise HTTPException(
+            status_code=500, detail="An internal error occurred. Please try again later."
+        )
 
 
 # Slides API Models
@@ -212,7 +282,10 @@ async def slides_api(request: SlidesRequest):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Endpoint error: %s", e, exc_info=True)
+        raise HTTPException(
+            status_code=500, detail="An internal error occurred. Please try again later."
+        )
 
 
 # Character API Models
@@ -239,7 +312,16 @@ async def character_api(request: CharacterRequest):
         # 現在はプレースホルダー
         return CharacterResponse(success=True, message="キャラクター制御機能は実装中です。")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Endpoint error: %s", e, exc_info=True)
+        raise HTTPException(
+            status_code=500, detail="An internal error occurred. Please try again later."
+        )
+
+
+# Knowledge CRUD API Router
+from api.knowledge import router as knowledge_router  # noqa: E402
+
+app.include_router(knowledge_router, prefix="/api")
 
 
 if __name__ == "__main__":

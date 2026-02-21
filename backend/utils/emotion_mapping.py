@@ -6,15 +6,12 @@ Mastra版の`emotion-mapping.ts`を参考にしたPython実装。
 
 参考:
 - frontend/src/lib/emotion-mapping.ts
-- frontend/src/_reference/mastra/agents/character-control-agent.ts
 """
 
 from typing import Dict, Literal, Any, List, Optional
 
 # サポートされているVRM表情タイプ (VRM1.0準拠)
-SupportedExpression = Literal[
-    "neutral", "happy", "sad", "angry", "surprised", "relaxed"
-]
+SupportedExpression = Literal["neutral", "happy", "sad", "angry", "surprised", "relaxed"]
 
 
 class EmotionMapping:

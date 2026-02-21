@@ -6,6 +6,7 @@ Google Calendar APIを使用せず、公開ICSフィードからイベントを�
 これにより、Google Cloud APIキーなしで利用可能です。
 """
 
+import logging
 import os
 import re
 import hashlib
@@ -13,6 +14,7 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Literal, Optional
 import httpx
 
+logger = logging.getLogger(__name__)
 
 TimeRange = Literal["today", "thisWeek", "nextWeek", "thisMonth"]
 
@@ -35,7 +37,7 @@ class CalendarService:
             イベント情報辞書 {success, data: {events, timeRange, eventCount}}
         """
         try:
-            print(f"[CalendarService] Searching events for time_range: {time_range}")
+            logger.info("Searching events for time_range: %s", time_range)
 
             # 期間の開始日と終了日を計算
             time_min, time_max = self._calculate_time_range(time_range)
@@ -53,7 +55,7 @@ class CalendarService:
             }
 
         except Exception as e:
-            print(f"[CalendarService] Error: {e}")
+            logger.error("CalendarService error: %s", e, exc_info=True)
             return {"success": False, "error": str(e)}
 
     def _calculate_time_range(self, time_range: TimeRange) -> tuple[datetime, datetime]:
@@ -101,9 +103,7 @@ class CalendarService:
         week_end = week_start + timedelta(days=6, hours=23, minutes=59, seconds=59)
         return (week_start, week_end)
 
-    async def _fetch_ics_events(
-        self, time_min: datetime, time_max: datetime
-    ) -> List[Dict]:
+    async def _fetch_ics_events(self, time_min: datetime, time_max: datetime) -> List[Dict]:
         """
         ICSフィードからイベントを取得
 
@@ -115,7 +115,7 @@ class CalendarService:
             イベントのリスト
         """
         if not self.ical_url:
-            print("[CalendarService] GOOGLE_CALENDAR_ICAL_URL not configured")
+            logger.warning("GOOGLE_CALENDAR_ICAL_URL not configured")
             return []
 
         try:
@@ -123,26 +123,22 @@ class CalendarService:
                 response = await client.get(self.ical_url, timeout=30.0)
 
                 if response.status_code != 200:
-                    print(f"[CalendarService] ICS fetch error: {response.status_code}")
+                    logger.error("ICS fetch error: status=%d", response.status_code)
                     return []
 
                 ics_content = response.text
                 all_events = self._parse_ics_content(ics_content)
 
                 # 時間範囲でフィルタリング
-                filtered_events = self._filter_events_by_time(
-                    all_events, time_min, time_max
-                )
+                filtered_events = self._filter_events_by_time(all_events, time_min, time_max)
 
                 # 開始日時でソート
-                filtered_events.sort(
-                    key=lambda e: e.get("start") or "", reverse=False
-                )
+                filtered_events.sort(key=lambda e: e.get("start") or "", reverse=False)
 
                 return filtered_events
 
         except Exception as e:
-            print(f"[CalendarService] ICS fetch error: {e}")
+            logger.error("ICS fetch error: %s", e, exc_info=True)
             return []
 
     def _parse_ics_content(self, content: str) -> List[Dict]:
@@ -234,7 +230,7 @@ class CalendarService:
             }
 
         except Exception as e:
-            print(f"[CalendarService] VEVENT parse error: {e}")
+            logger.error("VEVENT parse error: %s", e, exc_info=True)
             return None
 
     def _parse_ics_date(self, date_str: str) -> str:
@@ -275,7 +271,7 @@ class CalendarService:
             return dt.date().isoformat()
 
         except Exception as e:
-            print(f"[CalendarService] Date parse error: {date_str} - {e}")
+            logger.error("Date parse error: %s - %s", date_str, e, exc_info=True)
             return date_str
 
     def _filter_events_by_time(
@@ -315,7 +311,7 @@ class CalendarService:
                     filtered.append(event)
 
             except Exception as e:
-                print(f"[CalendarService] Filter error: {start_str} - {e}")
+                logger.error("Filter error: %s - %s", start_str, e, exc_info=True)
                 continue
 
         return filtered

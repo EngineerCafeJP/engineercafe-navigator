@@ -6,10 +6,17 @@ Google CalendarとConnpassの両方からイベント情報を取得し、統合
 """
 
 import asyncio
-from typing import Dict, Optional, List
+import logging
+from typing import Dict, List, Optional
+
+from langchain_core.messages import HumanMessage
+
+from backend.config.prompts.event_prompts import build_event_prompt, get_time_range_label
+from backend.llm import get_llm_provider, get_model_config
 from backend.tools.calendar_service import CalendarService
 from backend.tools.connpass_service import ConnpassService
-from backend.llm import get_llm_provider, get_model_config
+
+logger = logging.getLogger(__name__)
 
 
 class EventAgent:
@@ -109,7 +116,7 @@ class EventAgent:
             - Calendar API失敗時はフォールバック応答を返す
             - イベント説明文は100文字に制限してトークン数を削減
         """
-        print(f"[EventAgent] Processing query: {query}, language: {language}")
+        logger.info(f"Processing query: {query[:50]}..., language: {language}")
 
         # クエリから時間範囲を抽出
         time_range = self.calendar_service.extract_time_range_from_query(query)
@@ -138,7 +145,7 @@ class EventAgent:
         # LLM応答生成
         try:
             response_text = await self.llm_provider.generate(
-                messages=[{"role": "user", "content": prompt}],
+                messages=[HumanMessage(content=prompt)],
                 config=get_model_config("event_info"),
             )
 
@@ -164,7 +171,7 @@ class EventAgent:
             }
 
         except Exception as e:
-            print(f"[EventAgent] LLM error: {e}")
+            logger.error("LLM error: %s", e, exc_info=True)
             return self._get_no_events_response(language, time_range)
 
     def _format_calendar_events(self, events: list, language: str) -> str:
@@ -251,123 +258,16 @@ class EventAgent:
     def _build_event_prompt(
         self, query: str, events_text: str, time_range: str, language: str
     ) -> str:
-        """イベント情報のプロンプトを構築
-
-        整形済みイベント情報をLLMプロンプトに組み込みます。
-        時間範囲を明示し、簡潔でフレンドリーな応答を促します。
-
-        Args:
-            query (str): ユーザークエリ
-            events_text (str): 整形済みイベント情報
-            time_range (str): 時間範囲（today, thisWeek, nextWeek, thisMonth）
-            language (str): 言語（ja or en）
-
-        Returns:
-            str: 構築されたプロンプト
-
-        Examples:
-            >>> agent = EventAgent()
-            >>> prompt = agent._build_event_prompt(
-            ...     query="今週のイベントは？",
-            ...     events_text="- Workshop（2024-01-15）",
-            ...     time_range="thisWeek",
-            ...     language="ja"
-            ... )
-            >>> print(prompt)
-            今週のイベント情報に基づいて、質問に答えてください。
-
-            質問: 今週のイベントは？
-
-            今週のイベント:
-            - Workshop（2024-01-15）
-
-            イベントについて簡潔でフレンドリーな説明を提供してください。[happy]の感情タグで回答を始めてください。
-            最大2-3文。
-
-        Notes:
-            - 時間範囲を日本語/英語に変換（thisWeek→"今週"/"this week"）
-            - [happy]の感情タグの埋め込みを指示
-            - 最大2-3文の簡潔な応答を促す
-        """
-        if language == "en":
-            time_range_text = {
-                "today": "today",
-                "thisWeek": "this week",
-                "nextWeek": "next week",
-                "thisMonth": "this month",
-            }.get(time_range, "this week")
-
-            return f"""Based on the following event information for {time_range_text}, answer the question.
-
-Question: {query}
-
-Events {time_range_text}:
-{events_text}
-
-Provide a brief and friendly summary of the events. Start your response with [happy] emotion tag.
-Maximum 2-3 sentences."""
-
-        else:
-            time_range_text = {
-                "today": "本日",
-                "thisWeek": "今週",
-                "nextWeek": "来週",
-                "thisMonth": "今月",
-            }.get(time_range, "今週")
-
-            return f"""{time_range_text}のイベント情報に基づいて、質問に答えてください。
-
-質問: {query}
-
-{time_range_text}のイベント:
-{events_text}
-
-イベントについて簡潔でフレンドリーな説明を提供してください。[happy]の感情タグで回答を始めてください。
-最大2-3文。"""
+        """イベント情報のプロンプトを構築（外部テンプレートに委譲）"""
+        return build_event_prompt(query, events_text, time_range, language)
 
     def _get_no_events_response(self, language: str, time_range: str) -> Dict:
-        """イベントなし時の応答を返す
+        """イベントなし時の応答を返す"""
+        time_range_text = get_time_range_label(time_range, language)
 
-        指定時間範囲にイベントがない場合のフォールバック応答を生成します。
-
-        Args:
-            language (str): 言語（ja or en）
-            time_range (str): 時間範囲（today, thisWeek, nextWeek, thisMonth）
-
-        Returns:
-            Dict: イベントなし応答辞書
-                - answer (str): お詫びメッセージ
-                - emotion (str): "sad"
-                - metadata (Dict): event_count=0
-
-        Examples:
-            >>> agent = EventAgent()
-            >>> response = agent._get_no_events_response("ja", "today")
-            >>> print(response["answer"])
-            [sad]申し訳ございません。本日の予定されているイベントはございません。後ほどご確認いただくか、スタッフまでお問い合わせください。
-
-        Notes:
-            - 時間範囲を日本語/英語に変換して応答に含める
-            - emotion は "sad" に設定
-            - event_count は 0 を記録
-        """
         if language == "en":
-            time_range_text = {
-                "today": "today",
-                "thisWeek": "this week",
-                "nextWeek": "next week",
-                "thisMonth": "this month",
-            }.get(time_range, "this week")
-
             text = f"[sad]I'm sorry, there are no scheduled events for {time_range_text}. Please check back later or contact our staff for the latest information."
         else:
-            time_range_text = {
-                "today": "本日",
-                "thisWeek": "今週",
-                "nextWeek": "来週",
-                "thisMonth": "今月",
-            }.get(time_range, "今週")
-
             text = f"[sad]申し訳ございません。{time_range_text}の予定されているイベントはございません。後ほどご確認いただくか、スタッフまでお問い合わせください。"
 
         return {
@@ -376,37 +276,63 @@ Maximum 2-3 sentences."""
             "metadata": {"agent": "EventAgent", "time_range": time_range, "event_count": 0},
         }
 
-    def _merge_events(self, calendar_result: Dict, connpass_result: Dict) -> List[Dict]:
-        """Google CalendarとConnpassのイベントをマージ
+    @staticmethod
+    def _normalize_title(title: str) -> str:
+        """イベントタイトルを正規化して重複比較に使用
 
-        両方のソースからイベントを取得し、開始日時順にソートして返します。
+        空白除去、全角→半角変換、エディション番号除去など
+        """
+        import re
+        import unicodedata
+
+        # NFKC正規化（全角→半角等）
+        normalized = unicodedata.normalize("NFKC", title)
+        # 小文字化
+        normalized = normalized.lower().strip()
+        # Only strip trailing edition patterns, not all digits
+        normalized = re.sub(
+            r"\s*(第\d+回|vol\.?\s*\d+|#\d+|\(\d+\))\s*$", "", normalized, flags=re.IGNORECASE
+        )
+        # Remove extra whitespace
+        normalized = re.sub(r"\s+", " ", normalized)
+
+        return normalized
+
+    def _merge_events(self, calendar_result: Dict, connpass_result: Dict) -> List[Dict]:
+        """Google CalendarとConnpassのイベントをマージ（重複排除付き）
+
+        両方のソースからイベントを取得し、タイトルの正規化ベースで
+        重複を排除してから開始日時順にソートして返す。
+
+        Google Calendar優先: 重複時はGoogle Calendarの情報を優先する。
 
         Args:
             calendar_result: CalendarServiceの結果
             connpass_result: ConnpassServiceの結果
 
         Returns:
-            マージされたイベントのリスト（開始日時順）
-
-        Notes:
-            - 各イベントには "source" フィールド（google_calendar / connpass）が付与される
-            - 重複は除外されない（異なるソースのため基本的に重複しない想定）
+            重複排除済み、開始日時順のイベントリスト
         """
-        events = []
+        events: List[Dict] = []
+        seen_titles: set[str] = set()
 
-        # Google Calendarイベント
+        # Google Calendarイベント（優先: 先に登録）
         if calendar_result.get("success"):
             calendar_events = calendar_result.get("data", {}).get("events", [])
             for event in calendar_events:
-                event["source"] = "google_calendar"
-                events.append(event)
+                normalized = self._normalize_title(event.get("title", ""))
+                if normalized and normalized not in seen_titles:
+                    seen_titles.add(normalized)
+                    events.append({**event, "source": "google_calendar"})
 
-        # Connpassイベント
+        # Connpassイベント（重複時はスキップ）
         if connpass_result.get("success"):
             connpass_events = connpass_result.get("data", {}).get("events", [])
             for event in connpass_events:
-                # source は既にConnpassServiceで付与済み
-                events.append(event)
+                normalized = self._normalize_title(event.get("title", ""))
+                if normalized and normalized not in seen_titles:
+                    seen_titles.add(normalized)
+                    events.append(event)
 
         # 開始日時でソート
         events.sort(key=lambda e: e.get("start", "") or "")

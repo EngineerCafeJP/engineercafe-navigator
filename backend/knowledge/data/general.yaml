@@ -1,0 +1,225 @@
+version: "1.0.0"
+description: "エンジニアカフェ一般情報（概要・営業時間・料金・アクセス・連絡先等）"
+entries:
+  - id: "general-what-is-ec"
+    title: "エンジニアカフェとは"
+    title_en: "What is Engineer Cafe"
+    content: >
+      エンジニアカフェ（Engineer Cafe – Hacker Space Fukuoka –）は、
+      福岡市の事業「エンジニアフレンドリーシティ福岡」の中核施設として
+      2019年8月に開設されたエンジニアのための無料コワーキング・交流スペースです。
+      福岡市中央区天神の赤煉瓦文化館（1909年築・国の重要文化財）内にあります。
+      Wi-Fi、電源、作業スペースを完備し、イベント優先のスペースとして運営されています。
+      イベントがない時間帯はコワーキングスペースとして自由にご利用いただけます。
+      エンジニアリングに関わる方が対象で、現役エンジニアだけでなく、
+      エンジニアを目指す学生やフリーランス、海外のエンジニアなども利用できます。
+    category: "general"
+    tags: ["overview", "basic", "engineer-cafe"]
+    priority: 90
+    source: "official"
+    verified: true
+
+  - id: "general-hours"
+    title: "エンジニアカフェ 営業時間・休館日"
+    title_en: "Engineer Cafe Opening Hours"
+    content: >
+      エンジニアカフェの開館時間は9:00〜22:00です。
+      コミュニティマネージャーへの相談受付時間は13:00〜21:00です。
+      休館日は毎月最終月曜日（祝休日のときは翌平日）と、12月29日〜1月3日です。
+      ゴールデンウィーク・お盆期間は通常通り開館しますが、特別告知がある場合はX(@EngineerCafeJP)で案内されます。
+    category: "hours"
+    tags: ["hours", "schedule", "engineer-cafe"]
+    priority: 90
+    source: "official"
+    verified: true
+
+  - id: "general-pricing"
+    title: "エンジニアカフェ 料金・利用登録"
+    title_en: "Engineer Cafe Pricing and Registration"
+    content: >
+      エンジニアカフェは「エンジニアフレンドリーシティ福岡」の実現を目的とした官民一体型プロジェクトで、
+      現役エンジニア、エンジニアを目指す方、エンジニアリング分野に関連する業務や学習に取り組む方が対象です。
+      施設・設備の利用料は無料です。ただしcafe&bar sainoの飲食と3Dプリンターのフィラメント代は有料です。
+      【初回利用登録】初めて利用する場合は受付で利用登録を行います（所要時間: 約5〜10分）。
+      施設の利用目的確認、飲食ルール、集中スペースでの私語禁止、15分以上の離席ルールについて説明を受けます。
+      所定のWebフォームに氏名、住所、連絡先、所属コミュニティ、職業、当施設を知ったきっかけ等を入力して完了です。
+      登録は来館時のみ可能で、オンライン事前登録には対応していません。登録料は無料です。
+      年齢制限はありませんが、一人で安全に利用できることが条件です。身分証明書の提示は不要です。
+      【2回目以降】会員番号を伝え、利用スペースを申告し、受付カードを受け取ります。
+      退館時に受付カードを受付に返却してください。
+      【利用制限】イベント開催も無料ですが、企業広告やヘッドハンティング目的など公共性にそぐわない利用は不可です。
+    category: "pricing"
+    tags: ["pricing", "registration", "free", "engineer-cafe"]
+    priority: 90
+    source: "official"
+    verified: true
+
+  - id: "general-access"
+    title: "エンジニアカフェ アクセス・所在地"
+    title_en: "Engineer Cafe Access and Location"
+    content: >
+      エンジニアカフェは福岡市中央区天神1丁目15番30号、
+      福岡市赤煉瓦文化館内にあります。
+      地下鉄空港線「天神駅」から徒歩5分、西鉄バス「天神4丁目」下車すぐです。
+      専用の駐車場・駐輪場はありません。近隣のコインパーキングや公共駐輪場をご利用ください。
+      公共交通機関でのお越しをおすすめします。
+    category: "access"
+    tags: ["access", "location", "address", "engineer-cafe"]
+    priority: 90
+    source: "official"
+    verified: true
+
+  - id: "general-contact"
+    title: "エンジニアカフェ 連絡先・お問い合わせ"
+    title_en: "Engineer Cafe Contact Information"
+    content: >
+      エンジニアカフェの電話番号は 080-6742-7231 です（相談受付13:00〜21:00）。
+      2階会議室（赤煉瓦文化館管理）のお問い合わせは 092-722-4666 です。
+      公式サイト: https://engineercafe.jp/
+      お問い合わせフォーム: https://engineercafe.jp/ja/contact
+      イベント情報（connpass）: https://engineercafe.connpass.com/
+    category: "contact"
+    tags: ["contact", "phone", "website", "engineer-cafe"]
+    priority: 60
+    source: "official"
+    verified: true
+
+  - id: "general-sns-channels"
+    title: "エンジニアカフェ SNS・公式情報チャンネル"
+    title_en: "Engineer Cafe Official SNS Channels"
+    content: >
+      エンジニアカフェの公式情報チャンネル一覧です。
+      【X（旧Twitter）】@EngineerCafeJP - 日常の様子、イベント告知、貸切情報など。
+      【Connpass】https://engineercafe.connpass.com/ - イベント参加申込・スケジュール確認。
+      【公式サイト】https://engineercafe.jp/ - 施設概要、利用方法、予約フォーム。
+      LINEアカウントは現時点ではありません。
+      最新の貸切情報やイベント変更はXで随時告知されますので、フォロー推奨です。
+    category: "general"
+    tags: ["sns", "contact", "information", "engineer-cafe"]
+    priority: 60
+    source: "official"
+    verified: true
+
+  - id: "general-rainy-day-access"
+    title: "エンジニアカフェ 雨天時のアクセス"
+    title_en: "Engineer Cafe Rainy Day Access"
+    content: >
+      雨の日にエンジニアカフェへ来る場合の最短ルートです。
+      地下鉄天神駅16番出口→天神地下街→アクロス福岡通路経由→地上に出てすぐ（雨に濡れる区間が最小）。
+      西鉄福岡（天神）駅からも地下街を経由すると雨を避けやすいです。
+      施設内での傘の貸出はありません。近隣のアクロス福岡や地下街には有料のレンタル傘があります。
+      テラス席は雨天時利用できません。
+    category: "access"
+    tags: ["access", "weather", "rain", "engineer-cafe"]
+    priority: 30
+    source: "official"
+    verified: true
+
+  - id: "general-multilingual-support"
+    title: "エンジニアカフェ 多言語サポート"
+    title_en: "Engineer Cafe Multilingual Support"
+    content: >
+      エンジニアカフェの多言語対応についてです。
+      公式サイトには英語版（https://engineercafe.jp/en/）があります。
+      スタッフの英語対応は限定的ですが、簡単なコミュニケーションは可能です。
+      国際イベント開催時は英語対応が強化されます。
+      海外のエンジニアも積極的に受け入れており、外国人利用者も多いです。
+      館内の案内表示は日本語が中心ですが、受付で英語での説明を受けることができます。
+    category: "general"
+    tags: ["multilingual", "english", "international", "engineer-cafe"]
+    priority: 60
+    source: "official"
+    verified: true
+
+  - id: "general-efc-fukuoka"
+    title: "エンジニアフレンドリーシティ福岡"
+    title_en: "Engineer Friendly City Fukuoka"
+    content: >
+      エンジニアフレンドリーシティ福岡は、福岡市が推進する
+      「エンジニアが集まる、活躍する、成長する街」を実現するためのムーブメントです。
+      福岡市とエンジニアが協力し、エンジニアがここで働きたいと思うようなまちづくりを目指しています。
+      エンジニアカフェはこの取り組みの中核施設として、行政と市民が協力して運営する官民一体型プロジェクトです。
+      【主な取り組み】
+      エンジニアカフェ: エンジニア向け無料コワーキング・交流拠点。
+      交流イベント: 勉強会やハッカソン、意見交換の場を提供。
+      外国人エンジニア支援: IT・半導体産業従事者の在留資格審査期間短縮。
+      EFCアワード: 働きやすい環境づくりに取り組む企業・コミュニティの表彰。
+      育成プログラム: オンライン講座とインターンシップマッチング。
+      詳細は公式サイト https://efc.fukuoka.jp/ をご覧ください。
+    category: "general"
+    tags: ["efc", "fukuoka", "government", "engineer-cafe"]
+    priority: 60
+    source: "official"
+    verified: true
+
+  - id: "general-airport-hakata-access"
+    title: "福岡空港・博多駅からエンジニアカフェへのアクセス詳細"
+    title_en: "Access from Fukuoka Airport and Hakata Station"
+    content: >
+      エンジニアカフェ（福岡市赤煉瓦文化館）へのアクセス方法です。
+      【福岡空港から】福岡市地下鉄空港線で「天神駅」下車（約11分・260円）。
+      天神駅から徒歩約5分（天神地下街を東方面へ進み、地上に出て昭和通り沿い）。
+      【博多駅から】福岡市地下鉄空港線で「天神駅」下車（約6分・210円）。
+      または西鉄バス（100円循環バス等）で「天神」下車。
+      【天神駅からの徒歩ルート】天神駅16番出口を出て、昭和通りを東へ約5分。
+      赤煉瓦の洋風建築が目印です。住所: 福岡市中央区天神1-15-30。
+      【車の場合】専用駐車場はありません。近隣のコインパーキングをご利用ください。
+      天神地下街の駐車場（30分250円〜）が便利です。
+      【自転車の場合】建物周辺に駐輪スペースがあります。
+    category: "access"
+    tags: ["access", "airport", "hakata", "subway", "engineer-cafe"]
+    priority: 90
+    source: "official"
+    verified: true
+
+  - id: "general-nearby-hotels"
+    title: "エンジニアカフェ近隣の宿泊施設案内"
+    title_en: "Nearby Hotels and Accommodation"
+    content: >
+      エンジニアカフェ周辺（天神エリア）の宿泊施設案内です。遠方からのイベント参加者向け情報。
+      【高級ホテル（徒歩5〜10分）】
+      西鉄グランドホテル: 天神の老舗ホテル。徒歩約5分。
+      ホテルモントレ福岡: ヨーロッパ調の内装。徒歩約8分。
+      ソラリア西鉄ホテル福岡: 天神駅直結。徒歩約7分。
+      【ビジネスホテル（徒歩5〜15分）】
+      プラザホテル天神: リーズナブルな立地良好ホテル。徒歩約3分。
+      東横INN博多口駅南: 博多駅近く。地下鉄利用で約15分。
+      ドーミーイン博多祇園: 天然温泉付き。地下鉄利用で約15分。
+      【ゲストハウス・カプセルホテル】
+      WeBase博多: ホステル形式。ドミトリー3,000円前後〜。
+      ファーストキャビン博多: カプセルホテル。4,000円前後〜。
+      ハッカソンや連日イベント参加の際は天神エリアの宿泊が便利です。
+    category: "general"
+    tags: ["hotel", "accommodation", "travel", "engineer-cafe"]
+    priority: 30
+    source: "official"
+    verified: true
+
+  - id: "general-english-overview"
+    title: "Engineer Cafe English Overview (Facility Guide)"
+    title_en: "Engineer Cafe English Overview"
+    content: >
+      Engineer Cafe is a free public coworking and community space for engineers,
+      located inside the historic Red-Brick Culture Hall (Fukuoka City Akarenga Bunka-kan),
+      a nationally designated Important Cultural Property built in 1909.
+      Opening hours: 9:00 AM – 10:00 PM. Closed on the last Monday of each month.
+      Address: 1-15-30 Tenjin, Chuo-ku, Fukuoka.
+      Access: 5-min walk from Tenjin Station (Fukuoka City Subway).
+      From Fukuoka Airport: 11 min by subway (260 yen). From Hakata Station: 6 min by subway (210 yen).
+      【Available Spaces】
+      1F Main Hall: Open coworking area (free when no events).
+      B1 Under Space: Free-address seating with extra monitors and one soundproof room (1-hour slots).
+      B1 Focus Space: 6 silent booths, no reservation needed.
+      B1 Meeting Space: For 2+ people, advance online booking in 2-hour slots.
+      B1 MAKER's Space: 3D printers, laser cutter. First-time training required.
+      2F Paid Meeting Rooms: 3 rooms (8–30 capacity), advance reservation required.
+      【Registration】 Connect to Wi-Fi (SSID: engnrcf-guest-5GHz, Password: akarenga-112years),
+      scan QR at reception, fill registration form (5–10 min). No ID required.
+      【Rules】 Food is prohibited (Important Cultural Property). Only sealed-lid beverages allowed.
+      No straws. Do not leave belongings unattended for over 15 minutes.
+      Website: https://engineercafe.jp/en/
+    category: "general"
+    tags: ["english", "overview", "international", "engineer-cafe"]
+    priority: 90
+    source: "official"
+    verified: true

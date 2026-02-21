@@ -41,6 +41,7 @@ ENV/
 .pytest_cache/
 .coverage
 htmlcov/
+tests/evaluation/reports/
 
 # Poetry
 poetry.lock
@@ -48,4 +49,9 @@ poetry.lock
 # OS
 .DS_Store
 Thumbs.db
+
+# Vosk/Audio models (large binary files)
+models/
+*.bin
+*.fst
 

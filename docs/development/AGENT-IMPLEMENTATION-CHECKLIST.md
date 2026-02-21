@@ -22,6 +22,7 @@
 
 | エージェント | 責務 |
 |------------|------|
+| OrchestratorAgent | Supervisor Pattern によるルーティング・ワークフロー制御 |
 | RouterAgent | クエリのルーティング、言語検出、リクエストタイプ抽出 |
 | BusinessInfoAgent | 営業時間、料金、場所などのビジネス情報 |
 | FacilityAgent | 設備、Wi-Fi、地下施設などの施設情報 |
@@ -32,6 +33,16 @@
 | SlideAgent | スライド表示制御 |
 | VoiceAgent | 音声処理 |
 | CharacterControlAgent | キャラクター制御 |
+| OCRAgent | 画像認識 |
+
+### 共有インフラストラクチャ
+
+| モジュール | 目的 |
+|-----------|------|
+| `config/routing_constants.py` | ルーティングキーワード・エージェントマッピング・ヘルパー関数 |
+| `config/prompts/` | エージェント固有プロンプトテンプレート |
+| `utils/input_sanitizer.py` | プロンプトインジェクション検出・入力バリデーション |
+| `utils/exceptions.py` | ドメイン固有カスタム例外階層 |
 
 ---
 
@@ -143,16 +154,40 @@
   ```
 
 - [ ] **LLM 呼び出しパターン**
-  - プロンプトは定数として定義
+  - プロンプトは定数として定義（`config/prompts/` に外部化）
+  - `HumanMessage` を使用（dict ではなく `langchain_core.messages.HumanMessage`）
   - トークン使用量を追跡
   - タイムアウト設定を実装
 
-### 2.3 エラーハンドリング
+### 2.3 共有インフラストラクチャの利用（必須）
+
+- [ ] **ルーティング定数**
+  - キーワードリストは `config/routing_constants.py` からインポート（重複定義しない）
+  - `match_keywords()`, `extract_request_type()` ヘルパーを活用
+  - `CATEGORY_TO_AGENT_MAP` でカテゴリ→エージェントの対応を参照
+
+- [ ] **入力サニタイズ**
+  - ユーザー入力には `utils/input_sanitizer.sanitize_input()` を使用
+  - プロンプトインジェクション対策を各エージェントで実装
+
+- [ ] **カスタム例外**
+  - `utils/exceptions.py` のカスタム例外を使用
+  - bare `except Exception` を避け、具体的な例外をキャッチ
+
+- [ ] **ロギング**
+  - `print()` ではなく `logging.getLogger(__name__)` を使用
+  - `logger.info/warning/error/debug` で適切なレベル分け
+
+- [ ] **LLM メッセージ**
+  - `HumanMessage(content=...)` を使用（dict `{"role": "user", "content": ...}` は使わない）
+  - `from langchain_core.messages import HumanMessage` をインポート
+
+### 2.4 エラーハンドリング
 
 - [ ] **例外処理**
-  - カスタム例外クラスを定義（必要に応じて）
+  - `utils/exceptions.py` のカスタム例外を使用（`AgentSystemError`, `LLMGenerationError` 等）
   - 具体的な例外をキャッチ（bare `except` を避ける）
-  - エラーログを適切に出力
+  - `logger` でエラーログを適切に出力（`print()` は使わない）
 
 - [ ] **フォールバック**
   - API 失敗時のフォールバックメッセージ
@@ -160,13 +195,15 @@
   - 無効な入力に対する処理
 
 ```python
+from utils.exceptions import LLMGenerationError, ExternalServiceError
+
 try:
     result = await self.provider.generate(prompt)
-except ProviderTimeoutError:
+except LLMGenerationError:
     logger.warning(f"LLM timeout for query: {query[:50]}...")
     return self._fallback_response(query, language)
-except ProviderError as e:
-    logger.error(f"LLM error: {e}")
+except ExternalServiceError as e:
+    logger.error(f"External service error: {e}")
     return self._error_response(query, language, str(e))
 ```
 
@@ -414,19 +451,34 @@ mypy agents/{agent_name}.py --ignore-missing-imports
 ```
 backend/
 ├── agents/
-│   └── {agent_name}.py       # エージェント実装
+│   ├── orchestrator_agent.py  # Supervisor Pattern ルーティング
+│   ├── router_agent.py        # クエリルーティング
+│   ├── {agent_name}.py        # 各エージェント実装
+│   └── ...
+├── config/
+│   ├── routing_constants.py   # ルーティングキーワード・ヘルパー集約
+│   ├── settings.py            # アプリケーション設定
+│   └── prompts/               # 共有プロンプトテンプレート
+│       ├── facility_prompts.py
+│       ├── event_prompts.py
+│       └── memory_prompts.py
+├── utils/
+│   ├── input_sanitizer.py     # 入力バリデーション・サニタイズ
+│   ├── exceptions.py          # カスタム例外階層
+│   ├── memory_helper.py       # Supabase メモリシステム
+│   ├── language_processor.py  # 言語検出
+│   └── query_classifier.py    # クエリ分類
+├── llm/
+│   └── openrouter.py          # OpenRouter LLM プロバイダー
+├── tools/
+│   └── agent_tools.py         # Supabase/RAG ツール
 ├── tests/
-│   ├── agents/
-│   │   └── test_{agent_name}.py  # 単体テスト
-│   ├── integration/
-│   │   └── test_workflow.py      # 統合テスト
-│   ├── templates/
-│   │   └── test_agent_template.py  # テストテンプレート
-│   └── utils/
-│       ├── mock_helpers.py       # モックヘルパー
-│       └── test_helpers.py       # テストヘルパー
+│   ├── agents/                # 単体テスト
+│   ├── integration/           # 統合テスト
+│   ├── evaluation/            # LangChain Evaluation
+│   └── utils/                 # テストヘルパー
 └── workflows/
-    └── main_workflow.py          # ワークフロー定義
+    └── main_workflow.py       # LangGraph ワークフロー定義
 ```
 
 ### 参考ドキュメント
@@ -444,3 +496,4 @@ backend/
 | 日付 | バージョン | 変更内容 |
 |------|----------|---------|
 | 2026-01-13 | 1.0.0 | 初版作成 |
+| 2026-02-07 | 1.1.0 | 共有インフラストラクチャ（routing_constants, input_sanitizer, exceptions）チェック項目追加、OrchestratorAgent・OCRAgent追加、ディレクトリ構造更新 |

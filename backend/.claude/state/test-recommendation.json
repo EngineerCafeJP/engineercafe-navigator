@@ -1,6 +1,6 @@
 {
-  "timestamp": "2026-01-13T00:00:00Z",
-  "changed_file": "workflows/main_workflow.py",
+  "timestamp": "2026-02-16T09:34:39Z",
+  "changed_file": "tests/test_main_endpoints.py",
   "test_command": "pytest",
   "related_test": "",
   "recommendation": "テストの実行を推奨します"

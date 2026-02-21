@@ -1,0 +1,83 @@
+version: "1.0.0"
+description: "cafe&bar saino（サイノカフェ）関連情報"
+entries:
+  - id: "saino-business-info"
+    title: "cafe&bar saino（サイノカフェ）営業情報"
+    title_en: "cafe&bar saino Business Information"
+    content: >
+      cafe&bar saino（サイノカフェ）はエンジニアカフェ1階に併設されたカフェ＆バーです。
+      昼はカフェ、夜はバーとして営業しています。
+      営業時間: 平日はDay Time 12:00〜17:00 / Night Time 18:00〜20:00。
+      土日祝は11:00〜20:00です。
+      営業日: 火・木・金・土・日。定休日: 月曜日・水曜日。
+      席数15席、カウンター席にコンセントあり、Wi-Fi利用可。
+      イートイン・テイクアウト対応、全席禁煙。
+      決済方法: クレジットカード（Visa/Master/JCB/Amex）、交通系IC、iD、QUICPay、
+      各種QR決済（PayPay/d払い/au PAY/LINE Pay/Alipay/WeChat Pay等）に幅広く対応。
+      懇親会やイベント後のネットワーキングにも活用できます。
+      ※cafe&bar sainoでの飲食は必須ではありません。
+      エンジニアカフェのコワーキングスペースはsainoを利用しなくても無料で使えます。
+    category: "facility-info"
+    tags: ["saino", "cafe", "bar", "food"]
+    priority: 90
+    source: "official"
+    verified: true
+
+  - id: "saino-food-menu"
+    title: "cafe&bar saino フードメニュー"
+    title_en: "cafe&bar saino Food Menu"
+    content: >
+      cafe&bar sainoのフードメニューです。
+      【サンドイッチ】
+      てりたまハンバーグサンド: 700円。ツナチーズメルトサンド: 700円。あんバター白玉サンド: 650円。
+      ドリンクとセットで-50円引き。ナゲットセットは960円。
+      【デザート】
+      ワッフル（バニラアイス・ソース付）: 420円（単品300円）。
+      アイスクリーム（2種類選択可）: 420円。アフォガート: 550円。
+      季節限定メニュー（チョコケーキ500円など）もあり、店頭POPで随時更新。
+      【トッピング（+50円〜100円）】
+      ホイップクリーム、各種ソース（チョコ・ハニー・キャラメル・ストロベリー・ピーチ）、
+      バニラアイス。ドリンクにも追加可能です。
+    category: "facility-info"
+    tags: ["saino", "food", "menu"]
+    priority: 60
+    source: "official"
+    verified: true
+
+  - id: "saino-drink-menu"
+    title: "cafe&bar saino ドリンクメニュー"
+    title_en: "cafe&bar saino Drink Menu"
+    content: >
+      cafe&bar sainoのドリンクメニューです。
+      【コーヒー・ラテ】
+      ドリップコーヒー（ブレンド）: 380円。シングルオリジン（ハンドドリップ）: 460円〜。
+      エスプレッソ: 400円。カフェラテ: 570円。カフェモカ: 700円。
+      ドリップポット（10杯分・ブレンド）: 3,420円（チームでの作業に最適）。
+      【赤煉瓦シェイク・フロート】
+      Akarenga Shake（赤煉瓦シェイク）: 680円（バニラ/抹茶/ほうじ茶など5種）。
+      コーヒーフロート: 480円。
+      【その他ドリンク】
+      抹茶ラテ: 500円。ほうじ茶ラテ: 500円。各種ジュース: 500円。
+      コーラ: 500円。ジンジャーエール: 500円。
+      【カスタマイズ】+50円でソイミルク（豆乳）に変更可能。
+    category: "facility-info"
+    tags: ["saino", "drink", "menu", "coffee"]
+    priority: 60
+    source: "official"
+    verified: true
+
+  - id: "saino-bar-alcohol"
+    title: "cafe&bar saino バータイム・アルコールメニュー"
+    title_en: "cafe&bar saino Bar Time and Alcohol Menu"
+    content: >
+      cafe&bar sainoは夜はバーとしても営業しています（Night Time 18:00〜20:00）。
+      イベント後の懇親会やネットワーキングにも活用できます。
+      【ビール】ハイネケン: 500円。シャンディガフ: 600円。ノンアルコール: 500円。
+      【ハイボール】ホワイトホース: 450円。陸: 500円。コークハイ・ジンジャーハイ: 各600円。
+      【カクテル（ALL 700円）】カシスオレンジ、ジントニック、モスコミュール、ラムコーク等。
+      【おつまみ】ミックスナッツ: 400円。チップス: 400円。
+    category: "facility-info"
+    tags: ["saino", "bar", "alcohol", "networking"]
+    priority: 60
+    source: "official"
+    verified: true

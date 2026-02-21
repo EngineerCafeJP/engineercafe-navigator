@@ -1,0 +1,910 @@
+{
+  "version": "1.0.0",
+  "description": "RAGAS評価用Ground Truthデータセット - seed_knowledge.pyの60エントリから生成",
+  "created_at": "2026-02-15",
+  "source": "backend/scripts/seed_knowledge.py + answer_quality.json",
+  "test_cases": [
+    {
+      "id": "gt-001",
+      "question": "エンジニアカフェって何ですか？",
+      "answer": "エンジニアカフェは福岡市の事業「エンジニアフレンドリーシティ福岡」の中核施設として2019年8月に開設されたエンジニアのための無料コワーキング・交流スペースです。赤煉瓦文化館内にあります。",
+      "contexts": [
+        "エンジニアカフェ（Engineer Cafe – Hacker Space Fukuoka –）は、福岡市の事業「エンジニアフレンドリーシティ福岡」の中核施設として2019年8月に開設されたエンジニアのための無料コワーキング・交流スペースです。福岡市中央区天神の赤煉瓦文化館（1909年築・国の重要文化財）内にあります。"
+      ],
+      "ground_truth": "エンジニアカフェは福岡市の「エンジニアフレンドリーシティ福岡」の中核施設で、2019年8月に開設された無料のコワーキング・交流スペース。赤煉瓦文化館内に所在。",
+      "language": "ja",
+      "category": "general"
+    },
+    {
+      "id": "gt-002",
+      "question": "エンジニアカフェは誰が利用できますか？",
+      "answer": "現役エンジニアだけでなく、エンジニアを目指す学生やフリーランス、海外のエンジニアなども利用できます。",
+      "contexts": [
+        "エンジニアリングに関わる方が対象で、現役エンジニアだけでなく、エンジニアを目指す学生やフリーランス、海外のエンジニアなども利用できます。"
+      ],
+      "ground_truth": "エンジニアリングに関わる方全般が対象。現役エンジニア、学生、フリーランス、海外エンジニアも利用可能。",
+      "language": "ja",
+      "category": "general"
+    },
+    {
+      "id": "gt-003",
+      "question": "エンジニアカフェの営業時間は何時から何時までですか？",
+      "answer": "エンジニアカフェの開館時間は9:00〜22:00です。",
+      "contexts": [
+        "エンジニアカフェの開館時間は9:00〜22:00です。コミュニティマネージャーへの相談受付時間は13:00〜21:00です。"
+      ],
+      "ground_truth": "開館時間は9:00〜22:00。コミュニティマネージャーへの相談受付は13:00〜21:00。",
+      "language": "ja",
+      "category": "hours"
+    },
+    {
+      "id": "gt-004",
+      "question": "エンジニアカフェの休館日はいつですか？",
+      "answer": "休館日は毎月最終月曜日（祝休日のときは翌平日）と、12月29日〜1月3日です。",
+      "contexts": [
+        "休館日は毎月最終月曜日（祝休日のときは翌平日）と、12月29日〜1月3日です。ゴールデンウィーク・お盆期間は通常通り開館します。"
+      ],
+      "ground_truth": "毎月最終月曜日（祝休日の場合は翌平日）と12月29日〜1月3日が休館日。GW・お盆は通常通り。",
+      "language": "ja",
+      "category": "hours"
+    },
+    {
+      "id": "gt-005",
+      "question": "エンジニアカフェの利用料金はいくらですか？",
+      "answer": "施設・設備の利用料は無料です。ただしcafe&bar sainoの飲食と3Dプリンターのフィラメント代は有料です。",
+      "contexts": [
+        "施設・設備の利用料は無料です。ただしcafe&bar sainoの飲食と3Dプリンターのフィラメント代は有料です。"
+      ],
+      "ground_truth": "施設・設備は無料。cafe&bar sainoの飲食と3Dプリンターのフィラメント代のみ有料。",
+      "language": "ja",
+      "category": "pricing"
+    },
+    {
+      "id": "gt-006",
+      "question": "初回利用登録はどうすればいいですか？",
+      "answer": "初めて利用する場合は受付で利用登録を行います。所要時間は約5〜10分です。Webフォームに氏名等を入力して完了です。",
+      "contexts": [
+        "初めて利用する場合は受付で利用登録を行います（所要時間: 約5〜10分）。所定のWebフォームに氏名、住所、連絡先、所属コミュニティ、職業、当施設を知ったきっかけ等を入力して完了です。登録は来館時のみ可能で、オンライン事前登録には対応していません。登録料は無料です。"
+      ],
+      "ground_truth": "受付で利用登録（約5〜10分）。Webフォームに氏名等を入力。来館時のみ可能でオンライン事前登録不可。登録料は無料。",
+      "language": "ja",
+      "category": "pricing"
+    },
+    {
+      "id": "gt-007",
+      "question": "エンジニアカフェへのアクセス方法は？",
+      "answer": "福岡市中央区天神1丁目15番30号、赤煉瓦文化館内にあります。地下鉄天神駅から徒歩5分です。",
+      "contexts": [
+        "エンジニアカフェは福岡市中央区天神1丁目15番30号、福岡市赤煉瓦文化館内にあります。地下鉄空港線「天神駅」から徒歩5分、西鉄バス「天神4丁目」下車すぐです。"
+      ],
+      "ground_truth": "福岡市中央区天神1-15-30、赤煉瓦文化館内。地下鉄天神駅から徒歩5分、西鉄バス天神4丁目下車すぐ。",
+      "language": "ja",
+      "category": "access"
+    },
+    {
+      "id": "gt-008",
+      "question": "雨の日にエンジニアカフェへ行く最短ルートは？",
+      "answer": "地下鉄天神駅16番出口から天神地下街、アクロス福岡通路を経由するルートが雨に濡れる区間が最小です。",
+      "contexts": [
+        "雨の日にエンジニアカフェへ来る場合の最短ルートです。地下鉄天神駅16番出口→天神地下街→アクロス福岡通路経由→地上に出てすぐ（雨に濡れる区間が最小）。"
+      ],
+      "ground_truth": "天神駅16番出口→天神地下街→アクロス福岡通路経由→地上に出てすぐが最短。濡れる区間が最小。",
+      "language": "ja",
+      "category": "access"
+    },
+    {
+      "id": "gt-009",
+      "question": "エンジニアカフェの連絡先を教えてください",
+      "answer": "電話番号は080-6742-7231（相談受付13:00〜21:00）です。公式サイトはhttps://engineercafe.jp/です。",
+      "contexts": [
+        "エンジニアカフェの電話番号は 080-6742-7231 です（相談受付13:00〜21:00）。公式サイト: https://engineercafe.jp/ お問い合わせフォーム: https://engineercafe.jp/ja/contact"
+      ],
+      "ground_truth": "電話: 080-6742-7231（13:00〜21:00）。公式サイト: https://engineercafe.jp/。問い合わせフォーム: https://engineercafe.jp/ja/contact",
+      "language": "ja",
+      "category": "contact"
+    },
+    {
+      "id": "gt-009b",
+      "question": "How can I contact Engineer Cafe?",
+      "answer": "Phone: 080-6742-7231 (consultation hours 13:00-21:00). Website: https://engineercafe.jp/",
+      "contexts": [
+        "エンジニアカフェの電話番号は 080-6742-7231 です（相談受付13:00〜21:00）。公式サイト: https://engineercafe.jp/ お問い合わせフォーム: https://engineercafe.jp/ja/contact"
+      ],
+      "ground_truth": "Phone: 080-6742-7231 (13:00-21:00). Website: https://engineercafe.jp/. Contact form: https://engineercafe.jp/ja/contact",
+      "language": "en",
+      "category": "contact"
+    },
+    {
+      "id": "gt-010",
+      "question": "メインホールはどんなスペースですか？",
+      "answer": "1階メインホールはイベントスペース兼コワーキングスペースで、フリー30席、Wi-Fi完備、電源タップ設置です。",
+      "contexts": [
+        "1階メインホールはイベントスペース兼コワーキングスペースです。イベント優先で、イベントがない時間帯はコワーキングとして利用できます。フリー30席、フリーWi-Fi完備、各席に電源タップを設置しています。"
+      ],
+      "ground_truth": "1階メインホールはイベント優先のコワーキングスペース。30席、Wi-Fi・電源完備。4Kモニター貸出やVRゴーグル等の最新機材あり。",
+      "language": "ja",
+      "category": "facility-info"
+    },
+    {
+      "id": "gt-011",
+      "question": "MAKER'sスペースではどんな機材が使えますか？",
+      "answer": "レーザー加工機、3Dプリンター、はんだごて、ボール盤、オシロスコープなどが使えます。機材使用料は無料です。",
+      "contexts": [
+        "地下1階のMAKER'sスペースはデジタルものづくりの体験や試作ができる作業スペースです。主な設備: レーザー加工機（trotec speedy100 C30）、3Dプリンター（Bambu Lab P1S）、はんだごて、ボール盤、アクリルヒーター、オシロスコープ、金属曲げ加工機「MAGEMAGE」、帯鋸など。"
+      ],
+      "ground_truth": "MAKER'sスペース（B1F）にレーザー加工機、3Dプリンター（Bambu Lab P1S）、はんだごて、ボール盤、オシロスコープ等。機材使用料無料（3Dプリンターフィラメント代は有料）。",
+      "language": "ja",
+      "category": "facility-info"
+    },
+    {
+      "id": "gt-012",
+      "question": "3Dプリンターのフィラメント料金を教えてください",
+      "answer": "PLA（白・黒）は2円/g、ABS（白・黒）は2円/gです。福岡市在住の学生はフィラメント代が無料です。",
+      "contexts": [
+        "標準フィラメント（Bambu Lab P1S用）PLA（白・黒）: 2円/g。ABS（白・黒）: 2円/g。福岡市在住の学生はフィラメント代が無料です。使用量(g)×単価(円/g)で計算し、10円未満は切り捨てです。"
+      ],
+      "ground_truth": "PLA/ABS: 2円/g。アフィニアPLA: 7円/g、ABS: 10円/g等。使用量×単価で計算（10円未満切り捨て）。福岡市在住学生は無料。",
+      "language": "ja",
+      "category": "facility-info"
+    },
+    {
+      "id": "gt-013",
+      "question": "集中スペースはどこにありますか？",
+      "answer": "地下1階にあるブース型スペースで、6席あります。座席指定制・先着順で予約不可です。",
+      "contexts": [
+        "地下1階の集中スペースは静かな環境で作業に集中できるブース型スペースです。席数は6席で、座席指定制・先着順です（予約不可）。1階と異なり、会話や電話はできません。"
+      ],
+      "ground_truth": "地下1階のブース型スペース。6席、座席指定制・先着順（予約不可）。会話・電話禁止。",
+      "language": "ja",
+      "category": "facility-info"
+    },
+    {
+      "id": "gt-014",
+      "question": "2階の会議室の料金はいくらですか？",
+      "answer": "会議室1（定員12名）は9-12時800円、会議室2（定員8名）は9-12時500円、会議室3（定員30名）は9-12時1,700円です。",
+      "contexts": [
+        "2階には大小3つの貸し会議室があります。会議室1（定員12名）: 9-12時 800円。会議室2（定員8名）: 9-12時 500円。会議室3（定員30名）: 9-12時 1,700円。こちらはエンジニアカフェではなく福岡市赤煉瓦文化会館が管理する有料施設です。"
+      ],
+      "ground_truth": "2階会議室は赤煉瓦文化館管理の有料施設。会議室1(12名)800円〜、会議室2(8名)500円〜、会議室3(30名)1,700円〜（9-12時の場合）。",
+      "language": "ja",
+      "category": "facility-info"
+    },
+    {
+      "id": "gt-015",
+      "question": "cafe&bar sainoの営業時間は？",
+      "answer": "平日はDay Time 12:00〜17:00、Night Time 18:00〜20:00。土日祝は11:00〜20:00です。定休日は月曜と水曜です。",
+      "contexts": [
+        "営業時間: 平日はDay Time 12:00〜17:00 / Night Time 18:00〜20:00。土日祝は11:00〜20:00です。営業日: 火・木・金・土・日。定休日: 月曜日・水曜日。"
+      ],
+      "ground_truth": "平日Day 12:00-17:00/Night 18:00-20:00、土日祝11:00-20:00。定休日: 月・水。",
+      "language": "ja",
+      "category": "saino-cafe"
+    },
+    {
+      "id": "gt-016",
+      "question": "サイノカフェのフードメニューを教えてください",
+      "answer": "てりたまハンバーグサンド700円、ツナチーズメルトサンド700円、あんバター白玉サンド650円などがあります。",
+      "contexts": [
+        "てりたまハンバーグサンド: 700円。ツナチーズメルトサンド: 700円。あんバター白玉サンド: 650円。ドリンクとセットで-50円引き。ナゲットセットは960円。ワッフル（バニラアイス・ソース付）: 420円。"
+      ],
+      "ground_truth": "サンドイッチ類（てりたまハンバーグ700円、ツナチーズメルト700円等）、ワッフル420円、アイスクリーム420円等。ドリンクセット-50円引き。",
+      "language": "ja",
+      "category": "saino-cafe"
+    },
+    {
+      "id": "gt-017",
+      "question": "サイノカフェのコーヒーの値段は？",
+      "answer": "ドリップコーヒー（ブレンド）380円、カフェラテ570円です。",
+      "contexts": [
+        "ドリップコーヒー（ブレンド）: 380円。シングルオリジン（ハンドドリップ）: 460円〜。エスプレッソ: 400円。カフェラテ: 570円。カフェモカ: 700円。"
+      ],
+      "ground_truth": "ブレンドコーヒー380円、シングルオリジン460円〜、エスプレッソ400円、カフェラテ570円、カフェモカ700円。",
+      "language": "ja",
+      "category": "saino-cafe"
+    },
+    {
+      "id": "gt-018",
+      "question": "サイノカフェでアルコールは飲めますか？",
+      "answer": "はい、Night Time（18:00〜20:00）にバーとして営業しています。ビール500円、カクテル700円などがあります。",
+      "contexts": [
+        "cafe&bar sainoは夜はバーとしても営業しています（Night Time 18:00〜20:00）。ハイネケン: 500円。カクテル（ALL 700円）: カシスオレンジ、ジントニック等。"
+      ],
+      "ground_truth": "Night Time 18:00-20:00にバー営業。ハイネケン500円、ハイボール450円〜、カクテル各700円等。",
+      "language": "ja",
+      "category": "saino-cafe"
+    },
+    {
+      "id": "gt-019",
+      "question": "コミュニティマネージャーに相談できることは？",
+      "answer": "モノづくりやキャリアの相談、エンジニアへの転職相談、スキルチェンジ支援、コミュニティ運営支援などに対応しています。",
+      "contexts": [
+        "主な活動内容: モノづくりやキャリアなど、エンジニアのいろいろな相談に対応。エンジニアへの転職相談、スキルチェンジ支援。コミュニティの構築・運営支援。エンジニア同士の交流促進・橋渡し。イベントの企画・運営サポート。"
+      ],
+      "ground_truth": "キャリア相談、転職・スキルチェンジ支援、技術相談、コミュニティ運営支援、イベント企画サポートなど。相談受付13:00〜21:00、予約不要。",
+      "language": "ja",
+      "category": "consultation"
+    },
+    {
+      "id": "gt-020",
+      "question": "エンジニアカフェでスキルチェンジ相談はできますか？",
+      "answer": "はい、コミュニティマネージャーがスキルチェンジ支援に対応しています。「未経験からエンジニアになりたい社会人のためのスキルチェンジ相談会」も定期開催しています。",
+      "contexts": [
+        "エンジニアへの転職相談、スキルチェンジ支援。「未経験からエンジニアになりたい社会人のためのスキルチェンジ相談会」も定期開催。"
+      ],
+      "ground_truth": "スキルチェンジ相談可能。CMが対応。定期的にスキルチェンジ相談会も開催。",
+      "language": "ja",
+      "category": "consultation"
+    },
+    {
+      "id": "gt-021",
+      "question": "Engineer Cafe Labとは何ですか？",
+      "answer": "U-25（25歳以下）を対象とした若手エンジニア向けの会員制コミュニティプログラムです。会費は無料です。",
+      "contexts": [
+        "Engineer Cafe Lab（エンジニアカフェラボ）は、U-25（25歳以下）を対象とした若手エンジニア向けの会員制コミュニティプログラムです。入会条件は事前応募と面接が必要で、会費は無料です。"
+      ],
+      "ground_truth": "U-25対象の会員制コミュニティ。事前応募・面接制。会費無料。VR・ドローン等の専門機材貸出、限定ワークショップ等の特典あり。",
+      "language": "ja",
+      "category": "community"
+    },
+    {
+      "id": "gt-022",
+      "question": "ENGINEER IGNITION CAMPとは？",
+      "answer": "エンジニアカフェ主催の短期集中・実践型プログラムで、参加費無料です。「つくりたい物をつくる」がコンセプトです。",
+      "contexts": [
+        "ENGINEER IGNITION CAMP（EIC）は、エンジニアカフェが主催する短期集中・実践型プログラムです。参加費は無料です。コンセプトは「つくりたい物をつくる」で「対価を得る・事業化」を目指します。"
+      ],
+      "ground_truth": "エンジニアカフェ主催の短期集中プログラム。参加費無料。コンセプトは「つくりたい物をつくる」で事業化を目指す。A〜CコースとZコースあり。",
+      "language": "ja",
+      "category": "community"
+    },
+    {
+      "id": "gt-023",
+      "question": "EICの修了認定条件を教えてください",
+      "answer": "講義3回参加、LT発表、Dev & Tips 5回中3回参加、Boot Camp 2日間参加、DevDay参加・発表の5要件を満たす必要があります。",
+      "contexts": [
+        "以下の5つの要件を全て満たす必要があります。1. 講義: 全3回中3回参加。2. LT: 参加および発表。3. Dev & Tips: 全5回中3回参加。4. Boot Camp: 2日間参加。5. DevDay: 参加および発表（展示・デモ形式）。"
+      ],
+      "ground_truth": "5要件: 講義3回、LT発表、Dev&Tips 3/5回、BootCamp 2日、DevDay展示発表。すべて満たすと修了認定。",
+      "language": "ja",
+      "category": "community"
+    },
+    {
+      "id": "gt-024",
+      "question": "DevDayはいつ開催されますか？",
+      "answer": "2026年2月23日 18:00〜に開催されます。展示形式で実施されます。",
+      "contexts": [
+        "DevDay（最終展示会）はENGINEER IGNITION CAMP（EIC）の集大成イベントです。2026年2月23日 18:00〜に開催されます。ピッチではなく展示形式で実施されます。"
+      ],
+      "ground_truth": "2026年2月23日 18:00〜。展示形式（ピッチではない）。審査員にFusic浜崎氏、ヌーラボ橋本氏ら。",
+      "language": "ja",
+      "category": "community"
+    },
+    {
+      "id": "gt-025",
+      "question": "赤煉瓦文化館はいつ建てられましたか？",
+      "answer": "1909年（明治42年）に日本生命保険株式会社九州支店の社屋として建てられました。設計は辰野金吾・片岡安です。",
+      "contexts": [
+        "1909年（明治42年）に日本生命保険株式会社九州支店の社屋として建てられました。設計は東京駅の設計でも知られる辰野金吾・片岡安による辰野片岡建築事務所です。"
+      ],
+      "ground_truth": "1909年（明治42年）建築。日本生命九州支店の社屋。辰野金吾・片岡安設計。1969年に国の重要文化財指定。",
+      "language": "ja",
+      "category": "building"
+    },
+    {
+      "id": "gt-026",
+      "question": "エンジニアカフェで食べ物の持ち込みはできますか？",
+      "answer": "外部からの食べ物の持ち込みは原則禁止です。cafe&bar sainoで購入した飲食物のみ指定エリアで食べられます。",
+      "contexts": [
+        "外部からの食べ物の持ち込みは原則禁止です。cafe&bar sainoで購入した飲食物のみ、指定エリアでお召し上がりいただけます。飲食可能エリアはcafe&bar saino店内、談話室、テラスです。メインホール、集中スペース、地下スペースでの飲食は禁止です。"
+      ],
+      "ground_truth": "外部食品持ち込み原則禁止。saino購入品のみ、saino店内・談話室・テラスで飲食可。メインホール・集中SP・地下は飲食不可。",
+      "language": "ja",
+      "category": "food_drink"
+    },
+    {
+      "id": "gt-026b",
+      "question": "Can I bring my own food to Engineer Cafe?",
+      "answer": "Outside food is generally not allowed. Only food purchased at cafe&bar saino can be consumed in designated areas.",
+      "contexts": [
+        "外部からの食べ物の持ち込みは原則禁止です。cafe&bar sainoで購入した飲食物のみ、指定エリアでお召し上がりいただけます。飲食可能エリアはcafe&bar saino店内、談話室、テラスです。"
+      ],
+      "ground_truth": "Outside food not allowed. Only saino purchases can be consumed in saino, lounge, or terrace. No eating in main hall, focus space, or basement.",
+      "language": "en",
+      "category": "food_drink"
+    },
+    {
+      "id": "gt-027",
+      "question": "エンジニアカフェでタバコは吸えますか？",
+      "answer": "エンジニアカフェは全館禁煙です。喫煙される方は近隣の喫煙所をご利用ください。",
+      "contexts": [
+        "エンジニアカフェは全館禁煙です。施設内での喫煙はできません。喫煙される方は、近隣の喫煙所をご利用ください。"
+      ],
+      "ground_truth": "全館禁煙。近隣の喫煙所を利用。",
+      "language": "ja",
+      "category": "smoking"
+    },
+    {
+      "id": "gt-027b",
+      "question": "Is smoking allowed at Engineer Cafe?",
+      "answer": "Engineer Cafe is entirely non-smoking. Please use nearby designated smoking areas.",
+      "contexts": [
+        "エンジニアカフェは全館禁煙です。施設内での喫煙はできません。喫煙される方は、近隣の喫煙所をご利用ください。"
+      ],
+      "ground_truth": "Entire facility is non-smoking. Use nearby smoking areas.",
+      "language": "en",
+      "category": "smoking"
+    },
+    {
+      "id": "gt-028",
+      "question": "エンジニアカフェに駐車場はありますか？",
+      "answer": "専用駐車場はありません。近隣のコインパーキングをご利用ください。",
+      "contexts": [
+        "エンジニアカフェには専用駐車場はありません。近隣のコインパーキングをご利用ください。公共交通機関でのお越しをおすすめします。"
+      ],
+      "ground_truth": "専用駐車場なし。近隣コインパーキング利用。公共交通機関推奨。",
+      "language": "ja",
+      "category": "parking"
+    },
+    {
+      "id": "gt-028b",
+      "question": "Is there parking available at Engineer Cafe?",
+      "answer": "There is no dedicated parking. Please use nearby coin parking lots. Public transportation is recommended.",
+      "contexts": [
+        "エンジニアカフェには専用駐車場はありません。近隣のコインパーキングをご利用ください。公共交通機関でのお越しをおすすめします。"
+      ],
+      "ground_truth": "No dedicated parking. Use nearby coin parking. Public transportation recommended.",
+      "language": "en",
+      "category": "parking"
+    },
+    {
+      "id": "gt-029",
+      "question": "自転車でエンジニアカフェに行きたいのですが駐輪場は？",
+      "answer": "エンジニアカフェには専用の駐輪場はありません。近隣の公共駐輪場をご利用ください。",
+      "contexts": [
+        "エンジニアカフェには専用の駐輪場はありません。近隣の公共駐輪場をご利用ください。"
+      ],
+      "ground_truth": "専用駐輪場なし。近隣の公共駐輪場を利用。",
+      "language": "ja",
+      "category": "bicycle"
+    },
+    {
+      "id": "gt-029b",
+      "question": "Can I park my bicycle at Engineer Cafe?",
+      "answer": "There is no dedicated bicycle parking. Please use nearby public bicycle parking facilities.",
+      "contexts": [
+        "エンジニアカフェには専用の駐輪場はありません。近隣の公共駐輪場をご利用ください。"
+      ],
+      "ground_truth": "No dedicated bicycle parking. Use nearby public bicycle parking.",
+      "language": "en",
+      "category": "bicycle"
+    },
+    {
+      "id": "gt-030",
+      "question": "エンジニアカフェでイベントを開催したいのですが",
+      "answer": "事前に福岡市の許可が必要です。スタッフまたはコミュニティマネージャーにご相談ください。",
+      "contexts": [
+        "エンジニアカフェでイベントを開催したい場合は、事前に福岡市の許可が必要です。スタッフまたはコミュニティマネージャーにご相談ください。"
+      ],
+      "ground_truth": "イベント開催には事前に福岡市の許可が必要。CM/スタッフに相談。connpassでイベント情報を公開。",
+      "language": "ja",
+      "category": "event"
+    },
+    {
+      "id": "gt-031",
+      "question": "Connpassでイベントを確認できますか？",
+      "answer": "はい、https://engineercafe.connpass.com/ でイベント情報を確認・参加申込できます。",
+      "contexts": [
+        "Connpass: https://engineercafe.connpass.com/ （イベント一覧と参加申込ができます）。参加費無料のイベントがほとんどです。定員がある場合は先着順が多いため、早めの申込をおすすめします。"
+      ],
+      "ground_truth": "Connpass（https://engineercafe.connpass.com/）でイベント一覧確認・参加申込可能。参加費無料がほとんど。先着順。",
+      "language": "ja",
+      "category": "event"
+    },
+    {
+      "id": "gt-032",
+      "question": "Wi-Fiのパスワードは何ですか？",
+      "answer": "パスワードはakarenga-112yearsです。SSID: engnecf-guest-2.4GHz または engnecf-guest-5GHz。",
+      "contexts": [
+        "SSID: engnecf-guest-2.4GHz または engnecf-guest-5GHz。パスワード: akarenga-112years。受付カードの裏面にも記載されています。"
+      ],
+      "ground_truth": "SSID: engnecf-guest-2.4GHz/5GHz。パスワード: akarenga-112years。受付カード裏面にも記載。",
+      "language": "ja",
+      "category": "facility-info"
+    },
+    {
+      "id": "gt-033",
+      "question": "車椅子でエンジニアカフェを利用できますか？",
+      "answer": "テラス側出入口から入館可能です。取り付け式スロープで1階フロアにアクセスできますが、2階・地下は利用できません。",
+      "contexts": [
+        "テラス側出入口から入館可能です。入口には取り付け式スロープを設置できるため、1階フロアへのアクセスは可能です。2階および地下フロアへの車椅子での移動はできません。"
+      ],
+      "ground_truth": "テラス側からスロープで1F利用可。2F・B1Fは不可。事前連絡推奨（080-6742-7231）。多目的トイレなし。",
+      "language": "ja",
+      "category": "facility-info"
+    },
+    {
+      "id": "gt-034",
+      "question": "子供を連れて利用できますか？",
+      "answer": "特別な年齢制限はなく保護者同伴での利用は可能ですが、お子様から目を離さないようお願いします。",
+      "contexts": [
+        "お子様を連れての利用に関して、特別な年齢制限は設けていません。保護者同伴での利用は可能です。ただし安全管理の観点から、お子様から目を離さないようお願いします。"
+      ],
+      "ground_truth": "年齢制限なし、保護者同伴で利用可。安全管理上、走り回り・大声は禁止。専用備品・授乳室・おむつ交換台なし。",
+      "language": "ja",
+      "category": "policy"
+    },
+    {
+      "id": "gt-035",
+      "question": "エンジニアカフェで写真を撮ってもいいですか？",
+      "answer": "一般利用時のスナップ撮影は可能です。他の利用者のプライバシーに配慮してください。商業撮影は事前許可が必要です。",
+      "contexts": [
+        "一般利用時のスナップ撮影（スマートフォン等）は基本的に可能です。他の利用者の顔や作業内容が映り込む場合はプライバシーに配慮してください。商業撮影や三脚・フラッシュの使用は事前に許可が必要な場合があります。"
+      ],
+      "ground_truth": "スナップ撮影OK。他者プライバシー配慮。商業撮影・三脚・フラッシュは要許可。嫌がらせ撮影禁止。",
+      "language": "ja",
+      "category": "policy"
+    },
+    {
+      "id": "gt-036",
+      "question": "フロア構成を教えてください",
+      "answer": "1階にメインホール・cafe&bar saino・談話室・テラス、2階に会議室3室、地下1階にMAKER'sスペース・集中スペース等があります。",
+      "contexts": [
+        "1階: エンジニアカフェ（メインホール・コワーキングスペース）、cafe&bar saino、談話室、テラス。2階: 会議室1（12名）、会議室2（8名）、会議室3（30名）。地下1階: MAKER'sスペース、集中スペース、MTGスペース、アンダースペース、防音室。"
+      ],
+      "ground_truth": "1F: メインホール/saino/談話室/テラス。2F: 会議室3室（赤煉瓦文化館管理）。B1F: MAKER'sスペース/集中SP/MTG SP/アンダーSP/防音室。",
+      "language": "ja",
+      "category": "facility-info"
+    },
+    {
+      "id": "gt-037",
+      "question": "トイレはどこにありますか？",
+      "answer": "トイレは1階テラス奥にあります。館内から直接行けないので、受付奥の通路からテラスに出てアクセスしてください。",
+      "contexts": [
+        "トイレは1階のテラス奥に配置されています。館内からトイレに直接行くことはできません。受付奥の通路からテラスに出て、テラス奥のトイレにアクセスしてください。"
+      ],
+      "ground_truth": "1Fテラス奥。館内から直接不可、受付奥通路→テラス→トイレ奥。洋式・温水洗浄便座。おむつ替えスペースなし。",
+      "language": "ja",
+      "category": "toilet"
+    },
+    {
+      "id": "gt-038",
+      "question": "一時外出のルールは？",
+      "answer": "15分以内の出入りは自由です。15分以上離席する場合は一度退館手続きが必要です。",
+      "contexts": [
+        "15分以内の出入りは自由です（受付カードはそのまま保持）。15分以上離席する場合は一度退館手続き（受付カード返却）が必要です。"
+      ],
+      "ground_truth": "15分以内は自由に出入り可（カード保持）。15分以上離席時は退館手続き（カード返却）必要。",
+      "language": "ja",
+      "category": "facility-info"
+    },
+    {
+      "id": "gt-039",
+      "question": "談話室はどんなスペースですか？",
+      "answer": "1階のcafe&bar saino近くにある休憩・交流スペースです。sainoで購入した飲食物を持ち込めます。",
+      "contexts": [
+        "談話室は1階のcafe&bar saino近くにある休憩・交流スペースです。cafe&bar sainoで購入した飲食物を持ち込んで飲食可能です。カジュアルな会話や休憩に適しています。"
+      ],
+      "ground_truth": "1F saino近くの休憩・交流スペース。saino購入品の飲食可。軽い打ち合わせや休憩向け。",
+      "language": "ja",
+      "category": "facility-info"
+    },
+    {
+      "id": "gt-040",
+      "question": "テラス席は利用できますか？",
+      "answer": "はい、1階の屋外スペースです。Wi-Fiは利用可能ですが電源コンセントはありません。天候により利用できない場合があります。",
+      "contexts": [
+        "テラスは1階の屋外スペースです。Wi-Fiは利用可能ですが、電源コンセントはありません。天候により利用できない場合があります。"
+      ],
+      "ground_truth": "1F屋外スペース。Wi-Fi可、電源なし。saino購入品飲食可。天候次第で利用不可の場合あり。",
+      "language": "ja",
+      "category": "facility-info"
+    },
+    {
+      "id": "gt-041",
+      "question": "防音室はありますか？",
+      "answer": "はい、地下1階に簡易設置型の防音室が1室あります。1回1時間まで、先着順で予約不可です。",
+      "contexts": [
+        "簡易設置型の防音室が1室あります。1回1時間まで利用可能です（予約不可・先着順）。オンラインミーティングや電話に最適です。"
+      ],
+      "ground_truth": "B1Fに1室。1回1時間、先着順（予約不可）。オンラインMTG・電話に最適。",
+      "language": "ja",
+      "category": "facility-info"
+    },
+    {
+      "id": "gt-042",
+      "question": "メインホールを貸切利用できますか？",
+      "answer": "はい、30〜50名規模のイベントに対応しています。公式サイトの予約フォームから申し込みできます。",
+      "contexts": [
+        "1階メインホール: 30〜50名規模のイベントに対応。ハッカソン、LT会、企業研修等で頻繁に利用されています。公式サイトの「イベント開催について」ページから予約フォームで申し込み。"
+      ],
+      "ground_truth": "メインホールは30〜50名規模のイベントに対応。エンジニア関連イベントは条件付き無料。事前予約・CM面談必要な場合あり。",
+      "language": "ja",
+      "category": "facility-info"
+    },
+    {
+      "id": "gt-043",
+      "question": "VRゴーグルを体験できますか？",
+      "answer": "Apple Vision ProやMeta Questを保有しています。コミュニティマネージャー同席のもと個別体験が可能です。",
+      "contexts": [
+        "Apple Vision Pro（空間コンピューティング）、Meta Quest（VRヘッドセット）を保有。通常はイベントで使用しますが、コミュニティマネージャー同席のもとで個別体験も可能です。"
+      ],
+      "ground_truth": "Apple Vision Pro、Meta Quest等を保有。通常イベント使用、CM同席で個別体験可。Labメンバーは貸出可能。",
+      "language": "ja",
+      "category": "facility-info"
+    },
+    {
+      "id": "gt-044",
+      "question": "レーザー加工機で使える素材は？",
+      "answer": "アクリル板、MDF合板、木材、紙、革、フェルトなどが使えます。PVC（塩ビ）は有毒ガスが発生するため使用禁止です。",
+      "contexts": [
+        "利用可能な素材: アクリル板（キャスト推奨）、MDF合板、木材、紙・厚紙、革・合皮、フェルト。利用禁止素材: PVC（塩化ビニル）は有毒な塩素ガスが発生するため絶対禁止。ポリカーボネート、ガラス・金属も不可。"
+      ],
+      "ground_truth": "利用可: アクリル・MDF・木材・紙・革・フェルト等。禁止: PVC(有毒ガス)・ポリカ・ガラス・金属・発泡スチロール。素材持ち込み制。",
+      "language": "ja",
+      "category": "facility-info"
+    },
+    {
+      "id": "gt-045",
+      "question": "近くにコンビニはありますか？",
+      "answer": "ファミリーマート天神一丁目店（徒歩1〜3分）やローソンS天神ブリック店が最寄りです。",
+      "contexts": [
+        "ファミリーマート天神一丁目店（天神1-15-2、24時間）、ファミリーマート福岡天神四丁目店（天神4-1-7、24時間）、ローソンS天神ブリック店（天神1-14-18）。"
+      ],
+      "ground_truth": "徒歩1〜3分にファミマ天神一丁目店(24h)、ファミマ天神四丁目店(24h)、ローソンS天神ブリック店。ATMも利用可。",
+      "language": "ja",
+      "category": "surrounding"
+    },
+    {
+      "id": "gt-046",
+      "question": "周辺でランチを食べられる場所は？",
+      "answer": "天神地下街（徒歩3〜5分）に多数の飲食店があります。アクロス福岡ビル内にもカフェやレストランがあります。",
+      "contexts": [
+        "天神地下街（徒歩3〜5分）: 多数の飲食店が集結。ラーメン、定食、カフェ等。アクロス福岡ビル内: カフェ、レストランあり。最寄りのコンビニでも軽食が購入できます。"
+      ],
+      "ground_truth": "天神地下街(徒歩3-5分)に多数。西中洲エリア(徒歩5分)、アクロス福岡内にも飲食店。コンビニ軽食も可。",
+      "language": "ja",
+      "category": "surrounding"
+    },
+    {
+      "id": "gt-047",
+      "question": "忘れ物をしたのですが",
+      "answer": "エンジニアカフェ受付で保管しています。電話（080-6742-7231）でお問い合わせください。",
+      "contexts": [
+        "コワーキングスペースやカフェエリアでの忘れ物はエンジニアカフェ受付で保管しています。お心当たりのある方は電話（080-6742-7231）でお問い合わせください。"
+      ],
+      "ground_truth": "EC受付で保管。2F会議室・共用部は赤煉瓦文化館受付の場合も。電話080-6742-7231で問い合わせ。",
+      "language": "ja",
+      "category": "policy"
+    },
+    {
+      "id": "gt-048",
+      "question": "印刷やコピーはできますか？",
+      "answer": "館内にプリンター・コピー機は設置されていません。最寄りのコンビニのネットプリントサービスをご利用ください。",
+      "contexts": [
+        "エンジニアカフェ館内にはプリンター・コピー機・スキャナーは設置されていません。印刷が必要な場合は、最寄りのコンビニのネットプリントサービスをご利用ください。"
+      ],
+      "ground_truth": "プリンター/コピー機/スキャナーなし。最寄りコンビニ（ファミマ天神一丁目店等、徒歩2分）のネットプリントを利用。",
+      "language": "ja",
+      "category": "facility-info"
+    },
+    {
+      "id": "gt-049",
+      "question": "充電器を借りることはできますか？",
+      "answer": "はい、受付でスマートフォン用充電器やケーブルの貸出を行っています。USB Type-CやLightningに対応しています。",
+      "contexts": [
+        "エンジニアカフェ受付でスマートフォン用充電器やケーブルの貸出を行っています。USB Type-C、Lightning（iPhone用）などに対応していますが、数に限りがあります。"
+      ],
+      "ground_truth": "受付でUSB-C/Lightning等の充電器・ケーブル貸出あり（数量限定）。各席に電源コンセントも完備。",
+      "language": "ja",
+      "category": "facility-info"
+    },
+    {
+      "id": "gt-050",
+      "question": "電話やオンラインミーティングはどこでできますか？",
+      "answer": "メインホール、談話室、テラス、cafe&bar sainoで通話可能です。集中スペースは通話禁止です。防音室がMTGに最適です。",
+      "contexts": [
+        "通話OK: メインホール（1F）、談話室（1F）、テラス（1F屋外）、cafe&bar saino。通話NG: 集中スペース（B1F）は会話・電話禁止。機密会話推奨: 防音室（B1F、1回1時間まで、先着順）。"
+      ],
+      "ground_truth": "通話OK: 1Fメインホール/談話室/テラス/saino。通話NG: B1F集中SP。防音室(B1F, 1h先着順)がオンラインMTGに最適。",
+      "language": "ja",
+      "category": "facility-info"
+    },
+    {
+      "id": "gt-051",
+      "question": "緊急時の避難経路は？",
+      "answer": "1階正面玄関と地下1階の職員通路の2箇所から避難できます。スタッフの指示に従ってください。",
+      "contexts": [
+        "1階正面玄関と地下1階の職員通路の2箇所から避難できます。歴史的建造物のため避難経路が限られています。スタッフの指示に従ってください。"
+      ],
+      "ground_truth": "避難経路: 1F正面玄関とB1F職員通路の2箇所。AED未設置。最寄り病院はアクロス福岡側クリニック群(徒歩1-3分)。",
+      "language": "ja",
+      "category": "policy"
+    },
+    {
+      "id": "gt-052",
+      "question": "プロジェクターを借りることはできますか？",
+      "answer": "はい、イベントや発表用にプロジェクター、スクリーン、マイク、4Kモニター等を貸出しています。",
+      "contexts": [
+        "エンジニアカフェではイベントや発表用のAV機器を貸出しています。プロジェクター、スクリーン、マイク、HDMIケーブル、4Kモニターなど。"
+      ],
+      "ground_truth": "プロジェクター/スクリーン/マイク/HDMI/4Kモニター等を貸出。LT会・ハッカソン発表等に利用可。大規模利用はCMに相談。",
+      "language": "ja",
+      "category": "facility-info"
+    },
+    {
+      "id": "gt-053",
+      "question": "エンジニアカフェの公式SNSアカウントは？",
+      "answer": "X（旧Twitter）@EngineerCafeJPが公式アカウントです。Connpassでもイベント情報を発信しています。",
+      "contexts": [
+        "X（旧Twitter）: @EngineerCafeJP - 日常の様子、イベント告知、貸切情報など。Connpass: https://engineercafe.connpass.com/。LINEアカウントは現時点ではありません。"
+      ],
+      "ground_truth": "X: @EngineerCafeJP、Connpass: https://engineercafe.connpass.com/、公式サイト: https://engineercafe.jp/。LINEなし。",
+      "language": "ja",
+      "category": "general"
+    },
+    {
+      "id": "gt-054",
+      "question": "営利目的の勧誘はできますか？",
+      "answer": "営利目的の勧誘、強引な名刺交換、セールス行為は禁止されています。",
+      "contexts": [
+        "営利目的の勧誘、強引な名刺交換、セールス行為は禁止です（公的施設のルール）。"
+      ],
+      "ground_truth": "営利勧誘・強引な名刺交換・セールス行為は禁止。公的施設のルール。仮眠・昼寝も不可。",
+      "language": "ja",
+      "category": "policy"
+    },
+    {
+      "id": "gt-055",
+      "question": "法人名義での利用や領収書は発行できますか？",
+      "answer": "コワーキングは無料のため領収書不可。2階会議室は有料なので領収書・請求書が発行できます。",
+      "contexts": [
+        "コワーキング利用は無料のため領収書は発行できません。2階会議室利用は有料のため領収書・請求書の発行が可能です（赤煉瓦文化館受付で対応）。"
+      ],
+      "ground_truth": "コワーキング: 無料のため領収書不可。2F会議室: 有料、領収書・請求書発行可。郵便物受取・住所のビジネス利用は不可。",
+      "language": "ja",
+      "category": "policy"
+    },
+    {
+      "id": "gt-056",
+      "question": "英語対応はしていますか？",
+      "answer": "公式サイトに英語版があり、スタッフの英語対応は限定的ですが簡単なコミュニケーションは可能です。",
+      "contexts": [
+        "公式サイトには英語版（https://engineercafe.jp/en/）があります。スタッフの英語対応は限定的ですが、簡単なコミュニケーションは可能です。国際イベント開催時は英語対応が強化されます。"
+      ],
+      "ground_truth": "英語版サイトあり(https://engineercafe.jp/en/)。スタッフ英語対応は限定的。国際イベント時は強化。外国人利用者も多い。",
+      "language": "ja",
+      "category": "general"
+    },
+    {
+      "id": "gt-057",
+      "question": "ペットを連れて入れますか？",
+      "answer": "盲導犬等の補助犬は同伴可能ですが、それ以外のペット同伴はご遠慮いただいています。",
+      "contexts": [
+        "盲導犬・聴導犬・介助犬などの補助犬は同伴可能です。それ以外のペットの同伴はご遠慮いただいています。テラス席を含め、施設全域でペットの持ち込みは不可です。"
+      ],
+      "ground_truth": "補助犬(盲導犬・聴導犬・介助犬)のみ同伴可。それ以外のペットはテラス含め全域不可。",
+      "language": "ja",
+      "category": "policy"
+    },
+    {
+      "id": "gt-058",
+      "question": "ウォーターサーバーはありますか？",
+      "answer": "館内にウォーターサーバーや自動販売機は設置されていません。蓋付き容器の飲料は持ち込み可能です。",
+      "contexts": [
+        "エンジニアカフェ館内にはウォーターサーバーや自動販売機は設置されていません。持ち込みの飲料は蓋付き容器（ペットボトル・水筒等）であれば持ち込み可能です。"
+      ],
+      "ground_truth": "ウォーターサーバー/自販機なし。蓋付き容器(PETボトル・水筒)の飲料持ち込みOK。saino/近隣コンビニで購入可。",
+      "language": "ja",
+      "category": "facility-info"
+    },
+    {
+      "id": "gt-059",
+      "question": "エンジニアフレンドリーシティ福岡とは？",
+      "answer": "福岡市が推進する「エンジニアが集まる、活躍する、成長する街」を実現するためのムーブメントです。エンジニアカフェはその中核施設です。",
+      "contexts": [
+        "エンジニアフレンドリーシティ福岡は、福岡市が推進する「エンジニアが集まる、活躍する、成長する街」を実現するためのムーブメントです。エンジニアカフェはこの取り組みの中核施設として、行政と市民が協力して運営する官民一体型プロジェクトです。"
+      ],
+      "ground_truth": "福岡市推進の「エンジニアが活躍する街」ムーブメント。エンジニアカフェが中核施設。EFCアワード、外国人エンジニア支援等も実施。",
+      "language": "ja",
+      "category": "general"
+    },
+    {
+      "id": "gt-060",
+      "question": "福岡空港からエンジニアカフェへの行き方は？",
+      "answer": "福岡市地下鉄空港線で天神駅まで約11分・260円。天神駅から徒歩約5分です。",
+      "contexts": [
+        "福岡空港から: 福岡市地下鉄空港線で「天神駅」下車（約11分・260円）。天神駅から徒歩約5分。"
+      ],
+      "ground_truth": "地下鉄空港線で天神駅まで11分・260円。天神駅から徒歩5分（16番出口→昭和通り東へ）。",
+      "language": "ja",
+      "category": "facility-info"
+    },
+    {
+      "id": "gt-061",
+      "question": "夏場のエンジニアカフェは暑いですか？",
+      "answer": "赤煉瓦造りで蓄熱しやすく暑くなりがちです。地下1階は比較的涼しいです。",
+      "contexts": [
+        "赤煉瓦造りの建物は蓄熱しやすく、特に2階や窓際は暑くなりがちです。地下1階は比較的涼しいため、暑さが気になる方はUnder SpaceやFocus Spaceの利用がおすすめです。"
+      ],
+      "ground_truth": "赤煉瓦造りで蓄熱しやすい。エアコンあるが完全冷却に時間がかかる場合あり。B1Fが涼しくおすすめ。飲み物こまめに。",
+      "language": "ja",
+      "category": "facility-info"
+    },
+    {
+      "id": "gt-062",
+      "question": "What is Engineer Cafe?",
+      "answer": "Engineer Cafe is a free public coworking and community space for engineers, located inside the Red-Brick Culture Hall in Tenjin, Fukuoka.",
+      "contexts": [
+        "Engineer Cafe is a free public coworking and community space for engineers, located inside the historic Red-Brick Culture Hall (Fukuoka City Akarenga Bunka-kan), a nationally designated Important Cultural Property built in 1909."
+      ],
+      "ground_truth": "A free public coworking and community space for engineers in the Red-Brick Culture Hall (1909), Tenjin, Fukuoka. Open 9AM-10PM.",
+      "language": "en",
+      "category": "general"
+    },
+    {
+      "id": "gt-063",
+      "question": "What are the opening hours of Engineer Cafe?",
+      "answer": "Engineer Cafe is open from 9:00 AM to 10:00 PM. It is closed on the last Monday of each month.",
+      "contexts": [
+        "Opening hours: 9:00 AM – 10:00 PM. Closed on the last Monday of each month."
+      ],
+      "ground_truth": "Open 9:00 AM - 10:00 PM daily. Closed on last Monday of each month. Dec 29-Jan 3 also closed.",
+      "language": "en",
+      "category": "hours"
+    },
+    {
+      "id": "gt-064",
+      "question": "How do I get to Engineer Cafe from Fukuoka Airport?",
+      "answer": "Take the Fukuoka City Subway from Fukuoka Airport to Tenjin Station (11 min, 260 yen), then walk 5 minutes.",
+      "contexts": [
+        "From Fukuoka Airport: 11 min by subway (260 yen). From Hakata Station: 6 min by subway (210 yen). Access: 5-min walk from Tenjin Station."
+      ],
+      "ground_truth": "Subway from Fukuoka Airport to Tenjin Station (11 min, 260 yen). Then 5-min walk. From Hakata: 6 min, 210 yen.",
+      "language": "en",
+      "category": "access"
+    },
+    {
+      "id": "gt-065",
+      "question": "What spaces are available at Engineer Cafe?",
+      "answer": "1F Main Hall (coworking), B1 Focus Space (6 silent booths), B1 MAKER's Space (3D printers, laser cutter), B1 Meeting Space, and 2F paid meeting rooms.",
+      "contexts": [
+        "1F Main Hall: Open coworking area. B1 Focus Space: 6 silent booths. B1 Meeting Space: For 2+ people. B1 MAKER's Space: 3D printers, laser cutter. 2F Paid Meeting Rooms: 3 rooms (8-30 capacity)."
+      ],
+      "ground_truth": "1F: Main Hall (coworking/events). B1: Focus Space (6 silent booths), Meeting Space, MAKER's Space (3D printer/laser), Soundproof Room. 2F: 3 paid meeting rooms.",
+      "language": "en",
+      "category": "facility-info"
+    },
+    {
+      "id": "gt-066",
+      "question": "What is the Wi-Fi password?",
+      "answer": "SSID: engnrcf-guest-5GHz, Password: akarenga-112years.",
+      "contexts": [
+        "Connect to Wi-Fi (SSID: engnrcf-guest-5GHz, Password: akarenga-112years), scan QR at reception."
+      ],
+      "ground_truth": "SSID: engnrcf-guest-5GHz (or 2.4GHz). Password: akarenga-112years. Also printed on reception card.",
+      "language": "en",
+      "category": "facility-info"
+    },
+    {
+      "id": "gt-067",
+      "question": "近くに病院はありますか？",
+      "answer": "麻生クリニック（アクロス福岡4F、徒歩1分）や黒田クリニック（天神1-15-2）が最寄りです。",
+      "contexts": [
+        "麻生クリニック（アクロス福岡4F）、あやすぎビルクリニック（天神1-15-6 7F）、黒田クリニック（天神1-15-2）。総合病院は博多方面となります。"
+      ],
+      "ground_truth": "徒歩1-3分に麻生クリニック(アクロス福岡4F)、あやすぎビルクリニック、黒田クリニック。総合病院は博多方面。",
+      "language": "ja",
+      "category": "surrounding"
+    },
+    {
+      "id": "gt-068",
+      "question": "3Dプリンターを使うには予約が必要ですか？",
+      "answer": "はい、初回講習（約1時間、無料）が必須で、その後はWeb予約制です。",
+      "contexts": [
+        "レーザー加工機・3Dプリンターを利用する場合は初回講習（約1時間、無料）が必須です。講習修了後は対象機材を自由に利用できますが、予約優先制です。予約はWebページから前日まで受け付けています。"
+      ],
+      "ground_truth": "初回講習(約1時間、無料、要予約)が必須。講習後はWeb予約優先制（前日まで受付）。予約URL: https://select-type.com/rsv/?id=K8t7W9WWRbc",
+      "language": "ja",
+      "category": "facility-info"
+    },
+    {
+      "id": "gt-069",
+      "question": "エンジニアカフェ近くのホテルを教えてください",
+      "answer": "西鉄グランドホテル（徒歩5分）、プラザホテル天神（徒歩3分）等があります。",
+      "contexts": [
+        "西鉄グランドホテル: 天神の老舗ホテル。徒歩約5分。プラザホテル天神: リーズナブルな立地良好ホテル。徒歩約3分。ソラリア西鉄ホテル福岡: 天神駅直結。徒歩約7分。"
+      ],
+      "ground_truth": "高級: 西鉄グランドホテル(徒歩5分)、ソラリア西鉄ホテル(徒歩7分)。ビジネス: プラザホテル天神(徒歩3分)。ゲストハウス: WeBase博多等。",
+      "language": "ja",
+      "category": "general"
+    },
+    {
+      "id": "gt-070",
+      "question": "博多駅からエンジニアカフェへの行き方は？",
+      "answer": "地下鉄空港線で天神駅まで約6分・210円。または100円循環バスで「天神」下車。",
+      "contexts": [
+        "博多駅から: 福岡市地下鉄空港線で「天神駅」下車（約6分・210円）。または西鉄バス（100円循環バス等）で「天神」下車。"
+      ],
+      "ground_truth": "地下鉄空港線で天神駅まで6分・210円。またはバス(100円循環バス等)で「天神」下車。天神駅16番出口から徒歩5分。",
+      "language": "ja",
+      "category": "access"
+    },
+    {
+      "id": "gt-071",
+      "question": "Is there bicycle parking near Engineer Cafe?",
+      "answer": "There is no dedicated bicycle parking. Please use nearby public bicycle parking.",
+      "contexts": [
+        "エンジニアカフェには専用の駐輪場はありません。近隣の公共駐輪場をご利用ください。"
+      ],
+      "ground_truth": "No dedicated bicycle parking. Use nearby public bicycle parking areas.",
+      "language": "en",
+      "category": "bicycle"
+    },
+    {
+      "id": "gt-072",
+      "question": "エンジニアカフェのお問い合わせフォームはどこですか？",
+      "answer": "公式サイトのお問い合わせフォーム（https://engineercafe.jp/ja/contact）からお問い合わせできます。",
+      "contexts": [
+        "お問い合わせフォーム: https://engineercafe.jp/ja/contact イベント情報（connpass）: https://engineercafe.connpass.com/"
+      ],
+      "ground_truth": "問い合わせフォーム: https://engineercafe.jp/ja/contact。電話: 080-6742-7231(13:00-21:00)。",
+      "language": "ja",
+      "category": "contact"
+    },
+    {
+      "id": "gt-073",
+      "question": "メインホールで飲食はできますか？",
+      "answer": "メインホールでの飲食は禁止です。飲食可能なのはcafe&bar saino店内、談話室、テラスです。",
+      "contexts": [
+        "飲食不可エリア: メインホール、集中スペース、地下スペースでの飲食は禁止です。飲食可能エリア: cafe&bar saino店内、談話室、テラスではsaino購入品の飲食が可能です。"
+      ],
+      "ground_truth": "メインホールは飲食禁止。saino店内・談話室・テラスで飲食可（saino購入品のみ）。イベント時は事前申請で例外あり。",
+      "language": "ja",
+      "category": "food_drink"
+    },
+    {
+      "id": "gt-074",
+      "question": "Is there parking at Engineer Cafe?",
+      "answer": "There is no dedicated parking. Please use nearby coin parking lots.",
+      "contexts": [
+        "エンジニアカフェには専用駐車場はありません。近隣のコインパーキングをご利用ください。公共交通機関でのお越しをおすすめします。"
+      ],
+      "ground_truth": "No dedicated parking. Use nearby coin parking. Public transportation recommended.",
+      "language": "en",
+      "category": "parking"
+    },
+    {
+      "id": "gt-075",
+      "question": "赤煉瓦文化館の建築的特徴は？",
+      "answer": "赤煉瓦に白い花崗岩の帯を配した外壁と八角塔屋にドームを載せた「辰野式」の建物です。内部にはアールヌーボーの装飾が見られます。",
+      "contexts": [
+        "赤煉瓦に白い花崗岩の帯を装飾的に配した外壁と、中央にドームを載せた八角の塔屋が特徴的な「辰野式」と呼ばれる様式の建物です。煉瓦造、地上2階・地下1階建て、建築面積約282㎡。内部には照明器具、階段の装飾、鉄柵などにアールヌーボーの影響が見られます。"
+      ],
+      "ground_truth": "辰野式: 赤煉瓦に花崗岩帯、八角塔屋にドーム。煉瓦造2階B1、約282㎡。アールヌーボーの装飾。大理石玄関。",
+      "language": "ja",
+      "category": "building"
+    },
+    {
+      "id": "gt-076",
+      "question": "赤煉瓦文化館は重要文化財ですか？",
+      "answer": "はい、1969年に国の重要文化財に指定されました。1994年に復元リニューアルオープンしています。",
+      "contexts": [
+        "1969年に国の重要文化財に指定され福岡市に譲渡。1994年に建築当時の内装を復元し「福岡市赤煉瓦文化館」としてリニューアルオープン。2019年にエンジニアカフェが開設されました。"
+      ],
+      "ground_truth": "1969年国の重要文化財指定。1994年に復元リニューアル。2019年にエンジニアカフェ開設。",
+      "language": "ja",
+      "category": "building"
+    },
+    {
+      "id": "gt-077",
+      "question": "多目的トイレはありますか？",
+      "answer": "館内に多目的トイレは設置されていません。訪問前にお電話でのご確認をおすすめします。",
+      "contexts": [
+        "館内に多目的トイレは設置されていません。訪問前にお電話（080-6742-7231）でのご確認をおすすめします。"
+      ],
+      "ground_truth": "多目的トイレなし。訪問前に電話（080-6742-7231）で確認推奨。",
+      "language": "ja",
+      "category": "toilet"
+    }
+  ]
+}

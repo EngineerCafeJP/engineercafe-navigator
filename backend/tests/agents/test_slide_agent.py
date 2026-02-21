@@ -221,3 +221,31 @@ class TestSlideAgentIntegration:
         result = self.agent._handle_next_slide("ja")
         assert "最後のスライド" in result["answer"]
         assert self.agent.current_slide == self.agent.total_slides
+
+
+class TestSlideAgentMultiSession:
+    """SlideAgent マルチセッション分離テスト"""
+
+    def setup_method(self):
+        """各テストメソッドの前に実行"""
+        self.agent = SlideAgent()
+        self.agent.load_narration("ja")
+
+    def test_multi_session_state_isolation(self):
+        """異なるセッション間でスライド状態が分離されることを確認"""
+        # セッションAをスライド3に設定
+        self.agent._set_current_slide("session-a", 3)
+        # セッションBをスライド5に設定
+        self.agent._set_current_slide("session-b", 5)
+
+        # それぞれの位置が独立していることを確認
+        assert self.agent._get_current_slide("session-a") == 3
+        assert self.agent._get_current_slide("session-b") == 5
+
+        # セッションAで次へ移動してもセッションBに影響しない
+        self.agent._handle_next_slide("ja", "session-a")
+        assert self.agent._get_current_slide("session-a") == 4
+        assert self.agent._get_current_slide("session-b") == 5  # 変わらない
+
+        # 新規セッションはデフォルトでスライド1
+        assert self.agent._get_current_slide("new-session") == 1

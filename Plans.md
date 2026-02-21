@@ -1,6 +1,6 @@
 # Plans.md - Engineer Cafe Navigator
 
-> 最終更新: 2026-01-13
+> 最終更新: 2026-02-15
 > モード: 2-Agent (Cursor PM + Claude Code Worker)
 
 ---
@@ -9,169 +9,119 @@
 
 | 項目 | 状態 |
 |------|------|
-| **CI/CD** | ✅ グリーン (最終実行: 2026-01-13) |
-| **オープン PR** | PR #20 (RouterAgent), PR #30 (フェーズ8+9完了), PR #33 (README更新: LangGraph統合完了) |
-| **完了したフェーズ** | 0.5 (OpenRouter), 0.6 (構造整理), 1.1-1.5 (Agent移行), 2.1-2.3 (会話機能骨組み), 4.3 (GeneralKnowledgeAgent完全実装), 6 (テスト), 7.1-7.6 (バックエンド統合) |
-| **次のフェーズ** | 7.5 (バックエンド完全実装), 3.1-3.2 (出力機能), 4.1-4.2 (新機能) |
-| **ベースブランチ** | develop |
+| **フェーズ** | ✅ 全フェーズ完了 (A/B/C/D/E) |
+| **CI/CD** | ✅ グリーン |
+| **テスト** | ✅ 852 passed (25 skipped), E2E 10/10 PASS (KW率100%) |
+| **オープン PR** | #78 (RouterAgent削除 + クリーンアップ) |
+| **エージェント数** | 8種（RouterAgent削除済み、ClarificationAgent・MemoryAgent吸収済み） |
+
+---
+
+## アーキテクチャ決定事項（2026-02-15 PM承認済み）
+
+| カテゴリ | 決定 | 要点 |
+|----------|------|------|
+| **メモリ** | 2層構成 (Session短期 + pgvector長期) | LangGraph Store不採用、knowledge_base拡張 |
+| **RAG** | Hierarchical RAG (pgvector) | document→section→chunk 3層、Adaptive RAG |
+| **インジェスション** | LLM自動分類 + 5000字制限撤廃 | 重複排除もLLM自動判定 |
+| **検索優先度** | コンテキスト駆動 + RAGキャッシュ | memory_loader二重検索解消 |
+| **評価** | RAGAS (メモリ再設計後) | Faithfulness, Context P/R, CI/CD統合 |
+| **Web検索** | Tavily移行 | Gemini Direct API廃止、結果はRAG非保存 |
+| **実装順序** | A+D並列 → B → C | エージェント統合はメモリ完了後 |
+
+> 詳細: [docs/architecture/HIERARCHICAL-RAG-ARCHITECTURE.md](docs/architecture/HIERARCHICAL-RAG-ARCHITECTURE.md)
+
+---
+
+## 実装ロードマップ
+
+### Phase A: メモリシステム再設計 ✅ COMPLETE
+
+| タスク | 状態 | 依存 |
+|--------|------|------|
+| A-1: knowledge_base テーブル拡張 (parent_id, chunk_level等) | ✅ 完了（Supabase適用済み） | - |
+| A-2: Hierarchical検索RPC関数作成 | ✅ 完了（A-1マイグレーション内に含む） | A-1 |
+| A-3: session-based TTL に memory_helper 書き換え | ✅ 完了（セッション境界ベース） | - |
+| A-4: memory_loader RAGキャッシュ（二重検索解消） | ✅ 完了（RAGキャッシュ実装済み） | A-3 |
+| A-5: EnhancedRAGSearch Hierarchical対応 | ✅ 完了（Hierarchical RAG対応済み） | A-2 |
+| A-6: Tavily Web Search 移行 | ✅ 完了（Tavily移行済み） | - |
+
+### Phase D: RAGAS評価（Phase Aと並列） ✅ COMPLETE (D-1/D-2/D-3)
+
+| タスク | 状態 | 依存 |
+|--------|------|------|
+| D-1: ground_truth データセット作成（60件+新規） | ✅ 完了 | - |
+| D-2: RAGAS評価パイプライン構築 | ✅ 完了 | D-1 |
+| D-3: CI/CD統合（GitHub Actions） | ✅ 完了（ragas-evaluation.yml + CI mode） | D-2 |
+
+### Phase B: YAML分離 + Hierarchical Chunking ✅ COMPLETE
+
+| タスク | 状態 | 依存 |
+|--------|------|------|
+| B-1: Hierarchical チャンキングエンジン (loader.py) | ✅ 完了（391行、24テスト、レビュー修正済み） | A-1 |
+| B-2: LLM自動分類パイプライン | ✅ 完了（classifier.py + 18テスト、セキュリティ対策済み） | B-1 |
+| B-3: seed_knowledge.py → カテゴリ別YAML分離 | ✅ 完了（7ファイル、60エントリ、110テスト） | B-1 |
+| B-3p: YAML Schema設計 (schema.py) | ✅ 完了（18テスト） | - |
+
+### Phase C: 動的検索優先度 ✅ COMPLETE (C-1/C-2)
+
+| タスク | 状態 | 依存 |
+|--------|------|------|
+| C-1: コンテキスト駆動優先度エンジン | ✅ 完了 | A-5 |
+| C-2: Adaptive RAG ルーティング | ✅ 完了（context_signals配線 + 適応的Web検索、8テスト） | C-1 |
+
+### Phase E: エージェント統合（Phase A完了後）
+
+| タスク | 状態 | 依存 |
+|--------|------|------|
+| E-1: ClarificationAgent → OrchestratorAgent 統合 | ✅ 前倒し完了（テンプレート化+インライン処理） | - |
+| E-2: MemoryAgent → GeneralKnowledgeAgent 統合 | ✅ 完了（GKA統合済み） | A |
+| E-3: エージェント構造最適化（Singleton化） | ✅ 前倒し完了 | - |
+
+---
+
+## エージェント実装状況（8種）
+
+| エージェント | 系統 | 備考 |
+|-------------|------|------|
+| orchestrator-agent | 統括 | RouterAgent機能統合済み |
+| business-info-agent | 実務系 | |
+| event-agent | 実務系 | |
+| facility-agent | 実務系 | |
+| slide-agent | 実務系 | |
+| general-knowledge-agent | 実務系 | Web検索Tavily移行済み、メモリクエリ処理統合済み |
+| ~~clarification-agent~~ | 音声系 | ✅ ワークフロー吸収済み（voice_agentのみ参照） |
+| voice-agent | 音声系 | |
+| character-control-agent | UI系 | |
+
+レビュー中: ocr-agent
+統合済み: ~~memory-agent~~ → general-knowledge-agent (#55)
+削除済み: ~~router-agent~~ (#78, -793行)
+
+---
+
+## チーム編成
+
+| チーム | 担当者 | 主なタスク |
+|--------|--------|-----------|
+| 実務系統括記憶 | テリスケ | Supabase統合、Memory/RAG再設計 |
+| 音声系 | Jun, Chie, たけがわ | STT/TTS連携、音声フロー |
+| OCR系 | けいてぃー, たけがわ | 画像認識→ルーター連携 |
+| フロント系 | takegg0311, 中村 | VRM制御、API移行 |
 
 ---
 
 ## CI/CD チェックリスト
 
-Claude Code は PR 作成・更新時に以下を確認:
-
-- [ ] `pnpm lint` (frontend) - ESLint
-- [ ] `pnpm typecheck` (frontend) - TypeScript
-- [ ] `pnpm build` (frontend) - Next.js ビルド
-- [ ] `ruff check .` (backend) - Python リンター
-- [ ] `black --check .` (backend) - Python フォーマット
-
-**失敗時のアクション:**
-1. エラーログを確認
-2. 自動修正を試行
-3. 修正不可の場合は PM に報告
+- [ ] `ruff check .` / `black --check .` (backend)
+- [ ] `pnpm lint` / `pnpm typecheck` / `pnpm build` (frontend)
+- [ ] RAGAS評価スコア確認（Phase D完了後に追加）
 
 ---
 
-## フェーズ 3: LangGraph 移行 - 出力機能 `cc:TODO`
+## リファレンス
 
-> 担当: Chie, takegg0311, テリスケ
-
-- VoiceAgent移行 (STT/TTS, 感情タグ)
-- CharacterControlAgent移行 (表情マッピング, VRM制御)
-
----
-
-## フェーズ 4: 新機能 `cc:TODO`
-
-> 担当: けいてぃー, たけがわ
-
-### 4.1 OCRAgent 新規実装 (LangGraph のみ)
-- [ ] 技術選定完了 (YOLO/Google Vision) `cc:TODO`
-- [ ] 番号認識実装 `cc:TODO`
-- [ ] QR コード認識 `cc:TODO`
-- [ ] 表情認識実装 `cc:TODO`
-- [ ] プライバシーポリシー確認 `cc:TODO`
-
-### 4.2 EventAgent 拡張 `cc:TODO`
-
-> フェーズ1.3で骨組み実装済み。以下は拡張機能。
-
-- [ ] Connpass API 連携（完全実装） `cc:TODO`
-- [ ] Google Calendar API 連携（完全実装） `cc:TODO`
-
-### 4.3 GeneralKnowledgeAgent 移行 `cc:DONE` `pm:確認済`
-> 完了: 2026-01-13 | 完全実装とテスト追加完了。PR: #32
-- [x] Web 検索機能 `cc:DONE` (Google Gemini API with Search Grounding)
-- [x] GeneralKnowledgeAgent完全実装 `cc:DONE`
-- [x] ユニットテスト・統合テスト実装 `cc:DONE` (19テストケース、100%パス)
-
----
-
-## オープン PR 一覧
-
-| # | タイトル | ブランチ | ステータス |
-|---|----------|----------|-----------|
-| 20 | RouterAgent実装 | feature/router-agent-implementation | OPEN (コンフリクト解決中) |
-| 30 | フェーズ8+9完了 - 開発環境整備とエージェント実装支援資料 | feature/phase-8-9-completion | OPEN (レビュー待ち) |
-| 32 | GeneralKnowledgeAgent完全実装+テスト | revert-31-feature/general-knowledge-agent-implementation | OPEN (CI/CDグリーン、レビュー待ち) |
-
----
-
-## 決定事項 (SSOT)
-
-→ `.claude/memory/decisions.md` 参照
-
----
-
-## メモ
-
-- **Tailwind CSS v3.4.17 必須** - v4 は使用禁止
-- **OpenAI Embeddings 1536 次元** - 768 次元は非推奨
-- **モバイル AudioContext** - ユーザー操作が必要
-
----
-
-## 📦 完了済みフェーズのアーカイブ
-
-完了済みのフェーズ詳細は以下を参照:
-
-→ [`.claude/memory/archive/Plans-archive.md`](.claude/memory/archive/Plans-archive.md)
-
-**アーカイブ内容**:
-- フェーズ 0.5: OpenRouter API徹底整備
-- フェーズ 0.6: プロジェクト構造リファクタリング
-- フェーズ 1.1-1.5: Agent移行（Router, BusinessInfo, Event, Slide, Facility）
-- フェーズ 2.1-2.3: 会話機能骨組み（Memory, Clarification, LanguageClassifier）
-- フェーズ 4.3: GeneralKnowledgeAgent 完全実装 (Web検索ツール含む) | PR: #31
-- フェーズ 6: テスト基盤整備
-- フェーズ 7.5.1-7.5.4: エージェント骨組み実装とワークフロー統合
-- フェーズ 8: 開発環境整備（Docker + mise + Makefile） | PR: #29
-- フェーズ 9: エージェント実装支援資料の整備（7ドキュメント作成）
-
----
-
-## フェーズ 7: AIロジックのバックエンド統合とフロントエンド整理 `cc:WIP`
-
-> 担当: Claude Code
-> ブランチ: refactor/backend-api-integration
-
-**完了済み**:
-- ✅ 7.1-7.4: バックエンドAPI拡張、フロントエンドプロキシ化、Mastra参照整理
-- ✅ 7.6: CI/CD検証 (TypeScript 0エラー達成)
-
-**7.5 バックエンド完全実装** `cc:TODO`
-
-- ✅ 7.5.1-7.5.4: エージェント骨組み実装完了 (2026-01-13 | PR: #27, #28) - [アーカイブ参照](.claude/memory/archive/Plans-archive.md)
-- [ ] LanguageClassifier のワークフロー統合 `cc:TODO`
-- [ ] VoiceAgent のワークフロー統合（音声処理エンドポイント `/api/voice`） `cc:TODO`
-- [ ] CharacterControlAgent のワークフロー統合（キャラクター制御エンドポイント `/api/character`） `cc:TODO`
-- [ ] RouterAgent関連のファイル変更はPR#20にpush `cc:TODO`
-
----
-
-## フェーズ 8: 開発環境整備（Docker + mise + Makefile） `cc:DONE` `pm:確認済`
-
-> 担当: Claude Code
-> 完了日: 2025-01-13 | PR: #29
-
-**目的**: Docker環境とmise/Makefileによる統一された開発コマンドの整備
-
-**実装完了内容**:
-- ✅ mise設定（.mise.toml） - Node.js 18.20.0, Python 3.11.10, pnpm 10.12.1
-- ✅ Docker環境（Dockerfile, docker-compose.yml, .dockerignore）
-- ✅ Makefile - 統一開発コマンド（setup, dev, lint, clean等）
-- ✅ ドキュメント更新（README.md, LOCAL-DEVELOPMENT-SETUP.md）
-- ✅ CI/CDチェック合格
-
-**詳細はアーカイブ参照**: [Plans-archive.md](.claude/memory/archive/Plans-archive.md#phase-8)
-
----
-
-## フェーズ 9: エージェント実装支援資料の整備 `cc:DONE` `pm:確認済`
-
-> 担当: Claude Code
-> 優先度: 高
-> 完了日: 2026-01-13 | PR: #30
-
-**目的**: 新規エンジニアが効率的にエージェント実装できるよう、ドキュメント・ツール・ガイドラインを整備
-
-**タスク**:
-- [x] 9.1 クイックスタートガイド（AGENT-QUICKSTART.md） `cc:DONE`
-- [x] 9.2 実装チェックリスト（AGENT-IMPLEMENTATION-CHECKLIST.md） `cc:DONE`
-- [x] 9.3 環境変数設定ガイド（ENVIRONMENT-VARIABLES.md） `cc:DONE`
-- [x] 9.4 デバッグツール整備（debug_agent.py, Makefileコマンド追加） `cc:DONE`
-- [x] 9.5 トラブルシューティングガイド（TROUBLESHOOTING.md） `cc:DONE`
-- [x] 9.6 コードレビューガイドライン（CODE-REVIEW-GUIDELINES.md） `cc:DONE`
-- [x] 9.7 実装例の充実（AGENT-EXAMPLES.md, docstring追加） `cc:DONE`
-- [x] 9.8 専門エンジニアへの実装依頼ドキュメント（AGENT-IMPLEMENTATION-REQUEST.md） `cc:DONE`
-- [x] 9.9 プロジェクト全体のドキュメントリファクタリング・パス修正 `cc:DONE`
-
-**実装完了内容**:
-- ✅ ドキュメント構造整理（frontend/docs/ 削除、docs/ に統一）
-- ✅ パス参照修正（README.md, frontend/README.md, backend/README.md）
-- ✅ docs/README.md 包括的更新（50+ドキュメント、推奨読書順序追加）
-- ✅ アーカイブディレクトリ作成（docs/archive/frontend-docs-old/）
-
-**詳細はアーカイブ参照**: [Plans-archive.md](.claude/memory/archive/Plans-archive.md#phase-9)
+- [アーキテクチャ設計書](docs/architecture/HIERARCHICAL-RAG-ARCHITECTURE.md)
+- [エンジニアカフェ公式情報](docs/reference/engineer-cafe-reference.md)
+- [決定事項 SSOT](.claude/memory/decisions.md)
+- [完了済みフェーズ](.claude/memory/archive/Plans-archive.md)

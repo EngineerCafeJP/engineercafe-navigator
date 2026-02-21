@@ -1,5 +1,41 @@
 # Changelog
 
+## [2026-02-15] - Backend Knowledge Base Complete Expansion (PR #76)
+
+### Added
+- **Knowledge base expanded to 60 entries** from 20 initial entries
+  - Staff-verified operational data: registration flow, MAKER's reservation rules, filament pricing
+  - Accessibility info: wheelchair access (terrace entrance, 1F only), children policy
+  - Access directions: Fukuoka Airport (11min/260yen), Hakata Station (6min/210yen)
+  - Laser cutter materials guide (acrylic/wood OK, PVC prohibited)
+  - Nearby accommodation guide for event attendees
+  - English facility overview (sourced from slide narration JSON)
+  - Seasonal facility characteristics (historic building: hot summer/cold winter)
+  - Connpass event URLs, EFC (Engineer Friendly City Fukuoka) overview
+  - Food/drink info, re-entry rules, closing announcements
+- **E2E answer quality evaluation tool** (`run_answer_quality_evaluation.py`)
+- **Golden dataset expanded to 60 routing test cases** (from 38)
+- **Answer quality test dataset** (`answer_quality.json`, 10 cases)
+
+### Enhanced
+- **Routing keywords**: Added exclusive rental, building history, event types, food/drink, equipment keywords
+- **Fast-path routing**: Added building/rental/equipment fast-path rules
+- **ClarificationAgent**: Practical messages with actual operating hours and facility details
+- **RAG scoring**: Category bonus bug fix + similarity threshold tuning (0.5→0.35)
+- **Facility prompts**: Menu support + specific information instructions
+
+### Fixed
+- **CNC references removed**: Confirmed non-existent via photo verification, removed from MAKER's and equipment entries
+- **Hacker Supporter entry**: Removed (role merged with Community Manager), replaced with drinks/vending info
+
+### Performance
+- **Routing accuracy**: 60/60 (100%) across all test cases
+- **Fast-path precision**: 100% (50/60 fast-path hits, 0 false positives)
+- **E2E answer quality**: 10/10 PASS, 100% keyword rate
+- **Knowledge seeding**: 60/60 success to Supabase
+
+---
+
 ## [2025-07-02] - RAG System Complete Modernization
 
 ### Enhanced

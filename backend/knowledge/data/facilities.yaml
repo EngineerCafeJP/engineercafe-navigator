@@ -1,0 +1,438 @@
+version: "1.0.0"
+description: "エンジニアカフェ施設情報（スペース・設備・機材等）"
+entries:
+  - id: "facility-main-hall"
+    title: "メインホール（1階コワーキングスペース）"
+    title_en: "Main Hall (1F Coworking Space)"
+    content: >
+      1階メインホールはイベントスペース兼コワーキングスペースです。
+      イベント優先で、イベントがない時間帯はコワーキングとして利用できます。
+      フリー30席、フリーWi-Fi完備、各席に電源タップを設置しています。
+      4Kモニターの貸出、エンジニアリング関連書籍の閲覧も可能です。
+      ペアプログラミング機材、VRゴーグル（Apple Vision Pro、Meta Quest等）、
+      mocopi™（モーションキャプチャ）、Telloドローンなど最新機材を多数保有しています。
+      HHKBタッチ＆トライスポットも設置されており、自由に試用できます。
+      これらの機材は通常イベントで使用しますが、コミュニティマネージャー同席のもと個別体験も可能です。
+      電話、会話、オンラインミーティングが可能なオープンスペースです。
+    category: "facility-info"
+    tags: ["main-hall", "coworking", "1f", "engineer-cafe"]
+    priority: 90
+    source: "official"
+    verified: true
+
+  - id: "facility-makers-space"
+    title: "MAKER'sスペース（地下1階・ものづくり）"
+    title_en: "MAKER's Space (B1F Fabrication Lab)"
+    content: >
+      地下1階のMAKER'sスペース（メイカーズスペース）はデジタルものづくりの体験や試作ができる作業スペースです。
+      席数8席、利用可能時間は9:30〜21:30です。機材使用料は無料ですが、3Dプリンターのフィラメント代は有料です。
+      主な設備: レーザー加工機（trotec speedy100 C30）、3Dプリンター（Bambu Lab P1S）、
+      はんだごて、ボール盤、アクリルヒーター、オシロスコープ、金属曲げ加工機「MAGEMAGE」、帯鋸など。
+      【初回講習】レーザー加工機・3Dプリンターを利用する場合は初回講習（約1時間、無料）が必須です。
+      講習は事前予約制で、公式Webページにて予約枠を公開しています。
+      掲載枠で都合が合わない場合は問い合わせにより講習可能なスタッフ在席日を案内可能です。
+      【予約ルール】講習修了後は対象機材を自由に利用できますが、予約優先制です。
+      予約はWebページから前日まで受け付けています。予約URL: https://select-type.com/rsv/?id=K8t7W9WWRbc
+      レーザー加工機は1回の予約につき2時間枠です。3Dプリンターは利用時間を任意で設定できます。
+      同一機材の予約は1人1件までです（利用前に別枠を予約すると先の予約がキャンセルされます。異なる機材の予約は重複可能）。
+      【材料】材料は原則持ち込み制です。ただし3Dプリンターのフィラメントは持ち込み禁止で、使用分を買い取り方式で精算します。
+      当日は1階受付で利用登録が必要です。予約時間を15分過ぎても来場がない場合は予約取り消しとなります。
+    category: "facility-info"
+    tags: ["makers-space", "fabrication", "b1f", "laser", "3d-printer", "engineer-cafe"]
+    priority: 90
+    source: "official"
+    verified: true
+
+  - id: "facility-3d-printer-filament"
+    title: "3Dプリンター フィラメント料金表"
+    title_en: "3D Printer Filament Price List"
+    content: >
+      MAKER'sスペースの3Dプリンターで使用するフィラメントの料金表です。
+      フィラメントの持ち込みは禁止されており、施設で用意されたものを使用分だけ買い取り方式で精算します。
+      使用量(g)×単価(円/g)で計算し、10円未満は切り捨てです。
+      【標準フィラメント（Bambu Lab P1S用）】PLA（白・黒）: 2円/g。ABS（白・黒）: 2円/g。
+      【AFINIA 3Dプリンター用（特殊素材含む）】
+      アフィニアPLA: 7円/g。アフィニアABS: 10円/g。
+      アフィニアポリカーボネート: 20円/g。アフィニアTPE: 50円/g。
+      アフィニアナイロンカーボン: 60円/g。
+      【学生割引】福岡市在住の学生はフィラメント代が無料です。
+      【支払い方法】利用後にMAKER'sスペースに設置されている精算書に記入し、
+      cafe&bar saino（サイノカフェ）のレジで精算してください。
+      カフェバーの営業時間外の場合はスタッフにご相談ください。
+    category: "facility-info"
+    tags: ["3d-printer", "filament", "pricing", "makers-space", "engineer-cafe"]
+    priority: 90
+    source: "official"
+    verified: true
+
+  - id: "facility-focus-space"
+    title: "集中スペース（地下1階・静かな作業環境）"
+    title_en: "Focus Space (B1F Silent Work Area)"
+    content: >
+      地下1階の集中スペースは静かな環境で作業に集中できるブース型スペースです。
+      席数は6席で、座席指定制・先着順です（予約不可）。
+      受付時に空いているブース番号を選べます（端の1番・6番が人気です）。
+      1階と異なり、会話や電話はできません。静かに作業したい方に最適です。
+    category: "facility-info"
+    tags: ["focus-space", "silent", "b1f", "engineer-cafe"]
+    priority: 90
+    source: "official"
+    verified: true
+
+  - id: "facility-meeting-rooms-2f"
+    title: "2階会議室（赤煉瓦文化館管理・有料）"
+    title_en: "2F Meeting Rooms (Paid, Managed by Akarenga Hall)"
+    content: >
+      2階には大小3つの貸し会議室があります。
+      こちらはエンジニアカフェではなく福岡市赤煉瓦文化会館が管理する有料施設です。
+      利用条件: 市民文化の向上等に寄与する会議・講座・講習会・研修会。
+      【利用料金（単位：円）】
+      会議室1（定員12名）: 9-12時 800円、13-17時 1,600円、18-21時 1,400円、9-17時 2,100円、13-21時 2,800円、9-21時 3,300円。
+      会議室2（定員8名）: 9-12時 500円、13-17時 1,000円、18-21時 800円、9-17時 1,300円、13-21時 1,700円、9-21時 2,000円。
+      会議室3（定員30名）: 9-12時 1,700円、13-17時 3,400円、18-21時 3,000円、9-17時 4,500円、13-21時 6,000円、9-21時 7,000円。
+      【予約方法】
+      申込期間: 利用希望日の3ヶ月前の同日から前日まで。
+      申込場所: 赤煉瓦文化会館受付（9:00〜17:00）。
+      申込方法: 施設利用申請書への記入、または「福岡市公共施設案内・予約システム」によるオンライン申し込み。電話での受付はできません。
+      【キャンセル料】
+      利用日の10日前までなら無料、5日前までなら5割、4日前以降は全額負担。
+      会議室では蓋付き容器の飲み物（アルコール以外）のみ持ち込み可能です。
+      明治時代の優れた意匠が残る空間で、企業研修やミートアップ等にもご利用いただけます。
+    category: "facility-info"
+    tags: ["meeting-room", "2f", "paid", "reservation", "meeting-room"]
+    priority: 90
+    source: "official"
+    verified: true
+
+  - id: "facility-wifi-power"
+    title: "エンジニアカフェ Wi-Fi・電源"
+    title_en: "Wi-Fi and Power Outlets"
+    content: >
+      エンジニアカフェではフリーWi-Fiを完備しています。
+      【Wi-Fi接続情報】
+      SSID: engnecf-guest-2.4GHz または engnecf-guest-5GHz。
+      パスワード: akarenga-112years。
+      受付カードの裏面にも記載されています。
+      5GHz帯に対応しており、高速な接続が可能です。施設全域（テラス含む）で利用できます。
+      【大人数利用時の注意】大規模イベント（50人規模等）で同時接続すると回線が不安定になることがあります。
+      イベント用の専用Wi-Fiも用意しているため、イベント主催時はスタッフにご相談ください。
+      【電源】各席に電源タップを設置しています（テラスを除く）。
+      大規模イベントでも電源容量は十分に確保されています（50人規模のイベント実績あり）。
+      cafe&bar sainoのカウンター席にもコンセントがあります。
+    category: "facility-info"
+    tags: ["wifi", "power", "internet", "engineer-cafe"]
+    priority: 90
+    source: "official"
+    verified: true
+
+  - id: "facility-barrier-free"
+    title: "エンジニアカフェ バリアフリー・車椅子対応"
+    title_en: "Barrier-Free Access and Wheelchair Accessibility"
+    content: >
+      エンジニアカフェが入居する赤煉瓦文化館は1909年築の歴史的建造物のため、
+      完全なバリアフリー設計ではありません。段差や階段が多く、エレベーターや昇降機は設置されていません。
+      【車椅子での入館】テラス側出入口から入館可能です。
+      通常は安全管理のためチェーンを設置しているため、電話またはメールにて事前連絡をお願いしています（当日連絡でも対応可能）。
+      入口には取り付け式スロープを設置できるため、1階フロアへのアクセスは可能です。
+      【利用可能エリア】2階および地下フロアへの車椅子での移動はできないため、利用可能エリアは1階フロアに限定されます。
+      テラス席は比較的段差が少なく利用しやすい環境ですが、電源コンセントは設置されていません（Wi-Fiは利用可能）。
+      【トイレ】館内に多目的トイレは設置されていません。
+      訪問前にお電話（080-6742-7231）でのご確認をおすすめします。
+    category: "facility-info"
+    tags: ["barrier-free", "wheelchair", "accessibility", "engineer-cafe"]
+    priority: 90
+    source: "official"
+    verified: true
+
+  - id: "facility-floor-guide"
+    title: "エンジニアカフェ フロア構成・受付案内"
+    title_en: "Floor Guide and Reception"
+    content: >
+      エンジニアカフェが入居する赤煉瓦文化館のフロア構成と受付案内です。
+      【重要】1階玄関を入ると2つの受付があります。
+      エンジニアカフェ受付: 玄関を入って左側。コワーキング利用・イベント・設備に関するお問い合わせはこちら。
+      赤煉瓦文化会館受付: 玄関の正面入って右奥。2階会議室の利用申請・予約はこちら（9:00〜17:00）。
+      【1階】エンジニアカフェ（メインホール・コワーキングスペース）、cafe&bar saino、談話室、テラス。
+      【2階】会議室1（定員12名）、会議室2（定員8名）、会議室3（定員30名）。
+      【地下1階】MAKER'sスペース、集中スペース、MTGスペース、アンダースペース、防音室。
+      エンジニアカフェのコワーキング利用と2階会議室の予約は窓口が異なりますのでご注意ください。
+    category: "facility-info"
+    tags: ["floor-guide", "reception", "layout", "engineer-cafe"]
+    priority: 90
+    source: "official"
+    verified: true
+
+  - id: "facility-restroom"
+    title: "エンジニアカフェ トイレの場所と行き方"
+    title_en: "Restroom Location and Directions"
+    content: >
+      トイレは1階のテラス奥に配置されています。
+      【重要な動線】館内からトイレに直接行くことはできません。
+      受付奥の通路からテラスに出て、テラス奥のトイレにアクセスしてください。
+      場所がわかりにくいため、初めての方はスタッフにお尋ねください。
+      洋式トイレ・温水洗浄便座を備えています。
+      オムツ替え専用スペースはありません。
+    category: "facility-info"
+    tags: ["restroom", "toilet", "directions", "engineer-cafe"]
+    priority: 90
+    source: "official"
+    verified: true
+
+  - id: "facility-entry-exit-flow"
+    title: "エンジニアカフェ 入退館フロー・荷物管理"
+    title_en: "Entry/Exit Flow and Baggage Management"
+    content: >
+      エンジニアカフェの入退館フローと荷物管理についてです。
+      【入館】1階エンジニアカフェ受付で会員番号を伝え、利用スペースを申告します。
+      フロアごとの受付カードを受け取り、利用中は身につけるか手元に置いてください。
+      同じフロア内はフリーアドレス（先着順）で自由に座れます。
+      【退館】受付カードを受付に返却して退出します。閉館時間（22:00）までに退館してください。
+      閉館約10分前にスタッフから「あと10分で閉館します」というアナウンスがありますので、それまでに片付けを済ませてください。
+      【一時外出】15分以内の出入りは自由です（受付カードはそのまま保持）。
+      15分以上離席する場合は一度退館手続き（受付カード返却）が必要です。
+      【荷物管理】ロッカーはありません。貴重品・荷物は自己管理です。
+      長時間の荷物放置は避けてください。
+    category: "facility-info"
+    tags: ["entry", "exit", "baggage", "reception-card", "engineer-cafe"]
+    priority: 90
+    source: "official"
+    verified: true
+
+  - id: "facility-lounge"
+    title: "エンジニアカフェ 談話室"
+    title_en: "Lounge Room"
+    content: >
+      談話室は1階のcafe&bar saino近くにある休憩・交流スペースです。
+      軽い打ち合わせや休憩、交流にご利用いただけます。
+      cafe&bar sainoで購入した飲食物を持ち込んで飲食可能です。
+      メインホールと異なり、カジュアルな会話や休憩に適しています。
+    category: "facility-info"
+    tags: ["lounge", "rest", "1f", "engineer-cafe"]
+    priority: 60
+    source: "official"
+    verified: true
+
+  - id: "facility-terrace"
+    title: "エンジニアカフェ テラス"
+    title_en: "Terrace"
+    content: >
+      テラスは1階の屋外スペースです。席が設置されており、作業や休憩に利用できます。
+      利用時はエンジニアカフェ受付での受付が必要です。
+      Wi-Fiは利用可能ですが、電源コンセントはありません。
+      cafe&bar sainoで購入した飲食物をテラスで飲食可能です。
+      天候により利用できない場合があります。営業時間内（9:00〜22:00）に利用できます。
+      トイレへはテラス奥からアクセスします。
+    category: "facility-info"
+    tags: ["terrace", "outdoor", "1f", "engineer-cafe"]
+    priority: 60
+    source: "official"
+    verified: true
+
+  - id: "facility-b1f-mtg-under-soundproof"
+    title: "地下1階 MTGスペース・アンダースペース・防音室"
+    title_en: "B1F Meeting Space, Under Space, and Soundproof Room"
+    content: >
+      地下1階にはMAKER'sスペース・集中スペース以外に以下のスペースがあります。
+      【MTGスペース（ミーティングスペース）】
+      席数6席（イベント時定員約10名）。少人数の勉強会・セミナー・ミーティング向け。
+      予約優先（公式予約リンク経由）。コワーキング以外のイベント利用はコミュニティマネージャーとの面談が必要です。
+      【アンダースペース】
+      席数8〜10席。階段下のスペースで、イベント補助や作業に利用できます。
+      利用形態は変動するため、受付で確認してください。
+      【防音室】
+      簡易設置型の防音室が1室あります。1回1時間まで利用可能です（予約不可・先着順）。
+      オンラインミーティングや電話に最適です。
+      全スペース共通: 電源・Wi-Fi完備。飲食は禁止です。
+    category: "facility-info"
+    tags: ["meeting-space", "under-space", "soundproof", "b1f", "engineer-cafe"]
+    priority: 90
+    source: "official"
+    verified: true
+
+  - id: "facility-rental-space"
+    title: "エンジニアカフェ 貸切利用"
+    title_en: "Venue Rental"
+    content: >
+      エンジニアカフェではスペースの貸切利用が可能です。
+      【貸切対象スペース】
+      1階メインホール: 30〜50名規模のイベントに対応。ハッカソン、LT会、企業研修等で頻繁に利用されています。
+      地下スペース: MTGスペース等の一部貸切も可能です。
+      【手続き】公式サイトの「イベント開催について」ページから予約フォームで申し込み。
+      コミュニティマネージャーとの事前相談・面談が必要な場合があります。
+      【料金】エンジニア関連イベントは条件付きで無料利用可能。詳細は相談してください。
+      【条件】エンジニアリングに関連するイベントが優先。事前予約必須。
+      貸切中はコワーキング利用ができなくなるため、公式サイトやX(@EngineerCafeJP)で事前告知されます。
+      ※2階会議室の貸切は赤煉瓦文化会館管理（別窓口: 092-722-4666）です。
+    category: "facility-info"
+    tags: ["rental", "venue", "event-space", "engineer-cafe"]
+    priority: 60
+    source: "official"
+    verified: true
+
+  - id: "facility-vr-drone-gadgets"
+    title: "エンジニアカフェ VR・ドローン等の最新機材"
+    title_en: "VR, Drone and Latest Tech Gadgets"
+    content: >
+      エンジニアカフェでは個人ではなかなか手に入らない最新のテック機材を多数保有しています。
+      【主な機材】
+      Apple Vision Pro（空間コンピューティング）、Meta Quest（VRヘッドセット）、
+      Telloドローン、mocopi™（ソニー製モーションキャプチャ）、
+      4Kモニター、ペアプログラミング機材、HHKB（Happy Hacking Keyboard）など。
+      【利用方法】
+      通常はハッカソンやワークショップ等のイベントで使用されます。
+      イベント外でも、その機材に精通したコミュニティマネージャー同席のもとで個別体験が可能です。
+      興味のある方はスタッフまたはコミュニティマネージャーにお声がけください。
+      Engineer Cafe Lab（会員制コミュニティ）のメンバーは機材の貸出を受けられます。
+    category: "facility-info"
+    tags: ["vr", "drone", "gadgets", "tech", "engineer-cafe"]
+    priority: 60
+    source: "official"
+    verified: true
+
+  - id: "facility-makers-equipment-list"
+    title: "MAKER'sスペース 機材詳細一覧"
+    title_en: "MAKER's Space Equipment Catalog"
+    content: >
+      MAKER'sスペースに設置されている機材の詳細一覧です。
+      【切断・加工機器】
+      RYOBI TBS-50（卓上バンドソー）: 木材・軟金属の曲線/直線切断。加工厚は軟木80mm/硬木50mm。
+      レーザー加工機（trotec speedy100 C30）: アクリル・木材・紙の切断/彫刻。初回講習約30分必須。
+      【3Dプリンター】
+      Bambu Lab P1S + AMS: 高速FDM方式。マルチカラー対応（最大16色）。エンクロージャー付き。Bambu純正PLA推奨。
+      AFINIA 3Dプリンター: FDM方式。PLA/ABS対応。教育・試作向け大型ビルドエリア。
+      【電子工作・IoT】
+      HAKKO FA-400（煙吸収器）、goot TP-280AS（ホットエアーステーション）: はんだ作業用。
+      Raspberry Pi（複数台）: IoT/プログラミング/ロボット制御用に貸出可能。
+      M5Stack（ESP32ベース）: IoTプロトタイピング用マイコンモジュール。
+      【ロボティクス】
+      Seeed Studio SQ-ARM101（AIロボットアームキット）: Hugging Face/LeRobot対応。6DOF。AI模倣学習用。
+      すべての機材は初回講習またはスタッフへの声かけが必要です。
+    category: "facility-info"
+    tags: ["equipment", "makers-space", "tools", "engineer-cafe"]
+    priority: 90
+    source: "official"
+    verified: true
+
+  - id: "facility-printing"
+    title: "エンジニアカフェ 印刷・コピー・スキャンについて"
+    title_en: "Printing, Copying, and Scanning"
+    content: >
+      エンジニアカフェ館内にはプリンター・コピー機・スキャナーは設置されていません。
+      印刷が必要な場合は、最寄りのコンビニ（徒歩1〜3分）のネットプリントサービスをご利用ください。
+      ファミリーマート天神一丁目店（天神1-15-2）またはローソンS天神ブリック店（天神1-14-18）が最寄りです。
+    category: "facility-info"
+    tags: ["printing", "copy", "scan", "engineer-cafe"]
+    priority: 90
+    source: "official"
+    verified: true
+
+  - id: "facility-charger-cable"
+    title: "エンジニアカフェ 充電器・ケーブル貸出"
+    title_en: "Charger and Cable Rental"
+    content: >
+      エンジニアカフェ受付でスマートフォン用充電器やケーブルの貸出を行っています。
+      USB Type-C、Lightning（iPhone用）などに対応していますが、数に限りがあります。
+      長時間利用の方はご自身の充電器をお持ちいただくことをおすすめします。
+      各席に電源コンセントを完備していますので、充電器をお持ちであればご利用いただけます。
+    category: "facility-info"
+    tags: ["charger", "cable", "rental", "engineer-cafe"]
+    priority: 90
+    source: "official"
+    verified: true
+
+  - id: "facility-phone-meeting-guide"
+    title: "エンジニアカフェ 電話・オンラインMTG可能場所"
+    title_en: "Phone Call and Online Meeting Location Guide"
+    content: >
+      エンジニアカフェ内で電話やオンラインミーティングが可能な場所のガイドです。
+      【通話OK】メインホール（1F）、談話室（1F）、テラス（1F屋外）、cafe&bar saino。
+      音量には配慮をお願いします。
+      【通話NG】集中スペース（B1F）は会話・電話禁止です。
+      【機密会話推奨】防音室（B1F、1回1時間まで、先着順）がオンラインMTGに最適です。
+      防音室が埋まっている場合はテラスが比較的プライベートな通話に適しています。
+      大人数のオンラインイベントにはMTGスペース（B1F、予約優先）もご利用いただけます。
+    category: "facility-info"
+    tags: ["phone", "online-meeting", "location-guide", "engineer-cafe"]
+    priority: 90
+    source: "official"
+    verified: true
+
+  - id: "facility-av-equipment"
+    title: "エンジニアカフェ AV機器・プロジェクター貸出"
+    title_en: "AV Equipment and Projector Rental"
+    content: >
+      エンジニアカフェではイベントや発表用のAV機器を貸出しています。
+      【貸出可能な機器】
+      プロジェクター、スクリーン、マイク、HDMIケーブル、4Kモニターなど。
+      LT会やハッカソンの発表、勉強会の画面共有などにご利用いただけます。
+      操作方法がわからない場合はスタッフにお気軽にお声がけください。
+      イベントでの大規模利用は事前にコミュニティマネージャーにご相談ください。
+    category: "facility-info"
+    tags: ["av-equipment", "projector", "microphone", "engineer-cafe"]
+    priority: 60
+    source: "official"
+    verified: true
+
+  - id: "facility-drinks-vending"
+    title: "エンジニアカフェ 飲料・ウォーターサーバー・自動販売機"
+    title_en: "Drinks, Water Server, and Vending Machines"
+    content: >
+      エンジニアカフェ館内にはウォーターサーバーや自動販売機は設置されていません。
+      飲み物が必要な場合は以下の方法で入手できます。
+      【施設内】cafe&bar saino（サイノカフェ）でドリンクを購入（平日12:00〜、土日祝11:00〜）。
+      【近隣】FamilyMart天神一丁目店（徒歩2分）やローソンS天神ブリック店（徒歩3分）で購入可能。
+      天神地下街方面にも自動販売機があります。
+      持ち込みの飲料は蓋付き容器（ペットボトル・水筒等）であれば持ち込み可能です。
+      なお、15分以内であれば一時退出して買い物に行くことも可能です。
+    category: "facility-info"
+    tags: ["drinks", "vending", "water", "engineer-cafe"]
+    priority: 60
+    source: "official"
+    verified: true
+
+  - id: "facility-laser-cutter-materials"
+    title: "レーザーカッター（レーザー加工機）利用可能素材一覧"
+    title_en: "Laser Cutter Approved Materials List"
+    content: >
+      MAKER'sスペースのレーザー加工機（trotec speedy100 C30）で加工できる素材の一覧です。
+      【利用可能な素材（○）】
+      アクリル板（キャスト推奨・厚さ5mmまで目安）、MDF合板、木材（桧・バルサ等）、
+      紙・厚紙・段ボール、革・合皮（薄手）、フェルト・布（一部）、ゴム印用ゴム板。
+      【利用禁止素材（×）】
+      PVC（塩化ビニル）・塩ビ素材: 加工時に有毒な塩素ガスが発生するため絶対禁止。
+      ポリカーボネート: 変色・発火のリスクあり。
+      ガラス・金属: CO2レーザーでは加工不可。
+      発泡スチロール: 発火・溶融のリスクあり。
+      カーボンファイバー: 有害ガス発生。
+      素材は原則持ち込みです。東急ハンズ福岡店やホームセンター（グッデイ等）で購入できます。
+      不明な素材は加工前にスタッフへ確認してください。
+    category: "facility-info"
+    tags: ["laser-cutter", "materials", "makers-space", "engineer-cafe"]
+    priority: 60
+    source: "official"
+    verified: true
+
+  - id: "facility-seasonal-tips"
+    title: "エンジニアカフェ 季節ごとの施設特徴と注意事項"
+    title_en: "Seasonal Facility Tips"
+    content: >
+      エンジニアカフェ（赤煉瓦文化館）は1909年築の歴史的建造物のため、
+      現代のオフィスビルと比べて空調効率に限界があります。季節ごとの注意事項をお伝えします。
+      【夏（6月〜9月）】
+      赤煉瓦造りの建物は蓄熱しやすく、特に2階や窓際は暑くなりがちです。
+      エアコンは設置されていますが、建物の構造上、完全に涼しくなるまで時間がかかる場合があります。
+      飲み物（蓋付き）をこまめに摂ることをおすすめします。
+      地下1階は比較的涼しいため、暑さが気になる方はUnder SpaceやFocus Spaceの利用がおすすめです。
+      【冬（12月〜2月）】
+      暖房は設置されていますが、天井が高く暖気が上がりやすいため、1階メインホールは寒く感じることがあります。
+      上着やひざ掛けの持参をおすすめします。
+      地下1階は外気の影響を受けにくいため、冬でも比較的快適です。
+      【梅雨（6月中旬〜7月中旬）】
+      福岡は梅雨の降水量が多い地域です。折りたたみ傘の携帯をおすすめします。
+      館内の湿度が高くなる場合がありますが、除湿対策は行っています。
+      【エアコン調整】エアコンの温度設定はスタッフにお声がけいただければ調整可能です。
+    category: "facility-info"
+    tags: ["seasonal", "temperature", "tips", "engineer-cafe"]
+    priority: 60
+    source: "official"
+    verified: true

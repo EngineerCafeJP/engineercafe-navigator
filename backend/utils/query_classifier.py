@@ -5,9 +5,12 @@ TypeScript版から移植:
 frontend/src/lib/query-classifier.ts
 """
 
+import logging
 import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -205,7 +208,7 @@ class QueryClassifier:
             # 既にエンジニアカフェと明示されている場合
             if "エンジニアカフェ" in normalized_question or "engineercafe" in normalized_question:
                 if self.debug_mode:
-                    print("[QueryClassifier] Explicit Engineer Cafe query, treating as facility")
+                    logger.debug("Explicit Engineer Cafe query, treating as facility")
                 return {
                     "needs_clarification": False,
                     "category": "facility-info",
@@ -215,7 +218,7 @@ class QueryClassifier:
             # Sainoカフェと明示されている場合
             if "saino" in normalized_question or "サイノ" in normalized_question:
                 if self.debug_mode:
-                    print("[QueryClassifier] Explicit Saino Cafe query, treating as saino-cafe")
+                    logger.debug("Explicit Saino Cafe query, treating as saino-cafe")
                 return {
                     "needs_clarification": False,
                     "category": "saino-cafe",
@@ -255,7 +258,7 @@ class QueryClassifier:
                     "debug_info": {"reason": "Ambiguous cafe query"},
                 }
 
-        return {"needs_clarification": False, "category": "", "confidence": 0}
+        return {"needs_clarification": False, "category": None, "confidence": 0}
 
     def _is_calendar_query(self, normalized_question: str) -> bool:
         """カレンダー/イベントクエリかどうかをチェック"""
@@ -382,20 +385,6 @@ class QueryClassifier:
                 debug_info={"reason": "Hours keywords detected"},
             )
 
-        # 会議室の曖昧性
-        meeting_room_keywords = ["会議室", "meeting room", "ミーティング", "mtg"]
-        has_meeting_room = any(keyword in normalized_question for keyword in meeting_room_keywords)
-
-        floor_keywords = ["2階", "2f", "地下", "basement", "under"]
-        has_specific_floor = any(keyword in normalized_question for keyword in floor_keywords)
-
-        if has_meeting_room and not has_specific_floor:
-            return QueryClassificationResult(
-                category="meeting-room-clarification-needed",
-                confidence=0.7,
-                debug_info={"reason": "Ambiguous meeting room query"},
-            )
-
         return None
 
     def _is_saino_cafe_query(self, normalized_question: str) -> bool:
@@ -403,14 +392,14 @@ class QueryClassifier:
         saino_keywords = ["サイノ", "saino"]
         has_saino = any(keyword in normalized_question for keyword in saino_keywords)
 
-        併設_keywords = ["併設", "併設されてる"]
+        heisetsu_keywords = ["併設", "併設されてる"]
         cafe_keywords = ["カフェ", "cafe", "bar"]
 
-        has_併設_cafe = any(併設 in normalized_question for 併設 in 併設_keywords) and any(
+        has_heisetsu_cafe = any(kw in normalized_question for kw in heisetsu_keywords) and any(
             cafe in normalized_question for cafe in cafe_keywords
         )
 
-        return has_saino or has_併設_cafe
+        return has_saino or has_heisetsu_cafe
 
     def _is_closed_days_query(self, normalized_question: str) -> bool:
         """休館日/休業日クエリかどうかをチェック"""
@@ -476,9 +465,7 @@ class QueryClassifier:
     def log_classification(self, result: QueryClassificationResult, query: str) -> None:
         """デバッグ情報を含めてログ出力"""
         if self.debug_mode:
-            print("[QueryClassifier] Classification result:")
-            print(f"  Query: {query}")
-            print(f"  Category: {result.category}")
-            print(f"  Confidence: {result.confidence}")
-            if result.debug_info:
-                print(f"  Debug Info: {result.debug_info}")
+            logger.debug(
+                f"Classification result: query={query}, category={result.category}, "
+                f"confidence={result.confidence}, debug_info={result.debug_info}"
+            )

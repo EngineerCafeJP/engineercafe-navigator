@@ -6,10 +6,24 @@ import { LipSyncAnalyzer } from '@/lib/lip-sync-analyzer';
 import { VRMBlendShapeController, VRMUtils } from '@/lib/vrm-utils';
 import { VRM, VRMLoaderPlugin } from '@pixiv/three-vrm';
 import { VRMAnimationLoaderPlugin, createVRMAnimationClip } from '@pixiv/three-vrm-animation';
-import { Settings } from 'lucide-react';
+import {
+  Film,
+  Lightbulb,
+  Palette,
+  Settings,
+  SlidersHorizontal,
+  Volume2,
+  VolumeX,
+} from 'lucide-react';
 import { useEffect, useRef, useState, useCallback } from 'react';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import type { CharacterAnimationData } from '../utils/character-animation-utils';
+import AudioSettings from './AudioSettings';
+import BackgroundSelector, { type BackgroundOption as BackgroundSelectorOption } from './BackgroundSelector';
+import ControlsSettings, { type VRMAnimationOption } from './ControlsSettings';
+import EnvironmentSettings from './EnvironmentSettings';
+import KeyframeSettings from './KeyframeSettings';
 
 interface CharacterState {
   expression: string;
@@ -47,7 +61,30 @@ interface CharacterAvatarProps {
   onEmotionUpdate?: (applyEmotion: (emotion: EmotionData) => void) => void;
   onVisemeControl?: (setViseme: (viseme: string, intensity: number) => void) => void;
   onExpressionControl?: (setExpression: (expression: string, weight: number) => void) => void;
+  onKeyframeAnimationControl?: (
+    playKeyframeAnimation: (animation: CharacterAnimationData) => void
+  ) => void;
+  /** Called when user changes background from Settings panel (for parent state sync) */
+  onBackgroundChange?: (background: BackgroundSelectorOption) => void;
+  /** Called when user changes lighting intensity from Settings panel */
+  onLightingChange?: (intensity: number) => void;
+  /** Audio: volume 0–100, used when rendering Audio tab */
+  volume?: number;
+  onVolumeChange?: (value: number) => void;
+  isMuted?: boolean;
+  onMuteToggle?: () => void;
 }
+
+const SETTINGS_TAB_LABELS: Record<
+  'controls' | 'keyframe' | 'background' | 'lighting' | 'audio',
+  string
+> = {
+  controls: 'Controls',
+  keyframe: 'Keyframe',
+  background: 'Background',
+  lighting: 'Lighting',
+  audio: 'Audio',
+};
 
 export default function CharacterAvatar({
   modelPath = '/characters/models/sakura.vrm',
@@ -71,6 +108,13 @@ export default function CharacterAvatar({
   onEmotionUpdate,
   onVisemeControl,
   onExpressionControl,
+  onKeyframeAnimationControl,
+  onBackgroundChange,
+  onLightingChange,
+  volume = 80,
+  onVolumeChange,
+  isMuted = false,
+  onMuteToggle,
 }: CharacterAvatarProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -90,6 +134,10 @@ export default function CharacterAvatar({
   const autoBlinkCleanupRef = useRef<(() => void) | null>(null);
   const currentExpressionRef = useRef<{ expression: string; weight: number }>({ expression: 'neutral', weight: 1.0 });
   const expressionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const keyframeAnimationTimeoutsRef = useRef<NodeJS.Timeout[]>([]);
+  const playKeyframeAnimationInternalRef = useRef<((animation: CharacterAnimationData) => void) | null>(null);
+  const setExpressionWeightsRef = useRef<(weights: Record<string, number>) => void>(() => {});
+  const expressionWeightsSyncRef = useRef<Record<string, number>>({});
 
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -103,6 +151,14 @@ export default function CharacterAvatar({
   const [showSettings, setShowSettings] = useState(false);
   const [availableExpressions, setAvailableExpressions] = useState<string[]>([]);
   const [availableAnimations, setAvailableAnimations] = useState<string[]>([]);
+  const [keyframeJsonInput, setKeyframeJsonInput] = useState('');
+  const [keyframeJsonError, setKeyframeJsonError] = useState('');
+  const [settingsPanelTab, setSettingsPanelTab] = useState<'controls' | 'keyframe' | 'background' | 'lighting' | 'audio'>('controls');
+  const [vrmAnimationOptions, setVrmAnimationOptions] = useState<VRMAnimationOption[]>([]);
+  const [vrmExpressionNames, setVrmExpressionNames] = useState<string[]>([]);
+  const [expressionWeights, setExpressionWeights] = useState<Record<string, number>>({});
+
+  setExpressionWeightsRef.current = setExpressionWeights;
 
   // Initialize Three.js scene
 // useEffect 内
@@ -251,6 +307,18 @@ useEffect(() => {
     return texture;
   };
 
+  /** Normalize BackgroundSelector-style option (gradient value as CSS) to scene format */
+  const normalizeBackgroundForScene = (options: BackgroundOption): BackgroundOption => {
+    if (options.type !== 'gradient' || options.color1) return options;
+    const css = options.value || '';
+    const angleMatch = css.match(/(\d+)deg/);
+    const angle = angleMatch ? Number(angleMatch[1]) : 135;
+    const colorMatches = css.match(/#[0-9a-fA-F]{6}|rgb\([^)]+\)|rgba\([^)]+\)/g);
+    const color1 = colorMatches?.[0] ?? '#e0e7ff';
+    const color2 = colorMatches?.[colorMatches.length - 1] ?? '#c7d2fe';
+    return { ...options, color1, color2, angle };
+  };
+
   const updateSceneBackground = (options: BackgroundOption) => {
     if (!sceneRef.current) return;
 
@@ -260,14 +328,15 @@ useEffect(() => {
       previousBackground.dispose();
     }
 
-    if (options.type === 'solid') {
-      const color = parseGradientColors(options.color1 || '#f5f5f5');
+    const normalized = normalizeBackgroundForScene(options);
+    if (normalized.type === 'solid') {
+      const color = parseGradientColors(normalized.color1 || normalized.value || '#f5f5f5');
       sceneRef.current.background = new THREE.Color(color);
-    } else if (options.type === 'gradient') {
-      sceneRef.current.background = createGradientTexture(options);
-    } else if (options.type === 'image' && (options.imageUrl || options.value)) {
+    } else if (normalized.type === 'gradient') {
+      sceneRef.current.background = createGradientTexture(normalized);
+    } else if (normalized.type === 'image' && (normalized.imageUrl || normalized.value)) {
       const loader = new THREE.TextureLoader();
-      const imageUrl = options.imageUrl || options.value || '';
+      const imageUrl = normalized.imageUrl || normalized.value || '';
       if (imageUrl) {
         loader.load(
           imageUrl,
@@ -605,21 +674,22 @@ useEffect(() => {
       // Initialize LipSyncAnalyzer without AudioContext (will be initialized on first use)
       lipSyncAnalyzerRef.current = new LipSyncAnalyzer();
       
-      // Log available expressions
-      const availableExpressions = blendShapeControllerRef.current.getAvailableExpressions();
-      console.log('Available VRM expressions:', availableExpressions);
-      
-      // Debug: Check expression map directly
+      const available_expressions = blendShapeControllerRef.current.getAvailableExpressions();
+      console.log('Available VRM expressions:', available_expressions);
+      setVrmExpressionNames(available_expressions);
+      const initial_weights: Record<string, number> = {};
+      available_expressions.forEach((name) => {
+        initial_weights[name] = name === 'neutral' ? 1 : 0;
+      });
+      setExpressionWeights(initial_weights);
+
       if (vrm.expressionManager?.expressionMap) {
         console.log('Expression map keys:', Object.keys(vrm.expressionManager.expressionMap));
-        console.log('Full expression map:', vrm.expressionManager.expressionMap);
       }
-      
-      // Check if surprised exists
-      const hasSurprised = availableExpressions.includes('surprised');
-      if (!hasSurprised) {
+
+      const has_surprised = available_expressions.includes('surprised');
+      if (!has_surprised) {
         console.warn('⚠️ "surprised" expression not found in VRM model!');
-        console.log('Available expressions for mapping:', availableExpressions);
       }
 
       // Start automatic blinking
@@ -792,10 +862,47 @@ useEffect(() => {
         console.error('[CharacterAvatar] Error setting initial neutral expression:', error);
       }
 
+      const playKeyframeAnimation = (animation: CharacterAnimationData) => {
+        const vrmRef = charactersRef.current;
+        const blendShapeRef = blendShapeControllerRef.current;
+        if (!vrmRef || !blendShapeRef) return;
+
+        keyframeAnimationTimeoutsRef.current.forEach((id) => clearTimeout(id));
+        keyframeAnimationTimeoutsRef.current = [];
+
+        isPlayingSequence.current = true;
+
+        animation.keyframes.forEach((keyframe) => {
+          const timeout_id = setTimeout(() => {
+            if (keyframe.bones) {
+              Object.entries(keyframe.bones).forEach(([bone_name, bone_data]) => {
+                const rot = bone_data.rotation;
+                const euler = new THREE.Euler(rot.x, rot.y, rot.z);
+                VRMUtils.setHumanoidBoneRotation(vrmRef, bone_name, euler, 0);
+              });
+            }
+            if (keyframe.expressions && blendShapeControllerRef.current) {
+              blendShapeControllerRef.current.setExpressions(keyframe.expressions);
+              const current = blendShapeControllerRef.current.getCurrentExpressions();
+              setExpressionWeightsRef.current(current);
+            }
+          }, keyframe.time);
+          keyframeAnimationTimeoutsRef.current.push(timeout_id);
+        });
+
+        const end_timeout = setTimeout(() => {
+          keyframeAnimationTimeoutsRef.current = [];
+          isPlayingSequence.current = false;
+        }, animation.duration + 100);
+        keyframeAnimationTimeoutsRef.current.push(end_timeout);
+      };
+
+      playKeyframeAnimationInternalRef.current = playKeyframeAnimation;
       onCharacterLoad?.(vrm);
       onEmotionUpdate?.(applyEmotionToCharacter);
       onVisemeControl?.(setViseme);
       onExpressionControl?.(setExpression);
+      onKeyframeAnimationControl?.(playKeyframeAnimation);
       setIsLoading(false);
     } catch (error) {
       console.error('Error loading character:', error);
@@ -817,6 +924,32 @@ useEffect(() => {
       console.error('Error fetching available features:', error);
     }
   };
+
+  const fetchVrmAnimations = useCallback(async () => {
+    try {
+      const response = await fetch('/api/animations');
+      const result = await response.json();
+      setVrmAnimationOptions(result.animations ?? []);
+    } catch (error) {
+      console.error('Error fetching VRM animations:', error);
+    }
+  }, []);
+
+  const handle_play_vrm_animation = async (url: string, loop: boolean) => {
+    const vrm = charactersRef.current;
+    if (!vrm) return;
+    const is_idle = url.includes('idle_loop');
+    await loadVRMAnimation(url, vrm, loop, is_idle);
+  };
+
+  const handle_expression_weight_change = (name: string, weight: number) => {
+    setExpressionWeights((prev) => ({ ...prev, [name]: weight }));
+    blendShapeControllerRef.current?.setExpression(name, weight);
+  };
+
+  useEffect(() => {
+    fetchVrmAnimations();
+  }, [fetchVrmAnimations]);
 
   const updateCharacterExpression = async (expression: string) => {
     if (!charactersRef.current || !expression) return;
@@ -1038,7 +1171,32 @@ useEffect(() => {
     // Update VRM
     if (charactersRef.current) {
       charactersRef.current.update(deltaTime);
-      
+
+      // Sync expression weights from VRM to Controls sliders (keyframe, .vrma, lip-sync, etc.)
+      const blend_shape = blendShapeControllerRef.current;
+      if (blend_shape) {
+        const current = blend_shape.getCurrentExpressions();
+        const last = expressionWeightsSyncRef.current;
+        const current_keys = Object.keys(current);
+        const last_keys = Object.keys(last);
+        let changed = current_keys.length !== last_keys.length;
+        if (!changed) {
+          for (let i = 0; i < current_keys.length; i++) {
+            const name = current_keys[i];
+            const a = current[name] ?? 0;
+            const b = last[name] ?? 0;
+            if (Math.abs(a - b) > 0.001) {
+              changed = true;
+              break;
+            }
+          }
+        }
+        if (changed) {
+          setExpressionWeightsRef.current(current);
+          expressionWeightsSyncRef.current = { ...current };
+        }
+      }
+
       // Ensure position offset is maintained every frame during animation
       if (isPlayingSequence.current) {
         charactersRef.current.scene.position.set(
@@ -1057,13 +1215,17 @@ useEffect(() => {
     rendererRef.current.render(sceneRef.current, cameraRef.current);
   };
   
-  let frameCount = 0;
-
   const cleanup = () => {
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
     }
-    
+
+    // Stop auto-blink
+    if (autoBlinkCleanupRef.current) {
+      autoBlinkCleanupRef.current();
+      autoBlinkCleanupRef.current = null;
+    }
+
     // Clear expression timeout
     if (expressionTimeoutRef.current) {
       clearTimeout(expressionTimeoutRef.current);
@@ -1080,6 +1242,10 @@ useEffect(() => {
       mixerRef.current.stopAllAction();
       mixerRef.current = null;
     }
+
+    keyframeAnimationTimeoutsRef.current.forEach((id) => clearTimeout(id));
+    keyframeAnimationTimeoutsRef.current = [];
+    playKeyframeAnimationInternalRef.current = null;
 
     // Dispose of background texture if it exists
     if (sceneRef.current?.background instanceof THREE.Texture) {
@@ -1139,9 +1305,9 @@ useEffect(() => {
         </div>
       )}
 
-      {/* Controls */}
+      {/* Controls - z-30 so gear button stays in front of Settings Panel (z-20) */}
       {showControls && !isLoading && (
-        <div className="absolute top-4 right-4 flex flex-col space-y-2">
+        <div className="absolute top-4 right-4 z-30 flex flex-col space-y-2">
           <button
             onClick={() => setShowSettings(!showSettings)}
             className="p-2 bg-white bg-opacity-80 hover:bg-opacity-100 rounded-full shadow-md transition-colors"
@@ -1153,127 +1319,101 @@ useEffect(() => {
         </div>
       )}
 
-      {/* Settings Panel */}
+      {/* Settings Panel - right side, behind gear button (z-20) */}
       {showSettings && (
-        <div className="absolute top-4 left-4 bg-white bg-opacity-95 rounded-lg p-4 shadow-lg max-w-xs">
-          <h3 className="font-semibold mb-3">Character Settings</h3>
+        <div className="absolute top-4 right-4 z-20 w-80 bg-white bg-opacity-95 rounded-lg p-4 shadow-lg max-h-[85vh] overflow-y-auto flex flex-col">
+          <h3 className="font-semibold mb-3">Settings</h3>
 
-          {/* Expression Control */}
-          <div className="mb-4">
-            <label className="block text-sm font-medium mb-2">Expression</label>
-            <select
-              value={characterState.expression}
-              onChange={(e) => updateCharacterExpression(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              {availableExpressions.map(expression => (
-                <option key={expression} value={expression}>
-                  {expression.charAt(0).toUpperCase() + expression.slice(1)}
-                </option>
-              ))}
-            </select>
+          {/* Tabs - wrap on narrow (icon only, title for tooltip) */}
+          <div className="flex flex-wrap gap-1 border-b border-gray-200 mb-3">
+            {(['controls', 'keyframe', 'background', 'lighting', 'audio'] as const).map((tab) => (
+              <button
+                key={tab}
+                type="button"
+                title={SETTINGS_TAB_LABELS[tab]}
+                onClick={() => setSettingsPanelTab(tab)}
+                className={`p-2 rounded-t-md transition-colors ${
+                  settingsPanelTab === tab
+                    ? 'bg-blue-100 text-blue-700 border-b-2 border-blue-500'
+                    : 'text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                {tab === 'controls' && <SlidersHorizontal className="size-4" />}
+                {tab === 'keyframe' && <Film className="size-4" />}
+                {tab === 'background' && <Palette className="size-4" />}
+                {tab === 'lighting' && <Lightbulb className="size-4" />}
+                {tab === 'audio' && <Volume2 className="size-4" />}
+              </button>
+            ))}
           </div>
 
-          {/* Animation Control */}
-          <div className="mb-4">
-            <label className="block text-sm font-medium mb-2">Animation</label>
-            <select
-              value={characterState.animation}
-              onChange={(e) => updateCharacterAnimation(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              {availableAnimations.map(animation => (
-                <option key={animation} value={animation}>
-                  {animation.charAt(0).toUpperCase() + animation.slice(1)}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Position Controls */}
-          <div className="mb-4">
-            <label className="block text-sm font-medium mb-2">Position</label>
-            <div className="space-y-2">
-              <div className="flex items-center space-x-2">
-                <label className="text-xs w-4">X:</label>
-                <input
-                  type="range"
-                  min="-2"
-                  max="2"
-                  step="0.1"
-                  value={characterState.position.x}
-                  onChange={(e) => updateCharacterPosition({
-                    ...characterState.position,
-                    x: parseFloat(e.target.value)
-                  })}
-                  className="flex-1"
-                />
-                <span className="text-xs w-12">{characterState.position.x.toFixed(1)}</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <label className="text-xs w-4">Y:</label>
-                <input
-                  type="range"
-                  min="-2"
-                  max="2"
-                  step="0.1"
-                  value={characterState.position.y}
-                  onChange={(e) => updateCharacterPosition({
-                    ...characterState.position,
-                    y: parseFloat(e.target.value)
-                  })}
-                  className="flex-1"
-                />
-                <span className="text-xs w-12">{characterState.position.y.toFixed(1)}</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <label className="text-xs w-4">Z:</label>
-                <input
-                  type="range"
-                  min="-2"
-                  max="2"
-                  step="0.1"
-                  value={characterState.position.z}
-                  onChange={(e) => updateCharacterPosition({
-                    ...characterState.position,
-                    z: parseFloat(e.target.value)
-                  })}
-                  className="flex-1"
-                />
-                <span className="text-xs w-12">{characterState.position.z.toFixed(1)}</span>
-              </div>
+          {/* Tab: Controls */}
+          {settingsPanelTab === 'controls' && (
+            <div className="mb-4">
+              <ControlsSettings
+                state={characterState}
+                vrmExpressionNames={vrmExpressionNames}
+                expressionWeights={expressionWeights}
+                onExpressionWeightChange={handle_expression_weight_change}
+                vrmAnimationOptions={vrmAnimationOptions}
+                onPlayVRMAnimation={handle_play_vrm_animation}
+                onPositionChange={updateCharacterPosition}
+                onRotationChange={updateCharacterRotation}
+              />
             </div>
-          </div>
+          )}
 
-          {/* Rotation Controls */}
-          <div className="mb-4">
-            <label className="block text-sm font-medium mb-2">Rotation</label>
-            <div className="space-y-2">
-              <div className="flex items-center space-x-2">
-                <label className="text-xs w-4">Y:</label>
-                <input
-                  type="range"
-                  min="-3.14"
-                  max="3.14"
-                  step="0.1"
-                  value={characterState.rotation.y}
-                  onChange={(e) => updateCharacterRotation({
-                    ...characterState.rotation,
-                    y: parseFloat(e.target.value)
-                  })}
-                  className="flex-1"
-                />
-                <span className="text-xs w-12">{characterState.rotation.y.toFixed(1)}</span>
-              </div>
+          {/* Tab: Background (from left settings) */}
+          {settingsPanelTab === 'background' && (
+            <div className="mb-4">
+              <BackgroundSelector
+                currentBackground={background as BackgroundSelectorOption}
+                onBackgroundChange={(bg) => {
+                  updateSceneBackground(bg);
+                  onBackgroundChange?.(bg);
+                }}
+              />
             </div>
-          </div>
+          )}
 
-          <button
-            onClick={() => setShowSettings(false)}
-            className="w-full px-3 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600 transition-colors"
-          >
-            Close
-          </button>
+          {/* Tab: Lighting (from left settings) */}
+          {settingsPanelTab === 'lighting' && (
+            <div className="mb-4">
+              <EnvironmentSettings
+                lightingIntensity={lightingIntensity}
+                onLightingChange={onLightingChange ?? (() => {})}
+              />
+            </div>
+          )}
+
+          {/* Tab: Audio */}
+          {settingsPanelTab === 'audio' && (
+            <div className="mb-4">
+              <AudioSettings
+                volume={volume}
+                isMuted={isMuted}
+                onVolumeChange={(value) => onVolumeChange?.(value)}
+                onMuteToggle={() => onMuteToggle?.()}
+              />
+            </div>
+          )}
+
+          {/* Tab: Keyframe */}
+          {settingsPanelTab === 'keyframe' && (
+            <div className="mb-4">
+              <KeyframeSettings
+                jsonInput={keyframeJsonInput}
+                onJsonInputChange={setKeyframeJsonInput}
+                error={keyframeJsonError}
+                onError={setKeyframeJsonError}
+                onRunKeyframe={(animation) =>
+                  playKeyframeAnimationInternalRef.current?.(animation)
+                }
+                onRunKeyframeClick={() => setSettingsPanelTab('controls')}
+              />
+            </div>
+          )}
+
         </div>
       )}
     </div>

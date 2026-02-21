@@ -3,11 +3,13 @@ Connpass Service Tool
 Connpass API v2連携によるイベント情報取得
 """
 
+import logging
 import os
 from datetime import datetime, timedelta
-from typing import List, Dict, Optional, Literal
+from typing import Any, List, Dict, Optional, Literal
 import httpx
 
+logger = logging.getLogger(__name__)
 
 TimeRange = Literal["today", "thisWeek", "nextWeek", "thisMonth"]
 
@@ -47,7 +49,7 @@ class ConnpassService:
         """
         self.api_key = os.getenv("CONNPASS_API_KEY", "")
         if not self.api_key:
-            print("[ConnpassService] Warning: CONNPASS_API_KEY not configured")
+            logger.warning("CONNPASS_API_KEY not configured")
 
     async def search_events(
         self,
@@ -78,14 +80,19 @@ class ConnpassService:
             True
         """
         try:
-            print(f"[ConnpassService] Searching events: time_range={time_range}, keyword={keyword}")
+            logger.info("Searching events: time_range=%s, keyword=%s", time_range, keyword)
 
             if not self.api_key:
-                print("[ConnpassService] API key not configured, returning empty result")
+                logger.warning("API key not configured, returning empty result")
                 return {
                     "success": False,
                     "error": "CONNPASS_API_KEY not configured",
-                    "data": {"events": [], "timeRange": time_range, "eventCount": 0, "source": "connpass"},
+                    "data": {
+                        "events": [],
+                        "timeRange": time_range,
+                        "eventCount": 0,
+                        "source": "connpass",
+                    },
                 }
 
             # 時間範囲から日付リストを生成
@@ -113,11 +120,16 @@ class ConnpassService:
             }
 
         except Exception as e:
-            print(f"[ConnpassService] Error: {e}")
+            logger.error("ConnpassService error: %s", e, exc_info=True)
             return {
                 "success": False,
                 "error": str(e),
-                "data": {"events": [], "timeRange": time_range, "eventCount": 0, "source": "connpass"},
+                "data": {
+                    "events": [],
+                    "timeRange": time_range,
+                    "eventCount": 0,
+                    "source": "connpass",
+                },
             }
 
     def _get_ymd_list(self, time_range: TimeRange) -> List[str]:
@@ -162,7 +174,9 @@ class ConnpassService:
             else:
                 next_month = month_start.replace(month=month_start.month + 1)
             days_in_month = (next_month - month_start).days
-            return [(month_start + timedelta(days=i)).strftime("%Y%m%d") for i in range(days_in_month)]
+            return [
+                (month_start + timedelta(days=i)).strftime("%Y%m%d") for i in range(days_in_month)
+            ]
 
         # デフォルトは今週
         weekday = today.weekday()
@@ -217,14 +231,17 @@ class ConnpassService:
                 )
 
                 if response.status_code != 200:
-                    print(f"[ConnpassService] API error: {response.status_code} - {response.text}")
+                    logger.error(
+                        "API error: status=%d, response=%s", response.status_code, response.text
+                    )
                     return []
 
                 data = response.json()
-                return data.get("events", [])
+                events: List[Dict[Any, Any]] = data.get("events", [])
+                return events
 
         except Exception as e:
-            print(f"[ConnpassService] Fetch error: {e}")
+            logger.error("Fetch error: %s", e, exc_info=True)
             return []
 
     def _format_events(self, events: List[Dict]) -> List[Dict]:
@@ -258,7 +275,9 @@ class ConnpassService:
                 "limit": event.get("limit"),
                 "waiting": event.get("waiting", 0),
                 "owner_nickname": event.get("owner_nickname", ""),
-                "group_name": event.get("series", {}).get("title", "") if event.get("series") else "",
+                "group_name": (
+                    event.get("series", {}).get("title", "") if event.get("series") else ""
+                ),
             }
 
             formatted_events.append(formatted_event)
@@ -314,14 +333,41 @@ class ConnpassService:
         """
         # 技術キーワードのリスト
         tech_keywords = [
-            "Python", "JavaScript", "TypeScript", "React", "Vue", "Next.js",
-            "Go", "Rust", "Java", "Kotlin", "Swift", "Flutter",
-            "AWS", "GCP", "Azure", "Docker", "Kubernetes",
-            "AI", "機械学習", "ML", "LLM", "生成AI", "ChatGPT",
-            "データ分析", "データサイエンス",
-            "Web", "フロントエンド", "バックエンド", "インフラ",
-            "セキュリティ", "DevOps", "SRE",
-            "スタートアップ", "起業", "キャリア",
+            "Python",
+            "JavaScript",
+            "TypeScript",
+            "React",
+            "Vue",
+            "Next.js",
+            "Go",
+            "Rust",
+            "Java",
+            "Kotlin",
+            "Swift",
+            "Flutter",
+            "AWS",
+            "GCP",
+            "Azure",
+            "Docker",
+            "Kubernetes",
+            "AI",
+            "機械学習",
+            "ML",
+            "LLM",
+            "生成AI",
+            "ChatGPT",
+            "データ分析",
+            "データサイエンス",
+            "Web",
+            "フロントエンド",
+            "バックエンド",
+            "インフラ",
+            "セキュリティ",
+            "DevOps",
+            "SRE",
+            "スタートアップ",
+            "起業",
+            "キャリア",
         ]
 
         query_lower = query.lower()

@@ -1,5 +1,4 @@
 import base64
-import time
 from typing import TypedDict, List, Dict, Any
 
 import cv2
@@ -17,6 +16,7 @@ import os
 # =====================================================
 load_dotenv()
 API_KEY = os.getenv("OPENROUTER_API_KEY")
+
 
 # =====================================================
 # Tools (LLM専用)
@@ -68,15 +68,12 @@ class VisionAgent:
 
     def __init__(self):
         self.llm = ChatOpenAI(
-            model="openai/gpt-4.1-nano",
+            model="gpt-4.1-nano",
             temperature=0.0,
             api_key=API_KEY,
-            base_url="https://openrouter.ai/api/v1",
         )
 
-        self.vision_llm = self.llm.bind_tools(
-            [face_recognition, text_recognition]
-        )
+        self.vision_llm = self.llm.bind_tools([face_recognition, text_recognition])
 
         self.app = self._build_graph()
 
@@ -87,10 +84,7 @@ class VisionAgent:
         graph = StateGraph(VisionState)
 
         graph.add_node("vision", self._vision_node)
-        graph.add_node(
-            "tools",
-            ToolNode([face_recognition, text_recognition])
-        )
+        graph.add_node("tools", ToolNode([face_recognition, text_recognition]))
 
         graph.add_edge(START, "vision")
         graph.add_edge("vision", "tools")
@@ -140,9 +134,7 @@ class VisionAgent:
             )
 
         # ---------- Encode ----------
-        _, buffer = cv2.imencode(
-            ".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 85]
-        )
+        _, buffer = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
         image_base64 = base64.b64encode(buffer).decode("utf-8")
 
         # ---------- Prompt ----------
@@ -160,16 +152,12 @@ class VisionAgent:
                 },
                 {
                     "type": "image_url",
-                    "image_url": {
-                        "url": f"data:image/jpeg;base64,{image_base64}"
-                    },
+                    "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"},
                 },
             ]
         )
 
-        start = time.time()
         result = self.app.invoke({"messages": [message]})
-        elapsed = time.time() - start
 
         # ---------- Parse ----------
         text_result = {"success": False, "text": None, "error": None}
@@ -193,9 +181,7 @@ class VisionAgent:
                     face_result["success"] = True
                     if msg.content and msg.content.lower() != "none":
                         face_result["detected"] = True
-                        face_result["expression"] = {
-                            "emotion": msg.content
-                        }
+                        face_result["expression"] = {"emotion": msg.content}
                     else:
                         face_result["error"] = "face not detected"
 

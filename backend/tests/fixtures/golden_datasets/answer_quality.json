@@ -1,0 +1,108 @@
+{
+  "version": "1.2.0",
+  "description": "回答品質テストケース - 期待キーワードと期待エージェントの検証用",
+  "created_at": "2026-02-14",
+  "source": "X投稿データに基づくEngineer Cafe実践情報",
+  "test_cases": [
+    {
+      "id": "aq-001",
+      "question": "エンジニアカフェって何ですか？",
+      "expected_answer": "エンジニアカフェは赤煉瓦文化館内のコワーキングスペースです。無料で利用でき、WiFiや電源を完備しています。",
+      "expected_keywords": ["コワーキング", "無料"],
+      "expected_agent": "business_info",
+      "language": "ja",
+      "category": "facility_overview",
+      "note": "基本的な施設説明を確認（赤煉瓦はfacilityエージェントのRAGに多いためbusiness_infoでは不安定）"
+    },
+    {
+      "id": "aq-002",
+      "question": "サイノカフェのランチは？",
+      "expected_answer": "サイノカフェは平日12:00-20:00に営業している併設のカフェ＆バーです。ランチやドリンクメニューがあります。",
+      "expected_keywords": ["メニュー", "12:00"],
+      "expected_agent": "facility",
+      "language": "ja",
+      "category": "food_drink",
+      "note": "併設カフェの営業情報を確認"
+    },
+    {
+      "id": "aq-003",
+      "question": "ハッカソンの開催予定は？",
+      "expected_answer": "エンジニアカフェではハッカソン、LT会、もくもく会などのイベントが定期的に開催されています。",
+      "expected_keywords": ["イベント"],
+      "expected_agent": "event",
+      "language": "ja",
+      "category": "event",
+      "note": "イベント情報の提供を確認"
+    },
+    {
+      "id": "aq-004",
+      "question": "3Dプリンターの使い方を教えてください",
+      "expected_answer": "3Dプリンターは地下1階のMAKER'sスペースでご利用いただけます。初回は講習が必要で、Web予約の上ご利用ください。",
+      "expected_keywords": ["予約", "講習"],
+      "expected_agent": "facility",
+      "language": "ja",
+      "category": "facility_equipment",
+      "note": "3Dプリンターの利用手順（予約・講習）を確認"
+    },
+    {
+      "id": "aq-005",
+      "question": "この建物はいつ建てられましたか？",
+      "expected_answer": "1909年（明治42年）に建てられた旧日本生命九州支店の赤煉瓦建築です。福岡市の文化財に指定されています。",
+      "expected_keywords": ["1909", "赤煉瓦"],
+      "expected_agent": "facility",
+      "language": "ja",
+      "category": "building_history",
+      "note": "建物の歴史情報を確認"
+    },
+    {
+      "id": "aq-006",
+      "question": "エンジニアへの転職相談はできますか？",
+      "expected_answer": "はい、コミュニティマネージャーにエンジニアへの転職やスキルチェンジについて相談できます。",
+      "expected_keywords": ["相談", "コミュニティマネージャー"],
+      "expected_agent": "business_info",
+      "language": "ja",
+      "category": "consultation",
+      "note": "キャリア相談サービスの案内を確認"
+    },
+    {
+      "id": "aq-007",
+      "question": "車椅子で利用できますか？",
+      "expected_answer": "車椅子での利用は可能ですが、歴史的建造物のためバリアフリー設計ではありません。スタッフが支援します。",
+      "expected_keywords": ["スロープ", "テラス"],
+      "expected_agent": "facility",
+      "language": "ja",
+      "category": "accessibility",
+      "note": "バリアフリー情報の提供を確認（テラス側スロープ入館の案内）"
+    },
+    {
+      "id": "aq-008",
+      "question": "館内で写真を撮ってもいいですか？",
+      "expected_answer": "一般的なスナップ撮影は可能です。他の利用者のプライバシーに配慮してください。",
+      "expected_keywords": ["撮影", "可能"],
+      "expected_agent": "facility",
+      "language": "ja",
+      "category": "policy",
+      "note": "撮影ポリシーの案内を確認"
+    },
+    {
+      "id": "aq-009",
+      "question": "トイレはどこですか？",
+      "expected_answer": "トイレは受付裏のテラスを通った先にあります。受付スタッフにお声がけください。",
+      "expected_keywords": ["テラス", "受付"],
+      "expected_agent": "facility",
+      "language": "ja",
+      "category": "toilet",
+      "note": "トイレへの特殊な動線の案内を確認"
+    },
+    {
+      "id": "aq-010",
+      "question": "会議室の料金を教えてください",
+      "expected_answer": "2階の会議室は3室あり、時間帯によって料金が異なります。",
+      "expected_keywords": ["会議室", "円"],
+      "expected_agent": "facility",
+      "language": "ja",
+      "category": "meeting_room",
+      "note": "会議室料金テーブルの提示を確認"
+    }
+  ]
+}

@@ -64,17 +64,6 @@ def mock_openrouter_provider():
 
 
 @pytest.fixture
-def router_config():
-    """
-    RouterAgent用のモデル設定フィクスチャ
-
-    Returns:
-        Dict[str, Any]: モデル設定
-    """
-    return {"model": "openai/gpt-4-turbo", "temperature": 0.3, "max_tokens": 500}
-
-
-@pytest.fixture
 def qa_response_config():
     """
     QA応答用のモデル設定フィクスチャ
@@ -137,27 +126,6 @@ def sample_language():
 # ==============================================================================
 # Agent Fixtures
 # ==============================================================================
-
-
-@pytest.fixture
-def mock_router_agent():
-    """
-    モックRouterAgentのフィクスチャ
-
-    Returns:
-        Mock: RouterAgentのモック
-    """
-    from unittest.mock import Mock, AsyncMock
-
-    agent = Mock()
-    agent.route = AsyncMock(
-        return_value={
-            "agent": "business_info",
-            "confidence": 0.95,
-            "reasoning": "営業時間に関する質問",
-        }
-    )
-    return agent
 
 
 @pytest.fixture

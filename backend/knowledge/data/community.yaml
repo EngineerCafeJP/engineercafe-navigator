@@ -1,0 +1,103 @@
+version: "1.0.0"
+description: "コミュニティ・相談サービス関連情報"
+entries:
+  - id: "community-manager"
+    title: "コミュニティマネージャー・相談サービス"
+    title_en: "Community Manager Consultation Service"
+    content: >
+      エンジニアカフェにはコミュニティマネージャー（CM）が複数名常駐しています。
+      毎日昼ごろからエンジニアカフェに常駐し、訪れる方々とコミュニケーションをとりサポートします。
+      相談受付時間は13:00〜21:00です。予約不要で、気軽にお声がけください。
+      オンラインでの相談も可能です。
+      主な活動内容:
+      モノづくりやキャリアなど、エンジニアのいろいろな相談に対応。
+      エンジニアへの転職相談、スキルチェンジ支援。
+      「未経験からエンジニアになりたい社会人のためのスキルチェンジ相談会」も定期開催。
+      コミュニティの構築・運営支援。エンジニア同士の交流促進・橋渡し。
+      イベントの企画・運営サポート。技術的な相談にも対応可能です。
+    category: "consultation"
+    tags: ["consultation", "career", "support", "engineer-cafe"]
+    priority: 90
+    source: "official"
+    verified: true
+
+  - id: "community-ec-lab"
+    title: "Engineer Cafe Lab（エンジニアカフェラボ）"
+    title_en: "Engineer Cafe Lab"
+    content: >
+      Engineer Cafe Lab（エンジニアカフェラボ）は、U-25（25歳以下）を対象とした
+      若手エンジニア向けの会員制コミュニティプログラムです。
+      【入会条件】事前応募と面接が必要で、活動意欲や取り組み内容を確認した上で参加可否が決定されます。会費は無料です。
+      【活動期間】原則1年間で、継続の可否は年度ごとの運営方針により決定されます。
+      【会員特典】通常利用者には公開していない専門機材の貸し出しが可能です。
+      VRゴーグル、ドローン、最新PC・ガジェット・電子工作ツールなどを利用できます。
+      ラボ会員限定のワークショップや勉強会、プロジェクト型イベント、ハッカソン、発表会を年間通じて開催しています。
+      詳しくはスタッフにお尋ねください。
+    category: "community"
+    tags: ["community", "youth", "u25", "engineer-cafe"]
+    priority: 60
+    source: "official"
+    verified: true
+
+  - id: "community-eic-overview"
+    title: "ENGINEER IGNITION CAMP（EIC）概要"
+    title_en: "ENGINEER IGNITION CAMP Overview"
+    content: >
+      ENGINEER IGNITION CAMP（EIC）は、エンジニアカフェが主催する
+      短期集中・実践型プログラムです。参加費は無料です。
+      コンセプトは「つくりたい物をつくる」で「対価を得る・事業化」を目指します。
+      2025年12月〜2026年2月の期間で開催されています。
+      コース構成: A〜Cコース（全5回の講義のうち3回以上の現地参加が修了要件）と
+      Zコース（3回以上の面談または追加講義への参加が修了要件）があります。
+      Zコースではプライシング（値決め）やUI/UX（ユーザーテスト）等の専門講義を受講できます。
+      会場はエンジニアカフェ メインホールです。
+      情報共有やコミュニティ形成にはDiscordが活用されています。
+      SNSハッシュタグ: #EIC #eicamp #ignitioncamp #EIC_fukuoka。
+      詳細や最新の開催情報はスタッフまたは公式サイトでご確認ください。
+    category: "community"
+    tags: ["eic", "program", "startup", "engineer-cafe"]
+    priority: 90
+    source: "official"
+    verified: true
+
+  - id: "community-eic-completion"
+    title: "EIC 修了認定ガイド"
+    title_en: "EIC Completion Certification Guide"
+    content: >
+      ENGINEER IGNITION CAMP（EIC）の修了認定条件です。
+      以下の5つの要件を全て満たす必要があります。
+      1. 講義: 全3回中3回参加（リアルタイムまたはアーカイブ視聴）。
+      2. LT（ライトニングトーク）: 参加および発表。
+      3. Dev & Tips: 全5回中3回参加（1講義5単位）。
+      4. Boot Camp: 2日間参加（12月15日、2月23日に開催。開発を進める）。
+      5. DevDay: 参加および発表（展示・デモ形式）。
+      免除規定: 既にプロダクトをリリース済み、または事前面談で
+      十分な進捗が確認できている場合は参加免除になる場合があります（事前相談必須）。
+      BootCampではデモ実施やビジネス相談が行われ、
+      エンジニアカフェのコミュニティマネージャー（CM）による巡回サポートもあります。
+      現地参加特典としてメダルが配布され、cafe&bar sainoで1ドリンクと引き換え可能です。
+    category: "community"
+    tags: ["eic", "certification", "completion", "engineer-cafe"]
+    priority: 90
+    source: "official"
+    verified: true
+
+  - id: "community-eic-devday"
+    title: "EIC DevDay（最終展示会）"
+    title_en: "EIC DevDay Exhibition"
+    content: >
+      DevDay（最終展示会）はENGINEER IGNITION CAMP（EIC）の集大成イベントです。
+      2026年2月23日 18:00〜に開催されます。
+      ピッチ（プレゼン）ではなく展示形式で実施されます。
+      審査員にはFusic取締役副社長の浜崎氏、ヌーラボ代表の橋本氏らが務めます。
+      展示ブース: 机のサイズは100cm×60cm、電源・Wi-Fi完備です。
+      準備物として実機デモや説明パネルの用意が推奨されます。
+      講義終了後22時前まで懇親会会場としてcafe&bar sainoが利用され、
+      参加者間の交流の場となります。
+      記録・拡散のためプログラムの様子を撮影・シェアします。
+      撮影が気になる方はスタッフへ相談してください。
+    category: "community"
+    tags: ["eic", "devday", "exhibition", "engineer-cafe"]
+    priority: 90
+    source: "official"
+    verified: true

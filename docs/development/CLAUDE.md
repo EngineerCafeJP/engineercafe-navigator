@@ -51,16 +51,30 @@ pnpm metrics:dashboard      # View performance metrics
 ## High-Level Architecture
 
 ### Technology Stack
-- **Frontend**: Next.js 15.3.2 (App Router) + React 19.1.0 + TypeScript 5.8.3
+
+#### Frontend
+- **Framework**: Next.js 15.3.2 (App Router) + React 19.1.0 + TypeScript 5.8.3
 - **AI Framework**: Mastra 0.10.5 for agent orchestration
-- **AI Models**: 
-  - Google Gemini 2.5 Flash Preview (for responses)
-  - OpenAI text-embedding-3-small (1536 dimensions for all embeddings)
+- **AI Models**: Google Gemini 2.5 Flash Preview (for responses)
 - **Voice**: Google Cloud Speech-to-Text/Text-to-Speech with Web Audio API for mobile compatibility
   - STT Correction System for improved Japanese recognition accuracy
 - **3D Graphics**: Three.js 0.176.0 with @pixiv/three-vrm 3.4.1
-- **Database**: PostgreSQL with pgvector extension
-- **Backend Services**: Supabase 2.49.8
+
+#### Backend (LangGraph) — 2026年2月整備
+- **Language**: Python 3.12+
+- **AI Framework**: LangGraph (Supervisor Pattern)
+- **LLM Provider**: OpenRouter (google/gemini-2.0-flash-001)
+- **Shared Infrastructure**:
+  - `config/routing_constants.py` — ルーティングキーワード・マッピング・ヘルパー集約
+  - `config/prompts/` — エージェント固有プロンプトテンプレート（facility, event, memory）
+  - `utils/input_sanitizer.py` — 入力バリデーション・プロンプトインジェクション検出
+  - `utils/exceptions.py` — カスタム例外階層（AgentSystemError 基底）
+- **Testing**: pytest + LangChain Evaluation (60/60 ルーティング精度, 10/10 E2E回答品質)
+- **Code Quality**: ruff + black
+
+#### Common
+- **Database**: PostgreSQL with pgvector extension (Supabase 2.49.8)
+- **Embeddings**: OpenAI text-embedding-3-small (1536 dimensions)
 - **External Integrations**: Connpass API, Google Calendar API
 
 ### Architecture Overview
@@ -73,20 +87,19 @@ The application follows a modernized multi-layered architecture with advanced RA
    - CharacterAvatar: 3D VRM character rendering
    - API routes handle voice, slides, character control, and Q&A
 
-2. **Advanced AI Agent Layer** (`/src/mastra/`): Multi-agent system with Enhanced RAG
-   - **New Architecture (2024-2025)**: 8 specialized agents replacing legacy EnhancedQAAgent
-     - RouterAgent: Context-dependent query routing with memory integration
-     - BusinessInfoAgent: Hours, pricing, location queries with Enhanced RAG
-     - FacilityAgent: Equipment, basement facilities, Wi-Fi with Enhanced RAG
-     - MemoryAgent: Conversation history and context retrieval
-     - EventAgent: Calendar and event information
-     - GeneralKnowledgeAgent: Out-of-scope queries with web search
-     - ClarificationAgent: Ambiguous query handling (cafe/meeting room disambiguation)
+2. **Frontend AI Agent Layer** (`/frontend/src/mastra/`): Mastra multi-agent system with Enhanced RAG
+   - 8 specialized agents (RouterAgent, BusinessInfoAgent, FacilityAgent, MemoryAgent, EventAgent, GeneralKnowledgeAgent, ClarificationAgent, etc.)
    - **Enhanced RAG Integration**: Entity-aware search with priority scoring
    - **Memory System**: SimplifiedMemorySystem with 3-minute conversational continuity
    - Voice service integration with Google Cloud
 
-3. **Enhanced RAG System** (`/src/mastra/tools/enhanced-rag-search.ts`):
+3. **Backend AI Agent Layer** (`/backend/`): LangGraph multi-agent system (2026年移行中)
+   - **Supervisor Pattern**: OrchestratorAgent がワークフロー全体を制御
+   - **10+ agents**: Router, BusinessInfo, Facility, Event, Memory, Clarification, GeneralKnowledge, Slide, Voice, CharacterControl, OCR
+   - **Shared Infrastructure**: `config/routing_constants.py`, `config/prompts/`, `utils/input_sanitizer.py`, `utils/exceptions.py`
+   - **Best Practices**: HumanMessage for LLM calls (not dict), logger (not print), custom exceptions, centralized routing keywords
+
+4. **Enhanced RAG System** (`/frontend/src/mastra/tools/enhanced-rag-search.ts`):
    - **RAGPriorityScorer**: Intelligent result ranking with entity recognition
    - **Entity-Aware Processing**: Engineer Cafe vs Saino content prioritization
    - **Category-Based Scoring**: Hours, pricing, facility-info specialized scoring
@@ -95,14 +108,14 @@ The application follows a modernized multi-layered architecture with advanced RA
    - **Advanced Context Filtering**: Relevant information extraction
    - **Performance**: 85%+ routing accuracy, 2.9s average response time
 
-4. **Audio Layer** (`/src/lib/audio/`): Fully migrated Web Audio API system
+5. **Audio Layer** (`/frontend/src/lib/audio/`): Fully migrated Web Audio API system
    - AudioPlaybackService: Unified audio service standardizing all playback operations
    - MobileAudioService: Web Audio API with tablet optimization and intelligent fallbacks
    - AudioInteractionManager: User interaction handling for autoplay policy compliance
    - WebAudioPlayer: Core Web Audio API implementation with Safari/iOS compatibility
    - All legacy HTML Audio Element dependencies removed (2024)
 
-5. **Data Layer**: Supabase/PostgreSQL with pgvector
+6. **Data Layer**: Supabase/PostgreSQL with pgvector
    - Conversation sessions, history, and analytics
    - Knowledge base with vector embeddings (1536 dimensions)
    - Multi-language support (Japanese/English content)
@@ -268,7 +281,7 @@ The application uses a sophisticated multi-language RAG (Retrieval-Augmented Gen
 
 ### Knowledge Base Structure
 
-The knowledge base contains 84+ entries organized by:
+The knowledge base contains 60 backend entries (staff-verified) + frontend entries organized by:
 - **Categories**: 設備/Facilities, 基本情報/General, 料金/Pricing, etc.
 - **Subcategories**: Specific facility types (地下MTGスペース, Basement Focus Space, etc.)
 - **Languages**: Japanese (ja) and English (en) versions

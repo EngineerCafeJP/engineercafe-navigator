@@ -14,11 +14,10 @@ class TestGeneralKnowledgeAgent:
     def setup_method(self):
         """各テストメソッドの前に実行"""
         # 環境変数を設定してモックする
-        os.environ["GOOGLE_API_KEY"] = "test_dummy_api_key"
         os.environ["OPENROUTER_API_KEY"] = "test_dummy_openrouter_key"
 
         # WebSearchToolとOpenRouterProviderをモック
-        with patch("backend.agents.general_knowledge_agent.WebSearchTool"):
+        with patch("backend.agents.general_knowledge_agent.TavilySearchTool"):
             with patch("backend.agents.general_knowledge_agent.OpenRouterProvider"):
                 with patch("backend.agents.general_knowledge_agent.EnhancedRAGSearch"):
                     self.agent = GeneralKnowledgeAgent()
@@ -120,7 +119,6 @@ class TestGeneralKnowledgeAgentIntegration:
 
     def setup_method(self):
         """各テストメソッドの前に実行"""
-        os.environ["GOOGLE_API_KEY"] = "test_dummy_api_key"
         os.environ["OPENROUTER_API_KEY"] = "test_dummy_openrouter_key"
 
         # 統合テスト用のモック（AsyncMock使用）
@@ -151,7 +149,7 @@ class TestGeneralKnowledgeAgentIntegration:
 
         # エージェント初期化
         with patch(
-            "backend.agents.general_knowledge_agent.WebSearchTool",
+            "backend.agents.general_knowledge_agent.TavilySearchTool",
             return_value=self.mock_web_search,
         ):
             with patch(

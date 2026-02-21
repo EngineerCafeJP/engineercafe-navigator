@@ -22,7 +22,7 @@ CharacterControlAgent のユニットテスト
 """
 
 import pytest
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 from backend.agents.character_control_agent import CharacterControlAgent
 from backend.utils.emotion_mapping import EmotionMapping
 
@@ -287,41 +287,40 @@ class TestCharacterControlAgent:
         """基本的なprocess処理"""
         result = await self.agent.process("happy")
 
-        assert result["action"] == "speak"
-        assert "vrm_control" in result
-        assert len(result["vrm_control"]["expressions"]) > 0
-        assert result["vrm_control"]["expressions"][0]["name"] == "happy"
+        assert result["name"] == "greeting"
+        assert "keyframes" in result
+        assert len(result["keyframes"]) > 0
+        assert "happy" in result["keyframes"][0]["expressions"]
 
     @pytest.mark.asyncio
     async def test_process_with_text(self):
         """テキスト付きprocess処理"""
         result = await self.agent.process("happy", "こんにちは")
 
-        assert result["action"] == "speak"
+        assert result["name"] == "greeting"
         assert result["text"] == "こんにちは"
-        assert "vrm_control" in result
+        assert "keyframes" in result
 
     @pytest.mark.asyncio
     async def test_process_with_lipsync(self):
         """リップシンク付きprocess処理"""
         result = await self.agent.process("happy", "こんにちは", 1.0)
 
-        assert result["action"] == "speak"
+        assert result["name"] == "greeting"
         assert result["text"] == "こんにちは"
-        # Visemeが追加されているか確認
-        viseme_expressions = [
-            expr
-            for expr in result["vrm_control"]["expressions"]
-            if expr["name"] in ["aa", "ih", "ou", "ee", "oh", "neutral"]
-        ]
-        assert len(viseme_expressions) > 0
+        # keyframes内のexpressionsにVisemeが含まれるか確認
+        viseme_names = ["aa", "ih", "ou", "ee", "oh", "neutral"]
+        has_viseme = any(
+            name in kf["expressions"] for kf in result["keyframes"] for name in viseme_names
+        )
+        assert has_viseme
 
     @pytest.mark.asyncio
     async def test_process_with_animation(self):
-        """アニメーション付きprocess処理"""
+        """アニメーション名（name）のprocess処理"""
         result = await self.agent.process("happy")
 
-        assert result["vrm_control"]["humanoid"]["pose"] == "greeting"
+        assert result["name"] == "greeting"
 
     @pytest.mark.asyncio
     async def test_process_different_emotions(self):
@@ -330,15 +329,16 @@ class TestCharacterControlAgent:
 
         for emotion in emotions:
             result = await self.agent.process(emotion)
-            assert result["action"] == "speak"
-            assert "vrm_control" in result
-            assert len(result["vrm_control"]["expressions"]) > 0
+            assert "name" in result
+            assert "keyframes" in result
+            assert len(result["keyframes"]) > 0
 
     @pytest.mark.asyncio
     async def test_process_error_handling_invalid_emotion(self):
         """無効な感情値でのエラーハンドリング"""
         result = await self.agent.process(None)
-        assert result["action"] == "speak"
+        assert "name" in result
+        assert "keyframes" in result
         assert "error" not in result  # エラー時も正常な構造を返す
 
     @pytest.mark.asyncio
@@ -346,7 +346,7 @@ class TestCharacterControlAgent:
         """コンテキスト付きprocess処理"""
         context = {"some_key": "some_value"}
         result = await self.agent.process("happy", context=context)
-        assert result["action"] == "speak"
+        assert result["name"] == "greeting"
 
     # ==========================================================================
     # エラーハンドリングテスト
@@ -360,9 +360,9 @@ class TestCharacterControlAgent:
             EmotionMapping, "get_expression_with_intensity", side_effect=Exception("Test error")
         ):
             result = await self.agent.process("happy")
-            # エラー時もデフォルト値を返す
-            assert result["action"] == "speak"
-            assert "vrm_control" in result
+            # エラー時もデフォルト値を返す（新形式）
+            assert "name" in result
+            assert "keyframes" in result
 
     def test_map_emotion_to_expression_exception_handling(self):
         """map_emotion_to_expressionの例外処理"""
@@ -416,26 +416,23 @@ class TestCharacterControlAgent:
     async def test_process_no_text_no_audio(self):
         """テキストも音声もないprocess処理"""
         result = await self.agent.process("happy")
-        assert result["action"] == "speak"
+        assert result["name"] == "greeting"
         assert "text" not in result or result.get("text") is None
-        # Visemeは追加されない
-        viseme_expressions = [
-            expr
-            for expr in result["vrm_control"]["expressions"]
-            if expr["name"] in ["aa", "ih", "ou", "ee", "oh", "neutral"]
-        ]
+        # キーフレームは1件のみ（lipsyncなし）
+        assert len(result["keyframes"]) == 1
         # メイン表情のみ（Visemeなし）
-        assert len(result["vrm_control"]["expressions"]) == 1
+        expressions = result["keyframes"][0]["expressions"]
+        viseme_count = sum(1 for k in expressions if k in ["aa", "ih", "ou", "ee", "oh"])
+        assert viseme_count == 0
 
     @pytest.mark.asyncio
     async def test_process_text_without_audio_duration(self):
         """テキストはあるが音声長がないprocess処理"""
         result = await self.agent.process("happy", "こんにちは", None)
-        assert result["action"] == "speak"
+        assert result["name"] == "greeting"
         assert result["text"] == "こんにちは"
-        # 音声長がない場合、文字数から自動計算されるため、リップシンクデータが生成される
-        # メイン表情 + Visemeが含まれる
-        assert len(result["vrm_control"]["expressions"]) >= 1
+        # 音声長がない場合、文字数から自動計算されるため、keyframesが生成される
+        assert len(result["keyframes"]) >= 1
 
     # ==========================================================================
     # 統合テスト
@@ -452,7 +449,7 @@ class TestCharacterControlAgent:
         animation = self.agent.select_animation("happy")
         assert animation == "greeting"
 
-        # 3. VRM制御コマンド生成
+        # 3. VRM制御コマンド生成（generate_vrm_commandは残存）
         vrm_command = self.agent.generate_vrm_command(
             expression_params["expression"], expression_params["intensity"], animation
         )
@@ -463,8 +460,8 @@ class TestCharacterControlAgent:
         lipsync_data = self.agent.generate_lipsync_data("Hello", audio_duration=1.0)
         assert len(lipsync_data) > 0
 
-        # 5. processメソッドで統合
+        # 5. processメソッドで統合（greetings.json形式）
         result = await self.agent.process("happy", "Hello", 1.0)
-        assert result["action"] == "speak"
+        assert result["name"] == "greeting"
         assert result["text"] == "Hello"
-        assert len(result["vrm_control"]["expressions"]) > 1  # 表情 + Viseme
+        assert len(result["keyframes"]) > 1  # 表情 + Viseme含む複数フレーム
