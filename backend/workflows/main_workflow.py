@@ -13,8 +13,7 @@ LangGraphのSupervisor Agentパターンに従い、OrchestratorAgentが
 import asyncio
 import logging
 import os
-from typing import Annotated, Optional, TypedDict
-
+from typing import Annotated, Any, Optional, TypedDict
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
@@ -43,8 +42,8 @@ class WorkflowStateDict(TypedDict):
     emotion: Optional[str]
     metadata: dict
     context: dict
-    image_data: Optional[np.ndarray]#追加　久島
-    ocr_result: Optional[dict]#追加　久島
+    image_data: Optional[Any]  # np.ndarray (optional vision input)
+    ocr_result: Optional[dict]  # OCR result from VisionAgent
 
 class MainWorkflow:
     """
@@ -98,7 +97,7 @@ class MainWorkflow:
                 "image": "vision",
             },
         )
-        workflow.add_node("vision", "memory_loader")
+        workflow.add_edge("vision", "memory_loader")
         workflow.add_edge("memory_loader", "orchestrator")
 
         # 各エージェント → format_response → END
@@ -119,7 +118,7 @@ class MainWorkflow:
             logger.warning("Compiling workflow without checkpointer (no persistence)")
             return workflow.compile()
 
-    def _input_type_decision(self, state: WorkflowState) -> str:
+    def _input_type_decision(self, state: WorkflowStateDict) -> str:
         if state.get("image_data") is not None:
             return "image"
         return "text"
@@ -366,19 +365,20 @@ class MainWorkflow:
             },
         }
 
-    async def _vision_node(self, state: WorkflowState) -> dict:
+    async def _vision_node(self, state: WorkflowStateDict) -> dict:
         from backend.agents.ocr_agent import VisionAgent
-        
+        from backend.utils.language_processor import LanguageProcessor
+
         vision_agent = VisionAgent()
         result = vision_agent.run({
             "image": state["image_data"],
-            "recognition_type": "text"
+            "recognition_type": "text",
         })
-        
+
         # OCRテキストをqueryに追加
         ocr_text = result.get("text", {}).get("text", "")
         expression = result.get("face", {}).get("expression", {}).get("emotion")
-            
+
         # ---------- 言語検出 ----------
         lp = LanguageProcessor()
 
@@ -387,16 +387,10 @@ class MainWorkflow:
         else:
             lang = {"detected": "ja", "confidence": 1.0}
 
-        language_result = SimpleNamespace(
-            detected=lang["detected"],
-            confidence=lang["confidence"],
-        )
-
         return {
             # Router / Memory 用
             "query": ocr_text or state.get("query", ""),
-            "language": language_result.detected,
-            "language_result": language_result,
+            "language": lang["detected"],
 
             # OCR情報保持
             "ocr_result": result,
@@ -404,7 +398,7 @@ class MainWorkflow:
             "metadata": {
                 **state.get("metadata", {}),
                 "detected_expression": expression,
-            }
+            },
         }
 
     async def _format_response_node(self, state: WorkflowStateDict) -> dict:
@@ -447,6 +441,8 @@ class MainWorkflow:
             "emotion": None,
             "metadata": {},
             "context": input_data.get("context", {}),
+            "image_data": input_data.get("image_data"),
+            "ocr_result": None,
         }
 
         # Checkpointer使用時はthread_idを設定してセッション分離
