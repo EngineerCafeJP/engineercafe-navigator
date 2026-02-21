@@ -85,6 +85,15 @@ class MainWorkflow:
             memory_system = None
         self._general_knowledge_agent = GeneralKnowledgeAgent(memory_system=memory_system)
 
+        # VisionAgentをシングルトンとしてキャッシュ（毎回生成するとLLM接続が無駄）
+        try:
+            from backend.agents.ocr_agent import VisionAgent
+
+            self._vision_agent = VisionAgent()
+        except Exception as e:
+            logger.warning("VisionAgent unavailable: %s", e)
+            self._vision_agent = None
+
         self.graph = self._build_graph()
 
     # LLMノード用リトライポリシー: 一時的な障害(レート制限, タイムアウト等)に対応
@@ -99,14 +108,16 @@ class MainWorkflow:
         """Supervisor Patternに基づくグラフ構造を構築"""
         workflow = StateGraph(WorkflowStateDict)
 
+        # LLM依存ノード: retry_policyを適用
+        llm_retry = self.LLM_RETRY_POLICY
+
         # ノードの追加
         # memory_loader, format_response: LLM非依存のためリトライ不要
         workflow.add_node("memory_loader", self._memory_loader_node)
-        workflow.add_node("vision", self._vision_node)
+        workflow.add_node("vision", self._vision_node, retry_policy=llm_retry)
         workflow.add_node("format_response", self._format_response_node)
 
-        # LLM依存ノード: retry_policyを適用
-        llm_retry = self.LLM_RETRY_POLICY
+        # LLM依存ノード
         workflow.add_node("orchestrator", self._orchestrator_node, retry_policy=llm_retry)
         workflow.add_node("business_info", self._business_info_node, retry_policy=llm_retry)
         workflow.add_node("facility", self._facility_node, retry_policy=llm_retry)
@@ -151,11 +162,12 @@ class MainWorkflow:
 
     async def _vision_node(self, state: WorkflowStateDict) -> dict:
         """ビジョンノード: 画像からOCR/表情認識を実行し、queryに変換"""
-        from backend.agents.ocr_agent import VisionAgent
         from backend.utils.language_processor import LanguageProcessor
 
-        vision_agent = VisionAgent()
-        result = vision_agent.run({
+        if self._vision_agent is None:
+            raise RuntimeError("VisionAgent is not available")
+
+        result = await self._vision_agent.run({
             "image": state["image_data"],
             "recognition_type": "text",
         })

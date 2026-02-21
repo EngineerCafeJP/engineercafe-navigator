@@ -1,13 +1,14 @@
 import base64
-from typing import TypedDict, List, Dict, Any
+from typing import Annotated, Dict, Any, TypedDict
 
 import cv2
 import numpy as np
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import HumanMessage, ToolMessage
+from langchain_core.messages import BaseMessage, HumanMessage, ToolMessage
 from langchain_core.tools import tool
 from langgraph.graph import StateGraph, START, END
+from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 import os
 
@@ -52,7 +53,7 @@ def recognize_qr(image: np.ndarray) -> str | None:
 # State
 # =====================================================
 class VisionState(TypedDict):
-    messages: List
+    messages: Annotated[list[BaseMessage], add_messages]
 
 
 # =====================================================
@@ -92,14 +93,14 @@ class VisionAgent:
 
         return graph.compile()
 
-    def _vision_node(self, state: VisionState):
-        response = self.vision_llm.invoke(state["messages"])
-        return {"messages": state["messages"] + [response]}
+    async def _vision_node(self, state: VisionState):
+        response = await self.vision_llm.ainvoke(state["messages"])
+        return {"messages": [response]}
 
     # =====================================================
     # Public API（外部から呼ばれる）
     # =====================================================
-    def run(self, input: Dict[str, Any]) -> Dict[str, Any]:
+    async def run(self, input: Dict[str, Any]) -> Dict[str, Any]:
         """
         input:
           {
@@ -157,7 +158,7 @@ class VisionAgent:
             ]
         )
 
-        result = self.app.invoke({"messages": [message]})
+        result = await self.app.ainvoke({"messages": [message]})
 
         # ---------- Parse ----------
         text_result = {"success": False, "text": None, "error": None}
