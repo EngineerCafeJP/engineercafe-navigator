@@ -12,7 +12,7 @@ LangGraphのSupervisor Agentパターンに従い、OrchestratorAgentが
 import asyncio
 import logging
 import os
-from typing import Annotated, Optional, TypedDict
+from typing import Annotated, Any, Optional, TypedDict
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langgraph.graph import END, START, StateGraph
@@ -42,6 +42,8 @@ class WorkflowStateDict(TypedDict):
     emotion: Optional[str]
     metadata: dict
     context: dict
+    image_data: Optional[Any]  # np.ndarray (optional vision input)
+    ocr_result: Optional[dict]  # OCR result from VisionAgent
 
 
 class MainWorkflow:
@@ -83,6 +85,15 @@ class MainWorkflow:
             memory_system = None
         self._general_knowledge_agent = GeneralKnowledgeAgent(memory_system=memory_system)
 
+        # VisionAgentをシングルトンとしてキャッシュ（毎回生成するとLLM接続が無駄）
+        try:
+            from backend.agents.ocr_agent import VisionAgent
+
+            self._vision_agent = VisionAgent()
+        except Exception as e:
+            logger.warning("VisionAgent unavailable: %s", e)
+            self._vision_agent = None
+
         self.graph = self._build_graph()
 
     # LLMノード用リトライポリシー: 一時的な障害(レート制限, タイムアウト等)に対応
@@ -97,13 +108,16 @@ class MainWorkflow:
         """Supervisor Patternに基づくグラフ構造を構築"""
         workflow = StateGraph(WorkflowStateDict)
 
+        # LLM依存ノード: retry_policyを適用
+        llm_retry = self.LLM_RETRY_POLICY
+
         # ノードの追加
         # memory_loader, format_response: LLM非依存のためリトライ不要
         workflow.add_node("memory_loader", self._memory_loader_node)
+        workflow.add_node("vision", self._vision_node, retry_policy=llm_retry)
         workflow.add_node("format_response", self._format_response_node)
 
-        # LLM依存ノード: retry_policyを適用
-        llm_retry = self.LLM_RETRY_POLICY
+        # LLM依存ノード
         workflow.add_node("orchestrator", self._orchestrator_node, retry_policy=llm_retry)
         workflow.add_node("business_info", self._business_info_node, retry_policy=llm_retry)
         workflow.add_node("facility", self._facility_node, retry_policy=llm_retry)
@@ -112,8 +126,16 @@ class MainWorkflow:
         workflow.add_node("general_knowledge", self._general_knowledge_node, retry_policy=llm_retry)
 
         # エッジの定義（Supervisor Pattern）
-        # START → memory_loader → orchestrator
-        workflow.add_edge(START, "memory_loader")
+        # START → (text: memory_loader, image: vision) → memory_loader → orchestrator
+        workflow.add_conditional_edges(
+            START,
+            self._input_type_decision,
+            {
+                "text": "memory_loader",
+                "image": "vision",
+            },
+        )
+        workflow.add_edge("vision", "memory_loader")
         workflow.add_edge("memory_loader", "orchestrator")
 
         # 各エージェント → format_response → END
@@ -131,6 +153,50 @@ class MainWorkflow:
         else:
             logger.warning("Compiling workflow without checkpointer (no persistence)")
             return workflow.compile()
+
+    def _input_type_decision(self, state: WorkflowStateDict) -> str:
+        """入力タイプに基づいてルーティング（テキスト or 画像）"""
+        if state.get("image_data") is not None:
+            return "image"
+        return "text"
+
+    async def _vision_node(self, state: WorkflowStateDict) -> dict:
+        """ビジョンノード: 画像からOCR/表情認識を実行し、queryに変換"""
+        from backend.utils.language_processor import LanguageProcessor
+
+        if self._vision_agent is None:
+            raise RuntimeError("VisionAgent is not available")
+
+        result = await self._vision_agent.run({
+            "image": state["image_data"],
+            "recognition_type": "text",
+        })
+
+        # OCRテキストをqueryに追加
+        ocr_text = result.get("text", {}).get("text", "")
+        expression = result.get("face", {}).get("expression", {}).get("emotion")
+
+        # ---------- 言語検出 ----------
+        lp = LanguageProcessor()
+
+        if ocr_text:
+            lang = lp.detect_language(ocr_text)
+        else:
+            lang = {"detected": "ja", "confidence": 1.0}
+
+        return {
+            # Router / Memory 用
+            "query": ocr_text or state.get("query", ""),
+            "language": lang["detected"],
+
+            # OCR情報保持
+            "ocr_result": result,
+
+            "metadata": {
+                **state.get("metadata", {}),
+                "detected_expression": expression,
+            },
+        }
 
     async def _memory_loader_node(self, state: WorkflowStateDict) -> dict:
         """
@@ -461,6 +527,8 @@ class MainWorkflow:
             "emotion": None,
             "metadata": {},
             "context": input_data.get("context", {}),
+            "image_data": input_data.get("image_data"),
+            "ocr_result": None,
         }
         config = None
         if self.checkpointer:
