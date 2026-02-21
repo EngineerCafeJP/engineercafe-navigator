@@ -1,7 +1,7 @@
 # Makefile for Engineer Cafe Navigator
 # Unified development commands using mise and Docker
 
-.PHONY: help setup install dev dev-frontend dev-backend build test lint clean debug-agent test-agent show-logs
+.PHONY: help setup install dev dev-frontend dev-backend build test lint clean debug-agent test-agent show-logs health db\:seed test\:backend
 
 # Default target
 .DEFAULT_GOAL := help
@@ -28,7 +28,12 @@ help:
 	@echo "$(GREEN)Build & Test:$(NC)"
 	@echo "  make build              - Build frontend and backend"
 	@echo "  make test               - Run all tests"
+	@echo "  make test:backend       - Run backend tests only"
 	@echo "  make lint               - Run linters (frontend + backend)"
+	@echo ""
+	@echo "$(GREEN)Operations:$(NC)"
+	@echo "  make health             - Run backend health check"
+	@echo "  make db:seed            - Seed knowledge base data"
 	@echo ""
 	@echo "$(GREEN)Debug & Tools:$(NC)"
 	@echo "  make debug-agent        - Interactive agent debugger"
@@ -104,6 +109,24 @@ lint:
 	cd backend && mise exec -- ruff check .
 	cd backend && mise exec -- black --check .
 	@echo "$(GREEN)✓ Linting complete$(NC)"
+
+## health: Run backend health check
+health:
+	@echo "$(CYAN)Running backend health check...$(NC)"
+	cd backend && mise exec -- python scripts/healthcheck.py --verbose --check-services
+	@echo "$(GREEN)✓ Health check complete$(NC)"
+
+## db:seed: Seed knowledge base data
+db\:seed:
+	@echo "$(CYAN)Seeding knowledge base...$(NC)"
+	cd backend && mise exec -- python scripts/seed_knowledge.py
+	@echo "$(GREEN)✓ Knowledge base seeded$(NC)"
+
+## test:backend: Run backend tests only
+test\:backend:
+	@echo "$(CYAN)Running backend tests...$(NC)"
+	cd backend && mise exec -- pytest -m "not ragas and not slow" --tb=short -q
+	@echo "$(GREEN)✓ Backend tests complete$(NC)"
 
 ## clean: Stop containers and clean volumes
 clean:

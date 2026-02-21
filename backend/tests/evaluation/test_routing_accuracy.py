@@ -4,7 +4,7 @@
 
 import pytest
 
-from tests.utils.evaluators.routing_accuracy import (
+from backend.tests.utils.evaluators.routing_accuracy import (
     RoutingAccuracyEvaluator,
     RoutingTestCase,
     RoutingResult,
@@ -12,7 +12,7 @@ from tests.utils.evaluators.routing_accuracy import (
     AgentMetrics,
     create_routing_evaluator,
 )
-from tests.fixtures.dataset_loader import DatasetLoader
+from backend.tests.fixtures.dataset_loader import DatasetLoader
 
 
 class TestRoutingTestCase:

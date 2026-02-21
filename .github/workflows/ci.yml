@@ -144,16 +144,81 @@ jobs:
           pip install ruff black
 
       - name: Run Ruff linter
-        run: ruff check . || true
+        run: ruff check .
         working-directory: backend
 
       - name: Check Black formatting
-        run: black --check . || true
+        run: black --check .
         working-directory: backend
+
+  # Backend: Test
+  backend-test:
+    needs: [changes, backend-lint]
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+        working-directory: backend
+
+      - name: Run tests
+        run: pytest -m "not ragas and not slow" --tb=short -q --cov=. --cov-report=term-missing --cov-report=xml:coverage.xml
+        working-directory: backend
+        env:
+          OPENROUTER_API_KEY: "test-key"
+          SUPABASE_URL: "https://placeholder.supabase.co"
+          SUPABASE_KEY: "placeholder-key"
+          SUPABASE_DB_URI: "postgresql://placeholder:placeholder@localhost:5432/placeholder"
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: backend/coverage.xml
+          retention-days: 30
+
+  # Backend: RAGAS tests (optional, informational only)
+  backend-test-ragas:
+    needs: [changes, backend-test]
+    if: needs.changes.outputs.backend == 'true' && github.event_name == 'push' && secrets.OPENAI_API_KEY != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,evaluation]"
+        working-directory: backend
+
+      - name: Run RAGAS tests
+        run: pytest -m "ragas" --tb=short -q
+        working-directory: backend
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          SUPABASE_URL: "https://placeholder.supabase.co"
+          SUPABASE_KEY: "placeholder-key"
+          SUPABASE_DB_URI: "postgresql://placeholder:placeholder@localhost:5432/placeholder"
 
   # Final status check for branch protection
   ci-success:
-    needs: [frontend-lint, frontend-typecheck, frontend-build, backend-lint]
+    needs: [frontend-lint, frontend-typecheck, frontend-build, backend-lint, backend-test]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -162,7 +227,8 @@ jobs:
           if [[ "${{ needs.frontend-lint.result }}" == "failure" ]] || \
              [[ "${{ needs.frontend-typecheck.result }}" == "failure" ]] || \
              [[ "${{ needs.frontend-build.result }}" == "failure" ]] || \
-             [[ "${{ needs.backend-lint.result }}" == "failure" ]]; then
+             [[ "${{ needs.backend-lint.result }}" == "failure" ]] || \
+             [[ "${{ needs.backend-test.result }}" == "failure" ]]; then
             echo "One or more jobs failed"
             exit 1
           fi

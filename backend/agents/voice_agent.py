@@ -409,7 +409,7 @@ class VoiceVoxClient:
         """
         self.api_url = api_url.rstrip("/")
         self._initialized_speakers: set[int] = set()
-        logger.info(f"VoiceVoxClient initialized: {self.api_url}")
+        logger.info("VoiceVoxClient initialized: %s", self.api_url)
 
     async def _ensure_speaker_initialized(self, client: httpx.AsyncClient, speaker_id: int) -> None:
         """初回遅延回避のためスピーカーを事前初期化 (公式推奨)"""
@@ -422,9 +422,9 @@ class VoiceVoxClient:
             )
             if resp.status_code < 400:
                 self._initialized_speakers.add(speaker_id)
-                logger.info(f"VoiceVox speaker {speaker_id} initialized")
+                logger.info("VoiceVox speaker %s initialized", speaker_id)
         except Exception as e:
-            logger.warning(f"VoiceVox speaker init failed (non-fatal): {e}")
+            logger.warning("VoiceVox speaker init failed (non-fatal): %s", e)
 
     async def synthesize_wav_base64(
         self, text: str, lang: str, speaker_id: Optional[int] = None
@@ -469,14 +469,14 @@ class VoiceVoxClient:
                 wav_data = synthesis_response.content
                 wav_b64 = base64.b64encode(wav_data).decode("utf-8")
 
-                logger.info(f"VoiceVox synthesis success: text_len={len(text)}")
+                logger.info("VoiceVox synthesis success: text_len=%d", len(text))
                 return wav_b64
 
         except httpx.TimeoutException as e:
-            logger.error(f"VoiceVox timeout: {e}")
+            logger.error("VoiceVox timeout: %s", e)
             raise RuntimeError(f"VoiceVox connection timeout: {e}")
         except Exception as e:
-            logger.error(f"VoiceVox synthesis error: {e}", exc_info=True)
+            logger.exception("VoiceVox synthesis error: %s", e)
             raise RuntimeError(f"VoiceVox synthesis error: {e}")
 
 
@@ -501,11 +501,9 @@ class KokoroTTSClient:
             api_url: Kokoro TTS Engine API URL
         """
         self.api_url = api_url.rstrip("/")
-        logger.info(f"KokoroTTSClient initialized: {self.api_url}")
+        logger.info("KokoroTTSClient initialized: %s", self.api_url)
 
-    async def synthesize_wav_base64(
-        self, text: str, lang: str, voice: Optional[str] = None
-    ) -> str:
+    async def synthesize_wav_base64(self, text: str, lang: str, voice: Optional[str] = None) -> str:
         """
         テキストを音声に合成し、base64エンコードされたWAVを返す
 
@@ -540,14 +538,14 @@ class KokoroTTSClient:
                 wav_data = response.content
                 wav_b64 = base64.b64encode(wav_data).decode("utf-8")
 
-                logger.info(f"Kokoro TTS synthesis success: text_len={len(text)}")
+                logger.info("Kokoro TTS synthesis success: text_len=%d", len(text))
                 return wav_b64
 
         except httpx.TimeoutException as e:
-            logger.error(f"Kokoro TTS timeout: {e}")
+            logger.error("Kokoro TTS timeout: %s", e)
             raise RuntimeError(f"Kokoro TTS connection timeout: {e}")
         except Exception as e:
-            logger.error(f"Kokoro TTS synthesis error: {e}", exc_info=True)
+            logger.exception("Kokoro TTS synthesis error: %s", e)
             raise RuntimeError(f"Kokoro TTS synthesis error: {e}")
 
 
@@ -564,8 +562,13 @@ class VoiceAgent:
         language_processor: Optional[LanguageProcessor] = None,
         clarification_agent: Optional[ClarificationAgent] = None,
     ):
-        """
-        VoiceAgent with TTS provider switching + LanguageProcessor + ClarificationAgent integration
+        """Initialize VoiceAgent with TTS provider switching and clarification support.
+
+        Args:
+            tts_provider: TTS provider name ('voicevox' or 'google'). Defaults to 'voicevox'.
+            tts_client: Custom TTS client instance. If None, creates default client based on provider.
+            language_processor: LanguageProcessor for language detection. If None, creates default instance.
+            clarification_agent: ClarificationAgent for ambiguity resolution. If None, creates default instance.
         """
         self.tts_provider = tts_provider
 
@@ -574,7 +577,7 @@ class VoiceAgent:
         elif tts_provider == "voicevox":
             voicevox_api_url = os.getenv("VOICEVOX_API_URL", "http://localhost:50021")
             self.tts_client = VoiceVoxClient(api_url=voicevox_api_url)
-            logger.info(f"Using VoiceVox TTS: {voicevox_api_url}")
+            logger.info("Using VoiceVox TTS: %s", voicevox_api_url)
         elif tts_provider == "google":
             self.tts_client = GoogleTTSClient()
             logger.info("Using Google Cloud TTS")
@@ -590,7 +593,7 @@ class VoiceAgent:
         # Kokoro TTSクライアントを追加（英語TTS用）
         kokoro_api_url = os.getenv("KOKORO_API_URL", "http://localhost:8880")
         self.kokoro_client = KokoroTTSClient(api_url=kokoro_api_url)
-        logger.info(f"Kokoro TTS client initialized: {kokoro_api_url}")
+        logger.info("Kokoro TTS client initialized: %s", kokoro_api_url)
 
     def _detect_category(self, text: str, language: str) -> Optional[ClarificationCategory]:
         """
@@ -630,20 +633,36 @@ class VoiceAgent:
         language: Optional[str] = None,
         emotion: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """
-        テキストを音声に変換
+        """Convert text to speech with language detection and clarification.
 
-        - 言語自動検出（language未指定時）
-        - 曖昧性チェック（ClarificationAgent統合）
-        - TTSプロバイダ切り替え（voicevox / google）
+        Features:
+            - Automatic language detection (when language is None)
+            - Ambiguity checking (ClarificationAgent integration)
+            - TTS provider switching (voicevox / google / kokoro)
+
+        Args:
+            text: Text to convert to speech. May include emotion tags like [happy].
+            language: Language code ('ja' or 'en'). If None, auto-detects from text.
+            emotion: Emotion tag to override detected emotion. Optional.
+
+        Returns:
+            TTS result dict with keys:
+                - success (bool): Whether synthesis succeeded.
+                - audioResponse (str): Base64-encoded audio data.
+                - emotion (str): VRM emotion tag used.
+                - cleanText (str): Processed text after cleaning and emotion tag removal.
+                - format (str): Audio format ('audio/wav' or 'audio/mpeg').
+                - language (str): Language used for synthesis.
+                - ambiguity_resolved (bool): Whether ambiguity was detected and resolved.
+                - error (str): Error message if failed. Optional.
         """
         # ステップ1: 言語自動検出（未指定時）
         if language is None:
             try:
                 language = await self.language_processor.detect(text)
-                logger.info(f"Language auto-detected: {language}")
+                logger.info("Language auto-detected: %s", language)
             except Exception as e:
-                logger.warning(f"Language detection failed: {e}, using default 'ja'")
+                logger.warning("Language detection failed: %s, using default 'ja'", e)
                 language = "ja"
 
         # ステップ2: 感情タグパースとテキスト前処理
@@ -658,7 +677,7 @@ class VoiceAgent:
         # ステップ3: 曖昧性チェック
         ambiguity_category = self._detect_category(text, language)
         if ambiguity_category:
-            logger.info(f"Ambiguity detected: {ambiguity_category}")
+            logger.info("Ambiguity detected: %s", ambiguity_category)
             try:
                 clarification_result = await self.clarification_agent.handle_clarification(
                     query=text,
@@ -670,7 +689,7 @@ class VoiceAgent:
                 processed = preprocess_tts(clarification_text, language)
                 vrm_emotion = clarification_result.get("emotion", "surprised")
             except Exception as e:
-                logger.error(f"Clarification handling failed: {e}, proceeding with original text")
+                logger.error("Clarification handling failed: %s, proceeding with original text", e)
 
         # ステップ4: テキスト長チェック
         if len(processed.encode("utf-8")) > 5000:
@@ -732,7 +751,7 @@ class VoiceAgent:
                     "format": audio_format,
                 }
             except Exception as fallback_error:
-                logger.error(f"Fallback TTS also failed: {fallback_error}")
+                logger.error("Fallback TTS also failed: %s", fallback_error)
                 return {
                     "success": False,
                     "error": f"Failed to generate speech: {str(e)}",

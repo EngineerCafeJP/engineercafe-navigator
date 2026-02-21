@@ -115,7 +115,10 @@ class BusinessInfoAgent:
             - 感情タグはLLM応答から抽出、または request_type に基づいて決定
         """
         logger.info(
-            f"Processing query: {query[:50]}..., request_type: {request_type}, language: {language}"
+            "Processing query: %s..., request_type: %s, language: %s",
+            query[:50],
+            request_type,
+            language,
         )
 
         # requestTypeをcategoryにマッピング
@@ -125,7 +128,7 @@ class BusinessInfoAgent:
         cached = state_context if state_context else None
         if cached and cached.get("success") and cached.get("category") == category:
             context = cached.get("context_string", "")
-            logger.info(f"Using cached RAG results for {category}")
+            logger.info("Using cached RAG results for %s", category)
         else:
             # Enhanced RAG検索
             rag_result = await self.enhanced_rag.search(
@@ -172,7 +175,7 @@ class BusinessInfoAgent:
             }
 
         except Exception as e:
-            logger.error("LLM error: %s", e, exc_info=True)
+            logger.exception("LLM error: %s", e)
             return self._get_default_response(language, request_type)
 
     def _map_request_type_to_category(self, request_type: Optional[str]) -> str:
@@ -251,8 +254,11 @@ class BusinessInfoAgent:
             - 最大1-2文の簡潔な応答を促す
         """
         logger.debug(
-            f"Building prompt: query_length={len(query)}, context_length={len(context)}, "
-            f"request_type={request_type}, language={language}"
+            "Building prompt: query_length=%d, context_length=%d, request_type=%s, language=%s",
+            len(query),
+            len(context),
+            request_type,
+            language,
         )
 
         if request_type:

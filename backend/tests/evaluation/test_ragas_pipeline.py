@@ -475,7 +475,7 @@ class TestReportRagasMetrics:
     """ComprehensiveEvaluationReport に ragas_metrics フィールドが追加されていること"""
 
     def test_ragas_metrics_field_exists(self):
-        from tests.utils.evaluators.report_generator import ComprehensiveEvaluationReport
+        from backend.tests.utils.evaluators.report_generator import ComprehensiveEvaluationReport
 
         report = ComprehensiveEvaluationReport(
             report_id="test",
@@ -492,7 +492,7 @@ class TestReportRagasMetrics:
         assert report.ragas_metrics["answer_correctness"] == 0.75
 
     def test_ragas_metrics_defaults_to_none(self):
-        from tests.utils.evaluators.report_generator import ComprehensiveEvaluationReport
+        from backend.tests.utils.evaluators.report_generator import ComprehensiveEvaluationReport
 
         report = ComprehensiveEvaluationReport(
             report_id="test",

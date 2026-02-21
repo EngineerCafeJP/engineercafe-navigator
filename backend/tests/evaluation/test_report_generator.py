@@ -2,17 +2,17 @@
 評価レポート生成器のテスト
 """
 
-from tests.utils.evaluators.report_generator import (
+from backend.tests.utils.evaluators.report_generator import (
     EvaluationReportGenerator,
     ComprehensiveEvaluationReport,
     create_report_generator,
 )
-from tests.utils.evaluators.routing_accuracy import (
+from backend.tests.utils.evaluators.routing_accuracy import (
     RoutingMetrics,
     AgentMetrics,
     RoutingResult,
 )
-from tests.utils.evaluators.llm_judge import JudgeResult
+from backend.tests.utils.evaluators.llm_judge import JudgeResult
 
 
 class TestEvaluationReportGenerator:

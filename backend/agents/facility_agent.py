@@ -123,7 +123,10 @@ class FacilityAgent:
             - RAG検索失敗時はデフォルト応答を返す（confidence: 0.3）
         """
         logger.info(
-            f"Processing query: {query[:50]}..., request_type: {request_type}, language: {language}"
+            "Processing query: %s..., request_type: %s, language: %s",
+            query[:50],
+            request_type,
+            language,
         )
 
         # Check cached RAG results
@@ -184,7 +187,7 @@ class FacilityAgent:
             }
 
         except Exception as e:
-            logger.error("LLM error: %s", e, exc_info=True)
+            logger.exception("LLM error: %s", e)
             return self._get_default_response(language, request_type)
 
     def _enhance_query(self, query: str, request_type: Optional[str], language: str) -> str:
@@ -270,8 +273,11 @@ class FacilityAgent:
     ) -> str:
         """LLMプロンプトを構築（外部テンプレートに委譲）"""
         logger.debug(
-            f"Building prompt: query_length={len(query)}, context_length={len(context)}, "
-            f"request_type={request_type}, language={language}"
+            "Building prompt: query_length=%d, context_length=%d, request_type=%s, language=%s",
+            len(query),
+            len(context),
+            request_type,
+            language,
         )
         return build_facility_prompt(query, context, request_type, language)
 

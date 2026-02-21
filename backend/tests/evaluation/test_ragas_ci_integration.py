@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from tests.evaluation.run_ragas_evaluation import (
+from backend.tests.evaluation.run_ragas_evaluation import (
     _build_eval_dicts_golden,
     _build_eval_dicts_live,
     _generate_live_response,
@@ -13,7 +13,7 @@ from tests.evaluation.run_ragas_evaluation import (
     _write_github_summary,
     run_evaluation,
 )
-from tests.fixtures.dataset_loader import GroundTruthCase
+from backend.tests.fixtures.dataset_loader import GroundTruthCase
 
 
 class TestWriteGithubOutputs:
@@ -160,7 +160,7 @@ class TestBuildEvalDictsLive:
         ]
 
         with patch(
-            "tests.evaluation.run_ragas_evaluation._generate_live_response",
+            "backend.tests.evaluation.run_ragas_evaluation._generate_live_response",
             new_callable=AsyncMock,
             return_value=("ライブLLM回答", ["ライブコンテキスト1", "ライブコンテキスト2"]),
         ):
@@ -189,7 +189,7 @@ class TestBuildEvalDictsLive:
             return "成功回答", ["成功コンテキスト"]
 
         with patch(
-            "tests.evaluation.run_ragas_evaluation._generate_live_response",
+            "backend.tests.evaluation.run_ragas_evaluation._generate_live_response",
             side_effect=mock_generate,
         ):
             result = await _build_eval_dicts_live(cases, max_cases=10)
@@ -278,7 +278,7 @@ class TestRunEvaluationModeArg:
         """デフォルトモードが golden であること"""
         with (
             patch(
-                "tests.evaluation.run_ragas_evaluation.DatasetLoader.load_ground_truth_cases",
+                "backend.tests.evaluation.run_ragas_evaluation.DatasetLoader.load_ground_truth_cases",
                 return_value=[],
             ),
         ):
@@ -290,7 +290,7 @@ class TestRunEvaluationModeArg:
         """live モードが受け入れられること"""
         with (
             patch(
-                "tests.evaluation.run_ragas_evaluation.DatasetLoader.load_ground_truth_cases",
+                "backend.tests.evaluation.run_ragas_evaluation.DatasetLoader.load_ground_truth_cases",
                 return_value=[],
             ),
         ):

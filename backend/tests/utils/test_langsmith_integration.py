@@ -3,7 +3,7 @@ LangSmith統合のテスト
 """
 
 import pytest
-from tests.utils.langsmith_integration import (
+from backend.tests.utils.langsmith_integration import (
     LangSmithEvaluator,
     AgentEvaluationReport,
     EvaluationResult,

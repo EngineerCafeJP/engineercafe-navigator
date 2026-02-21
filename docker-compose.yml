@@ -51,6 +51,12 @@ services:
         condition: service_healthy
       kokoro-tts:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "scripts/healthcheck.py"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
     networks:
       - engineer-cafe-network
     extra_hosts:

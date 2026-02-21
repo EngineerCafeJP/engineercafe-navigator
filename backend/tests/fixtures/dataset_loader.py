@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from tests.utils.evaluators.routing_accuracy import RoutingTestCase
+from backend.tests.utils.evaluators.routing_accuracy import RoutingTestCase
 
 
 @dataclass

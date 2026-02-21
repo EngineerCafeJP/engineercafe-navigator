@@ -175,7 +175,7 @@ async def list_knowledge(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to list knowledge: {e}")
+        logger.error("Failed to list knowledge: %s", e)
         raise HTTPException(status_code=500, detail="Failed to list knowledge entries")
 
 
@@ -197,7 +197,7 @@ async def get_knowledge(knowledge_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to get knowledge {knowledge_id}: {e}")
+        logger.error("Failed to get knowledge %s: %s", knowledge_id, e)
         raise HTTPException(status_code=500, detail="Failed to get knowledge entry")
 
 
@@ -251,7 +251,7 @@ async def create_knowledge(request: KnowledgeCreateRequest):
                 status_code=409,
                 detail=f"Knowledge with title '{request.title}' already exists",
             )
-        logger.error(f"Failed to create knowledge: {e}")
+        logger.error("Failed to create knowledge: %s", e)
         raise HTTPException(status_code=500, detail="Failed to create knowledge entry")
 
 
@@ -360,7 +360,7 @@ async def upload_knowledge(
                 status_code=409,
                 detail=f"Knowledge with title '{effective_title}' already exists",
             )
-        logger.error(f"Failed to upload knowledge: {e}")
+        logger.error("Failed to upload knowledge: %s", e)
         raise HTTPException(status_code=500, detail="Failed to upload knowledge entry")
 
 
@@ -436,7 +436,7 @@ async def update_knowledge(knowledge_id: str, request: KnowledgeUpdateRequest):
                 status_code=409,
                 detail=f"Knowledge with title '{request.title}' already exists",
             )
-        logger.error(f"Failed to update knowledge {knowledge_id}: {e}")
+        logger.error("Failed to update knowledge %s: %s", knowledge_id, e)
         raise HTTPException(status_code=500, detail="Failed to update knowledge entry")
 
 
@@ -461,5 +461,5 @@ async def delete_knowledge(knowledge_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to delete knowledge {knowledge_id}: {e}")
+        logger.error("Failed to delete knowledge %s: %s", knowledge_id, e)
         raise HTTPException(status_code=500, detail="Failed to delete knowledge entry")

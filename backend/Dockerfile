@@ -21,6 +21,12 @@ COPY requirements.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Enable 'from backend.xxx' imports:
+# Source lives at /app/ which has __init__.py, making it a Python package.
+# Create /pypath/backend -> /app symlink so Python resolves 'backend' as a package.
+RUN mkdir -p /pypath && ln -s /app /pypath/backend
+ENV PYTHONPATH="/pypath"
+
 # Development stage
 FROM base AS development
 
@@ -48,6 +54,10 @@ COPY . .
 
 # Expose port
 EXPOSE 8000
+
+# Healthcheck for production
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+    CMD python scripts/healthcheck.py || exit 1
 
 # Run with production settings
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

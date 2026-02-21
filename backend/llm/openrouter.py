@@ -175,7 +175,9 @@ class OpenRouterProvider(LLMProvider):
             # Try fallback model if available (prevent infinite loop)
             if config.fallback_model and _fallback_count < 1:
                 logger.warning(
-                    f"HTTP error (status {e.response.status_code}), trying fallback: {config.fallback_model.value}"
+                    "HTTP error (status %d), trying fallback: %s",
+                    e.response.status_code,
+                    config.fallback_model.value,
                 )
                 fallback_config = ModelConfig(
                     model_id=config.fallback_model,
@@ -195,7 +197,7 @@ class OpenRouterProvider(LLMProvider):
         except httpx.RequestError as e:
             # Try fallback model for network errors (prevent infinite loop)
             if config.fallback_model and _fallback_count < 1:
-                logger.warning(f"Network error, trying fallback: {config.fallback_model.value}")
+                logger.warning("Network error, trying fallback: %s", config.fallback_model.value)
                 fallback_config = ModelConfig(
                     model_id=config.fallback_model,
                     temperature=config.temperature,

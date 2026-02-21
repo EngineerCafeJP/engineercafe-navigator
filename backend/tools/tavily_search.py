@@ -88,7 +88,7 @@ class TavilySearchTool:
             }
 
         except Exception as e:
-            logger.error("Tavily search error: %s", e, exc_info=True)
+            logger.exception("Tavily search error: %s", e)
             return {"success": False, "text": "", "results": [], "sources": []}
 
     @staticmethod

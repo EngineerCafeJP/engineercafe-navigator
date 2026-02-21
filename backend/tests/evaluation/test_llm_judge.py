@@ -5,7 +5,7 @@ LLM Judge評価器のテスト
 import pytest
 from unittest.mock import patch
 
-from tests.utils.evaluators.llm_judge import (
+from backend.tests.utils.evaluators.llm_judge import (
     LLMJudgeEvaluator,
     JudgeResult,
     QualityDimension,
@@ -233,7 +233,7 @@ class TestLLMJudgeOpenRouterFallback:
         """OPENROUTER_API_KEY のみでも LLM が初期化される"""
         env = {"OPENROUTER_API_KEY": "sk-or-test-key"}
         with patch.dict("os.environ", env, clear=True):
-            with patch("tests.utils.evaluators.llm_judge.ChatOpenAI") as mock_chat:
+            with patch("backend.tests.utils.evaluators.llm_judge.ChatOpenAI") as mock_chat:
                 mock_chat.return_value = "mock_llm"
                 LLMJudgeEvaluator()
                 mock_chat.assert_called_once()
@@ -246,7 +246,7 @@ class TestLLMJudgeOpenRouterFallback:
         """OpenRouter 使用時にモデル名がプロバイダープレフィックス付きに変換される"""
         env = {"OPENROUTER_API_KEY": "sk-or-test-key"}
         with patch.dict("os.environ", env, clear=True):
-            with patch("tests.utils.evaluators.llm_judge.ChatOpenAI") as mock_chat:
+            with patch("backend.tests.utils.evaluators.llm_judge.ChatOpenAI") as mock_chat:
                 mock_chat.return_value = "mock_llm"
                 LLMJudgeEvaluator(model_name="gpt-4o")
                 call_kwargs = mock_chat.call_args[1]
@@ -259,7 +259,7 @@ class TestLLMJudgeOpenRouterFallback:
             "OPENROUTER_API_KEY": "sk-or-test",
         }
         with patch.dict("os.environ", env, clear=True):
-            with patch("tests.utils.evaluators.llm_judge.ChatOpenAI") as mock_chat:
+            with patch("backend.tests.utils.evaluators.llm_judge.ChatOpenAI") as mock_chat:
                 mock_chat.return_value = "mock_llm"
                 LLMJudgeEvaluator()
                 call_kwargs = mock_chat.call_args[1]

@@ -367,12 +367,12 @@ async def run_comprehensive_evaluation(
     Returns:
         Dict[str, Any]: 統合評価結果
     """
-    from tests.utils.evaluators.routing_accuracy import (
+    from backend.tests.utils.evaluators.routing_accuracy import (
         RoutingAccuracyEvaluator,
         RoutingTestCase,
     )
-    from tests.utils.evaluators.llm_judge import LLMJudgeEvaluator
-    from tests.utils.evaluators.report_generator import EvaluationReportGenerator
+    from backend.tests.utils.evaluators.llm_judge import LLMJudgeEvaluator
+    from backend.tests.utils.evaluators.report_generator import EvaluationReportGenerator
 
     results: Dict[str, Any] = {
         "timestamp": datetime.now().isoformat(),

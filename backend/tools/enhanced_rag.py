@@ -77,8 +77,8 @@ class EnhancedRAGSearch:
             検索結果辞書 {success, data: {context, results, totalResults, topEntity}}
         """
         try:
-            logger.info(f"Starting search with query: {query[:50]}")
-            logger.debug(f"Category: {category}, Language: {language}")
+            logger.info("Starting search with query: %s", query[:50])
+            logger.debug("Category: %s, Language: %s", category, language)
 
             # 1. OpenAI Embeddings APIでクエリをエンベディング化
             embedding = await self._generate_embedding(query)
@@ -136,7 +136,15 @@ class EnhancedRAGSearch:
             top_results = scored_results[:max_results]
 
             logger.debug(
-                f"Top results after scoring: {[{'title': r.get('title'), 'entity': r.get('entity'), 'priority_score': r.get('priority_score')} for r in top_results]}"
+                "Top results after scoring: %s",
+                [
+                    {
+                        "title": r.get("title"),
+                        "entity": r.get("entity"),
+                        "priority_score": r.get("priority_score"),
+                    }
+                    for r in top_results
+                ],
             )
 
             # 5. コンテキストを構築
@@ -161,7 +169,7 @@ class EnhancedRAGSearch:
             }
 
         except Exception as e:
-            logger.error("Search error: %s", e, exc_info=True)
+            logger.exception("Search error: %s", e)
             return {"success": False, "error": str(e)}
 
     async def _generate_embedding(self, text: str) -> List[float]:
@@ -255,7 +263,7 @@ class EnhancedRAGSearch:
                     base_thresholds=thresholds,
                 )
             except Exception as e:
-                logger.warning(f"Context priority adjustment failed, using static thresholds: {e}")
+                logger.warning("Context priority adjustment failed, using static thresholds: %s", e)
                 thresholds = CATEGORY_THRESHOLDS.get(category, DEFAULT_THRESHOLDS)
 
         high_threshold = thresholds["high"]
@@ -341,14 +349,17 @@ class EnhancedRAGSearch:
 
             # LOW: 除外（ログに記録）
             logger.debug(
-                f"Filtered out low-relevance result: "
-                f"title={result.get('title', 'N/A')}, score={score:.3f}"
+                "Filtered out low-relevance result: title=%s, score=%.3f",
+                result.get("title", "N/A"),
+                score,
             )
 
         logger.info(
-            f"Grade results: {len(graded_results)}/{len(scored_results)} passed "
-            f"(HIGH: {sum(1 for r in graded_results if r.get('grade') == 'HIGH')}, "
-            f"MEDIUM: {sum(1 for r in graded_results if r.get('grade') == 'MEDIUM')})"
+            "Grade results: %d/%d passed (HIGH: %d, MEDIUM: %d)",
+            len(graded_results),
+            len(scored_results),
+            sum(1 for r in graded_results if r.get("grade") == "HIGH"),
+            sum(1 for r in graded_results if r.get("grade") == "MEDIUM"),
         )
 
         return graded_results
@@ -536,7 +547,7 @@ class EnhancedRAGSearch:
             検索結果辞書 {success, data: {context, results, totalResults, topEntity}}
         """
         try:
-            logger.info(f"Starting hierarchical search: {query[:50]}")
+            logger.info("Starting hierarchical search: %s", query[:50])
 
             # 1. Embedding生成
             embedding = await self._generate_embedding(query)
@@ -559,7 +570,7 @@ class EnhancedRAGSearch:
                 )
             except Exception as rpc_err:
                 logger.warning(
-                    f"Hierarchical RPC not available, falling back to standard search: {rpc_err}"
+                    "Hierarchical RPC not available, falling back to standard search: %s", rpc_err
                 )
                 return await self.search(
                     query=query,
@@ -620,7 +631,7 @@ class EnhancedRAGSearch:
             }
 
         except Exception as e:
-            logger.error("Hierarchical search error: %s", e, exc_info=True)
+            logger.exception("Hierarchical search error: %s", e)
             return {"success": False, "error": str(e)}
 
     def _expand_parent_context(self, chunk_results: List[Dict]) -> List[Dict]:

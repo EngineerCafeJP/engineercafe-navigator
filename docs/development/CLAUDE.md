@@ -700,6 +700,29 @@ The system now intelligently extracts specific request types from user queries:
 - **Context Preservation**: Emotional states and metadata preserved across interactions
 - **Smart TTL Management**: Automatic cleanup with configurable expiration windows
 
+## Permissions and Security
+
+### External Service Integration Permissions
+
+Claude Code is authorized to execute bash commands for the following operations:
+
+#### Database Testing (Supabase Integration)
+- Running Supabase integration tests that connect to external database services
+- Executing test scripts that require database connections (e.g., `pnpm test:integration`)
+- Database migration and setup commands (e.g., `pnpm db:migrate`, `pnpm db:setup-admin`)
+
+#### Container Operations (Docker)
+- Building Docker images (e.g., `docker build`, `docker-compose build`)
+- Running containerized services for testing (e.g., `docker-compose up`)
+- Container management commands (e.g., `docker ps`, `docker logs`)
+
+#### CI/CD Operations
+- Running linting and type checking commands (e.g., `pnpm lint`, `pnpm typecheck`)
+- Executing test suites (e.g., `pnpm test`, `pytest`)
+- Building production artifacts (e.g., `pnpm build`)
+
+**Security Note**: These operations involve user input processing and external service connections. All commands are executed with appropriate input validation and sanitization.
+
 ## Recent Fixes and Improvements (2024-2025)
 
 ### Contextual Query Handling (2025-07-02)

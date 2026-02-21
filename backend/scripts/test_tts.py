@@ -19,6 +19,7 @@ def _ensure_path():
     if "backend" not in sys.path and "backend.agents" not in str(sys.path):
         try:
             from pathlib import Path
+
             backend_dir = Path(__file__).resolve().parent.parent
             root = backend_dir.parent
             if str(root) not in sys.path:
@@ -35,7 +36,9 @@ async def main():
 
     # 日本語
     print("--- 日本語 TTS (VoiceVox) ---")
-    result_ja = await agent.text_to_speech("こんにちは、エンジニアカフェへようこそ！", language="ja")
+    result_ja = await agent.text_to_speech(
+        "こんにちは、エンジニアカフェへようこそ！", language="ja"
+    )
     print(f"  Success: {result_ja['success']}")
     print(f"  Language: {result_ja.get('language')}")
     print(f"  Format: {result_ja.get('format')}")

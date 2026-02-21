@@ -100,10 +100,11 @@ class CharacterControlAgent:
         # self.lip_sync_cache = None
 
         logger.info(
-            f"CharacterControlAgent初期化完了: expression={self.current_expression}, "
-            f"intensity={self.current_intensity}, "
-            f"expression_duration={self.current_expression_duration}, "
-            f"animation={self.current_animation}"
+            "CharacterControlAgent初期化完了: expression=%s, intensity=%s, expression_duration=%s, animation=%s",
+            self.current_expression,
+            self.current_intensity,
+            self.current_expression_duration,
+            self.current_animation,
         )
 
     def map_emotion_to_expression(self, emotion: str) -> Dict[str, Any]:
@@ -133,9 +134,9 @@ class CharacterControlAgent:
             # 入力検証
             if not emotion or not isinstance(emotion, str):
                 logger.warning(
-                    f"無効な感情値: {emotion}, "
-                    f"型: {type(emotion).__name__}. "
-                    "デフォルト値'neutral'を使用します。"
+                    "無効な感情値: %s, 型: %s. デフォルト値'neutral'を使用します。",
+                    emotion,
+                    type(emotion).__name__,
                 )
                 emotion = "neutral"
 
@@ -155,9 +156,11 @@ class CharacterControlAgent:
             duration = self.DEFAULT_EXPRESSION_DURATION
 
             logger.info(
-                f"感情→表情マッピング: '{emotion}' -> "
-                f"expression='{mapped_expression}', "
-                f"intensity={intensity}, duration={duration}s"
+                "感情→表情マッピング: '%s' -> expression='%s', intensity=%s, duration=%ss",
+                emotion,
+                mapped_expression,
+                intensity,
+                duration,
             )
 
             return {
@@ -167,9 +170,10 @@ class CharacterControlAgent:
             }
 
         except Exception as e:
-            logger.error(
-                f"感情→表情マッピングエラー: emotion={emotion}, " f"error={e}",
-                exc_info=True,
+            logger.exception(
+                "感情→表情マッピングエラー: emotion=%s, error=%s",
+                emotion,
+                e,
             )
             # エラー時はデフォルト値を返す（EmotionMappingから取得）
             return {
@@ -204,27 +208,30 @@ class CharacterControlAgent:
             ランダム性の導入が予定されています。
         """
         try:
-            logger.info(f"アニメーション選択開始: emotion={emotion}")
+            logger.info("アニメーション選択開始: emotion=%s", emotion)
 
             # 1. emotionのバリデーション
             if not emotion or not isinstance(emotion, str):
                 logger.warning(
-                    f"無効な感情値: {emotion}, 型: {type(emotion).__name__}. "
-                    f"デフォルト値'{self.DEFAULT_ANIMATION}'を使用します。"
+                    "無効な感情値: %s, 型: %s. デフォルト値'%s'を使用します。",
+                    emotion,
+                    type(emotion).__name__,
+                    self.DEFAULT_ANIMATION,
                 )
                 return self.DEFAULT_ANIMATION
 
             # 2. EmotionMappingを使用してアニメーション名を取得
             animation = EmotionMapping.get_animation_for_emotion(emotion)
 
-            logger.info(f"アニメーション選択完了: emotion={emotion}, animation={animation}")
+            logger.info("アニメーション選択完了: emotion=%s, animation=%s", emotion, animation)
 
             return animation
 
         except Exception as e:
-            logger.error(
-                f"アニメーション選択エラー: emotion={emotion}, error={e}",
-                exc_info=True,
+            logger.exception(
+                "アニメーション選択エラー: emotion=%s, error=%s",
+                emotion,
+                e,
             )
             # エラー時はデフォルト値を返す
             return self.DEFAULT_ANIMATION
@@ -319,7 +326,7 @@ class CharacterControlAgent:
             return (duration, frames)
 
         except Exception as e:
-            logger.error(f"音声データ解析エラー: {e}", exc_info=True)
+            logger.exception("音声データ解析エラー: %s", e)
             raise
 
     def _determine_mouth_shape_simplified(self, rms: float, frame_data: np.ndarray) -> str:
@@ -413,8 +420,10 @@ class CharacterControlAgent:
         """
         try:
             logger.info(
-                f"リップシンクデータ生成開始: text_length={len(text) if text else 0}, "
-                f"audio_duration={audio_duration}, has_audio_data={audio_data is not None}"
+                "リップシンクデータ生成開始: text_length=%d, audio_duration=%s, has_audio_data=%s",
+                len(text) if text else 0,
+                audio_duration,
+                audio_data is not None,
             )
 
             # 1. 音声データが提供されている場合は音声解析を試行
@@ -422,14 +431,15 @@ class CharacterControlAgent:
                 try:
                     duration, frames = self._analyze_audio_data(audio_data)
                     logger.info(
-                        f"音声データからリップシンクデータ生成完了: "
-                        f"duration={duration}s, frames={len(frames)}"
+                        "音声データからリップシンクデータ生成完了: duration=%ss, frames=%d",
+                        duration,
+                        len(frames),
                     )
                     return frames
                 except Exception as e:
                     logger.warning(
-                        f"音声データ解析に失敗しました: {e}. "
-                        "テキストベースのフォールバック処理に移行します。"
+                        "音声データ解析に失敗しました: %s. テキストベースのフォールバック処理に移行します。",
+                        e,
                     )
                     # フォールバック処理に移行
 
@@ -437,7 +447,7 @@ class CharacterControlAgent:
             # textの検証
             if not text or not isinstance(text, str) or not text.strip():
                 logger.warning(
-                    f"テキストが空または無効です: text={text}. " "フォールバック実装を使用します。"
+                    "テキストが空または無効です: text=%s. " "フォールバック実装を使用します。", text
                 )
                 fallback_duration = audio_duration if audio_duration and audio_duration > 0 else 1.0
                 return self._generate_fallback_lipsync(fallback_duration)
@@ -449,22 +459,24 @@ class CharacterControlAgent:
                 char_count = len(converted_text)
                 audio_duration = char_count * self.CHAR_DURATION_SECONDS
                 logger.info(
-                    f"audio_durationが未指定のため、文字数から算出: "
-                    f"char_count={char_count}, duration={audio_duration}s"
+                    "audio_durationが未指定のため、文字数から算出: char_count=%d, duration=%ss",
+                    char_count,
+                    audio_duration,
                 )
 
             # テキストベースのリップシンクデータ生成
             frames = self._generate_visemes_from_text(text, audio_duration)
 
-            logger.info(f"リップシンクデータ生成完了: frames={len(frames)}")
+            logger.info("リップシンクデータ生成完了: frames=%d", len(frames))
 
             return frames
 
         except Exception as e:
-            logger.error(
-                f"リップシンクデータ生成エラー: text_length={len(text) if text else 0}, "
-                f"audio_duration={audio_duration}, error={e}",
-                exc_info=True,
+            logger.exception(
+                "リップシンクデータ生成エラー: text_length=%d, audio_duration=%s, error=%s",
+                len(text) if text else 0,
+                audio_duration,
+                e,
             )
             # エラー時はフォールバック実装を返す
             fallback_duration = audio_duration if audio_duration and audio_duration > 0 else 1.0
@@ -780,7 +792,7 @@ class CharacterControlAgent:
         - 複数感情のブレンド（例: happy + excited → very_happy）
         - 矛盾する感情の解決（例: happy + sad → neutral）
         """
-        logger.info(f"感情統合（骨組み）: {emotions}")
+        logger.info("感情統合（骨組み）: %s", emotions)
 
         # TODO: 実装
         # プレースホルダー: 最初の感情を返す
@@ -826,23 +838,27 @@ class CharacterControlAgent:
         """
         try:
             logger.info(
-                f"VRM制御コマンド生成開始: expression={expression}, "
-                f"intensity={intensity}, animation={animation}"
+                "VRM制御コマンド生成開始: expression=%s, intensity=%s, animation=%s",
+                expression,
+                intensity,
+                animation,
             )
 
             # 1. 入力検証
             if not expression or not isinstance(expression, str):
                 logger.warning(
-                    f"無効な表情名: {expression}, 型: {type(expression).__name__}. "
-                    "デフォルト値'neutral'を使用します。"
+                    "無効な表情名: %s, 型: %s. デフォルト値'neutral'を使用します。",
+                    expression,
+                    type(expression).__name__,
                 )
                 expression = self.DEFAULT_EXPRESSION
 
             # intensityの範囲チェック
             if not isinstance(intensity, (int, float)):
                 logger.warning(
-                    f"無効な強度値: {intensity}, 型: {type(intensity).__name__}. "
-                    "デフォルト値1.0を使用します。"
+                    "無効な強度値: %s, 型: %s. デフォルト値1.0を使用します。",
+                    intensity,
+                    type(intensity).__name__,
                 )
                 intensity = self.DEFAULT_INTENSITY
             else:
@@ -873,16 +889,20 @@ class CharacterControlAgent:
             }
 
             logger.info(
-                f"VRM制御コマンド生成完了: expression={expression}, "
-                f"intensity={intensity}, expressions_count={len(expressions)}"
+                "VRM制御コマンド生成完了: expression=%s, intensity=%s, expressions_count=%d",
+                expression,
+                intensity,
+                len(expressions),
             )
 
             return vrm_control
 
         except Exception as e:
             logger.error(
-                f"VRM制御コマンド生成エラー: expression={expression}, "
-                f"intensity={intensity}, error={e}",
+                "VRM制御コマンド生成エラー: expression=%s, intensity=%s, error=%s",
+                expression,
+                intensity,
+                e,
                 exc_info=False,  # exc_info=True を False に変更してログフォーマッターの max() 呼び出しを回避
             )
             # エラー時はデフォルト値を返す
@@ -982,9 +1002,10 @@ class CharacterControlAgent:
             asyncio.run(main())
         """
         logger.info(
-            f"CharacterControlAgent処理開始: emotion={emotion}, "
-            f"text_length={len(text) if text else 0}, "
-            f"audio_duration={audio_duration}"
+            "CharacterControlAgent処理開始: emotion=%s, text_length=%d, audio_duration=%s",
+            emotion,
+            len(text) if text else 0,
+            audio_duration,
         )
 
         try:
@@ -1014,11 +1035,11 @@ class CharacterControlAgent:
 
                     if lipsync_data and len(lipsync_data) > 0:
                         has_lipsync = True
-                        logger.info(f"リップシンクデータ生成完了: frames={len(lipsync_data)}")
+                        logger.info("リップシンクデータ生成完了: frames=%d", len(lipsync_data))
                 except Exception as lipsync_error:
                     logger.warning(
-                        f"リップシンクデータ生成エラー: {lipsync_error}, "
-                        "リップシンクなしで続行します。",
+                        "リップシンクデータ生成エラー: %s, リップシンクなしで続行します。",
+                        lipsync_error,
                         exc_info=True,
                     )
 
@@ -1102,19 +1123,21 @@ class CharacterControlAgent:
                 result["text"] = text
 
             logger.info(
-                f"CharacterControlAgent処理完了: name={result['name']}, "
-                f"keyframes_count={len(keyframes)}, "
-                f"duration={duration}, "
-                f"lipsync_frames={len(lipsync_data) if has_lipsync else 0}"
+                "CharacterControlAgent処理完了: name=%s, keyframes_count=%d, duration=%d, lipsync_frames=%d",
+                result["name"],
+                len(keyframes),
+                duration,
+                len(lipsync_data) if has_lipsync else 0,
             )
 
             return result
 
         except Exception as e:
-            logger.error(
-                f"CharacterControlAgent処理エラー: emotion={emotion}, "
-                f"text_length={len(text) if text else 0}, error={e}",
-                exc_info=True,
+            logger.exception(
+                "CharacterControlAgent処理エラー: emotion=%s, text_length=%d, error=%s",
+                emotion,
+                len(text) if text else 0,
+                e,
             )
             default_data = EmotionMapping.get_expression_with_intensity("neutral")
             default_expr = default_data["expression"]

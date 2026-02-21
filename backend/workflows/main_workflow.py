@@ -167,10 +167,12 @@ class MainWorkflow:
         if self._vision_agent is None:
             raise RuntimeError("VisionAgent is not available")
 
-        result = await self._vision_agent.run({
-            "image": state["image_data"],
-            "recognition_type": "text",
-        })
+        result = await self._vision_agent.run(
+            {
+                "image": state["image_data"],
+                "recognition_type": "text",
+            }
+        )
 
         # OCRテキストをqueryに追加
         ocr_text = result.get("text", {}).get("text", "")
@@ -188,10 +190,8 @@ class MainWorkflow:
             # Router / Memory 用
             "query": ocr_text or state.get("query", ""),
             "language": lang["detected"],
-
             # OCR情報保持
             "ocr_result": result,
-
             "metadata": {
                 **state.get("metadata", {}),
                 "detected_expression": expression,
@@ -232,7 +232,7 @@ class MainWorkflow:
                         content=query,
                     )
                 except Exception as store_error:
-                    logger.warning(f"Failed to store user message: {store_error}")
+                    logger.warning("Failed to store user message: %s", store_error)
 
             # RAG pre-fetch and cache in state
             try:
@@ -258,7 +258,7 @@ class MainWorkflow:
                     "query": query,
                 }
             except Exception as e:
-                logger.warning(f"RAG pre-fetch failed: {e}")
+                logger.warning("RAG pre-fetch failed: %s", e)
                 knowledge_results = {
                     "success": False,
                     "results": [],
@@ -278,7 +278,7 @@ class MainWorkflow:
                     knowledge_results=knowledge_results,
                 )
             except Exception as sig_err:
-                logger.debug(f"Priority signal extraction skipped: {sig_err}")
+                logger.debug("Priority signal extraction skipped: %s", sig_err)
 
             return {
                 "context": {
@@ -289,7 +289,7 @@ class MainWorkflow:
                 }
             }
         except Exception as e:
-            logger.warning(f"Memory loading failed: {e}")
+            logger.warning("Memory loading failed: %s", e)
             return {"context": {**state.get("context", {}), "memory": {}}}
 
     async def _orchestrator_node(self, state: WorkflowStateDict) -> Command[RoutingTarget]:
@@ -505,7 +505,7 @@ class MainWorkflow:
                 content=answer,
             )
         except Exception as store_error:
-            logger.warning(f"Failed to store assistant message: {store_error}")
+            logger.warning("Failed to store assistant message: %s", store_error)
 
         return {
             "messages": [
@@ -584,7 +584,7 @@ class MainWorkflow:
                     await self.checkpointer.conn.close()
                 logger.info("Checkpointer connection closed")
             except Exception as e:
-                logger.warning(f"Error closing checkpointer: {e}")
+                logger.warning("Error closing checkpointer: %s", e)
 
 
 # シングルトンインスタンス
@@ -616,7 +616,7 @@ async def get_workflow() -> MainWorkflow:
                         "Set SUPABASE_DB_URI for production use."
                     )
                 except Exception as e:
-                    logger.warning(f"Failed to create checkpointer: {e}")
+                    logger.warning("Failed to create checkpointer: %s", e)
 
                 _workflow_instance = MainWorkflow(checkpointer=checkpointer)
     return _workflow_instance

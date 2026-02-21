@@ -34,7 +34,7 @@ async def evaluate_answer_quality(max_cases: int = None) -> Dict[str, Any]:
     MainWorkflowに流し、ルーティング正確性 + 回答キーワード含有率を測定する。
     """
     from backend.workflows.main_workflow import MainWorkflow
-    from tests.fixtures.dataset_loader import DatasetLoader
+    from backend.tests.fixtures.dataset_loader import DatasetLoader
 
     workflow = MainWorkflow()
 

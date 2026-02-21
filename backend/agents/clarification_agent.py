@@ -89,7 +89,10 @@ class ClarificationAgent:
     }
 
     def __init__(self):
-        """初期化 - OpenRouterProvider + モデル設定"""
+        """Initialize ClarificationAgent.
+
+        Sets up OpenRouterProvider and model configuration for clarification processing.
+        """
         logger.info("ClarificationAgent初期化")
         self.llm = OpenRouterProvider()
         self.model_config = get_model_config("clarification")
@@ -144,7 +147,10 @@ class ClarificationAgent:
             ClarificationResult: 感情タグ付きの応答とメタデータ
         """
         logger.info(
-            f"ClarificationAgent.handle_clarification: query={query}, category={category}, language={language}"
+            "ClarificationAgent.handle_clarification: query=%s, category=%s, language=%s",
+            query,
+            category,
+            language,
         )
 
         # カフェの曖昧性解消
@@ -189,17 +195,16 @@ class ClarificationAgent:
         return self._create_result(default_message, "general-clarification-needed", confidence=0.7)
 
     async def detect_ambiguity(self, query: str, context: Optional[Dict[str, Any]] = None) -> bool:
-        """
-        曖昧さをキーワードベースで検出
+        """Detect ambiguity in user query using keyword-based detection.
 
         Args:
-            query: ユーザーの質問
-            context: コンテキスト情報（前の会話で既に特定済みの場合はFalse）
+            query: User's question to analyze.
+            context: Context information. If already clarified in previous conversation, returns False.
 
         Returns:
-            True: 曖昧な質問, False: 明確な質問
+            True if the question is ambiguous, False if it is clear.
         """
-        logger.info(f"曖昧さ検出: {query}")
+        logger.info("曖昧さ検出: %s", query)
         lower_query = query.lower()
 
         # コンテキストで既に特定済みの場合はスキップ
@@ -215,7 +220,7 @@ class ClarificationAgent:
             # 具体的なキーワードが含まれていない → 曖昧
             has_specific = any(kw.lower() in lower_query for kw in keywords["specifics"])
             if not has_specific:
-                logger.info(f"曖昧性検出: category={category}, query={query}")
+                logger.info("曖昧性検出: category=%s, query=%s", category, query)
                 return True
 
         return False
@@ -223,17 +228,16 @@ class ClarificationAgent:
     async def generate_clarification_options(
         self, query: str, context: Optional[Dict[str, Any]] = None
     ) -> List[Dict[str, str]]:
-        """
-        曖昧性のカテゴリを検出し、対応する選択肢を返す
+        """Detect ambiguity category and return corresponding options.
 
         Args:
-            query: ユーザーの質問
-            context: コンテキスト情報
+            query: User's question to analyze.
+            context: Context information.
 
         Returns:
-            選択肢のリスト [{label, value}, ...]
+            List of clarification options. Each option is a dict with 'label' and 'value' keys.
         """
-        logger.info(f"選択肢生成: {query}")
+        logger.info("選択肢生成: %s", query)
         lower_query = query.lower()
 
         for category, keywords in self._AMBIGUITY_KEYWORDS.items():
@@ -241,7 +245,7 @@ class ClarificationAgent:
             if has_trigger:
                 options = self._CLARIFICATION_OPTIONS.get(category, [])
                 if options:
-                    logger.info(f"選択肢生成完了: category={category}, options={len(options)}")
+                    logger.info("選択肢生成完了: category=%s, options=%d", category, len(options))
                     return list(options)  # Return a copy
 
         return []
@@ -249,17 +253,16 @@ class ClarificationAgent:
     async def format_clarification_question(
         self, original_query: str, options: List[Dict[str, str]]
     ) -> str:
-        """
-        LLM呼出しで自然な質問文を生成（フォールバック付き）
+        """Generate natural clarification question using LLM (with fallback).
 
         Args:
-            original_query: 元の質問
-            options: 選択肢リスト
+            original_query: Original user query.
+            options: List of clarification options.
 
         Returns:
-            フォーマットされた質問文
+            Formatted clarification question.
         """
-        logger.info(f"質問文フォーマット: {original_query}")
+        logger.info("質問文フォーマット: %s", original_query)
 
         if not options:
             return "申し訳ありません。もう少し詳しく教えていただけますか？"
@@ -294,29 +297,27 @@ class ClarificationAgent:
                 return response.strip()
 
         except Exception as e:
-            logger.warning(f"LLM質問文生成失敗、フォールバック使用: {e}")
+            logger.warning("LLM質問文生成失敗、フォールバック使用: %s", e)
 
         return fallback_question
 
     async def process(self, query: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """
-        明確化処理のメインエントリーポイント
+        """Main entry point for clarification processing.
 
-        detect_ambiguity → generate_options → format_question のパイプライン
+        Pipeline: detect_ambiguity → generate_options → format_question
 
         Args:
-            query: ユーザーの質問
-            context: コンテキスト情報
+            query: User's question to process.
+            context: Context information.
 
         Returns:
-            {
-                "needs_clarification": bool,
-                "clarification_question": str,
-                "options": List[Dict[str, str]],
-                "emotion": str
-            }
+            Clarification result dict with keys:
+                - needs_clarification (bool): Whether clarification is needed.
+                - clarification_question (str): Formatted question to ask user.
+                - options (List[Dict[str, str]]): List of clarification options.
+                - emotion (str): Emotion tag for response.
         """
-        logger.info(f"ClarificationAgent処理開始: {query}")
+        logger.info("ClarificationAgent処理開始: %s", query)
 
         try:
             # 1. 曖昧さ検出
@@ -344,7 +345,7 @@ class ClarificationAgent:
             }
 
         except Exception as e:
-            logger.error(f"ClarificationAgent処理エラー: {e}", exc_info=True)
+            logger.exception("ClarificationAgent処理エラー: %s", e)
             return {
                 "needs_clarification": False,
                 "clarification_question": "",

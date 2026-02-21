@@ -22,9 +22,9 @@ class SlideAgent:
     """スライドナレーターエージェント"""
 
     def __init__(self):
-        """初期化
+        """Initialize SlideAgent.
 
-        マルチセッション対応: session_id ベースの状態管理を実装
+        Multi-session support: implements session_id-based state management.
         """
         self.llm_provider = get_llm_provider()
         self.narration_data: Dict = {}
@@ -50,14 +50,13 @@ class SlideAgent:
         self._set_current_slide("default", value)
 
     def load_narration(self, language: str = "ja") -> bool:
-        """
-        ナレーションJSONを読み込み
+        """Load narration JSON file.
 
         Args:
-            language: 言語（ja or en）
+            language: Language code ('ja' or 'en').
 
         Returns:
-            読み込み成功: True, 失敗: False
+            True if loading succeeded, False otherwise.
         """
         try:
             # このファイル（slide_agent.py）からの相対パスで narration ディレクトリを探す
@@ -85,16 +84,18 @@ class SlideAgent:
                         self.narration_data = json.load(f)
                         self.total_slides = len(self.narration_data.get("slides", []))
                         logger.info(
-                            f"Loaded narration from {narration_path}, total slides: {self.total_slides}"
+                            "Loaded narration from %s, total slides: %s",
+                            narration_path,
+                            self.total_slides,
                         )
                         return True
 
-            logger.warning(f"Narration file not found for language: {language}")
-            logger.debug(f"Searched paths: {narration_paths}")
+            logger.warning("Narration file not found for language: %s", language)
+            logger.debug("Searched paths: %s", narration_paths)
             return False
 
         except Exception as e:
-            logger.error(f"Error loading narration: {e}")
+            logger.error("Error loading narration: %s", e)
             return False
 
     async def handle_slide_action(
@@ -304,7 +305,7 @@ class SlideAgent:
             }
 
         except Exception as e:
-            logger.error(f"LLM error: {e}")
+            logger.error("LLM error: %s", e)
             text = (
                 "申し訳ございません。回答を生成できませんでした。"
                 if language == "ja"

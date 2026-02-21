@@ -67,7 +67,7 @@ def _safe_int_env(name: str, default: int) -> int:
     try:
         return int(raw)
     except (ValueError, TypeError):
-        logger.warning("Invalid %s value '%s', using default %d", name, raw, default)
+        logger.warning("Invalid %s value %s, using default %d", name, raw, default)
         return default
 
 
@@ -342,7 +342,7 @@ class RagasEvaluator:
         try:
             return await self._run_ragas_evaluation(question, answer, contexts, ground_truth)
         except Exception as e:
-            logger.error(f"RAGAS evaluation failed for question '{question[:50]}': {e}")
+            logger.error("RAGAS evaluation failed for question %s: %s", question[:50], e)
             return RagasResult(question=question, error=str(e))
 
     async def evaluate_batch(
@@ -376,13 +376,13 @@ class RagasEvaluator:
 
         if report.skipped_cases > 0:
             logger.info(
-                f"Evaluating {len(eval_cases)} of {len(cases)} cases (limit: {self.max_cases})"
+                "Evaluating %d of %d cases (limit: %d)", len(eval_cases), len(cases), self.max_cases
             )
 
         try:
             report = await self._run_batch_evaluation(eval_cases, report)
         except Exception as e:
-            logger.error(f"Batch RAGAS evaluation failed: {e}")
+            logger.error("Batch RAGAS evaluation failed: %s", e)
             report.errors.append(str(e))
 
         report.metrics = report.metrics_summary

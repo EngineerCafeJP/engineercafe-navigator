@@ -55,11 +55,11 @@ def parse_markdown(content: bytes) -> str:
     # リンク記法をテキストのみに [text](url)
     text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
 
+    # コードブロックを除去（インラインコードより先に処理する）
+    text = re.sub(r"```[\s\S]*?```", "", text)
+
     # インラインコード記法を除去
     text = re.sub(r"`([^`]+)`", r"\1", text)
-
-    # コードブロックを除去
-    text = re.sub(r"```[\s\S]*?```", "", text)
 
     # 強調記法を除去 **bold** *italic* __bold__ _italic_
     text = re.sub(r"\*\*([^*]+)\*\*", r"\1", text)

@@ -26,14 +26,7 @@ class TestSettingsDefaults:
 
     def test_default_environment_is_development(self):
         """デフォルト環境はdevelopment"""
-        # conftest.pyの環境変数汚染を避けるため、明示的にインスタンス作成
-        s = Settings(
-            supabase_url="http://test",
-            supabase_key="test-key",
-        )
-        assert s.environment == "test"  # conftest.pyでENVIRONMENT=testが設定されている
-
-        # 環境変数なしの真のデフォルトをテスト
+        # 環境変数の影響を受けず、明示的にデフォルト値を検証
         s_clean = Settings(
             _env_file=None,  # .envファイルを読み込まない
             environment="development",
@@ -41,6 +34,15 @@ class TestSettingsDefaults:
             supabase_key="test-key",
         )
         assert s_clean.environment == "development"
+
+        # 明示的に "test" を渡したら "test" になること
+        s_test = Settings(
+            _env_file=None,
+            environment="test",
+            supabase_url="http://test",
+            supabase_key="test-key",
+        )
+        assert s_test.environment == "test"
 
     def test_default_debug_is_false(self):
         """デフォルトのdebugはFalse"""

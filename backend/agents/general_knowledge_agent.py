@@ -61,9 +61,11 @@ class GeneralKnowledgeAgent:
         self.rag_search = EnhancedRAGSearch()
         self.memory_system = memory_system
 
+        memory_status = "enabled" if memory_system else "disabled"
         logger.info(
-            f"GeneralKnowledgeAgent initialized with model: {self.model_config.model_id}, "
-            f"memory: {'enabled' if memory_system else 'disabled'}"
+            "GeneralKnowledgeAgent initialized with model: %s, memory: %s",
+            self.model_config.model_id,
+            memory_status,
         )
 
     async def answer_query(
@@ -102,12 +104,12 @@ class GeneralKnowledgeAgent:
         Returns:
             {"answer": str, "emotion": str, "metadata": Dict}
         """
-        logger.info(f"一般質問処理開始: query={query[:50]}..., language={language}")
+        logger.info("一般質問処理開始: query=%s..., language=%s", query[:50], language)
 
         try:
             # 1. Web検索の必要性判定（適応的）
             needs_web_search = self._should_use_web_search_adaptive(query, context_signals)
-            logger.info(f"Web検索必要性判定: {needs_web_search}")
+            logger.info("Web検索必要性判定: %s", needs_web_search)
 
             # 2. ナレッジベース検索（キャッシュチェック付き）
             context = ""
@@ -117,7 +119,7 @@ class GeneralKnowledgeAgent:
             if cached and cached.get("success") and cached.get("category") == "general":
                 context = cached.get("context_string", "")
                 sources.append("knowledge_base_cached")
-                logger.info(f"Using cached RAG results: {len(context)} chars")
+                logger.info("Using cached RAG results: %d chars", len(context))
             else:
                 kb_result = await self.rag_search.search(
                     query=query,
@@ -130,7 +132,7 @@ class GeneralKnowledgeAgent:
                 if kb_result.get("success") and kb_result.get("data"):
                     context = kb_result["data"].get("context", "")
                     sources.append("knowledge_base")
-                    logger.info(f"ナレッジベース検索成功: {len(context)} chars")
+                    logger.info("ナレッジベース検索成功: %d chars", len(context))
 
             # 3. Web検索(条件付き)
             if needs_web_search or not context:
@@ -149,7 +151,7 @@ class GeneralKnowledgeAgent:
 
                         sources.append("web_search")
                         logger.info(
-                            f"Web検索成功: {len(web_text)} chars, {len(web_sources)} sources"
+                            "Web検索成功: %d chars, %d sources", len(web_text), len(web_sources)
                         )
 
             # 4. コンテキストがない場合はフォールバック
@@ -172,7 +174,7 @@ class GeneralKnowledgeAgent:
             emotion = self._extract_emotion(response_text)
             confidence = self._calculate_confidence(sources)
 
-            logger.info(f"回答生成完了: emotion={emotion}, confidence={confidence}")
+            logger.info("回答生成完了: emotion=%s, confidence=%s", emotion, confidence)
 
             return {
                 "answer": response_text,
@@ -187,7 +189,7 @@ class GeneralKnowledgeAgent:
             }
 
         except Exception as e:
-            logger.error(f"GeneralKnowledgeAgent処理エラー: {e}", exc_info=True)
+            logger.exception("GeneralKnowledgeAgent処理エラー: %s", e)
             return self._handle_error(language)
 
     # =========================================================================
@@ -231,7 +233,7 @@ class GeneralKnowledgeAgent:
                 },
             }
         except Exception as e:
-            logger.error(f"Memory query error: {e}", exc_info=True)
+            logger.exception("Memory query error: %s", e)
             return {
                 "answer": (
                     "メモリの処理中にエラーが発生しました。"

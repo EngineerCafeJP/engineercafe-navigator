@@ -116,7 +116,7 @@ class EventAgent:
             - Calendar API失敗時はフォールバック応答を返す
             - イベント説明文は100文字に制限してトークン数を削減
         """
-        logger.info(f"Processing query: {query[:50]}..., language: {language}")
+        logger.info("Processing query: %s..., language: %s", query[:50], language)
 
         # クエリから時間範囲を抽出
         time_range = self.calendar_service.extract_time_range_from_query(query)
@@ -171,7 +171,7 @@ class EventAgent:
             }
 
         except Exception as e:
-            logger.error("LLM error: %s", e, exc_info=True)
+            logger.exception("LLM error: %s", e)
             return self._get_no_events_response(language, time_range)
 
     def _format_calendar_events(self, events: list, language: str) -> str:

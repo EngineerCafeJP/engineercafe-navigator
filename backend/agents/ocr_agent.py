@@ -6,7 +6,7 @@ import cv2
 import numpy as np
 from langchain_core.messages import BaseMessage, HumanMessage, ToolMessage
 from langchain_core.tools import tool
-from langgraph.graph import StateGraph, START, END
+from langgraph.graph import StateGraph, START
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
 
@@ -65,6 +65,11 @@ class VisionAgent:
     """
 
     def __init__(self):
+        """Initialize VisionAgent with vision model and tools.
+
+        Sets up OpenRouter LLM with vision capabilities and binds face_recognition
+        and text_recognition tools.
+        """
         provider = OpenRouterProvider()
         vision_config = get_model_config("vision")
         self.llm = provider.get_langchain_llm(config=vision_config)
@@ -99,12 +104,15 @@ class VisionAgent:
     # Public API（外部から呼ばれる）
     # =====================================================
     async def run(self, input: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        input:
-          {
-            "image": np.ndarray,
-            "recognition_type": "text" | "qr"
-          }
+        """Run vision recognition on input image.
+
+        Args:
+            input: Input dict with keys:
+                - image (np.ndarray): Input image array.
+                - recognition_type (str): Recognition type ('text' or 'qr').
+
+        Returns:
+            Recognition result dict with 'text', 'face', or 'qr' keys depending on recognition_type.
         """
 
         frame: np.ndarray = input["image"]
