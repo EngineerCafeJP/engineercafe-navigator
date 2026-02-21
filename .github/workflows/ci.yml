@@ -188,10 +188,12 @@ jobs:
           retention-days: 30
 
   # Backend: RAGAS tests (optional, informational only)
+  # Only runs on push to main/develop when OPENAI_API_KEY secret is available
   backend-test-ragas:
     needs: [changes, backend-test]
-    if: needs.changes.outputs.backend == 'true' && github.event_name == 'push' && secrets.OPENAI_API_KEY != ''
+    if: needs.changes.outputs.backend == 'true' && github.event_name == 'push'
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 
@@ -207,6 +209,7 @@ jobs:
         working-directory: backend
 
       - name: Run RAGAS tests
+        if: env.OPENAI_API_KEY != ''
         run: pytest -m "ragas" --tb=short -q
         working-directory: backend
         env:
