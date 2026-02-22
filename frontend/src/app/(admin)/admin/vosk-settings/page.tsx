@@ -9,9 +9,8 @@ import {
   VocabularyCategory,
 } from "@/types/vosk";
 import {
-  getVocabulary,
+  getVocabularyList,
   deleteVocabulary,
-  buildVocabularyListUrl,
 } from "@/lib/api/stt-vocabulary";
 import { DeleteConfirmModal } from "./components/DeleteConfirmModal";
 import { VoskVocabularyFilter } from "./components/VoskVocabularyFilter";
@@ -30,22 +29,21 @@ export default function VoskSettingsPage() {
   const [deletingItem, setDeletingItem] = useState<VocabularyItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // SWR キーを生成
+  // SWR キーとパラメータを生成
   const swrKey = useMemo(
-    () =>
-      buildVocabularyListUrl({
-        category: categoryFilter || undefined,
-        search: appliedSearch || undefined,
-        page,
-        limit: ITEMS_PER_PAGE,
-      }),
+    () => ({
+      category: categoryFilter || undefined,
+      search: appliedSearch || undefined,
+      page,
+      limit: ITEMS_PER_PAGE,
+    }),
     [categoryFilter, appliedSearch, page]
   );
 
   // SWR でデータを取得
   const { data, error, isLoading, mutate } = useSWR<VocabularyListResponse>(
     swrKey,
-    getVocabulary
+    getVocabularyList
   );
 
   const vocabularyData = data?.data ?? [];
