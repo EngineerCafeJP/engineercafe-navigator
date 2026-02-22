@@ -1,190 +1,306 @@
-# Agent Team 作成プロンプト
+# Agent Team: 設計フェーズ管理
 
-## ⚠️ Claude Code への指示
+## 前提条件
 
-**このドキュメントが提示されたら、以下を即座に実行してください：**
+Agent Teams機能を利用する前に、`settings.json`に以下を設定して有効化してください：
 
-### 実行手順
+```json
+{
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  }
+}
+```
 
-1. **4つのエージェントを並列起動**
-   - 1つのメッセージで4つのTask toolを呼び出す
-   - 各エージェントに `model: "sonnet"` を指定
-   - すべてエージェントを `run_in_background: true` で起動
-
-2. **各エージェントへの指示内容**
-
-   **Requirements Agent:**
-   ```
-   あなたは Requirements Agent（要件定義エージェント）です。
-
-   【役割】ユーザーの要望を聞き取り、機能要件を明確化する
-
-   【タスク】
-   1. `.claude/agent-teams/design-planning/output-templates/requirement-doc.md` を読む
-   2. AskUserQuestionツールでユーザーに以下を質問：
-      - 実装したい機能の概要
-      - 解決したい課題
-      - 対象ユーザー
-   3. コードベースを探索（Glob, Grep, Read）
-   4. テンプレートに従って `requirement-doc.md` を作成
-
-   【制約】ソースコード変更不可、Markdownドキュメントのみ
-   ```
-
-   **Planning Agent:**
-   ```
-   あなたは Planning Agent（計画エージェント）です。
-
-   【役割】作業を実行可能なタスクに分解し、実装計画を作成する
-
-   【タスク】
-   1. `requirement-doc.md` が作成されるまで待機
-   2. `.claude/agent-teams/design-planning/output-templates/plan-doc.md` を読む
-   3. 要件を分析し、詳細なタスク分解を作成
-   4. テンプレートに従って `plan-doc.md` を作成
-
-   【制約】ソースコード変更不可、Markdownドキュメントのみ
-   ```
-
-   **Architect Agent:**
-   ```
-   あなたは Architect Agent（アーキテクトエージェント）です。
-
-   【役割】技術的なソリューションを設計し、アーキテクチャの決定をレビューする
-
-   【タスク】
-   1. `requirement-doc.md` が作成されるまで待機
-   2. `.claude/agent-teams/design-planning/output-templates/architecture-doc.md` を読む
-   3. コンポーネント構造とインターフェースを設計
-   4. テンプレートに従って `architecture-doc.md` を作成
-
-   【制約】ソースコード変更不可、Markdownドキュメントのみ
-   ```
-
-   **Reviewer Agent:**
-   ```
-   あなたは Reviewer Agent（レビューエージェント）です。
-
-   【役割】前提を疑い、すべてのフェーズで品質を検証する
-
-   【タスク】
-   1. 各ドキュメント（requirement, plan, architecture）が作成されるまで待機
-   2. `.claude/agent-teams/design-planning/output-templates/review-doc.md` を読む
-   3. YAGNI違反、過度な抽象化、タスク粒度をチェック
-   4. テンプレートに従って `review-doc.md` を作成
-   5. 重要な違反を発見したらAskUserQuestionで確認
-
-   【制約】ソースコード変更不可、Markdownドキュメントのみ
-   ```
-
-3. **ユーザーへの報告**
-   ```
-   4つのエージェントチームを起動しました：
-   - Requirements Agent: ユーザーへの質問を開始
-   - Planning Agent: 要件ドキュメント作成待機中
-   - Architect Agent: 要件ドキュメント作成待機中
-   - Reviewer Agent: 各ドキュメント作成待機中
-
-   まず Requirements Agent がユーザーに質問します。回答後、他のエージェントが順次作業を開始します。
-   ```
+詳細は [Claude Code公式ドキュメント](https://code.claude.com/docs/ja/agent-teams) を参照してください。
 
 ---
 
-## エージェントチーム仕様
+## 使用方法
 
-以下、4つの専門エージェントからなるチームの詳細仕様：
+### ユーザーの操作
 
-**1. Requirements Agent（要件定義エージェント）**
-- 役割：ユーザーの要望を聞き取り、機能要件を明確化する
-- 責任範囲：
-  - ユーザーのニーズと目標を理解するため詳細に質問する
-  - 要件の曖昧さやエッジケースを特定する
-  - ユースケース、ユーザーストーリー、受け入れ基準を文書化する
-  - 要件の完全性を検証する
-  - コードベースを探索して既存パターンを理解する
-  - 他のエージェントからの質問に回答し、要件を明確化する
-- 使用可能ツール：Read, Grep, Glob, AskUserQuestion, Write（Markdownドキュメントのみ）
-- モデル：claude-sonnet-4-5
-- 制約：ソースコード変更不可、Markdownドキュメントのみ作成可能
-- 成果物：`requirement-doc.md` - `.claude/agent-teams/design-planning/output-templates/requirement-doc.md` のテンプレートに従った詳細な要件ドキュメント
+1. このファイルをClaude Codeに提示してください
+2. 以下のように指示してください（プロジェクト名を指定）：
 
-**2. Planning Agent（計画エージェント）**
-- 役割：作業を実行可能なタスクに分解し、実装計画を作成する
-- 責任範囲：
-  - 要件を分析し、詳細なタスク分解を作成する
-  - ファイルの依存関係と影響を受けるコンポーネントを特定する
-  - 適切な依存関係管理でタスクを順序付ける
-  - 複雑さを見積もり、リスクを特定する
-  - 実装スケジュールとマイルストーンを作成する
-  - 不明点があれば Requirements Agent に質問する
-  - Architect Agent と協力して技術的な実現可能性を確認する
-- 使用可能ツール：Read, Grep, Glob, Write（Markdownドキュメントのみ）
-- モデル：claude-sonnet-4-5
-- 制約：ソースコード変更不可、Markdownドキュメントのみ作成可能
-- 成果物：`plan-doc.md` - `.claude/agent-teams/design-planning/output-templates/plan-doc.md` のテンプレートに従った実装計画
+```
+このAgent Team設定ファイルを使って、設計フェーズを実行してください。
 
-**3. Architect Agent（アーキテクトエージェント）**
-- 役割：技術的なソリューションを設計し、アーキテクチャの決定をレビューする
-- 責任範囲：
-  - コンポーネント構造とインターフェースを設計する
-  - 既存のアーキテクチャパターンとの一貫性を確保する
-  - 統合ポイントとデータフローをレビューする
-  - パフォーマンス、スケーラビリティ、保守性を考慮する
-  - 設計の決定を根拠とともに文書化する
-  - 適切な場合は代替アプローチを提案する
-  - Planning Agent と協力して実装計画の技術的妥当性を検証する
-  - Reviewer Agent からの指摘に対して設計の根拠を説明する
-- 使用可能ツール：Read, Grep, Glob, Write（Markdownドキュメントのみ）
-- モデル：claude-sonnet-4-5
-- 制約：ソースコード変更不可、Markdownドキュメントのみ作成可能
-- 成果物：`architecture-doc.md` - `.claude/agent-teams/design-planning/output-templates/architecture-doc.md` のテンプレートに従ったアーキテクチャドキュメント
+プロジェクト名: my-project
+実装したい機能:
+[ここにあなたのプロジェクト説明を入力]
+```
 
-**4. Reviewer Agent（レビューエージェント）**
-- 役割：前提を疑い、すべてのフェーズで品質を検証する
-- 責任範囲：
-  - 計画、設計を批判的にレビューする
-  - タスク粒度の適切性をチェックする（大きすぎるタスクを特定）
-  - YAGNI違反（将来のための不要な機能）を特定する
-  - 過度な抽象化を特定する
-  - 1ファイル1責任の原則を検証する
-  - エッジケース、潜在的な問題を特定する
-  - セキュリティ、パフォーマンス、スケーラビリティの懸念をチェックする
-  - よりシンプルな代替案を提案する
-  - **重要**: 違反事項を発見した場合、必ずユーザーに対応の確認を求める
-  - 他のエージェントに質問や懸念を投げかけ、議論を促進する
-- 使用可能ツール：Read, Grep, Glob, Write（Markdownドキュメントのみ）
-- モデル：claude-sonnet-4-5
-- 制約：ソースコード変更不可、Markdownドキュメントのみ作成可能
-- 成果物：`review-doc.md` - `.claude/agent-teams/design-planning/output-templates/review-doc.md` のテンプレートに従ったレビューレポート
+### Claude Codeの自動処理
 
-**チームの協調作業：**
-- 各エージェントは独立して作業しつつ、必要に応じて他のエージェントに質問や確認を行う
-- Requirements Agent は要件が明確になり次第、他のエージェントに共有する
-- Planning Agent と Architect Agent は並行して作業し、相互に調整する
-- Reviewer Agent は各ドキュメントが作成され次第レビューを開始し、フィードバックを提供する
-- エージェント間で議論が発生した場合、合意が得られるまで対話を続ける
-- すべてのエージェントは `.claude/agent-teams/design-planning/output-templates/` のテンプレートを参照する
+Claude Codeはこのファイルを読むと以下を自動的に実行します：
 
-**最終成果物：**
-- `requirement-doc.md` - 要件ドキュメント
-- `plan-doc.md` - 実装計画
-- `architecture-doc.md` - アーキテクチャ設計
-- `review-doc.md` - レビューレポート
+1. **Requirements Agent を起動**（リーダーとしての第1段階）
+   - ユーザーと対話的に要件をヒアリング
+   - 詳細な要件ドキュメントを作成
+
+2. **要件確定後、3つのエージェント（Planning/Architect/Reviewer）を並列起動**
+   - Planning Agent: 実装計画を作成
+   - Architect Agent: アーキテクチャ設計を作成
+   - Reviewer Agent: 品質とリスクをレビュー
+   - すべてのエージェント間でメッセージング機能により自動的に協調
+
+3. **完了報告**
+   - 4つの成果物ドキュメントを生成
+   - 各エージェントのインサイトを統合
 
 ---
 
-## 使用方法（ユーザー向け）
+## エージェント仕様
 
-1. Claude Code でこのファイル（create-team.md）を選択
-2. チャットに投稿
-3. Claude Code が自動的に4つのエージェントを起動
-4. Requirements Agent からの質問に回答
-5. 成果物（`requirement-doc.md`, `plan-doc.md`, `architecture-doc.md`, `review-doc.md`）を確認
+### 1. Requirements Agent（要件定義エージェント）
 
-## 注意事項
+**役割**: ユーザーの要望を聞き取り、機能要件を明確化する
 
-- 4つのエージェントが並行動作するため、トークン使用量が多くなります
-- 複雑な設計タスクに最適（単純な実装には不向き）
-- すべてのエージェントはMarkdownドキュメントのみ作成（ソースコード変更不可）
-- エージェント間の対話と議論を通じて、質の高い設計が生まれます
-- 成果物は `.claude/agent-teams/design-planning/` ディレクトリに作成されます
+**責任範囲**:
+
+- ユーザーのニーズと目標を理解するため詳細に質問
+- 要件の曖昧さやエッジケースを特定
+- ユースケース、ユーザーストーリー、受け入れ基準を文書化
+- 要件の完全性を検証
+- コードベースを探索して既存パターンを理解
+- 他のエージェントからの質問に回答し、要件を明確化
+
+**使用可能ツール**: Read, Grep, Glob, AskUserQuestion, Write（Markdownドキュメントのみ）
+
+**モデル**: claude-sonnet-4-6
+
+**制約**: ソースコード変更不可、Markdownドキュメントのみ作成可能
+
+**成果物**:
+
+```
+.claude/design-output/[project]/requirement-doc.md
+```
+
+詳細な要件ドキュメント：
+
+- 機能要件
+- 非機能要件
+- ユースケース
+- 受け入れ基準
+- 制約と前提条件
+
+**エージェント間通信**:
+
+- 他のエージェントからメッセージを受信
+- ユーザーに質問（AskUserQuestion）して回答を取得
+- 回答をメッセージで質問元のエージェントに返信
+
+---
+
+### 2. Planning Agent（計画エージェント）
+
+**役割**: 作業を実行可能なタスクに分解し、実装計画を作成する
+
+**責任範囲**:
+
+- 要件を分析し、詳細なタスク分解を作成
+- ファイルの依存関係と影響を受けるコンポーネントを特定
+- 適切な依存関係管理でタスクを順序付け
+- 複雑さを見積もり、リスクを特定
+- 実装スケジュールとマイルストーンを作成
+- 不明点があれば Requirements Agent に質問
+- Architect Agent と協力して技術的な実現可能性を確認
+- Reviewer Agent のフィードバックに対応
+
+**使用可能ツール**: Read, Grep, Glob, Write（Markdownドキュメントのみ）
+
+**モデル**: claude-sonnet-4-6
+
+**制約**: ソースコード変更不可、Markdownドキュメントのみ作成可能
+
+**成果物**:
+
+```
+.claude/design-output/[project]/plan-doc.md
+```
+
+実装計画ドキュメント：
+
+- タスク分解（WBS）
+- 実装順序と依存関係
+- 各タスクの見積もり（難易度、リスク）
+- マイルストーン
+- リスク管理計画
+
+---
+
+### 3. Architect Agent（アーキテクトエージェント）
+
+**役割**: 技術的なソリューションを設計し、アーキテクチャの決定をレビューする
+
+**責任範囲**:
+
+- コンポーネント構造とインターフェースを設計
+- 既存のアーキテクチャパターンとの一貫性を確保
+- 統合ポイントとデータフローをレビュー
+- パフォーマンス、スケーラビリティ、保守性を考慮
+- 設計の決定を根拠とともに文書化
+- 適切な場合は代替アプローチを提案
+- Planning Agent と協力して実装計画の技術的妥当性を検証
+- Reviewer Agent からの指摘に対して設計の根拠を説明
+
+**使用可能ツール**: Read, Grep, Glob, Write（Markdownドキュメントのみ）
+
+**モデル**: claude-sonnet-4-6
+
+**制約**: ソースコード変更不可、Markdownドキュメントのみ作成可能
+
+**成果物**:
+
+```
+.claude/design-output/[project]/architecture-doc.md
+```
+
+アーキテクチャドキュメント：
+
+- システムアーキテクチャ全体像
+- コンポーネント設計と責任
+- インターフェース定義
+- データフロー
+- 統合戦略
+- パフォーマンス・スケーラビリティ考慮事項
+- セキュリティ設計
+
+---
+
+### 4. Reviewer Agent（レビューエージェント）
+
+**役割**: 前提を疑い、すべてのフェーズで品質を検証する
+
+**責任範囲**:
+
+- 計画、設計を批判的にレビュー
+- タスク粒度の適切性をチェック（大きすぎるタスクを特定）
+- YAGNI違反（将来のための不要な機能）を特定
+- 過度な抽象化を特定
+- 1ファイル1責任の原則を検証
+- エッジケース、潜在的な問題を特定
+- セキュリティ、パフォーマンス、スケーラビリティの懸念をチェック
+- よりシンプルな代替案を提案
+- 重要な問題を発見した場合、ユーザーに対応の確認を求める
+- 他のエージェントに質問や懸念を投げかけ、議論を促進
+
+**使用可能ツール**: Read, Grep, Glob, Write（Markdownドキュメントのみ）
+
+**モデル**: claude-sonnet-4-6
+
+**制約**: ソースコード変更不可、Markdownドキュメントのみ作成可能
+
+**成果物**:
+
+```
+.claude/design-output/[project]/review-doc.md
+```
+
+レビューレポート：
+
+- 発見された問題と懸念事項
+- 各問題のカテゴリ（YAGNI、抽象化、パフォーマンス等）
+- 重要度分類（High/Medium/Low）
+- 改善提案
+- 各エージェントとの議論結果
+
+---
+
+## エージェント間の協調メカニズム
+
+### メッセージング流れ
+
+1. **Planning/Architect/Reviewer が質問をメッセージで Requirements Agent に送信**
+   - 例：「機能Xの実装範囲について、より詳しく知りたいです」
+
+2. **Requirements Agent がユーザーに確認**
+   - AskUserQuestion ツールでユーザーに質問
+
+3. **ユーザーが回答**
+
+4. **Requirements Agent が回答をメッセージで返信**
+   - 質問元のエージェントが作業を継続
+
+### 直接メッセージング
+
+- Planning ↔ Architect：実装計画の技術的妥当性を確認
+- Architect ↔ Reviewer：設計の根拠と代替案を議論
+- Planning ↔ Reviewer：タスク粒度とリスク評価を調整
+
+### 議論と合意形成
+
+- エージェント間で意見が分かれた場合、メッセージングで議論
+- 合意が得られない場合は Requirements Agent 経由でユーザーに確認
+- すべてのエージェントはテンプレートを参照し、品質基準を維持
+
+---
+
+## 最終成果物
+
+すべてのドキュメントは `.claude/design-output/[project]/` に保存されます（`[project]`はプロジェクト名）：
+
+- **requirement-doc.md** - 要件ドキュメント
+- **plan-doc.md** - 実装計画
+- **architecture-doc.md** - アーキテクチャ設計
+- **review-doc.md** - レビューレポート
+
+例：プロジェクト名が「my-project」の場合：
+
+```
+.claude/design-output/my-project/
+├── requirement-doc.md
+├── plan-doc.md
+├── architecture-doc.md
+└── review-doc.md
+```
+
+これらのドキュメントは実装フェーズの基盤となります。
+
+---
+
+## 重要な注意事項
+
+- **段階的実行**: Requirements Agent が要件を確定した後、他の3つのエージェントが並列起動
+- **トークン使用量**: 4つのエージェントが独立して動作するため、トークン使用量が多くなります（大規模プロジェクト向け）
+- **ユーザーとの対話**: Requirements Agent を通じてのみユーザーと対話
+- **複雑な設計タスク専用**: 単純な実装には不向き
+- **ソースコード変更不可**: すべてのエージェントはMarkdownドキュメントのみ作成
+- **エージェント間通信**: メッセージング機能で自動的に協調し、質の高い設計が生まれます
+- **成果物の保存場所**: `.claude/design-output/[project]/` ディレクトリに作成（`[project]`はプロジェクト名）
+- **継続的なサポート**: Requirements Agent は他のエージェントが完了するまで待機し、質問対応を継続
+
+---
+
+## トラブルシューティング
+
+**エージェントが起動されない場合:**
+
+- `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` が `settings.json` に設定されているか確認
+- Claude Code が自然言語コマンドを正しく解釈しているか確認
+
+**エージェント間通信がうまくいかない場合:**
+
+- Claude Code（リーダー）に「Planning Agent と Architect Agent に協調を指示してください」とメッセージ
+- リーダーを通じてエージェント間の調整を促進
+
+**ファイルが見つからない場合:**
+
+- `.claude/design-output/[project]/` ディレクトリが自動的に作成されているか確認
+- `[project]` の部分が指定したプロジェクト名と一致しているか確認
+- ファイルパスが正確であるか確認（大文字小文字も含む）
+
+**処理が止まる場合:**
+
+- リーダーに「進捗状況を確認してください」と指示
+- 各エージェントのステータスをチェック
+- 必要に応じてエージェントに直接メッセージを送信
+
+---
+
+## 参考資料
+
+- [Claude Code Agent Teams ドキュメント](https://code.claude.com/docs/ja/agent-teams)
+- [Anthropic Claude API](https://docs.anthropic.com/)
