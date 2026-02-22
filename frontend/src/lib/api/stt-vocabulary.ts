@@ -28,37 +28,29 @@ if (
 }
 
 /**
- * 語彙一覧取得用 URL 生成
- * SWR のキーとして使用
+ * 語彙一覧取得（URL生成とfetchを統合）
+ * SWR キーは params オブジェクト、fetcher として使用
+ *
+ * page.tsx での使用例：
+ * const { data } = useSWR({ category, search, page, limit }, getVocabularyList);
  */
-export function buildVocabularyListUrl(params: {
+export async function getVocabularyList(params: {
   category?: string;
   search?: string;
   page?: number;
   limit?: number;
-}): string {
+}): Promise<VocabularyListResponse> {
   const query = new URLSearchParams();
   if (params.category) query.set("category", params.category);
   if (params.search) query.set("search", params.search);
   query.set("page", String(params.page ?? 1));
   query.set("limit", String(params.limit ?? 20));
-  return `${BACKEND_URL}/stt/vocabulary?${query.toString()}`;
-}
+  const url = `${BACKEND_URL}/stt/vocabulary?${query.toString()}`;
 
-/**
- * 語彙一覧取得（SWR 用 fetcher）
- * page.tsx での使用例：
- *
- * const url = buildVocabularyListUrl({ category, search, page, limit });
- * const { data } = useSWR(url, getVocabulary);
- */
-export const getVocabulary = (
-  url: string
-): Promise<VocabularyListResponse> =>
-  fetch(url).then((res) => {
-    if (!res.ok) throw new Error(`Failed to fetch vocabulary: ${res.status}`);
-    return res.json();
-  });
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Failed to fetch vocabulary: ${res.status}`);
+  return res.json();
+}
 
 /**
  * 語彙削除
