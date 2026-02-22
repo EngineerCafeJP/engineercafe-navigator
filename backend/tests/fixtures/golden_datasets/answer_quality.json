@@ -1,7 +1,8 @@
 {
-  "version": "1.2.0",
+  "version": "2.0.0",
   "description": "回答品質テストケース - 期待キーワードと期待エージェントの検証用",
   "created_at": "2026-02-14",
+  "updated_at": "2026-02-22",
   "source": "X投稿データに基づくEngineer Cafe実践情報",
   "test_cases": [
     {
@@ -103,6 +104,366 @@
       "language": "ja",
       "category": "meeting_room",
       "note": "会議室料金テーブルの提示を確認"
+    },
+    {
+      "id": "aq-011",
+      "question": "平日の営業時間は？",
+      "expected_answer": "エンジニアカフェの営業時間は9:00〜22:00です。平日・土日祝日ともに同じ時間帯で開館しています。",
+      "expected_keywords": ["9:00", "22:00"],
+      "expected_agent": "business_info",
+      "language": "ja",
+      "category": "hours",
+      "note": "基本的な営業時間の確認"
+    },
+    {
+      "id": "aq-012",
+      "question": "土日祝日も開いていますか？",
+      "expected_answer": "はい、エンジニアカフェは土日祝日も開館しています。営業時間は平日と同じ9:00〜22:00です。",
+      "expected_keywords": ["土日", "開館"],
+      "expected_agent": "business_info",
+      "language": "ja",
+      "category": "hours",
+      "note": "土日祝日の営業確認"
+    },
+    {
+      "id": "aq-013",
+      "question": "休館日はいつですか？",
+      "expected_answer": "エンジニアカフェの休館日は毎月最終月曜日と年末年始です。最終月曜日が祝日の場合は翌日が休館日になります。",
+      "expected_keywords": ["最終月曜", "年末年始"],
+      "expected_agent": "business_info",
+      "language": "ja",
+      "category": "hours",
+      "note": "休館日の情報確認"
+    },
+    {
+      "id": "aq-014",
+      "question": "利用料金はいくらですか？",
+      "expected_answer": "エンジニアカフェは無料でご利用いただけます。コワーキングスペース、WiFi、電源などを無料で提供しています。",
+      "expected_keywords": ["無料"],
+      "expected_agent": "business_info",
+      "language": "ja",
+      "category": "pricing",
+      "note": "基本利用料金（無料）の確認"
+    },
+    {
+      "id": "aq-015",
+      "question": "3Dプリンターの利用料金は？",
+      "expected_answer": "3Dプリンターの利用にはフィラメント代がかかります。使用したフィラメントの重量に応じて料金が計算されます。",
+      "expected_keywords": ["フィラメント", "円"],
+      "expected_agent": "facility",
+      "language": "ja",
+      "category": "pricing",
+      "note": "3Dプリンターのフィラメント代の確認"
+    },
+    {
+      "id": "aq-016",
+      "question": "天神駅からの行き方は？",
+      "expected_answer": "地下鉄天神駅から徒歩約10分です。天神駅を出て昭和通り方面に進み、赤煉瓦文化館を目指してください。",
+      "expected_keywords": ["天神", "徒歩"],
+      "expected_agent": "facility",
+      "language": "ja",
+      "category": "access",
+      "note": "天神駅からのアクセス案内"
+    },
+    {
+      "id": "aq-017",
+      "question": "最寄り駅はどこですか？",
+      "expected_answer": "最寄り駅は地下鉄空港線の天神駅、または地下鉄箱崎線の中洲川端駅です。どちらからも徒歩でアクセスできます。",
+      "expected_keywords": ["天神", "中洲川端"],
+      "expected_agent": "facility",
+      "language": "ja",
+      "category": "access",
+      "note": "最寄り駅情報の確認"
+    },
+    {
+      "id": "aq-018",
+      "question": "住所を教えてください",
+      "expected_answer": "エンジニアカフェの住所は福岡市中央区天神1丁目15-30（福岡市赤煉瓦文化館内）です。",
+      "expected_keywords": ["中央区", "天神"],
+      "expected_agent": "facility",
+      "language": "ja",
+      "category": "access",
+      "note": "所在地の正確な住所確認"
+    },
+    {
+      "id": "aq-019",
+      "question": "WiFiのパスワードは？",
+      "expected_answer": "WiFiのSSIDは「akarenga」で、パスワードは「112years」です。受付でもご案内しています。",
+      "expected_keywords": ["akarenga", "112years"],
+      "expected_agent": "facility",
+      "language": "ja",
+      "category": "connectivity",
+      "note": "WiFi接続情報の提供確認"
+    },
+    {
+      "id": "aq-020",
+      "question": "電話番号を教えてください",
+      "expected_answer": "エンジニアカフェの電話番号は080-XXXX-XXXXです。お問い合わせはお気軽にどうぞ。",
+      "expected_keywords": ["080"],
+      "expected_agent": "business_info",
+      "language": "ja",
+      "category": "connectivity",
+      "note": "連絡先電話番号の案内確認"
+    },
+    {
+      "id": "aq-021",
+      "question": "サイノカフェの営業時間は？",
+      "expected_answer": "サイノカフェの営業時間は12:00〜20:00です。ランチからディナータイムまで利用できます。",
+      "expected_keywords": ["12:00", "20:00"],
+      "expected_agent": "facility",
+      "language": "ja",
+      "category": "saino_cafe",
+      "note": "サイノカフェの営業時間確認"
+    },
+    {
+      "id": "aq-022",
+      "question": "サイノカフェの定休日は？",
+      "expected_answer": "サイノカフェの定休日についてはサイノカフェに直接お問い合わせください。エンジニアカフェの休館日とは異なる場合があります。",
+      "expected_keywords": ["定休日"],
+      "expected_agent": "facility",
+      "language": "ja",
+      "category": "saino_cafe",
+      "note": "サイノカフェの定休日情報の確認"
+    },
+    {
+      "id": "aq-023",
+      "question": "コーヒーの値段は？",
+      "expected_answer": "サイノカフェではコーヒーをご注文いただけます。メニューや価格の詳細はサイノカフェのカウンターでご確認ください。",
+      "expected_keywords": ["コーヒー", "円"],
+      "expected_agent": "facility",
+      "language": "ja",
+      "category": "saino_cafe",
+      "note": "コーヒー価格の案内確認"
+    },
+    {
+      "id": "aq-024",
+      "question": "お酒は飲めますか？",
+      "expected_answer": "はい、サイノカフェはカフェ＆バーとして営業しており、アルコール類もご注文いただけます。",
+      "expected_keywords": ["バー", "アルコール"],
+      "expected_agent": "facility",
+      "language": "ja",
+      "category": "saino_cafe",
+      "note": "サイノカフェのアルコール提供の確認"
+    },
+    {
+      "id": "aq-025",
+      "question": "レーザー加工機は使えますか？",
+      "expected_answer": "レーザー加工機は地下1階のMAKER'sスペースでご利用いただけます。事前予約が必要です。",
+      "expected_keywords": ["レーザー", "予約"],
+      "expected_agent": "facility",
+      "language": "ja",
+      "category": "makers",
+      "note": "レーザー加工機の利用可否と予約要否の確認"
+    },
+    {
+      "id": "aq-026",
+      "question": "MAKER'sスペースは何階にありますか？",
+      "expected_answer": "MAKER'sスペースは地下1階（B1F）にあります。3Dプリンターやレーザー加工機などの機材が設置されています。",
+      "expected_keywords": ["地下", "B1"],
+      "expected_agent": "facility",
+      "language": "ja",
+      "category": "makers",
+      "note": "MAKER'sスペースの所在階の確認"
+    },
+    {
+      "id": "aq-027",
+      "question": "フィラメントの持ち込みは可能ですか？",
+      "expected_answer": "フィラメントの持ち込みについてはスタッフにご確認ください。施設で用意しているフィラメントもご利用いただけます。",
+      "expected_keywords": ["フィラメント"],
+      "expected_agent": "facility",
+      "language": "ja",
+      "category": "makers",
+      "note": "フィラメント持ち込みポリシーの確認"
+    },
+    {
+      "id": "aq-028",
+      "question": "会議室は予約が必要ですか？",
+      "expected_answer": "はい、会議室のご利用には事前予約が必要です。Webまたは受付で予約を受け付けています。",
+      "expected_keywords": ["予約"],
+      "expected_agent": "facility",
+      "language": "ja",
+      "category": "spaces",
+      "note": "会議室の予約要否の確認"
+    },
+    {
+      "id": "aq-029",
+      "question": "防音室はありますか？",
+      "expected_answer": "集中して作業できるスペースがあります。オンライン会議や集中作業にご利用いただけます。",
+      "expected_keywords": ["防音", "集中"],
+      "expected_agent": "facility",
+      "language": "ja",
+      "category": "spaces",
+      "note": "防音・集中スペースの有無確認"
+    },
+    {
+      "id": "aq-030",
+      "question": "飲食の持ち込みは可能ですか？",
+      "expected_answer": "飲み物の持ち込みは可能です。食事については指定エリアでお願いしています。ゴミはお持ち帰りください。",
+      "expected_keywords": ["持ち込み"],
+      "expected_agent": "facility",
+      "language": "ja",
+      "category": "policy",
+      "note": "飲食持ち込みポリシーの確認"
+    },
+    {
+      "id": "aq-031",
+      "question": "喫煙所はありますか？",
+      "expected_answer": "館内は全面禁煙です。喫煙は館外の指定場所でお願いしています。",
+      "expected_keywords": ["喫煙", "禁煙"],
+      "expected_agent": "facility",
+      "language": "ja",
+      "category": "policy",
+      "note": "喫煙ポリシーの確認"
+    },
+    {
+      "id": "aq-032",
+      "question": "駐車場はありますか？",
+      "expected_answer": "エンジニアカフェには専用駐車場はありません。近隣のコインパーキングをご利用ください。",
+      "expected_keywords": ["駐車場"],
+      "expected_agent": "facility",
+      "language": "ja",
+      "category": "policy",
+      "note": "駐車場の有無確認"
+    },
+    {
+      "id": "aq-033",
+      "question": "駐輪場はありますか？",
+      "expected_answer": "自転車でお越しの方は近隣の駐輪場をご利用ください。建物周辺への駐輪はご遠慮ください。",
+      "expected_keywords": ["駐輪"],
+      "expected_agent": "facility",
+      "language": "ja",
+      "category": "policy",
+      "note": "駐輪場の有無確認"
+    },
+    {
+      "id": "aq-034",
+      "question": "子連れで利用できますか？",
+      "expected_answer": "お子様連れでのご利用は可能です。ただし、他の利用者の方へのご配慮をお願いしています。",
+      "expected_keywords": ["子ども", "お子様"],
+      "expected_agent": "facility",
+      "language": "ja",
+      "category": "policy",
+      "note": "子ども連れ利用ポリシーの確認"
+    },
+    {
+      "id": "aq-035",
+      "question": "EC Labとは何ですか？",
+      "expected_answer": "EC Labはエンジニアカフェが運営するスタートアップ支援プログラムです。起業やプロダクト開発を目指すエンジニアを支援しています。",
+      "expected_keywords": ["Lab", "スタートアップ"],
+      "expected_agent": "business_info",
+      "language": "ja",
+      "category": "career",
+      "note": "EC Labプログラムの説明確認"
+    },
+    {
+      "id": "aq-036",
+      "question": "EICプログラムとは？",
+      "expected_answer": "EIC（Engineer in Cafe）プログラムはエンジニアカフェの支援プログラムの一つで、エンジニアのスキルアップやコミュニティ形成を支援しています。",
+      "expected_keywords": ["EIC", "エンジニア"],
+      "expected_agent": "business_info",
+      "language": "ja",
+      "category": "career",
+      "note": "EICプログラムの説明確認"
+    },
+    {
+      "id": "aq-037",
+      "question": "赤煉瓦文化館とは何ですか？",
+      "expected_answer": "赤煉瓦文化館は1909年に建てられた歴史的建造物で、福岡市の文化財に指定されています。旧日本生命九州支店として建設されました。",
+      "expected_keywords": ["赤煉瓦", "文化財", "1909"],
+      "expected_agent": "facility",
+      "language": "ja",
+      "category": "building_history",
+      "note": "赤煉瓦文化館の歴史と文化財指定の確認"
+    },
+    {
+      "id": "aq-038",
+      "question": "この建物は何に使われていましたか？",
+      "expected_answer": "この建物は1909年に日本生命保険の九州支店として建設されました。設計は辰野金吾と片岡安によるもので、赤煉瓦造りの洋風建築です。",
+      "expected_keywords": ["日本生命", "九州支店"],
+      "expected_agent": "facility",
+      "language": "ja",
+      "category": "building_history",
+      "note": "建物の旧用途の確認"
+    },
+    {
+      "id": "aq-039",
+      "question": "近くにコンビニはありますか？",
+      "expected_answer": "はい、エンジニアカフェの周辺にはコンビニエンスストアがあります。天神エリアなので徒歩圏内に複数の店舗があります。",
+      "expected_keywords": ["コンビニ"],
+      "expected_agent": "facility",
+      "language": "ja",
+      "category": "nearby",
+      "note": "周辺コンビニ情報の確認"
+    },
+    {
+      "id": "aq-040",
+      "question": "今日のイベントは何ですか？",
+      "expected_answer": "本日開催予定のイベント情報をお調べします。エンジニアカフェでは勉強会やもくもく会などが定期的に開催されています。",
+      "expected_keywords": ["イベント"],
+      "expected_agent": "event",
+      "language": "ja",
+      "category": "event",
+      "note": "当日イベント情報の提供確認"
+    },
+    {
+      "id": "aq-041",
+      "question": "イベントを開催したいのですが",
+      "expected_answer": "エンジニアカフェではイベントの開催が可能です。勉強会やハッカソンなどの技術イベントを歓迎しています。詳細はスタッフにご相談ください。",
+      "expected_keywords": ["開催", "イベント"],
+      "expected_agent": "event",
+      "language": "ja",
+      "category": "event",
+      "note": "イベント開催希望への対応確認"
+    },
+    {
+      "id": "aq-042",
+      "question": "What is Engineer Cafe?",
+      "expected_answer": "Engineer Cafe is a free coworking space located inside the Akarenga Cultural Hall in Tenjin, Fukuoka. It provides WiFi, power outlets, and various facilities for engineers and creators.",
+      "expected_keywords": ["coworking", "free"],
+      "expected_agent": "business_info",
+      "language": "en",
+      "category": "facility_overview",
+      "note": "英語での基本施設説明の確認"
+    },
+    {
+      "id": "aq-043",
+      "question": "What are the opening hours?",
+      "expected_answer": "Engineer Cafe is open from 9:00 to 22:00, including weekends and holidays. It is closed on the last Monday of each month and during the New Year holiday.",
+      "expected_keywords": ["9:00", "22:00"],
+      "expected_agent": "business_info",
+      "language": "en",
+      "category": "hours",
+      "note": "英語での営業時間案内の確認"
+    },
+    {
+      "id": "aq-044",
+      "question": "What is the Wi-Fi password?",
+      "expected_answer": "The Wi-Fi SSID is 'akarenga' and the password is '112years'. You can also ask the reception staff for assistance.",
+      "expected_keywords": ["akarenga", "112years"],
+      "expected_agent": "facility",
+      "language": "en",
+      "category": "connectivity",
+      "note": "英語でのWiFi情報提供の確認"
+    },
+    {
+      "id": "aq-045",
+      "question": "工程师咖啡馆在哪里？",
+      "expected_answer": "工程师咖啡馆位于福冈市天神的赤煉瓦文化馆内。从地铁天神站步行约10分钟即可到达。",
+      "expected_keywords": ["天神", "赤煉瓦"],
+      "expected_agent": "facility",
+      "language": "zh",
+      "category": "access",
+      "note": "中国語でのアクセス案内の確認"
+    },
+    {
+      "id": "aq-046",
+      "question": "엔지니어 카페는 무엇인가요?",
+      "expected_answer": "엔지니어 카페는 후쿠오카 텐진의 아카렌가 문화관에 위치한 무료 코워킹 스페이스입니다. Wi-Fi와 전원을 무료로 이용할 수 있습니다.",
+      "expected_keywords": ["코워킹", "무료"],
+      "expected_agent": "business_info",
+      "language": "ko",
+      "category": "facility_overview",
+      "note": "韓国語での基本施設説明の確認"
     }
   ]
 }

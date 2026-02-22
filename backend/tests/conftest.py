@@ -6,6 +6,32 @@ from pathlib import Path
 import pytest
 import asyncio
 
+# ---------------------------------------------------------------------------
+# CLI option & marker handling (must be in root conftest for pytest discovery)
+# ---------------------------------------------------------------------------
+
+
+def pytest_addoption(parser):
+    """--run-e2e オプションを追加"""
+    parser.addoption(
+        "--run-e2e",
+        action="store_true",
+        default=False,
+        help="run end-to-end tests that require real API keys",
+    )
+
+
+def pytest_collection_modifyitems(config, items):
+    """e2e マーカー付きテストを --run-e2e なしでスキップ"""
+    if config.getoption("--run-e2e"):
+        return
+
+    skip_e2e = pytest.mark.skip(reason="need --run-e2e option to run")
+    for item in items:
+        if "e2e" in item.keywords:
+            item.add_marker(skip_e2e)
+
+
 # Add project root to Python path
 # For imports like "from backend.agents import ..."
 project_root = Path(__file__).parent.parent.parent  # engineer-cafe-navigator2025/

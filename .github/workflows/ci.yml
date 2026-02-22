@@ -171,7 +171,7 @@ jobs:
         working-directory: backend
 
       - name: Run tests
-        run: pytest -m "not ragas and not slow" --tb=short -q --cov=. --cov-report=term-missing --cov-report=xml:coverage.xml
+        run: pytest -m "not ragas and not slow and not e2e" --tb=short -q --cov=. --cov-report=term-missing --cov-report=xml:coverage.xml
         working-directory: backend
         env:
           OPENROUTER_API_KEY: "test-key-not-real"
@@ -218,6 +218,46 @@ jobs:
           SUPABASE_URL: "http://test.invalid"
           SUPABASE_KEY: "test-key-not-real"
           SUPABASE_DB_URI: "postgresql://test:test@localhost:0/test"
+
+  # Backend: E2E tests (optional, informational only)
+  # Only runs on push to main/develop when OPENROUTER_API_KEY secret is available
+  backend-test-e2e:
+    needs: [changes, backend-test]
+    if: needs.changes.outputs.backend == 'true' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,evaluation]"
+        working-directory: backend
+
+      - name: Run E2E tests
+        if: env.OPENROUTER_API_KEY != ''
+        run: pytest -m "e2e" --run-e2e --tb=short -q -x --timeout=300
+        working-directory: backend
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          SUPABASE_DB_URI: ${{ secrets.SUPABASE_DB_URI }}
+
+      - name: Upload E2E reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-reports
+          path: backend/reports/
+          retention-days: 30
 
   # Final status check for branch protection
   ci-success:
