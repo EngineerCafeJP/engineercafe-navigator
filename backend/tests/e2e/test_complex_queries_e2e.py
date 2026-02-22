@@ -18,11 +18,12 @@ class TestComplexQueriesE2E:
         # At least one of the intents should be addressed
         assert len(result["answer"]) > 30
 
-    @pytest.mark.xfail(strict=False, reason="コンテキスト依存クエリはLLMに依存")
     async def test_context_dependent(self, invoke_workflow):
-        """コンテキスト依存クエリ"""
+        """コンテキスト依存クエリ（コンテキストなしでもGKAが応答可能）"""
         result = await invoke_workflow("もっと詳しく教えてください")
         assert result["answer"]
+        # GKAが応答すればOK（コンテキストなしの場合は案内的な応答になる）
+        assert len(result["answer"]) > 10
 
     async def test_vague_question(self, invoke_workflow):
         """非常に曖昧な質問"""

@@ -40,6 +40,7 @@ from backend.config.routing_constants import (
     EVENT_KEYWORDS,
     FACILITY_EQUIPMENT_KEYWORDS,
     FLOOR_KEYWORDS,
+    FLOOR_LAYOUT_KEYWORDS,
     FOOD_DRINK_KEYWORDS,
     FOOD_DRINK_VERBS,
     MEETING_ROOM_KEYWORDS,
@@ -49,6 +50,7 @@ from backend.config.routing_constants import (
     PARKING_KEYWORDS,
     PHOTOGRAPHY_KEYWORDS,
     PRICING_KEYWORDS,
+    RECEPTION_KEYWORDS,
     SLIDE_KEYWORDS,
     SMOKING_KEYWORDS,
     TOILET_KEYWORDS,
@@ -100,12 +102,28 @@ class OrchestratorAgent:
 {agent_descriptions}
 
 ルーティングルール:
-1. 営業時間、料金、相談（キャリア相談・スキルチェンジ等）、コミュニティ（Engineer Cafe Lab等）に関する質問 → business_info
-2. Wi-Fi、電源、設備、地下スペース、建物の歴史・構造、アクセス方法・行き方に関する質問 → facility
+1. 営業時間、料金、休館日、定休日、利用料、受付方法、初回利用、コミュニティ（Engineer Cafe Lab等）、キャリア相談・スキルチェンジ等 → business_info
+2. Wi-Fi、電源、設備、地下スペース、建物の歴史・構造、アクセス方法・行き方、フロアマップ、館内案内 → facility
 3. イベント、勉強会、セミナーに関する質問 → event
 4. 過去の会話や「さっき」「前に」などメモリ関連の質問 → general_knowledge (request_type: memory)
 5. スライド操作やプレゼン関連の質問 → slide
 6. その他の一般的な質問 → general_knowledge
+
+重要な判断基準:
+- 料金・営業時間・休館日に関する質問は必ず business_info にルーティング
+- 「いくら」「タダ」「free」「無料」を含む質問 → business_info
+- 「受付」「初回利用」「利用方法」を含む質問 → business_info
+- 「フロアマップ」「館内案内」「floor map」を含む質問 → facility
+
+ルーティング例:
+- "エンジニアカフェの営業時間は？" → business_info (hours)
+- "利用料金はいくらですか？" → business_info (price)
+- "休館日はありますか？" → business_info (hours)
+- "WiFiのパスワードは？" → facility (wifi)
+- "フロアマップを見せてください" → facility (floor_layout)
+- "次のイベントはいつ？" → event (event)
+- "What are the opening hours?" → business_info (hours)
+- "Is it free to use?" → business_info (price)
 
 次のJSON形式で回答してください:
 {{
@@ -518,6 +536,22 @@ class OrchestratorAgent:
                 "category": "facility-info",
                 "request_type": "facility",
                 "reasoning": "Facility equipment keyword detected",
+            }
+
+        if match_keywords(lower_query, RECEPTION_KEYWORDS):
+            return {
+                "agent": "business_info",
+                "category": "reception",
+                "request_type": "reception",
+                "reasoning": "Reception/check-in keyword detected",
+            }
+
+        if match_keywords(lower_query, FLOOR_LAYOUT_KEYWORDS):
+            return {
+                "agent": "facility",
+                "category": "facility-info",
+                "request_type": "floor_layout",
+                "reasoning": "Floor layout/map keyword detected",
             }
 
         # 会議室 + 階情報 → facility（具体的な質問なのでclarificationスキップ）

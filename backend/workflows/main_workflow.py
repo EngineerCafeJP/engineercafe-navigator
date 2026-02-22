@@ -348,6 +348,36 @@ class MainWorkflow:
                 },
             )
 
+        # Topic adherence ガードレール: 明確にoff-topicなクエリをフィルタ
+        try:
+            from backend.utils.topic_guard import check_topic_adherence
+
+            on_topic, off_topic_response = check_topic_adherence(
+                query=query,
+                routing_category=decision.category,
+                language=decision.language,
+            )
+            if not on_topic:
+                logger.info("Off-topic query filtered: %.50s", query)
+                return Command(
+                    goto="format_response",
+                    update={
+                        "language": decision.language,
+                        "routing": {
+                            "agent": "topic_guard",
+                            "category": "off_topic",
+                            "request_type": "redirect",
+                            "confidence": 1.0,
+                            "reasoning": "Query is outside Engineer Cafe scope",
+                            "debug_info": decision.debug_info,
+                        },
+                        "answer": off_topic_response,
+                        "emotion": "neutral",
+                    },
+                )
+        except Exception as guard_err:
+            logger.debug("Topic guard skipped: %s", guard_err)
+
         return Command(
             goto=decision.next_agent,
             update={
@@ -490,11 +520,25 @@ class MainWorkflow:
         """応答フォーマットノード: 最終的な応答をフォーマット"""
         from backend.utils.emotion_utils import strip_emotion_tags
         from backend.utils.memory_helper import get_memory_helper
+        from backend.utils.message_windowing import apply_message_window
+        from backend.utils.pii_scanner import scan_and_mask
 
         query = state.get("query", "")
         raw_answer = state.get("answer", "回答を生成できませんでした。")
         answer = strip_emotion_tags(raw_answer)
         session_id = state.get("session_id", "")
+
+        # PII Defense-in-Depth: ワークフロー層でもスキャン（API層に加えて二重防御）
+        try:
+            masked, pii_items = scan_and_mask(answer)
+            if pii_items:
+                logger.warning(
+                    "PII detected in workflow output (%d items), masking",
+                    len(pii_items),
+                )
+                answer = masked
+        except Exception:
+            pass  # Non-critical — API層でもスキャンするため
 
         # アシスタント応答を保存
         try:
@@ -507,8 +551,13 @@ class MainWorkflow:
         except Exception as store_error:
             logger.warning("Failed to store assistant message: %s", store_error)
 
+        # Message Windowing: 長セッションでのコンテキストオーバーフロー防止
+        existing_msgs = state.get("messages", [])
+        windowed = apply_message_window(existing_msgs)
+
         return {
-            "messages": [
+            "messages": windowed
+            + [
                 HumanMessage(content=query),
                 AIMessage(content=answer),
             ]

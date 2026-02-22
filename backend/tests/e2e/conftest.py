@@ -137,10 +137,10 @@ def llm_judge() -> LLMJudgeEvaluator:
         model_name="gpt-4o-mini",
         temperature=0.0,
         thresholds={
-            QualityDimension.ACCURACY: 0.6,
-            QualityDimension.RELEVANCE: 0.6,
-            QualityDimension.COMPLETENESS: 0.5,
-            QualityDimension.TONE: 0.6,
+            QualityDimension.ACCURACY: 0.7,
+            QualityDimension.RELEVANCE: 0.7,
+            QualityDimension.COMPLETENESS: 0.6,
+            QualityDimension.TONE: 0.7,
         },
     )
 

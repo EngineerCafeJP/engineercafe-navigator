@@ -40,8 +40,8 @@ class TestAnswerQualityE2E:
 
         pass_rate = passed / total
         assert (
-            pass_rate >= 0.6
-        ), f"Keyword pass rate {pass_rate:.1%} < 60%. Passed: {passed}/{total}"
+            pass_rate >= 0.7
+        ), f"Keyword pass rate {pass_rate:.1%} < 70%. Passed: {passed}/{total}"
 
     async def test_llm_judge_quality(self, invoke_workflow, llm_judge, quality_cases):
         """LLM Judge 品質評価（全体pass rate >= 60%）"""
@@ -54,10 +54,9 @@ class TestAnswerQualityE2E:
         for case in quality_cases[:5]:
             try:
                 result = await invoke_workflow(case.question, language=case.language)
-                judge_results = await llm_judge.evaluate_all_dimensions(
+                judge_results = await llm_judge.evaluate_answer_quality(
                     question=case.question,
                     answer=result["answer"],
-                    expected_answer=case.expected_answer,
                 )
 
                 for jr in judge_results:
@@ -71,7 +70,7 @@ class TestAnswerQualityE2E:
             pytest.skip("No LLM Judge evaluations completed")
 
         pass_rate = total_passed / total_evaluations
-        assert pass_rate >= 0.6, (
-            f"LLM Judge pass rate {pass_rate:.1%} < 60%. "
+        assert pass_rate >= 0.7, (
+            f"LLM Judge pass rate {pass_rate:.1%} < 70%. "
             f"Passed: {total_passed}/{total_evaluations}"
         )

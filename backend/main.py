@@ -3,15 +3,100 @@ Engineer Cafe Navigator Backend
 FastAPIアプリケーションとLangGraphエージェントの統合
 """
 
+import hmac
+import json
 import logging
 import os
+import re
+import time
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
 
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+
+from backend.utils.structured_logging import (
+    request_id_var,
+    generate_request_id,
+    setup_structured_logging,
+)
+
 logger = logging.getLogger(__name__)
+
+
+_VALID_REQUEST_ID = re.compile(r"^[a-zA-Z0-9\-]{1,64}$")
+
+
+class RequestIDMiddleware(BaseHTTPMiddleware):
+    """X-Request-ID ヘッダーの生成/伝播"""
+
+    async def dispatch(self, request: Request, call_next):
+        raw_id = request.headers.get("X-Request-ID")
+        if raw_id and _VALID_REQUEST_ID.match(raw_id):
+            req_id = raw_id
+        else:
+            req_id = generate_request_id()
+        token = request_id_var.set(req_id)
+        try:
+            response = await call_next(request)
+            response.headers["X-Request-ID"] = req_id
+            return response
+        finally:
+            request_id_var.reset(token)
+
+
+class RequestTimingMiddleware(BaseHTTPMiddleware):
+    """リクエストごとのduration_ms記録"""
+
+    async def dispatch(self, request: Request, call_next):
+        start = time.perf_counter()
+        try:
+            response = await call_next(request)
+        except Exception:
+            duration_ms = (time.perf_counter() - start) * 1000
+            logger.warning(
+                "Request %s %s failed after %.2fms",
+                request.method,
+                request.url.path,
+                duration_ms,
+            )
+            raise
+        duration_ms = (time.perf_counter() - start) * 1000
+        response.headers["X-Response-Time-Ms"] = f"{duration_ms:.2f}"
+        logger.info(
+            "Request %s %s completed in %.2fms",
+            request.method,
+            request.url.path,
+            duration_ms,
+        )
+        return response
+
+
+class TokenTrackerMiddleware(BaseHTTPMiddleware):
+    """Per-request token usage tracking"""
+
+    async def dispatch(self, request: Request, call_next):
+        from backend.utils.token_tracker import get_token_tracker, reset_token_tracker
+
+        reset_token_tracker()  # Clean state for each request
+        try:
+            response = await call_next(request)
+            # Log token summary for this request
+            tracker = get_token_tracker()
+            if tracker.total_tokens > 0:
+                logger.info(
+                    "Token usage: %d tokens, $%.6f estimated cost",
+                    tracker.total_tokens,
+                    tracker.total_cost_usd,
+                )
+            return response
+        finally:
+            reset_token_tracker()
+
 
 app = FastAPI(
     title="Engineer Cafe Navigator Backend",
@@ -19,10 +104,54 @@ app = FastAPI(
     version="0.1.0",
 )
 
+# Rate limiting (optional - requires slowapi)
+try:
+    from slowapi import Limiter, _rate_limit_exceeded_handler
+    from slowapi.util import get_remote_address
+    from slowapi.errors import RateLimitExceeded
+
+    limiter = Limiter(key_func=get_remote_address)
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+    _HAS_SLOWAPI = True
+except ImportError:
+    _HAS_SLOWAPI = False
+    limiter = None
+
+
+def _rate_limit(limit_string: str):
+    """Return a rate-limit decorator; no-op when slowapi is unavailable."""
+    if _HAS_SLOWAPI and limiter is not None:
+        return limiter.limit(limit_string)
+
+    def _noop(func):
+        return func
+
+    return _noop
+
+
+# Add custom middleware
+app.add_middleware(RequestTimingMiddleware)
+app.add_middleware(RequestIDMiddleware)
+app.add_middleware(TokenTrackerMiddleware)
+
+
+# Optional API key authentication
+_API_SECRET_KEY = os.getenv("API_SECRET_KEY")
+
+
+async def verify_api_key(request: Request) -> None:
+    """Optional API key verification - skipped if API_SECRET_KEY not set"""
+    if not _API_SECRET_KEY:
+        return
+    api_key = request.headers.get("X-API-Key")
+    if not api_key or not hmac.compare_digest(api_key, _API_SECRET_KEY):
+        raise HTTPException(status_code=403, detail="Invalid or missing API key")
+
 
 @app.on_event("startup")
 async def startup_event():
-    """アプリケーション起動時の環境変数バリデーション"""
+    """アプリケーション起動時の環境変数バリデーション + 定期クリーンアップ"""
     from backend.utils.env_validator import validate_startup
 
     try:
@@ -30,6 +159,20 @@ async def startup_event():
     except ValueError:
         logger.error("起動時バリデーション失敗。環境変数を確認してください。")
         raise
+
+    # Setup structured logging in production
+    if os.getenv("ENV", "development") == "production":
+        setup_structured_logging()
+
+    # Start periodic checkpoint cleanup (non-blocking)
+    try:
+        from backend.utils.checkpoint_cleanup import CheckpointCleanup
+
+        cleanup = CheckpointCleanup()
+        app.state.checkpoint_cleanup = cleanup
+        logger.info("Checkpoint cleanup configured (TTL: 24h)")
+    except Exception as e:
+        logger.warning("Checkpoint cleanup setup failed (non-critical): %s", e)
 
 
 # CORS設定
@@ -42,7 +185,7 @@ app.add_middleware(
     allow_origins=_allowed_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization"],
+    allow_headers=["Content-Type", "Authorization", "X-API-Key", "X-Request-ID"],
 )
 
 
@@ -61,12 +204,42 @@ class ChatResponse(BaseModel):
 
 @app.get("/health")
 async def health_check():
-    """ヘルスチェックエンドポイント"""
-    return {"status": "ok", "service": "engineer-cafe-navigator-backend"}
+    """ヘルスチェックエンドポイント（依存関係確認付き）"""
+    checks = {"api": "ok"}
+
+    # Supabase connection check
+    supabase_url = os.getenv("SUPABASE_URL")
+    if supabase_url:
+        try:
+            import httpx
+
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                resp = await client.get(
+                    f"{supabase_url}/rest/v1/",
+                    headers={
+                        "apikey": os.getenv("SUPABASE_KEY", ""),
+                    },
+                )
+                checks["supabase"] = "ok" if resp.status_code < 500 else "error"
+        except Exception:
+            checks["supabase"] = "error"
+    else:
+        checks["supabase"] = "not_configured"
+
+    checks["llm_provider"] = "configured" if os.getenv("OPENROUTER_API_KEY") else "not_configured"
+
+    overall = "ok" if all(v not in ("error",) for v in checks.values()) else "degraded"
+
+    return {
+        "status": overall,
+        "service": "engineer-cafe-navigator-backend",
+        "checks": checks,
+    }
 
 
-@app.post("/api/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest):
+@app.post("/api/chat", response_model=ChatResponse, dependencies=[Depends(verify_api_key)])
+@_rate_limit("30/minute")
+async def chat(request: Request, body: ChatRequest):
     """
     チャットエンドポイント
     LangGraphエージェントを使用してクエリを処理します
@@ -77,19 +250,33 @@ async def chat(request: ChatRequest):
         workflow = await get_workflow()
         result = await workflow.ainvoke(
             {
-                "query": request.query,
-                "session_id": request.session_id,
-                "language": request.language,
-                "context": request.context or {},
+                "query": body.query,
+                "session_id": body.session_id,
+                "language": body.language,
+                "context": body.context or {},
             }
         )
 
+        answer = result.get("answer", "回答を生成できませんでした。")
+
+        # Output PII scanning
+        try:
+            from backend.utils.pii_scanner import scan_and_mask
+
+            masked_answer, pii_items = scan_and_mask(answer)
+            if pii_items:
+                logger.warning(
+                    "PII detected in response (%d items), masked before delivery",
+                    len(pii_items),
+                )
+                answer = masked_answer
+        except Exception as e:
+            logger.debug("PII scan skipped (non-critical): %s", e)
+
         return ChatResponse(
-            answer=result.get("answer", "回答を生成できませんでした。"),
+            answer=answer,
             emotion=result.get("emotion", "neutral"),
-            metadata=result.get(
-                "metadata", {"query": request.query, "session_id": request.session_id}
-            ),
+            metadata=result.get("metadata", {"query": body.query, "session_id": body.session_id}),
         )
     except Exception as e:
         logger.exception("Endpoint error: %s", e)
@@ -98,8 +285,51 @@ async def chat(request: ChatRequest):
         )
 
 
+@app.post("/api/chat/stream", dependencies=[Depends(verify_api_key)])
+@_rate_limit("30/minute")
+async def chat_stream(request: Request, body: ChatRequest):
+    """
+    SSEストリーミングチャットエンドポイント
+    Server-Sent Events でレスポンスをストリーミング
+    """
+
+    async def event_generator():
+        try:
+            from workflows.main_workflow import get_workflow
+
+            workflow = await get_workflow()
+
+            # Use astream for streaming
+            async for event in workflow.astream(
+                {
+                    "query": body.query,
+                    "session_id": body.session_id,
+                    "language": body.language,
+                    "context": body.context or {},
+                }
+            ):
+                if isinstance(event, dict):
+                    yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+            yield "data: [DONE]\n\n"
+        except Exception as e:
+            logger.exception("SSE stream error: %s", e)
+            yield f'data: {json.dumps({"error": "An internal error occurred"})}\n\n'
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 @app.post("/api/agent/invoke")
-async def invoke_agent(request: ChatRequest):
+@_rate_limit("30/minute")
+async def invoke_agent(request: Request, body: ChatRequest):
     """
     LangGraphエージェントの直接実行エンドポイント
     """
@@ -109,10 +339,10 @@ async def invoke_agent(request: ChatRequest):
         workflow = await get_workflow()
         result = await workflow.ainvoke(
             {
-                "query": request.query,
-                "session_id": request.session_id,
-                "language": request.language,
-                "context": request.context or {},
+                "query": body.query,
+                "session_id": body.session_id,
+                "language": body.language,
+                "context": body.context or {},
             }
         )
 
@@ -176,60 +406,60 @@ class VoiceResponse(BaseModel):
 #         raise HTTPException(status_code=500, detail=str(e))
 
 
-# backend/main.py（PR3差分イメージ）
-from agents.voice_agent import VoiceAgent  # noqa: E402 # 追加
-from agents.stt_agent import STTAgent  # noqa: E402
+from backend.agents.voice_agent import VoiceAgent  # noqa: E402
+from backend.agents.stt_agent import STTAgent  # noqa: E402
 
 voice_agent = VoiceAgent()  # アプリ起動時に1回生成
 stt_agent = STTAgent()  # STT: Vosk自動言語切換え対応
 
 
 @app.post("/api/voice", response_model=VoiceResponse)
-async def voice_api(request: VoiceRequest):
+@_rate_limit("20/minute")
+async def voice_api(request: Request, body: VoiceRequest):
     try:
-        if request.action == "text_to_speech":
-            if not request.text or not request.text.strip():
+        if body.action == "text_to_speech":
+            if not body.text or not body.text.strip():
                 raise HTTPException(status_code=400, detail="Missing text for text_to_speech")
 
             result = await voice_agent.text_to_speech(
-                text=request.text,
-                language=request.language or "ja",
-                emotion=None,  # request側でemotion渡す設計にするならここで拾う（現状VoiceRequestにはない） [3](https://scskinfo-my.sharepoint.com/personal/162179_cpsginfo_jp/Documents/Microsoft%20Copilot%20Chat%20%E3%83%95%E3%82%A1%E3%82%A4%E3%83%AB/emotion-mapping.txt)
+                text=body.text,
+                language=body.language or "ja",
+                emotion=None,  # TODO: VoiceRequestにemotion fieldを追加後、ここで取得する
             )
             if not result.get("success"):
                 return VoiceResponse(
                     success=False,
                     error=result.get("error", "TTS failed"),
                     emotion=result.get("emotion"),
-                    sessionId=request.sessionId,
+                    sessionId=body.sessionId,
                 )
 
             return VoiceResponse(
                 success=True,
                 audioResponse=result.get("audioResponse"),
                 emotion=result.get("emotion"),
-                sessionId=request.sessionId,
+                sessionId=body.sessionId,
             )
 
-        elif request.action == "process_voice":
-            if not request.audioData:
+        elif body.action == "process_voice":
+            if not body.audioData:
                 raise HTTPException(status_code=400, detail="Missing audioData for process_voice")
 
             import base64
 
-            audio_bytes = base64.b64decode(request.audioData)
+            audio_bytes = base64.b64decode(body.audioData)
 
             stt_result = await stt_agent.speech_to_text(
                 audio_bytes,
-                language=request.language,
-                conversation_stage=request.conversationStage,
+                language=body.language,
+                conversation_stage=body.conversationStage,
             )
 
             if not stt_result["success"]:
                 return VoiceResponse(
                     success=False,
                     error=stt_result.get("error", "STT failed"),
-                    sessionId=request.sessionId,
+                    sessionId=body.sessionId,
                 )
 
             return VoiceResponse(
@@ -238,18 +468,19 @@ async def voice_api(request: VoiceRequest):
                 emotion="neutral",
                 detectedLanguage=stt_result.get("language"),
                 confidence=stt_result.get("confidence"),
-                sessionId=request.sessionId,
+                sessionId=body.sessionId,
             )
 
         else:
-            raise HTTPException(status_code=400, detail=f"Unknown action: {request.action}")
+            raise HTTPException(status_code=400, detail=f"Unknown action: {body.action}")
 
     except HTTPException:
         raise
     except Exception as e:
         logger.exception("Endpoint error: %s", e)
         raise HTTPException(
-            status_code=500, detail="An internal error occurred. Please try again later."
+            status_code=500,
+            detail="An internal error occurred. Please try again later.",
         )
 
 

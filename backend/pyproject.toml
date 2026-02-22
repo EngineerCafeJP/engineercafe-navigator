@@ -36,6 +36,7 @@ dependencies = [
     "langgraph-checkpoint-postgres>=2.0.0",
     "psycopg[binary]>=3.1.0",
     "tavily-python>=0.5.0",
+    "slowapi>=0.1.9",
 ]
 
 [project.optional-dependencies]
@@ -87,6 +88,7 @@ python-multipart = "^0.0.9"
 langgraph-checkpoint-postgres = "^2.0.0"
 psycopg = {extras = ["binary"], version = "^3.1.0"}
 tavily-python = "^0.5.0"
+slowapi = ">=0.1.9"
 
 [tool.poetry.group.audio.dependencies]
 vosk = "^0.3.45"
@@ -145,4 +147,6 @@ markers = [
     "integration: integration tests requiring external services",
     "slow: slow-running tests",
     "vision: VisionAgent/OCR tests",
+    "perf: performance benchmark tests",
+    "adversarial: adversarial robustness tests",
 ]

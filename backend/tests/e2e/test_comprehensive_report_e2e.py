@@ -1,6 +1,7 @@
 """総合レポートE2Eテスト - 全評価統合レポート生成"""
 
 import json
+import logging
 import re
 from datetime import datetime
 
@@ -9,6 +10,8 @@ import pytest
 from backend.tests.e2e.conftest import keywords_match
 from backend.tests.fixtures.dataset_loader import DatasetLoader
 from backend.tests.utils.evaluators.routing_accuracy import RoutingResult
+
+logger = logging.getLogger(__name__)
 
 
 def _normalize_agent_name(name: str) -> str:
@@ -80,6 +83,67 @@ class TestComprehensiveReportE2E:
             except Exception:
                 continue
 
+        # 2.5. RAGAS評価（optional - ragas未インストール時はスキップ）
+        ragas_metrics: dict = {}
+        try:
+            from ragas import evaluate as ragas_evaluate
+            from ragas.metrics import answer_relevancy, faithfulness
+
+            ragas_scores_faith = []
+            ragas_scores_relevancy = []
+
+            for case in quality_cases[:3]:
+                try:
+                    result = await invoke_workflow(case.question, language=case.language)
+                    answer = result.get("answer", "")
+                    context = result.get("metadata", {}).get("context", "")
+
+                    # Build RAGAS-compatible dataset
+                    from datasets import Dataset
+
+                    ragas_dataset = Dataset.from_dict(
+                        {
+                            "question": [case.question],
+                            "answer": [answer],
+                            "contexts": [[context] if context else [""]],
+                            "ground_truth": [
+                                (
+                                    case.reference_answer
+                                    if hasattr(case, "reference_answer") and case.reference_answer
+                                    else answer
+                                )
+                            ],
+                        }
+                    )
+
+                    ragas_result = ragas_evaluate(
+                        ragas_dataset,
+                        metrics=[faithfulness, answer_relevancy],
+                    )
+
+                    if "faithfulness" in ragas_result:
+                        ragas_scores_faith.append(ragas_result["faithfulness"])
+                    if "answer_relevancy" in ragas_result:
+                        ragas_scores_relevancy.append(ragas_result["answer_relevancy"])
+                except Exception as ragas_case_err:
+                    logger.warning("RAGAS evaluation failed for case: %s", ragas_case_err)
+                    continue
+
+            if ragas_scores_faith:
+                ragas_metrics["ragas_faithfulness"] = sum(ragas_scores_faith) / len(
+                    ragas_scores_faith
+                )
+            if ragas_scores_relevancy:
+                ragas_metrics["ragas_answer_relevancy"] = sum(ragas_scores_relevancy) / len(
+                    ragas_scores_relevancy
+                )
+
+            logger.info("RAGAS evaluation completed: %s", ragas_metrics)
+        except ImportError:
+            logger.info("RAGAS not installed, skipping RAGAS evaluation step")
+        except Exception as ragas_err:
+            logger.warning("RAGAS evaluation failed: %s", ragas_err)
+
         # 3. レポート生成
         report = e2e_report_generator.generate_report(
             metadata={
@@ -90,6 +154,7 @@ class TestComprehensiveReportE2E:
                 "keyword_pass_rate": keyword_pass / keyword_total if keyword_total > 0 else 0,
                 "routing_correct": sum(1 for r in routing_results if r.is_correct),
                 "routing_total": len(routing_results),
+                **ragas_metrics,
             }
         )
 

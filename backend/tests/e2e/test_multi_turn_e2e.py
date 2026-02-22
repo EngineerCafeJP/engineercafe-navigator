@@ -38,7 +38,10 @@ class TestMultiTurnE2E:
         r3 = await invoke_workflow("レーザー加工機も使えますか？", session_id=sid)
         assert r3["answer"]
 
-    @pytest.mark.xfail(strict=False, reason="メモリ参照はSupabase永続化に依存")
+    @pytest.mark.xfail(
+        strict=False,
+        reason="メモリ参照はSupabaseチェックポインター永続化に依存（CI環境では不安定）",
+    )
     async def test_memory_reference(self, invoke_workflow, e2e_session_id):
         """メモリ参照テスト"""
         sid = f"{e2e_session_id}-memory"

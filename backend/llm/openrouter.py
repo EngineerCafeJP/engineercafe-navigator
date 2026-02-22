@@ -24,6 +24,7 @@ from langchain_openai import ChatOpenAI
 
 from .models import MODEL_CONFIGS, ModelConfig
 from .provider import LLMProvider
+from backend.utils.token_tracker import get_token_tracker
 
 logger = logging.getLogger(__name__)
 
@@ -168,6 +169,18 @@ class OpenRouterProvider(LLMProvider):
 
             if "choices" not in data or len(data["choices"]) == 0:
                 raise OpenRouterError("No choices in response", response=data)
+
+            # Capture token usage for cost tracking
+            if "usage" in data:
+                try:
+                    tracker = get_token_tracker()
+                    tracker.record(
+                        model=config.model_id.value,
+                        prompt_tokens=data["usage"].get("prompt_tokens", 0),
+                        completion_tokens=data["usage"].get("completion_tokens", 0),
+                    )
+                except Exception as e:
+                    logger.debug("Token tracking failed (non-critical): %s", e)
 
             return data["choices"][0]["message"]["content"]
 

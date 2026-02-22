@@ -24,6 +24,16 @@ from utils.memory_helper import SimplifiedMemoryHelper, get_memory_helper  # noq
 from agents.memory_agent import MemoryAgent  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def reset_memory_singleton():
+    """各テストの前後にメモリヘルパーのシングルトンをリセットしてテスト汚染を防ぐ"""
+    import backend.utils.memory_helper as m
+
+    m._memory_helper_instance = None
+    yield
+    m._memory_helper_instance = None
+
+
 class TestMemoryInterface:
     """MemorySystemInterfaceのテスト"""
 
@@ -83,10 +93,12 @@ class TestSimplifiedMemoryHelper:
 
     @pytest.mark.asyncio
     async def test_get_memory_stats(self):
-        """メモリ統計の取得（骨組み）"""
+        """メモリ統計の取得（Supabase未接続時は全て0/None）"""
         helper = SimplifiedMemoryHelper()
+        # Supabase クライアントを None に差し替えてリアル DB 接続を防ぐ
+        helper.supabase = None
         stats = await helper.get_memory_stats()
-        # 骨組み実装では全て0/Noneが返る
+        # supabase が None の場合は全て 0/None が返る
         assert stats["active_turns"] == 0
         assert stats["oldest_turn"] is None
         assert stats["newest_turn"] is None
@@ -120,11 +132,14 @@ class TestMemoryAgent:
     async def test_process_query_with_memory_system(self):
         """メモリシステムありで処理（Supabase未接続時は履歴なし応答）"""
         memory_helper = SimplifiedMemoryHelper()
+        # Supabase クライアントを None に差し替えてリアル DB 接続を防ぐ
+        # これにより get_context は空の recent_messages を返す
+        memory_helper.supabase = None
         agent = MemoryAgent(memory_system=memory_helper)
         result = await agent.process_memory_query(
             query="さっき何を聞いた？", session_id="test_session", language="ja"
         )
-        # 完全実装ではSupabase未接続時に「まだ会話履歴がありません」を返す
+        # Supabase 未接続時に「まだ会話履歴がありません」を返す
         assert "まだ会話履歴がありません" in result["answer"]
         assert result["metadata"]["status"] == "no_history"
 

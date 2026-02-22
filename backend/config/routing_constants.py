@@ -54,11 +54,18 @@ BUSINESS_HOURS_KEYWORDS = [
     "開いて",
     "閉まる",
     "いつまで",
+    "休館日",
+    "定休日",
+    "お休み",
+    "開館",
+    "閉館",
     "opening hours",
     "business hours",
     "hours",
     "open",
     "close",
+    "closed",
+    "holiday",
     "what time",
     "when do you",
 ]
@@ -68,10 +75,14 @@ PRICING_KEYWORDS = [
     "いくら",
     "値段",
     "価格",
+    "利用料",
     "cost",
     "price",
     "fee",
     "how much",
+    "free",
+    "フリー",
+    "タダ",
 ]
 
 BASEMENT_KEYWORDS = [
@@ -222,6 +233,26 @@ COMMUNITY_KEYWORDS = [
     "エンジニアカフェラボ",
     "eic",
     "会員制コミュニティ",
+]
+
+RECEPTION_KEYWORDS = [
+    "registration",
+    "初回利用",
+    "利用方法",
+    "check-in",
+    "チェックイン",
+    "初めて",
+    "はじめて",
+]
+
+FLOOR_LAYOUT_KEYWORDS = [
+    "フロア構成",
+    "フロアマップ",
+    "館内案内",
+    "floor map",
+    "floor plan",
+    "フロアガイド",
+    "館内図",
 ]
 
 MEMORY_KEYWORDS = [
@@ -429,6 +460,8 @@ CATEGORY_TO_AGENT_MAP: Dict[str, AgentNodeName] = {
     "smoking": "facility",
     "food_drink": "facility",
     "policy": "facility",
+    "reception": "business_info",
+    "floor_layout": "facility",
 }
 
 
@@ -497,6 +530,10 @@ def extract_request_type(query: str) -> Optional[str]:
         return "location"
     if match_keywords(lower_query, BOOKING_KEYWORDS):
         return "booking"
+    if match_keywords(lower_query, RECEPTION_KEYWORDS):
+        return "reception"
+    if match_keywords(lower_query, FLOOR_LAYOUT_KEYWORDS):
+        return "floor_layout"
     if match_keywords(lower_query, FACILITY_EQUIPMENT_KEYWORDS):
         return "facility"
     # basement: キーワード + regex パターン

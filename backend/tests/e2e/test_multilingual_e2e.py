@@ -50,16 +50,14 @@ class TestMultilingualE2E:
             for kw in ["akarenga", "112years", "wi-fi", "wifi", "password", "ssid"]
         )
 
-    @pytest.mark.xfail(strict=False, reason="中国語対応は不安定な場合がある")
     async def test_chinese_query(self, invoke_workflow):
-        """中国語: 基本質問"""
+        """中国語: 基本質問（LLMが多言語対応のためxfail不要）"""
         result = await invoke_workflow("工程师咖啡馆在哪里？", language="zh")
         assert result["answer"]
         assert len(result["answer"]) > 10
 
-    @pytest.mark.xfail(strict=False, reason="韓国語対応は不安定な場合がある")
     async def test_korean_query(self, invoke_workflow):
-        """韓国語: 基本質問"""
+        """韓国語: 基本質問（LLMが多言語対応のためxfail不要）"""
         result = await invoke_workflow("엔지니어 카페는 무엇인가요?", language="ko")
         assert result["answer"]
         assert len(result["answer"]) > 10

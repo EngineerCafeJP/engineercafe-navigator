@@ -97,6 +97,8 @@ MODEL_CONFIGS: dict[str, ModelConfig] = {
         temperature=0.3,
         max_tokens=256,
         fallback_model=SupportedModel.GEMINI_2_5_FLASH,
+        input_cost_per_1k=0.00015,
+        output_cost_per_1k=0.0006,
     ),
     # Q&A Response: Balanced settings for informative responses
     # Using Gemini 3 Flash with GPT-4o fallback
@@ -105,6 +107,8 @@ MODEL_CONFIGS: dict[str, ModelConfig] = {
         temperature=0.7,
         max_tokens=1024,
         fallback_model=SupportedModel.GPT_4O,
+        input_cost_per_1k=0.00015,
+        output_cost_per_1k=0.0006,
     ),
     # Clarification: Helpful tone for disambiguation
     "clarification": ModelConfig(
@@ -112,6 +116,8 @@ MODEL_CONFIGS: dict[str, ModelConfig] = {
         temperature=0.5,
         max_tokens=512,
         fallback_model=SupportedModel.CLAUDE_HAIKU_4_5,
+        input_cost_per_1k=0.00015,
+        output_cost_per_1k=0.0006,
     ),
     # General Knowledge: Higher creativity for diverse topics
     # Using Claude Sonnet 4 for better reasoning
@@ -120,6 +126,8 @@ MODEL_CONFIGS: dict[str, ModelConfig] = {
         temperature=0.8,
         max_tokens=1024,
         fallback_model=SupportedModel.GPT_4O,
+        input_cost_per_1k=0.003,
+        output_cost_per_1k=0.015,
     ),
     # Event Information: Factual, structured responses
     "event_info": ModelConfig(
@@ -127,6 +135,8 @@ MODEL_CONFIGS: dict[str, ModelConfig] = {
         temperature=0.4,
         max_tokens=512,
         fallback_model=SupportedModel.GPT_4O_MINI,
+        input_cost_per_1k=0.00015,
+        output_cost_per_1k=0.0006,
     ),
     # Facility Information: Detailed, accurate responses
     "facility_info": ModelConfig(
@@ -134,6 +144,8 @@ MODEL_CONFIGS: dict[str, ModelConfig] = {
         temperature=0.5,
         max_tokens=768,
         fallback_model=SupportedModel.GPT_4O_MINI,
+        input_cost_per_1k=0.00015,
+        output_cost_per_1k=0.0006,
     ),
     # Vision/OCR: Low temperature for deterministic recognition
     # GPT-4.1-nano is lightweight and supports vision + tool-use
@@ -142,6 +154,8 @@ MODEL_CONFIGS: dict[str, ModelConfig] = {
         temperature=0.0,
         max_tokens=512,
         fallback_model=SupportedModel.GPT_4O_MINI,
+        input_cost_per_1k=0.0001,
+        output_cost_per_1k=0.0004,
     ),
 }
 

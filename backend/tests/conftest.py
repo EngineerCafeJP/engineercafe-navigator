@@ -76,6 +76,16 @@ def event_loop():
 # ==============================================================================
 
 
+@pytest.fixture(autouse=True)
+def _reset_rag_circuit_breaker():
+    """Reset the RAG circuit breaker between tests to prevent state leakage"""
+    from backend.tools.enhanced_rag import _rag_circuit_breaker
+
+    _rag_circuit_breaker.reset()
+    yield
+    _rag_circuit_breaker.reset()
+
+
 @pytest.fixture
 def mock_openrouter_provider():
     """

@@ -14,8 +14,21 @@ class TestSimplifiedMemoryHelper:
 
     def setup_method(self):
         """各テストメソッドの前に実行"""
+        self._orig_supabase_url = os.environ.get("SUPABASE_URL")
+        self._orig_supabase_key = os.environ.get("SUPABASE_KEY")
         os.environ["SUPABASE_URL"] = "http://localhost:54321"
         os.environ["SUPABASE_KEY"] = "test-key"
+
+    def teardown_method(self):
+        """各テストメソッドの後にクリーンアップ"""
+        if self._orig_supabase_url is not None:
+            os.environ["SUPABASE_URL"] = self._orig_supabase_url
+        else:
+            os.environ.pop("SUPABASE_URL", None)
+        if self._orig_supabase_key is not None:
+            os.environ["SUPABASE_KEY"] = self._orig_supabase_key
+        else:
+            os.environ.pop("SUPABASE_KEY", None)
 
     @patch("backend.utils.memory_helper.create_client")
     def test_init_with_credentials(self, mock_create_client):
@@ -603,6 +616,22 @@ class TestSimplifiedMemoryHelper:
 class TestGetMemoryHelper:
     """get_memory_helper関数のテスト"""
 
+    def setup_method(self):
+        """各テストメソッドの前に実行"""
+        self._orig_supabase_url = os.environ.get("SUPABASE_URL")
+        self._orig_supabase_key = os.environ.get("SUPABASE_KEY")
+
+    def teardown_method(self):
+        """各テストメソッドの後にクリーンアップ"""
+        if self._orig_supabase_url is not None:
+            os.environ["SUPABASE_URL"] = self._orig_supabase_url
+        else:
+            os.environ.pop("SUPABASE_URL", None)
+        if self._orig_supabase_key is not None:
+            os.environ["SUPABASE_KEY"] = self._orig_supabase_key
+        else:
+            os.environ.pop("SUPABASE_KEY", None)
+
     @patch("backend.utils.memory_helper.create_client")
     def test_singleton_instance(self, mock_create_client):
         """シングルトンインスタンスの取得"""
@@ -621,6 +650,22 @@ class TestGetMemoryHelper:
 
 class TestRAGIntegration:
     """RAG統合テスト"""
+
+    def setup_method(self):
+        """各テストメソッドの前に実行"""
+        self._orig_supabase_url = os.environ.get("SUPABASE_URL")
+        self._orig_supabase_key = os.environ.get("SUPABASE_KEY")
+
+    def teardown_method(self):
+        """各テストメソッドの後にクリーンアップ"""
+        if self._orig_supabase_url is not None:
+            os.environ["SUPABASE_URL"] = self._orig_supabase_url
+        else:
+            os.environ.pop("SUPABASE_URL", None)
+        if self._orig_supabase_key is not None:
+            os.environ["SUPABASE_KEY"] = self._orig_supabase_key
+        else:
+            os.environ.pop("SUPABASE_KEY", None)
 
     @pytest.mark.asyncio
     @patch("backend.utils.memory_helper.create_client")
