@@ -2,27 +2,33 @@
 const nextConfig = {
   experimental: {
     serverActions: {
-      allowedOrigins: ['localhost:3000', 'vercel.app', '*.vercel.app']
-    }
+      allowedOrigins: ["localhost:3000", "vercel.app", "*.vercel.app"],
+    },
   },
   // WebSocket support for external integrations
   webpack: (config, { isServer }) => {
+    // Enable file watching with polling for Docker on Windows
+    config.watchOptions = {
+      poll: 1000, // Check for changes every second
+      aggregateTimeout: 300, // Delay rebuild after first change
+    };
+
     config.externals.push({
-      'node:buffer': 'commonjs buffer'
+      "node:buffer": "commonjs buffer",
     });
-    
+
     // Ignore markdown files in node_modules
     config.module.rules.push({
       test: /\.md$/,
-      loader: 'ignore-loader'
+      loader: "ignore-loader",
     });
-    
+
     // Handle native modules
     config.module.rules.push({
       test: /\.node$/,
-      loader: 'node-loader'
+      loader: "node-loader",
     });
-    
+
     // Additional fixes for libsql package
     if (!isServer) {
       config.resolve.fallback = {
@@ -33,27 +39,27 @@ const nextConfig = {
         crypto: false,
       };
     }
-    
+
     // Externalize problematic modules for server-side
     if (isServer) {
-      config.externals.push('libsql', '@libsql/client');
+      config.externals.push("libsql", "@libsql/client");
     }
-    
+
     return config;
   },
   // Support for loading VRM models and assets
   async headers() {
     return [
       {
-        source: '/(.*)',
+        source: "/(.*)",
         headers: [
           {
-            key: 'Cross-Origin-Embedder-Policy',
-            value: 'unsafe-none',
+            key: "Cross-Origin-Embedder-Policy",
+            value: "unsafe-none",
           },
           {
-            key: 'Cross-Origin-Opener-Policy',
-            value: 'same-origin-allow-popups',
+            key: "Cross-Origin-Opener-Policy",
+            value: "same-origin-allow-popups",
           },
         ],
       },
