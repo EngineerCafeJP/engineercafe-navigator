@@ -28,9 +28,10 @@ if (
 }
 
 /**
- * SWR キー生成ヘルパー（内部用）
+ * 語彙一覧取得用 URL 生成
+ * SWR のキーとして使用
  */
-function buildVocabularyListUrl(params: {
+export function buildVocabularyListUrl(params: {
   category?: string;
   search?: string;
   page?: number;
@@ -46,10 +47,10 @@ function buildVocabularyListUrl(params: {
 
 /**
  * 語彙一覧取得（SWR 用 fetcher）
- * URL を受け取ってフェッチする。page.tsx では以下のように使用：
+ * page.tsx での使用例：
  *
- * const swrKey = buildVocabularyListUrl({ category, search, page, limit });
- * const { data } = useSWR(swrKey, getVocabulary);
+ * const url = buildVocabularyListUrl({ category, search, page, limit });
+ * const { data } = useSWR(url, getVocabulary);
  */
 export const getVocabulary = (
   url: string
@@ -67,17 +68,4 @@ export async function deleteVocabulary(id: string): Promise<void> {
     method: "DELETE",
   });
   if (!res.ok) throw new Error(`Failed to delete vocabulary: ${res.status}`);
-}
-
-/**
- * SWR キーとなるURL を生成
- * buildVocabularyListUrl で URL を生成し、それを getVocabulary に渡す
- */
-export function buildVocabularyListKey(params: {
-  category?: string;
-  search?: string;
-  page?: number;
-  limit?: number;
-}): string {
-  return buildVocabularyListUrl(params);
 }
