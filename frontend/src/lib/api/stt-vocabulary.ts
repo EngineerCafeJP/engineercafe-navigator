@@ -3,10 +3,7 @@
  * FastAPI に直接アクセスする API クライアント関数
  */
 
-import {
-  VocabularyCategory,
-  VocabularyListResponse,
-} from "@/types/vosk";
+import { VocabularyListResponse } from "@/types/vosk";
 
 // ============================================================================
 // API クライアント
@@ -23,7 +20,7 @@ if (
   console.warn(
     "[stt-vocabulary] NEXT_PUBLIC_BACKEND_API_URL is not set. " +
       "Falling back to http://localhost:8000. " +
-      "Add it to frontend/.env.local to suppress this warning."
+      "Add it to frontend/.env.local to suppress this warning.",
   );
 }
 
