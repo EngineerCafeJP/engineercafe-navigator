@@ -70,6 +70,12 @@ def test_list_vocabulary_all(mock_load):
     assert body["success"] is True
     assert body["total"] == 2
     assert len(body["data"]) == 2
+    assert body["page"] == 1
+    assert body["limit"] == 20
+    assert "stats" in body
+    assert body["stats"]["total"] == 2  # 全件数（フィルタ前）
+    assert body["stats"]["byCategory"]["facility"] == 1
+    assert body["stats"]["byCategory"]["location"] == 1
 
 
 @patch("api.stt_vocabulary._load_vocabulary")
@@ -78,8 +84,12 @@ def test_list_vocabulary_filter_by_category(mock_load):
     resp = client.get("/api/stt/vocabulary?category=facility")
     assert resp.status_code == 200
     body = resp.json()
-    assert body["total"] == 1
+    assert body["total"] == 1  # フィルタ後の件数
     assert body["data"][0]["word"] == "エンジニアカフェ"
+    assert body["page"] == 1
+    assert body["limit"] == 20
+    assert body["stats"]["total"] == 2  # 統計は全件ベース（フィルタ非依存）
+    assert body["stats"]["byCategory"]["facility"] == 1
 
 
 @patch("api.stt_vocabulary._load_vocabulary")
@@ -87,6 +97,98 @@ def test_list_vocabulary_invalid_category(mock_load):
     mock_load.return_value = SAMPLE_VOCABULARY
     resp = client.get("/api/stt/vocabulary?category=invalid")
     assert resp.status_code == 422
+
+
+@patch("api.stt_vocabulary._load_vocabulary")
+def test_list_vocabulary_search_by_word(mock_load):
+    """検索パラメータで単語を絞り込む"""
+    mock_load.return_value = SAMPLE_VOCABULARY
+    resp = client.get("/api/stt/vocabulary?search=エンジニア")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["total"] == 1
+    assert body["data"][0]["word"] == "エンジニアカフェ"
+    assert body["stats"]["total"] == 2  # 統計は全件ベース
+
+
+@patch("api.stt_vocabulary._load_vocabulary")
+def test_list_vocabulary_search_by_reading(mock_load):
+    """検索パラメータで読み仮名を絞り込む"""
+    mock_load.return_value = SAMPLE_VOCABULARY
+    resp = client.get("/api/stt/vocabulary?search=はかた")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["total"] == 1
+    assert body["data"][0]["word"] == "博多"
+
+
+@patch("api.stt_vocabulary._load_vocabulary")
+def test_list_vocabulary_search_no_match(mock_load):
+    """検索で一致しない場合は空配列を返す"""
+    mock_load.return_value = SAMPLE_VOCABULARY
+    resp = client.get("/api/stt/vocabulary?search=存在しない")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["total"] == 0
+    assert len(body["data"]) == 0
+
+
+@patch("api.stt_vocabulary._load_vocabulary")
+def test_list_vocabulary_pagination(mock_load):
+    """ページネーションでデータを分割して取得"""
+    # 5件のダミーデータを作成
+    vocabulary = [
+        {
+            "id": f"id-{i}",
+            "word": f"word{i}",
+            "reading": f"reading{i}",
+            "category": "facility",
+            "priority": 5,
+            "created_at": "2026-02-19T00:00:00Z",
+            "updated_at": "2026-02-19T00:00:00Z",
+        }
+        for i in range(5)
+    ]
+    mock_load.return_value = vocabulary
+
+    # page=1, limit=2
+    resp = client.get("/api/stt/vocabulary?page=1&limit=2")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["page"] == 1
+    assert body["limit"] == 2
+    assert body["total"] == 5
+    assert len(body["data"]) == 2
+    assert body["data"][0]["word"] == "word0"
+    assert body["data"][1]["word"] == "word1"
+
+    # page=2, limit=2
+    resp = client.get("/api/stt/vocabulary?page=2&limit=2")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["page"] == 2
+    assert len(body["data"]) == 2
+    assert body["data"][0]["word"] == "word2"
+
+    # page=3, limit=2 (最後のページ、1件のみ)
+    resp = client.get("/api/stt/vocabulary?page=3&limit=2")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["page"] == 3
+    assert len(body["data"]) == 1
+    assert body["data"][0]["word"] == "word4"
+
+
+@patch("api.stt_vocabulary._load_vocabulary")
+def test_list_vocabulary_search_and_category_combined(mock_load):
+    """検索とカテゴリを組み合わせてフィルタ"""
+    mock_load.return_value = SAMPLE_VOCABULARY
+    resp = client.get("/api/stt/vocabulary?search=カフェ&category=facility")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["total"] == 1
+    assert body["data"][0]["word"] == "エンジニアカフェ"
+    assert body["stats"]["total"] == 2  # 統計は全件ベース
 
 
 # =============================================================================
