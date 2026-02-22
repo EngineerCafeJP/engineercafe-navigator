@@ -13,7 +13,7 @@ import {
 // ============================================================================
 
 const BACKEND_URL =
-  process.env.NEXT_PUBLIC_BACKEND_API_URL ?? "http://localhost:8000";
+  process.env.NEXT_PUBLIC_BACKEND_API_URL ?? "http://localhost:8000/api";
 
 // 開発環境で未設定の場合に警告
 if (
