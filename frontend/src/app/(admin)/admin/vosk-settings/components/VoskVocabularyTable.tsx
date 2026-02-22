@@ -86,13 +86,13 @@ export function VoskVocabularyTable({
                   <button
                     disabled
                     title="この機能は準備中です"
-                    className="text-gray-400 cursor-not-allowed font-medium"
+                    className="px-3 py-1 border-2 border-blue-300 text-gray-400 cursor-not-allowed font-medium rounded"
                   >
                     編集
                   </button>
                   <button
                     onClick={() => onDeleteClick(item)}
-                    className="text-red-600 hover:text-red-900 font-medium"
+                    className="px-3 py-1 border-2 border-red-600 text-red-600 hover:bg-red-50 font-medium rounded"
                   >
                     削除
                   </button>
