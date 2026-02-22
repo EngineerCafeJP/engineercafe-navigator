@@ -156,7 +156,8 @@ def _filter_vocabulary(
     if search:
         lower_search = search.lower()
         filtered = [
-            v for v in filtered
+            v
+            for v in filtered
             if lower_search in v.get("word", "").lower()
             or lower_search in v.get("reading", "").lower()
         ]
@@ -206,7 +207,9 @@ async def list_vocabulary(
 
     # 統計情報（フィルタ前に全件ベースで算出）
     all_categories = ["facility", "location", "service", "event", "person", "tech", "organization"]
-    by_category = {cat: sum(1 for v in all_items if v.get("category") == cat) for cat in all_categories}
+    by_category = {
+        cat: sum(1 for v in all_items if v.get("category") == cat) for cat in all_categories
+    }
     stats = VocabularyStats(total=len(all_items), byCategory=by_category)
 
     # フィルタリング
