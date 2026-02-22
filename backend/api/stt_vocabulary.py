@@ -142,6 +142,28 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _filter_vocabulary(
+    items: List[dict],
+    category: Optional[VocabularyCategory] = None,
+    search: Optional[str] = None,
+) -> List[dict]:
+    """語彙をカテゴリと検索で絞り込む"""
+    filtered = items
+
+    if category:
+        filtered = [v for v in filtered if v["category"] == category]
+
+    if search:
+        lower_search = search.lower()
+        filtered = [
+            v for v in filtered
+            if lower_search in v.get("word", "").lower()
+            or lower_search in v.get("reading", "").lower()
+        ]
+
+    return filtered
+
+
 # =============================================================================
 # Grammar helpers
 # =============================================================================
@@ -188,17 +210,7 @@ async def list_vocabulary(
     stats = VocabularyStats(total=len(all_items), byCategory=by_category)
 
     # フィルタリング
-    items = all_items
-    if category:
-        items = [v for v in items if v["category"] == category]
-    if search:
-        lower_search = search.lower()
-        items = [
-            v for v in items
-            if lower_search in v.get("word", "").lower()
-            or lower_search in v.get("reading", "").lower()
-        ]
-
+    items = _filter_vocabulary(all_items, category=category, search=search)
     total = len(items)
 
     # ページネーション
