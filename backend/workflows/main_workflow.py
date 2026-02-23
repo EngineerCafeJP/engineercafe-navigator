@@ -610,6 +610,30 @@ class MainWorkflow:
         except Exception:
             pass  # Non-critical — API層でもスキャンするため
 
+        # Response translation: translate JA response to EN for non-Japanese users
+        language = state.get("language", "ja")
+        if language != "ja":
+            try:
+                from backend.services.translation_service import (
+                    get_translation_service,
+                )
+
+                ts = get_translation_service()
+                translated_answer = await ts.translate(answer, "ja_to_en")
+                if translated_answer != answer:
+                    logger.info(
+                        "Translated response for lang=%s: '%s' -> '%s'",
+                        language,
+                        answer[:40],
+                        translated_answer[:40],
+                    )
+                answer = translated_answer
+            except Exception as trans_err:
+                logger.warning(
+                    "Response translation failed, using original: %s",
+                    trans_err,
+                )
+
         # アシスタント応答を保存
         try:
             memory_helper = get_memory_helper()
