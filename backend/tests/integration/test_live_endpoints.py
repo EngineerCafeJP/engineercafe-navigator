@@ -152,9 +152,7 @@ class TestAuthAndHealthEndpoints:
         response = await live_client.get("/api/knowledge")
         assert response.status_code == 403
 
-    async def test_stt_vocabulary_without_api_key_returns_403(
-        self, live_client: httpx.AsyncClient
-    ):
+    async def test_stt_vocabulary_without_api_key_returns_403(self, live_client: httpx.AsyncClient):
         """GET /api/stt/vocabulary without X-API-Key must return 403."""
         response = await live_client.get("/api/stt/vocabulary")
         assert response.status_code == 403
@@ -181,9 +179,9 @@ class TestAuthAndHealthEndpoints:
             )
 
         response = await asyncio.wait_for(_do_request(), timeout=LIVE_TIMEOUT)
-        assert response.status_code == 200, (
-            f"Expected 200, got {response.status_code}: {response.text}"
-        )
+        assert (
+            response.status_code == 200
+        ), f"Expected 200, got {response.status_code}: {response.text}"
         body = response.json()
         assert "answer" in body
         assert "emotion" in body
@@ -198,9 +196,7 @@ class TestAuthAndHealthEndpoints:
 class TestLiveChatEndpoints:
     """Integration tests that invoke the actual LangGraph workflow via /api/chat."""
 
-    async def test_chat_japanese_query(
-        self, live_client: httpx.AsyncClient, _require_real_llm
-    ):
+    async def test_chat_japanese_query(self, live_client: httpx.AsyncClient, _require_real_llm):
         """
         POST /api/chat with a Japanese hours query must return a non-empty answer
         and a valid emotion label.
@@ -224,13 +220,9 @@ class TestLiveChatEndpoints:
         assert answer, "answer must be a non-empty string"
         # Emotion may come from the [tag] in answer or from the emotion field
         raw_emotion = body.get("emotion", "")
-        assert raw_emotion in VALID_EMOTIONS, (
-            f"emotion '{raw_emotion}' is not in {VALID_EMOTIONS}"
-        )
+        assert raw_emotion in VALID_EMOTIONS, f"emotion '{raw_emotion}' is not in {VALID_EMOTIONS}"
 
-    async def test_chat_wifi_query(
-        self, live_client: httpx.AsyncClient, _require_real_llm
-    ):
+    async def test_chat_wifi_query(self, live_client: httpx.AsyncClient, _require_real_llm):
         """
         POST /api/chat asking about WiFi must return an answer referencing WiFi or
         network-related information.
@@ -266,13 +258,9 @@ class TestLiveChatEndpoints:
                     "LLM returned fallback due to event-loop isolation "
                     f"(singleton httpx pool): {answer[:120]}"
                 )
-            pytest.fail(
-                f"WiFi answer did not contain expected keywords: {answer[:200]}"
-            )
+            pytest.fail(f"WiFi answer did not contain expected keywords: {answer[:200]}")
 
-    async def test_chat_english_query(
-        self, live_client: httpx.AsyncClient, _require_real_llm
-    ):
+    async def test_chat_english_query(self, live_client: httpx.AsyncClient, _require_real_llm):
         """
         POST /api/chat with language='en' must return a 200 with a non-empty answer.
         """
@@ -302,9 +290,7 @@ class TestLiveChatEndpoints:
         )
         assert response.status_code == 422, f"Expected 422, got {response.status_code}"
 
-    async def test_chat_missing_required_fields_returns_422(
-        self, live_client: httpx.AsyncClient
-    ):
+    async def test_chat_missing_required_fields_returns_422(self, live_client: httpx.AsyncClient):
         """
         POST /api/chat with a body that omits required fields (query, session_id)
         must return 422.
@@ -333,9 +319,10 @@ class TestLiveChatEndpoints:
             )
 
         response = await asyncio.wait_for(_request(), timeout=LIVE_TIMEOUT)
-        assert response.status_code in {200, 422}, (
-            f"Unexpected status {response.status_code} for empty query"
-        )
+        assert response.status_code in {
+            200,
+            422,
+        }, f"Unexpected status {response.status_code} for empty query"
 
 
 # ===========================================================================
@@ -347,9 +334,7 @@ class TestLiveChatEndpoints:
 class TestSSEStreamingEndpoint:
     """Verify that /api/chat/stream returns a proper Server-Sent Events stream."""
 
-    async def test_chat_stream_returns_sse(
-        self, live_client: httpx.AsyncClient, _require_real_llm
-    ):
+    async def test_chat_stream_returns_sse(self, live_client: httpx.AsyncClient, _require_real_llm):
         """
         POST /api/chat/stream must respond with Content-Type text/event-stream and
         at least one 'data:' line in the body.
@@ -369,17 +354,15 @@ class TestSSEStreamingEndpoint:
         response = await asyncio.wait_for(_request(), timeout=LIVE_TIMEOUT)
         assert response.status_code == 200, response.text
         content_type = response.headers.get("content-type", "")
-        assert "text/event-stream" in content_type, (
-            f"Expected text/event-stream, got: {content_type}"
-        )
+        assert (
+            "text/event-stream" in content_type
+        ), f"Expected text/event-stream, got: {content_type}"
         body_text = response.text
-        assert "data:" in body_text, (
-            f"SSE response did not contain any 'data:' chunks: {body_text[:500]}"
-        )
+        assert (
+            "data:" in body_text
+        ), f"SSE response did not contain any 'data:' chunks: {body_text[:500]}"
 
-    async def test_chat_stream_without_api_key_returns_403(
-        self, live_client: httpx.AsyncClient
-    ):
+    async def test_chat_stream_without_api_key_returns_403(self, live_client: httpx.AsyncClient):
         """POST /api/chat/stream without X-API-Key must return 403."""
         response = await live_client.post(
             "/api/chat/stream",
@@ -404,12 +387,12 @@ class TestResponseHeaders:
         """
         response = await live_client.get("/health")
         assert response.status_code == 200
-        assert "x-response-time-ms" in response.headers, (
-            "X-Response-Time-Ms header missing from /health response"
-        )
-        assert "x-request-id" in response.headers, (
-            "X-Request-ID header missing from /health response"
-        )
+        assert (
+            "x-response-time-ms" in response.headers
+        ), "X-Response-Time-Ms header missing from /health response"
+        assert (
+            "x-request-id" in response.headers
+        ), "X-Request-ID header missing from /health response"
 
     async def test_request_id_is_echoed(self, live_client: httpx.AsyncClient):
         """
@@ -417,14 +400,10 @@ class TestResponseHeaders:
         the same value back in the response header.
         """
         custom_id = "my-custom-request-id-001"
-        response = await live_client.get(
-            "/health", headers={"X-Request-ID": custom_id}
-        )
+        response = await live_client.get("/health", headers={"X-Request-ID": custom_id})
         assert response.status_code == 200
         returned_id = response.headers.get("x-request-id", "")
-        assert returned_id == custom_id, (
-            f"Expected X-Request-ID '{custom_id}', got '{returned_id}'"
-        )
+        assert returned_id == custom_id, f"Expected X-Request-ID '{custom_id}', got '{returned_id}'"
 
     async def test_response_time_header_is_numeric(self, live_client: httpx.AsyncClient):
         """X-Response-Time-Ms value must be parseable as a non-negative float."""
@@ -447,9 +426,7 @@ class TestResponseHeaders:
 class TestVisitorIdParameter:
     """Verify that visitor_id is accepted and forwarded through the chat pipeline."""
 
-    async def test_chat_with_visitor_id(
-        self, live_client: httpx.AsyncClient, _require_real_llm
-    ):
+    async def test_chat_with_visitor_id(self, live_client: httpx.AsyncClient, _require_real_llm):
         """
         POST /api/chat with a visitor_id in the request body must return 200.
 
@@ -471,9 +448,9 @@ class TestVisitorIdParameter:
             )
 
         response = await asyncio.wait_for(_request(), timeout=LIVE_TIMEOUT)
-        assert response.status_code == 200, (
-            f"Expected 200 with visitor_id, got {response.status_code}: {response.text}"
-        )
+        assert (
+            response.status_code == 200
+        ), f"Expected 200 with visitor_id, got {response.status_code}: {response.text}"
         body = response.json()
         assert "answer" in body, "Response must include 'answer' field"
         assert "emotion" in body, "Response must include 'emotion' field"
@@ -501,6 +478,6 @@ class TestVisitorIdParameter:
         )
         # 200 (real LLM) or 500 (LLM unavailable) are both acceptable;
         # 422 would mean schema validation rejected the missing optional field.
-        assert response.status_code != 422, (
-            "visitor_id is Optional; omitting it must not trigger a 422"
-        )
+        assert (
+            response.status_code != 422
+        ), "visitor_id is Optional; omitting it must not trigger a 422"

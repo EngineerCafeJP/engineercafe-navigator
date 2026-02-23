@@ -119,13 +119,13 @@ class TestMessageDynamicRanking:
         low_score = next(m["_rank_score"] for m in ranked if "レーザーカッター" in m["content"])
 
         # WiFiパスワードメッセージ >= 無関係メッセージ であること
-        assert high_score >= low_score, (
-            "WiFiパスワード含むメッセージは無関係メッセージと同等以上のスコアであること"
-        )
+        assert (
+            high_score >= low_score
+        ), "WiFiパスワード含むメッセージは無関係メッセージと同等以上のスコアであること"
         # WiFi 含むメッセージ (mid/high) は無関係メッセージ (low) より高いか同等以上
-        assert mid_score >= low_score, (
-            "WiFi含むメッセージは完全無関係メッセージと同等以上のスコアであること"
-        )
+        assert (
+            mid_score >= low_score
+        ), "WiFi含むメッセージは完全無関係メッセージと同等以上のスコアであること"
 
     def test_rank_messages_recency_factor(self, memory_helper_mock):
         """古いメッセージより新しいメッセージが高い recency スコアを持つことを検証する"""
@@ -138,9 +138,9 @@ class TestMessageDynamicRanking:
 
         assert len(ranked) == 2
         # ランキング後は降順のためインデックス 0 が最高スコア
-        assert ranked[0]["content"] == "最近のメッセージ", (
-            "1秒前のメッセージが1週間前のメッセージより上位にランキングされること"
-        )
+        assert (
+            ranked[0]["content"] == "最近のメッセージ"
+        ), "1秒前のメッセージが1週間前のメッセージより上位にランキングされること"
 
     def test_rank_messages_empty_list(self, memory_helper_mock):
         """空のメッセージリストに対して空リストを返すことを検証する"""
@@ -198,15 +198,15 @@ class TestContextPrioritySignals:
 
         signals = context_engine.extract_signals_from_context(memory_context, knowledge_results)
 
-        assert signals.conversation_depth == 3, (
-            "会話深度が conversation_history の長さと一致すること"
-        )
-        assert signals.rag_cache_top_score == pytest.approx(0.85), (
-            "RAG キャッシュのトップスコアが取得されること"
-        )
-        assert "facility" in signals.previous_categories, (
-            "memory_context の previous_categories が引き継がれること"
-        )
+        assert (
+            signals.conversation_depth == 3
+        ), "会話深度が conversation_history の長さと一致すること"
+        assert signals.rag_cache_top_score == pytest.approx(
+            0.85
+        ), "RAG キャッシュのトップスコアが取得されること"
+        assert (
+            "facility" in signals.previous_categories
+        ), "memory_context の previous_categories が引き継がれること"
 
     def test_extract_signals_empty_context(self, context_engine):
         """None コンテキストに対してデフォルト値のシグナルを返すことを検証する"""
@@ -229,9 +229,9 @@ class TestContextPrioritySignals:
 
         signals = context_engine.extract_signals_from_context(None, knowledge_results)
 
-        assert signals.rag_cache_top_score == pytest.approx(0.9), (
-            "複数の結果から最高スコアが選ばれること"
-        )
+        assert signals.rag_cache_top_score == pytest.approx(
+            0.9
+        ), "複数の結果から最高スコアが選ばれること"
 
     def test_extract_signals_rag_category_added_to_previous(self, context_engine):
         """RAG 結果のカテゴリが previous_categories に追加されることを検証する"""
@@ -244,12 +244,12 @@ class TestContextPrioritySignals:
 
         signals = context_engine.extract_signals_from_context(memory_context, knowledge_results)
 
-        assert "event" in signals.previous_categories, (
-            "RAG カテゴリが previous_categories に追加されること"
-        )
-        assert "facility" in signals.previous_categories, (
-            "既存の previous_categories も保持されること"
-        )
+        assert (
+            "event" in signals.previous_categories
+        ), "RAG カテゴリが previous_categories に追加されること"
+        assert (
+            "facility" in signals.previous_categories
+        ), "既存の previous_categories も保持されること"
 
     def test_compute_specificity_short_query(self, context_engine):
         """短いクエリ（10 文字未満）が低い具体性スコアを持つことを検証する"""
@@ -275,9 +275,7 @@ class TestContextPrioritySignals:
         score_with_number = context_engine._compute_specificity("1000円の料金は？")
         score_without_number = context_engine._compute_specificity("料金はいくら？")
 
-        assert score_with_number > score_without_number, (
-            "数値含むクエリの方が高いスコアであること"
-        )
+        assert score_with_number > score_without_number, "数値含むクエリの方が高いスコアであること"
 
     def test_compute_specificity_with_proper_noun(self, context_engine):
         """固有名詞（エンジニアカフェ）を含むクエリが高いスコアを持つことを検証する"""
@@ -303,12 +301,12 @@ class TestThresholdDynamicAdjustment:
             "facility", "test", signals, self.BASE_THRESHOLDS
         )
 
-        assert result["high"] == pytest.approx(0.77), (
-            "facility カテゴリ一致で high が 0.80 - 0.03 = 0.77 になること"
-        )
-        assert result["medium"] == pytest.approx(0.57), (
-            "facility カテゴリ一致で medium が 0.60 - 0.03 = 0.57 になること"
-        )
+        assert result["high"] == pytest.approx(
+            0.77
+        ), "facility カテゴリ一致で high が 0.80 - 0.03 = 0.77 になること"
+        assert result["medium"] == pytest.approx(
+            0.57
+        ), "facility カテゴリ一致で medium が 0.60 - 0.03 = 0.57 になること"
         assert result["term_match"] == pytest.approx(0.50), "term_match は変化しないこと"
 
     def test_threshold_high_rag_score(self, context_engine):
@@ -318,12 +316,12 @@ class TestThresholdDynamicAdjustment:
             "general", "test", signals, self.BASE_THRESHOLDS
         )
 
-        assert result["high"] == pytest.approx(0.85), (
-            "RAG スコア > 0.8 で high が 0.80 + 0.05 = 0.85 になること"
-        )
-        assert result["medium"] == pytest.approx(0.65), (
-            "RAG スコア > 0.8 で medium が 0.60 + 0.05 = 0.65 になること"
-        )
+        assert result["high"] == pytest.approx(
+            0.85
+        ), "RAG スコア > 0.8 で high が 0.80 + 0.05 = 0.85 になること"
+        assert result["medium"] == pytest.approx(
+            0.65
+        ), "RAG スコア > 0.8 で medium が 0.60 + 0.05 = 0.65 になること"
 
     def test_threshold_high_specificity(self, context_engine):
         """リクエスト具体性が高い場合に medium のみ +0.03 されることを検証する"""
@@ -332,12 +330,10 @@ class TestThresholdDynamicAdjustment:
             "general", "test", signals, self.BASE_THRESHOLDS
         )
 
-        assert result["medium"] == pytest.approx(0.63), (
-            "具体性 > 0.8 で medium が 0.60 + 0.03 = 0.63 になること"
-        )
-        assert result["high"] == pytest.approx(0.80), (
-            "具体性は high に影響しないため 0.80 のまま"
-        )
+        assert result["medium"] == pytest.approx(
+            0.63
+        ), "具体性 > 0.8 で medium が 0.60 + 0.03 = 0.63 になること"
+        assert result["high"] == pytest.approx(0.80), "具体性は high に影響しないため 0.80 のまま"
 
     def test_threshold_combined_adjustments(self, context_engine):
         """トピック一貫性 + 高 RAG スコアの複合調整が加算されることを検証する"""
@@ -352,12 +348,12 @@ class TestThresholdDynamicAdjustment:
             "facility", "test", signals, self.BASE_THRESHOLDS
         )
 
-        assert result["high"] == pytest.approx(0.82), (
-            "複合調整 (-0.03 + 0.05) = +0.02 → 0.80 + 0.02 = 0.82"
-        )
-        assert result["medium"] == pytest.approx(0.62), (
-            "複合調整 (-0.03 + 0.05) = +0.02 → 0.60 + 0.02 = 0.62"
-        )
+        assert result["high"] == pytest.approx(
+            0.82
+        ), "複合調整 (-0.03 + 0.05) = +0.02 → 0.80 + 0.02 = 0.82"
+        assert result["medium"] == pytest.approx(
+            0.62
+        ), "複合調整 (-0.03 + 0.05) = +0.02 → 0.60 + 0.02 = 0.62"
 
     def test_threshold_max_adjustment_clamped(self, context_engine):
         """調整幅が MAX_ADJUSTMENT (0.10) にクランプされることを検証する"""
@@ -371,9 +367,9 @@ class TestThresholdDynamicAdjustment:
 
         # +0.05 は MAX_ADJUSTMENT 以内なのでクランプされない
         high_adj = result["high"] - self.BASE_THRESHOLDS["high"]
-        assert abs(high_adj) <= MAX_ADJUSTMENT, (
-            f"調整幅は +-{MAX_ADJUSTMENT} を超えないこと: {high_adj}"
-        )
+        assert (
+            abs(high_adj) <= MAX_ADJUSTMENT
+        ), f"調整幅は +-{MAX_ADJUSTMENT} を超えないこと: {high_adj}"
 
     def test_threshold_no_signals_unchanged(self, context_engine):
         """シグナルがすべてデフォルト値の場合、閾値が変化しないことを検証する"""
@@ -431,9 +427,9 @@ class TestMessageWindowing:
 
         assert len(non_system) == 20, "最近の 20 件の会話メッセージが残ること"
         assert len(system_msgs) == 1, "要約 SystemMessage が 1 件追加されること"
-        assert "summarized" in system_msgs[0].content.lower(), (
-            "要約プレースホルダーに 'summarized' が含まれること"
-        )
+        assert (
+            "summarized" in system_msgs[0].content.lower()
+        ), "要約プレースホルダーに 'summarized' が含まれること"
 
     def test_should_compact_under_threshold(self, message_window):
         """20 件のメッセージは should_compact が False を返すことを検証する"""

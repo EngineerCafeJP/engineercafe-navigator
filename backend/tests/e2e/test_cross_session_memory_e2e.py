@@ -23,7 +23,6 @@ import pytest
 
 from langgraph.store.postgres.aio import AsyncPostgresStore
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -170,9 +169,9 @@ class TestStorePersistence:
 
                 found = [i for i in items if i.key == test_key]
                 assert found, f"書き込んだキー {test_key} が asearch で見つからない"
-                assert found[0].value == test_value, (
-                    f"取得した値が一致しない: expected={test_value}, got={found[0].value}"
-                )
+                assert (
+                    found[0].value == test_value
+                ), f"取得した値が一致しない: expected={test_value}, got={found[0].value}"
             finally:
                 try:
                     await store.adelete(test_ns, test_key)
@@ -240,9 +239,7 @@ class TestAnonymousUserMemory:
 
             namespace = ("visitor_memories", anon_visitor_id)
             items = await store.asearch(namespace, query="匿名", limit=10)
-            assert not items, (
-                f"anonymous ユーザーのメモリが Store に保存されてしまった: {items}"
-            )
+            assert not items, f"anonymous ユーザーのメモリが Store に保存されてしまった: {items}"
 
     async def test_none_visitor_id_no_memory_storage(self, store_cm):
         """
