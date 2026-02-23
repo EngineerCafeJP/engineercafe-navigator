@@ -12,11 +12,15 @@ LangGraphのSupervisor Agentパターンに従い、OrchestratorAgentが
 import asyncio
 import logging
 import os
+import time
+import uuid
+from dataclasses import dataclass
 from typing import Annotated, Any, Optional, TypedDict
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
+from langgraph.runtime import Runtime
 from langgraph.types import Command, RetryPolicy
 
 from backend.agents.orchestrator_agent import (
@@ -46,6 +50,13 @@ class WorkflowStateDict(TypedDict):
     ocr_result: Optional[dict]  # OCR result from VisionAgent
 
 
+@dataclass
+class WorkflowContext:
+    """ワークフローのランタイムコンテキスト"""
+
+    user_id: str  # visitor_id from frontend, or session_id as fallback
+
+
 class MainWorkflow:
     """
     メインLangGraphワークフロー - Supervisor Patternによるマルチエージェント制御
@@ -57,11 +68,12 @@ class MainWorkflow:
     - AsyncPostgresSaver: 会話状態の永続化
     """
 
-    def __init__(self, checkpointer=None):
+    def __init__(self, checkpointer=None, store=None):
         # debug_modeは環境変数で制御（本番ではFalse推奨）
         debug_mode = os.getenv("ORCHESTRATOR_DEBUG_MODE", "false").lower() == "true"
         self.orchestrator = OrchestratorAgent(debug_mode=debug_mode)
         self.checkpointer = checkpointer
+        self.store = store
 
         # 全エージェントをシングルトンインスタンスとして保持
         from backend.agents.business_info_agent import BusinessInfoAgent
@@ -106,7 +118,7 @@ class MainWorkflow:
 
     def _build_graph(self) -> StateGraph:
         """Supervisor Patternに基づくグラフ構造を構築"""
-        workflow = StateGraph(WorkflowStateDict)
+        workflow = StateGraph(WorkflowStateDict, context_schema=WorkflowContext)
 
         # LLM依存ノード: retry_policyを適用
         llm_retry = self.LLM_RETRY_POLICY
@@ -146,12 +158,17 @@ class MainWorkflow:
         workflow.add_edge("general_knowledge", "format_response")
         workflow.add_edge("format_response", END)
 
-        # Checkpointerが指定されている場合は永続化を有効化
+        compile_kwargs = {}
         if self.checkpointer:
-            logger.info("Compiling workflow with checkpointer for persistence")
-            return workflow.compile(checkpointer=self.checkpointer)
+            compile_kwargs["checkpointer"] = self.checkpointer
+        if self.store:
+            compile_kwargs["store"] = self.store
+
+        if compile_kwargs:
+            logger.info("Compiling workflow with %s", list(compile_kwargs.keys()))
+            return workflow.compile(**compile_kwargs)
         else:
-            logger.warning("Compiling workflow without checkpointer (no persistence)")
+            logger.warning("Compiling workflow without checkpointer/store (no persistence)")
             return workflow.compile()
 
     def _input_type_decision(self, state: WorkflowStateDict) -> str:
@@ -198,7 +215,9 @@ class MainWorkflow:
             },
         }
 
-    async def _memory_loader_node(self, state: WorkflowStateDict) -> dict:
+    async def _memory_loader_node(
+        self, state: WorkflowStateDict, runtime: Runtime[WorkflowContext]
+    ) -> dict:
         """
         メモリローダーノード: 会話履歴とコンテキストを取得
 
@@ -280,17 +299,37 @@ class MainWorkflow:
             except Exception as sig_err:
                 logger.debug("Priority signal extraction skipped: %s", sig_err)
 
+            # NEW: Cross-thread memory from Store (long-term visitor memory)
+            long_term_memories = []
+            try:
+                user_id = runtime.context.user_id if runtime.context else None
+                if user_id and user_id != "anonymous" and runtime.store:
+                    namespace = ("visitor_memories", user_id)
+                    memories = await runtime.store.asearch(
+                        namespace, query=state.get("query", ""), limit=5
+                    )
+                    long_term_memories = [m.value for m in memories]
+                    if long_term_memories:
+                        logger.info(
+                            "Loaded %d long-term memories for user %s",
+                            len(long_term_memories),
+                            user_id,
+                        )
+            except Exception as e:
+                logger.warning("Long-term memory load failed: %s", e)
+
             return {
                 "context": {
                     **state.get("context", {}),
                     "memory": memory_context,
                     "knowledge_results": knowledge_results,
                     "priority_signals": priority_signals,
+                    "long_term_memory": long_term_memories,  # NEW
                 }
             }
         except Exception as e:
             logger.warning("Memory loading failed: %s", e)
-            return {"context": {**state.get("context", {}), "memory": {}}}
+            return {"context": {**state.get("context", {}), "memory": {}, "long_term_memory": []}}
 
     async def _orchestrator_node(self, state: WorkflowStateDict) -> Command[RoutingTarget]:
         """
@@ -403,6 +442,9 @@ class MainWorkflow:
         # Get cached knowledge results from state
         state_context = state.get("context", {}).get("knowledge_results")
         priority_signals = state.get("context", {}).get("priority_signals")
+        long_term_memory = state.get("context", {}).get("long_term_memory", [])
+        if long_term_memory:
+            state_context = {**(state_context or {}), "long_term_memory": long_term_memory}
 
         result = await self._business_info_agent.answer_business_query(
             query,
@@ -429,6 +471,9 @@ class MainWorkflow:
         # Get cached knowledge results from state
         state_context = state.get("context", {}).get("knowledge_results")
         priority_signals = state.get("context", {}).get("priority_signals")
+        long_term_memory = state.get("context", {}).get("long_term_memory", [])
+        if long_term_memory:
+            state_context = {**(state_context or {}), "long_term_memory": long_term_memory}
 
         result = await self._facility_agent.answer_facility_query(
             query,
@@ -450,7 +495,6 @@ class MainWorkflow:
         query = state.get("query", "")
         language = state.get("language", "ja")
         session_id = state.get("session_id", "")
-
         result = await self._event_agent.answer_event_query(query, language, session_id)
 
         return {
@@ -500,6 +544,7 @@ class MainWorkflow:
         query_type = state.get("routing", {}).get("request_type", "general")
         state_context = state.get("context", {}).get("knowledge_results")
         priority_signals = state.get("context", {}).get("priority_signals")
+        long_term_memory = state.get("context", {}).get("long_term_memory", [])
 
         result = await self._general_knowledge_agent.answer_query(
             query=query,
@@ -508,6 +553,7 @@ class MainWorkflow:
             query_type=query_type,
             state_context=state_context,
             context_signals=priority_signals,
+            long_term_memory=long_term_memory,  # NEW
         )
 
         return {
@@ -516,7 +562,9 @@ class MainWorkflow:
             "metadata": {**state.get("metadata", {}), **result.get("metadata", {})},
         }
 
-    async def _format_response_node(self, state: WorkflowStateDict) -> dict:
+    async def _format_response_node(
+        self, state: WorkflowStateDict, runtime: Runtime[WorkflowContext]
+    ) -> dict:
         """応答フォーマットノード: 最終的な応答をフォーマット"""
         from backend.utils.emotion_utils import strip_emotion_tags
         from backend.utils.memory_helper import get_memory_helper
@@ -551,6 +599,34 @@ class MainWorkflow:
         except Exception as store_error:
             logger.warning("Failed to store assistant message: %s", store_error)
 
+        # NEW: Extract and store long-term memories
+        try:
+            user_id = runtime.context.user_id if runtime.context else None
+            if user_id and user_id != "anonymous" and runtime.store:
+                from backend.utils.memory_extractor import extract_memories
+
+                facts = extract_memories(query, answer, state.get("language", "ja"))
+                if facts:
+                    namespace = ("visitor_memories", user_id)
+                    for fact in facts:
+                        await runtime.store.aput(
+                            namespace,
+                            str(uuid.uuid4()),
+                            {
+                                "data": fact["content"],
+                                "type": fact["type"],
+                                "confidence": fact.get("confidence", 0.5),
+                                "timestamp": time.time(),
+                            },
+                        )
+                    logger.info(
+                        "Stored %d long-term memories for user %s",
+                        len(facts),
+                        user_id,
+                    )
+        except Exception as e:
+            logger.warning("Long-term memory store failed: %s", e)
+
         # Message Windowing: 長セッションでのコンテキストオーバーフロー防止
         existing_msgs = state.get("messages", [])
         windowed = apply_message_window(existing_msgs)
@@ -582,12 +658,18 @@ class MainWorkflow:
         config = None
         if self.checkpointer:
             config = {"configurable": {"thread_id": session_id}}
+
+        # Store visitor_id for context injection
+        self._current_visitor_id = input_data.get("visitor_id") or session_id
+
         return state, config
 
     async def ainvoke(self, input_data: dict) -> dict:
         """ワークフローを非同期実行"""
         state, config = self._prepare_state(input_data)
-        result = await self.graph.ainvoke(state, config=config)
+        visitor_id = input_data.get("visitor_id") or input_data.get("session_id", "anonymous")
+        context = WorkflowContext(user_id=visitor_id)
+        result = await self.graph.ainvoke(state, config=config, context=context)
 
         return {
             "answer": result.get("answer", ""),
@@ -609,8 +691,12 @@ class MainWorkflow:
             dict: {"type": "token", "content": str} or {"type": "complete", "data": dict}
         """
         state, config = self._prepare_state(input_data)
+        visitor_id = input_data.get("visitor_id") or input_data.get("session_id", "anonymous")
+        context = WorkflowContext(user_id=visitor_id)
 
-        async for event in self.graph.astream_events(state, config=config, version="v2"):
+        async for event in self.graph.astream_events(
+            state, config=config, version="v2", context=context
+        ):
             kind = event["event"]
             if kind == "on_chat_model_stream":
                 content = event["data"]["chunk"].content
@@ -654,20 +740,29 @@ async def get_workflow() -> MainWorkflow:
             # Double-check after acquiring lock
             if _workflow_instance is None:
                 checkpointer = None
+                store = None
+
                 try:
                     from backend.utils.checkpointer import create_checkpointer
 
                     checkpointer = await create_checkpointer()
                     logger.info("Workflow initialized with AsyncPostgresSaver")
                 except ValueError:
-                    logger.warning(
-                        "SUPABASE_DB_URI not set, running without persistence. "
-                        "Set SUPABASE_DB_URI for production use."
-                    )
+                    logger.warning("SUPABASE_DB_URI not set, running without persistence.")
                 except Exception as e:
                     logger.warning("Failed to create checkpointer: %s", e)
 
-                _workflow_instance = MainWorkflow(checkpointer=checkpointer)
+                try:
+                    from backend.utils.store import create_store
+
+                    store = await create_store()
+                    logger.info("Workflow initialized with AsyncPostgresStore")
+                except ValueError:
+                    logger.warning("SUPABASE_DB_URI not set, running without store.")
+                except Exception as e:
+                    logger.warning("Failed to create store: %s", e)
+
+                _workflow_instance = MainWorkflow(checkpointer=checkpointer, store=store)
     return _workflow_instance
 
 

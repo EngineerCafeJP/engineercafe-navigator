@@ -36,7 +36,8 @@ def build_event_prompt(query: str, events_text: str, time_range: str, language: 
     time_range_text = get_time_range_label(time_range, language)
 
     if language == "en":
-        return f"""Based on the following event information for {time_range_text}, answer the question.
+        return f"""Based on the following event information \
+for {time_range_text}, answer the question.
 
 Question: {query}
 

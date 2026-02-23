@@ -128,7 +128,9 @@ class EnhancedRAGSearch:
                     "success": False,
                     "error": "Service temporarily unavailable",
                     "data": {
-                        "context": "現在検索サービスに接続できません。しばらくしてからお試しください。",
+                        "context": (
+                            "現在検索サービスに接続できません。" "しばらくしてからお試しください。"
+                        ),
                         "results": [],
                         "totalResults": 0,
                     },
@@ -289,7 +291,8 @@ class EnhancedRAGSearch:
 
         Grading criteria:
         - HIGH (priority_score >= high_threshold): 常に保持
-        - MEDIUM (medium_threshold <= priority_score < high_threshold): クエリ用語マッチがある場合保持
+        - MEDIUM (medium_threshold <= priority_score < high_threshold):
+          クエリ用語マッチがある場合保持
         - LOW (priority_score < medium_threshold): 除外
 
         閾値はカテゴリとクエリ長により動的に調整される。
@@ -561,12 +564,24 @@ class EnhancedRAGSearch:
         # カテゴリに応じたアドバイステンプレート
         advice_templates = {
             "hours": {
-                "ja": "💡 営業時間は日によって異なる場合があります。訪問前に確認することをお勧めします。",
-                "en": "💡 Operating hours may vary by day. We recommend checking before your visit.",
+                "ja": (
+                    "💡 営業時間は日によって異なる場合があります。"
+                    "訪問前に確認することをお勧めします。"
+                ),
+                "en": (
+                    "💡 Operating hours may vary by day. "
+                    "We recommend checking before your visit."
+                ),
             },
             "pricing": {
-                "ja": "💡 料金プランは変更される場合があります。最新情報はスタッフにお問い合わせください。",
-                "en": "💡 Pricing plans may change. Please contact staff for the latest information.",
+                "ja": (
+                    "💡 料金プランは変更される場合があります。"
+                    "最新情報はスタッフにお問い合わせください。"
+                ),
+                "en": (
+                    "💡 Pricing plans may change. "
+                    "Please contact staff for the latest information."
+                ),
             },
             "facility-info": {
                 "ja": "💡 設備の利用方法がわからない場合は、スタッフにお気軽にお声がけください。",

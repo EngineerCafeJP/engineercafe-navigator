@@ -112,37 +112,56 @@ def build_facility_prompt(
         request_type_prompt = prompt_info.get(language, prompt_info.get("ja", ""))
 
         if language == "en":
-            return f"""Answer the question directly using the {request_type_prompt} from the following information.
-Focus on what the user is specifically asking about. Include concrete details (prices, times, names) when available.
-
-Question: {query}
-Information: {context}
-
-Answer in 2-3 sentences with specific, relevant details. Do not include unrelated information.
-IMPORTANT: Start your response with [relaxed] for information or [happy] for positive news."""
+            return (
+                f"Answer the question directly using the "
+                f"{request_type_prompt} from the following "
+                f"information.\n"
+                f"Focus on what the user is specifically asking "
+                f"about. Include concrete details (prices, times, "
+                f"names) when available.\n\n"
+                f"Question: {query}\n"
+                f"Information: {context}\n\n"
+                f"Answer in 2-3 sentences with specific, relevant "
+                f"details. Do not include unrelated information.\n"
+                f"IMPORTANT: Start your response with [relaxed] "
+                f"for information or [happy] for positive news."
+            )
         else:
-            return f"""質問に対して、以下の情報から{request_type_prompt}を使って直接回答してください。
-ユーザーが具体的に聞いていることに焦点を当て、具体的な情報（価格、時間、名前等）を含めてください。
-
-質問: {query}
-情報: {context}
-
-具体的で関連性の高い情報を2-3文で答えてください。質問と無関係な情報は含めないでください。
-重要: 情報提供の場合は[relaxed]、良いニュースの場合は[happy]で回答を始めてください。"""
+            return (
+                f"質問に対して、以下の情報から"
+                f"{request_type_prompt}を使って直接回答してください。\n"
+                f"ユーザーが具体的に聞いていることに焦点を当て、"
+                f"具体的な情報（価格、時間、名前等）を含めてください。"
+                f"\n\n"
+                f"質問: {query}\n"
+                f"情報: {context}\n\n"
+                f"具体的で関連性の高い情報を2-3文で答えてください。"
+                f"質問と無関係な情報は含めないでください。\n"
+                f"重要: 情報提供の場合は[relaxed]、"
+                f"良いニュースの場合は[happy]で回答を始めてください。"
+            )
     else:
         if language == "en":
-            return f"""Answer the question using the provided information. Be concise and direct.
-
-Question: {query}
-Information: {context}
-
-Answer briefly (2-3 sentences) with only the relevant information.
-IMPORTANT: Start your response with an emotion tag: [relaxed] for information, [happy] for positive news, [sad] for unavailable services."""
+            return (
+                f"Answer the question using the provided "
+                f"information. Be concise and direct.\n\n"
+                f"Question: {query}\n"
+                f"Information: {context}\n\n"
+                f"Answer briefly (2-3 sentences) with only the "
+                f"relevant information.\n"
+                f"IMPORTANT: Start your response with an emotion "
+                f"tag: [relaxed] for information, [happy] for "
+                f"positive news, [sad] for unavailable services."
+            )
         else:
-            return f"""提供された情報を使って質問に答えてください。簡潔で直接的に答えてください。
-
-質問: {query}
-情報: {context}
-
-関連する情報のみを簡潔に（2-3文）答えてください。
-重要: 感情タグで回答を始めてください: 情報提供は[relaxed]、良いニュースは[happy]、利用できないサービスは[sad]。"""
+            return (
+                f"提供された情報を使って質問に答えてください。"
+                f"簡潔で直接的に答えてください。\n\n"
+                f"質問: {query}\n"
+                f"情報: {context}\n\n"
+                f"関連する情報のみを簡潔に（2-3文）"
+                f"答えてください。\n"
+                f"重要: 感情タグで回答を始めてください: "
+                f"情報提供は[relaxed]、良いニュースは[happy]、"
+                f"利用できないサービスは[sad]。"
+            )
