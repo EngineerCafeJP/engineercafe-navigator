@@ -37,10 +37,10 @@ EXPECTED_FILES = [
     "events.yaml",
 ]
 
-EXPECTED_TOTAL_ENTRIES = 60
+EXPECTED_TOTAL_ENTRIES = 61
 
 EXPECTED_ENTRY_COUNTS = {
-    "general.yaml": 12,
+    "general.yaml": 13,
     "facilities.yaml": 23,
     "saino_cafe.yaml": 4,
     "community.yaml": 5,

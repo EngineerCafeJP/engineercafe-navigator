@@ -80,7 +80,7 @@ class TestSearchHierarchical:
             "search_knowledge_base_hierarchical",
             {
                 "query_embedding": [0.1] * 1536,
-                "similarity_threshold": 0.30,
+                "similarity_threshold": 0.25,
                 "match_count": 10,
                 "filter_chunk_level": "chunk",
             },

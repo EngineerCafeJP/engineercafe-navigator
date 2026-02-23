@@ -1,0 +1,215 @@
+{
+  "version": "1.0.0",
+  "description": "E2Eマルチターンシナリオデータセット - 受付エージェントの会話フロー検証用",
+  "created_at": "2026-02-22",
+  "scenarios": [
+    {
+      "id": "scn-001",
+      "name": "初回訪問フロー",
+      "description": "初めて来た人がエンジニアカフェについて聞くフロー",
+      "turns": [
+        {
+          "turn": 1,
+          "query": "エンジニアカフェって何ですか？",
+          "language": "ja",
+          "expected_agent": "business_info",
+          "expected_keywords": ["コワーキング", "無料", "エンジニア"],
+          "note": "エンジニアカフェの基本紹介。福岡市の赤煉瓦文化館にある無料のコワーキングスペース。"
+        },
+        {
+          "turn": 2,
+          "query": "営業時間は何時までですか？",
+          "language": "ja",
+          "expected_agent": "business_info",
+          "expected_keywords": ["9:00", "22:00"],
+          "note": "営業時間の確認。平日・土曜は9:00〜22:00、日曜・祝日は9:00〜20:00。"
+        },
+        {
+          "turn": 3,
+          "query": "WiFiは使えますか？",
+          "language": "ja",
+          "expected_agent": "facility",
+          "expected_keywords": ["Wi-Fi", "無料"],
+          "note": "Wi-Fi利用可否の確認。無料Wi-Fiが利用可能。"
+        }
+      ]
+    },
+    {
+      "id": "scn-002",
+      "name": "MAKER'sスペース問い合わせ",
+      "description": "MAKER'sスペースの機材について段階的に問い合わせるフロー",
+      "turns": [
+        {
+          "turn": 1,
+          "query": "3Dプリンターは使えますか？",
+          "language": "ja",
+          "expected_agent": "facility",
+          "expected_keywords": ["3Dプリンター", "MAKER's"],
+          "note": "3Dプリンターの利用可否。MAKER'sスペースで利用可能。"
+        },
+        {
+          "turn": 2,
+          "query": "フィラメント代はかかりますか？",
+          "language": "ja",
+          "expected_agent": "facility",
+          "expected_keywords": ["フィラメント", "実費"],
+          "note": "3Dプリンターのフィラメント費用について。実費負担が必要。"
+        },
+        {
+          "turn": 3,
+          "query": "レーザー加工機もありますか？",
+          "language": "ja",
+          "expected_agent": "facility",
+          "expected_keywords": ["レーザー加工機", "MAKER's"],
+          "note": "レーザー加工機の利用可否。MAKER'sスペースに設置。"
+        }
+      ]
+    },
+    {
+      "id": "scn-003",
+      "name": "曖昧クエリ→明確化",
+      "description": "曖昧な質問から具体的な情報に絞り込むフロー",
+      "turns": [
+        {
+          "turn": 1,
+          "query": "カフェはどこですか？",
+          "language": "ja",
+          "expected_agent": "facility",
+          "expected_keywords": ["赤煉瓦文化館", "福岡市"],
+          "note": "曖昧な「カフェ」という表現。エンジニアカフェ自体の場所か、館内のサイノカフェか判断が必要。"
+        },
+        {
+          "turn": 2,
+          "query": "中にあるカフェでコーヒーは飲めますか？",
+          "language": "ja",
+          "expected_agent": "facility",
+          "expected_keywords": ["Saino Café", "コーヒー"],
+          "note": "館内のSaino Café（サイノカフェ）について。1Fにあるカフェでドリンク提供。"
+        }
+      ]
+    },
+    {
+      "id": "scn-004",
+      "name": "言語切り替え",
+      "description": "日本語から英語に切り替わるフロー",
+      "turns": [
+        {
+          "turn": 1,
+          "query": "What is this place?",
+          "language": "en",
+          "expected_agent": "business_info",
+          "expected_keywords": ["coworking", "free", "engineer"],
+          "note": "英語での基本紹介。Engineer Cafe is a free coworking space for engineers."
+        },
+        {
+          "turn": 2,
+          "query": "What are the opening hours?",
+          "language": "en",
+          "expected_agent": "business_info",
+          "expected_keywords": ["9:00", "22:00"],
+          "note": "英語での営業時間確認。Weekdays and Saturday: 9:00-22:00, Sunday and holidays: 9:00-20:00."
+        }
+      ]
+    },
+    {
+      "id": "scn-005",
+      "name": "マルチインテント",
+      "description": "1つの発話に複数の質問が含まれるケース",
+      "turns": [
+        {
+          "turn": 1,
+          "query": "営業時間とWi-Fiのパスワードを教えてください",
+          "language": "ja",
+          "expected_agent": "business_info",
+          "expected_keywords": ["9:00", "22:00", "Wi-Fi"],
+          "note": "営業時間とWi-Fi情報を同時に質問。両方の情報を含む回答が期待される。"
+        }
+      ]
+    },
+    {
+      "id": "scn-006",
+      "name": "メモリ参照",
+      "description": "過去の会話内容を参照するフロー",
+      "turns": [
+        {
+          "turn": 1,
+          "query": "エンジニアカフェの住所を教えてください",
+          "language": "ja",
+          "expected_agent": "business_info",
+          "expected_keywords": ["福岡市博多区", "赤煉瓦文化館"],
+          "note": "住所の確認。福岡市博多区冷泉町5-35 赤煉瓦文化館。"
+        },
+        {
+          "turn": 2,
+          "query": "さっき何を聞いたっけ？",
+          "language": "ja",
+          "expected_agent": "business_info",
+          "expected_keywords": ["住所"],
+          "note": "直前の会話内容を参照。会話メモリが正しく機能しているかの検証。"
+        }
+      ]
+    },
+    {
+      "id": "scn-007",
+      "name": "キャリア相談フロー",
+      "description": "キャリアに関する相談から支援プログラムへ誘導するフロー",
+      "turns": [
+        {
+          "turn": 1,
+          "query": "転職を考えているのですが、相談できますか？",
+          "language": "ja",
+          "expected_agent": "business_info",
+          "expected_keywords": ["相談", "コミュニティマネージャー"],
+          "note": "転職相談の可否。コミュニティマネージャーに相談可能。"
+        },
+        {
+          "turn": 2,
+          "query": "プログラミングを新しく学びたいのですが",
+          "language": "ja",
+          "expected_agent": "business_info",
+          "expected_keywords": ["イベント", "勉強会"],
+          "note": "スキルチェンジの相談。定期的な勉強会やイベントが開催されている。"
+        },
+        {
+          "turn": 3,
+          "query": "EC Labって何ですか？",
+          "language": "ja",
+          "expected_agent": "business_info",
+          "expected_keywords": ["EC Lab", "起業", "スタートアップ"],
+          "note": "EC Lab（エンジニアカフェラボ）について。起業・スタートアップ支援プログラム。"
+        }
+      ]
+    },
+    {
+      "id": "scn-008",
+      "name": "設備詳細フロー",
+      "description": "施設の設備について段階的に確認するフロー",
+      "turns": [
+        {
+          "turn": 1,
+          "query": "トイレはどこにありますか？",
+          "language": "ja",
+          "expected_agent": "facility",
+          "expected_keywords": ["トイレ", "階"],
+          "note": "トイレの場所の確認。各階に設置。"
+        },
+        {
+          "turn": 2,
+          "query": "会議室は予約できますか？",
+          "language": "ja",
+          "expected_agent": "facility",
+          "expected_keywords": ["会議室", "予約"],
+          "note": "会議室の予約可否。事前予約で利用可能。"
+        },
+        {
+          "turn": 3,
+          "query": "駐車場はありますか？",
+          "language": "ja",
+          "expected_agent": "facility",
+          "expected_keywords": ["駐車場"],
+          "note": "駐車場の有無。専用駐車場はないため近隣のコインパーキング利用を案内。"
+        }
+      ]
+    }
+  ]
+}

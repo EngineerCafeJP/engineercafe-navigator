@@ -99,12 +99,12 @@ class TestSearchE2E:
         ):
             await rag.search("営業時間", "hours")
 
-        # Verify the RPC was called with hours threshold (0.30)
+        # Verify the RPC was called with hours threshold (0.25)
         call_args = rag.supabase.rpc.call_args
         # RPC is called as: supabase.rpc("name", params_dict)
         # So call_args[0] is the positional args tuple and call_args[1] is kwargs
         params = call_args[0][1] if len(call_args[0]) > 1 else call_args[1]
-        assert params["similarity_threshold"] == 0.30
+        assert params["similarity_threshold"] == 0.25
 
     @pytest.mark.asyncio
     async def test_cjk_sliding_window_matching(self, rag):

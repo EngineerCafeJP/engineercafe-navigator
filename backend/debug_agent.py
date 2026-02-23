@@ -384,7 +384,9 @@ class AgentDebugger:
                 elif user_input == "verbose":
                     self.verbose = not self.verbose
                     print(
-                        f"{Colors.YELLOW}Verbose mode: {'ON' if self.verbose else 'OFF'}{Colors.END}"
+                        f"{Colors.YELLOW}Verbose mode:"
+                        f" {'ON' if self.verbose else 'OFF'}"
+                        f"{Colors.END}"
                     )
 
                 elif user_input.startswith("test "):

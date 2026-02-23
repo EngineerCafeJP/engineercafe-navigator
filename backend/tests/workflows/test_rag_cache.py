@@ -5,7 +5,16 @@ memory_loader_node でのRAGプリフェッチと、各エージェントでの�
 """
 
 import pytest
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
+
+
+def _mock_runtime():
+    """テスト用モック Runtime を生成"""
+    rt = MagicMock()
+    rt.context = MagicMock()
+    rt.context.user_id = "anonymous"
+    rt.store = None
+    return rt
 
 
 class TestMemoryLoaderRAGCache:
@@ -61,7 +70,7 @@ class TestMemoryLoaderRAGCache:
                     "context": {},
                 }
 
-                result = await workflow._memory_loader_node(state)
+                result = await workflow._memory_loader_node(state, _mock_runtime())
 
                 assert "context" in result
                 assert "knowledge_results" in result["context"]
@@ -102,7 +111,7 @@ class TestMemoryLoaderRAGCache:
                     "context": {},
                 }
 
-                result = await workflow._memory_loader_node(state)
+                result = await workflow._memory_loader_node(state, _mock_runtime())
 
                 # エラーでもcontextとknowledge_resultsが返る
                 assert "context" in result

@@ -94,3 +94,103 @@ class TestOrchestratorFastRouting:
         if result is not None and result["request_type"] == "meeting_room":
             # If it matches, it should be via a different path
             assert result["reasoning"] != "Meeting room with floor info detected"
+
+    # --- Phase 1A: 新規キーワードパターンテスト ---
+
+    def test_business_hours_extended_keywords(self, orchestrator):
+        """新規営業時間キーワード: 休館日、定休日、開館、閉館"""
+        test_cases = [
+            ("休館日はいつですか？", "hours"),
+            ("定休日はありますか？", "hours"),
+            ("開館時間を教えてください", "hours"),
+            ("閉館は何時ですか？", "hours"),
+            ("お休みの日はありますか？", "hours"),
+        ]
+        for query, expected_type in test_cases:
+            result = orchestrator._try_fast_routing(query)
+            assert result is not None, f"Query '{query}' should match fast-path"
+            assert (
+                result["agent"] == "business_info"
+            ), f"Query '{query}' should route to business_info"
+            assert (
+                result["request_type"] == expected_type
+            ), f"Query '{query}' should be {expected_type} type"
+
+    def test_business_hours_english_extended(self, orchestrator):
+        """英語: closed, holiday キーワード"""
+        test_cases = [
+            ("Is the cafe closed on weekends?", "hours"),
+            ("Are there any holidays?", "hours"),
+        ]
+        for query, expected_type in test_cases:
+            result = orchestrator._try_fast_routing(query)
+            assert result is not None, f"Query '{query}' should match fast-path"
+            assert (
+                result["agent"] == "business_info"
+            ), f"Query '{query}' should route to business_info"
+
+    def test_pricing_extended_keywords(self, orchestrator):
+        """新規料金キーワード: free, フリー, タダ, 利用料"""
+        test_cases = [
+            ("利用料はかかりますか？", "price"),
+            ("フリーですか？", "price"),
+            ("タダで使えますか？", "price"),
+        ]
+        for query, expected_type in test_cases:
+            result = orchestrator._try_fast_routing(query)
+            assert result is not None, f"Query '{query}' should match fast-path"
+            assert (
+                result["agent"] == "business_info"
+            ), f"Query '{query}' should route to business_info"
+            assert (
+                result["request_type"] == expected_type
+            ), f"Query '{query}' should be {expected_type} type"
+
+    def test_reception_keywords(self, orchestrator):
+        """初回利用/利用方法キーワード"""
+        test_cases = [
+            "初回利用の手続きは？",
+            "利用方法を教えてください",
+        ]
+        for query in test_cases:
+            result = orchestrator._try_fast_routing(query)
+            assert result is not None, f"Query '{query}' should match fast-path"
+            assert (
+                result["agent"] == "business_info"
+            ), f"Query '{query}' should route to business_info"
+            assert (
+                result["request_type"] == "reception"
+            ), f"Query '{query}' should be reception type"
+
+    def test_floor_layout_keywords(self, orchestrator):
+        """フロアマップ/館内案内キーワード"""
+        test_cases = [
+            "フロアマップを見せてください",
+            "館内案内はありますか？",
+            "フロア構成を教えてください",
+        ]
+        for query in test_cases:
+            result = orchestrator._try_fast_routing(query)
+            assert result is not None, f"Query '{query}' should match fast-path"
+            assert result["agent"] == "facility", f"Query '{query}' should route to facility"
+            assert (
+                result["request_type"] == "floor_layout"
+            ), f"Query '{query}' should be floor_layout type"
+
+    def test_english_pricing_free(self, orchestrator):
+        """英語: free キーワードが pricing にルーティング"""
+        result = orchestrator._try_fast_routing("Is it free to use?")
+        assert result is not None
+        assert result["agent"] == "business_info"
+        assert result["request_type"] == "price"
+
+    def test_english_floor_map(self, orchestrator):
+        """英語: floor map/plan キーワード"""
+        test_cases = [
+            "Can I see the floor map?",
+            "Do you have a floor plan?",
+        ]
+        for query in test_cases:
+            result = orchestrator._try_fast_routing(query)
+            assert result is not None, f"Query '{query}' should match fast-path"
+            assert result["agent"] == "facility", f"Query '{query}' should route to facility"

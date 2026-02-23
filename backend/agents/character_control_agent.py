@@ -100,7 +100,9 @@ class CharacterControlAgent:
         # self.lip_sync_cache = None
 
         logger.info(
-            "CharacterControlAgent初期化完了: expression=%s, intensity=%s, expression_duration=%s, animation=%s",
+            "CharacterControlAgent初期化完了: "
+            "expression=%s, intensity=%s, "
+            "expression_duration=%s, animation=%s",
             self.current_expression,
             self.current_intensity,
             self.current_expression_duration,
@@ -438,7 +440,8 @@ class CharacterControlAgent:
                     return frames
                 except Exception as e:
                     logger.warning(
-                        "音声データ解析に失敗しました: %s. テキストベースのフォールバック処理に移行します。",
+                        "音声データ解析に失敗しました: %s. "
+                        "テキストベースのフォールバック処理に移行します。",
                         e,
                     )
                     # フォールバック処理に移行
@@ -903,7 +906,8 @@ class CharacterControlAgent:
                 expression,
                 intensity,
                 e,
-                exc_info=False,  # exc_info=True を False に変更してログフォーマッターの max() 呼び出しを回避
+                # False に変更: ログフォーマッターの max() 回避
+                exc_info=False,
             )
             # エラー時はデフォルト値を返す
             return {
@@ -1123,7 +1127,9 @@ class CharacterControlAgent:
                 result["text"] = text
 
             logger.info(
-                "CharacterControlAgent処理完了: name=%s, keyframes_count=%d, duration=%d, lipsync_frames=%d",
+                "CharacterControlAgent処理完了: "
+                "name=%s, keyframes_count=%d, "
+                "duration=%d, lipsync_frames=%d",
                 result["name"],
                 len(keyframes),
                 duration,

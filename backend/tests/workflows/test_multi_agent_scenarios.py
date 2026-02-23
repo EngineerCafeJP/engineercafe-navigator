@@ -147,7 +147,8 @@ class TestTextToBusinessInfoScenario:
         mock_orchestrator_class,
         mock_get_helper,
     ):
-        """テキスト入力 -> memory_loader -> orchestrator -> business_info -> format_response -> END"""
+        """テキスト入力 -> memory_loader -> orchestrator
+        -> business_info -> format_response -> END"""
         from backend.workflows.main_workflow import MainWorkflow
 
         # -- Arrange: OrchestratorAgent mock --
@@ -546,7 +547,8 @@ class TestImageToVisionToGKScenario:
         mock_orchestrator_class,
         mock_get_helper,
     ):
-        """画像入力 -> vision -> memory_loader -> orchestrator -> general_knowledge -> format_response"""
+        """画像入力 -> vision -> memory_loader -> orchestrator
+        -> general_knowledge -> format_response"""
         from backend.workflows.main_workflow import MainWorkflow
 
         mock_decision = OrchestratorDecision(

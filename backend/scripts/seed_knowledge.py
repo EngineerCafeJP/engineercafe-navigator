@@ -81,7 +81,8 @@ KNOWLEDGE_BASE_DATA: list[dict[str, Any]] = [
         "content": (
             "エンジニアカフェは「エンジニアフレンドリーシティ福岡」の実現を目的とした官民一体型プロジェクトで、"
             "現役エンジニア、エンジニアを目指す方、エンジニアリング分野に関連する業務や学習に取り組む方が対象です。"
-            "施設・設備の利用料は無料です。ただしcafe&bar sainoの飲食と3Dプリンターのフィラメント代は有料です。"
+            "施設・設備の利用料は無料です。"
+            "ただしcafe&bar sainoの飲食と3Dプリンターのフィラメント代は有料です。"
             "【初回利用登録】初めて利用する場合は受付で利用登録を行います（所要時間: 約5〜10分）。"
             "施設の利用目的確認、飲食ルール、集中スペースでの私語禁止、15分以上の離席ルールについて説明を受けます。"
             "所定のWebフォームに氏名、住所、連絡先、所属コミュニティ、職業、当施設を知ったきっかけ等を入力して完了です。"
@@ -213,13 +214,18 @@ KNOWLEDGE_BASE_DATA: list[dict[str, Any]] = [
             "こちらはエンジニアカフェではなく福岡市赤煉瓦文化会館が管理する有料施設です。"
             "利用条件: 市民文化の向上等に寄与する会議・講座・講習会・研修会。"
             "【利用料金（単位：円）】"
-            "会議室1（定員12名）: 9-12時 800円、13-17時 1,600円、18-21時 1,400円、9-17時 2,100円、13-21時 2,800円、9-21時 3,300円。"
-            "会議室2（定員8名）: 9-12時 500円、13-17時 1,000円、18-21時 800円、9-17時 1,300円、13-21時 1,700円、9-21時 2,000円。"
-            "会議室3（定員30名）: 9-12時 1,700円、13-17時 3,400円、18-21時 3,000円、9-17時 4,500円、13-21時 6,000円、9-21時 7,000円。"
+            "会議室1（定員12名）: 9-12時 800円、13-17時 1,600円、"
+            "18-21時 1,400円、9-17時 2,100円、13-21時 2,800円、9-21時 3,300円。"
+            "会議室2（定員8名）: 9-12時 500円、13-17時 1,000円、"
+            "18-21時 800円、9-17時 1,300円、13-21時 1,700円、9-21時 2,000円。"
+            "会議室3（定員30名）: 9-12時 1,700円、13-17時 3,400円、"
+            "18-21時 3,000円、9-17時 4,500円、13-21時 6,000円、9-21時 7,000円。"
             "【予約方法】"
             "申込期間: 利用希望日の3ヶ月前の同日から前日まで。"
             "申込場所: 赤煉瓦文化会館受付（9:00〜17:00）。"
-            "申込方法: 施設利用申請書への記入、または「福岡市公共施設案内・予約システム」によるオンライン申し込み。電話での受付はできません。"
+            "申込方法: 施設利用申請書への記入、"
+            "または「福岡市公共施設案内・予約システム」によるオンライン申し込み。"
+            "電話での受付はできません。"
             "【キャンセル料】"
             "利用日の10日前までなら無料、5日前までなら5割、4日前以降は全額負担。"
             "会議室では蓋付き容器の飲み物（アルコール以外）のみ持ち込み可能です。"
@@ -258,7 +264,8 @@ KNOWLEDGE_BASE_DATA: list[dict[str, Any]] = [
         "content": (
             "cafe&bar sainoのフードメニューです。"
             "【サンドイッチ】"
-            "てりたまハンバーグサンド: 700円。ツナチーズメルトサンド: 700円。あんバター白玉サンド: 650円。"
+            "てりたまハンバーグサンド: 700円。ツナチーズメルトサンド: 700円。"
+            "あんバター白玉サンド: 650円。"
             "ドリンクとセットで-50円引き。ナゲットセットは960円。"
             "【デザート】"
             "ワッフル（バニラアイス・ソース付）: 420円（単品300円）。"
@@ -454,7 +461,10 @@ KNOWLEDGE_BASE_DATA: list[dict[str, Any]] = [
     # =========================================================================
     {
         "title": "エンジニアカフェ 喫煙ポリシー",
-        "content": "エンジニアカフェは全館禁煙です。施設内での喫煙はできません。喫煙される方は、近隣の喫煙所をご利用ください。",
+        "content": (
+            "エンジニアカフェは全館禁煙です。施設内での喫煙はできません。"
+            "喫煙される方は、近隣の喫煙所をご利用ください。"
+        ),
         "category": "smoking",
         "metadata": {"entity": "engineer-cafe", "priority": "medium"},
     },
@@ -475,7 +485,9 @@ KNOWLEDGE_BASE_DATA: list[dict[str, Any]] = [
     # =========================================================================
     {
         "title": "エンジニアカフェ 駐輪場情報",
-        "content": "エンジニアカフェには専用の駐輪場はありません。近隣の公共駐輪場をご利用ください。",
+        "content": (
+            "エンジニアカフェには専用の駐輪場はありません。" "近隣の公共駐輪場をご利用ください。"
+        ),
         "category": "bicycle",
         "metadata": {"entity": "engineer-cafe", "priority": "medium"},
     },
@@ -588,9 +600,12 @@ KNOWLEDGE_BASE_DATA: list[dict[str, Any]] = [
         "content": (
             "エンジニアカフェが入居する赤煉瓦文化館のフロア構成と受付案内です。"
             "【重要】1階玄関を入ると2つの受付があります。"
-            "エンジニアカフェ受付: 玄関を入って左側。コワーキング利用・イベント・設備に関するお問い合わせはこちら。"
-            "赤煉瓦文化会館受付: 玄関の正面入って右奥。2階会議室の利用申請・予約はこちら（9:00〜17:00）。"
-            "【1階】エンジニアカフェ（メインホール・コワーキングスペース）、cafe&bar saino、談話室、テラス。"
+            "エンジニアカフェ受付: 玄関を入って左側。"
+            "コワーキング利用・イベント・設備に関するお問い合わせはこちら。"
+            "赤煉瓦文化会館受付: 玄関の正面入って右奥。"
+            "2階会議室の利用申請・予約はこちら（9:00〜17:00）。"
+            "【1階】エンジニアカフェ（メインホール・コワーキングスペース）、"
+            "cafe&bar saino、談話室、テラス。"
             "【2階】会議室1（定員12名）、会議室2（定員8名）、会議室3（定員30名）。"
             "【地下1階】MAKER'sスペース、集中スペース、MTGスペース、アンダースペース、防音室。"
             "エンジニアカフェのコワーキング利用と2階会議室の予約は窓口が異なりますのでご注意ください。"
@@ -699,7 +714,8 @@ KNOWLEDGE_BASE_DATA: list[dict[str, Any]] = [
         "content": (
             "エンジニアカフェではスペースの貸切利用が可能です。"
             "【貸切対象スペース】"
-            "1階メインホール: 30〜50名規模のイベントに対応。ハッカソン、LT会、企業研修等で頻繁に利用されています。"
+            "1階メインホール: 30〜50名規模のイベントに対応。"
+            "ハッカソン、LT会、企業研修等で頻繁に利用されています。"
             "地下スペース: MTGスペース等の一部貸切も可能です。"
             "【手続き】公式サイトの「イベント開催について」ページから予約フォームで申し込み。"
             "コミュニティマネージャーとの事前相談・面談が必要な場合があります。"
@@ -741,17 +757,21 @@ KNOWLEDGE_BASE_DATA: list[dict[str, Any]] = [
         "content": (
             "MAKER'sスペースに設置されている機材の詳細一覧です。"
             "【切断・加工機器】"
-            "RYOBI TBS-50（卓上バンドソー）: 木材・軟金属の曲線/直線切断。加工厚は軟木80mm/硬木50mm。"
-            "レーザー加工機（trotec speedy100 C30）: アクリル・木材・紙の切断/彫刻。初回講習約30分必須。"
+            "RYOBI TBS-50（卓上バンドソー）: 木材・軟金属の曲線/直線切断。"
+            "加工厚は軟木80mm/硬木50mm。"
+            "レーザー加工機（trotec speedy100 C30）: "
+            "アクリル・木材・紙の切断/彫刻。初回講習約30分必須。"
             "【3Dプリンター】"
-            "Bambu Lab P1S + AMS: 高速FDM方式。マルチカラー対応（最大16色）。エンクロージャー付き。Bambu純正PLA推奨。"
+            "Bambu Lab P1S + AMS: 高速FDM方式。マルチカラー対応（最大16色）。"
+            "エンクロージャー付き。Bambu純正PLA推奨。"
             "AFINIA 3Dプリンター: FDM方式。PLA/ABS対応。教育・試作向け大型ビルドエリア。"
             "【電子工作・IoT】"
             "HAKKO FA-400（煙吸収器）、goot TP-280AS（ホットエアーステーション）: はんだ作業用。"
             "Raspberry Pi（複数台）: IoT/プログラミング/ロボット制御用に貸出可能。"
             "M5Stack（ESP32ベース）: IoTプロトタイピング用マイコンモジュール。"
             "【ロボティクス】"
-            "Seeed Studio SQ-ARM101（AIロボットアームキット）: Hugging Face/LeRobot対応。6DOF。AI模倣学習用。"
+            "Seeed Studio SQ-ARM101（AIロボットアームキット）: "
+            "Hugging Face/LeRobot対応。6DOF。AI模倣学習用。"
             "すべての機材は初回講習またはスタッフへの声かけが必要です。"
         ),
         "category": "facility-info",
@@ -989,7 +1009,8 @@ KNOWLEDGE_BASE_DATA: list[dict[str, Any]] = [
         "content": (
             "エンジニアカフェ館内にはウォーターサーバーや自動販売機は設置されていません。"
             "飲み物が必要な場合は以下の方法で入手できます。"
-            "【施設内】cafe&bar saino（サイノカフェ）でドリンクを購入（平日12:00〜、土日祝11:00〜）。"
+            "【施設内】cafe&bar saino（サイノカフェ）でドリンクを購入"
+            "（平日12:00〜、土日祝11:00〜）。"
             "【近隣】FamilyMart天神一丁目店（徒歩2分）やローソンS天神ブリック店（徒歩3分）で購入可能。"
             "天神地下街方面にも自動販売機があります。"
             "持ち込みの飲料は蓋付き容器（ペットボトル・水筒等）であれば持ち込み可能です。"
@@ -1026,7 +1047,8 @@ KNOWLEDGE_BASE_DATA: list[dict[str, Any]] = [
             "エンジニアカフェで開催されるイベントの参加方法です。"
             "【イベント情報の確認方法】"
             "Connpass: https://engineercafe.connpass.com/ （イベント一覧と参加申込ができます）。"
-            "公式イベントページ: https://engineercafe.jp/ja/event （エンジニアカフェ主催・共催イベント）。"
+            "公式イベントページ: https://engineercafe.jp/ja/event "
+            "（エンジニアカフェ主催・共催イベント）。"
             "公式サイト: https://site.engineercafe.jp/ （施設全体の情報とお知らせ）。"
             "【参加方法】Connpassの場合はアカウント登録後、各イベントページから「参加する」ボタンで申し込みできます。"
             "参加費無料のイベントがほとんどです。定員がある場合は先着順が多いため、早めの申込をおすすめします。"
@@ -1138,17 +1160,21 @@ KNOWLEDGE_BASE_DATA: list[dict[str, Any]] = [
             "Opening hours: 9:00 AM – 10:00 PM. Closed on the last Monday of each month. "
             "Address: 1-15-30 Tenjin, Chuo-ku, Fukuoka. "
             "Access: 5-min walk from Tenjin Station (Fukuoka City Subway). "
-            "From Fukuoka Airport: 11 min by subway (260 yen). From Hakata Station: 6 min by subway (210 yen). "
+            "From Fukuoka Airport: 11 min by subway (260 yen). "
+            "From Hakata Station: 6 min by subway (210 yen). "
             "【Available Spaces】 "
             "1F Main Hall: Open coworking area (free when no events). "
-            "B1 Under Space: Free-address seating with extra monitors and one soundproof room (1-hour slots). "
+            "B1 Under Space: Free-address seating with extra monitors "
+            "and one soundproof room (1-hour slots). "
             "B1 Focus Space: 6 silent booths, no reservation needed. "
             "B1 Meeting Space: For 2+ people, advance online booking in 2-hour slots. "
             "B1 MAKER's Space: 3D printers, laser cutter. First-time training required. "
             "2F Paid Meeting Rooms: 3 rooms (8–30 capacity), advance reservation required. "
-            "【Registration】 Connect to Wi-Fi (SSID: engnrcf-guest-5GHz, Password: akarenga-112years), "
+            "【Registration】 Connect to Wi-Fi "
+            "(SSID: engnrcf-guest-5GHz, Password: akarenga-112years), "
             "scan QR at reception, fill registration form (5–10 min). No ID required. "
-            "【Rules】 Food is prohibited (Important Cultural Property). Only sealed-lid beverages allowed. "
+            "【Rules】 Food is prohibited (Important Cultural Property). "
+            "Only sealed-lid beverages allowed. "
             "No straws. Do not leave belongings unattended for over 15 minutes. "
             "Website: https://engineercafe.jp/en/"
         ),
@@ -1168,7 +1194,8 @@ KNOWLEDGE_BASE_DATA: list[dict[str, Any]] = [
             "赤煉瓦造りの建物は蓄熱しやすく、特に2階や窓際は暑くなりがちです。"
             "エアコンは設置されていますが、建物の構造上、完全に涼しくなるまで時間がかかる場合があります。"
             "飲み物（蓋付き）をこまめに摂ることをおすすめします。"
-            "地下1階は比較的涼しいため、暑さが気になる方はUnder SpaceやFocus Spaceの利用がおすすめです。"
+            "地下1階は比較的涼しいため、暑さが気になる方は"
+            "Under SpaceやFocus Spaceの利用がおすすめです。"
             "【冬（12月〜2月）】"
             "暖房は設置されていますが、天井が高く暖気が上がりやすいため、1階メインホールは寒く感じることがあります。"
             "上着やひざ掛けの持参をおすすめします。"
@@ -1180,6 +1207,33 @@ KNOWLEDGE_BASE_DATA: list[dict[str, Any]] = [
         ),
         "category": "facility-info",
         "metadata": {"entity": "engineer-cafe", "priority": "medium"},
+    },
+    # =========================================================================
+    # 初めての方へ（総合案内）
+    # =========================================================================
+    {
+        "title": "エンジニアカフェ 初めての方へ（総合案内）",
+        "content": (
+            "エンジニアカフェへようこそ！初めてお越しの方への総合案内です。"
+            "【何ができるか】エンジニアカフェでは以下のことができます。"
+            "・Wi-Fi・電源完備の作業スペースでの個人作業やリモートワーク（無料）"
+            "・勉強会やハッカソンなどのイベント参加（connpassで確認）"
+            "・3Dプリンターやレーザーカッターなどのものづくり機材の利用（初回講習必須、機材無料）"
+            "・コミュニティマネージャーへの技術相談やキャリア相談（13:00〜21:00）"
+            "・サイノカフェでの食事やドリンク"
+            "・エンジニア同士の交流やネットワーキング"
+            "【初回登録の流れ】"
+            "1. 1階受付にお越しください"
+            "2. 利用登録フォームに記入（約5〜10分、無料、身分証不要）"
+            "3. 施設ルールの説明を受ける"
+            "4. 会員番号を受け取り、利用開始！"
+            "【2回目以降】会員番号を伝えるだけでOKです。"
+            "【開館時間】9:00〜22:00（休館: 毎月最終月曜日、年末年始）"
+            "【対象者】現役エンジニア、エンジニアを目指す学生、フリーランス、海外エンジニアなど"
+            "エンジニアリングに関わるすべての方がご利用いただけます。"
+        ),
+        "category": "general",
+        "metadata": {"entity": "engineer-cafe", "priority": "high"},
     },
 ]
 

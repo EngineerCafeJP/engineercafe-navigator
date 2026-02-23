@@ -21,6 +21,8 @@ class AnswerQualityCase:
     language: str
     category: str = ""
     expected_answer: str = ""
+    expected_keywords: List[str] = field(default_factory=list)
+    expected_agent: str = ""
     context: Optional[str] = None
     quality_expectations: Optional[Dict[str, float]] = None
 
@@ -129,6 +131,8 @@ class DatasetLoader:
                     language=case.get("language", "ja"),
                     category=case.get("category", ""),
                     expected_answer=case.get("expected_answer", ""),
+                    expected_keywords=case.get("expected_keywords", []),
+                    expected_agent=case.get("expected_agent", ""),
                     context=case.get("context"),
                     quality_expectations=case.get("quality_expectations"),
                 )

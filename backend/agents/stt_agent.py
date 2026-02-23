@@ -468,15 +468,21 @@ class STTAgent:
         confidence_threshold: float = 0.4,
         fallback_client: Optional[Any] = None,
     ):
-        """Initialize STTAgent with provider selection and fallback support.
+        """Initialize STTAgent with provider selection and fallback.
 
         Args:
-            stt_provider: STT provider name ('vosk' or 'google'). If None, uses STT_PROVIDER env var or defaults to 'vosk'.
-            stt_client: Custom STT client instance. If None, creates default client based on provider.
-            use_grammar: Whether to use domain-specific grammar for recognition. Defaults to False.
-            language_processor: LanguageProcessor instance for post-validation. If None, creates default instance.
-            confidence_threshold: Minimum confidence threshold for Vosk results before triggering Google fallback. Defaults to 0.4.
-            fallback_client: Google STT client for fallback. If None and provider is 'vosk', creates GoogleSTTClient.
+            stt_provider: STT provider name ('vosk' or 'google').
+                If None, uses STT_PROVIDER env var or 'vosk'.
+            stt_client: Custom STT client instance.
+                If None, creates default based on provider.
+            use_grammar: Whether to use domain-specific grammar.
+                Defaults to False.
+            language_processor: LanguageProcessor for
+                post-validation. If None, creates default.
+            confidence_threshold: Min confidence for Vosk before
+                Google fallback. Defaults to 0.4.
+            fallback_client: Google STT client for fallback.
+                If None and provider is 'vosk', creates one.
         """
         self.stt_provider = stt_provider or os.getenv("STT_PROVIDER", "vosk")
         self.use_grammar = use_grammar
@@ -660,9 +666,13 @@ class STTAgent:
         """Unified interface for speech-to-text recognition.
 
         Args:
-            audio_data: WAV audio bytes (16kHz, 16bit, mono recommended).
-            language: Language code ('ja', 'en', or None for auto-detection).
-            conversation_stage: Conversation stage for stage-specific grammar ('greeting', 'service_selection', 'confirmation', or None).
+            audio_data: WAV audio bytes
+                (16kHz, 16bit, mono recommended).
+            language: Language code
+                ('ja', 'en', or None for auto-detection).
+            conversation_stage: Conversation stage for grammar
+                ('greeting', 'service_selection',
+                'confirmation', or None).
 
         Returns:
             Recognition result dict with keys:

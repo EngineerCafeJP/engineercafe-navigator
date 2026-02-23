@@ -43,7 +43,9 @@ class MemoryAgent:
                           Noneの場合、メモリ機能なしで動作
         """
         warnings.warn(
-            "MemoryAgent is deprecated. Use GeneralKnowledgeAgent with query_type='memory' instead.",
+            "MemoryAgent is deprecated."
+            " Use GeneralKnowledgeAgent with"
+            " query_type='memory' instead.",
             DeprecationWarning,
             stacklevel=2,
         )

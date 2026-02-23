@@ -4,6 +4,7 @@ Supabase + OpenRouter Embeddings統合による高精度RAG検索
 """
 
 import os
+import time
 from typing import List, Dict, Optional
 import logging
 import asyncio
@@ -11,31 +12,74 @@ from supabase import create_client, Client
 
 logger = logging.getLogger(__name__)
 
+
+class CircuitBreaker:
+    """Simple circuit breaker for RAG/LLM failures"""
+
+    def __init__(self, failure_threshold: int = 3, recovery_timeout: float = 60.0):
+        self.failure_threshold = failure_threshold
+        self.recovery_timeout = recovery_timeout
+        self._failure_count = 0
+        self._last_failure_time: Optional[float] = None
+        self._state = "closed"  # closed, open, half_open
+
+    @property
+    def is_open(self) -> bool:
+        if self._state == "open":
+            if (
+                self._last_failure_time
+                and (time.time() - self._last_failure_time) > self.recovery_timeout
+            ):
+                self._state = "half_open"
+                return False
+            return True
+        return False
+
+    def record_success(self):
+        self._failure_count = 0
+        self._state = "closed"
+
+    def record_failure(self):
+        self._failure_count += 1
+        self._last_failure_time = time.time()
+        if self._failure_count >= self.failure_threshold:
+            self._state = "open"
+            logger.warning("Circuit breaker OPEN after %d failures", self._failure_count)
+
+    def reset(self):
+        """Reset circuit breaker to closed state (useful for testing)"""
+        self._failure_count = 0
+        self._last_failure_time = None
+        self._state = "closed"
+
+
+_rag_circuit_breaker = CircuitBreaker()
+
 # カテゴリ別品質グレーディング閾値
 CATEGORY_THRESHOLDS = {
-    "hours": {"high": 0.75, "medium": 0.55, "term_match": 0.25},
-    "pricing": {"high": 0.75, "medium": 0.55, "term_match": 0.25},
+    "hours": {"high": 0.75, "medium": 0.50, "term_match": 0.25},
+    "pricing": {"high": 0.75, "medium": 0.50, "term_match": 0.25},
     "facility-info": {"high": 0.78, "medium": 0.58, "term_match": 0.25},
     "location": {"high": 0.70, "medium": 0.50, "term_match": 0.20},
     "event": {"high": 0.80, "medium": 0.60, "term_match": 0.30},
     "general": {"high": 0.72, "medium": 0.52, "term_match": 0.20},
-    "consultation": {"high": 0.73, "medium": 0.53, "term_match": 0.20},
+    "consultation": {"high": 0.73, "medium": 0.48, "term_match": 0.20},
     "community": {"high": 0.73, "medium": 0.53, "term_match": 0.20},
 }
 DEFAULT_THRESHOLDS = {"high": 0.78, "medium": 0.58, "term_match": 0.25}
 
 # カテゴリ別RPC類似度閾値
 RPC_SIMILARITY_THRESHOLDS: Dict[str, float] = {
-    "hours": 0.30,
-    "pricing": 0.30,
-    "location": 0.30,
-    "facility-info": 0.35,
-    "event": 0.40,
-    "general": 0.35,
-    "consultation": 0.35,
-    "community": 0.35,
+    "hours": 0.25,
+    "pricing": 0.25,
+    "location": 0.25,
+    "facility-info": 0.30,
+    "event": 0.35,
+    "general": 0.30,
+    "consultation": 0.30,
+    "community": 0.30,
 }
-DEFAULT_RPC_SIMILARITY_THRESHOLD = 0.35
+DEFAULT_RPC_SIMILARITY_THRESHOLD = 0.30
 RPC_TIMEOUT_SECONDS = 10
 
 
@@ -77,6 +121,21 @@ class EnhancedRAGSearch:
             検索結果辞書 {success, data: {context, results, totalResults, topEntity}}
         """
         try:
+            # Circuit breaker check
+            if _rag_circuit_breaker.is_open:
+                logger.warning("Circuit breaker is OPEN, returning degraded response")
+                return {
+                    "success": False,
+                    "error": "Service temporarily unavailable",
+                    "data": {
+                        "context": (
+                            "現在検索サービスに接続できません。" "しばらくしてからお試しください。"
+                        ),
+                        "results": [],
+                        "totalResults": 0,
+                    },
+                }
+
             logger.info("Starting search with query: %s", query[:50])
             logger.debug("Category: %s, Language: %s", category, language)
 
@@ -156,6 +215,7 @@ class EnhancedRAGSearch:
                 if advice:
                     context += f"\n\n{advice}"
 
+            _rag_circuit_breaker.record_success()
             return {
                 "success": True,
                 "data": {
@@ -169,6 +229,7 @@ class EnhancedRAGSearch:
             }
 
         except Exception as e:
+            _rag_circuit_breaker.record_failure()
             logger.exception("Search error: %s", e)
             return {"success": False, "error": str(e)}
 
@@ -230,7 +291,8 @@ class EnhancedRAGSearch:
 
         Grading criteria:
         - HIGH (priority_score >= high_threshold): 常に保持
-        - MEDIUM (medium_threshold <= priority_score < high_threshold): クエリ用語マッチがある場合保持
+        - MEDIUM (medium_threshold <= priority_score < high_threshold):
+          クエリ用語マッチがある場合保持
         - LOW (priority_score < medium_threshold): 除外
 
         閾値はカテゴリとクエリ長により動的に調整される。
@@ -502,12 +564,24 @@ class EnhancedRAGSearch:
         # カテゴリに応じたアドバイステンプレート
         advice_templates = {
             "hours": {
-                "ja": "💡 営業時間は日によって異なる場合があります。訪問前に確認することをお勧めします。",
-                "en": "💡 Operating hours may vary by day. We recommend checking before your visit.",
+                "ja": (
+                    "💡 営業時間は日によって異なる場合があります。"
+                    "訪問前に確認することをお勧めします。"
+                ),
+                "en": (
+                    "💡 Operating hours may vary by day. "
+                    "We recommend checking before your visit."
+                ),
             },
             "pricing": {
-                "ja": "💡 料金プランは変更される場合があります。最新情報はスタッフにお問い合わせください。",
-                "en": "💡 Pricing plans may change. Please contact staff for the latest information.",
+                "ja": (
+                    "💡 料金プランは変更される場合があります。"
+                    "最新情報はスタッフにお問い合わせください。"
+                ),
+                "en": (
+                    "💡 Pricing plans may change. "
+                    "Please contact staff for the latest information."
+                ),
             },
             "facility-info": {
                 "ja": "💡 設備の利用方法がわからない場合は、スタッフにお気軽にお声がけください。",

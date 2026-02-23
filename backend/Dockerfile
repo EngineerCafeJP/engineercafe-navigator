@@ -27,6 +27,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN mkdir -p /pypath && ln -s /app /pypath/backend
 ENV PYTHONPATH="/pypath"
 
+# Create non-root user for security
+RUN adduser --disabled-password --gecos "" --home /nonexistent --shell /sbin/nologin appuser
+
 # Development stage
 FROM base AS development
 
@@ -35,6 +38,10 @@ COPY . .
 
 # Download Vosk STT models (small versions: ~88MB total)
 RUN bash scripts/download_vosk_models.sh models
+
+# Set ownership and switch to non-root user
+RUN chown -R appuser:appuser /app
+USER appuser
 
 # Expose port
 EXPOSE 8000
@@ -51,6 +58,10 @@ COPY . .
 # Note: In production, mount Vosk models via volume:
 #   volumes:
 #     - ./models:/app/models
+
+# Set ownership and switch to non-root user
+RUN chown -R appuser:appuser /app
+USER appuser
 
 # Expose port
 EXPOSE 8000

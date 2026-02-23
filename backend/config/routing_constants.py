@@ -54,11 +54,18 @@ BUSINESS_HOURS_KEYWORDS = [
     "開いて",
     "閉まる",
     "いつまで",
+    "休館日",
+    "定休日",
+    "お休み",
+    "開館",
+    "閉館",
     "opening hours",
     "business hours",
     "hours",
     "open",
     "close",
+    "closed",
+    "holiday",
     "what time",
     "when do you",
 ]
@@ -68,10 +75,14 @@ PRICING_KEYWORDS = [
     "いくら",
     "値段",
     "価格",
+    "利用料",
     "cost",
     "price",
     "fee",
     "how much",
+    "free",
+    "フリー",
+    "タダ",
 ]
 
 BASEMENT_KEYWORDS = [
@@ -222,6 +233,26 @@ COMMUNITY_KEYWORDS = [
     "エンジニアカフェラボ",
     "eic",
     "会員制コミュニティ",
+]
+
+RECEPTION_KEYWORDS = [
+    "registration",
+    "初回利用",
+    "利用方法",
+    "check-in",
+    "チェックイン",
+    "初めて",
+    "はじめて",
+]
+
+FLOOR_LAYOUT_KEYWORDS = [
+    "フロア構成",
+    "フロアマップ",
+    "館内案内",
+    "floor map",
+    "floor plan",
+    "フロアガイド",
+    "館内図",
 ]
 
 MEMORY_KEYWORDS = [
@@ -400,11 +431,22 @@ POLICY_KEYWORDS = [
 # =============================================================================
 
 AGENT_DESCRIPTIONS: Dict[str, str] = {
-    "business_info": "営業情報エージェント: 営業時間、料金、場所、相談（キャリア・スキルチェンジ等）、コミュニティ（Engineer Cafe Lab等）など施設の基本情報・サービスを回答",
-    "facility": "施設エージェント: Wi-Fi、電源、会議室、地下スペース、建物の歴史・構造、アクセス方法・行き方など設備・物理施設に関する情報を回答",
-    "event": "イベントエージェント: イベント情報、勉強会、セミナーなどの予定を回答",
-    "general_knowledge": "一般知識エージェント: 上記以外の一般的な質問、および過去の会話履歴に関する質問に回答",
-    "slide": "スライドエージェント: スライドのナレーション、操作、質問応答を処理",
+    "business_info": (
+        "営業情報エージェント: 営業時間、料金、場所、"
+        "相談（キャリア・スキルチェンジ等）、"
+        "コミュニティ（Engineer Cafe Lab等）"
+        "など施設の基本情報・サービスを回答"
+    ),
+    "facility": (
+        "施設エージェント: Wi-Fi、電源、会議室、地下スペース、"
+        "建物の歴史・構造、アクセス方法・行き方"
+        "など設備・物理施設に関する情報を回答"
+    ),
+    "event": ("イベントエージェント: " "イベント情報、勉強会、セミナーなどの予定を回答"),
+    "general_knowledge": (
+        "一般知識エージェント: " "上記以外の一般的な質問、" "および過去の会話履歴に関する質問に回答"
+    ),
+    "slide": ("スライドエージェント: " "スライドのナレーション、操作、質問応答を処理"),
 }
 
 CATEGORY_TO_AGENT_MAP: Dict[str, AgentNodeName] = {
@@ -429,6 +471,8 @@ CATEGORY_TO_AGENT_MAP: Dict[str, AgentNodeName] = {
     "smoking": "facility",
     "food_drink": "facility",
     "policy": "facility",
+    "reception": "business_info",
+    "floor_layout": "facility",
 }
 
 
@@ -497,6 +541,10 @@ def extract_request_type(query: str) -> Optional[str]:
         return "location"
     if match_keywords(lower_query, BOOKING_KEYWORDS):
         return "booking"
+    if match_keywords(lower_query, RECEPTION_KEYWORDS):
+        return "reception"
+    if match_keywords(lower_query, FLOOR_LAYOUT_KEYWORDS):
+        return "floor_layout"
     if match_keywords(lower_query, FACILITY_EQUIPMENT_KEYWORDS):
         return "facility"
     # basement: キーワード + regex パターン

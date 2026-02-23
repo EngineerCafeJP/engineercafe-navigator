@@ -115,7 +115,9 @@ async def evaluate_answer_quality(max_cases: int = None) -> Dict[str, Any]:
                 status_icon = "FAIL"
 
             print(
-                f"  ルーティング: {routed_agent} (期待: {expected_agent_json}) {'OK' if routing_match else 'NG'}"
+                f"  ルーティング: {routed_agent} "
+                f"(期待: {expected_agent_json}) "
+                f"{'OK' if routing_match else 'NG'}"
             )
             print(f"  キーワード: {keywords_found}/{keywords_total} ({keyword_rate:.0%})")
             if keyword_hits:

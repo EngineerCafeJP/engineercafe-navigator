@@ -333,7 +333,11 @@ class TestFormatQuestion:
             with patch("backend.agents.clarification_agent.get_model_config"):
                 mock_provider = Mock()
                 mock_provider.generate = AsyncMock(
-                    return_value="どちらのカフェについてお聞きですか？\n1. エンジニアカフェ\n2. サイノカフェ"
+                    return_value=(
+                        "どちらのカフェについてお聞きですか？\n"
+                        "1. エンジニアカフェ\n"
+                        "2. サイノカフェ"
+                    )
                 )
                 mock_provider_cls.return_value = mock_provider
                 return ClarificationAgent()

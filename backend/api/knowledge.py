@@ -17,8 +17,8 @@ from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field
 from supabase import create_client
 
-from utils.embedding_service import generate_embedding
-from utils.file_parser import detect_file_type, parse_markdown, parse_pdf
+from backend.utils.embedding_service import generate_embedding
+from backend.utils.file_parser import detect_file_type, parse_markdown, parse_pdf
 
 logger = logging.getLogger(__name__)
 

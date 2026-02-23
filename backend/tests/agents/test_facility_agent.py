@@ -118,13 +118,20 @@ class TestFacilityAgent:
             mock_rag.return_value = {
                 "success": True,
                 "data": {
-                    "context": "地下にはMTGスペース、集中スペース、アンダースペース、Makersスペースがあります。",
+                    "context": (
+                        "地下にはMTGスペース、集中スペース、"
+                        "アンダースペース、"
+                        "Makersスペースがあります。"
+                    ),
                     "results": [],
                     "totalResults": 1,
                 },
             }
 
-            mock_llm.return_value = "[relaxed]地下にはMTGスペース、集中スペース、アンダースペース、Makersスペースがあります。"
+            mock_llm.return_value = (
+                "[relaxed]地下にはMTGスペース、集中スペース、"
+                "アンダースペース、Makersスペースがあります。"
+            )
 
             result = await agent.answer_facility_query(
                 query="地下の会議室について教えて",

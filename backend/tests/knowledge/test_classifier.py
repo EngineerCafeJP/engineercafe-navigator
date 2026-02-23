@@ -42,7 +42,11 @@ class TestParseResponse:
     """Tests for _parse_llm_response."""
 
     def test_valid_json(self):
-        raw = '{"category": "hours", "subcategory": "weekday", "tags": ["open", "close"], "priority": 60, "confidence": 0.9, "reasoning": "It is about hours"}'
+        raw = (
+            '{"category": "hours", "subcategory": "weekday",'
+            ' "tags": ["open", "close"], "priority": 60,'
+            ' "confidence": 0.9, "reasoning": "It is about hours"}'
+        )
         result = _parse_llm_response(raw)
         assert result.suggested_category == "hours"
         assert result.confidence == 0.9
@@ -50,7 +54,11 @@ class TestParseResponse:
         assert result.suggested_priority == 60
 
     def test_markdown_code_block(self):
-        raw = '```json\n{"category": "pricing", "tags": [], "priority": 50, "confidence": 0.8, "reasoning": "ok"}\n```'
+        raw = (
+            '```json\n{"category": "pricing", "tags": [],'
+            ' "priority": 50, "confidence": 0.8,'
+            ' "reasoning": "ok"}\n```'
+        )
         result = _parse_llm_response(raw)
         assert result.suggested_category == "pricing"
 
@@ -60,7 +68,11 @@ class TestParseResponse:
         assert result.confidence == 0.0
 
     def test_unknown_category_falls_back(self):
-        raw = '{"category": "nonexistent", "tags": [], "priority": 50, "confidence": 0.7, "reasoning": ""}'
+        raw = (
+            '{"category": "nonexistent", "tags": [],'
+            ' "priority": 50, "confidence": 0.7,'
+            ' "reasoning": ""}'
+        )
         result = _parse_llm_response(raw)
         assert result.suggested_category == "general"
 
@@ -86,7 +98,11 @@ class TestClassifyEntry:
     async def test_successful_classification(self, mock_get_provider):
         mock_provider = MagicMock()
         mock_provider.generate = AsyncMock(
-            return_value='{"category": "hours", "tags": ["open"], "priority": 60, "confidence": 0.95, "reasoning": "About opening hours"}'
+            return_value=(
+                '{"category": "hours", "tags": ["open"],'
+                ' "priority": 60, "confidence": 0.95,'
+                ' "reasoning": "About opening hours"}'
+            )
         )
         mock_get_provider.return_value = mock_provider
 
@@ -100,7 +116,11 @@ class TestClassifyEntry:
     async def test_unknown_category_fallback(self, mock_get_provider):
         mock_provider = MagicMock()
         mock_provider.generate = AsyncMock(
-            return_value='{"category": "unknown_cat", "tags": [], "priority": 50, "confidence": 0.6, "reasoning": ""}'
+            return_value=(
+                '{"category": "unknown_cat", "tags": [],'
+                ' "priority": 50, "confidence": 0.6,'
+                ' "reasoning": ""}'
+            )
         )
         mock_get_provider.return_value = mock_provider
 
@@ -121,7 +141,11 @@ class TestClassifyEntry:
     async def test_empty_content(self, mock_get_provider):
         mock_provider = MagicMock()
         mock_provider.generate = AsyncMock(
-            return_value='{"category": "general", "tags": [], "priority": 50, "confidence": 0.4, "reasoning": "Empty content"}'
+            return_value=(
+                '{"category": "general", "tags": [],'
+                ' "priority": 50, "confidence": 0.4,'
+                ' "reasoning": "Empty content"}'
+            )
         )
         mock_get_provider.return_value = mock_provider
 

@@ -86,7 +86,10 @@ class EventAgent:
             ... )
             >>> print(result)
             {
-                "answer": "[happy]今週はPythonワークショップ（2024-01-15）とデザイン勉強会（2024-01-17）がございます。",
+                "answer": "[happy]今週はPythonワークショップ"
+                "（2024-01-15）と"
+                "デザイン勉強会（2024-01-17）が"
+                "ございます。",
                 "emotion": "happy",
                 "metadata": {
                     "agent": "EventAgent",
@@ -102,7 +105,8 @@ class EventAgent:
             ... )
             >>> print(result)
             {
-                "answer": "[sad]申し訳ございません。本日の予定されているイベントはございません。...",
+                "answer": "[sad]申し訳ございません。"
+                "本日の予定されているイベントはございません。...",
                 "emotion": "sad",
                 "metadata": {
                     "agent": "EventAgent",
@@ -189,7 +193,11 @@ class EventAgent:
         Examples:
             >>> agent = EventAgent()
             >>> events = [
-            ...     {"title": "Workshop", "start": "2024-01-15T14:00:00", "source": "google_calendar"}
+            ...     {
+            ...         "title": "Workshop",
+            ...         "start": "2024-01-15T14:00:00",
+            ...         "source": "google_calendar",
+            ...     }
             ... ]
             >>> formatted = agent._format_calendar_events(events, "ja")
             >>> print(formatted)
@@ -266,9 +274,20 @@ class EventAgent:
         time_range_text = get_time_range_label(time_range, language)
 
         if language == "en":
-            text = f"[sad]I'm sorry, there are no scheduled events for {time_range_text}. Please check back later or contact our staff for the latest information."
+            text = (
+                f"[sad]I'm sorry, there are no scheduled"
+                f" events for {time_range_text}."
+                " Please check back later or contact"
+                " our staff for the latest information."
+            )
         else:
-            text = f"[sad]申し訳ございません。{time_range_text}の予定されているイベントはございません。後ほどご確認いただくか、スタッフまでお問い合わせください。"
+            text = (
+                f"[sad]申し訳ございません。"
+                f"{time_range_text}の"
+                "予定されているイベントはございません。"
+                "後ほどご確認いただくか、"
+                "スタッフまでお問い合わせください。"
+            )
 
         return {
             "answer": text,

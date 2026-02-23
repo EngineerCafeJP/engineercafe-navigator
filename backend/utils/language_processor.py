@@ -238,7 +238,9 @@ class LanguageProcessor:
         # スコアがすべて 0 の場合はフォールバック
         if primary_score == 0:
             # default_language は "unknown" を含む可能性があるため、明示的に "ja" を使用
-            default: SupportedLanguage = "ja" if self.default_language == "unknown" else self.default_language  # type: ignore
+            default: SupportedLanguage = (  # type: ignore
+                "ja" if self.default_language == "unknown" else self.default_language
+            )
             return self._build_result(
                 language=default,
                 confidence=0.5,

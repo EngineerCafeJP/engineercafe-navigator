@@ -172,10 +172,10 @@ class TestGetRpcThreshold:
     """Tests for the new _get_rpc_threshold method"""
 
     def test_hours_threshold(self, rag):
-        assert rag._get_rpc_threshold("hours") == 0.30
+        assert rag._get_rpc_threshold("hours") == 0.25
 
     def test_event_threshold(self, rag):
-        assert rag._get_rpc_threshold("event") == 0.40
+        assert rag._get_rpc_threshold("event") == 0.35
 
     def test_unknown_returns_default(self, rag):
         assert rag._get_rpc_threshold("unknown") == DEFAULT_RPC_SIMILARITY_THRESHOLD

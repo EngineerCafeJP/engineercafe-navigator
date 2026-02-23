@@ -8,10 +8,20 @@ astream() によるストリーミングイベント発行、メモリヘルパ�
 import asyncio
 
 import pytest
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 from backend.agents.orchestrator_agent import OrchestratorDecision
 from backend.workflows.main_workflow import MainWorkflow, get_workflow, reset_workflow
+
+
+def _mock_runtime():
+    """テスト用モック Runtime を生成"""
+    rt = MagicMock()
+    rt.context = MagicMock()
+    rt.context.user_id = "anonymous"
+    rt.store = None
+    return rt
+
 
 # ---------------------------------------------------------------------------
 # Helper: 全外部依存をまとめてモックするコンテキストマネージャ
@@ -273,7 +283,7 @@ class TestMemoryIntegration:
                 "context": {},
             }
 
-            await workflow._memory_loader_node(state)
+            await workflow._memory_loader_node(state, _mock_runtime())
 
             mock_helper.store_message.assert_called_once_with(
                 session_id="mem-test-1",
@@ -301,7 +311,7 @@ class TestMemoryIntegration:
                 "session_id": "mem-test-2",
             }
 
-            result = await workflow._format_response_node(state)
+            result = await workflow._format_response_node(state, _mock_runtime())
 
             mock_helper.store_message.assert_called_once_with(
                 session_id="mem-test-2",
@@ -341,7 +351,7 @@ class TestMemoryIntegration:
                 "context": {},
             }
 
-            result = await workflow._memory_loader_node(state)
+            result = await workflow._memory_loader_node(state, _mock_runtime())
 
             assert "context" in result
             assert "memory" in result["context"]
@@ -380,7 +390,7 @@ class TestMemoryIntegration:
                 "language": "ja",
                 "context": {},
             }
-            result_loader = await workflow._memory_loader_node(state_loader)
+            result_loader = await workflow._memory_loader_node(state_loader, _mock_runtime())
 
             assert "context" in result_loader
             assert "memory" in result_loader["context"]
@@ -391,7 +401,7 @@ class TestMemoryIntegration:
                 "answer": "test answer",
                 "session_id": "mem-test-4",
             }
-            result_format = await workflow._format_response_node(state_format)
+            result_format = await workflow._format_response_node(state_format, _mock_runtime())
 
             assert "messages" in result_format
             assert len(result_format["messages"]) == 2
@@ -418,7 +428,7 @@ class TestMemoryIntegration:
                 "context": {},
             }
 
-            await workflow._memory_loader_node(state)
+            await workflow._memory_loader_node(state, _mock_runtime())
 
             # 空クエリなので store_message は呼ばれない
             mock_helper.store_message.assert_not_called()
@@ -445,7 +455,7 @@ class TestMemoryIntegration:
                 "context": {"existing_key": "preserved"},
             }
 
-            result = await workflow._memory_loader_node(state)
+            result = await workflow._memory_loader_node(state, _mock_runtime())
 
             assert result["context"]["memory"] == {}
             # 既存のコンテキストキーが保持される

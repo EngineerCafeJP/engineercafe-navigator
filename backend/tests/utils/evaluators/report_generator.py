@@ -80,6 +80,7 @@ class EvaluationReportGenerator:
         confidence_analysis: Optional[Dict[float, Dict[str, float]]] = None,
         language_analysis: Optional[Dict[str, Dict[str, float]]] = None,
         tag_analysis: Optional[Dict[str, Dict[str, float]]] = None,
+        ragas_metrics: Optional[Dict[str, float]] = None,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> ComprehensiveEvaluationReport:
         """
@@ -155,6 +156,7 @@ class EvaluationReportGenerator:
             language_analysis=language_analysis,
             tag_analysis=tag_analysis,
             error_summary=error_summary,
+            ragas_metrics=ragas_metrics,
             recommendations=recommendations,
             metadata=metadata or {},
         )
