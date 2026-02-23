@@ -9,6 +9,7 @@ import logging
 import os
 import re
 import time
+from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -98,10 +99,55 @@ class TokenTrackerMiddleware(BaseHTTPMiddleware):
             reset_token_tracker()
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan: startup and shutdown"""
+    # Startup
+    from backend.utils.env_validator import validate_startup
+
+    try:
+        validate_startup()
+    except ValueError:
+        logger.error("起動時バリデーション失敗。環境変数を確認してください。")
+        raise
+
+    if os.getenv("ENV", "development") == "production":
+        setup_structured_logging()
+
+    try:
+        from backend.utils.checkpoint_cleanup import CheckpointCleanup
+
+        cleanup = CheckpointCleanup()
+        app.state.checkpoint_cleanup = cleanup
+        logger.info("Checkpoint cleanup configured (TTL: 24h)")
+    except Exception as e:
+        logger.warning("Checkpoint cleanup setup failed (non-critical): %s", e)
+
+    yield
+
+    # Shutdown
+    from backend.utils.checkpointer import close_checkpointer
+
+    try:
+        await close_checkpointer()
+        logger.info("Checkpointer closed on shutdown")
+    except Exception as e:
+        logger.warning("Error closing checkpointer on shutdown: %s", e)
+
+    try:
+        from backend.utils.store import close_store
+
+        await close_store()
+        logger.info("Store closed on shutdown")
+    except Exception as e:
+        logger.warning("Error closing store on shutdown: %s", e)
+
+
 app = FastAPI(
     title="Engineer Cafe Navigator Backend",
     description="Python LangGraph backend for Engineer Cafe Navigator",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 # Rate limiting (optional - requires slowapi)
@@ -149,32 +195,6 @@ async def verify_api_key(request: Request) -> None:
         raise HTTPException(status_code=403, detail="Invalid or missing API key")
 
 
-@app.on_event("startup")
-async def startup_event():
-    """アプリケーション起動時の環境変数バリデーション + 定期クリーンアップ"""
-    from backend.utils.env_validator import validate_startup
-
-    try:
-        validate_startup()
-    except ValueError:
-        logger.error("起動時バリデーション失敗。環境変数を確認してください。")
-        raise
-
-    # Setup structured logging in production
-    if os.getenv("ENV", "development") == "production":
-        setup_structured_logging()
-
-    # Start periodic checkpoint cleanup (non-blocking)
-    try:
-        from backend.utils.checkpoint_cleanup import CheckpointCleanup
-
-        cleanup = CheckpointCleanup()
-        app.state.checkpoint_cleanup = cleanup
-        logger.info("Checkpoint cleanup configured (TTL: 24h)")
-    except Exception as e:
-        logger.warning("Checkpoint cleanup setup failed (non-critical): %s", e)
-
-
 # CORS設定
 _default_origins = ["http://localhost:3000", "http://localhost:3001"]
 _allowed_origins = [
@@ -194,6 +214,7 @@ class ChatRequest(BaseModel):
     session_id: str
     language: Optional[str] = "ja"
     context: Optional[Dict[str, Any]] = None
+    visitor_id: Optional[str] = None  # Cross-session visitor identification
 
 
 class ChatResponse(BaseModel):
@@ -245,7 +266,7 @@ async def chat(request: Request, body: ChatRequest):
     LangGraphエージェントを使用してクエリを処理します
     """
     try:
-        from workflows.main_workflow import get_workflow
+        from backend.workflows.main_workflow import get_workflow
 
         workflow = await get_workflow()
         result = await workflow.ainvoke(
@@ -254,6 +275,7 @@ async def chat(request: Request, body: ChatRequest):
                 "session_id": body.session_id,
                 "language": body.language,
                 "context": body.context or {},
+                "visitor_id": body.visitor_id,
             }
         )
 
@@ -295,7 +317,7 @@ async def chat_stream(request: Request, body: ChatRequest):
 
     async def event_generator():
         try:
-            from workflows.main_workflow import get_workflow
+            from backend.workflows.main_workflow import get_workflow
 
             workflow = await get_workflow()
 
@@ -306,6 +328,7 @@ async def chat_stream(request: Request, body: ChatRequest):
                     "session_id": body.session_id,
                     "language": body.language,
                     "context": body.context or {},
+                    "visitor_id": body.visitor_id,
                 }
             ):
                 if isinstance(event, dict):
@@ -327,14 +350,14 @@ async def chat_stream(request: Request, body: ChatRequest):
     )
 
 
-@app.post("/api/agent/invoke")
+@app.post("/api/agent/invoke", dependencies=[Depends(verify_api_key)])
 @_rate_limit("30/minute")
 async def invoke_agent(request: Request, body: ChatRequest):
     """
     LangGraphエージェントの直接実行エンドポイント
     """
     try:
-        from workflows.main_workflow import get_workflow
+        from backend.workflows.main_workflow import get_workflow
 
         workflow = await get_workflow()
         result = await workflow.ainvoke(
@@ -343,6 +366,7 @@ async def invoke_agent(request: Request, body: ChatRequest):
                 "session_id": body.session_id,
                 "language": body.language,
                 "context": body.context or {},
+                "visitor_id": body.visitor_id,
             }
         )
 
@@ -363,6 +387,7 @@ class VoiceRequest(BaseModel):
     text: Optional[str] = None
     streaming: Optional[bool] = False
     conversationStage: Optional[str] = None
+    emotion: Optional[str] = None  # Emotion for TTS synthesis
 
 
 class VoiceResponse(BaseModel):
@@ -377,43 +402,29 @@ class VoiceResponse(BaseModel):
     confidence: Optional[float] = None
 
 
-# @app.post("/api/voice", response_model=VoiceResponse)
-# async def voice_api(request: VoiceRequest):
-#     """
-#     音声処理エンドポイント
-#     フロントエンドからのプロキシリクエストを処理
-#     """
-#     try:
-#         # TODO: 音声処理ロジックをLangGraphワークフローで実装
-#         # 現在はプレースホルダー
-#         if request.action == "process_voice":
-#             return VoiceResponse(
-#                 success=True,
-#                 transcript="音声処理中...",
-#                 response="音声処理機能は実装中です。",
-#                 emotion="neutral",
-#                 sessionId=request.sessionId,
-#             )
-#         elif request.action == "text_to_speech":
-#             return VoiceResponse(
-#                 success=True,
-#                 audioResponse="",  # base64 audio
-#                 sessionId=request.sessionId,
-#             )
-#         else:
-#             raise HTTPException(status_code=400, detail=f"Unknown action: {request.action}")
-#     except Exception as e:
-#         raise HTTPException(status_code=500, detail=str(e))
+_voice_agent: Optional[Any] = None  # VoiceAgent (lazy-loaded)
+_stt_agent: Optional[Any] = None  # STTAgent (lazy-loaded)
 
 
-from backend.agents.voice_agent import VoiceAgent  # noqa: E402
-from backend.agents.stt_agent import STTAgent  # noqa: E402
+def _get_voice_agent():
+    global _voice_agent
+    if _voice_agent is None:
+        from backend.agents.voice_agent import VoiceAgent
 
-voice_agent = VoiceAgent()  # アプリ起動時に1回生成
-stt_agent = STTAgent()  # STT: Vosk自動言語切換え対応
+        _voice_agent = VoiceAgent()
+    return _voice_agent
 
 
-@app.post("/api/voice", response_model=VoiceResponse)
+def _get_stt_agent():
+    global _stt_agent
+    if _stt_agent is None:
+        from backend.agents.stt_agent import STTAgent
+
+        _stt_agent = STTAgent()
+    return _stt_agent
+
+
+@app.post("/api/voice", response_model=VoiceResponse, dependencies=[Depends(verify_api_key)])
 @_rate_limit("20/minute")
 async def voice_api(request: Request, body: VoiceRequest):
     try:
@@ -421,10 +432,10 @@ async def voice_api(request: Request, body: VoiceRequest):
             if not body.text or not body.text.strip():
                 raise HTTPException(status_code=400, detail="Missing text for text_to_speech")
 
-            result = await voice_agent.text_to_speech(
+            result = await _get_voice_agent().text_to_speech(
                 text=body.text,
                 language=body.language or "ja",
-                emotion=None,  # TODO: VoiceRequestにemotion fieldを追加後、ここで取得する
+                emotion=body.emotion,  # Use requested emotion for TTS
             )
             if not result.get("success"):
                 return VoiceResponse(
@@ -449,7 +460,7 @@ async def voice_api(request: Request, body: VoiceRequest):
 
             audio_bytes = base64.b64decode(body.audioData)
 
-            stt_result = await stt_agent.speech_to_text(
+            stt_result = await _get_stt_agent().speech_to_text(
                 audio_bytes,
                 language=body.language,
                 conversation_stage=body.conversationStage,
@@ -505,8 +516,8 @@ class SlidesResponse(BaseModel):
     error: Optional[str] = None
 
 
-@app.post("/api/slides", response_model=SlidesResponse)
-async def slides_api(request: SlidesRequest):
+@app.post("/api/slides", response_model=SlidesResponse, dependencies=[Depends(verify_api_key)])
+async def slides_api(request: Request, body: SlidesRequest):
     """
     スライド制御エンドポイント
     SlideAgentを使用してスライドナレーションと質問応答を処理
@@ -525,16 +536,16 @@ async def slides_api(request: SlidesRequest):
             "question": "question",
         }
 
-        slide_action = action_map.get(request.action)
+        slide_action = action_map.get(body.action)
         if not slide_action:
-            raise HTTPException(status_code=400, detail=f"Unknown action: {request.action}")
+            raise HTTPException(status_code=400, detail=f"Unknown action: {body.action}")
 
         # SlideAgentのhandle_slide_action呼び出し
         result = await slide_agent.handle_slide_action(
             action=slide_action,
-            query=request.query,
-            target_slide=request.targetSlide,
-            language=request.language,
+            query=body.query,
+            target_slide=body.targetSlide,
+            language=body.language,
         )
 
         return SlidesResponse(
@@ -566,16 +577,29 @@ class CharacterResponse(BaseModel):
     error: Optional[str] = None
 
 
-@app.post("/api/character", response_model=CharacterResponse)
-async def character_api(request: CharacterRequest):
+@app.post(
+    "/api/character", response_model=CharacterResponse, dependencies=[Depends(verify_api_key)]
+)
+async def character_api(request: Request, body: CharacterRequest):
     """
     キャラクター制御エンドポイント
     フロントエンドからのプロキシリクエストを処理
     """
     try:
-        # TODO: キャラクター制御ロジックを実装
-        # 現在はプレースホルダー
-        return CharacterResponse(success=True, message="キャラクター制御機能は実装中です。")
+        from backend.agents.character_control_agent import CharacterControlAgent
+
+        agent = CharacterControlAgent()
+        result = await agent.process(
+            emotion=body.emotion or "neutral",
+            text=None,
+            context={"action": body.action, "animation": body.animation},
+        )
+        return CharacterResponse(
+            success=True,
+            message=(
+                json.dumps(result, ensure_ascii=False) if isinstance(result, dict) else str(result)
+            ),
+        )
     except Exception as e:
         logger.exception("Endpoint error: %s", e)
         raise HTTPException(
@@ -584,14 +608,14 @@ async def character_api(request: CharacterRequest):
 
 
 # Knowledge CRUD API Router
-from api.knowledge import router as knowledge_router  # noqa: E402
+from backend.api.knowledge import router as knowledge_router  # noqa: E402
 
-app.include_router(knowledge_router, prefix="/api")
+app.include_router(knowledge_router, prefix="/api", dependencies=[Depends(verify_api_key)])
 
 # STT Custom Vocabulary API Router
-from api.stt_vocabulary import router as stt_vocabulary_router  # noqa: E402
+from backend.api.stt_vocabulary import router as stt_vocabulary_router  # noqa: E402
 
-app.include_router(stt_vocabulary_router, prefix="/api")
+app.include_router(stt_vocabulary_router, prefix="/api", dependencies=[Depends(verify_api_key)])
 
 
 if __name__ == "__main__":
