@@ -389,7 +389,10 @@ class RagasEvaluator:
         return report
 
     def _build_eval_kwargs(self, metrics_objs: list) -> Dict:
-        """Build keyword arguments for ragas evaluate(), including custom LLM/embeddings/run_config."""
+        """Build keyword arguments for ragas evaluate().
+
+        Includes custom LLM/embeddings/run_config.
+        """
         kwargs: Dict[str, Any] = {"metrics": metrics_objs}
         if self._evaluation_llm is not None:
             kwargs["llm"] = self._evaluation_llm
@@ -407,7 +410,9 @@ class RagasEvaluator:
         """DataFrame の行からメトリクス名でスコアを抽出（カラム名マッピング対応）
 
         Returns:
-            Dict with metric scores (float) and "_nan_metrics" (tuple of metric names that were NaN).
+            Dict with metric scores (float) and
+            "_nan_metrics" (tuple of metric names
+            that were NaN).
         """
         scores: Dict[str, Any] = {}
         nan_metrics: list = []
