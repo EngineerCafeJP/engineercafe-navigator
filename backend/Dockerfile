@@ -39,6 +39,13 @@ COPY . .
 # Download Vosk STT models (small versions: ~88MB total)
 RUN bash scripts/download_vosk_models.sh models
 
+# Download translation models (Helsinki-NLP/opus-mt, CTranslate2 int8: ~300MB total)
+# Requires build-time deps: pip install torch transformers
+RUN pip install --no-cache-dir torch transformers \
+    && bash scripts/download_translation_models.sh models/translation \
+    && pip uninstall -y torch transformers \
+    && pip cache purge
+
 # Set ownership and switch to non-root user
 RUN chown -R appuser:appuser /app
 USER appuser

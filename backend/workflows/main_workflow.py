@@ -258,6 +258,27 @@ class MainWorkflow:
                 from backend.tools.enhanced_rag import EnhancedRAGSearch
                 from backend.utils.query_classifier import QueryClassifier
 
+                # Translate non-Japanese queries for Japanese knowledge base search
+                rag_query = query
+                if language != "ja":
+                    try:
+                        from backend.services.translation_service import (
+                            get_translation_service,
+                        )
+
+                        ts = get_translation_service()
+                        rag_query = await ts.translate(query, "en_to_ja")
+                        logger.info(
+                            "Translated query for RAG: '%s' -> '%s'",
+                            query[:40],
+                            rag_query[:40],
+                        )
+                    except Exception as trans_err:
+                        logger.warning(
+                            "Query translation failed, using original: %s",
+                            trans_err,
+                        )
+
                 classifier = QueryClassifier()
                 classification = await classifier.classify_with_details(query)
                 category = (
@@ -266,7 +287,7 @@ class MainWorkflow:
 
                 rag = EnhancedRAGSearch()
                 rag_result = await rag.search(
-                    query=query, category=category, language=language, max_results=10
+                    query=rag_query, category=category, language=language, max_results=10
                 )
 
                 knowledge_results = {
@@ -275,6 +296,7 @@ class MainWorkflow:
                     "context_string": rag_result.get("data", {}).get("context", ""),
                     "category": category,
                     "query": query,
+                    "translated_query": rag_query if rag_query != query else None,
                 }
             except Exception as e:
                 logger.warning("RAG pre-fetch failed: %s", e)
