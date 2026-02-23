@@ -42,7 +42,9 @@ Given a knowledge entry's title and content, classify it into one of these categ
 {categories}
 
 Respond ONLY with valid JSON in this exact format:
-{{"category": "<category>", "subcategory": "", "tags": ["tag1", "tag2"], "priority": 60, "confidence": 0.9, "reasoning": "Brief reason"}}
+{{"category": "<category>", "subcategory": "",
+"tags": ["tag1", "tag2"], "priority": 60,
+"confidence": 0.9, "reasoning": "Brief reason"}}
 
 Priority values: 30 (low), 50 (normal), 60 (important), 90 (critical)
 Confidence: 0.0 to 1.0"""
