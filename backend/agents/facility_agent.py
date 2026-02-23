@@ -157,22 +157,6 @@ class FacilityAgent:
             # コンテキスト取得
             context = rag_result.get("data", {}).get("context", "")
 
-        # 英語フォールバック: キャッシュ/直接検索どちらでもコンテキストが空の場合、
-        # "Engineer Cafe" コンテキストを付加してgeneral検索（英語概要エントリを拾う）
-        if not context and language == "en":
-            enriched_query = f"Engineer Cafe {query}"
-            logger.info("English fallback: retrying with enriched query '%s'", enriched_query[:60])
-            fallback_result = await self.enhanced_rag.search(
-                query=enriched_query,
-                category="general",
-                language=language,
-                include_advice=True,
-                max_results=10,
-                context_signals=context_signals,
-            )
-            if fallback_result.get("success"):
-                context = fallback_result.get("data", {}).get("context", "")
-
         if not context:
             return self._get_default_response(language, request_type)
 
