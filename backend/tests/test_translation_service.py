@@ -13,7 +13,6 @@ from backend.services.translation_service import (
     get_translation_service,
 )
 
-
 # =====================================================================
 # Fixtures
 # =====================================================================
