@@ -95,15 +95,18 @@ class OrchestratorAgent:
     """
 
     # ルーティング用システムプロンプト
-    ROUTING_SYSTEM_PROMPT = """あなたはエンジニアカフェの受付AIアシスタントのオーケストレーターです。
+    ROUTING_SYSTEM_PROMPT = """\
+あなたはエンジニアカフェの受付AIアシスタントのオーケストレーターです。
 ユーザーの質問を分析し、最適な専門エージェントを選択してください。
 
 利用可能なエージェント:
 {agent_descriptions}
 
 ルーティングルール:
-1. 営業時間、料金、休館日、定休日、利用料、受付方法、初回利用、コミュニティ（Engineer Cafe Lab等）、キャリア相談・スキルチェンジ等 → business_info
-2. Wi-Fi、電源、設備、地下スペース、建物の歴史・構造、アクセス方法・行き方、フロアマップ、館内案内 → facility
+1. 営業時間、料金、休館日、定休日、利用料、受付方法、初回利用、
+   コミュニティ（Engineer Cafe Lab等）、キャリア相談等 → business_info
+2. Wi-Fi、電源、設備、地下スペース、建物の歴史・構造、
+   アクセス方法・行き方、フロアマップ、館内案内 → facility
 3. イベント、勉強会、セミナーに関する質問 → event
 4. 過去の会話や「さっき」「前に」などメモリ関連の質問 → general_knowledge (request_type: memory)
 5. スライド操作やプレゼン関連の質問 → slide

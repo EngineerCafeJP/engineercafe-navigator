@@ -6,9 +6,11 @@ Phase 1 (TTS only):
 - preprocessTTS (currently MTG -> ミーティング/meeting)
 - 5000 bytes truncation
 - Fallback handling
-- Google TTS REST client (service account -> bearer token) for integration (can be monkeypatched in unit tests)
+- Google TTS REST client (service account -> bearer token)
+  for integration (can be monkeypatched in unit tests)
 
-Note: Unit tests can monkeypatch `VoiceAgent.tts_client.synthesize_mp3_base64` to avoid external calls.
+Note: Unit tests can monkeypatch
+`VoiceAgent.tts_client.synthesize_mp3_base64` to avoid external calls.
 """
 
 from __future__ import annotations
@@ -288,7 +290,9 @@ class GoogleTTSClient:
             )
 
         raise RuntimeError(
-            "Service account key not found. Set GOOGLE_CLOUD_CREDENTIALS/GOOGLE_APPLICATION_CREDENTIALS "
+            "Service account key not found. "
+            "Set GOOGLE_CLOUD_CREDENTIALS/"
+            "GOOGLE_APPLICATION_CREDENTIALS "
             f"or place {self.default_key_path}"
         )
 
@@ -562,13 +566,16 @@ class VoiceAgent:
         language_processor: Optional[LanguageProcessor] = None,
         clarification_agent: Optional[ClarificationAgent] = None,
     ):
-        """Initialize VoiceAgent with TTS provider switching and clarification support.
+        """Initialize VoiceAgent with TTS provider switching.
 
         Args:
-            tts_provider: TTS provider name ('voicevox' or 'google'). Defaults to 'voicevox'.
-            tts_client: Custom TTS client instance. If None, creates default client based on provider.
-            language_processor: LanguageProcessor for language detection. If None, creates default instance.
-            clarification_agent: ClarificationAgent for ambiguity resolution. If None, creates default instance.
+            tts_provider: TTS provider name. Defaults to 'voicevox'.
+            tts_client: Custom TTS client instance.
+                If None, creates default client based on provider.
+            language_processor: LanguageProcessor for language
+                detection. If None, creates default instance.
+            clarification_agent: ClarificationAgent for ambiguity
+                resolution. If None, creates default instance.
         """
         self.tts_provider = tts_provider
 

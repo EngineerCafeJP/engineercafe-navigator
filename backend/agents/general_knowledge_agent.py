@@ -76,6 +76,7 @@ class GeneralKnowledgeAgent:
         query_type: str = "general",
         state_context: Optional[Dict] = None,
         context_signals=None,
+        long_term_memory: Optional[list] = None,
     ) -> Dict[str, Any]:
         """統合クエリハンドラ: query_typeに応じて処理を分岐"""
         if query_type == "memory":
@@ -375,7 +376,11 @@ class GeneralKnowledgeAgent:
         source_info = " and ".join(sources) if sources else "available information"
 
         if language == "en":
-            return f"""Answer the following question using the provided information from {source_info}.
+            header = (
+                "Answer the following question using"
+                f" the provided information from {source_info}."
+            )
+            return f"""{header}
 
 IMPORTANT: Start your response with an emotion tag.
 Available emotions: [happy], [sad], [relaxed], [surprised], [helpful], [apologetic]
@@ -391,7 +396,9 @@ Question: {query}
 Information:
 {context}
 
-Provide a comprehensive but concise answer. If the information is from web search, mention that it's current information. Be helpful and informative."""
+Provide a comprehensive but concise answer.
+If the information is from web search, mention that it's current information.
+Be helpful and informative."""
         else:
             return f"""{source_info}から提供された情報を使用して、次の質問に答えてください。
 
