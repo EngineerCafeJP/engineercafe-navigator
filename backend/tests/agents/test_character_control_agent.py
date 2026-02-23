@@ -9,7 +9,8 @@ CharacterControlAgent のユニットテスト
     pytest tests/agents/test_character_control_agent.py::TestCharacterControlAgent
 
     # 特定のテストメソッドのみ実行
-    pytest tests/agents/test_character_control_agent.py::TestCharacterControlAgent::test_generate_lipsync_data_basic
+    pytest tests/agents/test_character_control_agent.py::\
+TestCharacterControlAgent::test_generate_lipsync_data_basic
 
     # 詳細な出力で実行
     pytest tests/agents/test_character_control_agent.py -v

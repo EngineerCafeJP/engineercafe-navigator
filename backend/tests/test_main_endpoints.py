@@ -51,7 +51,7 @@ class TestChatEndpoint:
         )
 
         with patch(
-            "workflows.main_workflow.get_workflow",
+            "backend.workflows.main_workflow.get_workflow",
             new_callable=AsyncMock,
             return_value=mock_workflow,
         ):
@@ -65,7 +65,7 @@ class TestChatEndpoint:
     async def test_chat_error_no_leak(self):
         """Exception detail should NOT contain internal error message"""
         with patch(
-            "workflows.main_workflow.get_workflow",
+            "backend.workflows.main_workflow.get_workflow",
             new_callable=AsyncMock,
             side_effect=Exception("DB connection failed: password=secret123"),
         ):
@@ -92,7 +92,7 @@ class TestInvokeEndpoint:
             }
         )
         with patch(
-            "workflows.main_workflow.get_workflow",
+            "backend.workflows.main_workflow.get_workflow",
             new_callable=AsyncMock,
             return_value=mock_workflow,
         ):
@@ -105,7 +105,7 @@ class TestInvokeEndpoint:
     @pytest.mark.asyncio
     async def test_invoke_error_no_leak(self):
         with patch(
-            "workflows.main_workflow.get_workflow",
+            "backend.workflows.main_workflow.get_workflow",
             new_callable=AsyncMock,
             side_effect=Exception("Internal DB error"),
         ):
@@ -122,8 +122,10 @@ class TestVoiceEndpoint:
     @pytest.mark.asyncio
     async def test_voice_error_no_leak(self):
         """Voice endpoint should not leak internal errors"""
-        with patch("backend.main.voice_agent") as mock_agent:
-            mock_agent.text_to_speech = AsyncMock(side_effect=Exception("GCP credential expired"))
+        mock_agent = AsyncMock()
+        mock_agent.text_to_speech = AsyncMock(side_effect=Exception("GCP credential expired"))
+
+        with patch("backend.main._get_voice_agent", return_value=mock_agent):
             from backend.main import voice_api, VoiceRequest
             from fastapi import HTTPException
 
@@ -143,9 +145,9 @@ class TestSlidesEndpoint:
             from backend.main import slides_api, SlidesRequest
             from fastapi import HTTPException
 
-            request = SlidesRequest(action="narrate")
+            body = SlidesRequest(action="narrate")
             with pytest.raises(HTTPException) as exc_info:
-                await slides_api(request)
+                await slides_api(_mock_request(), body)
             assert "Slide DB error" not in exc_info.value.detail
 
 
@@ -182,10 +184,13 @@ class TestCharacterEndpoint:
         # character_api currently has a simple try/except with detail=str(e)
         # After fix, it should use generic message
         # We need to mock to force an exception
-        with patch("backend.main.CharacterResponse", side_effect=Exception("Some internal error")):
+        with patch(
+            "backend.main.CharacterResponse",
+            side_effect=Exception("Some internal error"),
+        ):
             from fastapi import HTTPException
 
-            request = CharacterRequest(action="test")
+            body = CharacterRequest(action="test")
             with pytest.raises(HTTPException) as exc_info:
-                await character_api(request)
+                await character_api(_mock_request(), body)
             assert "Some internal error" not in exc_info.value.detail

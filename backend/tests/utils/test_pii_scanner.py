@@ -209,7 +209,11 @@ class TestScanAndMaskMixedContent:
         assert len(items) == 3
 
     def test_pii_surrounded_by_normal_text(self):
-        text = "エンジニアカフェへようこそ。ご連絡は info@cafe.jp までお願いします。営業時間は9時から21時です。"
+        text = (
+            "エンジニアカフェへようこそ。"
+            "ご連絡は info@cafe.jp までお願いします。"
+            "営業時間は9時から21時です。"
+        )
         masked, items = scan_and_mask(text)
         assert "[REDACTED_EMAIL]" in masked
         assert "エンジニアカフェへようこそ" in masked

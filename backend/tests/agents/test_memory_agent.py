@@ -91,7 +91,13 @@ class TestMemoryAgent:
         agent = MemoryAgent.__new__(MemoryAgent)
 
         context = {
-            "context_string": "ユーザー: WiFiのパスワードを教えてください\nアシスタント: WiFiのSSIDは「engnrcf-guest-5GHz」です。パスワードは受付でお渡しする名札の裏に記載しています。"
+            "context_string": (
+                "ユーザー: WiFiのパスワードを教えてください\n"
+                "アシスタント: WiFiのSSIDは"
+                "「engnrcf-guest-5GHz」です。"
+                "パスワードは受付でお渡しする名札の裏に"
+                "記載しています。"
+            )
         }
         prompt = agent.build_memory_prompt("何を聞いた？", context, "question_history", "ja")
 
@@ -104,7 +110,12 @@ class TestMemoryAgent:
         agent = MemoryAgent.__new__(MemoryAgent)
 
         context = {
-            "context_string": "User: What's the WiFi password?\nAssistant: The SSID is 'engnrcf-guest-5GHz'. The password is on the back of the name tag you receive at reception."
+            "context_string": (
+                "User: What's the WiFi password?\n"
+                "Assistant: The SSID is 'engnrcf-guest-5GHz'."
+                " The password is on the back of the name tag"
+                " you receive at reception."
+            )
         }
         prompt = agent.build_memory_prompt("What did I ask?", context, "question_history", "en")
 
@@ -271,10 +282,20 @@ class TestMemoryAgent:
                     {"role": "user", "content": "WiFiのパスワードを教えてください"},
                     {
                         "role": "assistant",
-                        "content": "WiFiのSSIDは「engnrcf-guest-5GHz」です。パスワードは受付でお渡しする名札の裏に記載しています。",
+                        "content": (
+                            "WiFiのSSIDは「engnrcf-guest-5GHz」です。"
+                            "パスワードは受付でお渡しする名札の裏に"
+                            "記載しています。"
+                        ),
                     },
                 ],
-                "context_string": "ユーザー: WiFiのパスワードを教えてください\nアシスタント: WiFiのSSIDは「engnrcf-guest-5GHz」です。パスワードは受付でお渡しする名札の裏に記載しています。",
+                "context_string": (
+                    "ユーザー: WiFiのパスワードを教えてください\n"
+                    "アシスタント: WiFiのSSIDは"
+                    "「engnrcf-guest-5GHz」です。"
+                    "パスワードは受付でお渡しする名札の裏に"
+                    "記載しています。"
+                ),
                 "inherited_request_type": "wifi",
             }
         )

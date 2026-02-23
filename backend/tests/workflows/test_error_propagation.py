@@ -11,10 +11,20 @@ Tests cover:
 """
 
 import re
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 from langgraph.types import RetryPolicy
+
+
+def _mock_runtime():
+    """テスト用モック Runtime を生成"""
+    rt = MagicMock()
+    rt.context = MagicMock()
+    rt.context.user_id = "anonymous"
+    rt.store = None
+    return rt
+
 
 # ---------------------------------------------------------------------------
 # Helper: create a MainWorkflow with all external deps mocked out
@@ -187,7 +197,7 @@ class TestFormatResponseErrorPropagation:
                 # "answer" is intentionally omitted
             }
 
-            result = await workflow._format_response_node(state)
+            result = await workflow._format_response_node(state, _mock_runtime())
 
             assert "messages" in result
             assert len(result["messages"]) == 2
@@ -214,7 +224,7 @@ class TestFormatResponseErrorPropagation:
                 "session_id": "test-session",
             }
 
-            result = await workflow._format_response_node(state)
+            result = await workflow._format_response_node(state, _mock_runtime())
 
             # None answer goes through strip_emotion_tags(None) -> ""
             assert result["messages"][1].content == ""
@@ -236,7 +246,7 @@ class TestFormatResponseErrorPropagation:
             }
 
             # Should NOT raise despite store_message failure
-            result = await workflow._format_response_node(state)
+            result = await workflow._format_response_node(state, _mock_runtime())
 
             assert "messages" in result
             assert result["messages"][1].content == "some answer"
@@ -257,7 +267,7 @@ class TestFormatResponseErrorPropagation:
                 "session_id": "test-session",
             }
 
-            result = await workflow._format_response_node(state)
+            result = await workflow._format_response_node(state, _mock_runtime())
 
             # Emotion tags should be stripped
             assert "[happy" not in result["messages"][1].content
@@ -463,7 +473,7 @@ class TestMemoryLoaderFailure:
                 "context": {},
             }
 
-            result = await workflow._memory_loader_node(state)
+            result = await workflow._memory_loader_node(state, _mock_runtime())
 
             assert "context" in result
             assert result["context"]["memory"] == {}
@@ -490,7 +500,7 @@ class TestMemoryLoaderFailure:
                 "context": {"existing_key": "existing_value"},
             }
 
-            result = await workflow._memory_loader_node(state)
+            result = await workflow._memory_loader_node(state, _mock_runtime())
 
             assert result["context"]["existing_key"] == "existing_value"
             assert result["context"]["memory"] == {}
@@ -517,7 +527,7 @@ class TestMemoryLoaderFailure:
                 "context": {},
             }
 
-            result = await workflow._memory_loader_node(state)
+            result = await workflow._memory_loader_node(state, _mock_runtime())
 
             assert result["context"]["memory"] == {}
 
@@ -549,7 +559,7 @@ class TestMemoryLoaderFailure:
                 "context": {},
             }
 
-            result = await workflow._memory_loader_node(state)
+            result = await workflow._memory_loader_node(state, _mock_runtime())
 
             # Memory context should still be loaded despite store failure
             assert "context" in result
@@ -583,7 +593,7 @@ class TestMemoryLoaderFailure:
                 "context": {},
             }
 
-            await workflow._memory_loader_node(state)
+            await workflow._memory_loader_node(state, _mock_runtime())
 
             # store_message should NOT be called for empty query
             mock_helper.store_message.assert_not_called()
@@ -634,7 +644,7 @@ class TestErrorMessageSecurity:
                 "session_id": "test-session",
             }
 
-            result = await workflow._format_response_node(state)
+            result = await workflow._format_response_node(state, _mock_runtime())
 
             answer = result["messages"][1].content
             self._assert_no_sensitive_data(answer)
@@ -678,7 +688,7 @@ class TestErrorMessageSecurity:
                 "session_id": "test-session",
             }
 
-            result = await workflow._format_response_node(state)
+            result = await workflow._format_response_node(state, _mock_runtime())
             answer = result["messages"][1].content
 
             # No raw emotion tags should remain

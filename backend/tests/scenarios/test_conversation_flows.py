@@ -197,7 +197,9 @@ class TestBusinessToFacilityContextInheritance:
                 {"role": "user", "content": "営業時間は？"},
                 {"role": "assistant", "content": "営業時間は9時から22時までです。"},
             ],
-            "context_string": "ユーザー: 営業時間は？\nアシスタント: 営業時間は9時から22時までです。",
+            "context_string": (
+                "ユーザー: 営業時間は？\n" "アシスタント: 営業時間は9時から22時までです。"
+            ),
         }
 
         call_count_ctx = {"n": 0}

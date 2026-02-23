@@ -33,7 +33,11 @@ pytestmark = [
     pytest.mark.asyncio,
     pytest.mark.skipif(
         not _supabase_available,
-        reason="SUPABASE_URL/SUPABASE_KEY が未設定、test-key、またはローカルSupabase以外（localhost/127.0.0.1/kong が必要）",
+        reason=(
+            "SUPABASE_URL/SUPABASE_KEY が未設定、test-key、"
+            "またはローカルSupabase以外"
+            "（localhost/127.0.0.1/kong が必要）"
+        ),
     ),
 ]
 

@@ -73,8 +73,11 @@ class TestRoutingLiveE2E:
         total = len(results)
         accuracy = correct / total if total > 0 else 0
 
+        errors = [
+            (r.test_case_id, r.expected_agent, r.actual_agent) for r in results if not r.is_correct
+        ][:5]
         assert accuracy >= 0.75, (
             f"Routing accuracy {accuracy:.1%} < 75%. "
             f"Correct: {correct}/{total}. "
-            f"Errors: {[(r.test_case_id, r.expected_agent, r.actual_agent) for r in results if not r.is_correct][:5]}"
+            f"Errors: {errors}"
         )

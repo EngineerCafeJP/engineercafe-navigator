@@ -76,9 +76,9 @@ class TestRAGPipelineIntegration:
         ]
 
         rag.supabase.rpc.return_value.execute.return_value = _mock_rpc_results(rpc_data)
-        rag.supabase.table.return_value.select.return_value.in_.return_value.execute.return_value = MagicMock(
-            data=parent_data
-        )
+        (
+            rag.supabase.table.return_value.select.return_value.in_.return_value.execute.return_value
+        ) = MagicMock(data=parent_data)
 
         with patch.object(
             rag, "_generate_embedding", new_callable=AsyncMock, return_value=[0.1] * 1536

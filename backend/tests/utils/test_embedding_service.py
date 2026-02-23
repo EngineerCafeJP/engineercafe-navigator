@@ -227,7 +227,8 @@ class TestGenerateEmbedding:
 
     @pytest.mark.asyncio
     async def test_generate_embedding_long_error_text_truncated(self, monkeypatch):
-        """エラーレスポンスの text が長い場合でもクラッシュしないこと (response.text[:200] の検証)。"""
+        """エラーレスポンスの text が長い場合でも
+        クラッシュしないこと。"""
         mock_response = MagicMock()
         mock_response.status_code = 503
         mock_response.text = "x" * 500  # 200文字以上のエラー本文
@@ -243,7 +244,7 @@ class TestGenerateEmbedding:
 
     @pytest.mark.asyncio
     async def test_generate_embedding_returns_new_list_on_each_failure(self, monkeypatch):
-        """複数回の失敗呼び出しで毎回新しい空リストを返すこと (ミュータブルオブジェクトの同一性チェック)。"""
+        """複数回の失敗呼び出しで毎回新しい空リストを返すこと。"""
         monkeypatch.setenv("OPENROUTER_API_KEY", "")
 
         result1 = await generate_embedding("a")

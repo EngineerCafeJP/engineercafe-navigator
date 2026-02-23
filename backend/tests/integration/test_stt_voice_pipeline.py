@@ -297,7 +297,8 @@ class TestSTTAgentPipeline:
     async def test_grammar_resolution_without_stage(
         self, mock_local_stt_client, mock_google_stt_client
     ):
-        """use_grammar=False かつ conversation_stage=None のとき、_resolve_grammar は None を返す。"""
+        """use_grammar=False かつ conversation_stage=None のとき、
+        _resolve_grammar は None を返す。"""
         agent = STTAgent(
             stt_provider="vosk",
             stt_client=mock_local_stt_client,

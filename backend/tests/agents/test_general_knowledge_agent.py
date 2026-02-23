@@ -144,7 +144,9 @@ class TestGeneralKnowledgeAgentIntegration:
         # OpenRouterProviderのモック
         self.mock_provider = MagicMock()
         self.mock_provider.generate = AsyncMock(
-            return_value="[helpful]これはテスト回答です。Engineer Cafeについての情報をお伝えします。"
+            return_value=(
+                "[helpful]これはテスト回答です。" "Engineer Cafeについての情報をお伝えします。"
+            )
         )
 
         # エージェント初期化

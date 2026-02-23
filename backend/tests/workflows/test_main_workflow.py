@@ -7,7 +7,16 @@ LangGraphワークフローとSupervisor Pattern統合をテスト
 import inspect
 
 import pytest
-from unittest.mock import Mock, AsyncMock, patch
+from unittest.mock import MagicMock, Mock, AsyncMock, patch
+
+
+def _mock_runtime():
+    """テスト用モック Runtime を生成"""
+    rt = MagicMock()
+    rt.context = MagicMock()
+    rt.context.user_id = "anonymous"
+    rt.store = None
+    return rt
 
 
 class TestMainWorkflowMemoryIntegration:
@@ -47,7 +56,7 @@ class TestMainWorkflowMemoryIntegration:
                 "context": {},
             }
 
-            result = await workflow._memory_loader_node(state)
+            result = await workflow._memory_loader_node(state, _mock_runtime())
 
             assert "context" in result
             assert "memory" in result["context"]
@@ -100,6 +109,7 @@ class TestMainWorkflowMemoryIntegration:
                 query_type="memory",
                 state_context=None,
                 context_signals=None,
+                long_term_memory=[],
             )
 
     @pytest.mark.asyncio
@@ -124,7 +134,7 @@ class TestMainWorkflowMemoryIntegration:
                 "context": {"existing": "data"},
             }
 
-            result = await workflow._memory_loader_node(state)
+            result = await workflow._memory_loader_node(state, _mock_runtime())
 
             # エラー時でもcontextが返される
             assert "context" in result
@@ -236,7 +246,7 @@ class TestOrchestratorIntegration:
                 "session_id": "test-session",
             }
 
-            result = await workflow._format_response_node(state)
+            result = await workflow._format_response_node(state, _mock_runtime())
 
             assert "messages" in result
             assert len(result["messages"]) == 2
@@ -318,7 +328,7 @@ class TestStoreMessageIntegration:
                 "context": {},
             }
 
-            await workflow._memory_loader_node(state)
+            await workflow._memory_loader_node(state, _mock_runtime())
 
             # store_messageが正しい引数で呼ばれたことを確認
             mock_helper.store_message.assert_called_once_with(
@@ -350,7 +360,7 @@ class TestStoreMessageIntegration:
                 "routing": {},
             }
 
-            await workflow._format_response_node(state)
+            await workflow._format_response_node(state, _mock_runtime())
 
             # store_messageが正しい引数で呼ばれたことを確認
             mock_helper.store_message.assert_called_once_with(
@@ -391,7 +401,7 @@ class TestStoreMessageIntegration:
                 "context": {},
             }
 
-            result_loader = await workflow._memory_loader_node(state_loader)
+            result_loader = await workflow._memory_loader_node(state_loader, _mock_runtime())
 
             # 例外が投げられても正常に結果が返ることを確認
             assert "context" in result_loader
@@ -404,7 +414,7 @@ class TestStoreMessageIntegration:
                 "session_id": "test-session-789",
             }
 
-            result_format = await workflow._format_response_node(state_format)
+            result_format = await workflow._format_response_node(state_format, _mock_runtime())
 
             # 例外が投げられても正常に結果が返ることを確認
             assert "messages" in result_format
