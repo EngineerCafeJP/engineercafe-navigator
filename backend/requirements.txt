@@ -26,6 +26,10 @@ psycopg[binary]>=3.1.0
 vosk>=0.3.45
 soundfile>=0.12.1
 
+# Translation (CTranslate2 + Helsinki-NLP/opus-mt)
+ctranslate2>=4.0.0
+sentencepiece>=0.2.0
+
 # Testing dependencies
 pytest>=8.0.0
 pytest-asyncio>=0.23.0
