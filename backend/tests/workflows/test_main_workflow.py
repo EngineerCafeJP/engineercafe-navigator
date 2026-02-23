@@ -421,6 +421,165 @@ class TestStoreMessageIntegration:
             assert len(result_format["messages"]) == 2
 
 
+class TestResponseTranslation:
+    """レスポンス翻訳（JA→EN）のテスト"""
+
+    @pytest.mark.asyncio
+    @patch("backend.workflows.main_workflow.OrchestratorAgent")
+    async def test_format_response_translates_ja_to_en(self, mock_orchestrator_class):
+        """language='en' の場合、日本語回答が英語に翻訳されることを確認"""
+        from backend.workflows.main_workflow import MainWorkflow
+
+        mock_orchestrator_class.return_value = AsyncMock()
+
+        with (
+            patch("backend.utils.memory_helper.get_memory_helper") as mock_get_helper,
+            patch("backend.services.translation_service.get_translation_service") as mock_get_ts,
+        ):
+            mock_helper = AsyncMock()
+            mock_helper.store_message = AsyncMock()
+            mock_get_helper.return_value = mock_helper
+
+            mock_ts = AsyncMock()
+            mock_ts.translate = AsyncMock(return_value="It is from 9am to 10pm.")
+            mock_get_ts.return_value = mock_ts
+
+            workflow = MainWorkflow()
+
+            state = {
+                "query": "What are the hours?",
+                "answer": "9時から22時です。",
+                "session_id": "test-session",
+                "language": "en",
+            }
+
+            result = await workflow._format_response_node(state, _mock_runtime())
+
+            mock_ts.translate.assert_called_once_with("9時から22時です。", "ja_to_en")
+            assert result["messages"][-1].content == "It is from 9am to 10pm."
+
+    @pytest.mark.asyncio
+    @patch("backend.workflows.main_workflow.OrchestratorAgent")
+    async def test_format_response_skips_translation_for_ja(self, mock_orchestrator_class):
+        """language='ja' の場合、翻訳をスキップすることを確認"""
+        from backend.workflows.main_workflow import MainWorkflow
+
+        mock_orchestrator_class.return_value = AsyncMock()
+
+        with patch("backend.utils.memory_helper.get_memory_helper") as mock_get_helper:
+            mock_helper = AsyncMock()
+            mock_helper.store_message = AsyncMock()
+            mock_get_helper.return_value = mock_helper
+
+            workflow = MainWorkflow()
+
+            state = {
+                "query": "営業時間は？",
+                "answer": "9時から22時です。",
+                "session_id": "test-session",
+                "language": "ja",
+            }
+
+            result = await workflow._format_response_node(state, _mock_runtime())
+
+            assert result["messages"][-1].content == "9時から22時です。"
+
+    @pytest.mark.asyncio
+    @patch("backend.workflows.main_workflow.OrchestratorAgent")
+    async def test_format_response_translation_failure_fallback(self, mock_orchestrator_class):
+        """翻訳失敗時、元の日本語回答がそのまま使用されることを確認"""
+        from backend.workflows.main_workflow import MainWorkflow
+
+        mock_orchestrator_class.return_value = AsyncMock()
+
+        with (
+            patch("backend.utils.memory_helper.get_memory_helper") as mock_get_helper,
+            patch("backend.services.translation_service.get_translation_service") as mock_get_ts,
+        ):
+            mock_helper = AsyncMock()
+            mock_helper.store_message = AsyncMock()
+            mock_get_helper.return_value = mock_helper
+
+            mock_ts = AsyncMock()
+            mock_ts.translate = AsyncMock(side_effect=RuntimeError("Model not found"))
+            mock_get_ts.return_value = mock_ts
+
+            workflow = MainWorkflow()
+
+            state = {
+                "query": "What are the hours?",
+                "answer": "9時から22時です。",
+                "session_id": "test-session",
+                "language": "en",
+            }
+
+            result = await workflow._format_response_node(state, _mock_runtime())
+
+            assert result["messages"][-1].content == "9時から22時です。"
+
+    @pytest.mark.asyncio
+    @patch("backend.workflows.main_workflow.OrchestratorAgent")
+    async def test_format_response_stores_translated_in_memory(self, mock_orchestrator_class):
+        """翻訳後の英語回答がメモリに保存されることを確認"""
+        from backend.workflows.main_workflow import MainWorkflow
+
+        mock_orchestrator_class.return_value = AsyncMock()
+
+        with (
+            patch("backend.utils.memory_helper.get_memory_helper") as mock_get_helper,
+            patch("backend.services.translation_service.get_translation_service") as mock_get_ts,
+        ):
+            mock_helper = AsyncMock()
+            mock_helper.store_message = AsyncMock()
+            mock_get_helper.return_value = mock_helper
+
+            mock_ts = AsyncMock()
+            mock_ts.translate = AsyncMock(return_value="It is from 9am to 10pm.")
+            mock_get_ts.return_value = mock_ts
+
+            workflow = MainWorkflow()
+
+            state = {
+                "query": "What are the hours?",
+                "answer": "9時から22時です。",
+                "session_id": "test-session",
+                "language": "en",
+            }
+
+            await workflow._format_response_node(state, _mock_runtime())
+
+            mock_helper.store_message.assert_called_once_with(
+                session_id="test-session",
+                role="assistant",
+                content="It is from 9am to 10pm.",
+            )
+
+    @pytest.mark.asyncio
+    @patch("backend.workflows.main_workflow.OrchestratorAgent")
+    async def test_format_response_default_language_ja(self, mock_orchestrator_class):
+        """language未指定時のデフォルト'ja'で翻訳がスキップされることを確認"""
+        from backend.workflows.main_workflow import MainWorkflow
+
+        mock_orchestrator_class.return_value = AsyncMock()
+
+        with patch("backend.utils.memory_helper.get_memory_helper") as mock_get_helper:
+            mock_helper = AsyncMock()
+            mock_helper.store_message = AsyncMock()
+            mock_get_helper.return_value = mock_helper
+
+            workflow = MainWorkflow()
+
+            state = {
+                "query": "営業時間は？",
+                "answer": "9時から22時です。",
+                "session_id": "test-session",
+            }
+
+            result = await workflow._format_response_node(state, _mock_runtime())
+
+            assert result["messages"][-1].content == "9時から22時です。"
+
+
 class TestRetryPolicy:
     """RetryPolicy 設定テスト"""
 
