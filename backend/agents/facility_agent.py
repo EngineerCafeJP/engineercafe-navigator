@@ -82,7 +82,9 @@ class FacilityAgent:
         Returns:
             Dict: 回答辞書
                 - answer (str): 回答テキスト。感情タグ付き
-                - emotion (str): 感情タグ（happy, relaxed, sad, informative, guiding, helpful, apologetic）
+                - emotion (str): 感情タグ
+                    （happy, relaxed, sad, informative,
+                    guiding, helpful, apologetic）
                 - metadata (Dict): メタデータ
                     - agent (str): "FacilityAgent"
                     - confidence (float): 信頼度（0.0-1.0）
@@ -99,7 +101,8 @@ class FacilityAgent:
             ... )
             >>> print(result)
             {
-                "answer": "[relaxed]はい、無料Wi-Fiをご利用いただけます。接続方法はスタッフにお尋ねください。",
+                "answer": "[relaxed]はい、無料Wi-Fiをご利用いただけます。"
+                "接続方法はスタッフにお尋ねください。",
                 "emotion": "relaxed",
                 "metadata": {
                     "agent": "FacilityAgent",
@@ -153,6 +156,22 @@ class FacilityAgent:
 
             # コンテキスト取得
             context = rag_result.get("data", {}).get("context", "")
+
+        # 英語フォールバック: キャッシュ/直接検索どちらでもコンテキストが空の場合、
+        # "Engineer Cafe" コンテキストを付加してgeneral検索（英語概要エントリを拾う）
+        if not context and language == "en":
+            enriched_query = f"Engineer Cafe {query}"
+            logger.info("English fallback: retrying with enriched query '%s'", enriched_query[:60])
+            fallback_result = await self.enhanced_rag.search(
+                query=enriched_query,
+                category="general",
+                language=language,
+                include_advice=True,
+                max_results=10,
+                context_signals=context_signals,
+            )
+            if fallback_result.get("success"):
+                context = fallback_result.get("data", {}).get("context", "")
 
         if not context:
             return self._get_default_response(language, request_type)
@@ -346,9 +365,20 @@ class FacilityAgent:
             - sources は ["fallback"] を記録
         """
         if language == "en":
-            text = "[sad]I'm sorry, I couldn't find the specific facility information you're looking for. Please try rephrasing your question or contact the staff for assistance."
+            text = (
+                "[sad]I'm sorry, I couldn't find the"
+                " specific facility information"
+                " you're looking for."
+                " Please try rephrasing your question"
+                " or contact the staff for assistance."
+            )
         else:
-            text = "[sad]申し訳ございません。お探しの施設情報が見つかりませんでした。質問を言い換えていただくか、スタッフにお問い合わせください。"
+            text = (
+                "[sad]申し訳ございません。"
+                "お探しの施設情報が見つかりませんでした。"
+                "質問を言い換えていただくか、"
+                "スタッフにお問い合わせください。"
+            )
 
         return {
             "answer": text,
