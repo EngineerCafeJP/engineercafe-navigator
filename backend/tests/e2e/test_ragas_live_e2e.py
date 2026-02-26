@@ -140,9 +140,8 @@ class TestRagasLiveE2E:
         avg_faithfulness = sum(scores) / len(scores)
         assert (
             avg_faithfulness >= 0.7
-        ), (
-            f"Average faithfulness {avg_faithfulness:.3f} < 0.7. "
-            + _format_ragas_failure_context("faithfulness", scores, errors, details)
+        ), f"Average faithfulness {avg_faithfulness:.3f} < 0.7. " + _format_ragas_failure_context(
+            "faithfulness", scores, errors, details
         )
 
     async def test_ragas_answer_relevancy(self, invoke_workflow, ragas_evaluator, gt_cases):
@@ -163,7 +162,6 @@ class TestRagasLiveE2E:
         avg_relevancy = sum(scores) / len(scores)
         assert (
             avg_relevancy >= 0.7
-        ), (
-            f"Average answer_relevancy {avg_relevancy:.3f} < 0.7. "
-            + _format_ragas_failure_context("answer_relevancy", scores, errors, details)
+        ), f"Average answer_relevancy {avg_relevancy:.3f} < 0.7. " + _format_ragas_failure_context(
+            "answer_relevancy", scores, errors, details
         )

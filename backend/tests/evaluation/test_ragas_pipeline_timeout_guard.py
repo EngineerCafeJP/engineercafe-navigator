@@ -42,4 +42,3 @@ class TestRagasEvaluateTimeoutGuard:
                 metrics_objs=[],
                 timeout_seconds=0.01,
             )
-

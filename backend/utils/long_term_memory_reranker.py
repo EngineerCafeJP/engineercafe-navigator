@@ -37,9 +37,7 @@ def _score_item(query: str, value: dict, *, now: float, base_score: float | None
         score += 0.2
 
     promotion = value.get("promotion", {}) or {}
-    repeat_count = int(
-        promotion.get("repeat_count_sum", value.get("repeat_count", 1) or 1) or 1
-    )
+    repeat_count = int(promotion.get("repeat_count_sum", value.get("repeat_count", 1) or 1) or 1)
     candidate_count = int(promotion.get("candidate_count", 1) or 1)
     score += min(repeat_count, 5) * 0.03
     score += min(candidate_count, 5) * 0.02
@@ -82,4 +80,3 @@ def _simple_tokens(text: str) -> list[str]:
         return []
     pattern = r"[A-Za-z0-9]+|[\u3040-\u30ff\u4e00-\u9fff]{2,}"
     return [t.lower() for t in re.findall(pattern, text)]
-

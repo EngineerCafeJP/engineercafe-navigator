@@ -28,9 +28,7 @@ def _is_real_key(name: str) -> bool:
         return False
     lower = val.lower()
     return not (
-        lower.startswith("test-")
-        or lower.startswith("placeholder")
-        or val == "your_key_here"
+        lower.startswith("test-") or lower.startswith("placeholder") or val == "your_key_here"
     )
 
 

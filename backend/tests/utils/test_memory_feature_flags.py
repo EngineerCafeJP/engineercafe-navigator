@@ -31,4 +31,3 @@ class TestMemoryFeatureFlags:
             assert flags.enable_memory_promotion is True
             assert flags.enable_style_profile is True
             assert flags.enable_long_term_memory_rerank is True
-

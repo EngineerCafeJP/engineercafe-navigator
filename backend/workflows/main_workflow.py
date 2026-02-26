@@ -317,9 +317,7 @@ class MainWorkflow:
                                 rerank_store_memory_items,
                             )
 
-                            memories = rerank_store_memory_items(
-                                state.get("query", ""), memories
-                            )
+                            memories = rerank_store_memory_items(state.get("query", ""), memories)
                         except Exception as rerank_err:
                             logger.warning("Long-term memory rerank failed: %s", rerank_err)
                     long_term_memories = [m.value for m in memories]

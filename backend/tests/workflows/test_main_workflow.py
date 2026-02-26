@@ -158,28 +158,33 @@ class TestMainWorkflowMemoryIntegration:
             mock_helper.store_message = AsyncMock()
             mock_get_helper.return_value = mock_helper
 
-            with patch(
-                "backend.utils.memory_extractor.extract_memories",
-                return_value=[],
-            ), patch(
-                "backend.utils.memory_extractor.extract_memory_candidates",
-                return_value=[
-                    {
-                        "status": "candidate",
-                        "candidate_type": "visitor_name",
-                        "content": "田中",
-                        "confidence": 0.9,
-                    }
-                ],
-            ), patch(
-                "backend.utils.memory_feature_flags.get_memory_feature_flags",
-                return_value=SimpleNamespace(
-                    enable_memory_candidates=True,
-                    enable_memory_promotion=False,
-                    enable_style_profile=False,
-                    enable_long_term_memory_rerank=False,
+            with (
+                patch(
+                    "backend.utils.memory_extractor.extract_memories",
+                    return_value=[],
                 ),
-            ), patch.dict(os.environ, {"ENABLE_MEMORY_CANDIDATES": "true"}):
+                patch(
+                    "backend.utils.memory_extractor.extract_memory_candidates",
+                    return_value=[
+                        {
+                            "status": "candidate",
+                            "candidate_type": "visitor_name",
+                            "content": "田中",
+                            "confidence": 0.9,
+                        }
+                    ],
+                ),
+                patch(
+                    "backend.utils.memory_feature_flags.get_memory_feature_flags",
+                    return_value=SimpleNamespace(
+                        enable_memory_candidates=True,
+                        enable_memory_promotion=False,
+                        enable_style_profile=False,
+                        enable_long_term_memory_rerank=False,
+                    ),
+                ),
+                patch.dict(os.environ, {"ENABLE_MEMORY_CANDIDATES": "true"}),
+            ):
                 workflow = MainWorkflow()
                 runtime = MagicMock()
                 runtime.context = MagicMock()
@@ -218,21 +223,26 @@ class TestMainWorkflowMemoryIntegration:
             mock_helper.store_message = AsyncMock()
             mock_get_helper.return_value = mock_helper
 
-            with patch(
-                "backend.utils.memory_extractor.extract_memories",
-                return_value=[],
-            ), patch(
-                "backend.utils.memory_extractor.extract_memory_candidates",
-                return_value=[{"status": "candidate", "candidate_type": "visitor_name"}],
-            ), patch(
-                "backend.utils.memory_feature_flags.get_memory_feature_flags",
-                return_value=SimpleNamespace(
-                    enable_memory_candidates=False,
-                    enable_memory_promotion=False,
-                    enable_style_profile=False,
-                    enable_long_term_memory_rerank=False,
+            with (
+                patch(
+                    "backend.utils.memory_extractor.extract_memories",
+                    return_value=[],
                 ),
-            ), patch.dict(os.environ, {"ENABLE_MEMORY_CANDIDATES": "false"}):
+                patch(
+                    "backend.utils.memory_extractor.extract_memory_candidates",
+                    return_value=[{"status": "candidate", "candidate_type": "visitor_name"}],
+                ),
+                patch(
+                    "backend.utils.memory_feature_flags.get_memory_feature_flags",
+                    return_value=SimpleNamespace(
+                        enable_memory_candidates=False,
+                        enable_memory_promotion=False,
+                        enable_style_profile=False,
+                        enable_long_term_memory_rerank=False,
+                    ),
+                ),
+                patch.dict(os.environ, {"ENABLE_MEMORY_CANDIDATES": "false"}),
+            ):
                 workflow = MainWorkflow()
                 runtime = MagicMock()
                 runtime.context = MagicMock()
@@ -265,21 +275,26 @@ class TestMainWorkflowMemoryIntegration:
             mock_helper.store_message = AsyncMock()
             mock_get_helper.return_value = mock_helper
 
-            with patch(
-                "backend.utils.memory_extractor.extract_memories",
-                return_value=[],
-            ), patch(
-                "backend.utils.memory_extractor.extract_memory_candidates",
-                return_value=[{"status": "candidate", "candidate_type": "visitor_name"}],
-            ), patch(
-                "backend.utils.memory_feature_flags.get_memory_feature_flags",
-                return_value=SimpleNamespace(
-                    enable_memory_candidates=True,
-                    enable_memory_promotion=False,
-                    enable_style_profile=False,
-                    enable_long_term_memory_rerank=False,
+            with (
+                patch(
+                    "backend.utils.memory_extractor.extract_memories",
+                    return_value=[],
                 ),
-            ), patch.dict(os.environ, {"ENABLE_MEMORY_CANDIDATES": "true"}):
+                patch(
+                    "backend.utils.memory_extractor.extract_memory_candidates",
+                    return_value=[{"status": "candidate", "candidate_type": "visitor_name"}],
+                ),
+                patch(
+                    "backend.utils.memory_feature_flags.get_memory_feature_flags",
+                    return_value=SimpleNamespace(
+                        enable_memory_candidates=True,
+                        enable_memory_promotion=False,
+                        enable_style_profile=False,
+                        enable_long_term_memory_rerank=False,
+                    ),
+                ),
+                patch.dict(os.environ, {"ENABLE_MEMORY_CANDIDATES": "true"}),
+            ):
                 workflow = MainWorkflow()
                 runtime = MagicMock()
                 runtime.context = MagicMock()
@@ -316,22 +331,27 @@ class TestMainWorkflowMemoryIntegration:
             mock_promoter = AsyncMock()
             mock_promoter.promote_for_user = AsyncMock(return_value={"promoted": 1})
 
-            with patch(
-                "backend.utils.memory_extractor.extract_memories",
-                return_value=[],
-            ), patch(
-                "backend.utils.memory_extractor.extract_memory_candidates",
-                return_value=[],
-            ), patch(
-                "backend.services.memory_promoter.MemoryPromoter",
-                return_value=mock_promoter,
-            ), patch(
-                "backend.utils.memory_feature_flags.get_memory_feature_flags",
-                return_value=SimpleNamespace(
-                    enable_memory_candidates=False,
-                    enable_memory_promotion=True,
-                    enable_style_profile=False,
-                    enable_long_term_memory_rerank=False,
+            with (
+                patch(
+                    "backend.utils.memory_extractor.extract_memories",
+                    return_value=[],
+                ),
+                patch(
+                    "backend.utils.memory_extractor.extract_memory_candidates",
+                    return_value=[],
+                ),
+                patch(
+                    "backend.services.memory_promoter.MemoryPromoter",
+                    return_value=mock_promoter,
+                ),
+                patch(
+                    "backend.utils.memory_feature_flags.get_memory_feature_flags",
+                    return_value=SimpleNamespace(
+                        enable_memory_candidates=False,
+                        enable_memory_promotion=True,
+                        enable_style_profile=False,
+                        enable_long_term_memory_rerank=False,
+                    ),
                 ),
             ):
                 workflow = MainWorkflow()

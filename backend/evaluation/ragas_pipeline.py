@@ -523,6 +523,4 @@ class RagasEvaluator:
                 timeout=timeout_seconds,
             )
         except asyncio.TimeoutError as e:
-            raise TimeoutError(
-                f"RAGAS evaluation timed out after {timeout_seconds:.0f}s"
-            ) from e
+            raise TimeoutError(f"RAGAS evaluation timed out after {timeout_seconds:.0f}s") from e

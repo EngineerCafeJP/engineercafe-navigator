@@ -34,4 +34,3 @@ def get_memory_feature_flags() -> MemoryFeatureFlags:
         enable_style_profile=_env_bool("ENABLE_STYLE_PROFILE", False),
         enable_long_term_memory_rerank=_env_bool("ENABLE_LONG_TERM_MEMORY_RERANK", False),
     )
-

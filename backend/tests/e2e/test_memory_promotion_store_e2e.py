@@ -60,4 +60,3 @@ class TestMemoryPromotionStoreE2E:
                             await store.adelete(ns, it.key)
                     except Exception:
                         pass
-
