@@ -760,7 +760,12 @@ class MainWorkflow:
         state, config = self._prepare_state(input_data)
         visitor_id = input_data.get("visitor_id") or input_data.get("session_id", "anonymous")
         context = WorkflowContext(user_id=visitor_id)
-        event_stream = self.graph.astream_events(state, config=config, version="v2", context=context)
+        event_stream = self.graph.astream_events(
+            state,
+            config=config,
+            version="v2",
+            context=context,
+        )
         try:
             async for event in event_stream:
                 kind = event["event"]

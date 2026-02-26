@@ -83,7 +83,14 @@ class TestMemoryPromoterService:
         store = AsyncMock()
 
         candidate_items = [
-            _item("c1", {"candidate_type": "explicit_remember", "content": "火曜に来る", "confidence": 1.0})
+            _item(
+                "c1",
+                {
+                    "candidate_type": "explicit_remember",
+                    "content": "火曜に来る",
+                    "confidence": 1.0,
+                },
+            )
         ]
         existing_items = [_item("e1", {"type": "explicit_remember", "data": "火曜に来る"})]
         store.asearch = AsyncMock(side_effect=[candidate_items, existing_items])
@@ -94,4 +101,3 @@ class TestMemoryPromoterService:
         assert stats["promoted"] == 0
         assert stats["duplicates_skipped"] == 1
         store.aput.assert_not_called()
-

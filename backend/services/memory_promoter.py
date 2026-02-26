@@ -157,8 +157,6 @@ class MemoryPromoter:
         count = int(aggregate.get("candidate_count", 0))
         repeat_sum = int(aggregate.get("repeat_count_sum", 0))
         conf_max = float(aggregate.get("confidence_max", 0.0))
-        conf_avg = float(aggregate.get("confidence_avg", 0.0))
-
         if ctype == "explicit_remember":
             if conf_max >= 0.8:
                 return PromotionDecision(True, "explicit_remember")
@@ -201,7 +199,10 @@ class MemoryPromoter:
             "promotion": {
                 "candidate_count": aggregate.get("candidate_count", 1),
                 "repeat_count_sum": aggregate.get("repeat_count_sum", 1),
-                "confidence_avg": aggregate.get("confidence_avg", aggregate.get("confidence_max", 0.5)),
+                "confidence_avg": aggregate.get(
+                    "confidence_avg",
+                    aggregate.get("confidence_max", 0.5),
+                ),
                 "first_seen_at": aggregate.get("first_seen_at"),
                 "last_seen_at": aggregate.get("last_seen_at"),
                 "sensitivity": aggregate.get("sensitivity", "unknown"),
@@ -213,4 +214,3 @@ class MemoryPromoter:
     def _aggregate_key(memory_type: str, content: str) -> str:
         normalized = " ".join(content.strip().lower().split())
         return f"{memory_type}:{normalized}"
-

@@ -15,12 +15,22 @@ class TestLongTermMemoryReranker:
         now = time.time()
         items = [
             _item(
-                {"type": "visitor_name", "data": "田中", "confidence": 0.9, "timestamp": now - 3600},
+                {
+                    "type": "visitor_name",
+                    "data": "田中",
+                    "confidence": 0.9,
+                    "timestamp": now - 3600,
+                },
                 score=0.7,
                 key="a",
             ),
             _item(
-                {"type": "explicit_remember", "data": "火曜に来る", "confidence": 1.0, "timestamp": now - 60},
+                {
+                    "type": "explicit_remember",
+                    "data": "火曜に来る",
+                    "confidence": 1.0,
+                    "timestamp": now - 60,
+                },
                 score=0.7,
                 key="b",
             ),
@@ -32,7 +42,12 @@ class TestLongTermMemoryReranker:
         now = time.time()
         items = [
             _item(
-                {"type": "visitor_affiliation", "data": "Acme", "confidence": 0.8, "timestamp": now - 10},
+                {
+                    "type": "visitor_affiliation",
+                    "data": "Acme",
+                    "confidence": 0.8,
+                    "timestamp": now - 10,
+                },
                 score=0.8,
                 key="new",
             ),
@@ -51,4 +66,3 @@ class TestLongTermMemoryReranker:
         ]
         ranked = rerank_store_memory_items("Acme", items)
         assert ranked[0].key == "stable"
-
