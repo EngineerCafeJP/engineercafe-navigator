@@ -12,7 +12,7 @@ import logging
 import os
 import uuid
 from datetime import datetime, timezone
-from typing import Dict, List, Literal, Optional
+from typing import Dict, List, Literal, Optional, get_args
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -206,7 +206,7 @@ async def list_vocabulary(
     all_items = await _load_vocabulary()
 
     # 統計情報（フィルタ前に全件ベースで算出）
-    all_categories = ["facility", "location", "service", "event", "person", "tech", "organization"]
+    all_categories = list(get_args(VocabularyCategory))
     by_category = {
         cat: sum(1 for v in all_items if v.get("category") == cat) for cat in all_categories
     }
