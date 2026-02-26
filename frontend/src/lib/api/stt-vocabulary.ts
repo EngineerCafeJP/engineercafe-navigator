@@ -19,7 +19,7 @@ if (
 ) {
   console.warn(
     "[stt-vocabulary] NEXT_PUBLIC_BACKEND_API_URL is not set. " +
-      "Falling back to http://localhost:8000. " +
+      "Falling back to http://localhost:8000/api. " +
       "Add it to frontend/.env.local to suppress this warning.",
   );
 }
