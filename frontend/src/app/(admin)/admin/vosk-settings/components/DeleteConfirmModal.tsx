@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { VocabularyItem } from "@/types/vosk";
 
 interface DeleteConfirmModalProps {
@@ -15,6 +16,14 @@ export function DeleteConfirmModal({
   onConfirm,
   onCancel,
 }: DeleteConfirmModalProps) {
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !isDeleting) onCancel();
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [isDeleting, onCancel]);
+
   return (
     <div
       className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center"
