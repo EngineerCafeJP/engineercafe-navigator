@@ -18,6 +18,7 @@ Usage:
     result = await evaluator.evaluate_single(question, answer, contexts, ground_truth)
 """
 
+import asyncio
 import logging
 import math
 import os
@@ -90,6 +91,9 @@ OPENROUTER_EVAL_MAX_TOKENS = 8192
 RAGAS_TIMEOUT = _safe_int_env("RAGAS_TIMEOUT", 600)
 RAGAS_MAX_RETRIES = _safe_int_env("RAGAS_MAX_RETRIES", 15)
 RAGAS_MAX_WORKERS = _safe_int_env("RAGAS_MAX_WORKERS", 16)
+# Outer wall-clock guards (protect against hangs inside ragas/provider layers)
+RAGAS_OUTER_SINGLE_TIMEOUT = _safe_int_env("RAGAS_OUTER_SINGLE_TIMEOUT", 180)
+RAGAS_OUTER_BATCH_TIMEOUT = _safe_int_env("RAGAS_OUTER_BATCH_TIMEOUT", 600)
 
 # 全6メトリクス
 DEFAULT_METRICS = (
@@ -446,7 +450,11 @@ class RagasEvaluator:
         dataset = _EvaluationDataset(samples=[sample])
 
         metrics_objs = self._get_metric_objects()
-        result = _ragas_evaluate(dataset, **self._build_eval_kwargs(metrics_objs))
+        result = await self._ragas_evaluate_with_timeout(
+            dataset,
+            metrics_objs,
+            timeout_seconds=float(RAGAS_OUTER_SINGLE_TIMEOUT),
+        )
 
         scores = result.to_pandas().iloc[0]
         extracted = self._extract_scores(scores)
@@ -472,7 +480,11 @@ class RagasEvaluator:
         dataset = _EvaluationDataset(samples=samples)
 
         metrics_objs = self._get_metric_objects()
-        result = _ragas_evaluate(dataset, **self._build_eval_kwargs(metrics_objs))
+        result = await self._ragas_evaluate_with_timeout(
+            dataset,
+            metrics_objs,
+            timeout_seconds=float(RAGAS_OUTER_BATCH_TIMEOUT),
+        )
 
         df = result.to_pandas()
         questions = [c["question"] for c in cases]
@@ -489,3 +501,28 @@ class RagasEvaluator:
     def _get_metric_objects(self) -> list:
         """メトリクス名からメトリクスインスタンスを生成（v0.4.3 クラスベース）"""
         return [_metric_classes[name]() for name in self.metric_names if name in _metric_classes]
+
+    async def _ragas_evaluate_with_timeout(
+        self,
+        dataset: Any,
+        metrics_objs: list,
+        *,
+        timeout_seconds: float,
+    ) -> Any:
+        """
+        ragas.evaluate() を別スレッドで実行し、外側のwall-clock timeoutで保護する。
+
+        理由:
+        - ragas/provider実装が同期ブロッキングする場合、asyncテストのevent loopが固まる
+        - Live E2Eで1ケースのハングが後続ケース/後続テストへ連鎖するのを防ぐ
+        """
+        kwargs = self._build_eval_kwargs(metrics_objs)
+        try:
+            return await asyncio.wait_for(
+                asyncio.to_thread(_ragas_evaluate, dataset, **kwargs),
+                timeout=timeout_seconds,
+            )
+        except asyncio.TimeoutError as e:
+            raise TimeoutError(
+                f"RAGAS evaluation timed out after {timeout_seconds:.0f}s"
+            ) from e

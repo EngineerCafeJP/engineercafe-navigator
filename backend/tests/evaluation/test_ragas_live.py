@@ -20,6 +20,20 @@ from backend.tests.fixtures.dataset_loader import DatasetLoader
 
 # Skip entire module if no API key is available
 _has_api_key = bool(os.environ.get("OPENAI_API_KEY") or os.environ.get("OPENROUTER_API_KEY"))
+
+
+def _is_real_key(name: str) -> bool:
+    val = os.environ.get(name, "")
+    if not val:
+        return False
+    lower = val.lower()
+    return not (
+        lower.startswith("test-")
+        or lower.startswith("placeholder")
+        or val == "your_key_here"
+    )
+
+
 pytestmark = [
     pytest.mark.ragas,
     pytest.mark.skipif(not _has_api_key, reason="OPENAI_API_KEY or OPENROUTER_API_KEY required"),
@@ -173,6 +187,8 @@ class TestRagasLiveEvaluation:
         key = os.environ.get("SUPABASE_KEY", "")
         if not url or not key or "placeholder" in url:
             pytest.skip("SUPABASE_URL and SUPABASE_KEY required for live evaluation")
+        if not _is_real_key("OPENROUTER_API_KEY"):
+            pytest.skip("OPENROUTER_API_KEY required for live RAG response generation")
         return True
 
     @pytest.mark.asyncio()

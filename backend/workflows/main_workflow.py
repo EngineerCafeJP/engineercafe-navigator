@@ -304,10 +304,24 @@ class MainWorkflow:
             try:
                 user_id = runtime.context.user_id if runtime.context else None
                 if user_id and user_id != "anonymous" and runtime.store:
+                    from backend.utils.memory_feature_flags import get_memory_feature_flags
+
                     namespace = ("visitor_memories", user_id)
                     memories = await runtime.store.asearch(
                         namespace, query=state.get("query", ""), limit=5
                     )
+                    flags = get_memory_feature_flags()
+                    if flags.enable_long_term_memory_rerank and memories:
+                        try:
+                            from backend.utils.long_term_memory_reranker import (
+                                rerank_store_memory_items,
+                            )
+
+                            memories = rerank_store_memory_items(
+                                state.get("query", ""), memories
+                            )
+                        except Exception as rerank_err:
+                            logger.warning("Long-term memory rerank failed: %s", rerank_err)
                     long_term_memories = [m.value for m in memories]
                     if long_term_memories:
                         logger.info(
@@ -603,7 +617,13 @@ class MainWorkflow:
         try:
             user_id = runtime.context.user_id if runtime.context else None
             if user_id and user_id != "anonymous" and runtime.store:
-                from backend.utils.memory_extractor import extract_memories
+                from backend.utils.memory_extractor import (
+                    extract_memories,
+                    extract_memory_candidates,
+                )
+                from backend.utils.memory_feature_flags import get_memory_feature_flags
+
+                memory_flags = get_memory_feature_flags()
 
                 facts = extract_memories(query, answer, state.get("language", "ja"))
                 if facts:
@@ -624,6 +644,53 @@ class MainWorkflow:
                         len(facts),
                         user_id,
                     )
+
+                # Phase 1 (shadow write): store candidate memories for promotion pipeline.
+                if memory_flags.enable_memory_candidates:
+                    try:
+                        candidates = extract_memory_candidates(
+                            query=query,
+                            answer=answer,
+                            language=state.get("language", "ja"),
+                        )
+                        if candidates:
+                            candidate_ns = ("visitor_memory_candidates", user_id)
+                            for candidate in candidates:
+                                await runtime.store.aput(
+                                    candidate_ns,
+                                    str(uuid.uuid4()),
+                                    candidate,
+                                )
+                            logger.info(
+                                "Shadow-stored %d memory candidates for user %s",
+                                len(candidates),
+                                user_id,
+                            )
+                    except Exception as candidate_err:
+                        logger.warning(
+                            "Memory candidate shadow write failed: %s",
+                            candidate_err,
+                        )
+
+                # Phase 2: promote candidates to long-term memory (best effort).
+                if memory_flags.enable_memory_promotion:
+                    try:
+                        from backend.services.memory_promoter import MemoryPromoter
+
+                        promoter = MemoryPromoter()
+                        promotion_stats = await promoter.promote_for_user(
+                            runtime.store,
+                            user_id,
+                            delete_promoted_candidates=False,
+                        )
+                        if promotion_stats.get("promoted", 0) > 0:
+                            logger.info(
+                                "Promoted memories for user %s: %s",
+                                user_id,
+                                promotion_stats,
+                            )
+                    except Exception as promote_err:
+                        logger.warning("Memory promotion failed: %s", promote_err)
         except Exception as e:
             logger.warning("Long-term memory store failed: %s", e)
 
@@ -693,17 +760,25 @@ class MainWorkflow:
         state, config = self._prepare_state(input_data)
         visitor_id = input_data.get("visitor_id") or input_data.get("session_id", "anonymous")
         context = WorkflowContext(user_id=visitor_id)
-
-        async for event in self.graph.astream_events(
-            state, config=config, version="v2", context=context
-        ):
-            kind = event["event"]
-            if kind == "on_chat_model_stream":
-                content = event["data"]["chunk"].content
-                if content:
-                    yield {"type": "token", "content": content}
-            elif kind == "on_chain_end" and event.get("name") == "format_response":
-                yield {"type": "complete", "data": event["data"].get("output", {})}
+        event_stream = self.graph.astream_events(state, config=config, version="v2", context=context)
+        try:
+            async for event in event_stream:
+                kind = event["event"]
+                if kind == "on_chat_model_stream":
+                    content = event["data"]["chunk"].content
+                    if content:
+                        yield {"type": "token", "content": content}
+                elif kind == "on_chain_end" and event.get("name") == "format_response":
+                    yield {"type": "complete", "data": event["data"].get("output", {})}
+        finally:
+            # Ensure upstream async generator is closed when the client disconnects
+            # or the consumer stops iteration early (SSE test path).
+            aclose = getattr(event_stream, "aclose", None)
+            if callable(aclose):
+                try:
+                    await aclose()
+                except Exception:
+                    logger.debug("Failed to close astream_events generator cleanly", exc_info=True)
 
     async def close(self):
         """リソースのクリーンアップ"""
