@@ -1,5 +1,7 @@
 /**
  * ISO 8601 形式の日付文字列を YYYY/MM/DD HH:mm 形式に変換
+ * バックエンド保存: UTC
+ * フロントエンド表示: ブラウザのローカルタイムゾーン（日本時間 JST）
  */
 export function isoConvertDate(isoString: string): string {
   const date = new Date(isoString);
