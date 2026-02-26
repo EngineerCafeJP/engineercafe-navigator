@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import useSWR from "swr";
 import { Toaster, toast } from "react-hot-toast";
 import {
@@ -78,6 +78,11 @@ export default function VoskSettingsPage() {
       setIsDeleting(false);
     }
   };
+
+  // モーダルキャンセル処理
+  const handleDeleteCancel = useCallback(() => {
+    setDeletingItem(null);
+  }, []);
 
   const hasFilter = !!(categoryFilter || appliedSearch);
 
@@ -166,7 +171,7 @@ export default function VoskSettingsPage() {
           item={deletingItem}
           isDeleting={isDeleting}
           onConfirm={handleDeleteConfirm}
-          onCancel={() => setDeletingItem(null)}
+          onCancel={handleDeleteCancel}
         />
       )}
     </div>
