@@ -7,11 +7,13 @@ const nextConfig = {
   },
   // WebSocket support for external integrations
   webpack: (config, { isServer }) => {
-    // Enable file watching with polling for Docker on Windows
-    config.watchOptions = {
-      poll: 1000, // Check for changes every second
-      aggregateTimeout: 300, // Delay rebuild after first change
-    };
+    // Enable file watching with polling for Docker on Windows (only when CHOKIDAR_USEPOLLING is set)
+    if (process.env.CHOKIDAR_USEPOLLING === 'true') {
+      config.watchOptions = {
+        poll: 1000, // Check for changes every second
+        aggregateTimeout: 300, // Delay rebuild after first change
+      };
+    }
 
     config.externals.push({
       "node:buffer": "commonjs buffer",
