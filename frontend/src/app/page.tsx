@@ -9,6 +9,17 @@ import CharacterAvatar from './components/CharacterAvatar';
 import MarpViewer from './components/MarpViewer';
 import { EmotionMapping } from '@/lib/emotion-mapping';
 
+const getOrCreateVisitorId = (): string => {
+  if (typeof window === 'undefined') return 'anonymous';
+  const key = 'engineer_cafe_visitor_id';
+  let id = localStorage.getItem(key);
+  if (!id) {
+    id = crypto.randomUUID();
+    localStorage.setItem(key, id);
+  }
+  return id;
+};
+
 export default function Home() {
   const [showSlideMode, setShowSlideMode] = useState(false);
   const [characterBackground, setCharacterBackground] = useState<BackgroundOption>({
@@ -41,6 +52,7 @@ export default function Home() {
   
   // Persistent session ID for the entire conversation
   const [sessionId] = useState(() => `session_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`);
+  const [visitorId] = useState(() => getOrCreateVisitorId());
 
   // ボイスウェーブの高さ（scaleY）を一度だけ生成して保持
   const voiceWaveScales = useMemo(() =>

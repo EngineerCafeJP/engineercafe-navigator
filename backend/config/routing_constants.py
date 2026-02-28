@@ -266,6 +266,39 @@ EMERGENCY_KEYWORDS = [
     "defibrillator",
 ]
 
+EARTHQUAKE_KEYWORDS = [
+    "地震",
+    "earthquake",
+    "揺れ",
+    "揺れて",
+    "震度",
+    "seismic",
+]
+
+FIRE_KEYWORDS = [
+    "火事",
+    "火災",
+    "fire",
+    "煙",
+    "smoke",
+    "燃えて",
+    "burning",
+]
+
+MEDICAL_EMERGENCY_KEYWORDS = [
+    "AED",
+    "倒れ",
+    "意識",
+    "ambulance",
+    "怪我",
+    "けが",
+    "出血",
+    "bleeding",
+    "心臓",
+    "呼吸",
+    "息ができない",
+]
+
 FLOOR_LAYOUT_KEYWORDS = [
     "フロア構成",
     "フロアマップ",
