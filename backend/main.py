@@ -434,6 +434,38 @@ def _get_slide_agent():
     return _slide_agent
 
 
+async def _handle_stt(body: VoiceRequest) -> VoiceResponse:
+    """Shared STT processing for process_voice and speech_to_text actions."""
+    if not body.audioData:
+        raise HTTPException(status_code=400, detail="Missing audioData")
+
+    import base64
+
+    audio_bytes = base64.b64decode(body.audioData)
+
+    stt_result = await _get_stt_agent().speech_to_text(
+        audio_bytes,
+        language=body.language,
+        conversation_stage=body.conversationStage,
+    )
+
+    if not stt_result["success"]:
+        return VoiceResponse(
+            success=False,
+            error=stt_result.get("error", "STT failed"),
+            sessionId=body.sessionId,
+        )
+
+    return VoiceResponse(
+        success=True,
+        transcript=stt_result["transcript"],
+        emotion="neutral",
+        detectedLanguage=stt_result.get("language"),
+        confidence=stt_result.get("confidence"),
+        sessionId=body.sessionId,
+    )
+
+
 @app.post("/api/voice", response_model=VoiceResponse, dependencies=[Depends(verify_api_key)])
 @_rate_limit("20/minute")
 async def voice_api(request: Request, body: VoiceRequest):
@@ -463,34 +495,13 @@ async def voice_api(request: Request, body: VoiceRequest):
             )
 
         elif body.action == "process_voice":
-            if not body.audioData:
-                raise HTTPException(status_code=400, detail="Missing audioData for process_voice")
+            return await _handle_stt(body)
 
-            import base64
+        elif body.action == "set_language":
+            return VoiceResponse(success=True, sessionId=body.sessionId)
 
-            audio_bytes = base64.b64decode(body.audioData)
-
-            stt_result = await _get_stt_agent().speech_to_text(
-                audio_bytes,
-                language=body.language,
-                conversation_stage=body.conversationStage,
-            )
-
-            if not stt_result["success"]:
-                return VoiceResponse(
-                    success=False,
-                    error=stt_result.get("error", "STT failed"),
-                    sessionId=body.sessionId,
-                )
-
-            return VoiceResponse(
-                success=True,
-                transcript=stt_result["transcript"],
-                emotion="neutral",
-                detectedLanguage=stt_result.get("language"),
-                confidence=stt_result.get("confidence"),
-                sessionId=body.sessionId,
-            )
+        elif body.action == "speech_to_text":
+            return await _handle_stt(body)
 
         else:
             raise HTTPException(status_code=400, detail=f"Unknown action: {body.action}")
