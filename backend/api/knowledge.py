@@ -35,7 +35,7 @@ MAX_UPLOAD_SIZE = 10 * 1024 * 1024
 
 class KnowledgeCreateRequest(BaseModel):
     title: str = Field(..., max_length=200)
-    content: str = Field(..., max_length=5000)
+    content: str = Field(..., max_length=50000)
     category: str
     language: str = Field(default="ja", pattern=r"^(ja|en)$")
     subcategory: Optional[str] = None
@@ -45,7 +45,7 @@ class KnowledgeCreateRequest(BaseModel):
 
 class KnowledgeUpdateRequest(BaseModel):
     title: Optional[str] = Field(None, max_length=200)
-    content: Optional[str] = Field(None, max_length=5000)
+    content: Optional[str] = Field(None, max_length=50000)
     category: Optional[str] = None
     language: Optional[str] = Field(None, pattern=r"^(ja|en)$")
     subcategory: Optional[str] = None
@@ -307,9 +307,9 @@ async def upload_knowledge(
         if not parsed_content.strip():
             raise HTTPException(status_code=400, detail="No text content extracted from file")
 
-        # 5000文字制限
-        if len(parsed_content) > 5000:
-            parsed_content = parsed_content[:5000]
+        # 50000文字制限（PDF数十ページ分に対応）
+        if len(parsed_content) > 50000:
+            parsed_content = parsed_content[:50000]
 
         # titleが未指定の場合はファイル名から生成
         effective_title = title or file.filename.rsplit(".", 1)[0]

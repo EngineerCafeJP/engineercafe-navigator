@@ -1247,7 +1247,7 @@ async def generate_embedding_for_seed(text: str) -> list[float]:
     Returns:
         1536次元のembeddingベクトル
     """
-    from utils.embedding_service import generate_embedding
+    from backend.utils.embedding_service import generate_embedding
 
     result = await generate_embedding(text)
     if not result:

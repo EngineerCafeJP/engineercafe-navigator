@@ -5,7 +5,11 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from backend.services.memory_promoter import MemoryPromoter
+from backend.services.memory_promoter import (
+    MemoryPromoter,
+    get_memory_promoter,
+    reset_memory_promoter,
+)
 
 
 def _item(key: str, value: dict, score: float | None = None):
@@ -101,3 +105,90 @@ class TestMemoryPromoterService:
         assert stats["promoted"] == 0
         assert stats["duplicates_skipped"] == 1
         store.aput.assert_not_called()
+
+
+class TestNFKCNormalization:
+    """NFKC正規化のテスト"""
+
+    def test_fullwidth_halfwidth_unified(self):
+        """全角・半角が同じagg_keyに統一される"""
+        items = [
+            _item("k1", {"candidate_type": "visitor_name", "content": "ＡＢＣ", "confidence": 0.9}),
+            _item("k2", {"candidate_type": "visitor_name", "content": "ABC", "confidence": 0.9}),
+        ]
+        grouped = MemoryPromoter.aggregate_candidates(items)
+        assert len(grouped) == 1
+        aggregate = next(iter(grouped.values()))
+        assert aggregate["candidate_count"] == 2
+
+    def test_nfkc_in_aggregate_key(self):
+        """_aggregate_keyがNFKC正規化を適用する"""
+        key1 = MemoryPromoter._aggregate_key("test", "Ａ Ｂ Ｃ")
+        key2 = MemoryPromoter._aggregate_key("test", "A B C")
+        assert key1 == key2
+
+
+class TestNewTypePromotionRules:
+    """新メモリタイプ昇格ルールのテスト"""
+
+    def test_episode_incident_promotes_above_threshold(self):
+        decision = MemoryPromoter.should_promote(
+            {
+                "candidate_type": "episode_incident",
+                "candidate_count": 2,
+                "repeat_count_sum": 2,
+                "confidence_max": 0.75,
+            }
+        )
+        assert decision.promote is True
+
+    def test_episode_incident_rejected_below_threshold(self):
+        decision = MemoryPromoter.should_promote(
+            {
+                "candidate_type": "episode_incident",
+                "candidate_count": 2,
+                "repeat_count_sum": 2,
+                "confidence_max": 0.65,
+            }
+        )
+        assert decision.promote is False
+        assert decision.reason == "confidence_below_threshold"
+
+    def test_location_preference_promotes_above_threshold(self):
+        decision = MemoryPromoter.should_promote(
+            {
+                "candidate_type": "location_preference",
+                "candidate_count": 2,
+                "repeat_count_sum": 2,
+                "confidence_max": 0.70,
+            }
+        )
+        assert decision.promote is True
+
+    def test_location_preference_rejected_below_threshold(self):
+        decision = MemoryPromoter.should_promote(
+            {
+                "candidate_type": "location_preference",
+                "candidate_count": 2,
+                "repeat_count_sum": 2,
+                "confidence_max": 0.60,
+            }
+        )
+        assert decision.promote is False
+
+
+class TestSingleton:
+    """get_memory_promoter() シングルトンテスト"""
+
+    def test_returns_same_instance(self):
+        reset_memory_promoter()
+        a = get_memory_promoter()
+        b = get_memory_promoter()
+        assert a is b
+
+    def test_reset_clears_instance(self):
+        reset_memory_promoter()
+        a = get_memory_promoter()
+        reset_memory_promoter()
+        b = get_memory_promoter()
+        assert a is not b

@@ -27,6 +27,7 @@ class SlideAgent:
         Multi-session support: implements session_id-based state management.
         """
         self.llm_provider = get_llm_provider()
+        self._narration_cache: Dict[str, Dict] = {}  # 言語別ナレーションキャッシュ
         self.narration_data: Dict = {}
         self._slide_positions: Dict[str, int] = {}  # session_idベースの状態管理
         self.total_slides = 0
@@ -119,9 +120,13 @@ class SlideAgent:
         Returns:
             結果辞書 {answer, emotion, metadata, slideNumber}
         """
-        # ナレーションデータが読み込まれていない場合は読み込む
-        if not self.narration_data:
-            self.load_narration(language)
+        # 言語別にナレーションデータをキャッシュ
+        if language not in self._narration_cache:
+            if self.load_narration(language):
+                self._narration_cache[language] = self.narration_data
+        else:
+            self.narration_data = self._narration_cache[language]
+            self.total_slides = len(self.narration_data.get("slides", []))
 
         if action == "next":
             return self._handle_next_slide(language, session_id)

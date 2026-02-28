@@ -8,6 +8,7 @@ Phase 2 では既存の直書き保存と併用可能なように、重複回避
 from __future__ import annotations
 
 import time
+import unicodedata
 import uuid
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable
@@ -166,6 +167,8 @@ class MemoryPromoter:
             "visitor_name": 0.85,
             "visitor_affiliation": 0.8,
             "language_preference": 0.65,
+            "episode_incident": 0.7,
+            "location_preference": 0.65,
         }
         min_conf = thresholds.get(ctype, 0.8)
         if conf_max < min_conf:
@@ -212,5 +215,26 @@ class MemoryPromoter:
 
     @staticmethod
     def _aggregate_key(memory_type: str, content: str) -> str:
-        normalized = " ".join(content.strip().lower().split())
+        normalized = unicodedata.normalize("NFKC", content)
+        normalized = " ".join(normalized.strip().lower().split())
         return f"{memory_type}:{normalized}"
+
+
+# ---------------------------------------------------------------------------
+# Singleton accessor
+# ---------------------------------------------------------------------------
+_memory_promoter_instance: MemoryPromoter | None = None
+
+
+def get_memory_promoter() -> MemoryPromoter:
+    """Return a module-level singleton MemoryPromoter instance."""
+    global _memory_promoter_instance
+    if _memory_promoter_instance is None:
+        _memory_promoter_instance = MemoryPromoter()
+    return _memory_promoter_instance
+
+
+def reset_memory_promoter() -> None:
+    """Reset the singleton (for tests)."""
+    global _memory_promoter_instance
+    _memory_promoter_instance = None

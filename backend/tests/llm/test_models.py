@@ -32,8 +32,8 @@ class TestSupportedModel:
         assert issubclass(SupportedModel, Enum)
 
     def test_enum_member_count(self):
-        """SupportedModel は 19 個のメンバーを持つこと"""
-        assert len(SupportedModel) == 19
+        """SupportedModel は 22 個のメンバーを持つこと"""
+        assert len(SupportedModel) == 22
 
     def test_enum_member_is_str_instance(self):
         """各メンバーは str インスタンスであること"""
@@ -44,17 +44,20 @@ class TestSupportedModel:
     @pytest.mark.parametrize(
         "name, expected_value",
         [
-            # Google Models
+            # Google Models (2026-02 latest)
+            ("GEMINI_3_1_PRO", "google/gemini-3.1-pro-preview"),
             ("GEMINI_3_FLASH", "google/gemini-3-flash-preview"),
             ("GEMINI_3_PRO", "google/gemini-3-pro-preview"),
             ("GEMINI_2_5_FLASH", "google/gemini-2.5-flash-preview"),
             ("GEMINI_2_5_FLASH_IMAGE", "google/gemini-2.5-flash-image"),
-            # OpenAI Models
-            ("GPT_5_2", "openai/gpt-5.2-chat"),
+            # OpenAI Models (2026-02 latest)
+            ("GPT_5_2", "openai/gpt-5.2"),
+            ("GPT_5_MINI", "openai/gpt-5-mini"),
             ("GPT_5_1", "openai/gpt-5.1-chat"),
             ("GPT_4O", "openai/gpt-4o"),
             ("GPT_4O_MINI", "openai/gpt-4o-mini"),
-            # Anthropic Models
+            # Anthropic Models (2026-02 latest)
+            ("CLAUDE_SONNET_4_6", "anthropic/claude-sonnet-4.6"),
             ("CLAUDE_OPUS_4_5", "anthropic/claude-opus-4.5"),
             ("CLAUDE_HAIKU_4_5", "anthropic/claude-haiku-4.5"),
             ("CLAUDE_SONNET_4", "anthropic/claude-sonnet-4"),
@@ -85,8 +88,8 @@ class TestSupportedModel:
 
     def test_enum_lookup_by_value(self):
         """値から enum メンバーを逆引きできること"""
-        member = SupportedModel("openai/gpt-4o")
-        assert member is SupportedModel.GPT_4O
+        member = SupportedModel("openai/gpt-5-mini")
+        assert member is SupportedModel.GPT_5_MINI
 
     def test_enum_lookup_invalid_value_raises(self):
         """存在しない値での逆引きは ValueError を送出すること"""
@@ -104,8 +107,8 @@ class TestModelConfig:
 
     def test_creation_with_defaults(self):
         """デフォルト値で ModelConfig を作成できること"""
-        config = ModelConfig(model_id=SupportedModel.GPT_4O)
-        assert config.model_id == SupportedModel.GPT_4O
+        config = ModelConfig(model_id=SupportedModel.GPT_5_MINI)
+        assert config.model_id == SupportedModel.GPT_5_MINI
         assert config.temperature == 0.7
         assert config.max_tokens == 2048
         assert config.top_p == 0.9
@@ -117,20 +120,20 @@ class TestModelConfig:
     def test_creation_with_all_fields(self):
         """全フィールドを指定して ModelConfig を作成できること"""
         config = ModelConfig(
-            model_id=SupportedModel.CLAUDE_SONNET_4,
+            model_id=SupportedModel.CLAUDE_SONNET_4_6,
             temperature=0.5,
             max_tokens=4096,
             top_p=0.8,
-            fallback_model=SupportedModel.GPT_4O,
+            fallback_model=SupportedModel.GPT_5_MINI,
             timeout=60.0,
             input_cost_per_1k=0.003,
             output_cost_per_1k=0.015,
         )
-        assert config.model_id == SupportedModel.CLAUDE_SONNET_4
+        assert config.model_id == SupportedModel.CLAUDE_SONNET_4_6
         assert config.temperature == 0.5
         assert config.max_tokens == 4096
         assert config.top_p == 0.8
-        assert config.fallback_model == SupportedModel.GPT_4O
+        assert config.fallback_model == SupportedModel.GPT_5_MINI
         assert config.timeout == 60.0
         assert config.input_cost_per_1k == 0.003
         assert config.output_cost_per_1k == 0.015
@@ -148,69 +151,69 @@ class TestModelConfig:
 
     def test_temperature_at_lower_boundary(self):
         """temperature=0.0（下限）で ModelConfig を作成できること"""
-        config = ModelConfig(model_id=SupportedModel.GPT_4O, temperature=0.0)
+        config = ModelConfig(model_id=SupportedModel.GPT_5_MINI, temperature=0.0)
         assert config.temperature == 0.0
 
     def test_temperature_at_upper_boundary(self):
         """temperature=2.0（上限）で ModelConfig を作成できること"""
-        config = ModelConfig(model_id=SupportedModel.GPT_4O, temperature=2.0)
+        config = ModelConfig(model_id=SupportedModel.GPT_5_MINI, temperature=2.0)
         assert config.temperature == 2.0
 
     def test_temperature_below_range_raises_value_error(self):
         """temperature が 0.0 未満の場合 ValueError を送出すること"""
         with pytest.raises(ValueError, match="Temperature must be between 0.0 and 2.0"):
-            ModelConfig(model_id=SupportedModel.GPT_4O, temperature=-0.1)
+            ModelConfig(model_id=SupportedModel.GPT_5_MINI, temperature=-0.1)
 
     def test_temperature_above_range_raises_value_error(self):
         """temperature が 2.0 を超える場合 ValueError を送出すること"""
         with pytest.raises(ValueError, match="Temperature must be between 0.0 and 2.0"):
-            ModelConfig(model_id=SupportedModel.GPT_4O, temperature=2.1)
+            ModelConfig(model_id=SupportedModel.GPT_5_MINI, temperature=2.1)
 
     # --- max_tokens バリデーション ---
 
     def test_max_tokens_minimum_valid(self):
         """max_tokens=1（最小有効値）で ModelConfig を作成できること"""
-        config = ModelConfig(model_id=SupportedModel.GPT_4O, max_tokens=1)
+        config = ModelConfig(model_id=SupportedModel.GPT_5_MINI, max_tokens=1)
         assert config.max_tokens == 1
 
     def test_max_tokens_zero_raises_value_error(self):
         """max_tokens=0 の場合 ValueError を送出すること"""
         with pytest.raises(ValueError, match="max_tokens must be positive"):
-            ModelConfig(model_id=SupportedModel.GPT_4O, max_tokens=0)
+            ModelConfig(model_id=SupportedModel.GPT_5_MINI, max_tokens=0)
 
     def test_max_tokens_negative_raises_value_error(self):
         """max_tokens が負数の場合 ValueError を送出すること"""
         with pytest.raises(ValueError, match="max_tokens must be positive"):
-            ModelConfig(model_id=SupportedModel.GPT_4O, max_tokens=-100)
+            ModelConfig(model_id=SupportedModel.GPT_5_MINI, max_tokens=-100)
 
     # --- top_p バリデーション ---
 
     def test_top_p_at_lower_boundary(self):
         """top_p=0.0（下限）で ModelConfig を作成できること"""
-        config = ModelConfig(model_id=SupportedModel.GPT_4O, top_p=0.0)
+        config = ModelConfig(model_id=SupportedModel.GPT_5_MINI, top_p=0.0)
         assert config.top_p == 0.0
 
     def test_top_p_at_upper_boundary(self):
         """top_p=1.0（上限）で ModelConfig を作成できること"""
-        config = ModelConfig(model_id=SupportedModel.GPT_4O, top_p=1.0)
+        config = ModelConfig(model_id=SupportedModel.GPT_5_MINI, top_p=1.0)
         assert config.top_p == 1.0
 
     def test_top_p_below_range_raises_value_error(self):
         """top_p が 0.0 未満の場合 ValueError を送出すること"""
         with pytest.raises(ValueError, match="top_p must be between 0.0 and 1.0"):
-            ModelConfig(model_id=SupportedModel.GPT_4O, top_p=-0.01)
+            ModelConfig(model_id=SupportedModel.GPT_5_MINI, top_p=-0.01)
 
     def test_top_p_above_range_raises_value_error(self):
         """top_p が 1.0 を超える場合 ValueError を送出すること"""
         with pytest.raises(ValueError, match="top_p must be between 0.0 and 1.0"):
-            ModelConfig(model_id=SupportedModel.GPT_4O, top_p=1.01)
+            ModelConfig(model_id=SupportedModel.GPT_5_MINI, top_p=1.01)
 
     # --- cost フィールドが repr に含まれないことを確認 ---
 
     def test_cost_fields_not_in_repr(self):
         """input_cost_per_1k と output_cost_per_1k は repr に含まれないこと"""
         config = ModelConfig(
-            model_id=SupportedModel.GPT_4O,
+            model_id=SupportedModel.GPT_5_MINI,
             input_cost_per_1k=0.005,
             output_cost_per_1k=0.015,
         )
@@ -305,12 +308,12 @@ class TestModelConfigs:
         config = MODEL_CONFIGS["vision"]
         assert config.model_id == SupportedModel.GPT_4_1_NANO
         assert config.temperature == 0.0
-        assert config.fallback_model == SupportedModel.GPT_4O_MINI
+        assert config.fallback_model == SupportedModel.GPT_5_MINI
 
     def test_general_knowledge_uses_claude(self):
-        """general_knowledge が Claude Sonnet 4 を使用すること（高度な推論のため）"""
+        """general_knowledge が Claude Sonnet 4.6 を使用すること（高度な推論のため）"""
         config = MODEL_CONFIGS["general_knowledge"]
-        assert config.model_id == SupportedModel.CLAUDE_SONNET_4
+        assert config.model_id == SupportedModel.CLAUDE_SONNET_4_6
 
     def test_fallback_models_differ_from_primary(self):
         """各エントリの fallback_model が primary model_id と異なること"""

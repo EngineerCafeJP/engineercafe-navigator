@@ -17,25 +17,28 @@ class SupportedModel(str, Enum):
     These models are available via the unified OpenRouter API.
     See https://openrouter.ai/docs#models for full list.
 
-    Last updated: 2025-12-27
+    Last updated: 2026-02-28
     """
 
-    # Google Models (2025-12 latest)
-    GEMINI_3_FLASH = "google/gemini-3-flash-preview"
-    GEMINI_3_PRO = "google/gemini-3-pro-preview"
+    # Google Models (2026-02 latest)
+    GEMINI_3_1_PRO = "google/gemini-3.1-pro-preview"  # $2/$12, 1M ctx
+    GEMINI_3_FLASH = "google/gemini-3-flash-preview"  # $0.15/$0.6, 1M ctx
+    GEMINI_3_PRO = "google/gemini-3-pro-preview"  # Deprecated: shutdown 2026-03-09
     GEMINI_2_5_FLASH = "google/gemini-2.5-flash-preview"
     GEMINI_2_5_FLASH_IMAGE = "google/gemini-2.5-flash-image"
 
-    # OpenAI Models (2025-12 latest)
-    GPT_5_2 = "openai/gpt-5.2-chat"
+    # OpenAI Models (2026-02 latest)
+    GPT_5_2 = "openai/gpt-5.2"  # $1.75/$14, 400K ctx
+    GPT_5_MINI = "openai/gpt-5-mini"  # $0.25/$2, 400K ctx
     GPT_5_1 = "openai/gpt-5.1-chat"
-    GPT_4O = "openai/gpt-4o"
-    GPT_4O_MINI = "openai/gpt-4o-mini"
+    GPT_4O = "openai/gpt-4o"  # Deprecated: retired from ChatGPT 2026-02-13
+    GPT_4O_MINI = "openai/gpt-4o-mini"  # Deprecated: retired from ChatGPT 2026-02-13
 
-    # Anthropic Models (2025-12 latest)
+    # Anthropic Models (2026-02 latest)
+    CLAUDE_SONNET_4_6 = "anthropic/claude-sonnet-4.6"  # $3/$15, 1M ctx
     CLAUDE_OPUS_4_5 = "anthropic/claude-opus-4.5"
     CLAUDE_HAIKU_4_5 = "anthropic/claude-haiku-4.5"
-    CLAUDE_SONNET_4 = "anthropic/claude-sonnet-4"
+    CLAUDE_SONNET_4 = "anthropic/claude-sonnet-4"  # Superseded by 4.6
     CLAUDE_3_5_SONNET = "anthropic/claude-3.5-sonnet"  # Legacy fallback
 
     # Meta Models
@@ -49,7 +52,7 @@ class SupportedModel(str, Enum):
     DEVSTRAL = "mistralai/devstral-2512"
 
     # Vision Models (lightweight, tool-use capable)
-    GPT_4_1_NANO = "openai/gpt-4.1-nano"
+    GPT_4_1_NANO = "openai/gpt-4.1-nano"  # $0.10/$0.40, 1M ctx
 
 
 @dataclass
@@ -88,7 +91,7 @@ class ModelConfig:
 
 
 # Pre-configured model settings for common use cases
-# Updated: 2025-12-27 with latest OpenRouter models
+# Updated: 2026-02-28 with latest OpenRouter models
 MODEL_CONFIGS: dict[str, ModelConfig] = {
     # Router Agent: Low temperature for consistent routing decisions
     # Using Gemini 3 Flash for fastest routing
@@ -101,12 +104,12 @@ MODEL_CONFIGS: dict[str, ModelConfig] = {
         output_cost_per_1k=0.0006,
     ),
     # Q&A Response: Balanced settings for informative responses
-    # Using Gemini 3 Flash with GPT-4o fallback
+    # Using Gemini 3 Flash with GPT-5 Mini fallback
     "qa_response": ModelConfig(
         model_id=SupportedModel.GEMINI_3_FLASH,
         temperature=0.7,
         max_tokens=1024,
-        fallback_model=SupportedModel.GPT_4O,
+        fallback_model=SupportedModel.GPT_5_MINI,
         input_cost_per_1k=0.00015,
         output_cost_per_1k=0.0006,
     ),
@@ -120,12 +123,12 @@ MODEL_CONFIGS: dict[str, ModelConfig] = {
         output_cost_per_1k=0.0006,
     ),
     # General Knowledge: Higher creativity for diverse topics
-    # Using Claude Sonnet 4 for better reasoning
+    # Using Claude Sonnet 4.6 for frontier reasoning (1M context)
     "general_knowledge": ModelConfig(
-        model_id=SupportedModel.CLAUDE_SONNET_4,
+        model_id=SupportedModel.CLAUDE_SONNET_4_6,
         temperature=0.8,
         max_tokens=1024,
-        fallback_model=SupportedModel.GPT_4O,
+        fallback_model=SupportedModel.GPT_5_MINI,
         input_cost_per_1k=0.003,
         output_cost_per_1k=0.015,
     ),
@@ -134,7 +137,7 @@ MODEL_CONFIGS: dict[str, ModelConfig] = {
         model_id=SupportedModel.GEMINI_3_FLASH,
         temperature=0.4,
         max_tokens=512,
-        fallback_model=SupportedModel.GPT_4O_MINI,
+        fallback_model=SupportedModel.GPT_5_MINI,
         input_cost_per_1k=0.00015,
         output_cost_per_1k=0.0006,
     ),
@@ -143,7 +146,7 @@ MODEL_CONFIGS: dict[str, ModelConfig] = {
         model_id=SupportedModel.GEMINI_3_FLASH,
         temperature=0.5,
         max_tokens=768,
-        fallback_model=SupportedModel.GPT_4O_MINI,
+        fallback_model=SupportedModel.GPT_5_MINI,
         input_cost_per_1k=0.00015,
         output_cost_per_1k=0.0006,
     ),
@@ -153,7 +156,7 @@ MODEL_CONFIGS: dict[str, ModelConfig] = {
         model_id=SupportedModel.GPT_4_1_NANO,
         temperature=0.0,
         max_tokens=512,
-        fallback_model=SupportedModel.GPT_4O_MINI,
+        fallback_model=SupportedModel.GPT_5_MINI,
         input_cost_per_1k=0.0001,
         output_cost_per_1k=0.0004,
     ),

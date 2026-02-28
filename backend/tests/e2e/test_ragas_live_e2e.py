@@ -114,6 +114,7 @@ async def _collect_scores(metric_name, invoke_workflow, ragas_evaluator, cases):
 
 
 @pytest.mark.e2e
+@pytest.mark.asyncio
 class TestRagasLiveE2E:
     """実回答のRAGAS評価テスト"""
 

@@ -26,7 +26,7 @@ class TestOpenRouterProvider:
         messages = [HumanMessage(content="Test message")]
         config = ModelConfig(
             model_id=SupportedModel.GEMINI_2_5_FLASH,
-            fallback_model=SupportedModel.GPT_4O_MINI,
+            fallback_model=SupportedModel.GPT_5_MINI,
         )
 
         # HTTPステータスエラーをシミュレート
@@ -67,7 +67,7 @@ class TestOpenRouterProvider:
         messages = [HumanMessage(content="Test message")]
         config = ModelConfig(
             model_id=SupportedModel.GEMINI_2_5_FLASH,
-            fallback_model=SupportedModel.GPT_4O_MINI,
+            fallback_model=SupportedModel.GPT_5_MINI,
         )
 
         # ネットワークエラーをシミュレート
@@ -119,7 +119,7 @@ class TestOpenRouterProvider:
         messages = [HumanMessage(content="Test message")]
         config = ModelConfig(
             model_id=SupportedModel.GEMINI_2_5_FLASH,
-            fallback_model=SupportedModel.GPT_4O_MINI,
+            fallback_model=SupportedModel.GPT_5_MINI,
         )
 
         # 常にネットワークエラーをシミュレート
@@ -139,7 +139,7 @@ class TestOpenRouterProvider:
         messages = [HumanMessage(content="Test message")]
         config = ModelConfig(
             model_id=SupportedModel.GEMINI_2_5_FLASH,
-            fallback_model=SupportedModel.GPT_4O_MINI,
+            fallback_model=SupportedModel.GPT_5_MINI,
         )
 
         mock_response = MagicMock()
@@ -164,7 +164,7 @@ class TestOpenRouterProvider:
         messages = [HumanMessage(content="Test message")]
         config = ModelConfig(
             model_id=SupportedModel.GEMINI_2_5_FLASH,
-            fallback_model=SupportedModel.GPT_4O_MINI,
+            fallback_model=SupportedModel.GPT_5_MINI,
         )
 
         # 503 Service Unavailableエラーをシミュレート

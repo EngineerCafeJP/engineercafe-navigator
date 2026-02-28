@@ -341,7 +341,7 @@ class TestMainWorkflowMemoryIntegration:
                     return_value=[],
                 ),
                 patch(
-                    "backend.services.memory_promoter.MemoryPromoter",
+                    "backend.services.memory_promoter.get_memory_promoter",
                     return_value=mock_promoter,
                 ),
                 patch(
@@ -372,6 +372,129 @@ class TestMainWorkflowMemoryIntegration:
                 await workflow._format_response_node(state, runtime)
 
                 mock_promoter.promote_for_user.assert_called_once()
+
+    @pytest.mark.asyncio
+    @patch("backend.workflows.main_workflow.OrchestratorAgent")
+    async def test_format_response_skips_direct_write_when_candidates_enabled(
+        self, mock_orchestrator_class
+    ):
+        """enable_memory_candidates=True のとき直接書き込みがスキップされる"""
+        from backend.workflows.main_workflow import MainWorkflow
+
+        mock_orchestrator_class.return_value = AsyncMock()
+
+        with patch("backend.utils.memory_helper.get_memory_helper") as mock_get_helper:
+            mock_helper = AsyncMock()
+            mock_helper.store_message = AsyncMock()
+            mock_get_helper.return_value = mock_helper
+
+            extract_memories_mock = MagicMock(
+                return_value=[{"type": "visitor_name", "content": "田中", "confidence": 0.9}],
+            )
+
+            with (
+                patch(
+                    "backend.utils.memory_extractor.extract_memories",
+                    extract_memories_mock,
+                ),
+                patch(
+                    "backend.utils.memory_extractor.extract_memory_candidates",
+                    return_value=[
+                        {
+                            "status": "candidate",
+                            "candidate_type": "visitor_name",
+                            "content": "田中",
+                            "confidence": 0.9,
+                        }
+                    ],
+                ),
+                patch(
+                    "backend.utils.memory_feature_flags.get_memory_feature_flags",
+                    return_value=SimpleNamespace(
+                        enable_memory_candidates=True,
+                        enable_memory_promotion=False,
+                        enable_style_profile=False,
+                        enable_long_term_memory_rerank=False,
+                    ),
+                ),
+            ):
+                workflow = MainWorkflow()
+                runtime = MagicMock()
+                runtime.context = MagicMock()
+                runtime.context.user_id = "visitor-excl"
+                runtime.store = MagicMock()
+                runtime.store.aput = AsyncMock()
+
+                state = {
+                    "query": "私は田中です",
+                    "answer": "こんにちは田中さん",
+                    "session_id": "test-session",
+                    "language": "ja",
+                }
+
+                await workflow._format_response_node(state, runtime)
+
+                # extract_memories should NOT be called when candidates enabled
+                extract_memories_mock.assert_not_called()
+                # Only candidate write should happen
+                runtime.store.aput.assert_called_once()
+                ns = runtime.store.aput.await_args.args[0]
+                assert ns == ("visitor_memory_candidates", "visitor-excl")
+
+    @pytest.mark.asyncio
+    @patch("backend.workflows.main_workflow.OrchestratorAgent")
+    async def test_format_response_direct_write_when_candidates_disabled(
+        self, mock_orchestrator_class
+    ):
+        """enable_memory_candidates=False のとき直接書き込みが実行される"""
+        from backend.workflows.main_workflow import MainWorkflow
+
+        mock_orchestrator_class.return_value = AsyncMock()
+
+        with patch("backend.utils.memory_helper.get_memory_helper") as mock_get_helper:
+            mock_helper = AsyncMock()
+            mock_helper.store_message = AsyncMock()
+            mock_get_helper.return_value = mock_helper
+
+            with (
+                patch(
+                    "backend.utils.memory_extractor.extract_memories",
+                    return_value=[{"type": "visitor_name", "content": "田中", "confidence": 0.9}],
+                ),
+                patch(
+                    "backend.utils.memory_extractor.extract_memory_candidates",
+                    return_value=[],
+                ),
+                patch(
+                    "backend.utils.memory_feature_flags.get_memory_feature_flags",
+                    return_value=SimpleNamespace(
+                        enable_memory_candidates=False,
+                        enable_memory_promotion=False,
+                        enable_style_profile=False,
+                        enable_long_term_memory_rerank=False,
+                    ),
+                ),
+            ):
+                workflow = MainWorkflow()
+                runtime = MagicMock()
+                runtime.context = MagicMock()
+                runtime.context.user_id = "visitor-direct"
+                runtime.store = MagicMock()
+                runtime.store.aput = AsyncMock()
+
+                state = {
+                    "query": "私は田中です",
+                    "answer": "こんにちは田中さん",
+                    "session_id": "test-session",
+                    "language": "ja",
+                }
+
+                await workflow._format_response_node(state, runtime)
+
+                # Direct write to visitor_memories namespace
+                runtime.store.aput.assert_called_once()
+                ns = runtime.store.aput.await_args.args[0]
+                assert ns == ("visitor_memories", "visitor-direct")
 
     @pytest.mark.asyncio
     @patch("backend.workflows.main_workflow.OrchestratorAgent")
