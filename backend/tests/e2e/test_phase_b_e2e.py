@@ -5,6 +5,7 @@ Phase B E2E テスト - 緊急サブタイプ/Discord通知/リピーター検�
     pytest backend/tests/e2e/test_phase_b_e2e.py --run-e2e -v
 """
 
+import asyncio
 import uuid
 from unittest.mock import AsyncMock, patch
 
@@ -83,22 +84,34 @@ class TestDiscordNotificationE2E:
     """緊急事態時のDiscord Webhook通知がトリガーされることを検証"""
 
     async def test_emergency_triggers_discord(self, invoke_workflow):
-        """緊急メッセージでDiscord通知がcreate_taskされることを確認"""
-        with patch("backend.workflows.main_workflow.asyncio.create_task") as mock_task:
+        """緊急メッセージでDiscord通知が呼び出されることを確認"""
+        # asyncio.create_task ではなく send_notification を patch することで
+        # LangGraph 内部の create_task を壊さずに Discord 通知だけを検証する
+        with patch(
+            "backend.services.discord_notification_service.DiscordNotificationService.send_notification",
+            new_callable=AsyncMock,
+            return_value=True,
+        ) as mock_discord:
             result = await invoke_workflow("地震です！")
-            # If the emergency path is taken, create_task should be called
+            # If the emergency path is taken, discord notification should be attempted
             if result.get("metadata", {}).get("emergency"):
-                mock_task.assert_called_once()
+                # fire-and-forget (create_task) なので完了を少し待つ
+                await asyncio.sleep(1.0)
+                mock_discord.assert_called_once()
 
     async def test_non_emergency_no_discord(self, invoke_workflow):
         """通常質問ではDiscord通知がトリガーされない"""
-        with patch("backend.workflows.main_workflow.asyncio.create_task"):
+        with patch(
+            "backend.services.discord_notification_service.DiscordNotificationService.send_notification",
+            new_callable=AsyncMock,
+            return_value=True,
+        ) as mock_discord:
             result = await invoke_workflow("営業時間を教えてください")
             # Regular queries should not trigger emergency discord notification.
-            # create_task might be called for other reasons,
-            # but emergency metadata should be absent.
             emergency_meta = result.get("metadata", {}).get("emergency")
             assert emergency_meta is None
+            # Discord notification should not be called for non-emergency
+            mock_discord.assert_not_called()
 
     async def test_discord_service_fire_and_forget(self, invoke_workflow):
         """Discord通知が失敗してもワークフローは正常に完了"""
