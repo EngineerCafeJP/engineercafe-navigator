@@ -468,5 +468,19 @@ export class KnowledgeBaseUtils {
   }
 }
 
-// Export a singleton instance
-export const knowledgeBaseUtils = new KnowledgeBaseUtils();
+// Export a lazy-initialized singleton (Proxy defers construction until first use,
+// preventing build-time errors when GOOGLE_GENERATIVE_AI_API_KEY is not set)
+let _knowledgeBaseUtilsInstance: KnowledgeBaseUtils | null = null
+
+function getKnowledgeBaseUtils(): KnowledgeBaseUtils {
+  if (!_knowledgeBaseUtilsInstance) {
+    _knowledgeBaseUtilsInstance = new KnowledgeBaseUtils()
+  }
+  return _knowledgeBaseUtilsInstance
+}
+
+export const knowledgeBaseUtils = new Proxy({} as KnowledgeBaseUtils, {
+  get(_, prop) {
+    return Reflect.get(getKnowledgeBaseUtils(), prop)
+  },
+})

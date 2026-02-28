@@ -66,17 +66,38 @@ export interface Database {
   }
 }
 
-// Create Supabase client
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+// Create Supabase client (lazy init for build-time safety)
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ''
 
 // Public client (for client-side operations)
-export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey)
+// When env vars are empty (CI/build), creates a null placeholder that is never called at build time
+export const supabase = supabaseUrl
+  ? createClient<Database>(supabaseUrl, supabaseAnonKey)
+  : (null as unknown as ReturnType<typeof createClient<Database>>)
 
 // Service client (for server-side operations with full access)
-export const supabaseAdmin = createClient<Database>(supabaseUrl, supabaseServiceKey, {
-  auth: {
-    persistSession: false
+// Uses lazy init + Proxy to avoid build-time errors while keeping backward-compatible exports
+let _supabaseAdmin: ReturnType<typeof createClient<Database>> | null = null
+
+export function getSupabaseAdmin(): ReturnType<typeof createClient<Database>> {
+  if (!_supabaseAdmin) {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+    if (!url || !key) {
+      throw new Error(
+        'Supabase config missing: NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY required'
+      )
+    }
+    _supabaseAdmin = createClient<Database>(url, key, {
+      auth: { persistSession: false },
+    })
   }
+  return _supabaseAdmin
+}
+
+export const supabaseAdmin = new Proxy({} as ReturnType<typeof createClient<Database>>, {
+  get(_, prop) {
+    return Reflect.get(getSupabaseAdmin(), prop)
+  },
 })
