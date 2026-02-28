@@ -18,6 +18,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from backend.agents.stt_agent import LocalSTTClient
+from backend.utils.rate_limit import rate_limit
 
 logger = logging.getLogger(__name__)
 
@@ -196,6 +197,7 @@ def build_grammar_words(vocabulary: List[dict], category: Optional[str] = None) 
 
 
 @router.get("/stt/vocabulary", response_model=VocabularyListResponse)
+@rate_limit("60/minute")
 async def list_vocabulary(
     category: Optional[VocabularyCategory] = None,
     search: Optional[str] = Query(None, max_length=100),
@@ -231,6 +233,7 @@ async def list_vocabulary(
 
 
 @router.post("/stt/vocabulary/test", response_model=VocabularyTestResponse)
+@rate_limit("10/minute")
 async def test_vocabulary(request: VocabularyTestRequest):
     """テスト音声で認識精度確認
 
@@ -265,6 +268,7 @@ async def test_vocabulary(request: VocabularyTestRequest):
 
 
 @router.post("/stt/vocabulary", response_model=VocabularyResponse, status_code=201)
+@rate_limit("30/minute")
 async def create_vocabulary(request: VocabularyCreateRequest):
     """語彙追加"""
     vocabulary = await _load_vocabulary()
@@ -290,6 +294,7 @@ async def create_vocabulary(request: VocabularyCreateRequest):
 
 
 @router.put("/stt/vocabulary/{vocabulary_id}", response_model=VocabularyResponse)
+@rate_limit("30/minute")
 async def update_vocabulary(vocabulary_id: str, request: VocabularyUpdateRequest):
     """語彙編集"""
     vocabulary = await _load_vocabulary()
@@ -321,6 +326,7 @@ async def update_vocabulary(vocabulary_id: str, request: VocabularyUpdateRequest
 
 
 @router.delete("/stt/vocabulary/{vocabulary_id}", response_model=VocabularyResponse)
+@rate_limit("30/minute")
 async def delete_vocabulary(vocabulary_id: str):
     """語彙削除"""
     vocabulary = await _load_vocabulary()

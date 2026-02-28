@@ -19,6 +19,7 @@ from supabase import create_client
 
 from backend.utils.embedding_service import generate_embedding
 from backend.utils.file_parser import detect_file_type, parse_markdown, parse_pdf
+from backend.utils.rate_limit import rate_limit
 
 logger = logging.getLogger(__name__)
 
@@ -135,6 +136,7 @@ def _is_unique_violation(error: Exception) -> bool:
 
 
 @router.get("/knowledge", response_model=KnowledgeListResponse)
+@rate_limit("60/minute")
 async def list_knowledge(
     category: Optional[str] = Query(None, description="カテゴリフィルタ"),
     keyword: Optional[str] = Query(None, max_length=200, description="キーワード検索"),
@@ -180,6 +182,7 @@ async def list_knowledge(
 
 
 @router.get("/knowledge/{knowledge_id}", response_model=KnowledgeResponse)
+@rate_limit("60/minute")
 async def get_knowledge(knowledge_id: str):
     """ナレッジ単一取得"""
     try:
@@ -202,6 +205,7 @@ async def get_knowledge(knowledge_id: str):
 
 
 @router.post("/knowledge", response_model=KnowledgeResponse, status_code=201)
+@rate_limit("30/minute")
 async def create_knowledge(request: KnowledgeCreateRequest):
     """テキスト入力でナレッジ新規登録（embedding自動生成）"""
     try:
@@ -256,6 +260,7 @@ async def create_knowledge(request: KnowledgeCreateRequest):
 
 
 @router.post("/knowledge/upload", response_model=KnowledgeResponse, status_code=201)
+@rate_limit("10/minute")
 async def upload_knowledge(
     file: UploadFile = File(...),
     category: str = Form(...),
@@ -365,6 +370,7 @@ async def upload_knowledge(
 
 
 @router.put("/knowledge/{knowledge_id}", response_model=KnowledgeResponse)
+@rate_limit("30/minute")
 async def update_knowledge(knowledge_id: str, request: KnowledgeUpdateRequest):
     """ナレッジ更新（content変更時はembedding再生成）"""
     try:
@@ -441,6 +447,7 @@ async def update_knowledge(knowledge_id: str, request: KnowledgeUpdateRequest):
 
 
 @router.delete("/knowledge/{knowledge_id}", response_model=KnowledgeResponse)
+@rate_limit("30/minute")
 async def delete_knowledge(knowledge_id: str):
     """ナレッジ削除"""
     try:

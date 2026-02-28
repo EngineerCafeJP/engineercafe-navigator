@@ -185,6 +185,11 @@ app.add_middleware(TokenTrackerMiddleware)
 # Optional API key authentication
 _API_SECRET_KEY = os.getenv("API_SECRET_KEY")
 
+if os.getenv("ENV", "development") == "production" and not _API_SECRET_KEY:
+    logger.warning(
+        "API_SECRET_KEY not set in production. " "All endpoints are unprotected — this is insecure."
+    )
+
 
 async def verify_api_key(request: Request) -> None:
     """Optional API key verification - skipped if API_SECRET_KEY not set"""
@@ -197,9 +202,16 @@ async def verify_api_key(request: Request) -> None:
 
 # CORS設定
 _default_origins = ["http://localhost:3000", "http://localhost:3001"]
-_allowed_origins = [
-    o.strip() for o in os.getenv("ALLOWED_ORIGINS", "").split(",") if o.strip()
-] or _default_origins
+_env = os.getenv("ENV", "development")
+_configured_origins = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "").split(",") if o.strip()]
+
+if _env == "production" and not _configured_origins:
+    logger.warning(
+        "ALLOWED_ORIGINS not set in production. "
+        "Falling back to localhost origins — this is insecure."
+    )
+
+_allowed_origins = _configured_origins or _default_origins
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_allowed_origins,
@@ -224,6 +236,7 @@ class ChatResponse(BaseModel):
 
 
 @app.get("/health")
+@_rate_limit("60/minute")
 async def health_check():
     """ヘルスチェックエンドポイント（依存関係確認付き）"""
     checks = {"api": "ok"}
@@ -527,6 +540,7 @@ class SlidesResponse(BaseModel):
 
 
 @app.post("/api/slides", response_model=SlidesResponse, dependencies=[Depends(verify_api_key)])
+@_rate_limit("20/minute")
 async def slides_api(request: Request, body: SlidesRequest):
     """
     スライド制御エンドポイント
@@ -589,6 +603,7 @@ class CharacterResponse(BaseModel):
 @app.post(
     "/api/character", response_model=CharacterResponse, dependencies=[Depends(verify_api_key)]
 )
+@_rate_limit("20/minute")
 async def character_api(request: Request, body: CharacterRequest):
     """
     キャラクター制御エンドポイント
