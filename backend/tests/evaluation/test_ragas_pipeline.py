@@ -410,8 +410,8 @@ class TestRunConfigDefaults:
         assert RAGAS_MAX_WORKERS == 16
 
     def test_openai_eval_model_default(self):
-        """デフォルト評価モデルが gpt-5.2-2025-12-11 であること"""
-        assert OPENAI_EVAL_MODEL == "gpt-5.2-2025-12-11"
+        """デフォルト評価モデルが gpt-4o であること"""
+        assert OPENAI_EVAL_MODEL == "gpt-4o"
 
 
 class TestExtractScores:
