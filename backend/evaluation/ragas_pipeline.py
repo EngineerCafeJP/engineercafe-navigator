@@ -76,11 +76,11 @@ def _safe_int_env(name: str, default: int) -> int:
 EVAL_MAX_CASES = _safe_int_env("EVAL_MAX_CASES", 10)
 
 # Direct OpenAI 設定（OPENAI_API_KEY が設定されている場合に使用）
-OPENAI_EVAL_MODEL = os.environ.get("RAGAS_EVAL_MODEL", "gpt-5.2-2025-12-11")
+OPENAI_EVAL_MODEL = os.environ.get("RAGAS_EVAL_MODEL", "gpt-4o")
 
 # OpenRouter 設定（OPENAI_API_KEY が未設定の場合のフォールバック）
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
-OPENROUTER_EVAL_MODEL = os.environ.get("RAGAS_OPENROUTER_MODEL", "openai/gpt-5-mini")
+OPENROUTER_EVAL_MODEL = os.environ.get("RAGAS_OPENROUTER_MODEL", "openai/gpt-4o-mini")
 OPENROUTER_EMBEDDING_MODEL = "openai/text-embedding-3-small"
 # RAGAS の faithfulness / answer_correctness 評価は長いJSON出力を生成するため、
 # 十分な max_tokens を確保する。

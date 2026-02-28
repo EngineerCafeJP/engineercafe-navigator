@@ -669,27 +669,31 @@ class MainWorkflow:
 
                 memory_flags = get_memory_feature_flags()
 
-                facts = extract_memories(query, answer, state.get("language", "ja"))
-                if facts:
-                    namespace = ("visitor_memories", user_id)
-                    for fact in facts:
-                        await runtime.store.aput(
-                            namespace,
-                            str(uuid.uuid4()),
-                            {
-                                "data": fact["content"],
-                                "type": fact["type"],
-                                "confidence": fact.get("confidence", 0.5),
-                                "timestamp": time.time(),
-                            },
+                # Exclusion control: when candidate system is enabled,
+                # skip direct writes (Promoter handles long-term storage).
+                # When disabled, use legacy direct writes for backward compat.
+                if not memory_flags.enable_memory_candidates:
+                    facts = extract_memories(query, answer, state.get("language", "ja"))
+                    if facts:
+                        namespace = ("visitor_memories", user_id)
+                        for fact in facts:
+                            await runtime.store.aput(
+                                namespace,
+                                str(uuid.uuid4()),
+                                {
+                                    "data": fact["content"],
+                                    "type": fact["type"],
+                                    "confidence": fact.get("confidence", 0.5),
+                                    "timestamp": time.time(),
+                                },
+                            )
+                        logger.info(
+                            "Stored %d long-term memories for user %s",
+                            len(facts),
+                            user_id,
                         )
-                    logger.info(
-                        "Stored %d long-term memories for user %s",
-                        len(facts),
-                        user_id,
-                    )
 
-                # Phase 1 (shadow write): store candidate memories for promotion pipeline.
+                # Candidate pipeline: store candidate memories for promotion.
                 if memory_flags.enable_memory_candidates:
                     try:
                         candidates = extract_memory_candidates(
@@ -706,22 +710,24 @@ class MainWorkflow:
                                     candidate,
                                 )
                             logger.info(
-                                "Shadow-stored %d memory candidates for user %s",
+                                "Stored %d memory candidates for user %s",
                                 len(candidates),
                                 user_id,
                             )
                     except Exception as candidate_err:
                         logger.warning(
-                            "Memory candidate shadow write failed: %s",
+                            "Memory candidate write failed: %s",
                             candidate_err,
                         )
 
-                # Phase 2: promote candidates to long-term memory (best effort).
+                # Promote candidates to long-term memory (best effort).
                 if memory_flags.enable_memory_promotion:
                     try:
-                        from backend.services.memory_promoter import MemoryPromoter
+                        from backend.services.memory_promoter import (
+                            get_memory_promoter,
+                        )
 
-                        promoter = MemoryPromoter()
+                        promoter = get_memory_promoter()
                         promotion_stats = await promoter.promote_for_user(
                             runtime.store,
                             user_id,

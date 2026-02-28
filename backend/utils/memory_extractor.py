@@ -80,6 +80,28 @@ def extract_memories(
             }
         )
 
+    # 5. エピソード記憶（来訪目的・活動内容）
+    episode = _extract_episode_incident(query, language)
+    if episode:
+        memories.append(
+            {
+                "type": "episode_incident",
+                "content": episode,
+                "confidence": 0.75,
+            }
+        )
+
+    # 6. 場所嗜好（席・エリアの好み）
+    location = _extract_location_preference(query, language)
+    if location:
+        memories.append(
+            {
+                "type": "location_preference",
+                "content": location,
+                "confidence": 0.70,
+            }
+        )
+
     return memories
 
 
@@ -134,7 +156,7 @@ def _candidate_policy_for_type(memory_type: str) -> Dict[str, str]:
         return {"volatility": "low", "sensitivity": "pii"}
     if memory_type == "explicit_remember":
         return {"volatility": "medium", "sensitivity": "user_declared"}
-    if memory_type == "language_preference":
+    if memory_type in {"language_preference", "episode_incident", "location_preference"}:
         return {"volatility": "medium", "sensitivity": "non_pii"}
     return {"volatility": "high", "sensitivity": "unknown"}
 
@@ -194,6 +216,55 @@ def _extract_affiliation(query: str, language: str) -> str | None:
             affiliation = match.group(1).strip()
             if len(affiliation) > 1:
                 return affiliation
+    return None
+
+
+def _extract_episode_incident(query: str, language: str) -> str | None:
+    """来訪目的・活動内容を抽出"""
+    if language == "ja":
+        patterns = [
+            r"(?:今日は|本日は)\s*(.+?)(?:で来ました|で参りました|のために来ました)",
+            r"(.+?)(?:をしに来ました|しに来ました)",
+            r"(?:もくもく会|ハッカソン|勉強会|ミートアップ|イベント)(?:で|に)(.+)",
+        ]
+    else:
+        patterns = [
+            r"(?:i'm here to|i came to|i'm here for)\s+(.+?)(?:\.|,|$)",
+            r"(?:i'm attending|i'm joining|i'm participating in)\s+(.+?)(?:\.|,|$)",
+            r"(?:here for the|here for a)\s+(.+?)(?:\.|,|$)",
+        ]
+
+    for pattern in patterns:
+        match = re.search(pattern, query, re.IGNORECASE)
+        if match:
+            content = match.group(1).strip().rstrip("。.!！")
+            if len(content) > 2:
+                return content
+    return None
+
+
+def _extract_location_preference(query: str, language: str) -> str | None:
+    """場所・席の好みを抽出"""
+    if language == "ja":
+        patterns = [
+            r"(?:いつも|普段|よく)\s*(.+?)(?:を使って|に座って|を利用して|にいます)",
+            r"(?:窓際|奥|手前|入口|メインエリア|個室|ブース)(?:席|の席|エリア|スペース)",
+        ]
+    else:
+        patterns = [
+            r"(?:i usually use|i prefer|i always sit)\s+(?:the\s+|at\s+)?(.+?)(?:\.|,|$)",
+            r"(?:my usual spot is|i like)\s+(?:the\s+)?(.+?)(?:\.|,|$)",
+        ]
+
+    for pattern in patterns:
+        match = re.search(pattern, query, re.IGNORECASE)
+        if match:
+            if match.lastindex:
+                content = match.group(1).strip().rstrip("。.!！")
+            else:
+                content = match.group(0).strip()
+            if len(content) > 1:
+                return content
     return None
 
 

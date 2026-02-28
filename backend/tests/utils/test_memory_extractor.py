@@ -6,6 +6,8 @@ from backend.utils.memory_extractor import (
     _extract_name,
     _extract_affiliation,
     _extract_remember_request,
+    _extract_episode_incident,
+    _extract_location_preference,
 )
 
 
@@ -110,6 +112,24 @@ class TestExtractMemoryCandidates:
         name_candidate = next(c for c in result if c["candidate_type"] == "visitor_name")
         assert name_candidate["sensitivity"] == "pii"
         assert name_candidate["volatility"] == "low"
+
+    def test_episode_candidate_policy(self):
+        result = extract_memory_candidates(
+            "今日はもくもく会で来ました", "ようこそ", "ja", extracted_at=1.0
+        )
+        episode = [c for c in result if c["candidate_type"] == "episode_incident"]
+        assert len(episode) == 1
+        assert episode[0]["sensitivity"] == "non_pii"
+        assert episode[0]["volatility"] == "medium"
+
+    def test_location_candidate_policy(self):
+        result = extract_memory_candidates(
+            "いつも窓際席を使っています", "承知しました", "ja", extracted_at=1.0
+        )
+        loc = [c for c in result if c["candidate_type"] == "location_preference"]
+        assert len(loc) == 1
+        assert loc[0]["sensitivity"] == "non_pii"
+        assert loc[0]["volatility"] == "medium"
 
 
 class TestExtractName:
@@ -290,3 +310,82 @@ class TestExtractRememberRequest:
         result_en = _extract_remember_request("remember: I will come tomorrow.", "en")
         assert result_en is not None
         assert not result_en.endswith(".")
+
+
+class TestExtractEpisodeIncident:
+    """_extract_episode_incident() のユニットテスト"""
+
+    def test_mokumokukai_ja(self):
+        result = _extract_episode_incident("今日はもくもく会で来ました", "ja")
+        assert result is not None
+        assert "もくもく会" in result
+
+    def test_shini_kimashita_ja(self):
+        result = _extract_episode_incident("アプリ開発をしに来ました", "ja")
+        assert result is not None
+
+    def test_tameni_kimashita_ja(self):
+        result = _extract_episode_incident("本日はハッカソンのために来ました", "ja")
+        assert result is not None
+
+    def test_en_here_to(self):
+        result = _extract_episode_incident("I'm here to develop my app", "en")
+        assert result is not None
+        assert "develop" in result.lower()
+
+    def test_en_attending(self):
+        result = _extract_episode_incident("I'm attending the hackathon", "en")
+        assert result is not None
+
+    def test_en_here_for(self):
+        result = _extract_episode_incident("here for the study group", "en")
+        assert result is not None
+
+    def test_no_match_ja(self):
+        assert _extract_episode_incident("今日は天気がいい", "ja") is None
+
+    def test_no_match_en(self):
+        assert _extract_episode_incident("hello world", "en") is None
+
+    def test_empty_string(self):
+        assert _extract_episode_incident("", "ja") is None
+        assert _extract_episode_incident("", "en") is None
+
+
+class TestExtractLocationPreference:
+    """_extract_location_preference() のユニットテスト"""
+
+    def test_itsumo_pattern_ja(self):
+        result = _extract_location_preference("いつも窓際席を使っています", "ja")
+        assert result is not None
+
+    def test_fudan_pattern_ja(self):
+        result = _extract_location_preference("普段は奥のエリアに座っています", "ja")
+        assert result is not None
+
+    def test_keyword_match_ja(self):
+        result = _extract_location_preference("メインエリアスペース", "ja")
+        assert result is not None
+
+    def test_en_usually_use(self):
+        result = _extract_location_preference("I usually use the main area", "en")
+        assert result is not None
+        assert "main area" in result.lower()
+
+    def test_en_prefer(self):
+        result = _extract_location_preference("I prefer the window seat", "en")
+        assert result is not None
+
+    def test_en_usual_spot(self):
+        result = _extract_location_preference("my usual spot is the back corner", "en")
+        assert result is not None
+
+    def test_no_match_ja(self):
+        assert _extract_location_preference("今日は天気がいい", "ja") is None
+
+    def test_no_match_en(self):
+        assert _extract_location_preference("hello world", "en") is None
+
+    def test_empty_string(self):
+        assert _extract_location_preference("", "ja") is None
+        assert _extract_location_preference("", "en") is None
