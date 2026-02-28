@@ -12,9 +12,9 @@ import logging
 import os
 import uuid
 from datetime import datetime, timezone
-from typing import List, Literal, Optional
+from typing import Dict, List, Literal, Optional, get_args
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from backend.agents.stt_agent import LocalSTTClient
@@ -30,7 +30,15 @@ VOCABULARY_FILE = os.path.join(_DATA_DIR, "stt_vocabulary.json")
 # ファイル読み書きの排他制御
 _file_lock = asyncio.Lock()
 
-VocabularyCategory = Literal["facility", "location", "service", "event"]
+VocabularyCategory = Literal[
+    "facility",
+    "location",
+    "service",
+    "event",
+    "person",
+    "tech",
+    "organization",
+]
 
 
 # =============================================================================
@@ -62,10 +70,18 @@ class VocabularyUpdateRequest(BaseModel):
     priority: Optional[int] = Field(None, ge=1, le=10)
 
 
+class VocabularyStats(BaseModel):
+    total: int
+    byCategory: Dict[str, int]
+
+
 class VocabularyListResponse(BaseModel):
     success: bool
     data: List[VocabularyItem]
     total: int
+    page: int
+    limit: int
+    stats: VocabularyStats
 
 
 class VocabularyResponse(BaseModel):
@@ -126,6 +142,29 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _filter_vocabulary(
+    items: List[dict],
+    category: Optional[VocabularyCategory] = None,
+    search: Optional[str] = None,
+) -> List[dict]:
+    """語彙をカテゴリと検索で絞り込む"""
+    filtered = items
+
+    if category:
+        filtered = [v for v in filtered if v["category"] == category]
+
+    if search:
+        lower_search = search.lower()
+        filtered = [
+            v
+            for v in filtered
+            if lower_search in v.get("word", "").lower()
+            or lower_search in v.get("reading", "").lower()
+        ]
+
+    return filtered
+
+
 # =============================================================================
 # Grammar helpers
 # =============================================================================
@@ -157,13 +196,38 @@ def build_grammar_words(vocabulary: List[dict], category: Optional[str] = None) 
 
 
 @router.get("/stt/vocabulary", response_model=VocabularyListResponse)
-async def list_vocabulary(category: Optional[VocabularyCategory] = None):
+async def list_vocabulary(
+    category: Optional[VocabularyCategory] = None,
+    search: Optional[str] = Query(None, max_length=100),
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+):
     """登録済みカスタム語彙一覧取得"""
-    vocabulary = await _load_vocabulary()
-    if category:
-        vocabulary = [v for v in vocabulary if v["category"] == category]
-    items = [VocabularyItem(**v) for v in vocabulary]
-    return VocabularyListResponse(success=True, data=items, total=len(items))
+    all_items = await _load_vocabulary()
+
+    # 統計情報（フィルタ前に全件ベースで算出）
+    all_categories = list(get_args(VocabularyCategory))
+    by_category = {
+        cat: sum(1 for v in all_items if v.get("category") == cat) for cat in all_categories
+    }
+    stats = VocabularyStats(total=len(all_items), byCategory=by_category)
+
+    # フィルタリング
+    items = _filter_vocabulary(all_items, category=category, search=search)
+    total = len(items)
+
+    # ページネーション
+    start = (page - 1) * limit
+    paginated = items[start : start + limit]
+
+    return VocabularyListResponse(
+        success=True,
+        data=[VocabularyItem(**v) for v in paginated],
+        total=total,
+        page=page,
+        limit=limit,
+        stats=stats,
+    )
 
 
 @router.post("/stt/vocabulary/test", response_model=VocabularyTestResponse)
