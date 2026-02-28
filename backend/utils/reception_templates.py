@@ -7,9 +7,12 @@ OrchestratorAgent がインラインで使用する。LLM 呼び出しなし。
 パターンは clarification_templates.py と同等。
 """
 
+import logging
 from typing import Literal, TypedDict
 
 from backend.utils.emotion_tagger import add_emotion_tag
+
+logger = logging.getLogger(__name__)
 
 SupportedLanguage = Literal["ja", "en"]
 
@@ -123,6 +126,12 @@ def get_reception_response(
 
     message = messages.get(language, messages["ja"])
     tagged_message = add_emotion_tag(message, "happy")
+
+    logger.info(
+        "Reception template: type=%s, language=%s",
+        reception_type,
+        language,
+    )
 
     return {
         "response": tagged_message,

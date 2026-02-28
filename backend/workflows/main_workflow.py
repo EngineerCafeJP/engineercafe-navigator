@@ -395,6 +395,12 @@ class MainWorkflow:
             "space-clarification-needed",
             "general-clarification-needed",
         ):
+            logger.info(
+                "Inline clarification: category=%s, lang=%s, query=%s",
+                decision.category,
+                decision.language,
+                query[:80],
+            )
             result = get_clarification_response(
                 category=decision.category,
                 language=decision.language,
@@ -426,6 +432,11 @@ class MainWorkflow:
 
         # reception カテゴリをインライン処理
         if decision.request_type == "reception":
+            logger.info(
+                "Inline reception: lang=%s, query=%s",
+                decision.language,
+                query[:80],
+            )
             # first_time / returning / general の判定
             lower_query = query.lower()
             first_time_keywords = [

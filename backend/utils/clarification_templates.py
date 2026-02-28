@@ -7,9 +7,12 @@ OrchestratorAgent がインラインで使用する。LLM 呼び出しなし。
 元: backend/agents/clarification_agent.py の handle_clarification()
 """
 
+import logging
 from typing import Literal, TypedDict
 
 from backend.utils.emotion_tagger import add_emotion_tag
+
+logger = logging.getLogger(__name__)
 
 SupportedLanguage = Literal["ja", "en"]
 
@@ -165,6 +168,12 @@ def get_clarification_response(
 
     message = messages.get(language, messages["ja"])
     tagged_message = add_emotion_tag(message, "surprised")
+
+    logger.info(
+        "Clarification template: category=%s, language=%s",
+        category,
+        language,
+    )
 
     return {
         "response": tagged_message,
