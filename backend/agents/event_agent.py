@@ -128,11 +128,26 @@ class EventAgent:
         # クエリからキーワードを抽出（Connpass用）
         keyword = self.connpass_service.extract_keyword_from_query(query)
 
-        # Google CalendarとConnpassを並列検索
-        calendar_result, connpass_result = await asyncio.gather(
-            self.calendar_service.search_events(time_range),
-            self.connpass_service.search_events(time_range, keyword=keyword),
-        )
+        # Google CalendarとConnpassを並列検索（タイムアウト付き）
+        try:
+            calendar_result, connpass_result = await asyncio.wait_for(
+                asyncio.gather(
+                    self.calendar_service.search_events(time_range),
+                    self.connpass_service.search_events(time_range, keyword=keyword),
+                    return_exceptions=True,
+                ),
+                timeout=35.0,
+            )
+            # Handle individual service failures gracefully
+            if isinstance(calendar_result, Exception):
+                logger.warning("Calendar search failed: %s", calendar_result)
+                calendar_result = {"success": False, "data": {"events": []}}
+            if isinstance(connpass_result, Exception):
+                logger.warning("Connpass search failed: %s", connpass_result)
+                connpass_result = {"success": False, "data": {"events": []}}
+        except asyncio.TimeoutError:
+            logger.warning("Event search timed out after 35s for query: %s", query[:50])
+            return self._get_no_events_response(language, time_range)
 
         # 両方の結果をマージ
         events = self._merge_events(calendar_result, connpass_result)
@@ -375,10 +390,21 @@ class EventAgent:
                 - has_events (bool): イベントがあるかどうか
         """
         try:
-            calendar_result, connpass_result = await asyncio.gather(
-                self.calendar_service.search_events("today"),
-                self.connpass_service.search_events("today"),
+            calendar_result, connpass_result = await asyncio.wait_for(
+                asyncio.gather(
+                    self.calendar_service.search_events("today"),
+                    self.connpass_service.search_events("today"),
+                    return_exceptions=True,
+                ),
+                timeout=35.0,
             )
+            # Handle individual service failures gracefully
+            if isinstance(calendar_result, Exception):
+                logger.warning("Calendar search failed: %s", calendar_result)
+                calendar_result = {"success": False, "data": {"events": []}}
+            if isinstance(connpass_result, Exception):
+                logger.warning("Connpass search failed: %s", connpass_result)
+                connpass_result = {"success": False, "data": {"events": []}}
 
             events = self._merge_events(calendar_result, connpass_result)
             formatted_text = self._format_calendar_events(events, language)
