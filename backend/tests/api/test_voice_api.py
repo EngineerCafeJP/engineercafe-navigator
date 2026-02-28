@@ -53,6 +53,36 @@ mock_stt_agent = MagicMock()
 _test_app = FastAPI()
 
 
+async def _handle_stt_test(request: VoiceRequest) -> VoiceResponse:
+    """Shared STT processing for process_voice and speech_to_text actions (test version)."""
+    if not request.audioData:
+        raise HTTPException(status_code=400, detail="Missing audioData")
+
+    audio_bytes = base64.b64decode(request.audioData)
+
+    stt_result = await mock_stt_agent.speech_to_text(
+        audio_bytes,
+        language=request.language,
+        conversation_stage=request.conversationStage,
+    )
+
+    if not stt_result["success"]:
+        return VoiceResponse(
+            success=False,
+            error=stt_result.get("error", "STT failed"),
+            sessionId=request.sessionId,
+        )
+
+    return VoiceResponse(
+        success=True,
+        transcript=stt_result["transcript"],
+        emotion="neutral",
+        detectedLanguage=stt_result.get("language"),
+        confidence=stt_result.get("confidence"),
+        sessionId=request.sessionId,
+    )
+
+
 @_test_app.post("/api/voice", response_model=VoiceResponse)
 async def voice_api(request: VoiceRequest):
     try:
@@ -81,32 +111,13 @@ async def voice_api(request: VoiceRequest):
             )
 
         elif request.action == "process_voice":
-            if not request.audioData:
-                raise HTTPException(status_code=400, detail="Missing audioData for process_voice")
+            return await _handle_stt_test(request)
 
-            audio_bytes = base64.b64decode(request.audioData)
+        elif request.action == "set_language":
+            return VoiceResponse(success=True, sessionId=request.sessionId)
 
-            stt_result = await mock_stt_agent.speech_to_text(
-                audio_bytes,
-                language=request.language,
-                conversation_stage=request.conversationStage,
-            )
-
-            if not stt_result["success"]:
-                return VoiceResponse(
-                    success=False,
-                    error=stt_result.get("error", "STT failed"),
-                    sessionId=request.sessionId,
-                )
-
-            return VoiceResponse(
-                success=True,
-                transcript=stt_result["transcript"],
-                emotion="neutral",
-                detectedLanguage=stt_result.get("language"),
-                confidence=stt_result.get("confidence"),
-                sessionId=request.sessionId,
-            )
+        elif request.action == "speech_to_text":
+            return await _handle_stt_test(request)
 
         else:
             raise HTTPException(status_code=400, detail=f"Unknown action: {request.action}")
@@ -336,6 +347,136 @@ class TestProcessVoice:
             "/api/voice",
             json={
                 "action": "process_voice",
+                "audioData": _fake_wav_b64(),
+                "sessionId": SAMPLE_SESSION_ID,
+            },
+        )
+
+        assert resp.status_code == 500
+
+
+# =============================================================================
+# set_language
+# =============================================================================
+
+
+class TestSetLanguage:
+    """POST /api/voice  action=set_language"""
+
+    def test_set_language_returns_success(self):
+        """set_language は即座に success を返す"""
+        resp = client.post(
+            "/api/voice",
+            json={
+                "action": "set_language",
+                "language": "en",
+                "sessionId": SAMPLE_SESSION_ID,
+            },
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["success"] is True
+        assert body["sessionId"] == SAMPLE_SESSION_ID
+
+    def test_set_language_without_session_id(self):
+        """set_language は sessionId なしでも成功する"""
+        resp = client.post(
+            "/api/voice",
+            json={
+                "action": "set_language",
+                "language": "ja",
+            },
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["success"] is True
+
+
+# =============================================================================
+# speech_to_text
+# =============================================================================
+
+
+class TestSpeechToText:
+    """POST /api/voice  action=speech_to_text"""
+
+    def test_stt_success(self):
+        """speech_to_text 成功時に transcript を返す"""
+        mock_stt_agent.speech_to_text = AsyncMock(
+            return_value={
+                "success": True,
+                "transcript": "hello world",
+                "confidence": 0.95,
+                "language": "en",
+                "provider": "vosk",
+            }
+        )
+
+        resp = client.post(
+            "/api/voice",
+            json={
+                "action": "speech_to_text",
+                "audioData": _fake_wav_b64(),
+                "language": "en",
+                "sessionId": SAMPLE_SESSION_ID,
+            },
+        )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["success"] is True
+        assert body["transcript"] == "hello world"
+        assert body["confidence"] == pytest.approx(0.95)
+        assert body["detectedLanguage"] == "en"
+        assert body["sessionId"] == SAMPLE_SESSION_ID
+
+    def test_stt_missing_audio_returns_400(self):
+        """audioData がない場合は 400 エラー"""
+        resp = client.post(
+            "/api/voice",
+            json={
+                "action": "speech_to_text",
+                "sessionId": SAMPLE_SESSION_ID,
+            },
+        )
+        assert resp.status_code == 400
+
+    def test_stt_failure_returns_error(self):
+        """STT 失敗時に success=False + error を返す"""
+        mock_stt_agent.speech_to_text = AsyncMock(
+            return_value={
+                "success": False,
+                "transcript": "",
+                "confidence": 0.0,
+                "language": "unknown",
+                "provider": "vosk",
+                "error": "Recognition failed",
+            }
+        )
+
+        resp = client.post(
+            "/api/voice",
+            json={
+                "action": "speech_to_text",
+                "audioData": _fake_wav_b64(),
+                "language": "ja",
+                "sessionId": SAMPLE_SESSION_ID,
+            },
+        )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["success"] is False
+        assert body["error"] is not None
+
+    def test_stt_exception_returns_500(self):
+        """STT が例外を投げた場合は 500 エラー"""
+        mock_stt_agent.speech_to_text = AsyncMock(side_effect=RuntimeError("STT crashed"))
+
+        resp = client.post(
+            "/api/voice",
+            json={
+                "action": "speech_to_text",
                 "audioData": _fake_wav_b64(),
                 "sessionId": SAMPLE_SESSION_ID,
             },
