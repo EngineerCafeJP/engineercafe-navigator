@@ -2,6 +2,10 @@
 EventAgent のユニットテスト
 """
 
+from unittest.mock import AsyncMock, patch
+
+import pytest
+
 from backend.agents.event_agent import EventAgent
 
 
@@ -164,3 +168,143 @@ class TestEventDeduplication:
         titles = [e["title"] for e in events]
         assert "Python Workshop" in titles
         assert "React Meetup" in titles
+
+
+class TestGetTodayEvents:
+    """get_today_events() のテスト"""
+
+    def setup_method(self):
+        self.agent = EventAgent()
+
+    @pytest.mark.asyncio
+    async def test_returns_events_when_available(self):
+        """イベントがある場合に正しく返すこと"""
+        with (
+            patch.object(
+                self.agent.calendar_service,
+                "search_events",
+                new_callable=AsyncMock,
+            ) as mock_cal,
+            patch.object(
+                self.agent.connpass_service,
+                "search_events",
+                new_callable=AsyncMock,
+            ) as mock_conn,
+        ):
+            mock_cal.return_value = {
+                "success": True,
+                "data": {
+                    "events": [
+                        {
+                            "title": "Today's Workshop",
+                            "start": "2026-02-28T14:00:00Z",
+                            "description": "A workshop",
+                        }
+                    ]
+                },
+            }
+            mock_conn.return_value = {"success": True, "data": {"events": []}}
+
+            result = await self.agent.get_today_events("ja")
+
+            assert result["has_events"] is True
+            assert result["count"] == 1
+            assert len(result["events"]) == 1
+            assert result["events"][0]["title"] == "Today's Workshop"
+            assert len(result["formatted_text"]) > 0
+            mock_cal.assert_called_once_with("today")
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_when_no_events(self):
+        """イベントがない場合に空を返すこと"""
+        with (
+            patch.object(
+                self.agent.calendar_service,
+                "search_events",
+                new_callable=AsyncMock,
+            ) as mock_cal,
+            patch.object(
+                self.agent.connpass_service,
+                "search_events",
+                new_callable=AsyncMock,
+            ) as mock_conn,
+        ):
+            mock_cal.return_value = {"success": True, "data": {"events": []}}
+            mock_conn.return_value = {"success": True, "data": {"events": []}}
+
+            result = await self.agent.get_today_events("ja")
+
+            assert result["has_events"] is False
+            assert result["count"] == 0
+            assert result["formatted_text"] == ""
+
+    @pytest.mark.asyncio
+    async def test_merges_calendar_and_connpass(self):
+        """CalendarとConnpassのイベントを統合すること"""
+        with (
+            patch.object(
+                self.agent.calendar_service,
+                "search_events",
+                new_callable=AsyncMock,
+            ) as mock_cal,
+            patch.object(
+                self.agent.connpass_service,
+                "search_events",
+                new_callable=AsyncMock,
+            ) as mock_conn,
+        ):
+            mock_cal.return_value = {
+                "success": True,
+                "data": {
+                    "events": [
+                        {
+                            "title": "Cal Event",
+                            "start": "2026-02-28T10:00:00Z",
+                            "description": "",
+                        }
+                    ]
+                },
+            }
+            mock_conn.return_value = {
+                "success": True,
+                "data": {
+                    "events": [
+                        {
+                            "title": "Connpass Event",
+                            "start": "2026-02-28T15:00:00Z",
+                            "description": "",
+                            "source": "connpass",
+                        }
+                    ]
+                },
+            }
+
+            result = await self.agent.get_today_events("ja")
+
+            assert result["count"] == 2
+            titles = [e["title"] for e in result["events"]]
+            assert "Cal Event" in titles
+            assert "Connpass Event" in titles
+
+    @pytest.mark.asyncio
+    async def test_handles_api_error_gracefully(self):
+        """API失敗時にエラーなく空結果を返すこと"""
+        with (
+            patch.object(
+                self.agent.calendar_service,
+                "search_events",
+                new_callable=AsyncMock,
+            ) as mock_cal,
+            patch.object(
+                self.agent.connpass_service,
+                "search_events",
+                new_callable=AsyncMock,
+            ) as mock_conn,
+        ):
+            mock_cal.side_effect = Exception("API error")
+            mock_conn.side_effect = Exception("API error")
+
+            result = await self.agent.get_today_events("ja")
+
+            assert result["has_events"] is False
+            assert result["count"] == 0

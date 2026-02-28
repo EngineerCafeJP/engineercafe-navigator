@@ -366,3 +366,75 @@ class TestFacilityAgent:
 
                 assert result["answer"] is not None
                 assert result["metadata"]["request_type"] == request_type
+
+
+class TestAccessibilitySummary:
+    """get_accessibility_summary() のテスト"""
+
+    def test_default_accessibility_info_japanese(self):
+        """日本語デフォルトアクセシビリティ情報"""
+        info = FacilityAgent._get_default_accessibility_info("ja")
+
+        assert "1909" in info["summary"]
+        assert "車椅子" in info["summary"] or "1階" in info["summary"]
+        assert "wheelchair" in info or "車椅子" in info.get("wheelchair", "")
+        assert info["building_note"] is not None
+
+    def test_default_accessibility_info_english(self):
+        """英語デフォルトアクセシビリティ情報"""
+        info = FacilityAgent._get_default_accessibility_info("en")
+
+        assert "1909" in info["summary"]
+        assert "wheelchair" in info["summary"].lower()
+        assert info["elevator"] is not None
+
+    @pytest.mark.asyncio
+    async def test_returns_rag_based_summary(self):
+        """RAG成功時にLLMサマリーを返すこと"""
+        agent = FacilityAgent()
+
+        with (
+            patch.object(agent.enhanced_rag, "search", new_callable=AsyncMock) as mock_rag,
+            patch.object(agent.llm_provider, "generate", new_callable=AsyncMock) as mock_llm,
+        ):
+            mock_rag.return_value = {
+                "success": True,
+                "data": {
+                    "context": "1階は車椅子対応。地下はアクセス制限あり。",
+                    "results": [],
+                },
+            }
+            mock_llm.return_value = "1階は車椅子でご利用可能です。地下は制限があります。"
+
+            result = await agent.get_accessibility_summary("ja")
+
+            assert result["has_info"] is True
+            assert "車椅子" in result["summary"]
+            assert result["details"]["raw_context"] is not None
+
+    @pytest.mark.asyncio
+    async def test_returns_default_on_rag_failure(self):
+        """RAG失敗時にデフォルト情報を返すこと"""
+        agent = FacilityAgent()
+
+        with patch.object(agent.enhanced_rag, "search", new_callable=AsyncMock) as mock_rag:
+            mock_rag.return_value = {"success": False, "error": "search failed"}
+
+            result = await agent.get_accessibility_summary("ja")
+
+            assert result["has_info"] is False
+            assert "1909" in result["summary"]
+
+    @pytest.mark.asyncio
+    async def test_returns_default_on_exception(self):
+        """例外発生時にデフォルト情報を返すこと"""
+        agent = FacilityAgent()
+
+        with patch.object(agent.enhanced_rag, "search", new_callable=AsyncMock) as mock_rag:
+            mock_rag.side_effect = Exception("connection error")
+
+            result = await agent.get_accessibility_summary("en")
+
+            assert result["has_info"] is False
+            assert "1909" in result["summary"]
+            assert "wheelchair" in result["summary"].lower()

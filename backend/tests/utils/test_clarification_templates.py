@@ -95,6 +95,59 @@ class TestMeetingRoomClarificationMessages:
         assert result["metadata"]["confidence"] == 0.9
 
 
+class TestEventClarificationMessages:
+    """イベント曖昧性のテンプレートメッセージをテスト"""
+
+    def test_event_clarification_ja_contains_options(self):
+        """日本語メッセージにイベント選択肢が含まれる"""
+        result = get_clarification_response("event-clarification-needed", "ja")
+        response = result["response"]
+
+        assert "参加" in response
+        assert "開催" in response
+        assert "スケジュール" in response or "本日" in response
+
+    def test_event_clarification_en_contains_options(self):
+        """英語メッセージにイベント選択肢が含まれる"""
+        result = get_clarification_response("event-clarification-needed", "en")
+        response = result["response"]
+
+        assert "Attend" in response or "attend" in response
+        assert "Host" in response or "host" in response
+
+    def test_event_clarification_confidence_is_high(self):
+        """イベント曖昧性の confidence は 0.9"""
+        result = get_clarification_response("event-clarification-needed", "ja")
+        assert result["metadata"]["confidence"] == 0.9
+
+
+class TestSpaceClarificationMessages:
+    """スペース曖昧性のテンプレートメッセージをテスト"""
+
+    def test_space_clarification_ja_contains_spaces(self):
+        """日本語メッセージに各スペース名が含まれる"""
+        result = get_clarification_response("space-clarification-needed", "ja")
+        response = result["response"]
+
+        assert "メインホール" in response
+        assert "集中スペース" in response
+        assert "MTGスペース" in response
+
+    def test_space_clarification_en_contains_spaces(self):
+        """英語メッセージに各スペース名が含まれる"""
+        result = get_clarification_response("space-clarification-needed", "en")
+        response = result["response"]
+
+        assert "Main Hall" in response
+        assert "Focus Space" in response
+        assert "MTG Space" in response
+
+    def test_space_clarification_confidence_is_high(self):
+        """スペース曖昧性の confidence は 0.9"""
+        result = get_clarification_response("space-clarification-needed", "ja")
+        assert result["metadata"]["confidence"] == 0.9
+
+
 class TestGeneralClarificationMessages:
     """一般的な曖昧性のテンプレートメッセージをテスト"""
 
@@ -157,6 +210,8 @@ class TestEmotionTagging:
         categories = [
             "cafe-clarification-needed",
             "meeting-room-clarification-needed",
+            "event-clarification-needed",
+            "space-clarification-needed",
             "general-clarification-needed",
         ]
 

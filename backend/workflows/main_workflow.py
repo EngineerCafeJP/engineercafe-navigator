@@ -375,6 +375,7 @@ class MainWorkflow:
         format_response に直接ルーティングする。
         """
         from backend.utils.clarification_templates import get_clarification_response
+        from backend.utils.reception_templates import get_reception_response
 
         query = state.get("query", "")
         session_id = state.get("session_id", "")
@@ -390,6 +391,8 @@ class MainWorkflow:
         if decision.category in (
             "cafe-clarification-needed",
             "meeting-room-clarification-needed",
+            "event-clarification-needed",
+            "space-clarification-needed",
             "general-clarification-needed",
         ):
             result = get_clarification_response(
@@ -417,6 +420,50 @@ class MainWorkflow:
                             "clarification_type": decision.category,
                         },
                         "requires_followup": True,
+                    },
+                },
+            )
+
+        # reception カテゴリをインライン処理
+        if decision.request_type == "reception":
+            # first_time / returning / general の判定
+            lower_query = query.lower()
+            first_time_keywords = [
+                "初めて",
+                "はじめて",
+                "初回",
+                "first time",
+                "first visit",
+            ]
+            if any(kw in lower_query for kw in first_time_keywords):
+                reception_type = "first_time"
+            else:
+                reception_type = "general"
+
+            result = get_reception_response(
+                language=decision.language,
+                reception_type=reception_type,
+            )
+            return Command(
+                goto="format_response",
+                update={
+                    "language": decision.language,
+                    "routing": {
+                        "agent": "orchestrator_inline",
+                        "category": "reception",
+                        "request_type": decision.request_type,
+                        "confidence": decision.confidence,
+                        "reasoning": decision.reasoning,
+                        "debug_info": decision.debug_info,
+                    },
+                    "answer": result["response"],
+                    "emotion": result["emotion"],
+                    "metadata": {
+                        **state.get("metadata", {}),
+                        "reception": {
+                            **result["metadata"],
+                            "reception_type": reception_type,
+                        },
                     },
                 },
             )
