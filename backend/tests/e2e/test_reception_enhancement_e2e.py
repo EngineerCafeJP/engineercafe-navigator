@@ -15,7 +15,6 @@ import pytest
 
 from backend.tests.e2e.conftest import assert_keywords, is_routing_failure
 
-
 # =============================================================================
 # Issue #97: 緊急情報対応テスト
 # =============================================================================
@@ -398,9 +397,7 @@ class TestReceptionEdgeCasesE2E:
 
     async def test_negative_sentiment_query(self, invoke_workflow):
         """ネガティブな感情のクエリ"""
-        result = await invoke_workflow(
-            "Wi-Fiが繋がらないんですけど、どうすればいいですか？"
-        )
+        result = await invoke_workflow("Wi-Fiが繋がらないんですけど、どうすればいいですか？")
         assert result["answer"], "ネガティブクエリへの回答が空です"
 
     async def test_ambiguous_cafe_reference(self, invoke_workflow):
