@@ -35,6 +35,16 @@ _project_root = str(Path(__file__).parent.parent.parent.parent)
 sys.path.insert(0, _project_root)
 sys.path.insert(0, _backend_dir)
 
+# .env.local から環境変数を読み込む（dotenv が利用可能な場合）
+_env_local = Path(_backend_dir) / ".env.local"
+try:
+    from dotenv import load_dotenv
+
+    if _env_local.exists():
+        load_dotenv(_env_local)
+except ImportError:
+    pass
+
 from backend.tests.fixtures.dataset_loader import DatasetLoader, GroundTruthCase  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
