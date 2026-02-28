@@ -42,10 +42,17 @@ pytestmark = [
 ]
 
 
+def _ensure_active_session(helper, session_id: str) -> None:
+    helper.supabase.table("conversation_sessions").upsert(
+        {"id": session_id, "status": "active"},
+        on_conflict="id",
+    ).execute()
+
+
 @pytest.fixture
 def unique_session_id():
     """テストごとにユニークなセッションIDを生成"""
-    return f"test_supabase_integration_{uuid.uuid4().hex[:12]}"
+    return str(uuid.uuid4())
 
 
 @pytest.fixture
@@ -58,6 +65,17 @@ async def memory_helper(unique_session_id):
     from backend.utils.memory_helper import SimplifiedMemoryHelper
 
     helper = SimplifiedMemoryHelper()
+    tracked_session_ids = {unique_session_id}
+    original_store_message = helper.store_message
+
+    async def _tracking_store_message(*args, **kwargs):
+        session_id = kwargs.get("session_id")
+        if session_id:
+            tracked_session_ids.add(session_id)
+            _ensure_active_session(helper, session_id)
+        return await original_store_message(*args, **kwargs)
+
+    helper.store_message = _tracking_store_message  # type: ignore[method-assign]
 
     # Supabase接続確認
     assert helper.supabase is not None, "Supabase client の初期化に失敗"
@@ -79,8 +97,7 @@ async def memory_helper(unique_session_id):
         ids_to_delete = [
             row["id"]
             for row in response.data
-            if row.get("value", {}).get("sessionId", "").startswith("test_supabase_integration_")
-            or row.get("value", {}).get("sessionId") == unique_session_id
+            if row.get("value", {}).get("sessionId") in tracked_session_ids
         ]
 
         # 該当するIDのみ削除
@@ -257,6 +274,7 @@ class TestGetRecentMessages:
 
     async def test_get_messages_returns_stored_data(self, memory_helper, unique_session_id):
         """保存したメッセージが取得できる"""
+        _ensure_active_session(memory_helper, unique_session_id)
         await memory_helper.store_message(
             role="user",
             content="Wi-Fiはありますか？",
@@ -273,8 +291,10 @@ class TestGetRecentMessages:
 
     async def test_get_messages_filters_by_session(self, memory_helper):
         """セッションIDでフィルタリングされる"""
-        session_a = f"session_a_{uuid.uuid4().hex[:8]}"
-        session_b = f"session_b_{uuid.uuid4().hex[:8]}"
+        session_a = str(uuid.uuid4())
+        session_b = str(uuid.uuid4())
+        _ensure_active_session(memory_helper, session_a)
+        _ensure_active_session(memory_helper, session_b)
 
         await memory_helper.store_message(
             role="user", content="セッションAの質問", session_id=session_a
@@ -300,6 +320,7 @@ class TestGetRecentMessages:
 
     async def test_get_messages_ordered_chronologically(self, memory_helper, unique_session_id):
         """メッセージが時系列順で返される"""
+        _ensure_active_session(memory_helper, unique_session_id)
         await memory_helper.store_message(
             role="user",
             content="初めて来ました。利用方法を教えてください",
@@ -337,6 +358,7 @@ class TestGetContext:
 
     async def test_get_context_with_messages(self, memory_helper, unique_session_id):
         """会話コンテキストが正しく構築される"""
+        _ensure_active_session(memory_helper, unique_session_id)
         await memory_helper.store_message(
             role="user",
             content="営業時間は？",
@@ -364,7 +386,7 @@ class TestGetContext:
 
     async def test_get_context_empty_session(self, memory_helper):
         """空のセッションではデフォルトコンテキストが返る"""
-        context = await memory_helper.get_context(query="テスト", session_id="empty_session_xyz")
+        context = await memory_helper.get_context(query="テスト", session_id=str(uuid.uuid4()))
 
         assert context["recent_messages"] == []
         assert "会話履歴がありません" in context["context_string"]

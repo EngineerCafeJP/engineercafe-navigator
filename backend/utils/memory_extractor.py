@@ -12,6 +12,7 @@ Memory Extraction Utility
 
 import logging
 import re
+import time
 from typing import Any, Dict, List
 
 logger = logging.getLogger(__name__)
@@ -80,6 +81,62 @@ def extract_memories(
         )
 
     return memories
+
+
+def extract_memory_candidates(
+    query: str,
+    answer: str,
+    language: str = "ja",
+    *,
+    window_seconds: int = 180,
+    extracted_at: float | None = None,
+) -> List[Dict[str, Any]]:
+    """
+    会話から候補メモリ（昇格前のステージング用）を抽出
+
+    既存 extract_memories() の互換性を保ちながら、段階昇格に必要なメタデータを付与する。
+    """
+    base_memories = extract_memories(query=query, answer=answer, language=language)
+    if not base_memories:
+        return []
+
+    ts = extracted_at if extracted_at is not None else time.time()
+    candidates: List[Dict[str, Any]] = []
+    for memory in base_memories:
+        mtype = memory.get("type", "unknown")
+        policy = _candidate_policy_for_type(mtype)
+        candidates.append(
+            {
+                "status": "candidate",
+                "candidate_type": mtype,
+                "content": memory.get("content", ""),
+                "confidence": memory.get("confidence", 0.5),
+                "source": "conversation_turn",
+                "language": language,
+                "extracted_at": ts,
+                "window_seconds": window_seconds,
+                "volatility": policy["volatility"],
+                "sensitivity": policy["sensitivity"],
+                "repeat_count": 1,
+                "evidence": {
+                    "query": query,
+                    # 全文保存を避ける（長文応答の肥大化対策）
+                    "answer_excerpt": answer[:240],
+                },
+            }
+        )
+    return candidates
+
+
+def _candidate_policy_for_type(memory_type: str) -> Dict[str, str]:
+    """メモリ種別ごとの揮発性・感度ポリシー"""
+    if memory_type in {"visitor_name", "visitor_affiliation"}:
+        return {"volatility": "low", "sensitivity": "pii"}
+    if memory_type == "explicit_remember":
+        return {"volatility": "medium", "sensitivity": "user_declared"}
+    if memory_type == "language_preference":
+        return {"volatility": "medium", "sensitivity": "non_pii"}
+    return {"volatility": "high", "sensitivity": "unknown"}
 
 
 def _extract_name(query: str, language: str) -> str | None:

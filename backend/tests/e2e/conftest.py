@@ -103,15 +103,23 @@ def invoke_workflow(workflow):
         language: str = "ja",
         session_id: str | None = None,
     ) -> dict:
-        sid = session_id or f"e2e-{uuid.uuid4().hex[:8]}"
+        # conversation_sessions.id は UUID 前提のため、E2E でも UUID を使う
+        sid = session_id or str(uuid.uuid4())
         try:
+            from backend.workflows.main_workflow import WorkflowContext
+
+            state, config = workflow._prepare_state(
+                {
+                    "query": query,
+                    "language": language,
+                    "session_id": sid,
+                }
+            )
             result = await asyncio.wait_for(
-                workflow.ainvoke(
-                    {
-                        "query": query,
-                        "language": language,
-                        "session_id": sid,
-                    }
+                workflow.graph.ainvoke(
+                    state,
+                    config=config,
+                    context=WorkflowContext(user_id=sid),
                 ),
                 timeout=60,
             )
@@ -120,11 +128,31 @@ def invoke_workflow(workflow):
                 # httpx接続プールがイベントループ再生成で壊れた場合
                 pytest.xfail(f"Event loop closed (httpx connection pool issue): {e}")
             raise
+        knowledge_results = (result.get("context", {}) or {}).get("knowledge_results", {}) or {}
+        raw_items = knowledge_results.get("results") or []
+        retrieved_contexts = []
+        if isinstance(raw_items, list):
+            for item in raw_items:
+                if not isinstance(item, dict):
+                    continue
+                text = (
+                    item.get("content")
+                    or item.get("text")
+                    or item.get("chunk_text")
+                    or item.get("summary")
+                )
+                if isinstance(text, str) and text.strip():
+                    retrieved_contexts.append(text.strip())
+        if not retrieved_contexts:
+            context_string = knowledge_results.get("context_string")
+            if isinstance(context_string, str) and context_string.strip():
+                retrieved_contexts = [context_string.strip()]
         return {
             "answer": result.get("answer", ""),
             "emotion": result.get("emotion", "neutral"),
             "metadata": result.get("metadata", {}),
             "session_id": sid,
+            "retrieved_contexts": retrieved_contexts,
         }
 
     return _invoke

@@ -2,6 +2,7 @@
 
 from backend.utils.memory_extractor import (
     extract_memories,
+    extract_memory_candidates,
     _extract_name,
     _extract_affiliation,
     _extract_remember_request,
@@ -72,6 +73,43 @@ class TestExtractMemories:
         assert names[0]["content"] == "John"
         lang_prefs = [m for m in result if m["type"] == "language_preference"]
         assert len(lang_prefs) == 1
+
+
+class TestExtractMemoryCandidates:
+    """extract_memory_candidates() のテスト"""
+
+    def test_empty_returns_empty(self):
+        result = extract_memory_candidates("", "", "ja", extracted_at=123.0)
+        assert result == []
+
+    def test_candidates_include_staging_metadata(self):
+        result = extract_memory_candidates(
+            "私は田中です。覚えて: 毎週火曜に来ます",
+            "承知しました",
+            "ja",
+            extracted_at=1700000000.0,
+        )
+        assert len(result) >= 2
+        first = result[0]
+        assert first["status"] == "candidate"
+        assert "candidate_type" in first
+        assert "content" in first
+        assert "confidence" in first
+        assert first["source"] == "conversation_turn"
+        assert first["language"] == "ja"
+        assert first["extracted_at"] == 1700000000.0
+        assert first["window_seconds"] == 180
+        assert "volatility" in first
+        assert "sensitivity" in first
+        assert first["repeat_count"] == 1
+        assert "evidence" in first
+        assert first["evidence"]["query"].startswith("私は田中です")
+
+    def test_type_policies_applied(self):
+        result = extract_memory_candidates("私は田中です", "こんにちは", "ja", extracted_at=1.0)
+        name_candidate = next(c for c in result if c["candidate_type"] == "visitor_name")
+        assert name_candidate["sensitivity"] == "pii"
+        assert name_candidate["volatility"] == "low"
 
 
 class TestExtractName:
