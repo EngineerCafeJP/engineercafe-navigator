@@ -36,6 +36,7 @@ from backend.config.routing_constants import (
     CHILDREN_NOISE_KEYWORDS,
     COMMUNITY_KEYWORDS,
     CONSULTATION_KEYWORDS,
+    EMERGENCY_KEYWORDS,
     EXCLUSIVE_RENTAL_KEYWORDS,
     EVENT_KEYWORDS,
     FACILITY_EQUIPMENT_KEYWORDS,
@@ -365,6 +366,15 @@ class OrchestratorAgent:
     def _try_fast_routing(self, query: str) -> Optional[dict]:
         """キーワードベースの高速ルーティング"""
         lower_query = query.lower()
+
+        # 緊急キーワード → facility（最優先）
+        if match_keywords(lower_query, EMERGENCY_KEYWORDS):
+            return {
+                "agent": "facility",
+                "category": "emergency",
+                "request_type": "emergency",
+                "reasoning": "Emergency keyword detected",
+            }
 
         # カフェ曖昧性: "カフェ" + "どっち/どちら/which" → clarification
         # (orchestrator_node がcategory基準でインライン処理する)

@@ -245,6 +245,27 @@ RECEPTION_KEYWORDS = [
     "はじめて",
 ]
 
+EMERGENCY_KEYWORDS = [
+    "緊急",
+    "地震",
+    "火事",
+    "火災",
+    "避難",
+    "AED",
+    "救急",
+    "警察",
+    "救命",
+    "emergency",
+    "earthquake",
+    "fire",
+    "evacuate",
+    "evacuation",
+    "ambulance",
+    "police",
+    "first aid",
+    "defibrillator",
+]
+
 FLOOR_LAYOUT_KEYWORDS = [
     "フロア構成",
     "フロアマップ",
@@ -461,6 +482,8 @@ CATEGORY_TO_AGENT_MAP: Dict[str, AgentNodeName] = {
     "community": "business_info",
     "cafe-clarification-needed": "general_knowledge",
     "meeting-room-clarification-needed": "general_knowledge",
+    "event-clarification-needed": "general_knowledge",
+    "space-clarification-needed": "general_knowledge",
     # query_classifier._detect_specific_category が返すカテゴリ
     "pricing": "business_info",
     "facilities": "facility",
@@ -471,6 +494,7 @@ CATEGORY_TO_AGENT_MAP: Dict[str, AgentNodeName] = {
     "smoking": "facility",
     "food_drink": "facility",
     "policy": "facility",
+    "emergency": "facility",
     "reception": "business_info",
     "floor_layout": "facility",
 }
@@ -484,7 +508,7 @@ CATEGORY_TO_AGENT_MAP: Dict[str, AgentNodeName] = {
 def match_keywords(text: str, keywords: List[str]) -> bool:
     """テキストにキーワードリストのいずれかが含まれているか判定"""
     lower_text = text.lower()
-    return any(kw in lower_text for kw in keywords)
+    return any(kw.lower() in lower_text for kw in keywords)
 
 
 LOCATION_KEYWORDS = ["場所", "どこ", "アクセス", "住所", "location", "where", "address"]
@@ -505,6 +529,8 @@ def extract_request_type(query: str) -> Optional[str]:
     """
     lower_query = query.lower()
 
+    if match_keywords(lower_query, EMERGENCY_KEYWORDS):
+        return "emergency"
     if match_keywords(lower_query, WIFI_KEYWORDS):
         return "wifi"
     if match_keywords(lower_query, BUSINESS_HOURS_KEYWORDS):

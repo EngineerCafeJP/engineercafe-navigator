@@ -7,15 +7,20 @@ OrchestratorAgent がインラインで使用する。LLM 呼び出しなし。
 元: backend/agents/clarification_agent.py の handle_clarification()
 """
 
+import logging
 from typing import Literal, TypedDict
 
 from backend.utils.emotion_tagger import add_emotion_tag
+
+logger = logging.getLogger(__name__)
 
 SupportedLanguage = Literal["ja", "en"]
 
 ClarificationCategory = Literal[
     "cafe-clarification-needed",
     "meeting-room-clarification-needed",
+    "event-clarification-needed",
+    "space-clarification-needed",
     "general-clarification-needed",
 ]
 
@@ -71,6 +76,48 @@ _MEETING_ROOM_CLARIFICATION: dict[str, str] = {
     ),
 }
 
+_EVENT_CLARIFICATION: dict[str, str] = {
+    "en": (
+        "I'd be happy to help with event information! "
+        "Could you tell me more about what you're looking for?\n"
+        "1. **Attend an event** - Browse upcoming events at Engineer Cafe\n"
+        "2. **Host an event** - Information about hosting your own event\n"
+        "3. **Today's schedule** - Check what's happening today\n\n"
+        "Which one interests you?"
+    ),
+    "ja": (
+        "イベントについてお手伝いします！"
+        "どのような情報をお探しでしょうか？\n"
+        "1. **イベントに参加したい** - エンジニアカフェの今後のイベント一覧\n"
+        "2. **イベントを開催したい** - イベント開催に関する情報\n"
+        "3. **本日のスケジュール** - 今日開催されるイベントの確認\n\n"
+        "どちらについてお知りになりたいですか？"
+    ),
+}
+
+_SPACE_CLARIFICATION: dict[str, str] = {
+    "en": (
+        "We have several spaces available! "
+        "Which one are you interested in?\n"
+        "1. **Main Hall (1F)** - Open coworking area, free to use\n"
+        "2. **Focus Space (B1)** - Quiet area for concentrated work\n"
+        "3. **MTG Space (B1)** - Free meeting space (2h blocks, reservation priority)\n"
+        "4. **MAKER's Space (B1)** - 3D printer, laser cutter available\n"
+        "5. **Under Space (B1)** - Event & presentation space\n\n"
+        "Which space would you like to know about?"
+    ),
+    "ja": (
+        "いくつかのスペースがございます！"
+        "どちらにご興味がありますか？\n"
+        "1. **メインホール（1階）** - オープンコワーキングエリア、無料利用可\n"
+        "2. **集中スペース（地下1階）** - 静かな作業環境\n"
+        "3. **MTGスペース（地下1階）** - 無料会議スペース（2時間区切り、予約優先）\n"
+        "4. **MAKER'sスペース（地下1階）** - 3Dプリンター・レーザーカッター利用可\n"
+        "5. **アンダースペース（地下1階）** - イベント・プレゼンテーション用スペース\n\n"
+        "どのスペースについてお知りになりたいですか？"
+    ),
+}
+
 _GENERAL_CLARIFICATION: dict[str, str] = {
     "en": (
         "I'd be happy to help! Could you please provide "
@@ -87,6 +134,8 @@ _GENERAL_CLARIFICATION: dict[str, str] = {
 _TEMPLATES: dict[ClarificationCategory, tuple[dict[str, str], float]] = {
     "cafe-clarification-needed": (_CAFE_CLARIFICATION, 0.9),
     "meeting-room-clarification-needed": (_MEETING_ROOM_CLARIFICATION, 0.9),
+    "event-clarification-needed": (_EVENT_CLARIFICATION, 0.9),
+    "space-clarification-needed": (_SPACE_CLARIFICATION, 0.9),
     "general-clarification-needed": (_GENERAL_CLARIFICATION, 0.7),
 }
 
@@ -119,6 +168,12 @@ def get_clarification_response(
 
     message = messages.get(language, messages["ja"])
     tagged_message = add_emotion_tag(message, "surprised")
+
+    logger.info(
+        "Clarification template: category=%s, language=%s",
+        category,
+        language,
+    )
 
     return {
         "response": tagged_message,

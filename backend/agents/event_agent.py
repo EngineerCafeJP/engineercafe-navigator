@@ -357,3 +357,43 @@ class EventAgent:
         events.sort(key=lambda e: e.get("start", "") or "")
 
         return events
+
+    async def get_today_events(self, language: str = "ja") -> Dict:
+        """本日のイベント情報を取得
+
+        Google CalendarとConnpassから本日のイベントを検索し、統合して返す。
+        受付案内や自動イベント紹介に使用。
+
+        Args:
+            language: 応答言語 ("ja" | "en")
+
+        Returns:
+            Dict with keys:
+                - events (List[Dict]): イベントリスト
+                - count (int): イベント数
+                - formatted_text (str): 整形済みテキスト
+                - has_events (bool): イベントがあるかどうか
+        """
+        try:
+            calendar_result, connpass_result = await asyncio.gather(
+                self.calendar_service.search_events("today"),
+                self.connpass_service.search_events("today"),
+            )
+
+            events = self._merge_events(calendar_result, connpass_result)
+            formatted_text = self._format_calendar_events(events, language)
+
+            return {
+                "events": events,
+                "count": len(events),
+                "formatted_text": formatted_text,
+                "has_events": len(events) > 0,
+            }
+        except Exception as e:
+            logger.warning("Failed to get today's events: %s", e)
+            return {
+                "events": [],
+                "count": 0,
+                "formatted_text": "",
+                "has_events": False,
+            }

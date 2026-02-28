@@ -4,7 +4,10 @@ routing_constants のユニットテスト - 新規キーワードルーティ�
 
 import pytest
 
-from backend.config.routing_constants import extract_request_type
+from backend.config.routing_constants import (
+    CATEGORY_TO_AGENT_MAP,
+    extract_request_type,
+)
 
 
 class TestNewRoutingKeywords:
@@ -58,3 +61,37 @@ class TestNewRoutingKeywords:
     def test_food_drink_keywords(self, query, expected):
         """飲食キーワードがfood_drinkにルーティングされることを確認"""
         assert extract_request_type(query) == expected
+
+
+class TestReceptionRouting:
+    """受付キーワードルーティングテスト"""
+
+    @pytest.mark.parametrize(
+        "query,expected",
+        [
+            ("初めて来ました", "reception"),
+            ("利用方法を教えてください", "reception"),
+            ("チェックインしたいです", "reception"),
+            ("How do I check-in?", "reception"),
+        ],
+    )
+    def test_reception_keywords(self, query, expected):
+        """受付キーワードがreceptionにルーティングされることを確認"""
+        assert extract_request_type(query) == expected
+
+    def test_reception_maps_to_business_info(self):
+        """receptionカテゴリがbusiness_infoにマッピングされることを確認"""
+        assert CATEGORY_TO_AGENT_MAP["reception"] == "business_info"
+
+
+class TestEmergencyRoutingIntegration:
+    """緊急キーワードルーティング統合テスト"""
+
+    def test_emergency_maps_to_facility(self):
+        """emergencyカテゴリがfacilityにマッピングされることを確認"""
+        assert CATEGORY_TO_AGENT_MAP["emergency"] == "facility"
+
+    def test_emergency_priority_over_other_keywords(self):
+        """emergencyは他のキーワードより優先される"""
+        # "場所" is a location keyword but "AED" is emergency
+        assert extract_request_type("AEDの場所はどこ？") == "emergency"

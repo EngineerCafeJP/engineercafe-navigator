@@ -64,6 +64,10 @@ FACILITY_ENHANCEMENT_KEYWORDS: Dict[str, Dict[str, str]] = {
         "ja": "トイレ お手洗い 化粧室 テラス 場所 行き方",
         "en": "toilet restroom bathroom location terrace directions",
     },
+    "emergency": {
+        "ja": "緊急 AED 避難経路 非常口 救急 地震対応 防災",
+        "en": "emergency AED evacuation exit first aid earthquake safety",
+    },
 }
 
 # requestTypeに応じたプロンプト文言
@@ -87,6 +91,10 @@ FACILITY_REQUEST_TYPE_PROMPTS: Dict[str, Dict[str, str]] = {
     "toilet": {
         "en": "toilet and restroom location information",
         "ja": "トイレ・お手洗いの場所情報",
+    },
+    "emergency": {
+        "en": "emergency and safety information",
+        "ja": "緊急・安全情報",
     },
 }
 
