@@ -108,6 +108,7 @@ class SimplifiedMemoryHelper:
                 .eq("agent_name", self.agent_name)
                 .like("key", "message_%")
                 .order("created_at", desc=True)
+                .limit(self.max_entries)
                 .execute()
             )
 
@@ -240,8 +241,8 @@ class SimplifiedMemoryHelper:
                 .select("*")
                 .eq("agent_name", self.agent_name)
                 .like("key", "message_%")
-                .order("created_at", desc=False)
-                .limit(self.max_entries)
+                .order("created_at", desc=True)
+                .limit(self.max_entries * 3)
                 .execute()
             )
 
@@ -266,7 +267,9 @@ class SimplifiedMemoryHelper:
                         }
                     )
 
-            return messages
+            # DESC順で取得しているので時系列順に戻し、max_entriesで制限
+            messages = messages[::-1]
+            return messages[-self.max_entries :] if len(messages) > self.max_entries else messages
 
         except Exception as e:
             logger.error("Error getting recent messages: %s", e)

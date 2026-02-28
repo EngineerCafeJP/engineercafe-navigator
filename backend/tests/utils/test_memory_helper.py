@@ -333,6 +333,7 @@ class TestSimplifiedMemoryHelper:
         mock_eq = Mock()
         mock_like = Mock()
         mock_order = Mock()
+        mock_limit = Mock()
 
         # チェーンメソッドのモック設定
         mock_client.table = Mock(return_value=mock_table)
@@ -340,8 +341,9 @@ class TestSimplifiedMemoryHelper:
         mock_select.eq = Mock(return_value=mock_eq)
         mock_eq.like = Mock(return_value=mock_like)
         mock_like.order = Mock(return_value=mock_order)
+        mock_order.limit = Mock(return_value=mock_limit)
 
-        mock_order.execute = Mock(
+        mock_limit.execute = Mock(
             return_value=Mock(
                 data=[
                     {
@@ -361,6 +363,7 @@ class TestSimplifiedMemoryHelper:
         result = await helper.get_previous_request_type("test-session")
 
         assert result == "hours"
+        mock_order.limit.assert_called_once_with(100)
 
     @pytest.mark.asyncio
     async def test_get_previous_request_type_without_supabase(self):
