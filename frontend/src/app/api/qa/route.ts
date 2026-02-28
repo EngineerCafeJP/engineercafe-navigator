@@ -6,7 +6,7 @@ const BACKEND_API_URL = process.env.BACKEND_API_URL || 'http://localhost:8000';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { action, question, sessionId, language, text, fromLanguage, toLanguage } = body;
+    const { action, question, sessionId, language, text, fromLanguage, toLanguage, visitorId } = body;
 
     // バックエンドAPIにプロキシ
     const backendUrl = `${BACKEND_API_URL}/api/chat`;
@@ -17,6 +17,7 @@ export async function POST(request: NextRequest) {
         query: question || text,
         session_id: sessionId,
         language: language || 'ja',
+        visitor_id: visitorId,
       }),
     });
 

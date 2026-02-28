@@ -905,6 +905,116 @@
       "ground_truth": "多目的トイレなし。訪問前に電話（080-6742-7231）で確認推奨。",
       "language": "ja",
       "category": "toilet"
+    },
+    {
+      "id": "gt-078",
+      "question": "地震です！避難してください",
+      "answer": "地震です！机の下に身を隠してください。揺れが収まったら、1階正面玄関から避難してください。",
+      "contexts": [
+        "地震等の緊急時は、まず身の安全を確保してください。揺れが収まったら、1階正面玄関または地下1階の職員通路から避難してください。スタッフの指示に従ってください。"
+      ],
+      "ground_truth": "地震時は机の下に身を隠す。揺れが収まったら1F正面玄関から避難。スタッフの指示に従う。",
+      "language": "ja",
+      "category": "emergency"
+    },
+    {
+      "id": "gt-079",
+      "question": "火事だ！",
+      "answer": "火事です！すぐに119番に通報してください。最寄りの出口から速やかに避難してください。",
+      "contexts": [
+        "火事が発生した場合は、すぐに119番に通報してください。その後、最寄りの出口から速やかに避難してください。スタッフの指示に従ってください。"
+      ],
+      "ground_truth": "火事時は119番通報。最寄り出口から速やかに避難。スタッフの指示に従う。",
+      "language": "ja",
+      "category": "emergency"
+    },
+    {
+      "id": "gt-080",
+      "question": "AEDはどこですか？倒れた人がいます",
+      "answer": "医療緊急事態です。119番に通報してください。AEDは1階受付横にあります。",
+      "contexts": [
+        "医療緊急事態が発生した場合は、すぐに119番に通報してください。AEDは1階受付横に設置されています。スタッフに援助を求めてください。"
+      ],
+      "ground_truth": "医療緊急時は119番通報。AEDは1F受付横に設置。",
+      "language": "ja",
+      "category": "emergency"
+    },
+    {
+      "id": "gt-081",
+      "question": "初めて来ました",
+      "answer": "エンジニアカフェへようこそ！初めてのご利用ですね。",
+      "contexts": [
+        "初めてご利用の方は受付で利用登録をお願いしています。約5〜10分で完了します。"
+      ],
+      "ground_truth": "初回訪問者の招待ウェルカムメッセージ。受付で登録手続き。",
+      "language": "ja",
+      "category": "reception"
+    },
+    {
+      "id": "gt-082",
+      "question": "また来ました",
+      "answer": "おかえりなさい！エンジニアカフェへようこそ。",
+      "contexts": [
+        "リピーター利用者へのウェルカムメッセージ。気軽にご利用ください。"
+      ],
+      "ground_truth": "リピーター訪問者へのウェルカムメッセージ。",
+      "language": "ja",
+      "category": "reception"
+    },
+    {
+      "id": "gt-083",
+      "question": "イベントについて",
+      "answer": "イベントについてお調べします。",
+      "contexts": [
+        "エンジニアカフェで開催されるイベント情報はConnpass（https://engineercafe.connpass.com/）でご確認ください。"
+      ],
+      "ground_truth": "イベント情報の明確化・案内。Connpass参照。",
+      "language": "ja",
+      "category": "clarification"
+    },
+    {
+      "id": "gt-084",
+      "question": "スペースを使いたい",
+      "answer": "エンジニアカフェのスペースについてご案内します。",
+      "contexts": [
+        "メインホール、集中スペース、MAKER'sスペース、会議室など様々なスペースがあります。用途に応じてご選択ください。"
+      ],
+      "ground_truth": "利用可能スペースの案内。",
+      "language": "ja",
+      "category": "clarification"
+    },
+    {
+      "id": "gt-085",
+      "question": "前にも来たことがあります",
+      "answer": "おかえりなさい！エンジニアカフェへようこそ。",
+      "contexts": [
+        "リピーター利用者へのウェルカムメッセージ。以前の訪問を認識。"
+      ],
+      "ground_truth": "リピーター訪問者の認識と歓迎。",
+      "language": "ja",
+      "category": "reception"
+    },
+    {
+      "id": "gt-086",
+      "question": "車椅子で利用できますか",
+      "answer": "エレベーターはありませんが、1階フロアはバリアフリーです。",
+      "contexts": [
+        "テラス側出入口から入館可能です。入口には取り付け式スロープを設置できるため、1階フロアへのアクセスは可能です。2階および地下フロアへの車椅子での移動はできません。"
+      ],
+      "ground_truth": "1Fはバリアフリー、テラス側スロープで利用可。2F・B1Fは不可。",
+      "language": "ja",
+      "category": "accessibility"
+    },
+    {
+      "id": "gt-087",
+      "question": "Earthquake! What should I do?",
+      "answer": "Earthquake! Take cover under a desk. Once shaking stops, evacuate through the 1F main entrance.",
+      "contexts": [
+        "During an earthquake, first secure your safety. Once shaking stops, evacuate through the 1F main entrance or B1F staff corridor. Follow staff instructions."
+      ],
+      "ground_truth": "Earthquake: take cover under desk. Evacuate via 1F main entrance once shaking stops. Follow staff.",
+      "language": "en",
+      "category": "emergency"
     }
   ]
 }

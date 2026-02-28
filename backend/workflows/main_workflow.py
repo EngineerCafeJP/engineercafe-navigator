@@ -387,6 +387,39 @@ class MainWorkflow:
             memory_context=memory_context,
         )
 
+        # emergency カテゴリをインライン処理（最優先）
+        if decision.category == "emergency":
+            from backend.utils.emergency_templates import get_emergency_response
+
+            logger.info(
+                "Inline emergency: lang=%s, query=%s",
+                decision.language,
+                query[:80],
+            )
+            result = get_emergency_response(query, decision.language)
+            # Discord 通知（fire-and-forget）
+            asyncio.create_task(self._notify_discord_emergency(query, result))
+            return Command(
+                goto="format_response",
+                update={
+                    "language": decision.language,
+                    "routing": {
+                        "agent": "orchestrator_inline",
+                        "category": "emergency",
+                        "request_type": decision.request_type,
+                        "confidence": decision.confidence,
+                        "reasoning": decision.reasoning,
+                        "debug_info": decision.debug_info,
+                    },
+                    "answer": result["response"],
+                    "emotion": result["emotion"],
+                    "metadata": {
+                        **state.get("metadata", {}),
+                        "emergency": result["metadata"],
+                    },
+                },
+            )
+
         # clarification カテゴリをインライン処理
         if decision.category in (
             "cafe-clarification-needed",
@@ -438,6 +471,7 @@ class MainWorkflow:
                 query[:80],
             )
             # first_time / returning / general の判定
+            long_term_memory = state.get("context", {}).get("long_term_memory")
             lower_query = query.lower()
             first_time_keywords = [
                 "初めて",
@@ -448,6 +482,8 @@ class MainWorkflow:
             ]
             if any(kw in lower_query for kw in first_time_keywords):
                 reception_type = "first_time"
+            elif long_term_memory:
+                reception_type = "returning"
             else:
                 reception_type = "general"
 
@@ -653,6 +689,23 @@ class MainWorkflow:
             "emotion": result.get("emotion", "neutral"),
             "metadata": {**state.get("metadata", {}), **result.get("metadata", {})},
         }
+
+    async def _notify_discord_emergency(self, query: str, result: dict) -> None:
+        """Discord Webhook に緊急通知を送信（fire-and-forget）"""
+        try:
+            from backend.services.discord_notification_service import (
+                get_discord_notification_service,
+            )
+
+            svc = get_discord_notification_service()
+            await svc.send_notification(
+                title="緊急通報",
+                message=f"来館者からの緊急メッセージ: {query}",
+                severity="critical",
+                metadata=result.get("metadata", {}),
+            )
+        except Exception:
+            logger.warning("Discord emergency notification failed", exc_info=True)
 
     async def _format_response_node(
         self, state: WorkflowStateDict, runtime: Runtime[WorkflowContext]
