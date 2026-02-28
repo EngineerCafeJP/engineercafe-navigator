@@ -235,7 +235,7 @@ class EnhancedRAGSearch:
 
     async def _generate_embedding(self, text: str) -> List[float]:
         """OpenRouter API経由でエンベディングを生成（共通サービスに委譲）"""
-        from utils.embedding_service import generate_embedding
+        from backend.utils.embedding_service import generate_embedding
 
         return await generate_embedding(text)
 

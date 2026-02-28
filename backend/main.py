@@ -404,6 +404,7 @@ class VoiceResponse(BaseModel):
 
 _voice_agent: Optional[Any] = None  # VoiceAgent (lazy-loaded)
 _stt_agent: Optional[Any] = None  # STTAgent (lazy-loaded)
+_slide_agent: Optional[Any] = None  # SlideAgent (lazy-loaded)
 
 
 def _get_voice_agent():
@@ -422,6 +423,15 @@ def _get_stt_agent():
 
         _stt_agent = STTAgent()
     return _stt_agent
+
+
+def _get_slide_agent():
+    global _slide_agent
+    if _slide_agent is None:
+        from backend.agents.slide_agent import SlideAgent
+
+        _slide_agent = SlideAgent()
+    return _slide_agent
 
 
 @app.post("/api/voice", response_model=VoiceResponse, dependencies=[Depends(verify_api_key)])
@@ -523,9 +533,7 @@ async def slides_api(request: Request, body: SlidesRequest):
     SlideAgentを使用してスライドナレーションと質問応答を処理
     """
     try:
-        from backend.agents.slide_agent import SlideAgent
-
-        slide_agent = SlideAgent()
+        slide_agent = _get_slide_agent()
 
         # アクションマッピング
         action_map = {
@@ -546,6 +554,7 @@ async def slides_api(request: Request, body: SlidesRequest):
             query=body.query,
             target_slide=body.targetSlide,
             language=body.language,
+            session_id=body.sessionId or "default",
         )
 
         return SlidesResponse(
