@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from typing import Dict, List, Literal, Optional, get_args
 
 from fastapi import APIRouter, HTTPException, Query
+from starlette.requests import Request
 from pydantic import BaseModel, Field
 
 from backend.agents.stt_agent import LocalSTTClient
@@ -199,6 +200,7 @@ def build_grammar_words(vocabulary: List[dict], category: Optional[str] = None) 
 @router.get("/stt/vocabulary", response_model=VocabularyListResponse)
 @rate_limit("60/minute")
 async def list_vocabulary(
+    request: Request,
     category: Optional[VocabularyCategory] = None,
     search: Optional[str] = Query(None, max_length=100),
     page: int = Query(1, ge=1),
@@ -234,25 +236,23 @@ async def list_vocabulary(
 
 @router.post("/stt/vocabulary/test", response_model=VocabularyTestResponse)
 @rate_limit("10/minute")
-async def test_vocabulary(request: VocabularyTestRequest):
+async def test_vocabulary(request: Request, body: VocabularyTestRequest):
     """テスト音声で認識精度確認
 
     base64エンコードされたWAVを受け取り、カスタム語彙Grammarを使って
     Voskで認識し結果を返す。
     """
     try:
-        audio_bytes = base64.b64decode(request.audio_base64)
+        audio_bytes = base64.b64decode(body.audio_base64)
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid base64 audio data")
 
     vocabulary = await _load_vocabulary()
-    grammar_words = build_grammar_words(vocabulary, category=request.category)
+    grammar_words = build_grammar_words(vocabulary, category=body.category)
 
     try:
         client = LocalSTTClient()
-        result = await client.transcribe(
-            audio_bytes, language=request.language, grammar=grammar_words
-        )
+        result = await client.transcribe(audio_bytes, language=body.language, grammar=grammar_words)
         return VocabularyTestResponse(
             success=True,
             transcript=result.text,
@@ -269,21 +269,21 @@ async def test_vocabulary(request: VocabularyTestRequest):
 
 @router.post("/stt/vocabulary", response_model=VocabularyResponse, status_code=201)
 @rate_limit("30/minute")
-async def create_vocabulary(request: VocabularyCreateRequest):
+async def create_vocabulary(request: Request, body: VocabularyCreateRequest):
     """語彙追加"""
     vocabulary = await _load_vocabulary()
 
     # 重複チェック
-    if any(v["word"] == request.word for v in vocabulary):
-        raise HTTPException(status_code=409, detail=f"Word '{request.word}' already exists")
+    if any(v["word"] == body.word for v in vocabulary):
+        raise HTTPException(status_code=409, detail=f"Word '{body.word}' already exists")
 
     now = _now_iso()
     new_item = {
         "id": str(uuid.uuid4()),
-        "word": request.word,
-        "reading": request.reading,
-        "category": request.category,
-        "priority": request.priority,
+        "word": body.word,
+        "reading": body.reading,
+        "category": body.category,
+        "priority": body.priority,
         "created_at": now,
         "updated_at": now,
     }
@@ -295,7 +295,7 @@ async def create_vocabulary(request: VocabularyCreateRequest):
 
 @router.put("/stt/vocabulary/{vocabulary_id}", response_model=VocabularyResponse)
 @rate_limit("30/minute")
-async def update_vocabulary(vocabulary_id: str, request: VocabularyUpdateRequest):
+async def update_vocabulary(request: Request, vocabulary_id: str, body: VocabularyUpdateRequest):
     """語彙編集"""
     vocabulary = await _load_vocabulary()
 
@@ -304,19 +304,19 @@ async def update_vocabulary(vocabulary_id: str, request: VocabularyUpdateRequest
         raise HTTPException(status_code=404, detail="Vocabulary entry not found")
 
     # word変更時の重複チェック
-    if request.word and request.word != vocabulary[idx]["word"]:
-        if any(v["word"] == request.word for v in vocabulary):
-            raise HTTPException(status_code=409, detail=f"Word '{request.word}' already exists")
+    if body.word and body.word != vocabulary[idx]["word"]:
+        if any(v["word"] == body.word for v in vocabulary):
+            raise HTTPException(status_code=409, detail=f"Word '{body.word}' already exists")
 
     item = vocabulary[idx]
-    if request.word is not None:
-        item["word"] = request.word
-    if request.reading is not None:
-        item["reading"] = request.reading
-    if request.category is not None:
-        item["category"] = request.category
-    if request.priority is not None:
-        item["priority"] = request.priority
+    if body.word is not None:
+        item["word"] = body.word
+    if body.reading is not None:
+        item["reading"] = body.reading
+    if body.category is not None:
+        item["category"] = body.category
+    if body.priority is not None:
+        item["priority"] = body.priority
     item["updated_at"] = _now_iso()
 
     vocabulary[idx] = item
@@ -327,7 +327,7 @@ async def update_vocabulary(vocabulary_id: str, request: VocabularyUpdateRequest
 
 @router.delete("/stt/vocabulary/{vocabulary_id}", response_model=VocabularyResponse)
 @rate_limit("30/minute")
-async def delete_vocabulary(vocabulary_id: str):
+async def delete_vocabulary(request: Request, vocabulary_id: str):
     """語彙削除"""
     vocabulary = await _load_vocabulary()
 

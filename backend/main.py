@@ -237,7 +237,7 @@ class ChatResponse(BaseModel):
 
 @app.get("/health")
 @_rate_limit("60/minute")
-async def health_check():
+async def health_check(request: Request):
     """ヘルスチェックエンドポイント（依存関係確認付き）"""
     checks = {"api": "ok"}
 

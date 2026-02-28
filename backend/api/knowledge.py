@@ -14,6 +14,7 @@ import re
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
+from starlette.requests import Request
 from pydantic import BaseModel, Field
 from supabase import create_client
 
@@ -138,6 +139,7 @@ def _is_unique_violation(error: Exception) -> bool:
 @router.get("/knowledge", response_model=KnowledgeListResponse)
 @rate_limit("60/minute")
 async def list_knowledge(
+    request: Request,
     category: Optional[str] = Query(None, description="カテゴリフィルタ"),
     keyword: Optional[str] = Query(None, max_length=200, description="キーワード検索"),
     language: Optional[str] = Query(None, pattern=r"^(ja|en)$", description="言語フィルタ"),
@@ -183,7 +185,7 @@ async def list_knowledge(
 
 @router.get("/knowledge/{knowledge_id}", response_model=KnowledgeResponse)
 @rate_limit("60/minute")
-async def get_knowledge(knowledge_id: str):
+async def get_knowledge(request: Request, knowledge_id: str):
     """ナレッジ単一取得"""
     try:
         supabase = _get_supabase()
@@ -206,33 +208,31 @@ async def get_knowledge(knowledge_id: str):
 
 @router.post("/knowledge", response_model=KnowledgeResponse, status_code=201)
 @rate_limit("30/minute")
-async def create_knowledge(request: KnowledgeCreateRequest):
+async def create_knowledge(request: Request, body: KnowledgeCreateRequest):
     """テキスト入力でナレッジ新規登録（embedding自動生成）"""
     try:
         supabase = _get_supabase()
 
         # 重複titleチェック
-        existing = (
-            supabase.table("knowledge_base").select("id").eq("title", request.title).execute()
-        )
+        existing = supabase.table("knowledge_base").select("id").eq("title", body.title).execute()
         if existing.data:
             raise HTTPException(
-                status_code=409, detail=f"Knowledge with title '{request.title}' already exists"
+                status_code=409, detail=f"Knowledge with title '{body.title}' already exists"
             )
 
         # Embedding生成
-        embedding_text = f"{request.title}\n{request.content}"
+        embedding_text = f"{body.title}\n{body.content}"
         embedding = await generate_embedding(embedding_text)
 
         # DB挿入
         insert_data: Dict[str, Any] = {
-            "title": request.title,
-            "content": request.content,
-            "category": request.category,
-            "language": request.language,
-            "subcategory": request.subcategory,
-            "source": request.source,
-            "metadata": request.metadata or {},
+            "title": body.title,
+            "content": body.content,
+            "category": body.category,
+            "language": body.language,
+            "subcategory": body.subcategory,
+            "source": body.source,
+            "metadata": body.metadata or {},
         }
         if embedding:
             insert_data["content_embedding"] = embedding
@@ -253,7 +253,7 @@ async def create_knowledge(request: KnowledgeCreateRequest):
         if _is_unique_violation(e):
             raise HTTPException(
                 status_code=409,
-                detail=f"Knowledge with title '{request.title}' already exists",
+                detail=f"Knowledge with title '{body.title}' already exists",
             )
         logger.error("Failed to create knowledge: %s", e)
         raise HTTPException(status_code=500, detail="Failed to create knowledge entry")
@@ -262,6 +262,7 @@ async def create_knowledge(request: KnowledgeCreateRequest):
 @router.post("/knowledge/upload", response_model=KnowledgeResponse, status_code=201)
 @rate_limit("10/minute")
 async def upload_knowledge(
+    request: Request,
     file: UploadFile = File(...),
     category: str = Form(...),
     language: str = Form(default="ja"),
@@ -371,7 +372,7 @@ async def upload_knowledge(
 
 @router.put("/knowledge/{knowledge_id}", response_model=KnowledgeResponse)
 @rate_limit("30/minute")
-async def update_knowledge(knowledge_id: str, request: KnowledgeUpdateRequest):
+async def update_knowledge(request: Request, knowledge_id: str, body: KnowledgeUpdateRequest):
     """ナレッジ更新（content変更時はembedding再生成）"""
     try:
         supabase = _get_supabase()
@@ -384,32 +385,32 @@ async def update_knowledge(knowledge_id: str, request: KnowledgeUpdateRequest):
         current = existing.data[0]
 
         # 重複titleチェック（titleが変更される場合）
-        if request.title and request.title != current.get("title"):
+        if body.title and body.title != current.get("title"):
             dup_check = (
-                supabase.table("knowledge_base").select("id").eq("title", request.title).execute()
+                supabase.table("knowledge_base").select("id").eq("title", body.title).execute()
             )
             if dup_check.data:
                 raise HTTPException(
                     status_code=409,
-                    detail=f"Knowledge with title '{request.title}' already exists",
+                    detail=f"Knowledge with title '{body.title}' already exists",
                 )
 
         # 更新データ構築（Noneでない項目のみ）
         update_data: Dict[str, Any] = {}
-        if request.title is not None:
-            update_data["title"] = request.title
-        if request.content is not None:
-            update_data["content"] = request.content
-        if request.category is not None:
-            update_data["category"] = request.category
-        if request.language is not None:
-            update_data["language"] = request.language
-        if request.subcategory is not None:
-            update_data["subcategory"] = request.subcategory
-        if request.source is not None:
-            update_data["source"] = request.source
-        if request.metadata is not None:
-            update_data["metadata"] = request.metadata
+        if body.title is not None:
+            update_data["title"] = body.title
+        if body.content is not None:
+            update_data["content"] = body.content
+        if body.category is not None:
+            update_data["category"] = body.category
+        if body.language is not None:
+            update_data["language"] = body.language
+        if body.subcategory is not None:
+            update_data["subcategory"] = body.subcategory
+        if body.source is not None:
+            update_data["source"] = body.source
+        if body.metadata is not None:
+            update_data["metadata"] = body.metadata
 
         if not update_data:
             return KnowledgeResponse(success=True, data=_row_to_item(current))
@@ -440,7 +441,7 @@ async def update_knowledge(knowledge_id: str, request: KnowledgeUpdateRequest):
         if _is_unique_violation(e):
             raise HTTPException(
                 status_code=409,
-                detail=f"Knowledge with title '{request.title}' already exists",
+                detail=f"Knowledge with title '{body.title}' already exists",
             )
         logger.error("Failed to update knowledge %s: %s", knowledge_id, e)
         raise HTTPException(status_code=500, detail="Failed to update knowledge entry")
@@ -448,7 +449,7 @@ async def update_knowledge(knowledge_id: str, request: KnowledgeUpdateRequest):
 
 @router.delete("/knowledge/{knowledge_id}", response_model=KnowledgeResponse)
 @rate_limit("30/minute")
-async def delete_knowledge(knowledge_id: str):
+async def delete_knowledge(request: Request, knowledge_id: str):
     """ナレッジ削除"""
     try:
         supabase = _get_supabase()
