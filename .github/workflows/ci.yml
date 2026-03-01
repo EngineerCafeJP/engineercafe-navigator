@@ -286,7 +286,7 @@ jobs:
         working-directory: frontend
 
       - name: Build and deploy to Cloudflare Workers
-        run: npx opennextjs-cloudflare build && npx opennextjs-cloudflare deploy
+        run: pnpm run deploy
         working-directory: frontend
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
