@@ -62,7 +62,7 @@ FROM base AS production
 # Copy application code
 COPY . .
 
-# Note: In production, mount Vosk models via volume:
+# Note: In production, mount models (Vosk STT + Helsinki-NLP translation) via volume:
 #   volumes:
 #     - ./models:/app/models
 
