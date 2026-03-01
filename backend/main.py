@@ -111,7 +111,7 @@ async def lifespan(app: FastAPI):
         logger.error("起動時バリデーション失敗。環境変数を確認してください。")
         raise
 
-    if os.getenv("ENV", "development") == "production":
+    if os.getenv("ENVIRONMENT", "development") == "production":
         setup_structured_logging()
 
     try:
@@ -185,7 +185,7 @@ app.add_middleware(TokenTrackerMiddleware)
 # Optional API key authentication
 _API_SECRET_KEY = os.getenv("API_SECRET_KEY")
 
-if os.getenv("ENV", "development") == "production" and not _API_SECRET_KEY:
+if os.getenv("ENVIRONMENT", "development") == "production" and not _API_SECRET_KEY:
     logger.warning(
         "API_SECRET_KEY not set in production. " "All endpoints are unprotected — this is insecure."
     )
@@ -202,7 +202,7 @@ async def verify_api_key(request: Request) -> None:
 
 # CORS設定
 _default_origins = ["http://localhost:3000", "http://localhost:3001"]
-_env = os.getenv("ENV", "development")
+_env = os.getenv("ENVIRONMENT", "development")
 _configured_origins = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "").split(",") if o.strip()]
 
 if _env == "production" and not _configured_origins:
