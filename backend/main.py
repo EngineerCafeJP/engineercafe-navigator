@@ -425,7 +425,8 @@ def _get_voice_agent():
     if _voice_agent is None:
         from backend.agents.voice_agent import VoiceAgent
 
-        _voice_agent = VoiceAgent()
+        tts_provider = os.getenv("TTS_PROVIDER", "voicevox")
+        _voice_agent = VoiceAgent(tts_provider=tts_provider)
     return _voice_agent
 
 
