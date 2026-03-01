@@ -89,7 +89,10 @@ $$;
 
 -- =============================================================================
 -- 4. Update add_knowledge_base_entry() RPC to accept title
+--    DROP old signature first to avoid overload ambiguity
 -- =============================================================================
+DROP FUNCTION IF EXISTS add_knowledge_base_entry(text, varchar, varchar, varchar, varchar, jsonb);
+
 CREATE OR REPLACE FUNCTION add_knowledge_base_entry(
   p_title varchar(200),
   p_content text,
@@ -129,4 +132,4 @@ $$;
 
 -- Grant execute permissions
 GRANT EXECUTE ON FUNCTION search_knowledge_base TO service_role;
-GRANT EXECUTE ON FUNCTION add_knowledge_base_entry TO service_role;
+GRANT EXECUTE ON FUNCTION add_knowledge_base_entry(varchar, text, varchar, varchar, varchar, varchar, jsonb) TO service_role;
