@@ -1,8 +1,21 @@
+// Initialize OpenNext Cloudflare bindings for local development
+if (process.env.NODE_ENV === "development") {
+  import("@opennextjs/cloudflare")
+    .then((m) => m.initOpenNextCloudflareForDev())
+    .catch(() => {});
+}
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   experimental: {
     serverActions: {
-      allowedOrigins: ["localhost:3000", "vercel.app", "*.vercel.app"],
+      allowedOrigins: [
+        "localhost:3000",
+        "vercel.app",
+        "*.vercel.app",
+        "*.pages.dev",
+        "*.workers.dev",
+      ],
     },
   },
   // WebSocket support for external integrations

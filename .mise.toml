@@ -4,7 +4,7 @@
 
 [tools]
 # Node.js - Frontend development
-node = "18.20.0"
+node = "20.20.0"
 
 # Python - Backend development with FastAPI and LangGraph
 python = "3.11.10"

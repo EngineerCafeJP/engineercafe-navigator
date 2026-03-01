@@ -1,0 +1,12 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "engineer-cafe-navigator",
+  "account_id": "9973f2d2304b58a1f90d4d9409e9f8cc",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-02-28",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  }
+}
