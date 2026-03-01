@@ -1,0 +1,39 @@
+# Caddyfile for Engineer Cafe Navigator Backend
+#
+# Caddy automatically provisions and renews TLS certificates via Let's Encrypt.
+# Replace "api.your-domain.com" with your actual domain.
+#
+# Alternative: If using Cloudflare Tunnel, you can skip Caddy entirely and
+# point the tunnel directly to backend:8000. In that case, remove the caddy
+# service from docker-compose.production.yml.
+
+api.your-domain.com {
+	# Reverse proxy to FastAPI backend
+	reverse_proxy backend:8000 {
+		# SSE streaming support — flush immediately for /api/chat/stream
+		@sse path /api/chat/stream
+		flush_interval @sse -1
+	}
+
+	# Request size limit (10 MB — accommodates audio uploads)
+	request_body {
+		max_size 10MB
+	}
+
+	# Security headers
+	header {
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		X-XSS-Protection "1; mode=block"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	# Access log
+	log {
+		output file /data/access.log {
+			roll_size 50MiB
+			roll_keep 3
+		}
+	}
+}

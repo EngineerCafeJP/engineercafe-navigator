@@ -1,0 +1,162 @@
+# Docker Compose for Engineer Cafe Navigator - Production
+# Optimized for self-hosted deployment (Oracle Cloud Free Tier ARM VM, or any VPS)
+#
+# Usage:
+#   1. Copy backend/.env.production.example to backend/.env.production and fill in values
+#   2. Download models: docker compose -f docker-compose.production.yml --profile setup run --rm model-setup
+#   3. Start services: docker compose -f docker-compose.production.yml up -d
+#
+# Resource target: 4 OCPU (ARM64) / 24 GB RAM (Oracle Cloud Free Tier)
+# Frontend is deployed separately on Vercel.
+
+services:
+  # Reverse proxy + automatic HTTPS (Let's Encrypt)
+  caddy:
+    image: caddy:2-alpine
+    container_name: engineer-cafe-caddy
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"  # HTTP/3
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - engineer-cafe-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Backend - FastAPI + LangGraph (production build)
+  backend:
+    build:
+      context: ./backend
+      target: production
+    container_name: engineer-cafe-backend
+    # Port is NOT exposed to host; Caddy proxies to it via Docker network
+    expose:
+      - "8000"
+    volumes:
+      # Mount pre-downloaded models (Vosk STT + Helsinki-NLP translation)
+      - ./backend/models:/app/models:ro
+    env_file:
+      - ./backend/.env.production
+    environment:
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      voicevox:
+        condition: service_healthy
+      kokoro-tts:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "scripts/healthcheck.py"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - engineer-cafe-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 4G
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  # VoiceVox TTS Engine - Japanese TTS
+  voicevox:
+    image: voicevox/voicevox_engine:latest
+    container_name: engineer-cafe-voicevox
+    # Port is NOT exposed to host; backend connects via Docker network
+    expose:
+      - "50021"
+    environment:
+      - CPU_NUM_THREADS=2
+    volumes:
+      - voicevox-cache:/root/.cache/voicevox_engine
+    networks:
+      - engineer-cafe-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:50021/version"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 4G
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+  # Kokoro TTS Engine - English TTS
+  kokoro-tts:
+    image: ghcr.io/remsky/kokoro-fastapi-cpu:latest
+    container_name: engineer-cafe-kokoro-tts
+    # Port is NOT exposed to host; backend connects via Docker network
+    expose:
+      - "8880"
+    networks:
+      - engineer-cafe-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8880/v1/audio/voices"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 2G
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+  # One-shot model downloader (run with: docker compose --profile setup run --rm model-setup)
+  model-setup:
+    build:
+      context: ./backend
+      target: development
+    container_name: engineer-cafe-model-setup
+    profiles:
+      - setup
+    volumes:
+      - ./backend/models:/app/models
+    entrypoint: ["bash", "scripts/setup_production_models.sh"]
+    networks:
+      - engineer-cafe-network
+
+networks:
+  engineer-cafe-network:
+    driver: bridge
+
+volumes:
+  caddy-data:
+  caddy-config:
+  voicevox-cache:
