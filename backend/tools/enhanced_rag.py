@@ -1,101 +1,75 @@
 """
 Enhanced RAG Search Tool
-Supabase + OpenRouter Embeddings統合による高精度RAG検索
+Supabase + OpenAI Embeddings統合による高精度RAG検索
 """
 
 import os
-import time
 from typing import List, Dict, Optional
-import logging
-import asyncio
+import httpx
 from supabase import create_client, Client
 
-logger = logging.getLogger(__name__)
+# Embedding model configuration
+# text-embedding-3-small: 1536 dims (OpenAI)
+# text-embedding-3-large: 3072 dims (OpenAI)
+# The DB column dimension must match the model output dimension.
+DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
+DEFAULT_EMBEDDING_DIMENSIONS = 1536
 
-
-class CircuitBreaker:
-    """Simple circuit breaker for RAG/LLM failures"""
-
-    def __init__(self, failure_threshold: int = 3, recovery_timeout: float = 60.0):
-        self.failure_threshold = failure_threshold
-        self.recovery_timeout = recovery_timeout
-        self._failure_count = 0
-        self._last_failure_time: Optional[float] = None
-        self._state = "closed"  # closed, open, half_open
-
-    @property
-    def is_open(self) -> bool:
-        if self._state == "open":
-            if (
-                self._last_failure_time
-                and (time.time() - self._last_failure_time) > self.recovery_timeout
-            ):
-                self._state = "half_open"
-                return False
-            return True
-        return False
-
-    def record_success(self):
-        self._failure_count = 0
-        self._state = "closed"
-
-    def record_failure(self):
-        self._failure_count += 1
-        self._last_failure_time = time.time()
-        if self._failure_count >= self.failure_threshold:
-            self._state = "open"
-            logger.warning("Circuit breaker OPEN after %d failures", self._failure_count)
-
-    def reset(self):
-        """Reset circuit breaker to closed state (useful for testing)"""
-        self._failure_count = 0
-        self._last_failure_time = None
-        self._state = "closed"
-
-
-_rag_circuit_breaker = CircuitBreaker()
-
-# カテゴリ別品質グレーディング閾値
-CATEGORY_THRESHOLDS = {
-    "hours": {"high": 0.75, "medium": 0.50, "term_match": 0.25},
-    "pricing": {"high": 0.75, "medium": 0.50, "term_match": 0.25},
-    "facility-info": {"high": 0.78, "medium": 0.58, "term_match": 0.25},
-    "location": {"high": 0.70, "medium": 0.50, "term_match": 0.20},
-    "event": {"high": 0.80, "medium": 0.60, "term_match": 0.30},
-    "general": {"high": 0.72, "medium": 0.52, "term_match": 0.20},
-    "consultation": {"high": 0.73, "medium": 0.48, "term_match": 0.20},
-    "community": {"high": 0.73, "medium": 0.53, "term_match": 0.20},
+# Query expansion mappings for Japanese/English synonyms
+QUERY_EXPANSION_MAP: Dict[str, List[str]] = {
+    "営業時間": ["opening hours", "business hours", "営業", "時間", "何時から", "何時まで", "開館"],
+    "料金": ["pricing", "price", "cost", "fee", "料金", "値段", "いくら", "無料"],
+    "アクセス": ["access", "location", "directions", "場所", "行き方", "住所", "最寄り駅"],
+    "wifi": ["Wi-Fi", "WiFi", "wireless", "ネットワーク", "インターネット"],
+    "会議室": ["meeting room", "conference room", "部屋", "予約"],
+    "設備": ["facility", "facilities", "equipment", "機材", "備品"],
+    "イベント": ["event", "events", "セミナー", "勉強会", "ワークショップ"],
+    "opening hours": ["営業時間", "business hours", "operating hours"],
+    "price": ["料金", "pricing", "cost", "fee"],
+    "location": ["アクセス", "場所", "address", "directions"],
 }
-DEFAULT_THRESHOLDS = {"high": 0.78, "medium": 0.58, "term_match": 0.25}
-
-# カテゴリ別RPC類似度閾値
-RPC_SIMILARITY_THRESHOLDS: Dict[str, float] = {
-    "hours": 0.25,
-    "pricing": 0.25,
-    "location": 0.25,
-    "facility-info": 0.30,
-    "event": 0.35,
-    "general": 0.30,
-    "consultation": 0.30,
-    "community": 0.30,
-}
-DEFAULT_RPC_SIMILARITY_THRESHOLD = 0.30
-RPC_TIMEOUT_SECONDS = 10
 
 
 class EnhancedRAGSearch:
-    """Enhanced RAG検索ツール"""
+    """Enhanced RAG検索ツール
 
-    def __init__(self):
-        """初期化"""
-        self.supabase: Client = create_client(
-            os.getenv("SUPABASE_URL", ""),
-            os.getenv("SUPABASE_KEY", ""),
+    Supabaseのベクトル検索とテキストベースのフォールバック検索を組み合わせて、
+    高精度なRAG検索を提供する。
+
+    Attributes:
+        supabase: Supabaseクライアント
+        openai_api_key: OpenAI APIキー
+        embedding_model: 使用するembeddingモデル名
+        embedding_dimensions: embeddingの次元数
+    """
+
+    def __init__(
+        self,
+        supabase_client: Optional[Client] = None,
+        embedding_model: Optional[str] = None,
+        embedding_dimensions: Optional[int] = None,
+    ):
+        """初期化
+
+        Args:
+            supabase_client: Supabaseクライアント（テスト用にDI可能）
+            embedding_model: embeddingモデル名（環境変数 EMBEDDING_MODEL で上書き可）
+            embedding_dimensions: embedding次元数（環境変数 EMBEDDING_DIMENSIONS で上書き可）
+        """
+        if supabase_client is not None:
+            self.supabase = supabase_client
+        else:
+            self.supabase: Client = create_client(
+                os.getenv("SUPABASE_URL", ""),
+                os.getenv("SUPABASE_KEY", ""),
+            )
+        self.openai_api_key = os.getenv("OPENAI_API_KEY", "")
+        self.embedding_model = embedding_model or os.getenv(
+            "EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL
         )
-
-    def _get_rpc_threshold(self, category: str) -> float:
-        """カテゴリに基づくRPC類似度閾値を取得"""
-        return RPC_SIMILARITY_THRESHOLDS.get(category, DEFAULT_RPC_SIMILARITY_THRESHOLD)
+        self.embedding_dimensions = embedding_dimensions or int(
+            os.getenv("EMBEDDING_DIMENSIONS", str(DEFAULT_EMBEDDING_DIMENSIONS))
+        )
 
     async def search(
         self,
@@ -104,7 +78,6 @@ class EnhancedRAGSearch:
         language: str = "ja",
         include_advice: bool = True,
         max_results: int = 10,
-        context_signals=None,
     ) -> Dict:
         """
         Enhanced RAG検索を実行
@@ -115,59 +88,44 @@ class EnhancedRAGSearch:
             language: 言語（ja or en）
             include_advice: 実用的なアドバイスを含めるか
             max_results: 最大結果数
-            context_signals: コンテキストシグナル（Noneの場合は静的閾値を使用）
 
         Returns:
             検索結果辞書 {success, data: {context, results, totalResults, topEntity}}
         """
         try:
-            # Circuit breaker check
-            if _rag_circuit_breaker.is_open:
-                logger.warning("Circuit breaker is OPEN, returning degraded response")
-                return {
-                    "success": False,
-                    "error": "Service temporarily unavailable",
-                    "data": {
-                        "context": (
-                            "現在検索サービスに接続できません。" "しばらくしてからお試しください。"
-                        ),
-                        "results": [],
-                        "totalResults": 0,
-                    },
-                }
+            print(f"[EnhancedRAGSearch] Starting search with query: {query}")
+            print(f"[EnhancedRAGSearch] Category: {category}, Language: {language}")
 
-            logger.info("Starting search with query: %s", query[:50])
-            logger.debug("Category: %s, Language: %s", category, language)
+            # 1. クエリ拡張（同義語・多言語キーワードを追加）
+            expanded_query = self._expand_query(query, category, language)
+            print(f"[EnhancedRAGSearch] Expanded query: {expanded_query}")
 
-            # 1. OpenAI Embeddings APIでクエリをエンベディング化
-            embedding = await self._generate_embedding(query)
+            # 2. OpenAI Embeddings APIでクエリをエンベディング化
+            embedding = await self._generate_embedding(expanded_query)
 
-            # 2. Supabase RPCでベクトル検索
-            try:
-                search_results = await asyncio.wait_for(
-                    asyncio.to_thread(
-                        lambda: self.supabase.rpc(
-                            "search_knowledge_base",
-                            {
-                                "query_embedding": embedding,
-                                "similarity_threshold": self._get_rpc_threshold(category),
-                                "match_count": max_results * 2,  # スコアリング用に多めに取得
-                            },
-                        ).execute()
-                    ),
-                    timeout=RPC_TIMEOUT_SECONDS,
+            # 3. Supabase RPCでベクトル検索（閾値を低めに設定して取りこぼしを防ぐ）
+            search_results = self.supabase.rpc(
+                "search_knowledge_base",
+                {
+                    "query_embedding": embedding,
+                    "similarity_threshold": 0.3,
+                    "match_count": max_results * 3,  # スコアリング用に多めに取得
+                },
+            ).execute()
+
+            # 4. ベクトル検索で結果が不十分な場合、テキストベースのフォールバック
+            if not search_results.data or len(search_results.data) < 2:
+                print("[EnhancedRAGSearch] Vector search insufficient, trying text fallback")
+                text_results = await self._text_fallback_search(
+                    query, category, language, max_results
                 )
-            except asyncio.TimeoutError:
-                logger.error("Supabase RPC timed out after %ds", RPC_TIMEOUT_SECONDS)
-                return {
-                    "success": False,
-                    "data": {
-                        "context": "",
-                        "results": [],
-                        "totalResults": 0,
-                        "topEntity": "general",
-                    },
-                }
+                if text_results:
+                    existing_ids = {r.get("id") for r in (search_results.data or [])}
+                    for tr in text_results:
+                        if tr.get("id") not in existing_ids:
+                            if search_results.data is None:
+                                search_results.data = []  # type: ignore[assignment]
+                            search_results.data.append(tr)
 
             if not search_results.data:
                 return {
@@ -180,42 +138,25 @@ class EnhancedRAGSearch:
                     },
                 }
 
-            # 3. エンティティ認識とスコアリング
-            results_list: List[Dict] = (
-                list(search_results.data) if isinstance(search_results.data, list) else []
-            )
-            scored_results = self._score_results(results_list, query, category, language)
+            # 5. エンティティ認識とスコアリング
+            scored_results = self._score_results(search_results.data, query, category, language)
 
-            # 3.5. 品質グレーディング（軽量CRAG）
-            scored_results = self._grade_result_relevance(
-                scored_results, query, category, context_signals=context_signals
-            )
-
-            # 4. トップ結果を取得
+            # 6. トップ結果を取得
             top_results = scored_results[:max_results]
 
-            logger.debug(
-                "Top results after scoring: %s",
-                [
-                    {
-                        "title": r.get("title"),
-                        "entity": r.get("entity"),
-                        "priority_score": r.get("priority_score"),
-                    }
-                    for r in top_results
-                ],
+            print(
+                f"[EnhancedRAGSearch] Top results after scoring: {[{'title': r.get('title'), 'entity': r.get('entity'), 'priority_score': r.get('priority_score')} for r in top_results]}"
             )
 
-            # 5. コンテキストを構築
+            # 7. コンテキストを構築
             context = self._build_context_from_results(top_results, category, language)
 
-            # 6. 実用的なアドバイスを追加（オプション）
+            # 8. 実用的なアドバイスを追加（オプション）
             if include_advice:
                 advice = self._generate_practical_advice(top_results, query, category, language)
                 if advice:
                     context += f"\n\n{advice}"
 
-            _rag_circuit_breaker.record_success()
             return {
                 "success": True,
                 "data": {
@@ -229,15 +170,166 @@ class EnhancedRAGSearch:
             }
 
         except Exception as e:
-            _rag_circuit_breaker.record_failure()
-            logger.exception("Search error: %s", e)
+            print(f"[EnhancedRAGSearch] Error: {e}")
             return {"success": False, "error": str(e)}
 
-    async def _generate_embedding(self, text: str) -> List[float]:
-        """OpenRouter API経由でエンベディングを生成（共通サービスに委譲）"""
-        from backend.utils.embedding_service import generate_embedding
+    def _expand_query(self, query: str, category: str, language: str) -> str:
+        """クエリを同義語・多言語キーワードで拡張する。
 
-        return await generate_embedding(text)
+        短いクエリやドメイン固有の用語に対してベクトル検索の精度を向上させる。
+
+        Args:
+            query: 元のクエリ
+            category: クエリカテゴリ
+            language: 言語コード
+
+        Returns:
+            拡張されたクエリ文字列
+        """
+        expansions: list[str] = []
+
+        # カテゴリベースの拡張キーワード
+        category_keywords: Dict[str, List[str]] = {
+            "hours": ["営業時間", "opening hours", "business hours", "開館時間"],
+            "pricing": ["料金", "price", "pricing", "cost", "利用料金"],
+            "location": ["場所", "アクセス", "location", "access", "住所", "address"],
+            "facility-info": ["設備", "facility", "施設", "equipment"],
+        }
+
+        if category in category_keywords:
+            expansions.extend(category_keywords[category])
+
+        # クエリ内のキーワードに基づく拡張
+        query_lower = query.lower()
+        for key, synonyms in QUERY_EXPANSION_MAP.items():
+            if key.lower() in query_lower:
+                expansions.extend(synonyms)
+
+        # 重複除去して元クエリと結合
+        seen: set[str] = set()
+        unique_expansions: list[str] = []
+        for exp in expansions:
+            if exp.lower() not in seen and exp.lower() not in query_lower:
+                seen.add(exp.lower())
+                unique_expansions.append(exp)
+
+        if unique_expansions:
+            # 拡張キーワードを元クエリに付加（最大5個）
+            return f"{query} ({' '.join(unique_expansions[:5])})"
+
+        return query
+
+    async def _text_fallback_search(
+        self,
+        query: str,
+        category: str,
+        language: str,
+        max_results: int,
+    ) -> List[Dict]:
+        """テキストベースのフォールバック検索。
+
+        ベクトル検索で十分な結果が得られない場合に、カテゴリとキーワードで
+        knowledge_baseを直接検索する。
+
+        Args:
+            query: 検索クエリ
+            category: カテゴリ
+            language: 言語コード
+            max_results: 最大結果数
+
+        Returns:
+            検索結果のリスト
+        """
+        try:
+            # カテゴリベースの検索
+            query_builder = self.supabase.table("knowledge_base").select(
+                "id, content, category, subcategory, language, source, metadata"
+            )
+
+            # カテゴリフィルタ（generalカテゴリ以外の場合）
+            if category and category != "general":
+                query_builder = query_builder.eq("category", category)
+
+            # 言語フィルタ
+            if language:
+                query_builder = query_builder.eq("language", language)
+
+            result = query_builder.limit(max_results).execute()
+
+            if not result.data:
+                # カテゴリフィルタなしで再試行
+                result = (
+                    self.supabase.table("knowledge_base")
+                    .select("id, content, category, subcategory, language, source, metadata")
+                    .eq("language", language)
+                    .limit(max_results)
+                    .execute()
+                )
+
+            if result.data:
+                # テキストマッチングでスコア付け
+                scored: list[Dict] = []
+                for row in result.data:
+                    content_lower = row.get("content", "").lower()
+                    query_lower = query.lower()
+                    # 簡易テキストマッチスコア
+                    match_score = 0.0
+                    query_terms = query_lower.replace("？", "").replace("?", "").split()
+                    for term in query_terms:
+                        if len(term) >= 2 and term in content_lower:
+                            match_score += 0.15
+                    # カテゴリ一致ボーナス
+                    if row.get("category") == category:
+                        match_score += 0.2
+                    if match_score > 0:
+                        scored.append({**row, "similarity": min(match_score, 0.7)})
+
+                scored.sort(key=lambda x: x.get("similarity", 0), reverse=True)
+                return scored[:max_results]
+
+            return []
+
+        except Exception as e:
+            print(f"[EnhancedRAGSearch] Text fallback error: {e}")
+            return []
+
+    async def _generate_embedding(self, text: str) -> List[float]:
+        """OpenAI APIでエンベディングを生成。
+
+        Args:
+            text: エンベディング対象テキスト
+
+        Returns:
+            エンベディングベクトル
+
+        Raises:
+            Exception: API呼び出しが失敗した場合
+        """
+        request_body: Dict = {
+            "model": self.embedding_model,
+            "input": text,
+        }
+
+        # text-embedding-3-* モデルは dimensions パラメータをサポート
+        if self.embedding_model.startswith("text-embedding-3-"):
+            request_body["dimensions"] = self.embedding_dimensions
+
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "https://api.openai.com/v1/embeddings",
+                headers={
+                    "Authorization": f"Bearer {self.openai_api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=request_body,
+                timeout=30.0,
+            )
+
+            if response.status_code != 200:
+                raise Exception(f"Embedding API error: {response.text}")
+
+            data = response.json()
+            return data["data"][0]["embedding"]
 
     def _score_results(
         self, results: List[Dict], query: str, category: str, language: str
@@ -278,165 +370,17 @@ class EnhancedRAGSearch:
 
         return scored_results
 
-    def _grade_result_relevance(
-        self,
-        scored_results: List[Dict],
-        query: str,
-        category: str = "general",
-        context_signals=None,
-    ) -> List[Dict]:
-        """スコアリング済み結果の品質グレーディング（軽量CRAG）
-
-        priority_scoreとクエリ用語マッチ率を基に、低品質な結果を除外する。
-
-        Grading criteria:
-        - HIGH (priority_score >= high_threshold): 常に保持
-        - MEDIUM (medium_threshold <= priority_score < high_threshold):
-          クエリ用語マッチがある場合保持
-        - LOW (priority_score < medium_threshold): 除外
-
-        閾値はカテゴリとクエリ長により動的に調整される。
-
-        Args:
-            scored_results: _score_results()でスコアリング済みの結果リスト
-            query: 元のクエリ文字列
-            category: クエリカテゴリ（hours, pricing, location等）
-            context_signals: コンテキストシグナル（Noneの場合は静的閾値を使用）
-
-        Returns:
-            品質フィルタリング済みの結果リスト
-        """
-        if not scored_results:
-            return []
-
-        # カテゴリ別閾値を取得
-        thresholds = CATEGORY_THRESHOLDS.get(category, DEFAULT_THRESHOLDS)
-
-        # コンテキストシグナルがある場合は動的調整
-        if context_signals is not None:
-            try:
-                from backend.utils.context_priority import ContextPriorityEngine
-
-                engine = ContextPriorityEngine()
-                thresholds = engine.compute_adjusted_thresholds(
-                    category=category,
-                    query=query,
-                    signals=context_signals,
-                    base_thresholds=thresholds,
-                )
-            except Exception as e:
-                logger.warning("Context priority adjustment failed, using static thresholds: %s", e)
-                thresholds = CATEGORY_THRESHOLDS.get(category, DEFAULT_THRESHOLDS)
-
-        high_threshold = thresholds["high"]
-        medium_threshold = thresholds["medium"]
-        term_match_threshold = thresholds["term_match"]
-
-        # クエリ長による閾値調整
-        query_len = len(query)
-        if query_len < 10:
-            # 短いクエリ: 情報が少ないため閾値を緩和
-            high_threshold -= 0.05
-            medium_threshold -= 0.05
-            term_match_threshold -= 0.05
-        elif query_len >= 50:
-            # 長いクエリ: 情報が多いため閾値を厳格化
-            high_threshold += 0.03
-            medium_threshold += 0.03
-            term_match_threshold += 0.03
-
-        query_lower = query.lower()
-
-        # Check if query contains CJK characters (Japanese/Chinese/Korean)
-        has_cjk = any(
-            "\u4e00" <= c <= "\u9fff" or "\u3040" <= c <= "\u309f" or "\u30a0" <= c <= "\u30ff"
-            for c in query_lower
-        )
-
-        if has_cjk:
-            # For Japanese: use 2-character sliding window matching
-            query_terms = [query_lower[i : i + 2] for i in range(len(query_lower) - 1)]
-            # Filter out particles and common characters
-            query_terms = [
-                t
-                for t in query_terms
-                if t
-                not in (
-                    "は",
-                    "の",
-                    "が",
-                    "を",
-                    "に",
-                    "で",
-                    "と",
-                    "も",
-                    "か",
-                    "です",
-                    "ます",
-                    "した",
-                    "ません",
-                    "まし",
-                    "ませ",
-                    "ありま",
-                    "りま",
-                )
-            ]
-        else:
-            query_terms = query_lower.split()
-
-        graded_results: List[Dict] = []
-
-        for result in scored_results:
-            score = result.get("priority_score", 0.0)
-
-            # HIGH: 常に保持
-            if score >= high_threshold:
-                graded_results.append({**result, "grade": "HIGH"})
-                continue
-
-            # MEDIUM: クエリ用語マッチがある場合保持
-            if score >= medium_threshold:
-                content = result.get("content", "").lower()
-                title = result.get("title", "").lower()
-                combined = f"{title} {content}"
-
-                # クエリ用語のマッチ率を計算
-                if query_terms:
-                    match_count = sum(1 for term in query_terms if term in combined)
-                    match_ratio = match_count / len(query_terms)
-
-                    if match_ratio > term_match_threshold:
-                        graded_results.append({**result, "grade": "MEDIUM"})
-                        continue
-
-            # LOW: 除外（ログに記録）
-            logger.debug(
-                "Filtered out low-relevance result: title=%s, score=%.3f",
-                result.get("title", "N/A"),
-                score,
-            )
-
-        logger.info(
-            "Grade results: %d/%d passed (HIGH: %d, MEDIUM: %d)",
-            len(graded_results),
-            len(scored_results),
-            sum(1 for r in graded_results if r.get("grade") == "HIGH"),
-            sum(1 for r in graded_results if r.get("grade") == "MEDIUM"),
-        )
-
-        return graded_results
-
     def _detect_entity(self, result: Dict) -> str:
         """結果からエンティティを検出"""
-        content = str(result.get("content", "")).lower()
-        title = str(result.get("title", "")).lower()
+        content = result.get("content", "").lower()
+        title = result.get("title", "").lower()
         metadata = result.get("metadata", {})
 
         # メタデータからエンティティを取得
         if metadata and isinstance(metadata, dict):
             entity = metadata.get("entity", "")
-            if entity and isinstance(entity, str):
-                return str(entity)
+            if entity:
+                return entity
 
         # コンテンツからエンティティを推測
         if "engineer cafe" in content or "engineer cafe" in title or "エンジニアカフェ" in content:
@@ -450,11 +394,8 @@ class EnhancedRAGSearch:
 
     def _calculate_category_bonus(self, result: Dict, category: str) -> float:
         """カテゴリに基づくボーナススコア計算"""
-        # トップレベルのcategoryカラム（RPC結果）を優先、fallbackでmetadata.category
-        result_category = result.get("category", "")
-        if not result_category:
-            metadata = result.get("metadata", {})
-            result_category = metadata.get("category", "") if isinstance(metadata, dict) else ""
+        metadata = result.get("metadata", {})
+        result_category = metadata.get("category", "") if isinstance(metadata, dict) else ""
 
         # カテゴリマッピング
         category_mapping = {
@@ -462,9 +403,6 @@ class EnhancedRAGSearch:
             "pricing": ["pricing", "料金", "price", "cost"],
             "location": ["location", "access", "場所", "アクセス"],
             "facility-info": ["facility-info", "設備", "facilities"],
-            "general": ["general", "概要", "overview"],
-            "consultation": ["consultation", "相談", "キャリア"],
-            "community": ["community", "コミュニティ", "lab"],
         }
 
         if category in category_mapping:
@@ -564,24 +502,12 @@ class EnhancedRAGSearch:
         # カテゴリに応じたアドバイステンプレート
         advice_templates = {
             "hours": {
-                "ja": (
-                    "💡 営業時間は日によって異なる場合があります。"
-                    "訪問前に確認することをお勧めします。"
-                ),
-                "en": (
-                    "💡 Operating hours may vary by day. "
-                    "We recommend checking before your visit."
-                ),
+                "ja": "💡 営業時間は日によって異なる場合があります。訪問前に確認することをお勧めします。",
+                "en": "💡 Operating hours may vary by day. We recommend checking before your visit.",
             },
             "pricing": {
-                "ja": (
-                    "💡 料金プランは変更される場合があります。"
-                    "最新情報はスタッフにお問い合わせください。"
-                ),
-                "en": (
-                    "💡 Pricing plans may change. "
-                    "Please contact staff for the latest information."
-                ),
+                "ja": "💡 料金プランは変更される場合があります。最新情報はスタッフにお問い合わせください。",
+                "en": "💡 Pricing plans may change. Please contact staff for the latest information.",
             },
             "facility-info": {
                 "ja": "💡 設備の利用方法がわからない場合は、スタッフにお気軽にお声がけください。",
@@ -593,213 +519,3 @@ class EnhancedRAGSearch:
             return advice_templates[category].get(language, advice_templates[category].get("ja"))
 
         return None
-
-    async def search_hierarchical(
-        self,
-        query: str,
-        category: str,
-        language: str = "ja",
-        include_advice: bool = True,
-        max_results: int = 10,
-        context_signals=None,
-    ) -> Dict:
-        """
-        Hierarchical RAG検索を実行
-
-        チャンクレベルの検索を行い、親チャンクのコンテキストを展開して
-        より豊富なコンテキストを提供する。
-
-        Args:
-            query: 検索クエリ
-            category: クエリカテゴリ
-            language: 言語（ja or en）
-            include_advice: 実用的なアドバイスを含めるか
-            max_results: 最大結果数
-            context_signals: コンテキストシグナル（Noneの場合は静的閾値を使用）
-
-        Returns:
-            検索結果辞書 {success, data: {context, results, totalResults, topEntity}}
-        """
-        try:
-            logger.info("Starting hierarchical search: %s", query[:50])
-
-            # 1. Embedding生成
-            embedding = await self._generate_embedding(query)
-
-            # 2. Hierarchical RPC呼び出し（フォールバック付き）
-            try:
-                search_results = await asyncio.wait_for(
-                    asyncio.to_thread(
-                        lambda: self.supabase.rpc(
-                            "search_knowledge_base_hierarchical",
-                            {
-                                "query_embedding": embedding,
-                                "similarity_threshold": self._get_rpc_threshold(category),
-                                "match_count": max_results * 2,
-                                "filter_chunk_level": "chunk",
-                            },
-                        ).execute()
-                    ),
-                    timeout=RPC_TIMEOUT_SECONDS,
-                )
-            except Exception as rpc_err:
-                logger.warning(
-                    "Hierarchical RPC not available, falling back to standard search: %s", rpc_err
-                )
-                return await self.search(
-                    query=query,
-                    category=category,
-                    language=language,
-                    include_advice=include_advice,
-                    max_results=max_results,
-                    context_signals=context_signals,
-                )
-
-            if not search_results.data:
-                return {
-                    "success": True,
-                    "data": {
-                        "context": "",
-                        "results": [],
-                        "totalResults": 0,
-                        "topEntity": "general",
-                    },
-                }
-
-            # 3. スコアリング
-            results_list: List[Dict] = (
-                list(search_results.data) if isinstance(search_results.data, list) else []
-            )
-            scored_results = self._score_results(results_list, query, category, language)
-
-            # 4. 親チャンク展開
-            scored_results = self._expand_parent_context(scored_results)
-
-            # 5. 品質グレーディング
-            scored_results = self._grade_result_relevance(
-                scored_results, query, category, context_signals=context_signals
-            )
-
-            # 6. トップ結果
-            top_results = scored_results[:max_results]
-
-            # 7. Hierarchicalコンテキスト構築
-            context = self._build_hierarchical_context(top_results, language)
-
-            # 8. アドバイス追加
-            if include_advice:
-                advice = self._generate_practical_advice(top_results, query, category, language)
-                if advice:
-                    context += f"\n\n{advice}"
-
-            return {
-                "success": True,
-                "data": {
-                    "context": context,
-                    "results": top_results,
-                    "totalResults": len(scored_results),
-                    "topEntity": (
-                        top_results[0].get("entity", "general") if top_results else "general"
-                    ),
-                },
-            }
-
-        except Exception as e:
-            logger.exception("Hierarchical search error: %s", e)
-            return {"success": False, "error": str(e)}
-
-    def _expand_parent_context(self, chunk_results: List[Dict]) -> List[Dict]:
-        """親チャンクのコンテキストを展開
-
-        チャンク結果からparent_idを抽出し、親ドキュメントの内容を
-        各チャンクに付与する。
-
-        Args:
-            chunk_results: チャンクレベルの検索結果
-
-        Returns:
-            親コンテキストが付与された結果リスト
-        """
-        if not chunk_results:
-            return chunk_results
-
-        # parent_idを抽出（重複排除）
-        parent_ids = list({r.get("parent_id") for r in chunk_results if r.get("parent_id")})
-
-        if not parent_ids:
-            return chunk_results
-
-        try:
-            # 親ドキュメントをbatch SELECT
-            parent_response = (
-                self.supabase.table("knowledge_base")
-                .select("id, title, content")
-                .in_("id", parent_ids)
-                .execute()
-            )
-
-            # 親データをID→データのマップに変換
-            parent_map: Dict = {}
-            if parent_response.data:
-                for parent in parent_response.data:
-                    parent_map[parent["id"]] = parent
-
-            # 各チャンクに親コンテンツを付与
-            expanded: List[Dict] = []
-            for result in chunk_results:
-                pid = result.get("parent_id")
-                if pid and pid in parent_map:
-                    expanded.append(
-                        {
-                            **result,
-                            "parent_content": parent_map[pid].get("content", ""),
-                            "parent_title": parent_map[pid].get("title", ""),
-                        }
-                    )
-                else:
-                    expanded.append(result)
-
-            return expanded
-
-        except Exception as e:
-            logger.warning("Failed to expand parent context: %s", e, exc_info=True)
-            return chunk_results
-
-    def _build_hierarchical_context(self, results: List[Dict], language: str = "ja") -> str:
-        """Hierarchical結果からコンテキストを構築
-
-        親チャンクでグループ化し、階層的なコンテキストを生成する。
-
-        Args:
-            results: 親コンテキスト付きの検索結果
-            language: 言語
-
-        Returns:
-            構築されたコンテキスト文字列
-        """
-        if not results:
-            return ""
-
-        # parent_idでグルーピング
-        groups: Dict[Optional[str], List[Dict]] = {}
-        for result in results:
-            pid = result.get("parent_id")
-            if pid not in groups:
-                groups[pid] = []
-            groups[pid].append(result)
-
-        # コンテキスト構築
-        context_parts: List[str] = []
-
-        for pid, group in groups.items():
-            if pid and group[0].get("parent_title"):
-                # 親がある場合: 親タイトルでグループ化
-                parent_title = group[0]["parent_title"]
-                chunk_contents = "\n".join(r.get("content", "") for r in group)
-                context_parts.append(f"\u3010{parent_title}\u3011\n{chunk_contents}")
-            else:
-                # 親がない場合: 通常のコンテンツ
-                for r in group:
-                    context_parts.append(r.get("content", ""))
-
-        return "\n\n".join(context_parts)
