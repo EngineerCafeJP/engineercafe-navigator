@@ -1,6 +1,7 @@
 'use client';
 
 import { cn } from '@/lib/cn';
+import { ClarificationUtils } from '@/lib/clarification-utils';
 import {
   ChevronDown,
   Loader2,
@@ -15,6 +16,7 @@ import { useState, type ReactNode } from 'react';
 import VoiceInterface, {
   type VoiceSessionState,
 } from './VoiceInterface';
+import ClarificationButtons from './ClarificationButtons';
 
 interface VoiceConversationShellProps {
   language?: 'ja' | 'en';
@@ -73,6 +75,48 @@ const buttonCopy: Record<VoiceSessionState, keyof typeof shellLabels.ja> = {
   speaking: 'speaking',
 };
 
+const clarificationOptionMap = {
+  ja: {
+    'cafe-clarification-needed': ['エンジニアカフェ', 'サイノカフェ'],
+    'meeting-room-clarification-needed': ['2階の有料会議室', '地下1階の無料ミーティングスペース'],
+    'event-clarification-needed': ['イベント情報', 'コミュニティ情報'],
+    'space-clarification-needed': ['作業スペース', '会議スペース'],
+  },
+  en: {
+    'cafe-clarification-needed': ['Engineer Cafe', 'Saino Cafe'],
+    'meeting-room-clarification-needed': ['Paid meeting room on 2F', 'Free meeting space on B1'],
+    'event-clarification-needed': ['Event information', 'Community information'],
+    'space-clarification-needed': ['Workspace', 'Meeting space'],
+  },
+} as const;
+
+const getClarificationOptions = (
+  currentLanguage: 'ja' | 'en',
+  response: string,
+  metadata: Record<string, unknown> | null,
+): string[] => {
+  const metadataOptions = Array.isArray(metadata?.clarification_options)
+    ? metadata.clarification_options.filter((value): value is string => typeof value === 'string')
+    : [];
+  if (metadataOptions.length > 0) {
+    return metadataOptions;
+  }
+
+  const clarification = metadata?.clarification;
+  const clarificationType =
+    clarification &&
+    typeof clarification === 'object' &&
+    typeof (clarification as { clarification_type?: unknown }).clarification_type === 'string'
+      ? (clarification as { clarification_type: keyof typeof clarificationOptionMap.ja }).clarification_type
+      : null;
+
+  if (clarificationType && clarificationType in clarificationOptionMap[currentLanguage]) {
+    return [...clarificationOptionMap[currentLanguage][clarificationType]];
+  }
+
+  return ClarificationUtils.extractClarificationOptions(response);
+};
+
 export default function VoiceConversationShell({
   language = 'ja',
   onLanguageChange,
@@ -96,6 +140,11 @@ export default function VoiceConversationShell({
         const waveformBars = (
           isListening || isSpeaking ? voice.waveformBars : [0.18, 0.24, 0.2, 0.26, 0.18]
         ).map((value) => Math.max(value, 0.16));
+        const clarificationOptions = getClarificationOptions(
+          voice.currentLanguage,
+          voice.response,
+          voice.metadata,
+        );
 
         const submitDraft = async () => {
           const trimmed = draft.trim();
@@ -250,6 +299,15 @@ export default function VoiceConversationShell({
                             : 'The answer will appear here.')}
                       </p>
                     </div>
+                    {clarificationOptions.length > 0 ? (
+                      <div className="rounded-2xl bg-white p-4">
+                        <ClarificationButtons
+                          key={`${voice.response}-${clarificationOptions.join('|')}`}
+                          options={clarificationOptions}
+                          onSelect={voice.sendMessage}
+                        />
+                      </div>
+                    ) : null}
                   </div>
                 </div>
 
