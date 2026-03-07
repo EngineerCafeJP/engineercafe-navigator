@@ -59,7 +59,7 @@ export async function deleteVocabulary(id: string): Promise<void> {
  * 語彙詳細取得（編集時に既存データを取得）
  */
 export async function getVocabularyDetail(id: string): Promise<VocabularyItem> {
-  const res = await fetch(`${BACKEND_URL}/stt/vocabulary/${id}`);
+  const res = await fetch(`${getBackendUrl()}/stt/vocabulary/${id}`);
   if (!res.ok) throw new Error(`Failed to fetch vocabulary detail: ${res.status}`);
   const json = await res.json();
   return json.data;
@@ -74,7 +74,7 @@ export async function createVocabulary(data: {
   category: string;
   priority: number;
 }): Promise<VocabularyItem> {
-  const res = await fetch(`${BACKEND_URL}/stt/vocabulary`, {
+  const res = await fetch(`${getBackendUrl()}/stt/vocabulary`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -101,7 +101,7 @@ export async function updateVocabulary(
     priority: number;
   }
 ): Promise<VocabularyItem> {
-  const res = await fetch(`${BACKEND_URL}/stt/vocabulary/${id}`, {
+  const res = await fetch(`${getBackendUrl()}/stt/vocabulary/${id}`, {
     method: "PUT",
     headers: {
       "Content-Type": "application/json",
