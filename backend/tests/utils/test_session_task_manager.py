@@ -17,17 +17,22 @@ from backend.utils.session_task_manager import (
     SessionTaskInfo,
     SessionTaskManager,
     get_session_task_manager,
+    reset_session_task_manager,
 )
+
+
+@pytest.fixture(autouse=True)
+def reset_manager_singleton():
+    """各テスト前後で SessionTaskManager シングルトンをリセット"""
+    reset_session_task_manager()
+    yield
+    reset_session_task_manager()
 
 
 @pytest.fixture
 async def manager():
     """SessionTaskManager フィクスチャ"""
     mgr = SessionTaskManager()
-    # Singleton を初期化
-    mgr._sessions.clear()
-    mgr._initialized = True
-
     yield mgr
 
 
@@ -99,6 +104,16 @@ class TestSessionTaskManager:
         mgr1 = SessionTaskManager()
         mgr2 = SessionTaskManager()
         assert mgr1 is mgr2
+
+    async def test_get_lock_lazy_initialization(self, manager):
+        """Lock がイベントループ内で遅延初期化される"""
+        assert manager._lock is None
+
+        lock = await manager._get_lock()
+
+        assert isinstance(lock, asyncio.Lock)
+        assert manager._lock is lock
+        assert await manager._get_lock() is lock
 
     async def test_register_session(self, manager):
         """セッション登録"""
