@@ -13,7 +13,7 @@ Tests cover:
 import pytest
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
-from tools.calendar_service import CalendarService
+from backend.tools.calendar_service import CalendarService
 
 # Sample ICS content for testing
 SAMPLE_ICS = """BEGIN:VCALENDAR

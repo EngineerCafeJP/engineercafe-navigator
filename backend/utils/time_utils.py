@@ -8,7 +8,7 @@
 from datetime import datetime, time
 from zoneinfo import ZoneInfo
 
-from backend.config.settings import BUSINESS_HOURS, CLOSING_WARNING_MINUTES, TIMEZONE
+from backend.config.business_hours import BUSINESS_HOURS, CLOSING_WARNING_MINUTES, TIMEZONE
 
 JST = ZoneInfo(TIMEZONE)
 

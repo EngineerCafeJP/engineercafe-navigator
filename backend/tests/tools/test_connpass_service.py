@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from tools.connpass_service import ConnpassService
+from backend.tools.connpass_service import ConnpassService
 
 
 class TestConnpassInit:
