@@ -89,10 +89,10 @@ ReceptionStage = Literal[
 
 # Valid stage transitions for the reception flow state machine
 _VALID_TRANSITIONS: dict[str, set[str]] = {
-    "initiated": {"greeting", "identifying"},
-    "greeting": {"identifying", "purpose_hearing"},
-    "identifying": {"greeting", "purpose_hearing"},
-    "purpose_hearing": {"routing"},
+    "initiated": {"greeting", "identifying", "escalated"},
+    "greeting": {"identifying", "purpose_hearing", "escalated"},
+    "identifying": {"greeting", "purpose_hearing", "escalated"},
+    "purpose_hearing": {"routing", "escalated"},
     "routing": {"completed", "escalated"},
 }
 
@@ -121,7 +121,7 @@ class ReceptionSession:
     visitor_identity: Optional[VisitorIdentity] = None
     purpose: Optional[VisitPurpose] = None
     stage: ReceptionStage = "initiated"
-    language: Literal["ja", "en"] = "ja"
+    language: Literal["ja", "en", "zh", "ko"] = "ja"
     trigger_type: Literal["face_detection", "button_press", "wake_word", "nfc"] = "button_press"
     created_at: datetime = field(default_factory=datetime.now)
     metadata: dict = field(default_factory=dict)
@@ -196,7 +196,7 @@ class ReceptionSession:
         Args:
             reason: Why escalation is needed.
         """
-        self.stage = "escalated"
+        self.advance_to("escalated")
         self._events.append(
             StaffEscalationRequested(
                 reception_session_id=self.id,

@@ -406,9 +406,11 @@ def get_personalized_greeting(
     """
     lang = _resolve_language(language)
     purpose_label = last_purpose or _DEFAULT_PURPOSE_LABEL[lang]
+    safe_name = str(name).replace("{", "").replace("}", "")
+    safe_purpose = str(purpose_label).replace("{", "").replace("}", "")
     text = _RETURNING_PERSONALIZED[lang].format(
-        name=name,
-        last_purpose=purpose_label,
+        name=safe_name,
+        last_purpose=safe_purpose,
     )
     return ReceptionResult(
         text=text,

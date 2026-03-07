@@ -7,10 +7,11 @@ Handles session lifecycle: start -> respond -> status.
 from __future__ import annotations
 
 import logging
-from typing import Optional
+from collections import OrderedDict
+from typing import Literal, Optional
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from backend.domain.reception.models import (
     ReceptionSession,
@@ -33,10 +34,22 @@ logger = logging.getLogger(__name__)
 reception_router = APIRouter(prefix="/api/reception", tags=["reception"])
 
 # ---------------------------------------------------------------------------
-# In-memory session store (short-lived reception sessions)
+# In-memory session store (short-lived, bounded to prevent unbounded growth)
 # ---------------------------------------------------------------------------
 
-_active_sessions: dict[str, ReceptionSession] = {}
+_MAX_SESSIONS = 1000
+
+_active_sessions: OrderedDict[str, ReceptionSession] = OrderedDict()
+
+
+def _store_session(session: ReceptionSession) -> None:
+    """Store a session, evicting the oldest if at capacity."""
+    if session.id in _active_sessions:
+        _active_sessions.move_to_end(session.id)
+    else:
+        if len(_active_sessions) >= _MAX_SESSIONS:
+            _active_sessions.popitem(last=False)
+    _active_sessions[session.id] = session
 
 # ---------------------------------------------------------------------------
 # Purpose keyword classifier (lightweight, no LLM required for basic cases)
@@ -73,9 +86,9 @@ def _classify_purpose(message: str) -> Optional[str]:
 
 
 class ReceptionStartRequest(BaseModel):
-    session_id: str
-    language: str = "ja"
-    trigger_type: str = "button_press"
+    session_id: str = Field(min_length=1, max_length=128)
+    language: Literal["ja", "en", "zh", "ko"] = "ja"
+    trigger_type: Literal["face_detection", "button_press", "wake_word", "nfc"] = "button_press"
 
 
 class ReceptionStartResponse(BaseModel):
@@ -85,9 +98,9 @@ class ReceptionStartResponse(BaseModel):
 
 
 class ReceptionRespondRequest(BaseModel):
-    session_id: str
-    reception_session_id: str
-    message: str
+    session_id: str = Field(min_length=1, max_length=128)
+    reception_session_id: str = Field(min_length=1, max_length=128)
+    message: str = Field(min_length=1, max_length=2000)
 
 
 class ReceptionRespondResponse(BaseModel):
@@ -119,7 +132,7 @@ async def start_reception(request: ReceptionStartRequest) -> ReceptionStartRespo
     )
     session.advance_to("greeting")
 
-    _active_sessions[session.id] = session
+    _store_session(session)
 
     greeting_result = get_reception_response(request.language, is_returning=False)
     logger.info(
@@ -144,6 +157,13 @@ async def respond_reception(request: ReceptionRespondRequest) -> ReceptionRespon
         raise HTTPException(
             status_code=404,
             detail=f"Reception session not found: {request.reception_session_id}",
+        )
+    _active_sessions.move_to_end(request.reception_session_id)
+
+    if session.session_id != request.session_id:
+        raise HTTPException(
+            status_code=403,
+            detail="Session ID mismatch",
         )
 
     language = session.language
@@ -185,7 +205,7 @@ async def respond_reception(request: ReceptionRespondRequest) -> ReceptionRespon
         )
 
     if current_stage == "routing":
-        session.stage = "completed"
+        session.advance_to("completed")
 
         routing_messages = {
             "ja": "スタッフをお呼びします。少々お待ちください。",
@@ -197,22 +217,22 @@ async def respond_reception(request: ReceptionRespondRequest) -> ReceptionRespon
             next_action="completed",
         )
 
-    return ReceptionRespondResponse(
-        response="",
-        stage=session.stage,
-        next_action=None,
+    raise HTTPException(
+        status_code=409,
+        detail=f"Cannot respond in stage: {session.stage}",
     )
 
 
-@reception_router.get("/status/{session_id}", response_model=ReceptionStatusResponse)
-async def get_reception_status(session_id: str) -> ReceptionStatusResponse:
+@reception_router.get("/status/{reception_session_id}", response_model=ReceptionStatusResponse)
+async def get_reception_status(reception_session_id: str) -> ReceptionStatusResponse:
     """Return the current state of a reception session."""
-    session = _active_sessions.get(session_id)
+    session = _active_sessions.get(reception_session_id)
     if session is None:
         raise HTTPException(
             status_code=404,
-            detail=f"Reception session not found: {session_id}",
+            detail=f"Reception session not found: {reception_session_id}",
         )
+    _active_sessions.move_to_end(reception_session_id)
 
     visitor_type: Optional[str] = None
     purpose_str: Optional[str] = None
