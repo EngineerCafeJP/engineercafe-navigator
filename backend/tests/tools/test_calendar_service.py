@@ -13,7 +13,7 @@ Tests cover:
 import pytest
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
-from tools.calendar_service import CalendarService
+from backend.tools.calendar_service import CalendarService
 
 # Sample ICS content for testing
 SAMPLE_ICS = """BEGIN:VCALENDAR
@@ -114,7 +114,10 @@ class TestCalculateTimeRange:
 
     def test_calculate_today(self, service, mock_now, monkeypatch):
         """Test 'today' returns same-day start (00:00:00) and end (23:59:59)"""
-        monkeypatch.setattr("tools.calendar_service.datetime", MagicMock(now=lambda: mock_now))
+        monkeypatch.setattr(
+            "backend.tools.calendar_service.datetime",
+            MagicMock(now=lambda: mock_now),
+        )
 
         time_min, time_max = service._calculate_time_range("today")
 
@@ -123,7 +126,10 @@ class TestCalculateTimeRange:
 
     def test_calculate_this_week(self, service, mock_now, monkeypatch):
         """Test 'thisWeek' returns Monday to Sunday of current week"""
-        monkeypatch.setattr("tools.calendar_service.datetime", MagicMock(now=lambda: mock_now))
+        monkeypatch.setattr(
+            "backend.tools.calendar_service.datetime",
+            MagicMock(now=lambda: mock_now),
+        )
 
         time_min, time_max = service._calculate_time_range("thisWeek")
 
@@ -134,7 +140,10 @@ class TestCalculateTimeRange:
 
     def test_calculate_next_week(self, service, mock_now, monkeypatch):
         """Test 'nextWeek' returns Monday to Sunday of next week"""
-        monkeypatch.setattr("tools.calendar_service.datetime", MagicMock(now=lambda: mock_now))
+        monkeypatch.setattr(
+            "backend.tools.calendar_service.datetime",
+            MagicMock(now=lambda: mock_now),
+        )
 
         time_min, time_max = service._calculate_time_range("nextWeek")
 
@@ -145,7 +154,10 @@ class TestCalculateTimeRange:
 
     def test_calculate_this_month(self, service, mock_now, monkeypatch):
         """Test 'thisMonth' returns first day to last day of current month"""
-        monkeypatch.setattr("tools.calendar_service.datetime", MagicMock(now=lambda: mock_now))
+        monkeypatch.setattr(
+            "backend.tools.calendar_service.datetime",
+            MagicMock(now=lambda: mock_now),
+        )
 
         time_min, time_max = service._calculate_time_range("thisMonth")
 
