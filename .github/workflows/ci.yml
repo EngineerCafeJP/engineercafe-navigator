@@ -151,9 +151,33 @@ jobs:
         run: black --check . || true
         working-directory: backend
 
+  # Backend: Test with coverage
+  backend-test:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-asyncio pytest-cov
+          pip install -r requirements.txt
+        working-directory: backend
+
+      - name: Run tests
+        run: pytest -m "not ragas and not slow and not e2e" --tb=short -q --cov=. --cov-report=term-missing --cov-report=xml:coverage.xml --cov-fail-under=47
+        working-directory: backend
+
   # Final status check for branch protection
   ci-success:
-    needs: [frontend-lint, frontend-typecheck, frontend-build, backend-lint]
+    needs: [frontend-lint, frontend-typecheck, frontend-build, backend-lint, backend-test]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -162,7 +186,8 @@ jobs:
           if [[ "${{ needs.frontend-lint.result }}" == "failure" ]] || \
              [[ "${{ needs.frontend-typecheck.result }}" == "failure" ]] || \
              [[ "${{ needs.frontend-build.result }}" == "failure" ]] || \
-             [[ "${{ needs.backend-lint.result }}" == "failure" ]]; then
+             [[ "${{ needs.backend-lint.result }}" == "failure" ]] || \
+             [[ "${{ needs.backend-test.result }}" == "failure" ]]; then
             echo "One or more jobs failed"
             exit 1
           fi
