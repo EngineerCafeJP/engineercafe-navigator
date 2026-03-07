@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// バックエンドAPI URL
-const BACKEND_API_URL = process.env.BACKEND_API_URL || 'http://localhost:8000';
+import { getBackendApiUrl } from '@/lib/api/backend-url';
 
 export async function POST(request: NextRequest) {
   try {
@@ -9,7 +8,7 @@ export async function POST(request: NextRequest) {
     const { action, question, sessionId, language, text, fromLanguage, toLanguage, visitorId } = body;
 
     // バックエンドAPIにプロキシ
-    const backendUrl = `${BACKEND_API_URL}/api/chat`;
+    const backendUrl = `${getBackendApiUrl()}/api/chat`;
     const response = await fetch(backendUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -38,7 +37,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         error: 'Internal server error',
-        details: error instanceof Error ? error.message : 'Unknown error',
+        ...(process.env.NODE_ENV === 'development' && {
+          details: error instanceof Error ? error.message : 'Unknown error',
+        }),
       },
       { status: 500 }
     );
@@ -140,7 +141,7 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({
           success: true,
           status: 'healthy',
-          backend: BACKEND_API_URL,
+          backend: 'connected',
         });
 
       default:
@@ -154,7 +155,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         error: 'Internal server error',
-        details: error instanceof Error ? error.message : 'Unknown error',
+        ...(process.env.NODE_ENV === 'development' && {
+          details: error instanceof Error ? error.message : 'Unknown error',
+        }),
       },
       { status: 500 }
     );
