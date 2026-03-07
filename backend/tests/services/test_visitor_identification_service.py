@@ -69,7 +69,18 @@ async def test_identify_by_nfc_found(service: VisitorIdentificationService, mock
     user_builder = MagicMock()
     user_builder.select.return_value = user_builder
     user_builder.eq.return_value = user_builder
-    user_builder.execute.return_value = _make_query_result(data=[{"id": 42, "name": "Taro"}])
+    user_builder.execute.return_value = _make_query_result(
+        data=[
+            {
+                "id": 42,
+                "name": "Taro",
+                "email": "taro@example.com",
+                "prefecture": "Fukuoka",
+                "job": "Engineer",
+                "belong": "OpenAI",
+            }
+        ]
+    )
 
     count_builder = MagicMock()
     count_builder.select.return_value = count_builder
@@ -81,10 +92,15 @@ async def test_identify_by_nfc_found(service: VisitorIdentificationService, mock
 
     result = await service.identify_by_nfc("nfc-abc-123")
 
+    user_builder.select.assert_called_once_with("id, name, email, phone, prefecture, job, belong")
     assert result is not None
     assert result["visitor_type"] == "returning"
     assert result["user_id"] == 42
     assert result["name"] == "Taro"
+    assert result["email"] == "taro@example.com"
+    assert result["prefecture"] == "Fukuoka"
+    assert result["job"] == "Engineer"
+    assert result["belong"] == "OpenAI"
     assert result["visit_count"] == 5
 
 
@@ -201,6 +217,109 @@ async def test_get_recent_visits(service: VisitorIdentificationService, mock_cli
 
 
 # ---------------------------------------------------------------------------
+# Member-number identification
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_identify_by_member_number_found(
+    service: VisitorIdentificationService, mock_client: MagicMock
+):
+    """Should return user profile when a valid member number matches a user."""
+    user_builder = MagicMock()
+    user_builder.select.return_value = user_builder
+    user_builder.eq.return_value = user_builder
+    user_builder.execute.return_value = _make_query_result(
+        data=[
+            {
+                "id": 7,
+                "name": "Hanako",
+                "email": "hanako@example.com",
+                "prefecture": "Tokyo",
+                "job": "Designer",
+                "belong": "Engineer Cafe",
+            }
+        ]
+    )
+
+    count_builder = MagicMock()
+    count_builder.select.return_value = count_builder
+    count_builder.eq.return_value = count_builder
+    count_builder.execute.return_value = _make_query_result(count=12)
+
+    tables = {"users": user_builder, "visits": count_builder}
+    mock_client.table = MagicMock(side_effect=lambda n: tables[n])
+
+    result = await service.identify_by_member_number(7)
+
+    user_builder.select.assert_called_once_with("id, name, email, phone, prefecture, job, belong")
+    assert result is not None
+    assert result["visitor_type"] == "returning"
+    assert result["user_id"] == 7
+    assert result["name"] == "Hanako"
+    assert result["email"] == "hanako@example.com"
+    assert result["prefecture"] == "Tokyo"
+    assert result["job"] == "Designer"
+    assert result["belong"] == "Engineer Cafe"
+    assert result["visit_count"] == 12
+
+
+@pytest.mark.asyncio
+async def test_identify_by_member_number_omits_missing_profile_fields(
+    service: VisitorIdentificationService, mock_client: MagicMock
+):
+    """Should omit optional profile fields when they are not present on the user record."""
+    user_builder = MagicMock()
+    user_builder.select.return_value = user_builder
+    user_builder.eq.return_value = user_builder
+    user_builder.execute.return_value = _make_query_result(data=[{"id": 9, "name": "Ken"}])
+
+    count_builder = MagicMock()
+    count_builder.select.return_value = count_builder
+    count_builder.eq.return_value = count_builder
+    count_builder.execute.return_value = _make_query_result(count=1)
+
+    tables = {"users": user_builder, "visits": count_builder}
+    mock_client.table = MagicMock(side_effect=lambda n: tables[n])
+
+    result = await service.identify_by_member_number(9)
+
+    assert result is not None
+    assert result["name"] == "Ken"
+    assert "email" not in result
+    assert "prefecture" not in result
+    assert "job" not in result
+    assert "belong" not in result
+
+
+@pytest.mark.asyncio
+async def test_identify_by_member_number_not_found(
+    service: VisitorIdentificationService, mock_client: MagicMock
+):
+    """Should return None when no user matches the member number."""
+    builder = MagicMock()
+    builder.select.return_value = builder
+    builder.eq.return_value = builder
+    builder.execute.return_value = _make_query_result(data=[])
+
+    mock_client.table = MagicMock(return_value=builder)
+
+    result = await service.identify_by_member_number(9999)
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_identify_by_member_number_supabase_failure(
+    service: VisitorIdentificationService, mock_client: MagicMock
+):
+    """Should return None gracefully when Supabase raises an exception."""
+    mock_client.table.side_effect = Exception("Connection refused")
+
+    result = await service.identify_by_member_number(1)
+    assert result is None
+
+
+# ---------------------------------------------------------------------------
 # Graceful degradation
 # ---------------------------------------------------------------------------
 
@@ -217,5 +336,6 @@ async def test_supabase_unavailable_graceful_fallback():
         return_value=None,
     ):
         assert await service.identify_by_nfc("any") is None
+        assert await service.identify_by_member_number(1) is None
         assert await service.identify_by_visitor_id("any") is None
         assert await service.get_recent_visits(visitor_id="any") == []

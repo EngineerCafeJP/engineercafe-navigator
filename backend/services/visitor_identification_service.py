@@ -65,6 +65,20 @@ class VisitorIdentificationService:
             logger.warning("NFC lookup failed: %s", e)
         return None
 
+    async def identify_by_member_number(self, member_number: int) -> Optional[Dict[str, Any]]:
+        """Look up a visitor by their member number (users.id).
+
+        The member number is typically a 1-4 digit integer displayed on
+        the visitor's membership card, read via OCR.
+
+        Args:
+            member_number: The member number (equivalent to users.id).
+
+        Returns:
+            A dict with visitor identity fields, or None when not found.
+        """
+        return await self._get_user_profile(member_number)
+
     async def identify_by_visitor_id(self, visitor_id: str) -> Optional[Dict[str, Any]]:
         """Look up a visitor by frontend-generated persistent visitor_id.
 
@@ -143,21 +157,30 @@ class VisitorIdentificationService:
     # ------------------------------------------------------------------
 
     async def _get_user_profile(self, user_id: int) -> Optional[Dict[str, Any]]:
-        """Fetch user profile and visit count from the ``users`` table."""
+        """Fetch an enriched user profile and visit count from the ``users`` table."""
         client = await self._get_supabase()
         if not client:
             return None
         try:
-            result = client.table("users").select("id, name").eq("id", user_id).execute()
+            result = (
+                client.table("users")
+                .select("id, name, email, phone, prefecture, job, belong")
+                .eq("id", user_id)
+                .execute()
+            )
             if result.data:
                 user = result.data[0]
                 visit_count = await self._count_visits_by_user(user_id)
-                return {
+                profile = {
                     "visitor_type": "returning",
                     "user_id": user["id"],
                     "name": user.get("name"),
                     "visit_count": visit_count,
                 }
+                for field in ("email", "prefecture", "job", "belong"):
+                    if user.get(field) is not None:
+                        profile[field] = user.get(field)
+                return profile
         except Exception as e:
             logger.warning("User profile lookup failed: %s", e)
         return None
