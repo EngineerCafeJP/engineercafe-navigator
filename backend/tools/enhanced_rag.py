@@ -3,11 +3,16 @@ Enhanced RAG Search Tool
 Supabase + OpenAI Embeddings統合による高精度RAG検索
 """
 
+import asyncio
+import logging
 import os
 import time
 from typing import List, Dict, Optional
+
 import httpx
 from supabase import create_client, Client
+
+logger = logging.getLogger(__name__)
 
 # Embedding model configuration
 # text-embedding-3-small: 1536 dims (OpenAI)
@@ -29,6 +34,7 @@ RPC_SIMILARITY_THRESHOLDS: Dict[str, float] = {
     "community": 0.30,
 }
 DEFAULT_RPC_SIMILARITY_THRESHOLD = 0.30
+RPC_TIMEOUT_SECONDS = 10.0
 
 # カテゴリ別品質グレーディング閾値
 CATEGORY_THRESHOLDS = {
@@ -134,6 +140,8 @@ class EnhancedRAGSearch:
                 os.getenv("SUPABASE_KEY", ""),
             )
         self.openai_api_key = os.getenv("OPENAI_API_KEY", "")
+        if not self.openai_api_key:
+            logger.warning("OPENAI_API_KEY not set, embedding search will fail")
         self.embedding_model = embedding_model or os.getenv(
             "EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL
         )
@@ -168,30 +176,51 @@ class EnhancedRAGSearch:
         Returns:
             検索結果辞書 {success, data: {context, results, totalResults, topEntity}}
         """
+        if _rag_circuit_breaker.is_open:
+            logger.warning("RAG circuit breaker is open, skipping search")
+            return {"success": False, "error": "Circuit breaker is open"}
+
         try:
-            print(f"[EnhancedRAGSearch] Starting search with query: {query}")
-            print(f"[EnhancedRAGSearch] Category: {category}, Language: {language}")
+            logger.info("Starting search: category=%s, language=%s", category, language)
 
             # 1. クエリ拡張（同義語・多言語キーワードを追加）
             expanded_query = self._expand_query(query, category, language)
-            print(f"[EnhancedRAGSearch] Expanded query: {expanded_query}")
+            logger.debug("Expanded query length: %d chars", len(expanded_query))
 
             # 2. OpenAI Embeddings APIでクエリをエンベディング化
             embedding = await self._generate_embedding(expanded_query)
 
             # 3. Supabase RPCでベクトル検索（カテゴリ別閾値を使用）
-            search_results = self.supabase.rpc(
-                "search_knowledge_base",
-                {
-                    "query_embedding": embedding,
-                    "similarity_threshold": self._get_rpc_threshold(category),
-                    "match_count": max_results * 3,  # スコアリング用に多めに取得
-                },
-            ).execute()
+            try:
+                search_results = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        lambda: self.supabase.rpc(
+                            "search_knowledge_base",
+                            {
+                                "query_embedding": embedding,
+                                "similarity_threshold": self._get_rpc_threshold(category),
+                                "match_count": max_results * 3,  # スコアリング用に多めに取得
+                            },
+                        ).execute()
+                    ),
+                    timeout=RPC_TIMEOUT_SECONDS,
+                )
+            except asyncio.TimeoutError:
+                logger.error("Supabase RPC timed out after %.0fs", RPC_TIMEOUT_SECONDS)
+                _rag_circuit_breaker.record_failure()
+                return {
+                    "success": False,
+                    "data": {
+                        "context": "",
+                        "results": [],
+                        "totalResults": 0,
+                        "topEntity": "general",
+                    },
+                }
 
             # 4. ベクトル検索で結果が不十分な場合、テキストベースのフォールバック
             if not search_results.data or len(search_results.data) < 2:
-                print("[EnhancedRAGSearch] Vector search insufficient, trying text fallback")
+                logger.info("Vector search insufficient, trying text fallback")
                 text_results = await self._text_fallback_search(
                     query, category, language, max_results
                 )
@@ -204,6 +233,7 @@ class EnhancedRAGSearch:
                             search_results.data.append(tr)
 
             if not search_results.data:
+                _rag_circuit_breaker.record_success()
                 return {
                     "success": True,
                     "data": {
@@ -233,7 +263,7 @@ class EnhancedRAGSearch:
                 }
                 for r in top_results
             ]
-            print(f"[EnhancedRAGSearch] Top results after scoring: {top_summary}")
+            logger.debug("Top results after scoring: %s", top_summary)
 
             # 7. コンテキストを構築
             context = self._build_context_from_results(top_results, category, language)
@@ -244,6 +274,7 @@ class EnhancedRAGSearch:
                 if advice:
                     context += f"\n\n{advice}"
 
+            _rag_circuit_breaker.record_success()
             return {
                 "success": True,
                 "data": {
@@ -257,7 +288,8 @@ class EnhancedRAGSearch:
             }
 
         except Exception as e:
-            print(f"[EnhancedRAGSearch] Error: {e}")
+            _rag_circuit_breaker.record_failure()
+            logger.error("Search error: %s", e)
             return {"success": False, "error": str(e)}
 
     async def search_hierarchical(
@@ -287,21 +319,30 @@ class EnhancedRAGSearch:
             検索結果辞書 {success, data: {context, results, totalResults, topEntity}}
         """
         try:
+            logger.info(
+                "Starting hierarchical search: category=%s, language=%s", category, language
+            )
+
             # 1. クエリ拡張とembedding生成
             expanded_query = self._expand_query(query, category, language)
             embedding = await self._generate_embedding(expanded_query)
 
             # 2. Hierarchical RPC呼び出し（フォールバック付き）
             try:
-                search_results = self.supabase.rpc(
-                    "search_knowledge_base_hierarchical",
-                    {
-                        "query_embedding": embedding,
-                        "similarity_threshold": self._get_rpc_threshold(category),
-                        "match_count": max_results * 2,
-                        "filter_chunk_level": "chunk",
-                    },
-                ).execute()
+                search_results = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        lambda: self.supabase.rpc(
+                            "search_knowledge_base_hierarchical",
+                            {
+                                "query_embedding": embedding,
+                                "similarity_threshold": self._get_rpc_threshold(category),
+                                "match_count": max_results * 2,
+                                "filter_chunk_level": "chunk",
+                            },
+                        ).execute()
+                    ),
+                    timeout=RPC_TIMEOUT_SECONDS,
+                )
             except Exception:
                 return await self.search(
                     query=query,
@@ -362,7 +403,7 @@ class EnhancedRAGSearch:
             }
 
         except Exception as e:
-            print(f"[EnhancedRAGSearch] Hierarchical search error: {e}")
+            logger.error("Hierarchical search error: %s", e)
             return {"success": False, "error": str(e)}
 
     def _expand_query(self, query: str, category: str, language: str) -> str:
@@ -482,7 +523,7 @@ class EnhancedRAGSearch:
             return []
 
         except Exception as e:
-            print(f"[EnhancedRAGSearch] Text fallback error: {e}")
+            logger.error("Text fallback search error: %s", e)
             return []
 
     async def _generate_embedding(self, text: str) -> List[float]:
@@ -568,10 +609,7 @@ class EnhancedRAGSearch:
                     base_thresholds=thresholds,
                 )
             except Exception as e:
-                print(
-                    f"[EnhancedRAGSearch] Context priority adjustment failed,"
-                    f" using static thresholds: {e}"
-                )
+                logger.warning("Context priority adjustment failed, using static thresholds: %s", e)
                 thresholds = CATEGORY_THRESHOLDS.get(category, DEFAULT_THRESHOLDS)
 
         high_threshold = thresholds["high"]
@@ -649,9 +687,10 @@ class EnhancedRAGSearch:
                         continue
 
             # LOW: 除外
-            print(
-                f"[EnhancedRAGSearch] Filtered out low-relevance result:"
-                f" title={result.get('title', 'N/A')}, score={score:.3f}"
+            logger.debug(
+                "Filtered out low-relevance result: title=%s, score=%.3f",
+                result.get("title", "N/A"),
+                score,
             )
 
         return graded_results
@@ -949,5 +988,5 @@ class EnhancedRAGSearch:
             return expanded
 
         except Exception as e:
-            print(f"[EnhancedRAGSearch] Failed to expand parent context: {e}")
+            logger.error("Failed to expand parent context: %s", e)
             return chunk_results
