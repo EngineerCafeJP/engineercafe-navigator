@@ -166,3 +166,28 @@ export async function deleteKnowledge(id: string): Promise<void> {
 
   if (!res.ok) throw new Error(`Failed to delete knowledge: ${res.status}`);
 }
+
+/**
+ * ファイルアップロード
+ */
+export async function uploadKnowledgeFile(
+  file: File
+): Promise<{ filename: string; url: string }> {
+  const url = `${getBackendUrl()}/knowledge/upload`;
+
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const res = await fetch(url, {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new Error(`Failed to upload knowledge file: ${res.status} - ${errorText}`);
+  }
+
+  const json = await res.json();
+  return json.data;
+}
