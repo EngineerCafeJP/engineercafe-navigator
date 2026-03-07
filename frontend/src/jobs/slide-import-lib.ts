@@ -24,10 +24,8 @@ export async function runSlideImport(): Promise<{ added: number; updated: number
   let duplicates = 0;
   let skipped = 0;
 
-  console.log(`🎯 Processing ${files.length} narration files...`);
 
   for (const file of files) {
-    console.log(`📄 Processing file: ${file}`);
     
     const raw = fs.readFileSync(path.join(narrationDir, file), 'utf8');
     const data: NarrationJSON = JSON.parse(raw);
@@ -59,7 +57,6 @@ export async function runSlideImport(): Promise<{ added: number; updated: number
         if (existing) {
           // Check if content has actually changed
           if (existing.content === content) {
-            console.log(`⏭️ Skipping unchanged slide ${slide.slideNumber} from ${subcategory}`);
             duplicates++;
             continue;
           }
@@ -75,7 +72,6 @@ export async function runSlideImport(): Promise<{ added: number; updated: number
           });
 
           if (updateResult.success) {
-            console.log(`✅ Updated slide ${slide.slideNumber} from ${subcategory}`);
             updated++;
           } else {
             console.error(`❌ Failed to update slide ${slide.slideNumber}:`, updateResult.error);
@@ -97,10 +93,8 @@ export async function runSlideImport(): Promise<{ added: number; updated: number
 
           if (addResult.success) {
             if (addResult.isDuplicate) {
-              console.log(`⚠️ Duplicate detected for slide ${slide.slideNumber} from ${subcategory}`);
               duplicates++;
             } else {
-              console.log(`✅ Added slide ${slide.slideNumber} from ${subcategory}`);
               added++;
             }
           } else {
@@ -113,6 +107,5 @@ export async function runSlideImport(): Promise<{ added: number; updated: number
     }
   }
 
-  console.log(`📊 Import completed: ${added} added, ${updated} updated, ${duplicates} duplicates, ${skipped} skipped`);
   return { added, updated, duplicates, skipped };
 } 

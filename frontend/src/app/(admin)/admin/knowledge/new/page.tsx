@@ -9,7 +9,6 @@ export default function NewKnowledgePage() {
   const router = useRouter();
 
   const handleSave = async (formData: any) => {
-    console.log('🔍 handleSave called with:', formData);
     
     try {
       const response = await fetch('/api/admin/knowledge', {
@@ -20,7 +19,6 @@ export default function NewKnowledgePage() {
         body: JSON.stringify(formData),
       });
 
-      console.log('🔍 API response status:', response.status);
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -29,7 +27,6 @@ export default function NewKnowledgePage() {
       }
 
       const result = await response.json();
-      console.log('✅ Save successful:', result);
       
       // Success - redirect to list page
       router.push('/admin/knowledge');

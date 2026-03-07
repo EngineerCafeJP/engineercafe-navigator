@@ -24,7 +24,6 @@ export async function GET(request: NextRequest) {
   const startTime = Date.now();
   
   try {
-    console.log('[CRON] Starting knowledge base update...');
     
     // Check if required services are configured
     const hasGoogleCalendar = process.env.GOOGLE_CALENDAR_CLIENT_ID && 

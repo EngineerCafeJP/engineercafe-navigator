@@ -62,7 +62,6 @@ export class KnowledgeBaseUtils {
       const duplicateCheck = await this.checkDuplicate(entry);
       
       if (duplicateCheck.exists) {
-        console.log(`⚠️ Duplicate entry detected for content: ${entry.content.substring(0, 50)}...`);
         return { 
           id: duplicateCheck.existingId!, 
           success: true, 

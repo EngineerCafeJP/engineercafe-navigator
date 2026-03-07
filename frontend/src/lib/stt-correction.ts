@@ -221,10 +221,6 @@ export class STTCorrection {
     
     // Log corrections for debugging
     if (correctedText !== text) {
-      console.log('[STTCorrection] Applied corrections:', {
-        original: text,
-        corrected: correctedText
-      });
     }
     
     return correctedText;
@@ -272,10 +268,8 @@ export class STTCorrection {
       'engineer cafeの場所はどこ？'
     ];
     
-    console.log('[STTCorrection] Testing correction patterns:');
     for (const testCase of testCases) {
       const corrected = this.correct(testCase);
-      console.log(`  "${testCase}" → "${corrected}"`);
     }
   }
 }

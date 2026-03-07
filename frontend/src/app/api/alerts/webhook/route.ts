@@ -54,7 +54,6 @@ export async function POST(request: NextRequest) {
 async function processAlert(alert: AlertPayload): Promise<AlertResponse> {
   const { type, severity, metric, value, threshold, source } = alert;
   
-  console.log(`[Alert] ${severity.toUpperCase()} - ${type}: ${metric} = ${value} (threshold: ${threshold})`);
   
   let action: string = 'logged';
   let automated = false;
@@ -144,7 +143,6 @@ async function sendNotification(notification: {
   message: string;
 }): Promise<void> {
   // In production, this would send to Slack, Discord, email, etc.
-  console.log(`[Notification] ${notification.channel}: ${notification.message}`);
   
   // Example: Send to Slack webhook
   if (process.env.SLACK_WEBHOOK_URL) {

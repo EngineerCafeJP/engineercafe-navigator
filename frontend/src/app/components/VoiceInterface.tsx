@@ -75,7 +75,6 @@ export default function VoiceInterface({
 
   // Stable callback for VAD-triggered interruption
   const handleVadInterrupt = useCallback(() => {
-    console.log('[VAD] Speech detected during AI playback - interrupting');
 
     // 1. Stop AI audio playback
     if (mobileAudioServiceRef.current) {
@@ -132,17 +131,14 @@ export default function VoiceInterface({
 
       // Only process if the blob has meaningful size (avoid empty/tiny misfires)
       if (audioBlob.size < 1000) {
-        console.log('[VAD] Audio too short, ignoring');
         return;
       }
 
-      console.log('[VAD] Speech ended, sending audio to STT pipeline:', audioBlob.size, 'bytes');
       setConversationState('processing');
       processVadAudio(audioBlob);
     },
 
     onVADMisfire: () => {
-      console.log('[VAD] Misfire detected (false positive)');
       // No action needed - if we already interrupted, audio is stopped and
       // we cannot resume it. The brief false positive is acceptable for kiosk UX.
     },
@@ -237,7 +233,6 @@ export default function VoiceInterface({
       
       // Ensure audio context is ready
       if (audioContextRef.current?.state === 'suspended') {
-        console.log('AudioContext suspended for greeting, will play on user interaction');
       }
       
       setConversationState('speaking');
@@ -290,7 +285,6 @@ export default function VoiceInterface({
       setError(null);
       
       // Stop any currently playing audio to prevent overlap
-      console.log('[AUDIO] Stopping any playing audio before recording...');
       audioStateManager.stopAll();
       
       // Also stop local audio queue if it exists
@@ -299,7 +293,6 @@ export default function VoiceInterface({
       }
       
       // Initialize and unlock audio for iOS - this is critical!
-      console.log('[AUDIO] Preparing audio unlock for iOS...');
       
       // Ensure audio context is initialized and running
       if (!audioContextRef.current) {
@@ -308,7 +301,6 @@ export default function VoiceInterface({
       
       if (audioContextRef.current?.state === 'suspended') {
         await audioContextRef.current.resume();
-        console.log('[AUDIO] AudioContext resumed in startListening');
       }
       
       // Ensure iOS audio is unlocked
@@ -369,7 +361,6 @@ export default function VoiceInterface({
   // Stop voice recording
   const stopListening = () => {
     // Stop any currently playing audio
-    console.log('[AUDIO] Stopping audio on stopListening...');
     audioStateManager.stopAll();
     
     // Also stop local audio queue if it exists
@@ -422,19 +413,10 @@ export default function VoiceInterface({
         setLoadingMessage(currentLanguage === 'ja' ? '音声を生成中...' : 'Generating voice...');
 
         // Play audio response
-        console.log('Voice processing result:', {
-          hasAudioResponse: !!result.audioResponse,
-          audioResponseLength: result.audioResponse?.length,
-          isMuted,
-          shouldPlayAudio: result.audioResponse && !isMuted
-        });
         
         if (result.audioResponse && !isMuted) {
-          console.log('[DEBUG] Starting audio playback...');
-          console.log('[DEBUG] Audio response length:', result.audioResponse.length);
           try {
             await playAudioResponse(result.audioResponse);
-            console.log('[DEBUG] Audio playback completed successfully');
           } catch (audioError) {
             console.error('[DEBUG] Audio playback failed:', audioError);
             // Fallback: show manual play button
@@ -446,11 +428,6 @@ export default function VoiceInterface({
             setLoadingMessage('');
           }
         } else {
-          console.log('Audio playback skipped:', {
-            hasAudioResponse: !!result.audioResponse,
-            isMuted,
-            setConversationStateToIdle: true
-          });
           setConversationState('idle');
           setIsLoading(false);
           setLoadingMessage('');
@@ -464,7 +441,6 @@ export default function VoiceInterface({
           // Update character expression based on emotion
           if (result.emotion || result.primaryEmotion) {
             const emotion = result.primaryEmotion || result.emotion?.emotion || 'neutral';
-            console.log('Setting character emotion from text input:', emotion);
             setCurrentEmotion(emotion);
             updateCharacterExpression(emotion);
           }
@@ -487,8 +463,6 @@ export default function VoiceInterface({
   // Play audio response
   const playAudioResponse = async (audioBase64: string) => {
     try {
-      console.log('[AUDIO] playAudioResponse called with audioBase64 length:', audioBase64?.length);
-      console.log('[AUDIO] Current state:', { isSpeaking, isLoading, conversationState });
       
       
       // Attempt audio unlock for mobile devices
@@ -512,12 +486,10 @@ export default function VoiceInterface({
         audioQueueRef.current.clear();
       }
 
-      console.log('[AUDIO] Converting base64 to audio...');
       const audioData = Uint8Array.from(atob(audioBase64), c => c.charCodeAt(0));
       const audioBlob = new Blob([audioData], { type: 'audio/mp3' });
       const audioUrl = URL.createObjectURL(audioBlob);
       
-      console.log('[AUDIO] Starting mobile audio playback...', { volume, audioUrlLength: audioUrl.length });
       
       // Ensure mobile audio service is available (should already be initialized by useEffect)
       if (!mobileAudioServiceRef.current) {
@@ -535,12 +507,10 @@ export default function VoiceInterface({
       // Start lip-sync analysis in background (non-blocking)
       const lipSyncPromise = (async () => {
         if (skipLipSync) {
-          console.log('Skipping lip-sync for performance (large file)');
           return;
         }
         
         try {
-          console.log('Starting lip-sync analysis for audio blob:', audioBlob.size, 'bytes');
           
           // Analyze audio for lip-sync
           const { LipSyncAnalyzer } = await import('@/lib/lip-sync-analyzer');
@@ -550,11 +520,9 @@ export default function VoiceInterface({
             () => analyzer.analyzeLipSync(audioBlob)
           );
           
-          console.log('Lip-sync analysis complete:', lipSyncData.frames.length, 'frames, duration:', lipSyncData.duration);
           
           // Apply lip-sync to character using direct viseme callback
           if (onVisemeControl) {
-            console.log('Starting lip-sync animation with direct viseme control');
             
             // Schedule viseme updates using direct callback
             let frameIndex = 0;
@@ -562,7 +530,6 @@ export default function VoiceInterface({
               if (frameIndex < lipSyncData.frames.length && onVisemeControl) {
                 const frame = lipSyncData.frames[frameIndex];
                 
-                console.log(`Lip-sync frame ${frameIndex}:`, frame.mouthShape, 'intensity:', frame.mouthOpen);
                 
                 // Use direct viseme callback instead of API
                 onVisemeControl(frame.mouthShape, frame.mouthOpen);
@@ -570,7 +537,6 @@ export default function VoiceInterface({
                 frameIndex++;
                 setTimeout(updateLipSync, 100); // 10fps for better performance
               } else {
-                console.log('Lip-sync animation complete or audio stopped');
                 // Reset to closed mouth
                 if (onVisemeControl) {
                   onVisemeControl('X', 0);
@@ -594,7 +560,6 @@ export default function VoiceInterface({
       
       // Set up audio ended handler for this specific playback
       const handleAudioEnd = () => {
-        console.log('[AUDIO] Audio playback ended');
         setIsSpeaking(false);
         setConversationState('idle');
         setIsLoading(false);
@@ -617,7 +582,6 @@ export default function VoiceInterface({
         
         // Restore emotion expression after lip-sync if needed
         if (currentEmotion && currentEmotion !== 'neutral') {
-          console.log('Restoring emotion after speech:', currentEmotion);
           setTimeout(() => {
             updateCharacterExpression(currentEmotion);
           }, 200);
@@ -626,7 +590,6 @@ export default function VoiceInterface({
         // Auto-listen if enabled
         if (autoListen && !isMuted) {
           setTimeout(() => {
-            console.log('Auto-listening after response...');
             startListening();
           }, 1000); // 1 second delay before auto-listening
         }
@@ -660,27 +623,12 @@ export default function VoiceInterface({
       
       try {
         const isTablet = /iPad|Android.*Tablet/i.test(navigator.userAgent);
-        console.log('[AUDIO] Starting audio playback attempt...', {
-          audioUrl: audioUrl.substring(0, 50) + '...',
-          volume,
-          userAgent: navigator.userAgent,
-          isTablet,
-          audioContextState: mobileAudioServiceRef.current ? 'initialized' : 'not-initialized'
-        });
 
         // Use mobile audio service for better compatibility
         const result = await mobileAudioServiceRef.current!.playAudio(audioUrl);
         
-        console.log('[AUDIO] Playback result:', {
-          success: result.success,
-          method: result.method,
-          error: result.error?.message,
-          requiresInteraction: result.error?.requiresUserInteraction || false,
-          isTablet
-        });
         
         if (result.success) {
-          console.log(`[AUDIO] Audio playback started successfully using ${result.method}`);
           
           // Skip lip-sync processing entirely on iOS
           if (!skipLipSync) {
@@ -703,18 +651,15 @@ export default function VoiceInterface({
         
         // If interaction is required, show a message and retry on next user interaction
         if (playError.message?.includes('User interaction required') || playError.name === 'NotAllowedError') {
-          console.log('[AUDIO] User interaction required, waiting for user interaction...');
           
           // Create a one-time click handler to retry playback
           const retryPlayback = async () => {
-            console.log('[AUDIO] User interaction detected, retrying playback...');
             try {
               // Ensure audio context and retry playback
               await ensureAudioContext();
               
               const retryResult = await mobileAudioServiceRef.current!.playAudio(audioUrl);
               if (retryResult.success) {
-                console.log(`[AUDIO] Audio playback started after user interaction using ${retryResult.method}`);
                 
                 // Clear the error message
                 setError(null);
@@ -755,7 +700,6 @@ export default function VoiceInterface({
           // Don't throw the error, just wait for user interaction
           return;
         } else {
-          console.log('[AUDIO] Other playback error:', playError);
           throw playError;
         }
       }
@@ -791,7 +735,6 @@ export default function VoiceInterface({
   // Update character expression
   const updateCharacterExpression = async (expression: string) => {
     try {
-      console.log('Updating character expression to:', expression);
       const response = await fetch('/api/character', {
         method: 'POST',
         headers: {
@@ -804,7 +747,6 @@ export default function VoiceInterface({
         }),
       });
       const result = await response.json();
-      console.log('Character expression update result:', result);
     } catch (error) {
       console.error('Error updating character expression:', error);
     }
