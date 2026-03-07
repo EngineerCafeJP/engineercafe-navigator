@@ -48,6 +48,7 @@ interface CharacterAvatarProps {
   modelPath?: string;
   initialExpression?: string;
   initialAnimation?: string;
+  sessionState?: 'idle' | 'listening' | 'processing' | 'speaking';
   autoRotate?: boolean;
   showControls?: boolean;
   background?: BackgroundOption;
@@ -86,10 +87,44 @@ const SETTINGS_TAB_LABELS: Record<
   audio: 'Audio',
 };
 
+const getSessionPoseOffsets = (sessionState: 'idle' | 'listening' | 'processing' | 'speaking') => {
+  switch (sessionState) {
+    case 'listening':
+      return {
+        position: { x: 0, y: 0, z: 0.08 },
+        rotation: { x: -0.08, y: 0, z: 0 },
+        expression: 'surprised',
+        animation: 'idle',
+      };
+    case 'processing':
+      return {
+        position: { x: 0.02, y: 0, z: 0.04 },
+        rotation: { x: -0.03, y: 0.08, z: 0.03 },
+        expression: 'thinking',
+        animation: 'idle',
+      };
+    case 'speaking':
+      return {
+        position: { x: 0.03, y: 0, z: 0.05 },
+        rotation: { x: -0.04, y: -0.04, z: 0 },
+        expression: 'happy',
+        animation: 'idle',
+      };
+    default:
+      return {
+        position: { x: 0, y: 0, z: 0 },
+        rotation: { x: 0, y: 0, z: 0 },
+        expression: 'neutral',
+        animation: 'idle',
+      };
+  }
+};
+
 export default function CharacterAvatar({
   modelPath = '/characters/models/sakura.vrm',
   initialExpression = 'neutral',
   initialAnimation = 'idle',
+  sessionState = 'idle',
   autoRotate = false,
   showControls = true,
   background = {
@@ -206,34 +241,36 @@ export default function CharacterAvatar({
     if (charactersRef.current) {
       // Check if current animation is idle
       const isCurrentlyIdle = currentAnimationUrlRef.current === '/animations/idle_loop.vrma' || isIdleAnimationActive.current;
+      const sessionPose = getSessionPoseOffsets(sessionState);
       
       if (isCurrentlyIdle) {
         // Apply idle animation position adjustment
         charactersRef.current.scene.position.set(
-          modelPositionOffset.x + 0.15,
-          modelPositionOffset.y,
-          modelPositionOffset.z
+          modelPositionOffset.x + 0.15 + sessionPose.position.x,
+          modelPositionOffset.y + sessionPose.position.y,
+          modelPositionOffset.z + sessionPose.position.z
         );
       } else {
         charactersRef.current.scene.position.set(
-          modelPositionOffset.x,
-          modelPositionOffset.y,
-          modelPositionOffset.z
+          modelPositionOffset.x + sessionPose.position.x,
+          modelPositionOffset.y + sessionPose.position.y,
+          modelPositionOffset.z + sessionPose.position.z
         );
       }
     }
-  }, [modelPositionOffset]);
+  }, [modelPositionOffset, sessionState]);
 
   // Update model rotation when offset changes
   useEffect(() => {
     if (charactersRef.current) {
+      const sessionPose = getSessionPoseOffsets(sessionState);
       charactersRef.current.scene.rotation.set(
-        modelRotationOffset.x,
-        Math.PI + modelRotationOffset.y,
-        modelRotationOffset.z
+        modelRotationOffset.x + sessionPose.rotation.x,
+        Math.PI + modelRotationOffset.y + sessionPose.rotation.y,
+        modelRotationOffset.z + sessionPose.rotation.z
       );
     }
-  }, [modelRotationOffset]);
+  }, [modelRotationOffset, sessionState]);
 
   // Update character state when props change
   useEffect(() => {
@@ -242,6 +279,16 @@ export default function CharacterAvatar({
       void updateCharacterAnimationRef.current(initialAnimation);
     }
   }, [initialExpression, initialAnimation]);
+
+  useEffect(() => {
+    if (!charactersRef.current) {
+      return;
+    }
+
+    const sessionPose = getSessionPoseOffsets(sessionState);
+    void updateCharacterExpressionRef.current(sessionPose.expression);
+    void updateCharacterAnimationRef.current(sessionPose.animation);
+  }, [sessionState]);
 
   // Update background when options change
   useEffect(() => {
@@ -969,8 +1016,8 @@ export default function CharacterAvatar({
             'relaxed': 'relaxed',
             // Additional mappings for character actions
             'thinking': 'relaxed',
-            'speaking': 'neutral',
-            'listening': 'neutral',
+            'speaking': 'happy',
+            'listening': 'surprised',
             'greeting': 'happy',
             'explaining': 'neutral'
           };
