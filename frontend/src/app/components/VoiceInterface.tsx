@@ -300,7 +300,14 @@ export default function VoiceInterface({
         return;
       }
 
-      const audioBytes = Uint8Array.from(atob(audioBase64), (char) => char.charCodeAt(0));
+      let audioBytes: Uint8Array;
+      try {
+        audioBytes = Uint8Array.from(atob(audioBase64), (char) => char.charCodeAt(0));
+      } catch (decodeError) {
+        console.error('Audio decode failed:', decodeError);
+        voiceController.notifySpeakingComplete();
+        return;
+      }
       const audioBlob = new Blob([audioBytes], { type: 'audio/mpeg' });
       const audioUrl = URL.createObjectURL(audioBlob);
       const audioService = ensureAudioService();
@@ -524,7 +531,7 @@ export default function VoiceInterface({
     }
 
     recorderRef.current = recorder;
-    setMediaStream((recorder as VoiceRecorder & { stream?: MediaStream | null }).stream ?? null);
+    setMediaStream(recorder.getStream());
     setIsLoading(false);
     setLoadingMessage('');
 
