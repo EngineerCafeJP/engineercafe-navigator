@@ -1,14 +1,15 @@
-"""
-Reception テンプレート - 受付案内の固定応答メッセージ
+"""Reception templates for the Engineer Cafe Navigator.
 
-OrchestratorAgent がインラインで使用する。LLM 呼び出しなし。
-受付タイプと言語に基づいてテンプレートメッセージを返す純粋関数。
+Provides multilingual greeting, purpose-hearing, and follow-up
+templates used by the autonomous reception flow.
 
-パターンは clarification_templates.py と同等。
+Also maintains backward-compatible get_reception_response for
+existing MainWorkflow inline usage.
 """
 
 import logging
-from typing import Literal, TypedDict
+from dataclasses import dataclass
+from typing import Literal, Optional, TypedDict
 
 from backend.utils.emotion_tagger import add_emotion_tag
 
@@ -23,17 +24,42 @@ ReceptionType = Literal[
 ]
 
 
-class ReceptionResult(TypedDict):
-    """Reception テンプレートの出力結果"""
+# ---------------------------------------------------------------------------
+# Legacy result type (dict-based, used by MainWorkflow)
+# ---------------------------------------------------------------------------
 
-    response: str  # 感情タグ付きテキスト
+
+class LegacyReceptionResult(TypedDict):
+    """Reception テンプレートの出力結果（レガシー互換）"""
+
+    response: str
     emotion: Literal["happy"]
-    metadata: dict  # agent名, category, confidence など
+    metadata: dict
 
 
-# --------------------------------------------------------------------------- #
-#  テンプレートメッセージ定数
-# --------------------------------------------------------------------------- #
+# ---------------------------------------------------------------------------
+# New result type (dataclass, used by ReceptionWorkflow)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ReceptionResult:
+    """Immutable result from a reception template lookup.
+
+    Attributes:
+        text: The formatted template text.
+        language: The language code used.
+        template_type: Identifier for the template category.
+    """
+
+    text: str
+    language: SupportedLanguage
+    template_type: str
+
+
+# ---------------------------------------------------------------------------
+# Legacy templates (used by MainWorkflow inline reception)
+# ---------------------------------------------------------------------------
 
 _FIRST_TIME: dict[str, str] = {
     "ja": (
@@ -86,40 +112,149 @@ _GENERAL: dict[str, str] = {
     ),
 }
 
-
-# --------------------------------------------------------------------------- #
-#  テンプレートマッピング（受付タイプ → メッセージ辞書, confidence）
-# --------------------------------------------------------------------------- #
-
-_TEMPLATES: dict[ReceptionType, tuple[dict[str, str], float]] = {
+_LEGACY_TEMPLATES: dict[ReceptionType, tuple[dict[str, str], float]] = {
     "first_time": (_FIRST_TIME, 0.95),
     "returning": (_RETURNING, 0.9),
     "general": (_GENERAL, 0.85),
 }
 
 
-# --------------------------------------------------------------------------- #
-#  公開 API
-# --------------------------------------------------------------------------- #
+# ---------------------------------------------------------------------------
+# New enhanced templates (used by ReceptionWorkflow)
+# ---------------------------------------------------------------------------
+
+_FIRST_VISIT_GREETING: dict[str, str] = {
+    "ja": (
+        "こんにちは！エンジニアカフェへようこそ。\n"
+        "初めてのご来館ですね。本日のご用件をお聞かせください。"
+    ),
+    "en": (
+        "Hello! Welcome to Engineer Cafe.\n"
+        "It looks like this is your first visit. What brings you here today?"
+    ),
+}
+
+_RETURNING_GREETING: dict[str, str] = {
+    "ja": (
+        "おかえりなさい！エンジニアカフェへようこそ。\n"
+        "またのご利用ありがとうございます。本日のご用件をお聞かせください。"
+    ),
+    "en": (
+        "Welcome back to Engineer Cafe!\nThank you for visiting again. What brings you here today?"
+    ),
+}
+
+_RETURNING_PERSONALIZED: dict[str, str] = {
+    "ja": (
+        "おかえりなさい、{name}さん！またのご利用ありがとうございます。\n"
+        "前回は{last_purpose}でご利用いただきましたね。\n"
+        "本日のご用件をお聞かせください。"
+    ),
+    "en": (
+        "Welcome back, {name}! Thank you for visiting again.\n"
+        "Last time you were here for {last_purpose}.\n"
+        "What brings you here today?"
+    ),
+}
+
+_PURPOSE_HEARING: dict[str, str] = {
+    "ja": (
+        "ご用件をお聞かせください。\n\n"
+        "例えば...\n"
+        "* コワーキングスペースの利用\n"
+        "* イベント参加\n"
+        "* 施設見学\n"
+        "* 技術相談\n\n"
+        "など、お気軽にどうぞ！"
+    ),
+    "en": (
+        "What brings you here today?\n\n"
+        "For example:\n"
+        "* Using the coworking space\n"
+        "* Attending an event\n"
+        "* Taking a facility tour\n"
+        "* Technical consultation\n\n"
+        "Feel free to ask!"
+    ),
+}
+
+_PURPOSE_FOLLOWUP: dict[str, dict[str, str]] = {
+    "facility_use": {
+        "ja": (
+            "承知しました！エンジニアカフェのご利用ですね。\n"
+            "1階受付で利用登録をお願いします。"
+            "Wi-Fiと電源は自由にお使いいただけます。"
+        ),
+        "en": (
+            "Got it! You'd like to use our coworking space.\n"
+            "Please register at the 1F reception. "
+            "Free Wi-Fi and power outlets are available."
+        ),
+    },
+    "event_participation": {
+        "ja": "イベントへのご参加ですね！本日開催中のイベントを確認いたします。",
+        "en": "You're here for an event! Let me check today's events for you.",
+    },
+    "tour": {
+        "ja": "施設の見学ですね！エンジニアカフェについてご案内いたします。",
+        "en": "A facility tour! Let me show you around Engineer Cafe.",
+    },
+    "consultation": {
+        "ja": "技術相談ですね！スタッフにおつなぎいたします。少々お待ちください。",
+        "en": "A consultation! Let me connect you with our staff. Please wait a moment.",
+    },
+    "other": {
+        "ja": "かしこまりました。何でもお気軽にお尋ねください！",
+        "en": "Of course! Feel free to ask me anything!",
+    },
+}
+
+_DEFAULT_PURPOSE_LABEL: dict[str, str] = {
+    "ja": "ご利用",
+    "en": "a visit",
+}
+
+
+# ===================================================================
+# Public API — Legacy (backward-compatible with MainWorkflow)
+# ===================================================================
 
 
 def get_reception_response(
     language: SupportedLanguage,
     reception_type: ReceptionType = "general",
-) -> ReceptionResult:
-    """
-    受付タイプと言語に基づいてテンプレート応答を返す。
+    *,
+    is_returning: bool | None = None,
+) -> LegacyReceptionResult | ReceptionResult:
+    """Get a reception greeting.
 
-    LLM 不要の純粋関数。
+    Supports two calling conventions:
+    - Legacy: get_reception_response("ja", "first_time") → dict
+    - New: get_reception_response("ja", is_returning=True) → ReceptionResult
 
     Args:
-        language: 応答言語 ("ja" | "en")
-        reception_type: 受付タイプ ("first_time" | "returning" | "general")
+        language: Language code ("ja" or "en").
+        reception_type: Legacy reception type.
+        is_returning: If provided, uses new-style API.
 
     Returns:
-        ReceptionResult: 感情タグ付きの応答とメタデータ
+        LegacyReceptionResult or ReceptionResult depending on calling convention.
     """
-    messages, confidence = _TEMPLATES.get(
+    if is_returning is not None:
+        lang = _resolve_language(language)
+        if is_returning:
+            return ReceptionResult(
+                text=_RETURNING_GREETING[lang],
+                language=lang,
+                template_type="returning_greeting",
+            )
+        return ReceptionResult(
+            text=_FIRST_VISIT_GREETING[lang],
+            language=lang,
+            template_type="first_visit_greeting",
+        )
+
+    messages, confidence = _LEGACY_TEMPLATES.get(
         reception_type,
         (_GENERAL, 0.85),
     )
@@ -144,3 +279,84 @@ def get_reception_response(
             "sources": ["reception_system"],
         },
     }
+
+
+# ===================================================================
+# Public API — New (for ReceptionWorkflow)
+# ===================================================================
+
+
+def _resolve_language(language: SupportedLanguage) -> SupportedLanguage:
+    """Normalize language code, defaulting to 'ja' for unsupported values."""
+    if language in ("ja", "en"):
+        return language
+    return "ja"
+
+
+def get_personalized_greeting(
+    language: SupportedLanguage,
+    name: str,
+    last_purpose: Optional[str] = None,
+) -> ReceptionResult:
+    """Personalized greeting for returning visitors with name.
+
+    Args:
+        language: Language code ("ja" or "en").
+        name: The visitor's name.
+        last_purpose: Description of their last visit purpose.
+
+    Returns:
+        ReceptionResult with a personalized greeting.
+    """
+    lang = _resolve_language(language)
+    purpose_label = last_purpose or _DEFAULT_PURPOSE_LABEL[lang]
+    text = _RETURNING_PERSONALIZED[lang].format(
+        name=name,
+        last_purpose=purpose_label,
+    )
+    return ReceptionResult(
+        text=text,
+        language=lang,
+        template_type="returning_personalized",
+    )
+
+
+def get_purpose_hearing_prompt(
+    language: SupportedLanguage,
+) -> ReceptionResult:
+    """Ask the visitor about their purpose.
+
+    Args:
+        language: Language code ("ja" or "en").
+
+    Returns:
+        ReceptionResult with a purpose-hearing prompt.
+    """
+    lang = _resolve_language(language)
+    return ReceptionResult(
+        text=_PURPOSE_HEARING[lang],
+        language=lang,
+        template_type="purpose_hearing",
+    )
+
+
+def get_purpose_followup(
+    language: SupportedLanguage,
+    purpose: str,
+) -> ReceptionResult:
+    """Follow-up message after purpose is identified.
+
+    Args:
+        language: Language code ("ja" or "en").
+        purpose: The classified purpose category.
+
+    Returns:
+        ReceptionResult with an appropriate follow-up message.
+    """
+    lang = _resolve_language(language)
+    templates = _PURPOSE_FOLLOWUP.get(purpose, _PURPOSE_FOLLOWUP["other"])
+    return ReceptionResult(
+        text=templates[lang],
+        language=lang,
+        template_type=f"purpose_followup_{purpose}",
+    )
