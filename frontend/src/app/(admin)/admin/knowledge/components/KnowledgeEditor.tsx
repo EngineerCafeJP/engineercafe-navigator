@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react';
 import MDEditor from '@uiw/react-md-editor';
 import toast from 'react-hot-toast';
-import { createKnowledge, updateKnowledge, type KnowledgeItem } from '@/lib/api/knowledge';
+import { createKnowledge, updateKnowledge, getKnowledgeEditorConfig } from '@/lib/api/knowledge';
+import type { KnowledgeItem, KnowledgeEditorConfig } from '@/types/knowledge';
 
 type FormData = Omit<KnowledgeItem, 'id' | 'created_at' | 'updated_at'> & {
   id?: string;
@@ -15,16 +16,6 @@ interface KnowledgeEditorProps {
   onCancel?: () => void;
 }
 
-interface CategoryData {
-  categories: string[];
-  subcategories: Record<string, string[]>;
-  sources: string[];
-}
-
-interface MetadataTemplates {
-  templates: Record<string, Record<string, string>>;
-  availableCategories: string[];
-}
 
 export function KnowledgeEditor({ entry, onSave, onCancel }: KnowledgeEditorProps) {
   const [formData, setFormData] = useState<FormData>({
@@ -40,8 +31,7 @@ export function KnowledgeEditor({ entry, onSave, onCancel }: KnowledgeEditorProp
   const [loading, setLoading] = useState(false);
   const [dataLoading, setDataLoading] = useState(true);
   const [dataError, setDataError] = useState<string | null>(null);
-  const [categoryData, setCategoryData] = useState<CategoryData | null>(null);
-  const [metadataTemplates, setMetadataTemplates] = useState<MetadataTemplates | null>(null);
+  const [editorConfig, setEditorConfig] = useState<KnowledgeEditorConfig | null>(null);
   const [showCustomCategory, setShowCustomCategory] = useState(false);
   const [showCustomSubcategory, setShowCustomSubcategory] = useState(false);
   const [showCustomSource, setShowCustomSource] = useState(false);
@@ -49,51 +39,35 @@ export function KnowledgeEditor({ entry, onSave, onCancel }: KnowledgeEditorProp
   const [customSubcategory, setCustomSubcategory] = useState('');
   const [customSource, setCustomSource] = useState('');
 
-  // Load categories and templates on mount
+  // Load editor configuration on mount
   useEffect(() => {
     const loadData = async () => {
       try {
         setDataLoading(true);
         setDataError(null);
-        
-        const [categoriesRes, templatesRes] = await Promise.all([
-          fetch('/api/admin/knowledge/categories'),
-          fetch('/api/admin/knowledge/metadata-templates')
-        ]);
-        
-        if (categoriesRes.ok) {
-          const catData = await categoriesRes.json();
-          setCategoryData(catData);
-        } else {
-          throw new Error(`Failed to load categories: ${categoriesRes.status}`);
-        }
-        
-        if (templatesRes.ok) {
-          const templateData = await templatesRes.json();
-          setMetadataTemplates(templateData);
-        } else {
-          throw new Error(`Failed to load templates: ${templatesRes.status}`);
-        }
+
+        const config = await getKnowledgeEditorConfig();
+        setEditorConfig(config);
       } catch (error) {
-        console.error('Failed to load data:', error);
-        setDataError(error instanceof Error ? error.message : 'Failed to load data');
+        console.error('Failed to load editor config:', error);
+        setDataError(error instanceof Error ? error.message : 'Failed to load editor config');
       } finally {
         setDataLoading(false);
       }
     };
-    
+
     loadData();
   }, []);
 
   // Apply metadata template when category changes
   const handleCategoryChange = (category: string) => {
     setFormData(prev => ({ ...prev, category, subcategory: '' }));
-    
+
     // Apply metadata template if available
-    if (metadataTemplates?.templates[category] && Object.keys(formData.metadata || {}).length === 0) {
+    if (editorConfig?.templates[category] && Object.keys(formData.metadata || {}).length === 0) {
       setFormData(prev => ({
         ...prev,
-        metadata: { ...metadataTemplates.templates[category] }
+        metadata: { ...editorConfig.templates[category] }
       }));
     }
   };
@@ -354,7 +328,7 @@ export function KnowledgeEditor({ entry, onSave, onCancel }: KnowledgeEditorProp
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
                 <option value="">カテゴリを選択...</option>
-                {categoryData?.categories.map(cat => (
+                {editorConfig?.categories.map(cat => (
                   <option key={cat} value={cat}>{cat}</option>
                 ))}
                 <option value="__custom__">+ 新しいカテゴリを追加</option>
@@ -407,7 +381,7 @@ export function KnowledgeEditor({ entry, onSave, onCancel }: KnowledgeEditorProp
                 disabled={!formData.category}
               >
                 <option value="">サブカテゴリを選択...</option>
-                {formData.category && categoryData?.subcategories[formData.category]?.map(subcat => (
+                {formData.category && editorConfig?.subcategories[formData.category]?.map(subcat => (
                   <option key={subcat} value={subcat}>{subcat}</option>
                 ))}
                 <option value="__custom__">+ 新しいサブカテゴリを追加</option>
@@ -477,7 +451,7 @@ export function KnowledgeEditor({ entry, onSave, onCancel }: KnowledgeEditorProp
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
                 <option value="">ソースを選択...</option>
-                {categoryData?.sources.map(source => (
+                {editorConfig?.sources.map(source => (
                   <option key={source} value={source}>{source}</option>
                 ))}
                 <option value="__custom__">+ 新しいソースを追加</option>
@@ -517,11 +491,11 @@ export function KnowledgeEditor({ entry, onSave, onCancel }: KnowledgeEditorProp
           <label className="block text-sm font-medium text-gray-700">
             メタデータ
           </label>
-          {formData.category && metadataTemplates?.templates[formData.category] && (
+          {formData.category && editorConfig?.templates[formData.category] && (
             <button
               type="button"
               onClick={() => {
-                const template = (formData.category && metadataTemplates.templates[formData.category]) || metadataTemplates.templates.default;
+                const template = (formData.category && editorConfig.templates[formData.category]) || editorConfig.templates.default;
                 setFormData(prev => ({
                   ...prev,
                   metadata: { ...template }
@@ -608,13 +582,13 @@ export function KnowledgeEditor({ entry, onSave, onCancel }: KnowledgeEditorProp
               return null;
             })}
             
-            {metadataTemplates?.templates.default && (
+            {editorConfig?.templates.default && (
               <button
                 type="button"
                 onClick={() => {
                   setFormData(prev => ({
                     ...prev,
-                    metadata: { ...(prev.metadata || {}), ...(metadataTemplates.templates.default || {}) }
+                    metadata: { ...(prev.metadata || {}), ...(editorConfig.templates.default || {}) }
                   }));
                 }}
                 className="text-green-600 hover:text-green-800 text-sm px-3 py-1 border border-green-300 rounded-lg hover:bg-green-50"
@@ -624,11 +598,11 @@ export function KnowledgeEditor({ entry, onSave, onCancel }: KnowledgeEditorProp
             )}
           </div>
           
-          {formData.category && metadataTemplates?.templates[formData.category] && (
+          {formData.category && editorConfig?.templates[formData.category] && (
             <div className="mt-2 p-3 bg-gray-50 rounded-lg">
               <p className="text-sm text-gray-600 mb-2">推奨メタデータフィールド ({formData.category}):</p>
               <div className="flex flex-wrap gap-1">
-                {Object.keys(metadataTemplates.templates[formData.category]).map(field => (
+                {Object.keys(editorConfig.templates[formData.category]).map(field => (
                   <span key={field} className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded">
                     {field}
                   </span>

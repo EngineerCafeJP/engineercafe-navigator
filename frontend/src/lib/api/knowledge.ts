@@ -3,36 +3,15 @@
  * FastAPI に直接アクセスする API クライアント関数
  */
 
-// ============================================================================
-// Types
-// ============================================================================
+import {
+  type KnowledgeItem,
+  type KnowledgeListResponse,
+  type KnowledgeResponse,
+  type KnowledgeEditorConfig,
+} from '@/types/knowledge';
 
-export interface KnowledgeItem {
-  id: string;
-  title: string;
-  content: string;
-  category?: string;
-  subcategory?: string;
-  language: string;
-  source?: string;
-  metadata?: Record<string, any>;
-  created_at?: string;
-  updated_at?: string;
-}
-
-export interface KnowledgeListResponse {
-  success: boolean;
-  data: KnowledgeItem[];
-  total: number;
-  page: number;
-  limit: number;
-}
-
-export interface KnowledgeResponse {
-  success: boolean;
-  data: KnowledgeItem;
-  error?: string;
-}
+// Re-export for backward compatibility
+export type { KnowledgeItem, KnowledgeListResponse, KnowledgeResponse, KnowledgeEditorConfig };
 
 // ============================================================================
 // API URL Helper
@@ -190,4 +169,16 @@ export async function uploadKnowledgeFile(
 
   const json = await res.json();
   return json.data;
+}
+
+/**
+ * エディタ設定データ取得（カテゴリ、テンプレート等）
+ */
+export async function getKnowledgeEditorConfig(): Promise<KnowledgeEditorConfig> {
+  const url = `${getBackendUrl()}/knowledge/editor-config`;
+
+  const res = await fetch(url);
+  if (!res.ok)
+    throw new Error(`Failed to fetch editor config: ${res.status}`);
+  return res.json();
 }

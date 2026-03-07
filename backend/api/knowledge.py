@@ -11,6 +11,7 @@ NOTE: 認証は別Issueで対応予定。現時点ではCORS制限のみ。
 import logging
 import os
 import re
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
@@ -82,6 +83,16 @@ class KnowledgeResponse(BaseModel):
     error: Optional[str] = None
 
 
+class KnowledgeEditorConfig(BaseModel):
+    categories: List[str]
+    subcategories: Dict[str, List[str]]
+    sources: List[str]
+    languages: List[str]
+    stats: Dict[str, int]
+    templates: Dict[str, Dict[str, Any]]
+    available_categories: List[str]
+
+
 # =============================================================================
 # Helper
 # =============================================================================
@@ -131,9 +142,181 @@ def _is_unique_violation(error: Exception) -> bool:
     return "unique" in error_str or "duplicate" in error_str or "23505" in error_str
 
 
+def _build_metadata_templates() -> Dict[str, Dict[str, Any]]:
+    """メタデータテンプレートを構築
+
+    エディタ起動時に使用される各カテゴリのデフォルト値を定義。
+    """
+    now = datetime.now(timezone.utc).isoformat()
+
+    return {
+        "設備": {
+            "title": "",
+            "importance": "high",
+            "tags": [],
+            "last_updated": now,
+        },
+        "Facilities": {
+            "title": "",
+            "importance": "high",
+            "tags": [],
+            "last_updated": now,
+        },
+        "基本情報": {
+            "title": "",
+            "importance": "critical",
+            "tags": [],
+            "last_updated": now,
+        },
+        "General": {
+            "title": "",
+            "importance": "critical",
+            "tags": [],
+            "last_updated": now,
+        },
+        "料金": {
+            "title": "",
+            "importance": "high",
+            "tags": [],
+            "last_updated": now,
+        },
+        "Pricing": {
+            "title": "",
+            "importance": "high",
+            "tags": [],
+            "last_updated": now,
+        },
+        "イベント": {
+            "title": "",
+            "importance": "medium",
+            "tags": [],
+            "last_updated": now,
+        },
+        "Events": {
+            "title": "",
+            "importance": "medium",
+            "tags": [],
+            "last_updated": now,
+        },
+        "アクセス": {
+            "title": "",
+            "importance": "high",
+            "tags": [],
+            "last_updated": now,
+        },
+        "Access": {
+            "title": "",
+            "importance": "high",
+            "tags": [],
+            "last_updated": now,
+        },
+        "slides": {
+            "title": "",
+            "importance": "critical",
+            "slideNumber": 1,
+            "last_updated": now,
+        },
+        "engineer-cafe": {
+            "title": "",
+            "importance": "high",
+            "tags": [],
+            "last_updated": now,
+            "category": "engineer-cafe",
+            "source": "engineercafe-structured-data",
+        },
+        "meeting-rooms": {
+            "title": "",
+            "importance": "high",
+            "tags": [],
+            "last_updated": now,
+        },
+        "saino-cafe": {
+            "title": "",
+            "importance": "medium",
+            "tags": [],
+            "last_updated": now,
+        },
+        "default": {
+            "title": "",
+            "importance": "medium",
+            "tags": [],
+            "last_updated": now,
+        },
+    }
+
+
 # =============================================================================
 # Endpoints
 # =============================================================================
+
+
+@router.get("/knowledge/editor-config", response_model=KnowledgeEditorConfig)
+@rate_limit("60/minute")
+async def get_editor_config(request: Request):
+    """エディタ起動時の設定データを取得
+
+    カテゴリ、サブカテゴリ、ソース、言語、メタデータテンプレートを
+    単一のリクエストで返す。
+    """
+    try:
+        supabase = _get_supabase()
+
+        # Get all knowledge entries to extract distinct values
+        all_entries_result = (
+            supabase.table("knowledge_base")
+            .select("category,subcategory,source,language")
+            .execute()
+        )
+
+        entries = all_entries_result.data or []
+
+        # Extract unique categories
+        categories = list(dict.fromkeys([e["category"] for e in entries if e.get("category")]))
+
+        # Extract subcategories grouped by category
+        subcategories_dict: Dict[str, List[str]] = {}
+        for entry in entries:
+            if entry.get("category") and entry.get("subcategory"):
+                cat = entry["category"]
+                subcat = entry["subcategory"]
+                if cat not in subcategories_dict:
+                    subcategories_dict[cat] = []
+                if subcat not in subcategories_dict[cat]:
+                    subcategories_dict[cat].append(subcat)
+
+        # Extract unique sources
+        sources = list(dict.fromkeys([e["source"] for e in entries if e.get("source")]))
+
+        # Extract unique languages
+        languages = list(dict.fromkeys([e["language"] for e in entries if e.get("language")]))
+
+        # Build metadata templates
+        templates = _build_metadata_templates()
+
+        # Calculate stats
+        total_subcategories = sum(len(subs) for subs in subcategories_dict.values())
+        stats = {
+            "totalCategories": len(categories),
+            "totalSubcategories": total_subcategories,
+            "totalSources": len(sources),
+            "totalLanguages": len(languages),
+        }
+
+        return KnowledgeEditorConfig(
+            categories=categories,
+            subcategories=subcategories_dict,
+            sources=sources,
+            languages=languages,
+            stats=stats,
+            templates=templates,
+            available_categories=list(k for k in templates.keys() if k != "default"),
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to get editor config: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to get editor config")
 
 
 @router.get("/knowledge", response_model=KnowledgeListResponse)
