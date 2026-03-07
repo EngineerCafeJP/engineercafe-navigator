@@ -273,6 +273,7 @@ LOST_FOUND_KEYWORDS = [
     "忘れ物",
     "落とし物",
     "なくした",
+    "なくし",
     "失くした",
     "見つからない",
     "落とした",
@@ -286,6 +287,25 @@ LOST_FOUND_KEYWORDS = [
     "forgot",
     "lost and found",
     "misplaced",
+]
+
+FAREWELL_KEYWORDS = [
+    "さようなら",
+    "帰ります",
+    "帰る",
+    "退館",
+    "お先に",
+    "失礼します",
+    "またね",
+    "バイバイ",
+    "おつかれ",
+    "goodbye",
+    "bye",
+    "leaving",
+    "going home",
+    "see you",
+    "heading out",
+    "gotta go",
 ]
 
 EARTHQUAKE_KEYWORDS = [
@@ -614,6 +634,10 @@ AGENT_DESCRIPTIONS: Dict[str, str] = {
         "一般知識エージェント: " "上記以外の一般的な質問、" "および過去の会話履歴に関する質問に回答"
     ),
     "slide": ("スライドエージェント: " "スライドのナレーション、操作、質問応答を処理"),
+    "farewell": (
+        "退館エージェント: さようなら、帰ります等の退館メッセージに対して"
+        "温かい退館メッセージ、受付カード返却案内、荷物確認リマインダーを応答"
+    ),
 }
 
 CATEGORY_TO_AGENT_MAP: Dict[str, AgentNodeName] = {
@@ -645,6 +669,7 @@ CATEGORY_TO_AGENT_MAP: Dict[str, AgentNodeName] = {
     "floor_layout": "facility",
     "nearby": "facility",
     "lost_found": "facility",
+    "farewell": "farewell",
 }
 
 
@@ -679,6 +704,8 @@ def extract_request_type(query: str) -> Optional[str]:
 
     if match_keywords(lower_query, EMERGENCY_KEYWORDS):
         return "emergency"
+    if match_keywords(lower_query, FAREWELL_KEYWORDS):
+        return "farewell"
     if match_keywords(lower_query, LOST_FOUND_KEYWORDS):
         return "lost_found"
     if match_keywords(lower_query, WIFI_KEYWORDS):
