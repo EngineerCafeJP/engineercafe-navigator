@@ -242,7 +242,7 @@ app.add_middleware(
 
 class ChatRequest(BaseModel):
     query: str
-    session_id: str
+    session_id: Optional[str] = None
     language: Optional[str] = "ja"
     context: Optional[Dict[str, Any]] = None
     visitor_id: Optional[str] = None  # Cross-session visitor identification
@@ -328,20 +328,24 @@ async def chat(request: Request, body: ChatRequest):
     チャットエンドポイント
     LangGraphエージェントを使用してクエリを処理します
     """
+    import uuid as _uuid
+
     from backend.utils.interrupt_manager import get_interrupt_manager
 
-    get_interrupt_manager().clear_interrupt(body.session_id)
+    session_id = body.session_id or str(_uuid.uuid4())
+
+    get_interrupt_manager().clear_interrupt(session_id)
 
     try:
         result = await _run_workflow_with_tracking(
             payload={
                 "query": body.query,
-                "session_id": body.session_id,
+                "session_id": session_id,
                 "language": body.language,
                 "context": body.context or {},
                 "visitor_id": body.visitor_id,
             },
-            session_id=body.session_id,
+            session_id=session_id,
         )
 
         answer = result.get("answer", "回答を生成できませんでした。")
@@ -360,7 +364,7 @@ async def chat(request: Request, body: ChatRequest):
         except Exception as e:
             logger.debug("PII scan skipped (non-critical): %s", e)
 
-        metadata = result.get("metadata", {"query": body.query, "session_id": body.session_id})
+        metadata = result.get("metadata", {"query": body.query, "session_id": session_id})
 
         return ChatResponse(
             answer=answer,
@@ -382,10 +386,14 @@ async def chat_stream(request: Request, body: ChatRequest):
     SSEストリーミングチャットエンドポイント
     Server-Sent Events でレスポンスをストリーミング
     """
+    import uuid as _uuid
+
     from backend.utils.interrupt_manager import get_interrupt_manager
 
+    session_id = body.session_id or str(_uuid.uuid4())
+
     interrupt_mgr = get_interrupt_manager()
-    interrupt_mgr.clear_interrupt(body.session_id)
+    interrupt_mgr.clear_interrupt(session_id)
 
     async def event_generator():
         try:
@@ -397,7 +405,7 @@ async def chat_stream(request: Request, body: ChatRequest):
             async for event in workflow.astream(
                 {
                     "query": body.query,
-                    "session_id": body.session_id,
+                    "session_id": session_id,
                     "language": body.language,
                     "context": body.context or {},
                     "visitor_id": body.visitor_id,

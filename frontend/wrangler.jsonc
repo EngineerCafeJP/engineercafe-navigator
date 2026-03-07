@@ -5,6 +5,9 @@
   "main": ".open-next/worker.js",
   "compatibility_date": "2026-02-28",
   "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    "BACKEND_API_URL": "https://engineer-cafe-backend-639959525777.asia-northeast1.run.app"
+  },
   "assets": {
     "directory": ".open-next/assets",
     "binding": "ASSETS"
