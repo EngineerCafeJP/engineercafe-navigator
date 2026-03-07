@@ -30,6 +30,19 @@ RPC_SIMILARITY_THRESHOLDS: Dict[str, float] = {
 }
 DEFAULT_RPC_SIMILARITY_THRESHOLD = 0.30
 
+# カテゴリ別品質グレーディング閾値
+CATEGORY_THRESHOLDS = {
+    "hours": {"high": 0.75, "medium": 0.50, "term_match": 0.25},
+    "pricing": {"high": 0.75, "medium": 0.50, "term_match": 0.25},
+    "facility-info": {"high": 0.78, "medium": 0.58, "term_match": 0.25},
+    "location": {"high": 0.70, "medium": 0.50, "term_match": 0.20},
+    "event": {"high": 0.80, "medium": 0.60, "term_match": 0.30},
+    "general": {"high": 0.72, "medium": 0.52, "term_match": 0.20},
+    "consultation": {"high": 0.73, "medium": 0.48, "term_match": 0.20},
+    "community": {"high": 0.73, "medium": 0.53, "term_match": 0.20},
+}
+DEFAULT_THRESHOLDS = {"high": 0.78, "medium": 0.58, "term_match": 0.25}
+
 
 class CircuitBreaker:
     """Simple circuit breaker to prevent cascading RAG/LLM failures."""
@@ -150,7 +163,7 @@ class EnhancedRAGSearch:
             language: 言語（ja or en）
             include_advice: 実用的なアドバイスを含めるか
             max_results: 最大結果数
-            context_signals: コンテキストシグナル（将来の拡張用）
+            context_signals: コンテキストシグナル（動的閾値調整用）
 
         Returns:
             検索結果辞書 {success, data: {context, results, totalResults, topEntity}}
@@ -203,6 +216,11 @@ class EnhancedRAGSearch:
 
             # 5. エンティティ認識とスコアリング
             scored_results = self._score_results(search_results.data, query, category, language)
+
+            # 5.5. 品質グレーディング（軽量CRAG）
+            scored_results = self._grade_result_relevance(
+                scored_results, query, category, context_signals=context_signals
+            )
 
             # 6. トップ結果を取得
             top_results = scored_results[:max_results]
@@ -263,7 +281,7 @@ class EnhancedRAGSearch:
             language: 言語（ja or en）
             include_advice: 実用的なアドバイスを含めるか
             max_results: 最大結果数
-            context_signals: コンテキストシグナル（将来の拡張用）
+            context_signals: コンテキストシグナル（動的閾値調整用）
 
         Returns:
             検索結果辞書 {success, data: {context, results, totalResults, topEntity}}
@@ -314,13 +332,18 @@ class EnhancedRAGSearch:
             # 4. 親チャンク展開
             scored_results = self._expand_parent_context(scored_results)
 
-            # 5. トップ結果
+            # 5. 品質グレーディング
+            scored_results = self._grade_result_relevance(
+                scored_results, query, category, context_signals=context_signals
+            )
+
+            # 6. トップ結果
             top_results = scored_results[:max_results]
 
-            # 6. コンテキスト構築
-            context = self._build_context_from_results(top_results, category, language)
+            # 7. Hierarchicalコンテキスト構築
+            context = self._build_hierarchical_context(top_results, language)
 
-            # 7. アドバイス追加
+            # 8. アドバイス追加
             if include_advice:
                 advice = self._generate_practical_advice(top_results, query, category, language)
                 if advice:
@@ -500,6 +523,139 @@ class EnhancedRAGSearch:
             data = response.json()
             return data["data"][0]["embedding"]
 
+    def _grade_result_relevance(
+        self,
+        scored_results: List[Dict],
+        query: str,
+        category: str = "general",
+        context_signals=None,
+    ) -> List[Dict]:
+        """スコアリング済み結果の品質グレーディング（軽量CRAG）。
+
+        priority_scoreとクエリ用語マッチ率を基に、低品質な結果を除外する。
+
+        Grading criteria:
+        - HIGH (priority_score >= high_threshold): 常に保持
+        - MEDIUM (medium_threshold <= priority_score < high_threshold):
+          クエリ用語マッチがある場合保持
+        - LOW (priority_score < medium_threshold): 除外
+
+        Args:
+            scored_results: _score_results()でスコアリング済みの結果リスト
+            query: 元のクエリ文字列
+            category: クエリカテゴリ（hours, pricing, location等）
+            context_signals: コンテキストシグナル（Noneの場合は静的閾値を使用）
+
+        Returns:
+            品質フィルタリング済みの結果リスト
+        """
+        if not scored_results:
+            return []
+
+        # カテゴリ別閾値を取得
+        thresholds = CATEGORY_THRESHOLDS.get(category, DEFAULT_THRESHOLDS)
+
+        # コンテキストシグナルがある場合は動的調整
+        if context_signals is not None:
+            try:
+                from backend.utils.context_priority import ContextPriorityEngine
+
+                engine = ContextPriorityEngine()
+                thresholds = engine.compute_adjusted_thresholds(
+                    category=category,
+                    query=query,
+                    signals=context_signals,
+                    base_thresholds=thresholds,
+                )
+            except Exception as e:
+                print(
+                    f"[EnhancedRAGSearch] Context priority adjustment failed,"
+                    f" using static thresholds: {e}"
+                )
+                thresholds = CATEGORY_THRESHOLDS.get(category, DEFAULT_THRESHOLDS)
+
+        high_threshold = thresholds["high"]
+        medium_threshold = thresholds["medium"]
+        term_match_threshold = thresholds["term_match"]
+
+        # クエリ長による閾値調整
+        query_len = len(query)
+        if query_len < 10:
+            high_threshold -= 0.05
+            medium_threshold -= 0.05
+            term_match_threshold -= 0.05
+        elif query_len >= 50:
+            high_threshold += 0.03
+            medium_threshold += 0.03
+            term_match_threshold += 0.03
+
+        query_lower = query.lower()
+
+        # CJK文字（日本語・中国語・韓国語）の検出
+        has_cjk = any(
+            "\u4e00" <= c <= "\u9fff" or "\u3040" <= c <= "\u309f" or "\u30a0" <= c <= "\u30ff"
+            for c in query_lower
+        )
+
+        if has_cjk:
+            # 日本語: 2文字スライディングウィンドウマッチング
+            query_terms = [query_lower[i : i + 2] for i in range(len(query_lower) - 1)]
+            # 助詞・一般的な文字を除外
+            stop_bigrams = {
+                "は",
+                "の",
+                "が",
+                "を",
+                "に",
+                "で",
+                "と",
+                "も",
+                "か",
+                "です",
+                "ます",
+                "した",
+                "ません",
+                "まし",
+                "ませ",
+                "ありま",
+                "りま",
+            }
+            query_terms = [t for t in query_terms if t not in stop_bigrams]
+        else:
+            query_terms = query_lower.split()
+
+        graded_results: List[Dict] = []
+
+        for result in scored_results:
+            score = result.get("priority_score", 0.0)
+
+            # HIGH: 常に保持
+            if score >= high_threshold:
+                graded_results.append({**result, "grade": "HIGH"})
+                continue
+
+            # MEDIUM: クエリ用語マッチがある場合保持
+            if score >= medium_threshold:
+                content = result.get("content", "").lower()
+                title = result.get("title", "").lower()
+                combined = f"{title} {content}"
+
+                if query_terms:
+                    match_count = sum(1 for term in query_terms if term in combined)
+                    match_ratio = match_count / len(query_terms)
+
+                    if match_ratio > term_match_threshold:
+                        graded_results.append({**result, "grade": "MEDIUM"})
+                        continue
+
+            # LOW: 除外
+            print(
+                f"[EnhancedRAGSearch] Filtered out low-relevance result:"
+                f" title={result.get('title', 'N/A')}, score={score:.3f}"
+            )
+
+        return graded_results
+
     def _score_results(
         self, results: List[Dict], query: str, category: str, language: str
     ) -> List[Dict]:
@@ -652,6 +808,45 @@ class EnhancedRAGSearch:
                 context += "\n".join(r.get("content", "") for r in entity_results)
 
         return context
+
+    def _build_hierarchical_context(self, results: List[Dict], language: str = "ja") -> str:
+        """Hierarchical結果からコンテキストを構築。
+
+        親チャンクでグループ化し、階層的なコンテキストを生成する。
+
+        Args:
+            results: 親コンテキスト付きの検索結果
+            language: 言語
+
+        Returns:
+            構築されたコンテキスト文字列
+        """
+        if not results:
+            return ""
+
+        # parent_idでグルーピング
+        groups: Dict[Optional[str], List[Dict]] = {}
+        for result in results:
+            pid = result.get("parent_id")
+            if pid not in groups:
+                groups[pid] = []
+            groups[pid].append(result)
+
+        # コンテキスト構築
+        context_parts: List[str] = []
+
+        for pid, group in groups.items():
+            if pid and group[0].get("parent_title"):
+                # 親がある場合: 親タイトルでグループ化
+                parent_title = group[0]["parent_title"]
+                chunk_contents = "\n".join(r.get("content", "") for r in group)
+                context_parts.append(f"【{parent_title}】\n{chunk_contents}")
+            else:
+                # 親がない場合: 通常のコンテンツ
+                for r in group:
+                    context_parts.append(r.get("content", ""))
+
+        return "\n\n".join(context_parts)
 
     def _get_entity_priority(self, category: str) -> List[str]:
         """カテゴリに応じたエンティティ優先順位を取得"""

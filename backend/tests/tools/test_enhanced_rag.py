@@ -12,6 +12,7 @@ from backend.tools.enhanced_rag import (
     DEFAULT_EMBEDDING_DIMENSIONS,
     DEFAULT_EMBEDDING_MODEL,
     QUERY_EXPANSION_MAP,
+    RPC_SIMILARITY_THRESHOLDS,
     EnhancedRAGSearch,
 )
 
@@ -531,7 +532,7 @@ class TestSearchIntegration:
         call_args = mock_supabase.rpc.call_args
         assert call_args[0][0] == "search_knowledge_base"
         params = call_args[0][1]
-        assert params["similarity_threshold"] == 0.3
+        assert params["similarity_threshold"] == RPC_SIMILARITY_THRESHOLDS["hours"]
 
 
 # ==============================================================================
