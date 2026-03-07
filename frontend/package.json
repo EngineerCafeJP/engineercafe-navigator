@@ -54,6 +54,7 @@
     "@opennextjs/cloudflare": "1.17.1",
     "@pixiv/three-vrm": "^3.4.1",
     "@pixiv/three-vrm-animation": "3.4.1",
+    "@ricky0123/vad-react": "0.0.36",
     "@supabase/supabase-js": "^2.49.8",
     "@uiw/react-md-editor": "4.0.7",
     "@upstash/redis": "1.34.9",

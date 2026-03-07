@@ -3,15 +3,14 @@ import { NextRequest, NextResponse } from 'next/server';
 // import { getEngineerCafeNavigator } from '@/mastra';
 // import { Config } from '@/mastra/types/config';
 
-// バックエンドAPI URL
-const BACKEND_API_URL = process.env.BACKEND_API_URL || 'http://localhost:8000';
+import { getBackendApiUrl } from '@/lib/api/backend-url';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
 
     // バックエンドAPIにプロキシ
-    const backendUrl = `${BACKEND_API_URL}/api/slides`;
+    const backendUrl = `${getBackendApiUrl()}/api/slides`;
     const response = await fetch(backendUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -29,7 +28,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         error: 'Internal server error',
-        details: error instanceof Error ? error.message : 'Unknown error',
+        ...(process.env.NODE_ENV === 'development' && {
+          details: error instanceof Error ? error.message : 'Unknown error',
+        }),
       },
       { status: 500 }
     );
@@ -39,7 +40,7 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   return NextResponse.json({
     status: 'ok',
-    backend: BACKEND_API_URL,
+    backend: 'connected',
   });
 }
 
