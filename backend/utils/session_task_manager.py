@@ -97,10 +97,16 @@ class SessionTaskManager:
             return
 
         self._sessions: Dict[str, SessionTaskInfo] = {}
-        self._lock = asyncio.Lock()
+        self._lock: Optional[asyncio.Lock] = None
         self._cleanup_task: Optional[asyncio.Task] = None
         self._initialized = True
         logger.info("SessionTaskManager initialized")
+
+    async def _get_lock(self) -> asyncio.Lock:
+        """イベントループ内で Lock を遅延初期化"""
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+        return self._lock
 
     async def initialize(self) -> None:
         """バックグラウンド クリーンアップタスク開始"""
@@ -117,14 +123,14 @@ class SessionTaskManager:
             except asyncio.CancelledError:
                 pass
 
-        async with self._lock:
+        async with await self._get_lock():
             self._sessions.clear()
 
         logger.info("SessionTaskManager shutdown complete")
 
     async def register_session(self, session_id: str) -> SessionTaskInfo:
         """セッションを登録/取得"""
-        async with self._lock:
+        async with await self._get_lock():
             if session_id not in self._sessions:
                 info = SessionTaskInfo(session_id=session_id)
                 self._sessions[session_id] = info
@@ -136,12 +142,12 @@ class SessionTaskManager:
 
     async def get_session(self, session_id: str) -> Optional[SessionTaskInfo]:
         """セッション情報を取得"""
-        async with self._lock:
+        async with await self._get_lock():
             return self._sessions.get(session_id)
 
     async def set_llm_task(self, session_id: str, task: asyncio.Task) -> bool:
         """LLM生成タスクを登録"""
-        async with self._lock:
+        async with await self._get_lock():
             if session_id in self._sessions:
                 self._sessions[session_id].llm_task = task
                 self._sessions[session_id].update_activity()
@@ -151,7 +157,7 @@ class SessionTaskManager:
 
     async def set_tts_task(self, session_id: str, task: asyncio.Task) -> bool:
         """TTS処理タスクを登録"""
-        async with self._lock:
+        async with await self._get_lock():
             if session_id in self._sessions:
                 self._sessions[session_id].tts_task = task
                 self._sessions[session_id].update_activity()
@@ -161,7 +167,7 @@ class SessionTaskManager:
 
     async def set_tts_buffer(self, session_id: str, buffer: BytesIO) -> bool:
         """TTSバッファを登録"""
-        async with self._lock:
+        async with await self._get_lock():
             if session_id in self._sessions:
                 self._sessions[session_id].tts_buffer = buffer
                 self._sessions[session_id].update_activity()
@@ -171,14 +177,14 @@ class SessionTaskManager:
 
     async def get_tts_buffer(self, session_id: str) -> Optional[BytesIO]:
         """TTSバッファを取得"""
-        async with self._lock:
+        async with await self._get_lock():
             if session_id in self._sessions:
                 return self._sessions[session_id].tts_buffer
             return None
 
     async def cancel_llm_task(self, session_id: str) -> bool:
         """LLMタスクをキャンセル"""
-        async with self._lock:
+        async with await self._get_lock():
             if session_id not in self._sessions:
                 logger.warning("Session not found for cancel_llm_task: %s", session_id)
                 return False
@@ -198,7 +204,7 @@ class SessionTaskManager:
 
     async def cancel_tts_task(self, session_id: str) -> bool:
         """TTSタスクをキャンセル"""
-        async with self._lock:
+        async with await self._get_lock():
             if session_id not in self._sessions:
                 logger.warning("Session not found for cancel_tts_task: %s", session_id)
                 return False
@@ -218,7 +224,7 @@ class SessionTaskManager:
 
     async def clear_tts_buffer(self, session_id: str) -> bool:
         """TTSバッファをクリア"""
-        async with self._lock:
+        async with await self._get_lock():
             if session_id in self._sessions:
                 self._sessions[session_id].tts_buffer = None
                 logger.debug("TTS buffer cleared for session %s", session_id)
@@ -227,7 +233,7 @@ class SessionTaskManager:
 
     async def cancel_all_tasks(self, session_id: str) -> bool:
         """セッションの全タスクをキャンセル"""
-        async with self._lock:
+        async with await self._get_lock():
             if session_id not in self._sessions:
                 logger.warning("Session not found for cancel_all_tasks: %s", session_id)
                 return False
@@ -256,7 +262,7 @@ class SessionTaskManager:
 
     async def cleanup_session(self, session_id: str) -> bool:
         """セッションを削除"""
-        async with self._lock:
+        async with await self._get_lock():
             if session_id in self._sessions:
                 # タスクのキャンセルを試みる（念のため）
                 info = self._sessions[session_id]
@@ -272,12 +278,12 @@ class SessionTaskManager:
 
     async def get_active_sessions(self) -> list:
         """進行中のセッション一覧を取得"""
-        async with self._lock:
+        async with await self._get_lock():
             return [info.session_id for info in self._sessions.values() if info.is_active()]
 
     async def get_session_count(self) -> int:
         """登録されているセッション数"""
-        async with self._lock:
+        async with await self._get_lock():
             return len(self._sessions)
 
     async def _cleanup_loop(self) -> None:
@@ -291,7 +297,7 @@ class SessionTaskManager:
 
     async def _cleanup_expired_sessions(self) -> None:
         """期限切れセッションを自動削除"""
-        async with self._lock:
+        async with await self._get_lock():
             now = datetime.now()
             expired_sessions = [
                 (sid, info)
@@ -324,3 +330,10 @@ def get_session_task_manager() -> SessionTaskManager:
     if _session_task_manager is None:
         _session_task_manager = SessionTaskManager()
     return _session_task_manager
+
+
+def reset_session_task_manager() -> None:
+    """テスト用: SessionTaskManager シングルトンをリセット"""
+    global _session_task_manager
+    _session_task_manager = None
+    SessionTaskManager._instance = None
