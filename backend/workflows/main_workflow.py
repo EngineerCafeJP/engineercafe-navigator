@@ -902,7 +902,7 @@ class MainWorkflow:
             + [
                 HumanMessage(content=query),
                 AIMessage(content=answer),
-            ]
+            ],
         }
 
     def _prepare_state(self, input_data: dict) -> tuple[WorkflowStateDict, dict | None]:
