@@ -129,28 +129,21 @@ export function KnowledgeEditor({ entry, onSave, onCancel }: KnowledgeEditorProp
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    console.log('🔍 Form submit triggered');
-    console.log('🔍 Form data:', formData);
     
     if (!formData.content.trim()) {
-      console.log('❌ Content validation failed');
       toast.error('コンテンツは必須です');
       return;
     }
 
-    console.log('✅ Content validation passed');
     setLoading(true);
     
     try {
       if (onSave) {
-        console.log('🔍 Using onSave callback');
         await onSave(formData);
       } else {
         const url = entry?.id ? `/api/admin/knowledge/${entry.id}` : '/api/admin/knowledge';
         const method = entry?.id ? 'PUT' : 'POST';
         
-        console.log('🔍 Making API request:', { url, method });
-        console.log('🔍 Request body:', JSON.stringify(formData, null, 2));
         
         const response = await fetch(url, {
           method,
@@ -160,8 +153,6 @@ export function KnowledgeEditor({ entry, onSave, onCancel }: KnowledgeEditorProp
           body: JSON.stringify(formData),
         });
 
-        console.log('🔍 Response status:', response.status);
-        console.log('🔍 Response headers:', Object.fromEntries(response.headers.entries()));
 
         if (!response.ok) {
           const errorText = await response.text();
@@ -176,7 +167,6 @@ export function KnowledgeEditor({ entry, onSave, onCancel }: KnowledgeEditorProp
         }
 
         const result = await response.json();
-        console.log('✅ Success response:', result);
         
         toast.success(entry?.id ? '更新しました' : '作成しました');
         
@@ -196,7 +186,6 @@ export function KnowledgeEditor({ entry, onSave, onCancel }: KnowledgeEditorProp
       toast.error(error instanceof Error ? error.message : '保存に失敗しました');
     } finally {
       setLoading(false);
-      console.log('🔍 Form submit completed');
     }
   };
 

@@ -23,7 +23,6 @@ export class SharedMemoryService {
    */
   setSessionId(sessionId: string | null) {
     this.currentSessionId = sessionId;
-    console.log(`[SharedMemoryService] Session ID set to: ${sessionId}`);
   }
   
   /**
@@ -38,7 +37,6 @@ export class SharedMemoryService {
    */
   setLanguage(language: SupportedLanguage) {
     this.currentLanguage = language;
-    console.log(`[SharedMemoryService] Language set to: ${language}`);
   }
   
   /**
@@ -68,7 +66,6 @@ export class SharedMemoryService {
         sessionId: this.currentSessionId || undefined
       });
       
-      console.log(`[SharedMemoryService] Added ${role} message${metadata?.agentName ? ` from ${metadata.agentName}` : ''}`);
     } catch (error) {
       console.error('[SharedMemoryService] Error adding message:', error);
       throw error;
@@ -111,7 +108,6 @@ export class SharedMemoryService {
     
     // Since SimplifiedMemorySystem doesn't have a clear method,
     // we'll rely on TTL to expire old messages
-    console.log(`[SharedMemoryService] Session ${this.currentSessionId} will expire based on TTL`);
   }
   
   /**

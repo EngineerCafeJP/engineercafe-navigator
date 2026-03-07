@@ -69,14 +69,6 @@ export class AudioDataProcessor {
    */
   static async base64ToBlob(data: string, mimeType?: string): Promise<AudioProcessingResult<Blob>> {
     try {
-      console.log('[AudioDataProcessor] base64ToBlob called with:', {
-        dataLength: data.length,
-        startsWithData: data.startsWith('data:'),
-        mimeType,
-        dataPrefix: data.substring(0, 100),
-        isEmpty: data.length === 0,
-        hasValidBase64Chars: /^[A-Za-z0-9+/]*={0,2}$/.test(data.replace(/^data:[^;]*;base64,/, ''))
-      });
       
       let processedData: string;
       let detectedFormat: AudioFormat;
@@ -106,18 +98,9 @@ export class AudioDataProcessor {
 
       // Process raw base64
       processedData = this.cleanBase64(data);
-      console.log('[AudioDataProcessor] After cleanBase64:', {
-        originalLength: data.length,
-        cleanedLength: processedData.length,
-        cleanedPrefix: processedData.substring(0, 50)
-      });
       
       // Convert to binary
       const binaryString = atob(processedData);
-      console.log('[AudioDataProcessor] After atob:', {
-        binaryStringLength: binaryString.length,
-        firstFewBytes: Array.from(binaryString.substring(0, 10)).map(c => c.charCodeAt(0))
-      });
       
       const bytes = new Uint8Array(binaryString.length);
       
@@ -135,11 +118,6 @@ export class AudioDataProcessor {
       const blob = new Blob([bytes], { type: detectedFormat });
       
       // Validate blob
-      console.log('[AudioDataProcessor] Generated blob:', {
-        size: blob.size,
-        type: blob.type,
-        isEmpty: blob.size === 0
-      });
       
       if (blob.size === 0) {
         console.error('[AudioDataProcessor] ERROR: Generated blob is empty!');
@@ -271,15 +249,6 @@ export class AudioDataProcessor {
    */
   static async createBlobUrl(data: string | ArrayBuffer | Blob, mimeType?: string): Promise<AudioProcessingResult<string>> {
     try {
-      console.log('[AudioDataProcessor] createBlobUrl called with:', {
-        dataType: typeof data,
-        dataLength: data instanceof ArrayBuffer ? data.byteLength : 
-                   data instanceof Blob ? data.size : data.length,
-        mimeType,
-        isBlob: data instanceof Blob,
-        isArrayBuffer: data instanceof ArrayBuffer,
-        isString: typeof data === 'string'
-      });
       
       let blob: Blob;
 

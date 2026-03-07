@@ -131,13 +131,11 @@ export class ResponseCache {
       
       // Skip caching if text is too long or cache key is empty
       if (!cacheKey || response.text.length > this.MAX_TEXT_LENGTH) {
-        console.log('[ResponseCache] Skipping cache - text too long or invalid key');
         return;
       }
 
       // Check storage space before caching
       if (!this.hasStorageSpace()) {
-        console.log('[ResponseCache] Storage space low, cleaning up...');
         this.aggressiveCleanup();
         
         // Check again after cleanup
@@ -183,7 +181,6 @@ export class ResponseCache {
       
       // Verify hash collision by checking original text if available
       if (response.originalText && response.originalText !== text) {
-        console.log('[ResponseCache] Hash collision detected, removing invalid cache entry');
         localStorage.removeItem(cacheKey);
         return null;
       }
@@ -357,7 +354,6 @@ export class ResponseCache {
         }
       });
 
-      console.log(`[ResponseCache] Aggressive cleanup completed: removed ${itemsToRemove.length} items`);
     } catch (error) {
       console.error('Failed to perform aggressive cleanup:', error);
     }

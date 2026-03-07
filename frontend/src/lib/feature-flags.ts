@@ -270,12 +270,10 @@ export class RAGExperiment {
   private static async searchWithNewEmbeddings(query: string, options?: any): Promise<any[]> {
     // Placeholder for new implementation
     // This would use the new Mastra vector query tool
-    console.log('[RAGExperiment] New embeddings not yet implemented, falling back to current');
     return this.searchWithCurrentImplementation(query, options);
   }
   
   private static async logExperimentResult(result: any): Promise<void> {
     // Log to analytics system
-    console.log('[RAGExperiment] Result:', result);
   }
 }

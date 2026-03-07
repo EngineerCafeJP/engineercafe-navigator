@@ -255,12 +255,6 @@ export default function MarpViewer({
   // Listen for auto-start presentation event from parent
   useEffect(() => {
     const handleAutoStartPresentation = (event: CustomEvent) => {
-      console.log('[MarpViewer] handleAutoStartPresentation triggered', {
-        detail: event.detail,
-        autoPlay: event.detail?.autoPlay,
-        language: event.detail?.language,
-        isPlaying
-      });
       
       if (event.detail?.autoPlay) {
         // Set character to neutral expression for slide presentation
@@ -493,11 +487,9 @@ export default function MarpViewer({
             `<script>
               // Wait for Marp to finish rendering
               window.addEventListener('DOMContentLoaded', function() {
-                console.log('DOM loaded, checking for slides...');
                 const checkSlides = setInterval(() => {
                   const slides = document.querySelectorAll('.marpit > svg, section[data-marpit-fragment]');
                   if (slides.length > 0) {
-                    console.log('Slides found:', slides.length);
                     clearInterval(checkSlides);
                     // Notify parent (safe since we're in a sandboxed iframe)
                     if (window.parent && window.parent.postMessage) {
@@ -604,12 +596,6 @@ export default function MarpViewer({
       
       result = await response.json();
       
-      console.log(`[MarpViewer] API response for slide ${currentSlide}:`, {
-        hasAudioResponse: !!result.audioResponse,
-        audioResponseType: typeof result.audioResponse,
-        audioResponseLength: result.audioResponse?.length || 0,
-        resultKeys: Object.keys(result)
-      });
       
       if (result.audioResponse) {
         try {
@@ -675,7 +661,6 @@ export default function MarpViewer({
     } catch (error) {
       // Check if the error is due to abort
       if (error instanceof Error && error.name === 'AbortError') {
-        console.log('[MarpViewer] Narration aborted by user action');
       } else {
         console.error('[MarpViewer] Error narrating slide:', error);
       }
@@ -687,13 +672,9 @@ export default function MarpViewer({
   // Fast audio playback without lip sync analysis
   const playAudioFast = async (audioBase64: string): Promise<void> => {
     try {
-      console.log('[MarpViewer] Playing audio fast (no lip sync)', {
-        audioLength: audioBase64?.length || 0
-      });
       const { AudioPlaybackService } = await import('@/lib/audio/audio-playback-service');
       
       await AudioPlaybackService.playAudioFast(audioBase64, volume / 100);
-      console.log('[MarpViewer] Fast audio ended');
     } catch (error) {
       console.error('[MarpViewer] Error playing fast audio:', error);
     }
@@ -746,11 +727,9 @@ export default function MarpViewer({
 
 
   const stopAutoPlay = () => {
-    console.log('[MarpViewer] Stopping auto-play and all audio');
     
     // Abort any pending narration API calls
     if (narrationAbortControllerRef.current) {
-      console.log('[MarpViewer] Aborting narration API request');
       narrationAbortControllerRef.current.abort();
       narrationAbortControllerRef.current = null;
     }
@@ -770,7 +749,6 @@ export default function MarpViewer({
     // Reset to neutral expression when stopping presentation
     if (onExpressionControl) {
       onExpressionControl('neutral', 1.0);
-      console.log('[MarpViewer] Reset character to neutral when stopping presentation');
     }
     
     audioCache.forEach((audioUrl) => {
@@ -785,7 +763,6 @@ export default function MarpViewer({
       const isBackendAvailable = process.env.NEXT_PUBLIC_SKIP_BACKEND !== 'true';
       
       if (!isBackendAvailable) {
-        console.log('Backend skipped, using local navigation only');
         return;
       }
       
@@ -824,7 +801,6 @@ export default function MarpViewer({
         }
       } else if (result.transitionMessage) {
         // Handle end of presentation or other transition messages
-        console.log('Transition message:', result.transitionMessage);
       }
     } catch (error) {
       console.error('Error navigating slides:', error);
@@ -838,7 +814,6 @@ export default function MarpViewer({
     if (currentSlide > 1) {
       // Stop current narration when manually navigating
       if (isPlaying) {
-        console.log('[MarpViewer] Stopping auto-play due to manual navigation');
         setIsPlaying(false); // Set this first to prevent new narrations
         stopAutoPlay();
       }
@@ -855,7 +830,6 @@ export default function MarpViewer({
     if (slideNumber >= 1 && slideNumber <= totalSlides) {
       // Stop current narration when manually jumping to a slide
       if (isPlaying) {
-        console.log('[MarpViewer] Stopping auto-play due to manual navigation');
         stopAutoPlay();
         setIsPlaying(false);
       }
@@ -887,11 +861,9 @@ export default function MarpViewer({
     // Set character to neutral expression for slide presentation
     if (onExpressionControl) {
       onExpressionControl('neutral', 1.0);
-      console.log('[MarpViewer] Set character to neutral for slide presentation');
     }
     
     // Resume from current slide (not from the beginning)
-    console.log(`[MarpViewer] Starting/resuming auto-play from slide ${currentSlide}`);
     
     // Initialize audio context and mark user interaction
     try {
@@ -901,10 +873,8 @@ export default function MarpViewer({
       // Force initialize to mark this as a user interaction (button click)
       await manager.forceInitialize();
       
-      console.log('[MarpViewer] Audio context ready, starting presentation');
       setIsPlaying(true);
     } catch (error: any) {
-      console.log('[MarpViewer] Audio context not ready, showing permission prompt');
       console.error('Audio initialization failed:', error);
       setShowAudioPermissionPrompt(true);
     }
@@ -917,12 +887,10 @@ export default function MarpViewer({
       const manager = AudioInteractionManager.getInstance();
       await manager.forceInitialize();
       
-      console.log('[MarpViewer] Audio context initialized successfully');
       
       // Set character to neutral expression for slide presentation
       if (onExpressionControl) {
         onExpressionControl('neutral', 1.0);
-        console.log('[MarpViewer] Set character to neutral for slide presentation');
       }
       
       setShowAudioPermissionPrompt(false);
@@ -954,10 +922,8 @@ export default function MarpViewer({
   const playNarrationAudio = async (audioBase64: string) => {
     try {
       if (settings.enableLipSync) {
-        console.log('[MarpViewer] Playing Q&A response with lip-sync');
         await playAudioWithLipSync(audioBase64);
       } else {
-        console.log('[MarpViewer] Playing Q&A response fast (no lip-sync)');
         await playAudioFast(audioBase64);
       }
     } catch (error) {
@@ -1017,28 +983,15 @@ export default function MarpViewer({
 
   const debugSlideStructure = () => {
     if (!iframeRef.current?.contentDocument) {
-      console.log('=== Slide Debug Info ===');
-      console.log('No iframe document available');
       return;
     }
 
     try {
       const doc = iframeRef.current.contentDocument;
-      console.log('=== Slide Debug Info ===');
-      console.log('Document ready state:', doc.readyState);
-      console.log('Document body:', !!doc.body);
-      console.log('Marpit container:', doc.querySelector('.marpit'));
-      console.log('All SVGs:', doc.querySelectorAll('svg').length);
-      console.log('Slide SVGs (id*="slide"):', doc.querySelectorAll('svg[id*="slide"]').length);
-      console.log('Slide SVGs (id^="slide-"):', doc.querySelectorAll('svg[id^="slide-"]').length);
-      console.log('Sections:', doc.querySelectorAll('section').length);
-      console.log('First SVG:', doc.querySelector('svg'));
-      console.log('First SVG id:', doc.querySelector('svg')?.id);
       
       // Log all SVG IDs for debugging
       const allSvgs = doc.querySelectorAll('svg');
       if (allSvgs.length > 0) {
-        console.log('All SVG IDs:', Array.from(allSvgs).map(svg => svg.id).filter(id => id));
       }
     } catch (error) {
       console.error('Error in debugSlideStructure:', error);
@@ -1067,7 +1020,6 @@ export default function MarpViewer({
         
         // If still no slides and haven't retried too many times, retry after delay
         if (slides.length === 0 && retryCount < 10) {
-          console.log(`Retrying slide detection (attempt ${retryCount + 1})`);
           setTimeout(() => {
             updateIframeSlideRef.current(slideNumber, retryCount + 1);
           }, 200);
@@ -1079,7 +1031,6 @@ export default function MarpViewer({
           return;
         }
         
-        console.log(`Found ${slides.length} slides, showing slide ${slideNumber}`);
         
         // Hide all slides
         slides.forEach((slide) => {
@@ -1151,7 +1102,6 @@ export default function MarpViewer({
       const result = await response.json();
       
       if (process.env.NODE_ENV !== 'production') {
-        console.log(`[MarpViewer] API response:`, result);
       }
 
       if (result.success) {
@@ -1163,7 +1113,6 @@ export default function MarpViewer({
         }
 
         // Show answer in some way (could be passed to parent component)
-        console.log('Answer:', result.answer);
       }
     } catch (error) {
       console.error('Error asking question:', error);
@@ -1356,7 +1305,6 @@ export default function MarpViewer({
                     
                     // Marp generates SVG elements with specific pattern
                     const svgSlides = doc.querySelectorAll('.marpit > svg[id*="slide"]');
-                    console.log('SVG slides found:', svgSlides.length);
                     
                     if (svgSlides.length > 0) {
                       slideCount = svgSlides.length;
@@ -1368,7 +1316,6 @@ export default function MarpViewer({
                       }
                     }
                     
-                    console.log(`Correctly detected ${slideCount} slides in iframe`);
                     
                     // Only update if count is reasonable (between 1 and 100)
                     if (slideCount > 0 && slideCount <= 100 && slideCount !== totalSlides) {

@@ -57,7 +57,6 @@ export class AudioInteractionManager {
     const handleUserInteraction = async (event: Event) => {
       if (this.hasUserInteracted) return;
       
-      console.log('[AudioInteractionManager] User interaction detected:', event.type);
 
       this.hasUserInteracted = true;
       
@@ -205,7 +204,6 @@ export class AudioInteractionManager {
     const button = this.interactionPromptElement.querySelector('#audio-enable-btn');
     if (button) {
       button.addEventListener('click', () => {
-        console.log('[AudioInteractionManager] User clicked enable audio button');
         // This will trigger the existing interaction handler
       });
     }

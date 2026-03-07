@@ -89,7 +89,6 @@ export class LipSyncCache {
         const cached = this.memoryCache.get(audioHash)!;
         if (this.isValidCache(cached)) {
           this.stats.hitCount++;
-          console.log('[LipSyncCache] Memory cache hit for hash:', audioHash.substring(0, 12));
           return cached.data;
         } else {
           this.memoryCache.delete(audioHash);
@@ -113,7 +112,6 @@ export class LipSyncCache {
             // Add to memory cache for faster future access
             this.memoryCache.set(audioHash, cached);
             this.stats.hitCount++;
-            console.log('[LipSyncCache] localStorage cache hit for hash:', audioHash.substring(0, 12));
             return cached.data;
           } else {
             // Remove expired cache
@@ -160,7 +158,6 @@ export class LipSyncCache {
         
         try {
           localStorage.setItem(cacheKey, JSON.stringify(cachedData));
-          console.log('[LipSyncCache] Cached lip-sync data for hash:', audioHash.substring(0, 12), 'Size:', this.formatBytes(size));
         } catch (error) {
           console.warn('[LipSyncCache] Failed to save to localStorage, cache may be full:', error);
           this.cleanupOldEntries();
@@ -225,7 +222,6 @@ export class LipSyncCache {
     keysToRemove.forEach(key => localStorage.removeItem(key));
     
     if (keysToRemove.length > 0) {
-      console.log('[LipSyncCache] Cleaned up', keysToRemove.length, 'expired entries');
     }
 
     this.stats.lastCleanup = now;
@@ -259,7 +255,6 @@ export class LipSyncCache {
     
     entriesToRemove.forEach(entry => localStorage.removeItem(entry.key));
     
-    console.log('[LipSyncCache] Cleaned up', entriesToRemove.length, 'old entries');
   }
 
   /**
@@ -325,7 +320,6 @@ export class LipSyncCache {
     };
     this.saveStats();
 
-    console.log('[LipSyncCache] Cache cleared');
   }
 
   /**

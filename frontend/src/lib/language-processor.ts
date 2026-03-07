@@ -114,7 +114,6 @@ export class LanguageProcessor {
     // 強制言語指定がある場合
     if (options.forceLanguage) {
       if (this.debugMode) {
-        console.log('[LanguageProcessor] Using forced language:', options.forceLanguage);
       }
       return options.forceLanguage;
     }
@@ -122,7 +121,6 @@ export class LanguageProcessor {
     // 明確な言語検出の場合
     if (queryLanguage.confidence >= 0.8 && !queryLanguage.isMixed) {
       if (this.debugMode) {
-        console.log('[LanguageProcessor] Using detected language with high confidence:', queryLanguage.detectedLanguage);
       }
       return queryLanguage.detectedLanguage;
     }
@@ -132,14 +130,12 @@ export class LanguageProcessor {
       // 優先言語が設定されている場合
       if (options.preferredLanguage) {
         if (this.debugMode) {
-          console.log('[LanguageProcessor] Mixed query, using preferred language:', options.preferredLanguage);
         }
         return options.preferredLanguage;
       }
       
       // プライマリ言語を使用
       if (this.debugMode) {
-        console.log('[LanguageProcessor] Mixed query, using primary language:', queryLanguage.languages?.primary);
       }
       return queryLanguage.languages?.primary || 'ja';
     }
@@ -169,10 +165,6 @@ export class LanguageProcessor {
     const responseDetection = this.detectLanguage(response);
     
     if (this.debugMode) {
-      console.log('[LanguageProcessor] Language match check:');
-      console.log(`  Expected: ${expectedLanguage}`);
-      console.log(`  Detected in response: ${responseDetection.detectedLanguage}`);
-      console.log(`  Match: ${responseDetection.detectedLanguage === expectedLanguage}`);
     }
     
     return responseDetection.detectedLanguage === expectedLanguage;
@@ -183,13 +175,7 @@ export class LanguageProcessor {
    */
   public logDetection(text: string, result: LanguageDetectionResult): void {
     if (this.debugMode) {
-      console.log('[LanguageProcessor] Language detection:');
-      console.log(`  Text: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`);
-      console.log(`  Detected: ${result.detectedLanguage}`);
-      console.log(`  Confidence: ${result.confidence}`);
-      console.log(`  Mixed: ${result.isMixed}`);
       if (result.languages) {
-        console.log(`  Languages:`, result.languages);
       }
     }
   }

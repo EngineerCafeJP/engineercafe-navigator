@@ -446,11 +446,6 @@ export default function Home() {
             emotionToUse = emotionAnalysis.emotion;
           }
           
-          console.log('[processVoiceInput] Selected emotion:', emotionToUse, 'from:', {
-            primaryEmotion: result.primaryEmotion,
-            emotion: result.emotion,
-            analysisEmotion: emotionAnalysis.emotion
-          });
           const intensity = emotionAnalysis.intensity;
           
           // Enhanced emotion analysis complete
@@ -463,7 +458,6 @@ export default function Home() {
             if (setExpressionFunction) {
               try {
                 // Always use neutral expression for Q&A to avoid distracting face changes
-                console.log('[processVoiceInput] Setting neutral expression (face expression disabled for Q&A)');
                 setExpressionFunction('neutral', 0.8);
               } catch (error) {
                 console.error('[Character Control] Fallback expression error:', error);
@@ -622,7 +616,6 @@ export default function Home() {
     try {
       if (characterControlData.expression && setExpressionFunction) {
         // Always use neutral expression for Q&A to avoid distracting face changes
-        console.log('[handleCharacterControl] Setting neutral expression (face expression disabled for Q&A)');
         setExpressionFunction('neutral', 0.8);
       }
       

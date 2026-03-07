@@ -237,7 +237,6 @@ export class VoiceRecorder {
 
     for (const mimeType of mimeTypes) {
       if (MediaRecorder.isTypeSupported(mimeType)) {
-        console.log(`Selected mime type: ${mimeType}`);
         return mimeType;
       }
     }

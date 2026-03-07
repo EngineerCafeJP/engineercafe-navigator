@@ -11,7 +11,6 @@ export function endPerformance(label: string): number {
     return 0;
   }
   const duration = Date.now() - startTime;
-  console.log(`[Performance] ${label}: ${duration}ms`);
   measurements.delete(label);
   return duration;
 }
@@ -24,7 +23,6 @@ export async function measurePerformance<T>(
   try {
     const result = await fn();
     const duration = Date.now() - start;
-    console.log(`[Performance] ${label}: ${duration}ms`);
     return result;
   } catch (error) {
     const duration = Date.now() - start;
@@ -35,10 +33,7 @@ export async function measurePerformance<T>(
 
 export function logPerformanceSummary(steps: Record<string, number>): void {
   const total = Object.values(steps).reduce((sum, time) => sum + time, 0);
-  console.log('[Performance Summary]');
   Object.entries(steps).forEach(([step, time]) => {
     const percentage = ((time / total) * 100).toFixed(1);
-    console.log(`  ${step}: ${time}ms (${percentage}%)`);
   });
-  console.log(`  Total: ${total}ms`);
 }
