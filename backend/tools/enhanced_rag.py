@@ -4,6 +4,7 @@ Supabase + OpenAI Embeddings統合による高精度RAG検索
 """
 
 import os
+import time
 from typing import List, Dict, Optional
 import httpx
 from supabase import create_client, Client
@@ -14,6 +15,62 @@ from supabase import create_client, Client
 # The DB column dimension must match the model output dimension.
 DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
 DEFAULT_EMBEDDING_DIMENSIONS = 1536
+
+# RPC similarity thresholds per category
+# Lower threshold = broader recall; higher = stricter precision
+RPC_SIMILARITY_THRESHOLDS: Dict[str, float] = {
+    "hours": 0.25,
+    "pricing": 0.25,
+    "location": 0.25,
+    "facility-info": 0.30,
+    "event": 0.35,
+    "general": 0.30,
+    "consultation": 0.30,
+    "community": 0.30,
+}
+DEFAULT_RPC_SIMILARITY_THRESHOLD = 0.30
+
+
+class CircuitBreaker:
+    """Simple circuit breaker to prevent cascading RAG/LLM failures."""
+
+    def __init__(self, failure_threshold: int = 3, recovery_timeout: float = 60.0):
+        self.failure_threshold = failure_threshold
+        self.recovery_timeout = recovery_timeout
+        self._failure_count = 0
+        self._last_failure_time: Optional[float] = None
+        self._state = "closed"  # closed, open, half_open
+
+    @property
+    def is_open(self) -> bool:
+        if self._state == "open":
+            if (
+                self._last_failure_time
+                and (time.time() - self._last_failure_time) > self.recovery_timeout
+            ):
+                self._state = "half_open"
+                return False
+            return True
+        return False
+
+    def record_success(self):
+        self._failure_count = 0
+        self._state = "closed"
+
+    def record_failure(self):
+        self._failure_count += 1
+        self._last_failure_time = time.time()
+        if self._failure_count >= self.failure_threshold:
+            self._state = "open"
+
+    def reset(self):
+        """Reset circuit breaker to closed state (useful for testing)."""
+        self._failure_count = 0
+        self._last_failure_time = None
+        self._state = "closed"
+
+
+_rag_circuit_breaker = CircuitBreaker()
 
 # Query expansion mappings for Japanese/English synonyms
 QUERY_EXPANSION_MAP: Dict[str, List[str]] = {
@@ -71,6 +128,10 @@ class EnhancedRAGSearch:
             os.getenv("EMBEDDING_DIMENSIONS", str(DEFAULT_EMBEDDING_DIMENSIONS))
         )
 
+    def _get_rpc_threshold(self, category: str) -> float:
+        """カテゴリに基づくRPC類似度閾値を取得"""
+        return RPC_SIMILARITY_THRESHOLDS.get(category, DEFAULT_RPC_SIMILARITY_THRESHOLD)
+
     async def search(
         self,
         query: str,
@@ -78,6 +139,7 @@ class EnhancedRAGSearch:
         language: str = "ja",
         include_advice: bool = True,
         max_results: int = 10,
+        context_signals=None,
     ) -> Dict:
         """
         Enhanced RAG検索を実行
@@ -88,6 +150,7 @@ class EnhancedRAGSearch:
             language: 言語（ja or en）
             include_advice: 実用的なアドバイスを含めるか
             max_results: 最大結果数
+            context_signals: コンテキストシグナル（将来の拡張用）
 
         Returns:
             検索結果辞書 {success, data: {context, results, totalResults, topEntity}}
@@ -103,12 +166,12 @@ class EnhancedRAGSearch:
             # 2. OpenAI Embeddings APIでクエリをエンベディング化
             embedding = await self._generate_embedding(expanded_query)
 
-            # 3. Supabase RPCでベクトル検索（閾値を低めに設定して取りこぼしを防ぐ）
+            # 3. Supabase RPCでベクトル検索（カテゴリ別閾値を使用）
             search_results = self.supabase.rpc(
                 "search_knowledge_base",
                 {
                     "query_embedding": embedding,
-                    "similarity_threshold": 0.3,
+                    "similarity_threshold": self._get_rpc_threshold(category),
                     "match_count": max_results * 3,  # スコアリング用に多めに取得
                 },
             ).execute()
@@ -177,6 +240,106 @@ class EnhancedRAGSearch:
 
         except Exception as e:
             print(f"[EnhancedRAGSearch] Error: {e}")
+            return {"success": False, "error": str(e)}
+
+    async def search_hierarchical(
+        self,
+        query: str,
+        category: str,
+        language: str = "ja",
+        include_advice: bool = True,
+        max_results: int = 10,
+        context_signals=None,
+    ) -> Dict:
+        """Hierarchical RAG検索を実行。
+
+        チャンクレベルの検索を行い、親チャンクのコンテキストを展開して
+        より豊富なコンテキストを提供する。専用RPCが利用できない場合は
+        標準検索にフォールバックする。
+
+        Args:
+            query: 検索クエリ
+            category: クエリカテゴリ
+            language: 言語（ja or en）
+            include_advice: 実用的なアドバイスを含めるか
+            max_results: 最大結果数
+            context_signals: コンテキストシグナル（将来の拡張用）
+
+        Returns:
+            検索結果辞書 {success, data: {context, results, totalResults, topEntity}}
+        """
+        try:
+            # 1. クエリ拡張とembedding生成
+            expanded_query = self._expand_query(query, category, language)
+            embedding = await self._generate_embedding(expanded_query)
+
+            # 2. Hierarchical RPC呼び出し（フォールバック付き）
+            try:
+                search_results = self.supabase.rpc(
+                    "search_knowledge_base_hierarchical",
+                    {
+                        "query_embedding": embedding,
+                        "similarity_threshold": self._get_rpc_threshold(category),
+                        "match_count": max_results * 2,
+                        "filter_chunk_level": "chunk",
+                    },
+                ).execute()
+            except Exception:
+                return await self.search(
+                    query=query,
+                    category=category,
+                    language=language,
+                    include_advice=include_advice,
+                    max_results=max_results,
+                    context_signals=context_signals,
+                )
+
+            if not search_results.data:
+                return {
+                    "success": True,
+                    "data": {
+                        "context": "",
+                        "results": [],
+                        "totalResults": 0,
+                        "topEntity": "general",
+                    },
+                }
+
+            # 3. スコアリング
+            results_list: List[Dict] = (
+                list(search_results.data) if isinstance(search_results.data, list) else []
+            )
+            scored_results = self._score_results(results_list, query, category, language)
+
+            # 4. 親チャンク展開
+            scored_results = self._expand_parent_context(scored_results)
+
+            # 5. トップ結果
+            top_results = scored_results[:max_results]
+
+            # 6. コンテキスト構築
+            context = self._build_context_from_results(top_results, category, language)
+
+            # 7. アドバイス追加
+            if include_advice:
+                advice = self._generate_practical_advice(top_results, query, category, language)
+                if advice:
+                    context += f"\n\n{advice}"
+
+            return {
+                "success": True,
+                "data": {
+                    "context": context,
+                    "results": top_results,
+                    "totalResults": len(scored_results),
+                    "topEntity": (
+                        top_results[0].get("entity", "general") if top_results else "general"
+                    ),
+                },
+            }
+
+        except Exception as e:
+            print(f"[EnhancedRAGSearch] Hierarchical search error: {e}")
             return {"success": False, "error": str(e)}
 
     def _expand_query(self, query: str, category: str, language: str) -> str:
@@ -400,8 +563,11 @@ class EnhancedRAGSearch:
 
     def _calculate_category_bonus(self, result: Dict, category: str) -> float:
         """カテゴリに基づくボーナススコア計算"""
-        metadata = result.get("metadata", {})
-        result_category = metadata.get("category", "") if isinstance(metadata, dict) else ""
+        # トップレベルのcategoryカラム（RPC結果）を優先、fallbackでmetadata.category
+        result_category = result.get("category", "")
+        if not result_category:
+            metadata = result.get("metadata", {})
+            result_category = metadata.get("category", "") if isinstance(metadata, dict) else ""
 
         # カテゴリマッピング
         category_mapping = {
@@ -537,3 +703,56 @@ class EnhancedRAGSearch:
             return advice_templates[category].get(language, advice_templates[category].get("ja"))
 
         return None
+
+    def _expand_parent_context(self, chunk_results: List[Dict]) -> List[Dict]:
+        """親チャンクのコンテキストを展開。
+
+        チャンク結果からparent_idを抽出し、親ドキュメントの内容を
+        各チャンクに付与する。
+
+        Args:
+            chunk_results: チャンクレベルの検索結果
+
+        Returns:
+            親コンテキストが付与された結果リスト
+        """
+        if not chunk_results:
+            return chunk_results
+
+        parent_ids = list({r.get("parent_id") for r in chunk_results if r.get("parent_id")})
+
+        if not parent_ids:
+            return chunk_results
+
+        try:
+            parent_response = (
+                self.supabase.table("knowledge_base")
+                .select("id, title, content")
+                .in_("id", parent_ids)
+                .execute()
+            )
+
+            parent_map: Dict = {}
+            if parent_response.data:
+                for parent in parent_response.data:
+                    parent_map[parent["id"]] = parent
+
+            expanded: List[Dict] = []
+            for result in chunk_results:
+                pid = result.get("parent_id")
+                if pid and pid in parent_map:
+                    expanded.append(
+                        {
+                            **result,
+                            "parent_content": parent_map[pid].get("content", ""),
+                            "parent_title": parent_map[pid].get("title", ""),
+                        }
+                    )
+                else:
+                    expanded.append(result)
+
+            return expanded
+
+        except Exception as e:
+            print(f"[EnhancedRAGSearch] Failed to expand parent context: {e}")
+            return chunk_results
