@@ -2,11 +2,10 @@
 
 import { useState } from 'react';
 import useSWR from 'swr';
-import { Toaster } from 'react-hot-toast';
+import { Toaster, toast } from 'react-hot-toast';
 import Link from 'next/link';
 import { KnowledgeTable } from './components/KnowledgeTable';
-
-const fetcher = (url: string) => fetch(url).then((res) => res.json());
+import { getKnowledgeList, deleteKnowledge } from '@/lib/api/knowledge';
 
 export default function KnowledgeAdminPage() {
   const [page, setPage] = useState(1);
@@ -14,15 +13,9 @@ export default function KnowledgeAdminPage() {
   const [language, setLanguage] = useState('');
   const [category, setCategory] = useState('');
 
-  const queryParams = new URLSearchParams();
-  if (page > 1) queryParams.set('page', page.toString());
-  if (search) queryParams.set('search', search);
-  if (language) queryParams.set('language', language);
-  if (category) queryParams.set('category', category);
-
   const { data, error, mutate } = useSWR(
-    `/api/admin/knowledge?${queryParams.toString()}`,
-    fetcher
+    { search, language, category, page },
+    getKnowledgeList
   );
 
   const handleSearch = (e: React.FormEvent) => {
@@ -35,18 +28,12 @@ export default function KnowledgeAdminPage() {
     if (!confirm('削除してもよろしいですか？')) return;
 
     try {
-      const response = await fetch(`/api/admin/knowledge/${id}`, {
-        method: 'DELETE',
-      });
-
-      if (!response.ok) {
-        throw new Error('削除に失敗しました');
-      }
-
+      await deleteKnowledge(id);
+      toast.success('削除しました');
       mutate();
     } catch (error) {
       console.error('Delete error:', error);
-      alert('削除に失敗しました');
+      toast.error('削除に失敗しました');
     }
   };
 
