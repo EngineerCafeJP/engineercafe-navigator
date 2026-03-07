@@ -1,21 +1,41 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// NOTE: This route is actively called by MarpViewer.tsx (frontend/src/app/components/MarpViewer.tsx)
-// for Marp markdown slide rendering. Do not remove.
-// TODO: Re-enable after backend migration is complete
-// import { getEngineerCafeNavigator } from '@/mastra';
-// import { Config } from '@/mastra/types/config';
+import { getBackendApiUrl } from '@/lib/api/backend-url';
 
 export async function POST(request: NextRequest) {
-  return NextResponse.json({
-    success: false,
-    error: 'Marp API temporarily disabled during backend migration',
-  }, { status: 503 });
+  try {
+    const body = await request.json();
+
+    const backendUrl = `${getBackendApiUrl()}/api/slides`;
+    const response = await fetch(backendUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Backend API error: ${response.statusText}`);
+    }
+
+    const result = await response.json();
+    return NextResponse.json(result);
+  } catch (error) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Internal server error',
+        ...(process.env.NODE_ENV === 'development' && {
+          details: error instanceof Error ? error.message : 'Unknown error',
+        }),
+      },
+      { status: 500 }
+    );
+  }
 }
 
 export async function GET() {
   return NextResponse.json({
-    status: 'migrating',
-    message: 'Marp API temporarily disabled during backend migration',
+    status: 'ok',
+    backend: 'connected',
   });
 }

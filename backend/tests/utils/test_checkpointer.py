@@ -1,7 +1,7 @@
 """Tests for backend.utils.checkpointer — AsyncPostgresSaver checkpointer utilities."""
 
 import pytest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from backend.utils import checkpointer
 
 
@@ -27,6 +27,14 @@ class TestMaskConnectionString:
         assert result == ""
 
 
+def _make_mock_context_manager(mock_saver):
+    """from_conn_string の戻り値をコンテキストマネージャーとしてモック化"""
+    cm = MagicMock()
+    cm.__aenter__ = AsyncMock(return_value=mock_saver)
+    cm.__aexit__ = AsyncMock(return_value=None)
+    return cm
+
+
 class TestCreateCheckpointer:
     """create_checkpointer 関数のテスト"""
 
@@ -34,7 +42,8 @@ class TestCreateCheckpointer:
     async def cleanup(self):
         """各テスト後にシングルトンをリセット"""
         yield
-        await checkpointer.reset_checkpointer()
+        checkpointer._checkpointer_instance = None
+        checkpointer._checkpointer_cm = None
 
     async def test_raises_error_without_supabase_db_uri(self, monkeypatch):
         """SUPABASE_DB_URI が設定されていない場合は ValueError"""
@@ -53,16 +62,15 @@ class TestCreateCheckpointer:
         mock_saver = AsyncMock()
         mock_saver.setup = AsyncMock()
 
-        # AsyncPostgresSaver.from_conn_string is async, so we need AsyncMock with return_value
-        mock_from_conn = AsyncMock(return_value=mock_saver)
+        mock_cm = _make_mock_context_manager(mock_saver)
 
         with patch(
             "backend.utils.checkpointer.AsyncPostgresSaver.from_conn_string",
-            new=mock_from_conn,
+            return_value=mock_cm,
         ):
             result = await checkpointer.create_checkpointer()
 
-            mock_from_conn.assert_called_once_with(test_uri)
+            mock_cm.__aenter__.assert_called_once()
             mock_saver.setup.assert_called_once()
             assert result == mock_saver
 
@@ -70,9 +78,13 @@ class TestCreateCheckpointer:
         """データベース接続に失敗した場合は ConnectionError"""
         monkeypatch.setenv("SUPABASE_DB_URI", "postgresql://invalid")
 
+        mock_cm = MagicMock()
+        mock_cm.__aenter__ = AsyncMock(side_effect=Exception("Connection failed"))
+        mock_cm.__aexit__ = AsyncMock(return_value=None)
+
         with patch(
             "backend.utils.checkpointer.AsyncPostgresSaver.from_conn_string",
-            side_effect=Exception("Connection failed"),
+            return_value=mock_cm,
         ):
             with pytest.raises(ConnectionError) as exc_info:
                 await checkpointer.create_checkpointer()
@@ -87,7 +99,8 @@ class TestGetCheckpointer:
     async def cleanup(self):
         """各テスト後にシングルトンをリセット"""
         yield
-        await checkpointer.reset_checkpointer()
+        checkpointer._checkpointer_instance = None
+        checkpointer._checkpointer_cm = None
 
     async def test_returns_same_instance_on_double_call(self, monkeypatch):
         """複数回呼び出しても同じインスタンスを返す（シングルトン）"""
@@ -96,11 +109,11 @@ class TestGetCheckpointer:
         mock_saver = AsyncMock()
         mock_saver.setup = AsyncMock()
 
-        mock_from_conn = AsyncMock(return_value=mock_saver)
+        mock_cm = _make_mock_context_manager(mock_saver)
 
         with patch(
             "backend.utils.checkpointer.AsyncPostgresSaver.from_conn_string",
-            new=mock_from_conn,
+            return_value=mock_cm,
         ):
             instance1 = await checkpointer.get_checkpointer()
             instance2 = await checkpointer.get_checkpointer()
@@ -113,23 +126,23 @@ class TestGetCheckpointer:
 
         mock_saver1 = AsyncMock()
         mock_saver1.setup = AsyncMock()
-        mock_saver1.aclose = AsyncMock()
 
         mock_saver2 = AsyncMock()
         mock_saver2.setup = AsyncMock()
 
-        mock_from_conn = AsyncMock(side_effect=[mock_saver1, mock_saver2])
+        mock_cm1 = _make_mock_context_manager(mock_saver1)
+        mock_cm2 = _make_mock_context_manager(mock_saver2)
 
         with patch(
             "backend.utils.checkpointer.AsyncPostgresSaver.from_conn_string",
-            new=mock_from_conn,
+            side_effect=[mock_cm1, mock_cm2],
         ):
             instance1 = await checkpointer.get_checkpointer()
             await checkpointer.reset_checkpointer()
             instance2 = await checkpointer.get_checkpointer()
 
             assert instance1 is not instance2
-            mock_saver1.aclose.assert_called_once()
+            mock_cm1.__aexit__.assert_called_once()
 
 
 class TestCloseCheckpointer:
@@ -140,23 +153,28 @@ class TestCloseCheckpointer:
         """各テスト後にシングルトンをリセット"""
         yield
         checkpointer._checkpointer_instance = None
+        checkpointer._checkpointer_cm = None
 
     async def test_close_with_no_instance_no_error(self):
         """インスタンスが存在しない場合もエラーなし"""
         checkpointer._checkpointer_instance = None
+        checkpointer._checkpointer_cm = None
         await checkpointer.close_checkpointer()  # Should not raise
 
-    async def test_close_calls_aclose_method(self, monkeypatch):
-        """インスタンスが存在する場合は aclose を呼ぶ"""
+    async def test_close_calls_aexit_on_context_manager(self):
+        """インスタンスが存在する場合は __aexit__ を呼ぶ"""
         mock_saver = AsyncMock()
-        mock_saver.aclose = AsyncMock()
+        mock_cm = MagicMock()
+        mock_cm.__aexit__ = AsyncMock(return_value=None)
 
         checkpointer._checkpointer_instance = mock_saver
+        checkpointer._checkpointer_cm = mock_cm
 
         await checkpointer.close_checkpointer()
 
-        mock_saver.aclose.assert_called_once()
+        mock_cm.__aexit__.assert_called_once_with(None, None, None)
         assert checkpointer._checkpointer_instance is None
+        assert checkpointer._checkpointer_cm is None
 
 
 class TestCreateMemoryCheckpointer:
@@ -166,7 +184,8 @@ class TestCreateMemoryCheckpointer:
     async def cleanup(self):
         """各テスト後にシングルトンをリセット"""
         yield
-        await checkpointer.reset_checkpointer()
+        checkpointer._checkpointer_instance = None
+        checkpointer._checkpointer_cm = None
 
     async def test_delegates_to_create_checkpointer(self, monkeypatch):
         """create_checkpointer に委譲する"""
@@ -175,11 +194,11 @@ class TestCreateMemoryCheckpointer:
         mock_saver = AsyncMock()
         mock_saver.setup = AsyncMock()
 
-        mock_from_conn = AsyncMock(return_value=mock_saver)
+        mock_cm = _make_mock_context_manager(mock_saver)
 
         with patch(
             "backend.utils.checkpointer.AsyncPostgresSaver.from_conn_string",
-            new=mock_from_conn,
+            return_value=mock_cm,
         ):
             result = await checkpointer.create_memory_checkpointer()
             assert result == mock_saver

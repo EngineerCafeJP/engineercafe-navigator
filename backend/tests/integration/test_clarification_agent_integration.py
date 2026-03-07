@@ -15,6 +15,8 @@ import os
 import pytest
 from backend.utils.clarification_templates import get_clarification_response
 
+pytestmark = pytest.mark.integration
+
 
 class TestMessageContent:
     """メッセージ内容の正確性テスト"""

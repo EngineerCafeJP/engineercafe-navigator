@@ -18,6 +18,8 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from backend.utils.context_priority import ContextPriorityEngine, ContextSignals
 from backend.utils.message_windowing import MessageWindow, apply_message_window
 
+pytestmark = pytest.mark.integration
+
 # ---------------------------------------------------------------------------
 # Shared fixtures
 # ---------------------------------------------------------------------------
