@@ -49,6 +49,7 @@
     "@mastra/pg": "^0.10.3",
     "@mastra/rag": "^0.10.3",
     "@mastra/voice-google": "^0.10.2",
+    "@ricky0123/vad-react": "0.0.36",
     "@pixiv/three-vrm": "^3.4.1",
     "@pixiv/three-vrm-animation": "3.4.1",
     "@supabase/supabase-js": "^2.49.8",
