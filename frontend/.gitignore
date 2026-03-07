@@ -54,3 +54,8 @@ certificates/
 *.pem
 langgraph-repo/
 engineer-cafe-navigator-repo/
+
+# Playwright test artifacts
+test-results/
+playwright-report/
+.playwright/
