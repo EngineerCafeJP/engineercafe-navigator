@@ -20,6 +20,7 @@ AgentNodeName = Literal[
     "event",
     "general_knowledge",
     "slide",
+    "farewell",
 ]
 
 RoutingTarget = Literal[
@@ -28,6 +29,7 @@ RoutingTarget = Literal[
     "event",
     "general_knowledge",
     "slide",
+    "farewell",
     "__end__",
 ]
 
@@ -38,6 +40,7 @@ AgentName = Literal[
     "GeneralKnowledgeAgent",
     "TimeAgent",
     "SlideAgent",
+    "FarewellAgent",
 ]
 
 
@@ -266,6 +269,25 @@ EMERGENCY_KEYWORDS = [
     "defibrillator",
 ]
 
+LOST_FOUND_KEYWORDS = [
+    "忘れ物",
+    "落とし物",
+    "なくした",
+    "失くした",
+    "見つからない",
+    "落とした",
+    "紛失",
+    "置き忘れ",
+    "忘れた",
+    "lost",
+    "found",
+    "missing",
+    "left behind",
+    "forgot",
+    "lost and found",
+    "misplaced",
+]
+
 EARTHQUAKE_KEYWORDS = [
     "地震",
     "earthquake",
@@ -350,6 +372,46 @@ PARKING_KEYWORDS = [
     "parking",
     "park",
     "car park",
+]
+
+NEARBY_FACILITY_KEYWORDS = [
+    "コンビニ",
+    "ATM",
+    "薬局",
+    "病院",
+    "ドラッグストア",
+    "タクシー",
+    "バス",
+    "バス停",
+    "タクシー乗り場",
+    "近く",
+    "近所",
+    "周辺",
+    "近隣",
+    "そば",
+    "convenience store",
+    "pharmacy",
+    "hospital",
+    "clinic",
+    "taxi",
+    "bus",
+    "bus stop",
+    "taxi stand",
+    "nearby",
+    "around here",
+    "close by",
+    "neighborhood",
+    "ホテル",
+    "宿泊",
+    "hotel",
+    "accommodation",
+    "ランチ",
+    "レストラン",
+    "lunch",
+    "restaurant",
+    "食事",
+    "カフェ",
+    "喫茶店",
 ]
 
 BICYCLE_KEYWORDS = [
@@ -581,6 +643,8 @@ CATEGORY_TO_AGENT_MAP: Dict[str, AgentNodeName] = {
     "emergency": "facility",
     "reception": "business_info",
     "floor_layout": "facility",
+    "nearby": "facility",
+    "lost_found": "facility",
 }
 
 
@@ -615,6 +679,8 @@ def extract_request_type(query: str) -> Optional[str]:
 
     if match_keywords(lower_query, EMERGENCY_KEYWORDS):
         return "emergency"
+    if match_keywords(lower_query, LOST_FOUND_KEYWORDS):
+        return "lost_found"
     if match_keywords(lower_query, WIFI_KEYWORDS):
         return "wifi"
     if match_keywords(lower_query, BUSINESS_HOURS_KEYWORDS):
@@ -627,6 +693,8 @@ def extract_request_type(query: str) -> Optional[str]:
         return "community"
     if match_keywords(lower_query, ACCESS_DIRECTION_KEYWORDS):
         return "access"
+    if match_keywords(lower_query, NEARBY_FACILITY_KEYWORDS):
+        return "nearby"
     if match_keywords(lower_query, BUILDING_KEYWORDS):
         return "building"
     # 新しいキーワード（bicycle, parking, smoking, food_drink）を LOCATION_KEYWORDS より優先
