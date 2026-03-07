@@ -1,7 +1,7 @@
 """Reception API endpoints.
 
 FastAPI router for the autonomous reception flow.
-Handles session lifecycle: start -> respond -> status.
+Handles session lifecycle: start -> respond -> complete -> status.
 """
 
 from __future__ import annotations
@@ -26,6 +26,23 @@ from backend.utils.reception_templates import (
 )
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Lazy singleton for handoff service
+# ---------------------------------------------------------------------------
+
+_handoff_service: Optional["ReceptionHandoffService"] = None  # noqa: F821
+
+
+def _get_handoff_service() -> "ReceptionHandoffService":  # noqa: F821
+    """Return a module-level singleton, created on first use."""
+    global _handoff_service
+    if _handoff_service is None:
+        from backend.services.reception_handoff_service import ReceptionHandoffService
+
+        _handoff_service = ReceptionHandoffService()
+    return _handoff_service
+
 
 # ---------------------------------------------------------------------------
 # Router
@@ -131,6 +148,20 @@ class ReceptionRespondResponse(BaseModel):
     stage: str
     purpose: Optional[dict] = None
     next_action: Optional[str] = None
+
+
+class ReceptionCompleteRequest(BaseModel):
+    session_id: str = Field(min_length=1, max_length=128)
+    reception_session_id: str = Field(min_length=1, max_length=128)
+
+
+class ReceptionCompleteResponse(BaseModel):
+    response_text: str
+    target_agent: str
+    requires_staff: bool
+    purpose_category: str
+    action_type: str
+    action_data: Optional[dict] = None
 
 
 class ReceptionStatusResponse(BaseModel):
@@ -246,8 +277,70 @@ async def respond_reception(request: ReceptionRespondRequest) -> ReceptionRespon
     )
 
 
+@reception_router.post("/complete", response_model=ReceptionCompleteResponse)
+async def complete_reception(
+    request: ReceptionCompleteRequest,
+) -> ReceptionCompleteResponse:
+    """Complete the reception flow and prepare handoff to MainWorkflow.
+
+    Called when the session is in the 'routing' stage. Runs purpose-specific
+    preprocessing and returns the workflow state for MainWorkflow invocation.
+    """
+    session = _active_sessions.get(request.reception_session_id)
+    if session is None:
+        raise HTTPException(
+            status_code=404,
+            detail=(f"Reception session not found: " f"{request.reception_session_id}"),
+        )
+    _active_sessions.move_to_end(request.reception_session_id)
+
+    if session.session_id != request.session_id:
+        raise HTTPException(
+            status_code=403,
+            detail="Session ID mismatch",
+        )
+
+    if session.stage != "routing":
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Session must be in 'routing' stage to complete, "
+                f"current stage: {session.stage}"
+            ),
+        )
+
+    # Advance stage BEFORE async work to prevent duplicate processing
+    # from concurrent requests (race condition guard).
+    session.advance_to("completed")
+
+    handoff_service = _get_handoff_service()
+    try:
+        result = await handoff_service.prepare_handoff(session)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    logger.info(
+        "Reception completed: id=%s target=%s requires_staff=%s",
+        session.id,
+        result.target_agent,
+        result.requires_staff,
+    )
+
+    return ReceptionCompleteResponse(
+        response_text=result.purpose_flow.response_text,
+        target_agent=result.target_agent,
+        requires_staff=result.requires_staff,
+        purpose_category=session.purpose.category,
+        action_type=result.purpose_flow.action_type,
+        action_data=result.purpose_flow.action_data,
+    )
+
+
 @reception_router.get("/status/{reception_session_id}", response_model=ReceptionStatusResponse)
-async def get_reception_status(reception_session_id: str) -> ReceptionStatusResponse:
+async def get_reception_status(
+    reception_session_id: str,
+    session_id: str = "",
+) -> ReceptionStatusResponse:
     """Return the current state of a reception session."""
     session = _active_sessions.get(reception_session_id)
     if session is None:
@@ -256,6 +349,12 @@ async def get_reception_status(reception_session_id: str) -> ReceptionStatusResp
             detail=f"Reception session not found: {reception_session_id}",
         )
     _active_sessions.move_to_end(reception_session_id)
+
+    if session_id and session.session_id != session_id:
+        raise HTTPException(
+            status_code=403,
+            detail="Session ID mismatch",
+        )
 
     visitor_type: Optional[str] = None
     purpose_str: Optional[str] = None
