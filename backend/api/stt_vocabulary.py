@@ -197,6 +197,19 @@ def build_grammar_words(vocabulary: List[dict], category: Optional[str] = None) 
 # =============================================================================
 
 
+@router.get("/stt/vocabulary/{vocabulary_id}", response_model=VocabularyResponse)
+@rate_limit("30/minute")
+async def get_vocabulary(request: Request, vocabulary_id: str):
+    """語彙詳細取得"""
+    vocabulary = await _load_vocabulary()
+
+    item = next((v for v in vocabulary if v["id"] == vocabulary_id), None)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Vocabulary entry not found")
+
+    return VocabularyResponse(success=True, data=VocabularyItem(**item))
+
+
 @router.get("/stt/vocabulary", response_model=VocabularyListResponse)
 @rate_limit("60/minute")
 async def list_vocabulary(

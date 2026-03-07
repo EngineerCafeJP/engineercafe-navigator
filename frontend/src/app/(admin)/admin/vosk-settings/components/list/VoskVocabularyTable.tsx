@@ -11,6 +11,7 @@ interface VoskVocabularyTableProps {
   itemsPerPage: number;
   onPageChange: (page: number) => void;
   onDeleteClick: (item: VocabularyItem) => void;
+  onEditClick: (item: VocabularyItem) => void;
   hasFilter: boolean;
 }
 
@@ -21,6 +22,7 @@ export function VoskVocabularyTable({
   itemsPerPage,
   onPageChange,
   onDeleteClick,
+  onEditClick,
   hasFilter,
 }: VoskVocabularyTableProps) {
   if (items.length === 0) {
@@ -82,9 +84,8 @@ export function VoskVocabularyTable({
                 </td>
                 <td className="px-6 py-3 text-sm text-center space-x-2">
                   <button
-                    disabled
-                    title="この機能は準備中です"
-                    className="px-3 py-1 border-2 border-blue-300 text-gray-400 cursor-not-allowed font-medium rounded"
+                    onClick={() => onEditClick(item)}
+                    className="px-3 py-1 border-2 border-blue-600 text-blue-600 hover:bg-blue-50 font-medium rounded"
                   >
                     編集
                   </button>

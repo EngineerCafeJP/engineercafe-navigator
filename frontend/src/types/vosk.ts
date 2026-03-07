@@ -51,7 +51,7 @@ export const CATEGORY_METADATA: Record<
   },
 };
 
-export const CATEGORY_ORDER: VocabularyCategory[] = [
+export const CATEGORY_ORDER = [
   "facility",
   "location",
   "service",
@@ -59,4 +59,4 @@ export const CATEGORY_ORDER: VocabularyCategory[] = [
   "person",
   "tech",
   "organization",
-];
+] as const;
