@@ -117,7 +117,12 @@ class TestCheckpointerIntegration:
     @pytest.fixture(autouse=True)
     def _require_db_uri(self):
         db_uri = os.getenv("SUPABASE_DB_URI", "")
-        if not db_uri or db_uri.startswith("test-") or db_uri.startswith("placeholder"):
+        if (
+            not db_uri
+            or db_uri.startswith("test-")
+            or db_uri.startswith("placeholder")
+            or "localhost:0" in db_uri
+        ):
             pytest.skip("SUPABASE_DB_URI not configured for integration test")
 
     async def test_create_checkpointer_connects(self):

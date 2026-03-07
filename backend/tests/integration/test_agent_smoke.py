@@ -138,10 +138,11 @@ class TestCheckpointerSmoke:
 
     @pytest.fixture(autouse=True)
     def _require_supabase_db(self):
-        if not os.getenv("SUPABASE_DB_URI"):
+        db_uri = os.getenv("SUPABASE_DB_URI", "")
+        if not db_uri or "localhost:0" in db_uri:
             pytest.skip(
-                "SUPABASE_DB_URI not set. "
-                "Set it to a PostgreSQL connection string to run this test."
+                "SUPABASE_DB_URI not set or dummy. "
+                "Set it to a real PostgreSQL connection string to run this test."
             )
 
     async def test_create_and_close_checkpointer(self):
