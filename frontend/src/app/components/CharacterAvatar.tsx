@@ -138,6 +138,13 @@ export default function CharacterAvatar({
   const playKeyframeAnimationInternalRef = useRef<((animation: CharacterAnimationData) => void) | null>(null);
   const setExpressionWeightsRef = useRef<(weights: Record<string, number>) => void>(() => {});
   const expressionWeightsSyncRef = useRef<Record<string, number>>({});
+  const initializeSceneRef = useRef<() => void | (() => void)>(() => undefined);
+  const loadCharacterRef = useRef<() => Promise<void>>(async () => {});
+  const cleanupRef = useRef<() => void>(() => {});
+  const updateCharacterExpressionRef = useRef<(expression: string) => Promise<void>>(async () => {});
+  const updateCharacterAnimationRef = useRef<(animation: string) => Promise<void>>(async () => {});
+  const updateSceneBackgroundRef = useRef<(options: BackgroundOption) => void>(() => {});
+  const loadedModelPathRef = useRef(modelPath);
 
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -161,23 +168,24 @@ export default function CharacterAvatar({
   setExpressionWeightsRef.current = setExpressionWeights;
 
   // Initialize Three.js scene
-// useEffect 内
-useEffect(() => {
-  if (!containerRef.current) return;
+  useEffect(() => {
+    if (!containerRef.current) return;
 
- const disposeScene = initializeScene();
+    const disposeScene = initializeSceneRef.current();
+    void loadCharacterRef.current();
 
-  loadCharacter();
-  return () => {
-     cleanup();
-    disposeScene?.();   // ← 追加
-  };
-}, []);
+    return () => {
+      cleanupRef.current();
+      disposeScene?.();
+    };
+  }, []);
+
   // Handle model path changes
   useEffect(() => {
-    if (characterState.model !== modelPath) {
+    if (loadedModelPathRef.current !== modelPath) {
+      loadedModelPathRef.current = modelPath;
       setCharacterState(prev => ({ ...prev, model: modelPath }));
-      loadCharacter();
+      void loadCharacterRef.current();
     }
   }, [modelPath]);
 
@@ -230,15 +238,15 @@ useEffect(() => {
   // Update character state when props change
   useEffect(() => {
     if (charactersRef.current) {
-      updateCharacterExpression(initialExpression);
-      updateCharacterAnimation(initialAnimation);
+      void updateCharacterExpressionRef.current(initialExpression);
+      void updateCharacterAnimationRef.current(initialAnimation);
     }
   }, [initialExpression, initialAnimation]);
 
   // Update background when options change
   useEffect(() => {
     if (sceneRef.current && background) {
-      updateSceneBackground(background);
+      updateSceneBackgroundRef.current(background);
     }
   }, [background]);
 
@@ -1262,6 +1270,13 @@ useEffect(() => {
       VRMUtils.dispose(charactersRef.current);
     }
   };
+
+  initializeSceneRef.current = initializeScene;
+  loadCharacterRef.current = loadCharacter;
+  cleanupRef.current = cleanup;
+  updateCharacterExpressionRef.current = updateCharacterExpression;
+  updateCharacterAnimationRef.current = updateCharacterAnimation;
+  updateSceneBackgroundRef.current = updateSceneBackground;
 
   const takeScreenshot = () => {
     if (!rendererRef.current) return;

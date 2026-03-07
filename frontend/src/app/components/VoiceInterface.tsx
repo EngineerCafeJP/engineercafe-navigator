@@ -53,6 +53,8 @@ export default function VoiceInterface({
   const audioQueueRef = useRef<AudioQueue | null>(null);
   const mobileAudioServiceRef = useRef<MobileAudioService | null>(null);
   const voiceRecorderRef = useRef<VoiceRecorder | null>(null);
+  const initialVolumeRef = useRef(volume);
+  const performAutoGreetingRef = useRef<() => Promise<void>>(async () => {});
   const { ensureAudioContext, isReady: isAudioReady, hasInteraction } = useAudioInteraction();
   
 
@@ -81,7 +83,7 @@ export default function VoiceInterface({
   useEffect(() => {
     if (!mobileAudioServiceRef.current) {
       mobileAudioServiceRef.current = new MobileAudioService({
-        volume: volume,
+        volume: initialVolumeRef.current,
         onPlay: () => setIsSpeaking(true),
         onEnded: () => setIsSpeaking(false),
         onError: (error) => {
@@ -90,6 +92,10 @@ export default function VoiceInterface({
         }
       });
     }
+
+    const audioQueue = audioQueueRef.current;
+    const audioContext = audioContextRef.current;
+    const mobileAudioService = mobileAudioServiceRef.current;
     
     return () => {
       // Cleanup VoiceRecorder
@@ -98,14 +104,14 @@ export default function VoiceInterface({
         voiceRecorderRef.current = null;
       }
       
-      if (audioContextRef.current) {
-        audioContextRef.current.close();
+      if (audioContext) {
+        audioContext.close();
       }
-      if (audioQueueRef.current) {
-        audioQueueRef.current.clear();
+      if (audioQueue) {
+        audioQueue.clear();
       }
-      if (mobileAudioServiceRef.current) {
-        mobileAudioServiceRef.current.dispose();
+      if (mobileAudioService) {
+        mobileAudioService.dispose();
       }
     };
   }, []);
@@ -125,7 +131,7 @@ export default function VoiceInterface({
   // Auto greeting when component mounts with autoGreeting enabled
   useEffect(() => {
     if (autoGreeting) {
-      performAutoGreeting();
+      void performAutoGreetingRef.current();
     }
   }, [autoGreeting, language]);
 
@@ -184,6 +190,8 @@ export default function VoiceInterface({
       setLoadingMessage('');
     }
   };
+
+  performAutoGreetingRef.current = performAutoGreeting;
 
 
   // Start voice recording
