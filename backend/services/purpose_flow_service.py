@@ -99,10 +99,14 @@ _TEXT_TEMPLATES: dict[str, Mapping[str, Mapping[str, str]]] = {
     },
     "tour": {
         "ja": {
-            "default": "館内ツアーですね。ツアー案内におつなぎします。",
+            "default": "初回登録のご案内ですね。利用方法と利用規約のスライド案内へおつなぎします。",
         },
         "en": {
-            "default": "You're here for a tour. I'll hand you over to the tour guidance flow.",
+            "default": (
+                "You need the first-visit registration guide."
+                " I'll hand you over to the onboarding slides"
+                " and terms guidance."
+            ),
         },
         "zh": {
             "default": "您今天是来参加参观导览的。我将为您转接到导览流程。",

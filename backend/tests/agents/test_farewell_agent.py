@@ -92,7 +92,11 @@ class TestFarewellAgent:
             "success": True,
             "data": {"context": "受付カードは1階フロントにお返しください。"},
         }
-        mock_llm_response = "[happy]ありがとうございました！受付カードをお返しください。またのご来館をお待ちしております。"
+        mock_llm_response = (
+            "[happy]ありがとうございました！"
+            "受付カードをお返しください。"
+            "またのご来館をお待ちしております。"
+        )
 
         with (
             patch.object(
