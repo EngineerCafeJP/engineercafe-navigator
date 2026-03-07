@@ -28,6 +28,7 @@ def _make_event_client(rows: list[dict]) -> MagicMock:
     client = MagicMock()
     builder = MagicMock()
     builder.select.return_value = builder
+    builder.limit.return_value = builder
     builder.execute.return_value = _make_query_result(rows)
     client.table.return_value = builder
     return client
@@ -47,7 +48,7 @@ async def test_handle_facility_use_returns_guide_result(
 ) -> None:
     service = PurposeFlowService()
 
-    result = await service.handle_facility_use(language, _make_identity())
+    result = await service.handle_facility_use(language, "session-test", _make_identity())
 
     assert isinstance(result, PurposeFlowResult)
     assert expected_fragment in result.response_text
@@ -76,7 +77,9 @@ async def test_handle_event_participation_returns_today_events(
     ]
     service = PurposeFlowService(supabase_client=_make_event_client(rows))
 
-    result = await service.handle_event_participation(language, _make_identity("returning"))
+    result = await service.handle_event_participation(
+        language, "session-test", _make_identity("returning")
+    )
 
     assert expected_fragment in result.response_text
     assert result.target_agent == "event"
@@ -110,7 +113,7 @@ async def test_handle_event_participation_without_events_uses_default_message(
 ) -> None:
     service = PurposeFlowService(supabase_client=_make_event_client([]))
 
-    result = await service.handle_event_participation(language, _make_identity())
+    result = await service.handle_event_participation(language, "session-test", _make_identity())
 
     assert expected_fragment in result.response_text
     assert result.action_data == {"events": [], "event_count": 0}
@@ -121,11 +124,12 @@ async def test_handle_event_participation_falls_back_on_supabase_error() -> None
     client = MagicMock()
     builder = MagicMock()
     builder.select.return_value = builder
+    builder.limit.return_value = builder
     builder.execute.side_effect = RuntimeError("supabase unavailable")
     client.table.return_value = builder
     service = PurposeFlowService(supabase_client=client)
 
-    result = await service.handle_event_participation("en", _make_identity())
+    result = await service.handle_event_participation("en", "session-test", _make_identity())
 
     assert "couldn't check today's event listing right now" in result.response_text
     assert result.action_data == {"events": [], "lookup_failed": True}
@@ -145,7 +149,7 @@ async def test_handle_tour_returns_handoff_result(
 ) -> None:
     service = PurposeFlowService()
 
-    result = await service.handle_tour(language, _make_identity())
+    result = await service.handle_tour(language, "session-test", _make_identity())
 
     assert expected_fragment in result.response_text
     assert result.target_agent == "slide"
@@ -223,7 +227,7 @@ async def test_handle_other_returns_general_handoff(
 ) -> None:
     service = PurposeFlowService()
 
-    result = await service.handle_other(language, _make_identity())
+    result = await service.handle_other(language, "session-test", _make_identity())
 
     assert expected_fragment in result.response_text
     assert result.target_agent == "general_knowledge"

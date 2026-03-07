@@ -191,13 +191,12 @@ class PurposeFlowService:
             "other": self.handle_other,
         }
         handler = handlers.get(purpose.category, self.handle_other)
-        if purpose.category == "consultation":
-            return await handler(language, session_id, visitor_identity)
-        return await handler(language, visitor_identity)
+        return await handler(language, session_id, visitor_identity)
 
     async def handle_facility_use(
         self,
         language: str,
+        session_id: str,
         visitor_identity: VisitorIdentity,
     ) -> PurposeFlowResult:
         """Handle visitors who want to use the facility."""
@@ -220,6 +219,7 @@ class PurposeFlowService:
     async def handle_event_participation(
         self,
         language: str,
+        session_id: str,
         visitor_identity: VisitorIdentity,
     ) -> PurposeFlowResult:
         """Handle visitors attending an event, enriching with today's events."""
@@ -258,6 +258,7 @@ class PurposeFlowService:
     async def handle_tour(
         self,
         language: str,
+        session_id: str,
         visitor_identity: VisitorIdentity,
     ) -> PurposeFlowResult:
         """Handle visitors requesting a tour."""
@@ -310,6 +311,7 @@ class PurposeFlowService:
     async def handle_other(
         self,
         language: str,
+        session_id: str,
         visitor_identity: VisitorIdentity,
     ) -> PurposeFlowResult:
         """Handle uncategorized purposes with general guidance handoff."""
@@ -328,7 +330,7 @@ class PurposeFlowService:
         if not client:
             return []
 
-        result = client.table("events").select("*").execute()
+        result = client.table("events").select("*").limit(200).execute()
         rows = result.data or []
         today = datetime.now(_JST).date()
 
@@ -379,7 +381,7 @@ class PurposeFlowService:
             "zh": "来访者希望获得咨询支持",
             "ko": "방문자가 상담 지원을 요청함",
         }
-        return reasons[language]
+        return reasons.get(language, reasons["ja"])
 
     def _is_today_event(self, row: Mapping[str, Any], today: date) -> bool:
         event_date = self._extract_event_date(row)

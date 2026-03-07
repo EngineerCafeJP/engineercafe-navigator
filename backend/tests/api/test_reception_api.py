@@ -6,6 +6,10 @@ store is cleared between tests to ensure isolation.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from typing import Any, Optional
+from unittest.mock import AsyncMock, patch
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -253,3 +257,121 @@ class TestReceptionStatus:
             response = client.get(f"/api/reception/status/{rid}")
             assert response.status_code == 200
             assert response.json()["stage"] == "greeting"
+
+
+# ===========================================================================
+# POST /api/reception/complete
+# ===========================================================================
+
+
+def _advance_to_routing(session_id: str = "sess-001") -> str:
+    """Start a session and advance it to the 'routing' stage.
+
+    Returns the reception_session_id.
+    """
+    start = _start_session(session_id=session_id)
+    rid = start["reception_session_id"]
+
+    # greeting -> purpose_hearing
+    client.post(
+        "/api/reception/respond",
+        json={"session_id": session_id, "reception_session_id": rid, "message": "hello"},
+    )
+    # purpose_hearing -> routing (facility keyword)
+    client.post(
+        "/api/reception/respond",
+        json={
+            "session_id": session_id,
+            "reception_session_id": rid,
+            "message": "I want to use the coworking space",
+        },
+    )
+    return rid
+
+
+@dataclass
+class _FakePurposeFlow:
+    response_text: str = "Welcome to the coworking area."
+    action_type: str = "guide"
+    action_data: Optional[dict[str, Any]] = None
+
+
+@dataclass
+class _FakeHandoffResult:
+    workflow_state: dict[str, Any] = None  # type: ignore[assignment]
+    target_agent: str = "facility_agent"
+    purpose_flow: _FakePurposeFlow = None  # type: ignore[assignment]
+    requires_staff: bool = False
+
+    def __post_init__(self) -> None:
+        if self.workflow_state is None:
+            self.workflow_state = {"step": "routed"}
+        if self.purpose_flow is None:
+            self.purpose_flow = _FakePurposeFlow()
+
+
+class TestCompleteReception:
+    def test_complete_returns_404_for_unknown_session(self):
+        response = client.post(
+            "/api/reception/complete",
+            json={
+                "session_id": "sess-001",
+                "reception_session_id": "does-not-exist",
+            },
+        )
+        assert response.status_code == 404
+
+    def test_complete_returns_403_on_session_id_mismatch(self):
+        rid = _advance_to_routing(session_id="sess-001")
+
+        response = client.post(
+            "/api/reception/complete",
+            json={
+                "session_id": "wrong-session-id",
+                "reception_session_id": rid,
+            },
+        )
+        assert response.status_code == 403
+
+    def test_complete_returns_409_when_not_in_routing_stage(self):
+        start = _start_session(session_id="sess-001")
+        rid = start["reception_session_id"]
+        # Session is in 'greeting' stage, not 'routing'
+
+        response = client.post(
+            "/api/reception/complete",
+            json={
+                "session_id": "sess-001",
+                "reception_session_id": rid,
+            },
+        )
+        assert response.status_code == 409
+
+    def test_complete_success_with_mocked_handoff(self):
+        rid = _advance_to_routing(session_id="sess-001")
+
+        fake_result = _FakeHandoffResult()
+        mock_service = AsyncMock()
+        mock_service.prepare_handoff.return_value = fake_result
+
+        with patch(
+            "backend.api.reception._get_handoff_service",
+            return_value=mock_service,
+        ):
+            response = client.post(
+                "/api/reception/complete",
+                json={
+                    "session_id": "sess-001",
+                    "reception_session_id": rid,
+                },
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["target_agent"] == "facility_agent"
+        assert data["requires_staff"] is False
+        assert data["response_text"] == "Welcome to the coworking area."
+        assert data["action_type"] == "guide"
+        assert data["purpose_category"] == "facility_use"
+        # workflow_state must NOT be in the response (PII leak fix)
+        assert "workflow_state" not in data
