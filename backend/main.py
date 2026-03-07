@@ -657,6 +657,11 @@ from backend.api.stt_vocabulary import router as stt_vocabulary_router  # noqa: 
 
 app.include_router(stt_vocabulary_router, prefix="/api", dependencies=[Depends(verify_api_key)])
 
+# Reception API Router
+from backend.api.reception import reception_router  # noqa: E402
+
+app.include_router(reception_router)
+
 
 if __name__ == "__main__":
     import uvicorn
