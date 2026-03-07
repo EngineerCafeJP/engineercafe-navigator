@@ -41,9 +41,10 @@ export default function Home() {
             language={currentLanguage}
             onLanguageChange={setCurrentLanguage}
             onVisemeControl={setVisemeFunction}
-            renderAvatar={() => (
+            renderAvatar={({ sessionState }) => (
               <CharacterAvatar
                 modelPath="/characters/models/sakura.vrm"
+                sessionState={sessionState}
                 background={characterBackground}
                 lightingIntensity={lightingIntensity}
                 enableClickAnimation={!showSlideMode}
