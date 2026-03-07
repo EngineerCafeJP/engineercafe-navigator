@@ -66,6 +66,12 @@ class TestLegacyFirstTimeReception:
         result = get_reception_response("ja", "first_time")
         assert result["metadata"]["reception_type"] == "first_time"
 
+    def test_first_time_zh_contains_welcome(self):
+        result = get_reception_response("zh", "first_time")
+        response = result["response"]
+        assert "欢迎来到 Engineer Cafe" in response
+        assert "免费" in response
+
 
 class TestLegacyReturningReception:
     def test_returning_ja_contains_welcome_back(self):
@@ -90,6 +96,11 @@ class TestLegacyGeneralReception:
     def test_general_en_contains_basic_info(self):
         result = get_reception_response("en", "general")
         assert "Wi-Fi" in result["response"]
+
+    def test_general_ko_contains_basic_info(self):
+        result = get_reception_response("ko", "general")
+        assert "Wi-Fi" in result["response"]
+        assert "운영 시간" in result["response"]
 
     def test_general_is_default_reception_type(self):
         result = get_reception_response("ja")
@@ -146,6 +157,11 @@ class TestGetReceptionResponseNewAPI:
         result = get_reception_response("en", is_returning=True)
         assert "Welcome back" in result.text
 
+    def test_first_visit_ko(self) -> None:
+        result = get_reception_response("ko", is_returning=False)
+        assert "처음 방문" in result.text
+        assert result.language == "ko"
+
     def test_unsupported_language_defaults_to_ja(self) -> None:
         result = get_reception_response("fr", is_returning=False)  # type: ignore[arg-type]
         assert result.language == "ja"
@@ -186,6 +202,16 @@ class TestGetPurposeHearingPrompt:
         assert "What brings you here" in result.text
         assert "coworking" in result.text
 
+    def test_purpose_hearing_prompt_zh(self) -> None:
+        result = get_purpose_hearing_prompt("zh")
+        assert "来访目的" in result.text
+        assert "联合办公空间" in result.text
+
+    def test_purpose_hearing_prompt_ko(self) -> None:
+        result = get_purpose_hearing_prompt("ko")
+        assert "방문 목적" in result.text
+        assert "코워킹 공간" in result.text
+
 
 class TestGetPurposeFollowup:
     def test_purpose_followup_facility_use(self) -> None:
@@ -217,3 +243,49 @@ class TestGetPurposeFollowup:
         result = get_purpose_followup("en", "facility_use")
         assert "coworking" in result.text
         assert "Wi-Fi" in result.text
+
+    def test_purpose_followup_event_zh(self) -> None:
+        result = get_purpose_followup("zh", "event_participation")
+        assert "活动" in result.text
+
+    def test_purpose_followup_consultation_ko(self) -> None:
+        result = get_purpose_followup("ko", "consultation")
+        assert "스태프" in result.text
+
+
+class TestChineseTemplates:
+    def test_chinese_greeting(self) -> None:
+        result = get_personalized_greeting("zh", name="小林", last_purpose="参加技术活动")
+        assert "小林" in result.text
+        assert "参加技术活动" in result.text
+
+    def test_chinese_purpose_hearing(self) -> None:
+        result = get_purpose_hearing_prompt("zh")
+        assert "请告诉我" in result.text
+
+    def test_chinese_followup(self) -> None:
+        result = get_purpose_followup("zh", "facility_use")
+        assert "1 楼前台" in result.text
+
+    def test_chinese_default_purpose_label(self) -> None:
+        result = get_personalized_greeting("zh", name="小林")
+        assert "来访" in result.text
+
+
+class TestKoreanTemplates:
+    def test_korean_greeting(self) -> None:
+        result = get_personalized_greeting("ko", name="민수", last_purpose="기술 상담")
+        assert "민수" in result.text
+        assert "기술 상담" in result.text
+
+    def test_korean_purpose_hearing(self) -> None:
+        result = get_purpose_hearing_prompt("ko")
+        assert "예를 들면" in result.text
+
+    def test_korean_followup(self) -> None:
+        result = get_purpose_followup("ko", "facility_use")
+        assert "1층 안내 데스크" in result.text
+
+    def test_korean_default_purpose_label(self) -> None:
+        result = get_personalized_greeting("ko", name="민수")
+        assert "방문" in result.text

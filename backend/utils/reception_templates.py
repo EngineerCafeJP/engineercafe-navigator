@@ -15,7 +15,7 @@ from backend.utils.emotion_tagger import add_emotion_tag
 
 logger = logging.getLogger(__name__)
 
-SupportedLanguage = Literal["ja", "en"]
+SupportedLanguage = Literal["ja", "en", "zh", "ko"]
 
 ReceptionType = Literal[
     "first_time",
@@ -80,6 +80,24 @@ _FIRST_TIME: dict[str, str] = {
         "3. Open hours: 9:00-22:00 (except year-end/New Year holidays)\n\n"
         "Feel free to ask if you have any questions!"
     ),
+    "zh": (
+        "欢迎来到 Engineer Cafe！看起来这是您第一次来访。\n"
+        "Engineer Cafe 是可**免费**使用的联合办公空间。\n\n"
+        "**使用流程：**\n"
+        "1. 请先在 1 楼前台办理登记\n"
+        "2. Wi-Fi 和电源插座可自由使用\n"
+        "3. 营业时间：9:00-22:00（年末年初除外）\n\n"
+        "如果有任何疑问，欢迎随时咨询。"
+    ),
+    "ko": (
+        "Engineer Cafe에 오신 것을 환영합니다! 처음 방문하셨군요.\n"
+        "Engineer Cafe는 **무료**로 이용할 수 있는 코워킹 공간입니다.\n\n"
+        "**이용 방법:**\n"
+        "1. 1층 안내 데스크에서 이용 등록을 해주세요\n"
+        "2. Wi-Fi와 전원은 자유롭게 사용할 수 있습니다\n"
+        "3. 운영 시간: 9:00-22:00 (연말연시 제외)\n\n"
+        "궁금한 점이 있으면 언제든지 말씀해 주세요!"
+    ),
 }
 
 _RETURNING: dict[str, str] = {
@@ -92,6 +110,16 @@ _RETURNING: dict[str, str] = {
         "Welcome back! Thank you for visiting again.\n"
         "Enjoy your time at Engineer Cafe today.\n\n"
         "Feel free to ask if you need any help."
+    ),
+    "zh": (
+        "欢迎回来！感谢您再次来到 Engineer Cafe。\n"
+        "祝您今天也能在这里度过高效而愉快的时间。\n\n"
+        "如果需要帮助，请随时告诉我。"
+    ),
+    "ko": (
+        "다시 오신 것을 환영합니다! Engineer Cafe를 또 찾아주셔서 감사합니다.\n"
+        "오늘도 편안하게 이용해 주세요.\n\n"
+        "도움이 필요하시면 언제든지 말씀해 주세요."
     ),
 }
 
@@ -109,6 +137,18 @@ _GENERAL: dict[str, str] = {
         "Open hours: 9:00-22:00.\n\n"
         "If you have any questions about our facilities or events, "
         "feel free to ask."
+    ),
+    "zh": (
+        "欢迎来到 Engineer Cafe！\n"
+        "这里提供免费的 Wi-Fi 和电源插座。\n"
+        "营业时间为 9:00-22:00。\n\n"
+        "如果您想了解设施或活动信息，请随时提问。"
+    ),
+    "ko": (
+        "Engineer Cafe에 오신 것을 환영합니다!\n"
+        "이곳에서는 무료 Wi-Fi와 전원을 이용하실 수 있습니다.\n"
+        "운영 시간은 9:00-22:00입니다.\n\n"
+        "시설이나 이벤트에 대해 궁금한 점이 있으면 편하게 물어보세요."
     ),
 }
 
@@ -132,6 +172,11 @@ _FIRST_VISIT_GREETING: dict[str, str] = {
         "Hello! Welcome to Engineer Cafe.\n"
         "It looks like this is your first visit. What brings you here today?"
     ),
+    "zh": ("您好，欢迎来到 Engineer Cafe。\n看起来这是您第一次来访，请问今天想办理什么事项？"),
+    "ko": (
+        "안녕하세요, Engineer Cafe에 오신 것을 환영합니다.\n"
+        "처음 방문하신 것 같은데 오늘 어떤 용무로 오셨나요?"
+    ),
 }
 
 _RETURNING_GREETING: dict[str, str] = {
@@ -141,6 +186,11 @@ _RETURNING_GREETING: dict[str, str] = {
     ),
     "en": (
         "Welcome back to Engineer Cafe!\nThank you for visiting again. What brings you here today?"
+    ),
+    "zh": ("欢迎再次来到 Engineer Cafe！\n感谢您的再次光临，请问今天想办理什么事项？"),
+    "ko": (
+        "Engineer Cafe에 다시 오신 것을 환영합니다!\n"
+        "또 방문해 주셔서 감사합니다. 오늘 어떤 용무로 오셨나요?"
     ),
 }
 
@@ -154,6 +204,16 @@ _RETURNING_PERSONALIZED: dict[str, str] = {
         "Welcome back, {name}! Thank you for visiting again.\n"
         "Last time you were here for {last_purpose}.\n"
         "What brings you here today?"
+    ),
+    "zh": (
+        "欢迎回来，{name}！感谢您再次来到 Engineer Cafe。\n"
+        "您上次来访的目的为：{last_purpose}。\n"
+        "请问今天想办理什么事项？"
+    ),
+    "ko": (
+        "{name}님, 다시 오신 것을 환영합니다! 또 방문해 주셔서 감사합니다.\n"
+        "지난 방문 목적은 {last_purpose}였네요.\n"
+        "오늘은 어떤 용무로 오셨나요?"
     ),
 }
 
@@ -176,6 +236,24 @@ _PURPOSE_HEARING: dict[str, str] = {
         "* Technical consultation\n\n"
         "Feel free to ask!"
     ),
+    "zh": (
+        "请告诉我您的来访目的。\n\n"
+        "例如：\n"
+        "* 使用联合办公空间\n"
+        "* 参加活动\n"
+        "* 参观设施\n"
+        "* 技术咨询\n\n"
+        "请随时告诉我！"
+    ),
+    "ko": (
+        "방문 목적을 알려주세요.\n\n"
+        "예를 들면:\n"
+        "* 코워킹 공간 이용\n"
+        "* 이벤트 참가\n"
+        "* 시설 투어\n"
+        "* 기술 상담\n\n"
+        "편하게 말씀해 주세요!"
+    ),
 }
 
 _PURPOSE_FOLLOWUP: dict[str, dict[str, str]] = {
@@ -190,28 +268,46 @@ _PURPOSE_FOLLOWUP: dict[str, dict[str, str]] = {
             "Please register at the 1F reception. "
             "Free Wi-Fi and power outlets are available."
         ),
+        "zh": (
+            "好的！您是来使用 Engineer Cafe 的联合办公空间。\n"
+            "请先在 1 楼前台办理登记，Wi-Fi 和电源插座都可以自由使用。"
+        ),
+        "ko": (
+            "알겠습니다! Engineer Cafe 코워킹 공간을 이용하시는군요.\n"
+            "1층 안내 데스크에서 등록해 주시면 Wi-Fi와 전원을 자유롭게 이용하실 수 있습니다."
+        ),
     },
     "event_participation": {
         "ja": "イベントへのご参加ですね！本日開催中のイベントを確認いたします。",
         "en": "You're here for an event! Let me check today's events for you.",
+        "zh": "您是来参加活动的！我来帮您确认今天正在举行的活动。",
+        "ko": "이벤트에 참가하시는군요! 오늘 진행 중인 이벤트를 확인해 드리겠습니다.",
     },
     "tour": {
         "ja": "施設の見学ですね！エンジニアカフェについてご案内いたします。",
         "en": "A facility tour! Let me show you around Engineer Cafe.",
+        "zh": "您想参观设施！我来为您介绍 Engineer Cafe。",
+        "ko": "시설 투어를 원하시는군요! Engineer Cafe를 안내해 드리겠습니다.",
     },
     "consultation": {
         "ja": "技術相談ですね！スタッフにおつなぎいたします。少々お待ちください。",
         "en": "A consultation! Let me connect you with our staff. Please wait a moment.",
+        "zh": "您需要技术咨询！我将为您联系工作人员，请稍候。",
+        "ko": "기술 상담이시군요! 담당 스태프에게 연결해 드리겠습니다. 잠시만 기다려 주세요.",
     },
     "other": {
         "ja": "かしこまりました。何でもお気軽にお尋ねください！",
         "en": "Of course! Feel free to ask me anything!",
+        "zh": "好的，如有任何问题都可以随时告诉我！",
+        "ko": "알겠습니다. 궁금한 점이 있으면 무엇이든 편하게 물어보세요!",
     },
 }
 
 _DEFAULT_PURPOSE_LABEL: dict[str, str] = {
     "ja": "ご利用",
     "en": "a visit",
+    "zh": "来访",
+    "ko": "방문",
 }
 
 
@@ -288,7 +384,7 @@ def get_reception_response(
 
 def _resolve_language(language: SupportedLanguage) -> SupportedLanguage:
     """Normalize language code, defaulting to 'ja' for unsupported values."""
-    if language in ("ja", "en"):
+    if language in ("ja", "en", "zh", "ko"):
         return language
     return "ja"
 
