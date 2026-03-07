@@ -4,12 +4,15 @@ FastAPIアプリケーションとLangGraphエージェントの統合
 """
 
 import hmac
+import asyncio
+import base64
 import json
 import logging
 import os
 import re
 import time
 from contextlib import asynccontextmanager
+from io import BytesIO
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,6 +28,7 @@ from backend.utils.structured_logging import (
     generate_request_id,
     setup_structured_logging,
 )
+from backend.utils.session_task_manager import get_session_task_manager
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +127,14 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("Checkpoint cleanup setup failed (non-critical): %s", e)
 
+    try:
+        session_task_manager = get_session_task_manager()
+        await session_task_manager.initialize()
+        app.state.session_task_manager = session_task_manager
+        logger.info("Session task manager initialized")
+    except Exception as e:
+        logger.warning("Session task manager setup failed (non-critical): %s", e)
+
     yield
 
     # Shutdown
@@ -141,6 +153,13 @@ async def lifespan(app: FastAPI):
         logger.info("Store closed on shutdown")
     except Exception as e:
         logger.warning("Error closing store on shutdown: %s", e)
+
+    try:
+        session_task_manager = get_session_task_manager()
+        await session_task_manager.shutdown()
+        logger.info("Session task manager shutdown complete")
+    except Exception as e:
+        logger.warning("Error shutting down session task manager: %s", e)
 
 
 app = FastAPI(
@@ -235,6 +254,21 @@ class ChatResponse(BaseModel):
     metadata: Dict[str, Any]
 
 
+async def _run_workflow_with_tracking(payload: Dict[str, Any], session_id: str) -> Dict[str, Any]:
+    from backend.workflows.main_workflow import get_workflow
+
+    workflow = await get_workflow()
+    await _session_task_manager.register_session(session_id)
+    llm_task = asyncio.create_task(workflow.ainvoke(payload))
+    await _session_task_manager.set_llm_task(session_id, llm_task)
+
+    try:
+        return await llm_task
+    except asyncio.CancelledError:
+        logger.info("LLM task cancelled for session %s", session_id)
+        raise HTTPException(status_code=409, detail="Request interrupted")
+
+
 @app.get("/health")
 @_rate_limit("60/minute")
 async def health_check(request: Request):
@@ -279,17 +313,15 @@ async def chat(request: Request, body: ChatRequest):
     LangGraphエージェントを使用してクエリを処理します
     """
     try:
-        from backend.workflows.main_workflow import get_workflow
-
-        workflow = await get_workflow()
-        result = await workflow.ainvoke(
-            {
+        result = await _run_workflow_with_tracking(
+            payload={
                 "query": body.query,
                 "session_id": body.session_id,
                 "language": body.language,
                 "context": body.context or {},
                 "visitor_id": body.visitor_id,
-            }
+            },
+            session_id=body.session_id,
         )
 
         answer = result.get("answer", "回答を生成できませんでした。")
@@ -370,17 +402,15 @@ async def invoke_agent(request: Request, body: ChatRequest):
     LangGraphエージェントの直接実行エンドポイント
     """
     try:
-        from backend.workflows.main_workflow import get_workflow
-
-        workflow = await get_workflow()
-        result = await workflow.ainvoke(
-            {
+        result = await _run_workflow_with_tracking(
+            payload={
                 "query": body.query,
                 "session_id": body.session_id,
                 "language": body.language,
                 "context": body.context or {},
                 "visitor_id": body.visitor_id,
-            }
+            },
+            session_id=body.session_id,
         )
 
         return {"status": "success", "result": result}
@@ -413,11 +443,13 @@ class VoiceResponse(BaseModel):
     error: Optional[str] = None
     detectedLanguage: Optional[str] = None
     confidence: Optional[float] = None
+    interruptStatus: Optional[str] = None
 
 
 _voice_agent: Optional[Any] = None  # VoiceAgent (lazy-loaded)
 _stt_agent: Optional[Any] = None  # STTAgent (lazy-loaded)
 _slide_agent: Optional[Any] = None  # SlideAgent (lazy-loaded)
+_session_task_manager = get_session_task_manager()
 
 
 def _get_voice_agent():
@@ -453,8 +485,6 @@ async def _handle_stt(body: VoiceRequest) -> VoiceResponse:
     if not body.audioData:
         raise HTTPException(status_code=400, detail="Missing audioData")
 
-    import base64
-
     audio_bytes = base64.b64decode(body.audioData)
 
     stt_result = await _get_stt_agent().speech_to_text(
@@ -488,11 +518,28 @@ async def voice_api(request: Request, body: VoiceRequest):
             if not body.text or not body.text.strip():
                 raise HTTPException(status_code=400, detail="Missing text for text_to_speech")
 
-            result = await _get_voice_agent().text_to_speech(
-                text=body.text,
-                language=body.language or "ja",
-                emotion=body.emotion,  # Use requested emotion for TTS
+            if body.sessionId:
+                await _session_task_manager.register_session(body.sessionId)
+
+            tts_task = asyncio.create_task(
+                _get_voice_agent().text_to_speech(
+                    text=body.text,
+                    language=body.language or "ja",
+                    emotion=body.emotion,  # Use requested emotion for TTS
+                )
             )
+            if body.sessionId:
+                await _session_task_manager.set_tts_task(body.sessionId, tts_task)
+
+            result = await tts_task
+
+            if body.sessionId and result.get("audioResponse"):
+                try:
+                    audio_bytes = base64.b64decode(result["audioResponse"])
+                    await _session_task_manager.set_tts_buffer(body.sessionId, BytesIO(audio_bytes))
+                except Exception:
+                    logger.debug("Failed to register TTS buffer for session %s", body.sessionId)
+
             if not result.get("success"):
                 return VoiceResponse(
                     success=False,
@@ -516,6 +563,17 @@ async def voice_api(request: Request, body: VoiceRequest):
 
         elif body.action == "speech_to_text":
             return await _handle_stt(body)
+
+        elif body.action == "interrupt":
+            if not body.sessionId:
+                raise HTTPException(status_code=400, detail="Missing sessionId for interrupt")
+
+            cancelled = await _session_task_manager.cancel_all_tasks(body.sessionId)
+            return VoiceResponse(
+                success=True,
+                sessionId=body.sessionId,
+                interruptStatus="cancelled" if cancelled else "no_active_task",
+            )
 
         else:
             raise HTTPException(status_code=400, detail=f"Unknown action: {body.action}")
