@@ -57,19 +57,26 @@ Engineer Cafe Navigator is a multilingual AI navigation system for the Engineer 
 - **Context Window**: 3-minute conversation memory
 - **State Schema**: ConversationState (messages, context, query, intermediate_steps, current_agent)
 
-### Agent Architecture (12 Agents)
-1. **OrchestratorAgent**: Supervisor Pattern with LLM-based dynamic routing
-2. **BusinessInfoAgent**: Business hours, pricing, access (Enhanced RAG)
-3. **FacilityAgent**: Facilities, equipment, basement (Enhanced RAG)
+### Agent Architecture (7 Workflow Agents + Support Agents)
+
+**Workflow Agents** (LangGraph nodes with Supervisor Pattern routing):
+1. **OrchestratorAgent**: Supervisor Pattern with LLM-based dynamic routing (RouterAgent統合済み)
+2. **BusinessInfoAgent**: Business hours, pricing, access, consultation, community (Enhanced RAG)
+3. **FacilityAgent**: Facilities, equipment, basement, nearby, lost & found (Enhanced RAG)
 4. **EventAgent**: Google Calendar ICS + Connpass API v2
 5. **SlideAgent**: Slide display and narration
-6. **GeneralKnowledgeAgent**: Web search + memory queries (merged from MemoryAgent)
-7. **ClarificationAgent**: Ambiguity resolution (context-aware)
-8. **VoiceAgent**: TTS (VoiceVox local / Google Cloud)
-9. **STTAgent**: STT (Vosk local / Google Cloud)
-10. **CharacterControlAgent**: VRM character control
-11. **OCRAgent**: OCR processing
-12. **MemoryAgent**: DEPRECATED (merged into GeneralKnowledgeAgent)
+6. **GeneralKnowledgeAgent**: Web search + memory queries (MemoryAgent統合済み)
+7. **FarewellAgent**: Departure flow with card return reminder and brand message
+
+**Support Agents** (not LangGraph nodes):
+- **VoiceAgent**: TTS (VoiceVox local / Google Cloud)
+- **CharacterControlAgent**: VRM character control
+- **OCRAgent** (VisionAgent): OCR processing
+
+**Deprecated/Merged**:
+- ~~RouterAgent~~: Merged into OrchestratorAgent
+- ~~ClarificationAgent~~: Absorbed into orchestrator inline processing
+- ~~MemoryAgent~~: Merged into GeneralKnowledgeAgent
 
 ## 📊 Data Flow
 
@@ -79,12 +86,12 @@ User Query → Frontend → FastAPI Backend (Python)
 OrchestratorAgent (LLM-based Supervisor Pattern routing)
     ↓
 [Route to Appropriate Specialized Agent]
-    ├─→ BusinessInfoAgent (Enhanced RAG: section chunking, parent context)
-    ├─→ FacilityAgent (Enhanced RAG: category-specific strategies)
+    ├─→ BusinessInfoAgent (Enhanced RAG: hours, pricing, consultation, community)
+    ├─→ FacilityAgent (Enhanced RAG: equipment, nearby, lost & found, parking)
     ├─→ EventAgent (Google Calendar ICS + Connpass API v2)
-    ├─→ GeneralKnowledgeAgent (Web search: Gemini grounding + Tavily)
-    ├─→ ClarificationAgent (Context-aware ambiguity resolution)
-    └─→ [Other Specialized Agents]
+    ├─→ GeneralKnowledgeAgent (Web search: Tavily + memory queries)
+    ├─→ SlideAgent (Marp slide presentation + narration)
+    └─→ FarewellAgent (Departure flow: card return, belongings check)
     ↓
 Response Generation (OpenRouter LLM)
     ↓
