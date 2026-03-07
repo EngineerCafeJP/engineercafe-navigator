@@ -93,7 +93,7 @@ const getSessionPoseOffsets = (sessionState: 'idle' | 'listening' | 'processing'
       return {
         position: { x: 0, y: 0, z: 0.08 },
         rotation: { x: -0.08, y: 0, z: 0 },
-        expression: 'surprised',
+        expression: 'happy',
         animation: 'idle',
       };
     case 'processing':
@@ -736,12 +736,6 @@ export default function CharacterAvatar({
 
       if (vrm.expressionManager?.expressionMap) {
       }
-
-      const has_surprised = available_expressions.includes('surprised');
-      if (!has_surprised) {
-        console.warn('⚠️ "surprised" expression not found in VRM model!');
-      }
-
       // Start automatic blinking
       if (autoBlinkCleanupRef.current) {
         autoBlinkCleanupRef.current();
@@ -1012,12 +1006,11 @@ export default function CharacterAvatar({
             'happy': 'happy',
             'sad': 'sad',
             'angry': 'angry',
-            'surprised': 'curious',  // VRMモデルがsurprisedをサポートしていない場合はcuriousにマッピング
+            'surprised': 'happy',
             'relaxed': 'relaxed',
-            // Additional mappings for character actions
             'thinking': 'relaxed',
             'speaking': 'happy',
-            'listening': 'surprised',
+            'listening': 'happy',
             'greeting': 'happy',
             'explaining': 'neutral'
           };
