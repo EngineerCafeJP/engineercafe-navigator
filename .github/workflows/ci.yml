@@ -315,7 +315,7 @@ jobs:
             --cpu 2 \
             --min-instances 0 \
             --max-instances 3 \
-            --set-env-vars "ENVIRONMENT=staging" \
+            --update-env-vars "ENVIRONMENT=staging,TTS_PROVIDER=voicevox,VOICEVOX_API_URL=https://voicevox-proto-639959525777.asia-northeast2.run.app" \
             --set-secrets "OPENROUTER_API_KEY=OPENROUTER_API_KEY:latest,SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_KEY=SUPABASE_KEY:latest,SUPABASE_DB_URI=SUPABASE_DB_URI:latest"
 
   # Frontend: Deploy to Cloudflare Workers (staging)
