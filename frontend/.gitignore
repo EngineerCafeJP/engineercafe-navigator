@@ -4,7 +4,6 @@ node_modules/
 # dotenv files
 .env
 .env.local
-.dev.vars
 .env.development.local
 .env.test.local
 .env.production.local
@@ -18,9 +17,6 @@ pnpm-debug.log*
 # Next.js build output
 .next/
 out/
-
-# OpenNext build output
-.open-next/
 
 # TypeScript build output
 dist/
@@ -57,3 +53,10 @@ supabase/.branches/
 certificates/
 *.pem
 langgraph-repo/
+engineer-cafe-navigator-repo/
+
+# Playwright
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/

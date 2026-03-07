@@ -18,16 +18,14 @@
     "import:markdown": "tsx -r dotenv/config scripts/import-markdown-knowledge.ts",
     "setup:admin": "tsx -r dotenv/config scripts/setup-admin-knowledge.ts",
     "test": "cd scripts/tests && tsx run-tests.ts",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
     "test:integrated": "cd scripts/tests && tsx run-tests.ts integrated",
     "test:router": "cd scripts/tests && tsx run-tests.ts router",
     "test:calendar": "cd scripts/tests && tsx run-tests.ts calendar",
     "test:context": "tsx scripts/tests/context-inheritance-test.ts",
     "test:emotion": "tsx scripts/tests/emotion-tag-test.ts",
-    "vercel-build": "pnpm build",
-    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
-    "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
-    "deploy:staging": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
-    "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts"
+    "vercel-build": "pnpm build"
   },
   "engines": {
     "node": ">=18.0.0",
@@ -51,10 +49,8 @@
     "@mastra/pg": "^0.10.3",
     "@mastra/rag": "^0.10.3",
     "@mastra/voice-google": "^0.10.2",
-    "@opennextjs/cloudflare": "1.17.1",
     "@pixiv/three-vrm": "^3.4.1",
     "@pixiv/three-vrm-animation": "3.4.1",
-    "@ricky0123/vad-react": "0.0.36",
     "@supabase/supabase-js": "^2.49.8",
     "@uiw/react-md-editor": "4.0.7",
     "@upstash/redis": "1.34.9",
@@ -64,7 +60,7 @@
     "googleapis": "149.0.0",
     "gray-matter": "^4.0.3",
     "lucide-react": "^0.511.0",
-    "next": "^15.3.9",
+    "next": "^15.3.2",
     "openai": "5.8.2",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
@@ -78,14 +74,8 @@
     "ws": "^8.18.2",
     "zod": "^3.24.4"
   },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "esbuild",
-      "sharp",
-      "workerd"
-    ]
-  },
   "devDependencies": {
+    "@playwright/test": "1.58.2",
     "@types/react": "^19.1.4",
     "@types/react-dom": "^19.1.5",
     "@types/three": "^0.176.0",
@@ -100,7 +90,6 @@
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.17",
     "tsx": "^4.19.4",
-    "typescript": "^5.8.3",
-    "wrangler": "4.69.0"
+    "typescript": "^5.8.3"
   }
 }
