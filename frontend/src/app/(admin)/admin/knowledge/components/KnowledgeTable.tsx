@@ -6,14 +6,15 @@ import { MarkdownViewer } from './MarkdownViewer';
 
 interface KnowledgeEntry {
   id: string;
+  title?: string;
   content: string;
   category?: string;
   subcategory?: string;
   language: string;
   source?: string;
-  metadata: Record<string, any>;
-  created_at: string;
-  updated_at: string;
+  metadata?: Record<string, any>;
+  created_at?: string;
+  updated_at?: string;
 }
 
 interface KnowledgeTableProps {
@@ -121,7 +122,7 @@ export function KnowledgeTable({ data, onDelete, page, onPageChange }: Knowledge
                   </span>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {formatDate(entry.updated_at)}
+                  {entry.updated_at ? formatDate(entry.updated_at) : '-'}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                   <div className="flex space-x-2">

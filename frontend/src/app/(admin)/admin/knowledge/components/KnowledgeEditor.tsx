@@ -3,20 +3,15 @@
 import { useState, useEffect } from 'react';
 import MDEditor from '@uiw/react-md-editor';
 import toast from 'react-hot-toast';
+import { createKnowledge, updateKnowledge, type KnowledgeItem } from '@/lib/api/knowledge';
 
-interface KnowledgeEntry {
+type FormData = Omit<KnowledgeItem, 'id' | 'created_at' | 'updated_at'> & {
   id?: string;
-  content: string;
-  category?: string;
-  subcategory?: string;
-  language: string;
-  source?: string;
-  metadata: Record<string, any>;
-}
+};
 
 interface KnowledgeEditorProps {
-  entry?: KnowledgeEntry;
-  onSave?: (entry: KnowledgeEntry) => Promise<void>;
+  entry?: KnowledgeItem;
+  onSave?: (entry: FormData) => Promise<void>;
   onCancel?: () => void;
 }
 
@@ -32,7 +27,9 @@ interface MetadataTemplates {
 }
 
 export function KnowledgeEditor({ entry, onSave, onCancel }: KnowledgeEditorProps) {
-  const [formData, setFormData] = useState<KnowledgeEntry>({
+  const [formData, setFormData] = useState<FormData>({
+    id: entry?.id,
+    title: entry?.title || '',
     content: entry?.content || '',
     category: entry?.category || '',
     subcategory: entry?.subcategory || '',
@@ -93,7 +90,7 @@ export function KnowledgeEditor({ entry, onSave, onCancel }: KnowledgeEditorProp
     setFormData(prev => ({ ...prev, category, subcategory: '' }));
     
     // Apply metadata template if available
-    if (metadataTemplates?.templates[category] && Object.keys(formData.metadata).length === 0) {
+    if (metadataTemplates?.templates[category] && Object.keys(formData.metadata || {}).length === 0) {
       setFormData(prev => ({
         ...prev,
         metadata: { ...metadataTemplates.templates[category] }
@@ -143,52 +140,31 @@ export function KnowledgeEditor({ entry, onSave, onCancel }: KnowledgeEditorProp
     
     try {
       if (onSave) {
-        console.log('🔍 Using onSave callback');
         await onSave(formData);
       } else {
-        const url = entry?.id ? `/api/admin/knowledge/${entry.id}` : '/api/admin/knowledge';
-        const method = entry?.id ? 'PUT' : 'POST';
-        
-        console.log('🔍 Making API request:', { url, method });
-        console.log('🔍 Request body:', JSON.stringify(formData, null, 2));
-        
-        const response = await fetch(url, {
-          method,
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(formData),
-        });
-
-        console.log('🔍 Response status:', response.status);
-        console.log('🔍 Response headers:', Object.fromEntries(response.headers.entries()));
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.error('❌ Response error:', errorText);
-          
-          try {
-            const error = JSON.parse(errorText);
-            throw new Error(error.error || 'Failed to save');
-          } catch {
-            throw new Error(`Server error: ${response.status} ${errorText}`);
+        // Fallback: Direct API call without parent page callback
+        try {
+          if (entry?.id) {
+            await updateKnowledge(entry.id, formData);
+            toast.success('更新しました');
+          } else {
+            await createKnowledge(formData as Parameters<typeof createKnowledge>[0]);
+            toast.success('作成しました');
+            setFormData({
+              id: undefined,
+              title: '',
+              content: '',
+              category: '',
+              subcategory: '',
+              language: 'ja',
+              source: '',
+              metadata: {},
+            });
           }
-        }
-
-        const result = await response.json();
-        console.log('✅ Success response:', result);
-        
-        toast.success(entry?.id ? '更新しました' : '作成しました');
-        
-        if (!entry?.id) {
-          setFormData({
-            content: '',
-            category: '',
-            subcategory: '',
-            language: 'ja',
-            source: '',
-            metadata: {},
-          });
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : '保存に失敗しました';
+          console.error('API error:', error);
+          throw new Error(msg);
         }
       }
     } catch (error) {
@@ -344,6 +320,21 @@ export function KnowledgeEditor({ entry, onSave, onCancel }: KnowledgeEditorProp
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          タイトル * (最大200文字)
+        </label>
+        <input
+          type="text"
+          value={formData.title || ''}
+          onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value.slice(0, 200) }))}
+          maxLength={200}
+          required
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          placeholder="ナレッジのタイトルを入力..."
+        />
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -544,7 +535,7 @@ export function KnowledgeEditor({ entry, onSave, onCancel }: KnowledgeEditorProp
         </div>
         
         <div className="space-y-3">
-          {Object.entries(formData.metadata).map(([key, value]) => (
+          {Object.entries(formData.metadata || {}).map(([key, value]) => (
             <div key={key} className="border border-gray-200 rounded-lg p-3">
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
@@ -597,7 +588,7 @@ export function KnowledgeEditor({ entry, onSave, onCancel }: KnowledgeEditorProp
             
             {/* Quick add common metadata fields */}
             {Object.entries(metadataFieldTypes).map(([fieldKey, config]) => {
-              if (!Object.hasOwn(formData.metadata, fieldKey)) {
+              if (!(formData.metadata && Object.hasOwn(formData.metadata, fieldKey))) {
                 return (
                   <button
                     key={fieldKey}
@@ -623,7 +614,7 @@ export function KnowledgeEditor({ entry, onSave, onCancel }: KnowledgeEditorProp
                 onClick={() => {
                   setFormData(prev => ({
                     ...prev,
-                    metadata: { ...prev.metadata, ...metadataTemplates.templates.default }
+                    metadata: { ...(prev.metadata || {}), ...(metadataTemplates.templates.default || {}) }
                   }));
                 }}
                 className="text-green-600 hover:text-green-800 text-sm px-3 py-1 border border-green-300 rounded-lg hover:bg-green-50"
