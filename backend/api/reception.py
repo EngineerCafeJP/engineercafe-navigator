@@ -51,22 +51,45 @@ def _store_session(session: ReceptionSession) -> None:
             _active_sessions.popitem(last=False)
     _active_sessions[session.id] = session
 
+
 # ---------------------------------------------------------------------------
 # Purpose keyword classifier (lightweight, no LLM required for basic cases)
 # ---------------------------------------------------------------------------
 
 _PURPOSE_KEYWORDS: dict[str, list[str]] = {
     "facility_use": [
-        "cowork", "coworking", "コワーキング", "デスク",
-        "facility", "room", "space", "施設", "利用", "部屋", "スペース",
+        "cowork",
+        "coworking",
+        "コワーキング",
+        "デスク",
+        "facility",
+        "room",
+        "space",
+        "施設",
+        "利用",
+        "部屋",
+        "スペース",
     ],
     "event_participation": [
-        "event", "seminar", "workshop", "meetup",
-        "イベント", "セミナー", "ワークショップ", "勉強会",
+        "event",
+        "seminar",
+        "workshop",
+        "meetup",
+        "イベント",
+        "セミナー",
+        "ワークショップ",
+        "勉強会",
     ],
     "consultation": [
-        "inquiry", "question", "info", "ask", "consult",
-        "問い合わせ", "質問", "相談", "聞きたい",
+        "inquiry",
+        "question",
+        "info",
+        "ask",
+        "consult",
+        "問い合わせ",
+        "質問",
+        "相談",
+        "聞きたい",
     ],
 }
 

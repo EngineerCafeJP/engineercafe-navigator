@@ -3,7 +3,6 @@
 from pathlib import Path
 import re
 
-
 MIGRATION_PATH = (
     Path(__file__).resolve().parents[2]
     / "supabase"

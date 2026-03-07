@@ -17,7 +17,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 
-
 # =============================================================================
 # Helpers
 # =============================================================================
@@ -121,7 +120,8 @@ class TestGreetVisitorNode:
         with patch(
             "backend.workflows.reception_workflow.VisitorIdentificationService",
             return_value=_mock_identification_service_returning(
-                name="田中太郎", last_purpose="勉強",
+                name="田中太郎",
+                last_purpose="勉強",
             ),
         ):
             result = await greet_visitor(state)

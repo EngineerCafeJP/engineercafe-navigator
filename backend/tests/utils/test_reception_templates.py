@@ -12,7 +12,6 @@ from backend.utils.reception_templates import (
     get_reception_response,
 )
 
-
 # ===================================================================
 # Legacy API tests (dict-based, backward-compatible)
 # ===================================================================

@@ -48,15 +48,13 @@ class TestStartReception:
     def test_start_japanese_greeting(self):
         data = _start_session(language="ja")
         assert any(
-            kw in data["greeting"]
-            for kw in ["ようこそ", "エンジニアカフェ", "こんにちは"]
+            kw in data["greeting"] for kw in ["ようこそ", "エンジニアカフェ", "こんにちは"]
         ), f"Unexpected greeting: {data['greeting']}"
 
     def test_start_english_greeting(self):
         data = _start_session(language="en")
         assert any(
-            kw in data["greeting"]
-            for kw in ["Welcome", "Engineer Cafe", "visit"]
+            kw in data["greeting"] for kw in ["Welcome", "Engineer Cafe", "visit"]
         ), f"Unexpected greeting: {data['greeting']}"
 
     def test_start_sessions_are_independent(self):
