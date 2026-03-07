@@ -930,6 +930,69 @@ class MainWorkflow:
 
         return state, config
 
+    _AGENT_NODE_MAP: dict[str, str] = {
+        "facility": "_facility_node",
+        "event": "_event_node",
+        "slide": "_slide_node",
+        "general_knowledge": "_general_knowledge_node",
+        "business_info": "_business_info_node",
+    }
+
+    async def ainvoke_from_reception(self, handoff: Any) -> dict:
+        """Invoke an agent node directly, bypassing the orchestrator.
+
+        Used by the autonomous reception flow after ReceptionHandoffService
+        has already determined the target agent and built the workflow state.
+
+        Args:
+            handoff: A HandoffResult from ReceptionHandoffService.
+
+        Returns:
+            A dict with answer, emotion, metadata, and reception-specific fields.
+
+        Raises:
+            ValueError: If the target agent is not a known node.
+        """
+        target = handoff.target_agent
+        node_attr = self._AGENT_NODE_MAP.get(target)
+        if node_attr is None:
+            raise ValueError(
+                f"Unknown target agent '{target}'. " f"Valid agents: {sorted(self._AGENT_NODE_MAP)}"
+            )
+
+        state = handoff.workflow_state
+        self._current_visitor_id = state.get("session_id", "anonymous")
+
+        agent_node = getattr(self, node_attr)
+        agent_result = await agent_node(state)
+
+        # Merge agent output into state for format_response
+        merged_state = {**state, **agent_result}
+
+        # format_response expects Runtime context — call directly with a
+        # lightweight shim since we're outside the graph execution.
+        try:
+            context = WorkflowContext(user_id=self._current_visitor_id)
+
+            class _RuntimeShim:
+                def __init__(self, ctx: WorkflowContext) -> None:
+                    self.context = ctx
+
+            formatted = await self._format_response_node(merged_state, _RuntimeShim(context))
+        except Exception:
+            logger.warning("format_response failed in reception invoke, using raw agent result")
+            formatted = agent_result
+
+        result = {
+            "answer": formatted.get("answer", agent_result.get("answer", "")),
+            "emotion": formatted.get("emotion", agent_result.get("emotion", "neutral")),
+            "metadata": formatted.get("metadata", agent_result.get("metadata", {})),
+            "purpose_flow_response": handoff.purpose_flow.response_text,
+            "requires_staff": handoff.requires_staff,
+        }
+
+        return result
+
     async def ainvoke(self, input_data: dict) -> dict:
         """ワークフローを非同期実行"""
         state, config = self._prepare_state(input_data)
