@@ -120,7 +120,9 @@ class TestGreetVisitorNode:
 
         with patch(
             "backend.workflows.reception_workflow.VisitorIdentificationService",
-            return_value=_mock_identification_service_returning(name="田中太郎", last_purpose="勉強"),
+            return_value=_mock_identification_service_returning(
+                name="田中太郎", last_purpose="勉強",
+            ),
         ):
             result = await greet_visitor(state)
 
@@ -488,7 +490,9 @@ class TestReceptionWorkflowEndToEnd:
         from backend.workflows.reception_workflow import get_reception_workflow, make_initial_state
 
         state = make_initial_state(session_id=_make_session_id(), language="ja")
-        state["messages"] = [HumanMessage(content="イベントに参加したい。勉強会の申し込みをしました")]
+        state["messages"] = [
+            HumanMessage(content="イベントに参加したい。勉強会の申し込みをしました"),
+        ]
 
         with patch(
             "backend.workflows.reception_workflow.VisitorIdentificationService",

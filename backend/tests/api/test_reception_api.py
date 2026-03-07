@@ -101,7 +101,11 @@ class TestRespondReception:
         # Now in purpose_hearing — send purpose
         response = client.post(
             "/api/reception/respond",
-            json={"session_id": "s1", "reception_session_id": rid, "message": "施設を利用したいです"},
+            json={
+                "session_id": "s1",
+                "reception_session_id": rid,
+                "message": "施設を利用したいです",
+            },
         )
         assert response.status_code == 200
         data = response.json()
@@ -225,7 +229,11 @@ class TestReceptionStatus:
         )
         client.post(
             "/api/reception/respond",
-            json={"session_id": "s1", "reception_session_id": rid, "message": "イベントに参加します"},
+            json={
+                "session_id": "s1",
+                "reception_session_id": rid,
+                "message": "イベントに参加します",
+            },
         )
 
         response = client.get(f"/api/reception/status/{rid}")
