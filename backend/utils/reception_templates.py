@@ -284,12 +284,8 @@ _PURPOSE_FOLLOWUP: dict[str, dict[str, str]] = {
         "ko": "이벤트에 참가하시는군요! 오늘 진행 중인 이벤트를 확인해 드리겠습니다.",
     },
     "tour": {
-        "ja": "初回登録のご案内ですね！利用方法と利用規約を順番にご説明します。",
-        "en": (
-            "You need the first-visit registration guide."
-            " I will walk you through the onboarding steps"
-            " and key terms."
-        ),
+        "ja": "施設の見学ですね！エンジニアカフェについてご案内いたします。",
+        "en": "A facility tour! Let me show you around Engineer Cafe.",
         "zh": "您想参观设施！我来为您介绍 Engineer Cafe。",
         "ko": "시설 투어를 원하시는군요! Engineer Cafe를 안내해 드리겠습니다.",
     },
