@@ -65,7 +65,7 @@ def _sample_session(
     identity = None
     if with_identity:
         identity = VisitorIdentity(
-            visitor_type=VisitorType.RETURNING,
+            visitor_type=VisitorType(value="returning"),
             user_id=42,
             name="Taro",
         )
@@ -129,7 +129,7 @@ async def test_save_and_find_reception_session(mock_client: MagicMock):
     assert found.stage == "greeting"
     assert found.visitor_identity is not None
     assert found.visitor_identity.user_id == 42
-    assert found.visitor_identity.visitor_type == VisitorType.RETURNING
+    assert found.visitor_identity.visitor_type == VisitorType(value="returning")
     assert found.purpose is not None
     assert found.purpose.category == "facility_use"
 

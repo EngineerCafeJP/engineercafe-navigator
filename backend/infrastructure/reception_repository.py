@@ -117,7 +117,7 @@ class SupabaseReceptionSessionRepository(ReceptionSessionRepository):
         visitor_identity: Optional[VisitorIdentity] = None
         if row.get("user_id"):
             visitor_identity = VisitorIdentity(
-                visitor_type=VisitorType.RETURNING,
+                visitor_type=VisitorType(value="returning"),
                 user_id=row["user_id"],
             )
 
