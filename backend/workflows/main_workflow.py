@@ -23,6 +23,7 @@ from langgraph.graph.message import add_messages
 from langgraph.runtime import Runtime
 from langgraph.types import Command, RetryPolicy
 
+from backend.agents.character_control_agent import CharacterControlAgent
 from backend.agents.orchestrator_agent import (
     OrchestratorAgent,
     RoutingTarget,
@@ -86,6 +87,11 @@ class MainWorkflow:
         self._facility_agent = FacilityAgent()
         self._event_agent = EventAgent()
         self._slide_agent = SlideAgent()
+        try:
+            self._character_control_agent = CharacterControlAgent()
+        except Exception as e:
+            logger.warning("CharacterControlAgent unavailable: %s", e, exc_info=True)
+            self._character_control_agent = None
 
         # GKAにメモリシステムを注入（Supabase依存のため安全にtry/except）
         try:
@@ -720,6 +726,37 @@ class MainWorkflow:
         raw_answer = state.get("answer", "回答を生成できませんでした。")
         answer = strip_emotion_tags(raw_answer)
         session_id = state.get("session_id", "")
+        state_metadata = state.get("metadata", {})
+        state_context = state.get("context", {})
+        if not isinstance(state_context, dict):
+            state_context = {}
+
+        vrm_control = None
+        lipsync_data: list[dict[str, Any]] = []
+        if self._character_control_agent is not None:
+            try:
+                audio_duration = state_context.get("audio_duration") or state_context.get(
+                    "audioDuration"
+                )
+                vrm_control = await self._character_control_agent.process(
+                    state.get("emotion") or "neutral",
+                    raw_answer,
+                    audio_duration=audio_duration,
+                    context=state_context,
+                )
+                lipsync_data = vrm_control.get("keyframes", [])
+            except Exception as character_error:
+                logger.warning(
+                    "Character control generation failed, continuing without VRM metadata: %s",
+                    character_error,
+                    exc_info=True,
+                )
+
+        metadata = {
+            **state_metadata,
+            "vrm_control": vrm_control,
+            "lipsync_data": lipsync_data,
+        }
 
         # PII Defense-in-Depth: ワークフロー層でもスキャン（API層に加えて二重防御）
         try:
@@ -860,11 +897,12 @@ class MainWorkflow:
         windowed = apply_message_window(existing_msgs)
 
         return {
+            "metadata": metadata,
             "messages": windowed
             + [
                 HumanMessage(content=query),
                 AIMessage(content=answer),
-            ]
+            ],
         }
 
     def _prepare_state(self, input_data: dict) -> tuple[WorkflowStateDict, dict | None]:
