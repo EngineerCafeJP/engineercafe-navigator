@@ -3,7 +3,7 @@
  * FastAPI に直接アクセスする API クライアント関数
  */
 
-import { VocabularyListResponse } from "@/types/vosk";
+import { VocabularyItem, VocabularyListResponse } from "@/types/vosk";
 
 // ============================================================================
 // API クライアント
@@ -53,4 +53,65 @@ export async function deleteVocabulary(id: string): Promise<void> {
     method: "DELETE",
   });
   if (!res.ok) throw new Error(`Failed to delete vocabulary: ${res.status}`);
+}
+
+/**
+ * 語彙詳細取得（編集時に既存データを取得）
+ */
+export async function getVocabularyDetail(id: string): Promise<VocabularyItem> {
+  const res = await fetch(`${getBackendUrl()}/stt/vocabulary/${id}`);
+  if (!res.ok) throw new Error(`Failed to fetch vocabulary detail: ${res.status}`);
+  const json = await res.json();
+  return json.data;
+}
+
+/**
+ * 語彙作成
+ */
+export async function createVocabulary(data: {
+  word: string;
+  reading: string;
+  category: string;
+  priority: number;
+}): Promise<VocabularyItem> {
+  const res = await fetch(`${getBackendUrl()}/stt/vocabulary`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const error = await res.json();
+    throw new Error(error.detail || `Failed to create vocabulary: ${res.status}`);
+  }
+  const json = await res.json();
+  return json.data;
+}
+
+/**
+ * 語彙更新
+ */
+export async function updateVocabulary(
+  id: string,
+  data: {
+    word: string;
+    reading: string;
+    category: string;
+    priority: number;
+  }
+): Promise<VocabularyItem> {
+  const res = await fetch(`${getBackendUrl()}/stt/vocabulary/${id}`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const error = await res.json();
+    throw new Error(error.detail || `Failed to update vocabulary: ${res.status}`);
+  }
+  const json = await res.json();
+  return json.data;
 }
