@@ -283,3 +283,9 @@ def get_workflow() -> MainWorkflow:
     if _workflow_instance is None:
         _workflow_instance = MainWorkflow()
     return _workflow_instance
+
+
+def reset_workflow() -> None:
+    """ワークフローインスタンスをリセット（テスト用）"""
+    global _workflow_instance
+    _workflow_instance = None
