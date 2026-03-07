@@ -10,7 +10,7 @@ pytest.importorskip("fastapi", reason="fastapi not installed")
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from api.knowledge import router as knowledge_router
+from backend.api.knowledge import router as knowledge_router
 
 # main.pyの全体インポートを避け、knowledge routerのみテスト用appに登録
 _test_app = FastAPI()
@@ -55,8 +55,8 @@ def _mock_table_result(data, count=None):
 # =============================================================================
 
 
-@patch("api.knowledge.generate_embedding", new_callable=AsyncMock)
-@patch("api.knowledge._get_supabase")
+@patch("backend.api.knowledge.generate_embedding", new_callable=AsyncMock)
+@patch("backend.api.knowledge._get_supabase")
 def test_list_knowledge(mock_get_sb, mock_embed):
     """一覧取得 + ページネーション"""
     mock_sb = _mock_supabase()
@@ -78,8 +78,8 @@ def test_list_knowledge(mock_get_sb, mock_embed):
     assert body["page"] == 1
 
 
-@patch("api.knowledge.generate_embedding", new_callable=AsyncMock)
-@patch("api.knowledge._get_supabase")
+@patch("backend.api.knowledge.generate_embedding", new_callable=AsyncMock)
+@patch("backend.api.knowledge._get_supabase")
 def test_list_knowledge_filter_category(mock_get_sb, mock_embed):
     """カテゴリフィルタ"""
     mock_sb = _mock_supabase()
@@ -99,8 +99,8 @@ def test_list_knowledge_filter_category(mock_get_sb, mock_embed):
     assert body["success"] is True
 
 
-@patch("api.knowledge.generate_embedding", new_callable=AsyncMock)
-@patch("api.knowledge._get_supabase")
+@patch("backend.api.knowledge.generate_embedding", new_callable=AsyncMock)
+@patch("backend.api.knowledge._get_supabase")
 def test_list_knowledge_filter_keyword(mock_get_sb, mock_embed):
     """キーワード検索"""
     mock_sb = _mock_supabase()
@@ -125,7 +125,7 @@ def test_list_knowledge_filter_keyword(mock_get_sb, mock_embed):
 # =============================================================================
 
 
-@patch("api.knowledge._get_supabase")
+@patch("backend.api.knowledge._get_supabase")
 def test_get_knowledge_by_id(mock_get_sb):
     """単一取得"""
     mock_sb = _mock_supabase()
@@ -143,7 +143,7 @@ def test_get_knowledge_by_id(mock_get_sb):
     assert body["data"]["id"] == SAMPLE_ROW["id"]
 
 
-@patch("api.knowledge._get_supabase")
+@patch("backend.api.knowledge._get_supabase")
 def test_get_knowledge_not_found(mock_get_sb):
     """存在しないID→404"""
     mock_sb = _mock_supabase()
@@ -163,8 +163,8 @@ def test_get_knowledge_not_found(mock_get_sb):
 # =============================================================================
 
 
-@patch("api.knowledge.generate_embedding", new_callable=AsyncMock)
-@patch("api.knowledge._get_supabase")
+@patch("backend.api.knowledge.generate_embedding", new_callable=AsyncMock)
+@patch("backend.api.knowledge._get_supabase")
 def test_create_knowledge(mock_get_sb, mock_embed):
     """テキスト入力でナレッジ作成 + embedding生成"""
     mock_embed.return_value = FAKE_EMBEDDING
@@ -197,8 +197,8 @@ def test_create_knowledge(mock_get_sb, mock_embed):
     mock_embed.assert_called_once()
 
 
-@patch("api.knowledge.generate_embedding", new_callable=AsyncMock)
-@patch("api.knowledge._get_supabase")
+@patch("backend.api.knowledge.generate_embedding", new_callable=AsyncMock)
+@patch("backend.api.knowledge._get_supabase")
 def test_create_knowledge_validation_error(mock_get_sb, mock_embed):
     """title未指定でバリデーションエラー"""
     response = client.post(
@@ -212,8 +212,8 @@ def test_create_knowledge_validation_error(mock_get_sb, mock_embed):
     assert response.status_code == 422
 
 
-@patch("api.knowledge.generate_embedding", new_callable=AsyncMock)
-@patch("api.knowledge._get_supabase")
+@patch("backend.api.knowledge.generate_embedding", new_callable=AsyncMock)
+@patch("backend.api.knowledge._get_supabase")
 def test_create_knowledge_duplicate_title(mock_get_sb, mock_embed):
     """重複titleで409エラー"""
     mock_sb = _mock_supabase()
@@ -241,8 +241,8 @@ def test_create_knowledge_duplicate_title(mock_get_sb, mock_embed):
 # =============================================================================
 
 
-@patch("api.knowledge.generate_embedding", new_callable=AsyncMock)
-@patch("api.knowledge._get_supabase")
+@patch("backend.api.knowledge.generate_embedding", new_callable=AsyncMock)
+@patch("backend.api.knowledge._get_supabase")
 def test_update_knowledge(mock_get_sb, mock_embed):
     """更新 + embedding再生成"""
     mock_embed.return_value = FAKE_EMBEDDING
@@ -275,7 +275,7 @@ def test_update_knowledge(mock_get_sb, mock_embed):
 # =============================================================================
 
 
-@patch("api.knowledge._get_supabase")
+@patch("backend.api.knowledge._get_supabase")
 def test_delete_knowledge(mock_get_sb):
     """削除"""
     mock_sb = _mock_supabase()
@@ -302,9 +302,9 @@ def test_delete_knowledge(mock_get_sb):
 # =============================================================================
 
 
-@patch("api.knowledge.parse_markdown")
-@patch("api.knowledge.generate_embedding", new_callable=AsyncMock)
-@patch("api.knowledge._get_supabase")
+@patch("backend.api.knowledge.parse_markdown")
+@patch("backend.api.knowledge.generate_embedding", new_callable=AsyncMock)
+@patch("backend.api.knowledge._get_supabase")
 def test_upload_markdown(mock_get_sb, mock_embed, mock_parse_md):
     """.mdアップロード → パース → 保存"""
     mock_embed.return_value = FAKE_EMBEDDING
@@ -341,9 +341,9 @@ def test_upload_markdown(mock_get_sb, mock_embed, mock_parse_md):
     mock_embed.assert_called_once()
 
 
-@patch("api.knowledge.parse_pdf")
-@patch("api.knowledge.generate_embedding", new_callable=AsyncMock)
-@patch("api.knowledge._get_supabase")
+@patch("backend.api.knowledge.parse_pdf")
+@patch("backend.api.knowledge.generate_embedding", new_callable=AsyncMock)
+@patch("backend.api.knowledge._get_supabase")
 def test_upload_pdf(mock_get_sb, mock_embed, mock_parse_pdf):
     """.pdfアップロード → パース → 保存"""
     mock_embed.return_value = FAKE_EMBEDDING

@@ -57,3 +57,9 @@ supabase/.branches/
 certificates/
 *.pem
 langgraph-repo/
+
+# Playwright
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
