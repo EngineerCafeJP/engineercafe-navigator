@@ -21,6 +21,9 @@ logger = logging.getLogger(__name__)
 # 非同期シングルトン用ロック
 _checkpointer_lock = asyncio.Lock()
 
+# コンテキストマネージャー参照（store.py と同パターン）
+_checkpointer_cm = None
+
 
 def _mask_connection_string(db_uri: str) -> str:
     """
@@ -74,8 +77,14 @@ async def create_checkpointer() -> AsyncPostgresSaver:
     masked_uri = _mask_connection_string(db_uri)
     logger.info("Creating AsyncPostgresSaver with connection: %s", masked_uri)
 
+    global _checkpointer_cm
+
     try:
-        checkpointer = await AsyncPostgresSaver.from_conn_string(db_uri)
+        # from_conn_string は @asynccontextmanager でラップされているため、
+        # 呼び出すとコンテキストマネージャーが返される。
+        # シングルトンパターンのため、コンテキストマネージャーを保持し、__aenter__() で取得する。
+        _checkpointer_cm = AsyncPostgresSaver.from_conn_string(db_uri)
+        checkpointer = await _checkpointer_cm.__aenter__()
         await checkpointer.setup()
         logger.info("AsyncPostgresSaver created and initialized successfully")
         return checkpointer
@@ -165,21 +174,18 @@ async def close_checkpointer() -> None:
 
     アプリケーション終了時に呼び出して、接続をクリーンアップします。
     """
-    global _checkpointer_instance
+    global _checkpointer_instance, _checkpointer_cm
     if _checkpointer_instance is not None:
         try:
-            # AsyncPostgresSaverの適切なクローズメソッドを使用
-            if hasattr(_checkpointer_instance, "aclose"):
-                await _checkpointer_instance.aclose()
-            elif hasattr(_checkpointer_instance, "conn") and hasattr(
-                _checkpointer_instance.conn, "close"
-            ):
-                await _checkpointer_instance.conn.close()
+            # コンテキストマネージャーの __aexit__() を呼び出してクリーンアップ
+            if _checkpointer_cm is not None:
+                await _checkpointer_cm.__aexit__(None, None, None)
             logger.info("Checkpointer singleton instance closed")
         except Exception as e:
             logger.warning("Error closing checkpointer: %s", e, exc_info=True)
         finally:
             _checkpointer_instance = None
+            _checkpointer_cm = None
 
 
 async def reset_checkpointer() -> None:

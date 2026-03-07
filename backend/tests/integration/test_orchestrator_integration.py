@@ -13,6 +13,8 @@ import os
 import pytest
 from backend.workflows.main_workflow import MainWorkflow
 
+pytestmark = pytest.mark.integration
+
 
 def _make_state(
     query: str, language: str = "ja", session_id: str = "test_session", metadata: dict | None = None

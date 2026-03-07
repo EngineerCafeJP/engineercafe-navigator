@@ -18,7 +18,7 @@ import pytest_asyncio
 from backend.main import app
 from backend.utils.emotion_mapping import EmotionMapping
 
-pytestmark = pytest.mark.asyncio(loop_scope="session")
+pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
 
 
 def _strip_emotion_tags(text: str) -> str:

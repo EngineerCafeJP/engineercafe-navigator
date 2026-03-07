@@ -139,10 +139,9 @@ class TestVoiceEndpoint:
 class TestSlidesEndpoint:
     @pytest.mark.asyncio
     async def test_slides_error_no_leak(self):
-        with patch("backend.agents.slide_agent.SlideAgent") as mock_class:
-            mock_class.return_value.handle_slide_action = AsyncMock(
-                side_effect=Exception("Slide DB error")
-            )
+        mock_agent = AsyncMock()
+        mock_agent.handle_slide_action = AsyncMock(side_effect=Exception("Slide DB error"))
+        with patch("backend.main._get_slide_agent", return_value=mock_agent):
             from backend.main import slides_api, SlidesRequest
             from fastapi import HTTPException
 

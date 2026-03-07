@@ -34,6 +34,8 @@ from backend.agents.voice_agent import (
     preprocess_tts,
 )
 
+pytestmark = pytest.mark.integration
+
 # =============================================================================
 # Fixtures
 # =============================================================================
