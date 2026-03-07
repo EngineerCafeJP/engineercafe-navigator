@@ -2,13 +2,12 @@
 
 import { useState, use } from 'react';
 import useSWR from 'swr';
-import { Toaster } from 'react-hot-toast';
+import { Toaster, toast } from 'react-hot-toast';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { MarkdownViewer } from '../components/MarkdownViewer';
 import { KnowledgeEditor } from '../components/KnowledgeEditor';
-
-const fetcher = (url: string) => fetch(url).then((res) => res.json());
+import { getKnowledgeById, updateKnowledge, deleteKnowledge } from '@/lib/api/knowledge';
 
 interface KnowledgeDetailPageProps {
   params: Promise<{ id: string }>;
@@ -19,32 +18,30 @@ export default function KnowledgeDetailPage({ params }: KnowledgeDetailPageProps
   const router = useRouter();
   const [isEditing, setIsEditing] = useState(false);
 
-  const { data: entry, error, mutate } = useSWR(
-    `/api/admin/knowledge/${id}`,
-    fetcher
-  );
+  const { data: entry, error, mutate } = useSWR(id, getKnowledgeById);
 
-  const handleSave = async () => {
-    await mutate();
-    setIsEditing(false);
+  const handleSave = async (formData: any) => {
+    try {
+      await updateKnowledge(id, formData);
+      toast.success('更新しました');
+      await mutate();
+      setIsEditing(false);
+    } catch (error) {
+      console.error('Save error:', error);
+      toast.error(error instanceof Error ? error.message : '保存に失敗しました');
+    }
   };
 
   const handleDelete = async () => {
     if (!confirm('削除してもよろしいですか？この操作は取り消せません。')) return;
 
     try {
-      const response = await fetch(`/api/admin/knowledge/${id}`, {
-        method: 'DELETE',
-      });
-
-      if (!response.ok) {
-        throw new Error('削除に失敗しました');
-      }
-
+      await deleteKnowledge(id);
+      toast.success('削除しました');
       router.push('/admin/knowledge');
     } catch (error) {
       console.error('Delete error:', error);
-      alert('削除に失敗しました');
+      toast.error('削除に失敗しました');
     }
   };
 
@@ -164,11 +161,11 @@ export default function KnowledgeDetailPage({ params }: KnowledgeDetailPageProps
                   </div>
                   <div>
                     <h3 className="text-sm font-medium text-gray-700 mb-1">更新日時</h3>
-                    <p className="text-sm text-gray-900">{formatDate(entry.updated_at)}</p>
+                    <p className="text-sm text-gray-900">{entry.updated_at ? formatDate(entry.updated_at) : '-'}</p>
                   </div>
                 </div>
 
-                {Object.keys(entry.metadata).length > 0 && (
+                {entry.metadata && Object.keys(entry.metadata).length > 0 && (
                   <div>
                     <h3 className="text-sm font-medium text-gray-700 mb-2">メタデータ</h3>
                     <div className="bg-gray-50 rounded-lg p-4">
