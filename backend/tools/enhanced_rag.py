@@ -8,17 +8,68 @@ from typing import List, Dict, Optional
 import httpx
 from supabase import create_client, Client
 
+# Embedding model configuration
+# text-embedding-3-small: 1536 dims (OpenAI)
+# text-embedding-3-large: 3072 dims (OpenAI)
+# The DB column dimension must match the model output dimension.
+DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
+DEFAULT_EMBEDDING_DIMENSIONS = 1536
+
+# Query expansion mappings for Japanese/English synonyms
+QUERY_EXPANSION_MAP: Dict[str, List[str]] = {
+    "営業時間": ["opening hours", "business hours", "営業", "時間", "何時から", "何時まで", "開館"],
+    "料金": ["pricing", "price", "cost", "fee", "料金", "値段", "いくら", "無料"],
+    "アクセス": ["access", "location", "directions", "場所", "行き方", "住所", "最寄り駅"],
+    "wifi": ["Wi-Fi", "WiFi", "wireless", "ネットワーク", "インターネット"],
+    "会議室": ["meeting room", "conference room", "部屋", "予約"],
+    "設備": ["facility", "facilities", "equipment", "機材", "備品"],
+    "イベント": ["event", "events", "セミナー", "勉強会", "ワークショップ"],
+    "opening hours": ["営業時間", "business hours", "operating hours"],
+    "price": ["料金", "pricing", "cost", "fee"],
+    "location": ["アクセス", "場所", "address", "directions"],
+}
+
 
 class EnhancedRAGSearch:
-    """Enhanced RAG検索ツール"""
+    """Enhanced RAG検索ツール
 
-    def __init__(self):
-        """初期化"""
-        self.supabase: Client = create_client(
-            os.getenv("SUPABASE_URL", ""),
-            os.getenv("SUPABASE_KEY", ""),
-        )
+    Supabaseのベクトル検索とテキストベースのフォールバック検索を組み合わせて、
+    高精度なRAG検索を提供する。
+
+    Attributes:
+        supabase: Supabaseクライアント
+        openai_api_key: OpenAI APIキー
+        embedding_model: 使用するembeddingモデル名
+        embedding_dimensions: embeddingの次元数
+    """
+
+    def __init__(
+        self,
+        supabase_client: Optional[Client] = None,
+        embedding_model: Optional[str] = None,
+        embedding_dimensions: Optional[int] = None,
+    ):
+        """初期化
+
+        Args:
+            supabase_client: Supabaseクライアント（テスト用にDI可能）
+            embedding_model: embeddingモデル名（環境変数 EMBEDDING_MODEL で上書き可）
+            embedding_dimensions: embedding次元数（環境変数 EMBEDDING_DIMENSIONS で上書き可）
+        """
+        if supabase_client is not None:
+            self.supabase = supabase_client
+        else:
+            self.supabase: Client = create_client(
+                os.getenv("SUPABASE_URL", ""),
+                os.getenv("SUPABASE_KEY", ""),
+            )
         self.openai_api_key = os.getenv("OPENAI_API_KEY", "")
+        self.embedding_model = embedding_model or os.getenv(
+            "EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL
+        )
+        self.embedding_dimensions = embedding_dimensions or int(
+            os.getenv("EMBEDDING_DIMENSIONS", str(DEFAULT_EMBEDDING_DIMENSIONS))
+        )
 
     async def search(
         self,
@@ -45,18 +96,36 @@ class EnhancedRAGSearch:
             print(f"[EnhancedRAGSearch] Starting search with query: {query}")
             print(f"[EnhancedRAGSearch] Category: {category}, Language: {language}")
 
-            # 1. OpenAI Embeddings APIでクエリをエンベディング化
-            embedding = await self._generate_embedding(query)
+            # 1. クエリ拡張（同義語・多言語キーワードを追加）
+            expanded_query = self._expand_query(query, category, language)
+            print(f"[EnhancedRAGSearch] Expanded query: {expanded_query}")
 
-            # 2. Supabase RPCでベクトル検索
+            # 2. OpenAI Embeddings APIでクエリをエンベディング化
+            embedding = await self._generate_embedding(expanded_query)
+
+            # 3. Supabase RPCでベクトル検索（閾値を低めに設定して取りこぼしを防ぐ）
             search_results = self.supabase.rpc(
                 "search_knowledge_base",
                 {
                     "query_embedding": embedding,
-                    "similarity_threshold": 0.5,
-                    "match_count": max_results * 2,  # スコアリング用に多めに取得
+                    "similarity_threshold": 0.3,
+                    "match_count": max_results * 3,  # スコアリング用に多めに取得
                 },
             ).execute()
+
+            # 4. ベクトル検索で結果が不十分な場合、テキストベースのフォールバック
+            if not search_results.data or len(search_results.data) < 2:
+                print("[EnhancedRAGSearch] Vector search insufficient, trying text fallback")
+                text_results = await self._text_fallback_search(
+                    query, category, language, max_results
+                )
+                if text_results:
+                    existing_ids = {r.get("id") for r in (search_results.data or [])}
+                    for tr in text_results:
+                        if tr.get("id") not in existing_ids:
+                            if search_results.data is None:
+                                search_results.data = []  # type: ignore[assignment]
+                            search_results.data.append(tr)
 
             if not search_results.data:
                 return {
@@ -69,20 +138,20 @@ class EnhancedRAGSearch:
                     },
                 }
 
-            # 3. エンティティ認識とスコアリング
+            # 5. エンティティ認識とスコアリング
             scored_results = self._score_results(search_results.data, query, category, language)
 
-            # 4. トップ結果を取得
+            # 6. トップ結果を取得
             top_results = scored_results[:max_results]
 
             print(
                 f"[EnhancedRAGSearch] Top results after scoring: {[{'title': r.get('title'), 'entity': r.get('entity'), 'priority_score': r.get('priority_score')} for r in top_results]}"
             )
 
-            # 5. コンテキストを構築
+            # 7. コンテキストを構築
             context = self._build_context_from_results(top_results, category, language)
 
-            # 6. 実用的なアドバイスを追加（オプション）
+            # 8. 実用的なアドバイスを追加（オプション）
             if include_advice:
                 advice = self._generate_practical_advice(top_results, query, category, language)
                 if advice:
@@ -104,8 +173,147 @@ class EnhancedRAGSearch:
             print(f"[EnhancedRAGSearch] Error: {e}")
             return {"success": False, "error": str(e)}
 
+    def _expand_query(self, query: str, category: str, language: str) -> str:
+        """クエリを同義語・多言語キーワードで拡張する。
+
+        短いクエリやドメイン固有の用語に対してベクトル検索の精度を向上させる。
+
+        Args:
+            query: 元のクエリ
+            category: クエリカテゴリ
+            language: 言語コード
+
+        Returns:
+            拡張されたクエリ文字列
+        """
+        expansions: list[str] = []
+
+        # カテゴリベースの拡張キーワード
+        category_keywords: Dict[str, List[str]] = {
+            "hours": ["営業時間", "opening hours", "business hours", "開館時間"],
+            "pricing": ["料金", "price", "pricing", "cost", "利用料金"],
+            "location": ["場所", "アクセス", "location", "access", "住所", "address"],
+            "facility-info": ["設備", "facility", "施設", "equipment"],
+        }
+
+        if category in category_keywords:
+            expansions.extend(category_keywords[category])
+
+        # クエリ内のキーワードに基づく拡張
+        query_lower = query.lower()
+        for key, synonyms in QUERY_EXPANSION_MAP.items():
+            if key.lower() in query_lower:
+                expansions.extend(synonyms)
+
+        # 重複除去して元クエリと結合
+        seen: set[str] = set()
+        unique_expansions: list[str] = []
+        for exp in expansions:
+            if exp.lower() not in seen and exp.lower() not in query_lower:
+                seen.add(exp.lower())
+                unique_expansions.append(exp)
+
+        if unique_expansions:
+            # 拡張キーワードを元クエリに付加（最大5個）
+            return f"{query} ({' '.join(unique_expansions[:5])})"
+
+        return query
+
+    async def _text_fallback_search(
+        self,
+        query: str,
+        category: str,
+        language: str,
+        max_results: int,
+    ) -> List[Dict]:
+        """テキストベースのフォールバック検索。
+
+        ベクトル検索で十分な結果が得られない場合に、カテゴリとキーワードで
+        knowledge_baseを直接検索する。
+
+        Args:
+            query: 検索クエリ
+            category: カテゴリ
+            language: 言語コード
+            max_results: 最大結果数
+
+        Returns:
+            検索結果のリスト
+        """
+        try:
+            # カテゴリベースの検索
+            query_builder = self.supabase.table("knowledge_base").select(
+                "id, content, category, subcategory, language, source, metadata"
+            )
+
+            # カテゴリフィルタ（generalカテゴリ以外の場合）
+            if category and category != "general":
+                query_builder = query_builder.eq("category", category)
+
+            # 言語フィルタ
+            if language:
+                query_builder = query_builder.eq("language", language)
+
+            result = query_builder.limit(max_results).execute()
+
+            if not result.data:
+                # カテゴリフィルタなしで再試行
+                result = (
+                    self.supabase.table("knowledge_base")
+                    .select("id, content, category, subcategory, language, source, metadata")
+                    .eq("language", language)
+                    .limit(max_results)
+                    .execute()
+                )
+
+            if result.data:
+                # テキストマッチングでスコア付け
+                scored: list[Dict] = []
+                for row in result.data:
+                    content_lower = row.get("content", "").lower()
+                    query_lower = query.lower()
+                    # 簡易テキストマッチスコア
+                    match_score = 0.0
+                    query_terms = query_lower.replace("？", "").replace("?", "").split()
+                    for term in query_terms:
+                        if len(term) >= 2 and term in content_lower:
+                            match_score += 0.15
+                    # カテゴリ一致ボーナス
+                    if row.get("category") == category:
+                        match_score += 0.2
+                    if match_score > 0:
+                        scored.append({**row, "similarity": min(match_score, 0.7)})
+
+                scored.sort(key=lambda x: x.get("similarity", 0), reverse=True)
+                return scored[:max_results]
+
+            return []
+
+        except Exception as e:
+            print(f"[EnhancedRAGSearch] Text fallback error: {e}")
+            return []
+
     async def _generate_embedding(self, text: str) -> List[float]:
-        """OpenAI APIでエンベディングを生成"""
+        """OpenAI APIでエンベディングを生成。
+
+        Args:
+            text: エンベディング対象テキスト
+
+        Returns:
+            エンベディングベクトル
+
+        Raises:
+            Exception: API呼び出しが失敗した場合
+        """
+        request_body: Dict = {
+            "model": self.embedding_model,
+            "input": text,
+        }
+
+        # text-embedding-3-* モデルは dimensions パラメータをサポート
+        if self.embedding_model.startswith("text-embedding-3-"):
+            request_body["dimensions"] = self.embedding_dimensions
+
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 "https://api.openai.com/v1/embeddings",
@@ -113,7 +321,7 @@ class EnhancedRAGSearch:
                     "Authorization": f"Bearer {self.openai_api_key}",
                     "Content-Type": "application/json",
                 },
-                json={"model": "text-embedding-3-small", "input": text},
+                json=request_body,
                 timeout=30.0,
             )
 
