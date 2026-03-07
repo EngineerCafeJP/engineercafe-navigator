@@ -144,9 +144,15 @@ class EnhancedRAGSearch:
             # 6. トップ結果を取得
             top_results = scored_results[:max_results]
 
-            print(
-                f"[EnhancedRAGSearch] Top results after scoring: {[{'title': r.get('title'), 'entity': r.get('entity'), 'priority_score': r.get('priority_score')} for r in top_results]}"
-            )
+            top_summary = [
+                {
+                    "title": r.get("title"),
+                    "entity": r.get("entity"),
+                    "priority_score": r.get("priority_score"),
+                }
+                for r in top_results
+            ]
+            print(f"[EnhancedRAGSearch] Top results after scoring: {top_summary}")
 
             # 7. コンテキストを構築
             context = self._build_context_from_results(top_results, category, language)
@@ -502,12 +508,24 @@ class EnhancedRAGSearch:
         # カテゴリに応じたアドバイステンプレート
         advice_templates = {
             "hours": {
-                "ja": "💡 営業時間は日によって異なる場合があります。訪問前に確認することをお勧めします。",
-                "en": "💡 Operating hours may vary by day. We recommend checking before your visit.",
+                "ja": (
+                    "💡 営業時間は日によって異なる場合があります。"
+                    "訪問前に確認することをお勧めします。"
+                ),
+                "en": (
+                    "💡 Operating hours may vary by day."
+                    " We recommend checking before your visit."
+                ),
             },
             "pricing": {
-                "ja": "💡 料金プランは変更される場合があります。最新情報はスタッフにお問い合わせください。",
-                "en": "💡 Pricing plans may change. Please contact staff for the latest information.",
+                "ja": (
+                    "💡 料金プランは変更される場合があります。"
+                    "最新情報はスタッフにお問い合わせください。"
+                ),
+                "en": (
+                    "💡 Pricing plans may change."
+                    " Please contact staff for the latest information."
+                ),
             },
             "facility-info": {
                 "ja": "💡 設備の利用方法がわからない場合は、スタッフにお気軽にお声がけください。",
