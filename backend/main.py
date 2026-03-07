@@ -236,6 +236,21 @@ class ChatResponse(BaseModel):
     vrm_control: Optional[Dict[str, Any]] = None
 
 
+class InterruptRequest(BaseModel):
+    session_id: str
+
+
+@app.post("/api/interrupt", dependencies=[Depends(verify_api_key)])
+@_rate_limit("60/minute")
+async def interrupt_session(request: Request, body: InterruptRequest):
+    """フロントエンドからの割り込みシグナルを受信"""
+    from backend.utils.interrupt_manager import get_interrupt_manager
+
+    manager = get_interrupt_manager()
+    manager.request_interrupt(body.session_id)
+    return {"status": "interrupted", "session_id": body.session_id}
+
+
 @app.get("/health")
 @_rate_limit("60/minute")
 async def health_check(request: Request):
@@ -279,6 +294,10 @@ async def chat(request: Request, body: ChatRequest):
     チャットエンドポイント
     LangGraphエージェントを使用してクエリを処理します
     """
+    from backend.utils.interrupt_manager import get_interrupt_manager
+
+    get_interrupt_manager().clear_interrupt(body.session_id)
+
     try:
         from backend.workflows.main_workflow import get_workflow
 
@@ -331,6 +350,10 @@ async def chat_stream(request: Request, body: ChatRequest):
     SSEストリーミングチャットエンドポイント
     Server-Sent Events でレスポンスをストリーミング
     """
+    from backend.utils.interrupt_manager import get_interrupt_manager
+
+    interrupt_mgr = get_interrupt_manager()
+    interrupt_mgr.clear_interrupt(body.session_id)
 
     async def event_generator():
         try:
@@ -348,6 +371,9 @@ async def chat_stream(request: Request, body: ChatRequest):
                     "visitor_id": body.visitor_id,
                 }
             ):
+                if interrupt_mgr.is_interrupted(body.session_id):
+                    yield f'data: {json.dumps({"type": "interrupted"})}\n\n'
+                    break
                 if isinstance(event, dict):
                     yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 
@@ -373,6 +399,10 @@ async def invoke_agent(request: Request, body: ChatRequest):
     """
     LangGraphエージェントの直接実行エンドポイント
     """
+    from backend.utils.interrupt_manager import get_interrupt_manager
+
+    get_interrupt_manager().clear_interrupt(body.session_id)
+
     try:
         from backend.workflows.main_workflow import get_workflow
 
