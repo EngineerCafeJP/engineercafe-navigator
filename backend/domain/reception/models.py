@@ -113,6 +113,7 @@ class ReceptionSession:
         language: Language for the interaction.
         trigger_type: How the reception was initiated.
         created_at: When this session was created.
+        metadata: Arbitrary key-value metadata.
     """
 
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
@@ -123,6 +124,7 @@ class ReceptionSession:
     language: Literal["ja", "en"] = "ja"
     trigger_type: Literal["face_detection", "button_press", "wake_word", "nfc"] = "button_press"
     created_at: datetime = field(default_factory=datetime.now)
+    metadata: dict = field(default_factory=dict)
     _events: list = field(default_factory=list, repr=False)
 
     def advance_to(self, stage: ReceptionStage) -> None:

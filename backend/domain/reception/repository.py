@@ -7,7 +7,7 @@ Concrete implementations are provided by the infrastructure layer.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import List, Optional
 
 from backend.domain.reception.models import ReceptionSession
 
@@ -75,7 +75,7 @@ class VisitRepository(ABC):
         ...
 
     @abstractmethod
-    async def get_recent_visits(self, user_id: int, limit: int = 5) -> list:
+    async def get_recent_visits(self, user_id: int, limit: int = 5) -> List[dict]:
         """Get recent visits for a registered user.
 
         Args:
