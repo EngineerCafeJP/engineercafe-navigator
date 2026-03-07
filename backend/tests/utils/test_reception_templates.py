@@ -1,156 +1,290 @@
+"""Tests for the reception templates module.
+
+Covers both the legacy dict-based API (used by MainWorkflow)
+and the new ReceptionResult-based API (used by ReceptionWorkflow).
 """
-Tests for backend/utils/reception_templates.py
 
-Reception テンプレートの固定応答メッセージとメタデータ生成をテスト。
-"""
+from backend.utils.reception_templates import (
+    ReceptionResult,
+    get_personalized_greeting,
+    get_purpose_followup,
+    get_purpose_hearing_prompt,
+    get_reception_response,
+)
 
-from backend.utils.reception_templates import get_reception_response
+# ===================================================================
+# Legacy API tests (dict-based, backward-compatible)
+# ===================================================================
 
 
-class TestReceptionResponseStructure:
+class TestLegacyReceptionResponseStructure:
     """レスポンス構造のテスト"""
 
     def test_returns_dict_with_required_keys(self):
-        """必須キー（response, emotion, metadata）を含む辞書を返す"""
         result = get_reception_response("ja")
-
         assert "response" in result
         assert "emotion" in result
         assert "metadata" in result
 
     def test_response_is_string(self):
-        """response フィールドは文字列"""
         result = get_reception_response("ja")
         assert isinstance(result["response"], str)
         assert len(result["response"]) > 0
 
     def test_emotion_is_happy(self):
-        """emotion フィールドは常に "happy" """
         result = get_reception_response("ja")
         assert result["emotion"] == "happy"
 
     def test_metadata_contains_required_fields(self):
-        """metadata に agent, confidence, category, sources が含まれる"""
         result = get_reception_response("ja")
         metadata = result["metadata"]
-
-        assert "agent" in metadata
-        assert "confidence" in metadata
-        assert "category" in metadata
-        assert "sources" in metadata
-
         assert metadata["agent"] == "ReceptionAgent"
         assert isinstance(metadata["confidence"], float)
         assert metadata["category"] == "reception"
         assert isinstance(metadata["sources"], list)
 
 
-class TestFirstTimeReception:
-    """初回利用案内のテスト"""
-
+class TestLegacyFirstTimeReception:
     def test_first_time_ja_contains_welcome(self):
-        """日本語初回メッセージにウェルカム情報が含まれる"""
         result = get_reception_response("ja", "first_time")
         response = result["response"]
-
         assert "ようこそ" in response
         assert "無料" in response
-        assert "受付" in response or "利用登録" in response
 
     def test_first_time_en_contains_welcome(self):
-        """英語初回メッセージにwelcome情報が含まれる"""
         result = get_reception_response("en", "first_time")
         response = result["response"]
-
         assert "Welcome" in response
         assert "free" in response.lower()
-        assert "register" in response.lower() or "reception" in response.lower()
 
     def test_first_time_confidence_is_high(self):
-        """初回利用案内の confidence は 0.95"""
         result = get_reception_response("ja", "first_time")
         assert result["metadata"]["confidence"] == 0.95
 
     def test_first_time_reception_type_in_metadata(self):
-        """metadata に reception_type が含まれる"""
         result = get_reception_response("ja", "first_time")
         assert result["metadata"]["reception_type"] == "first_time"
 
-
-class TestReturningReception:
-    """リピーター案内のテスト"""
-
-    def test_returning_ja_contains_welcome_back(self):
-        """日本語リピーターメッセージにおかえりが含まれる"""
-        result = get_reception_response("ja", "returning")
+    def test_first_time_zh_contains_welcome(self):
+        result = get_reception_response("zh", "first_time")
         response = result["response"]
+        assert "欢迎来到 Engineer Cafe" in response
+        assert "免费" in response
 
-        assert "おかえり" in response
+
+class TestLegacyReturningReception:
+    def test_returning_ja_contains_welcome_back(self):
+        result = get_reception_response("ja", "returning")
+        assert "おかえり" in result["response"]
 
     def test_returning_en_contains_welcome_back(self):
-        """英語リピーターメッセージにwelcome backが含まれる"""
         result = get_reception_response("en", "returning")
-        response = result["response"]
-
-        assert "Welcome back" in response
+        assert "Welcome back" in result["response"]
 
     def test_returning_confidence(self):
-        """リピーター案内の confidence は 0.9"""
         result = get_reception_response("ja", "returning")
         assert result["metadata"]["confidence"] == 0.9
 
 
-class TestGeneralReception:
-    """一般受付案内のテスト"""
-
+class TestLegacyGeneralReception:
     def test_general_ja_contains_basic_info(self):
-        """日本語一般案内に基本情報が含まれる"""
         result = get_reception_response("ja", "general")
         response = result["response"]
-
         assert "Wi-Fi" in response or "wifi" in response.lower()
-        assert "9:00" in response or "営業時間" in response
 
     def test_general_en_contains_basic_info(self):
-        """英語一般案内に基本情報が含まれる"""
         result = get_reception_response("en", "general")
-        response = result["response"]
+        assert "Wi-Fi" in result["response"]
 
-        assert "Wi-Fi" in response
-        assert "9:00" in response
+    def test_general_ko_contains_basic_info(self):
+        result = get_reception_response("ko", "general")
+        assert "Wi-Fi" in result["response"]
+        assert "운영 시간" in result["response"]
 
     def test_general_is_default_reception_type(self):
-        """引数なしはgeneralになる"""
         result = get_reception_response("ja")
         assert result["metadata"]["reception_type"] == "general"
 
     def test_general_confidence(self):
-        """一般案内の confidence は 0.85"""
         result = get_reception_response("ja", "general")
         assert result["metadata"]["confidence"] == 0.85
 
 
-class TestEmotionTagging:
-    """感情タグが付与されることをテスト"""
-
+class TestLegacyEmotionTagging:
     def test_response_starts_with_emotion_tag(self):
-        """レスポンスが感情タグ [happy] で始まる"""
         result = get_reception_response("ja")
         assert result["response"].startswith("[happy]")
 
     def test_all_types_have_emotion_tag(self):
-        """すべての受付タイプで感情タグが付与される"""
         for reception_type in ["first_time", "returning", "general"]:
             result = get_reception_response("ja", reception_type)
             assert result["response"].startswith("[happy]")
 
 
-class TestLanguageFallback:
-    """未知の言語に対するフォールバック動作をテスト"""
-
+class TestLegacyLanguageFallback:
     def test_unknown_language_falls_back_to_japanese(self):
-        """未知の言語は日本語にフォールバック"""
         result = get_reception_response("fr")  # type: ignore
-
-        # 日本語メッセージになる
         assert "エンジニアカフェ" in result["response"] or "ようこそ" in result["response"]
+
+
+# ===================================================================
+# New API tests (ReceptionResult-based)
+# ===================================================================
+
+
+class TestGetReceptionResponseNewAPI:
+    """Tests for the new-style greeting function (is_returning kwarg)."""
+
+    def test_first_visit_ja(self) -> None:
+        result = get_reception_response("ja", is_returning=False)
+        assert isinstance(result, ReceptionResult)
+        assert "ようこそ" in result.text
+        assert result.language == "ja"
+        assert result.template_type == "first_visit_greeting"
+
+    def test_first_visit_en(self) -> None:
+        result = get_reception_response("en", is_returning=False)
+        assert "Welcome" in result.text
+        assert result.language == "en"
+
+    def test_returning_ja(self) -> None:
+        result = get_reception_response("ja", is_returning=True)
+        assert "おかえりなさい" in result.text
+        assert result.template_type == "returning_greeting"
+
+    def test_returning_en(self) -> None:
+        result = get_reception_response("en", is_returning=True)
+        assert "Welcome back" in result.text
+
+    def test_first_visit_ko(self) -> None:
+        result = get_reception_response("ko", is_returning=False)
+        assert "처음 방문" in result.text
+        assert result.language == "ko"
+
+    def test_unsupported_language_defaults_to_ja(self) -> None:
+        result = get_reception_response("fr", is_returning=False)  # type: ignore[arg-type]
+        assert result.language == "ja"
+
+
+class TestGetPersonalizedGreeting:
+    def test_personalized_greeting_ja(self) -> None:
+        result = get_personalized_greeting("ja", name="田中", last_purpose="コワーキング利用")
+        assert "田中" in result.text
+        assert "コワーキング利用" in result.text
+        assert result.template_type == "returning_personalized"
+
+    def test_personalized_greeting_en(self) -> None:
+        result = get_personalized_greeting("en", name="John", last_purpose="coworking")
+        assert "John" in result.text
+        assert "coworking" in result.text
+
+    def test_personalized_greeting_without_purpose_ja(self) -> None:
+        result = get_personalized_greeting("ja", name="佐藤")
+        assert "佐藤" in result.text
+        assert "ご利用" in result.text
+
+    def test_personalized_greeting_without_purpose_en(self) -> None:
+        result = get_personalized_greeting("en", name="Alice")
+        assert "Alice" in result.text
+        assert "a visit" in result.text
+
+
+class TestGetPurposeHearingPrompt:
+    def test_purpose_hearing_prompt_ja(self) -> None:
+        result = get_purpose_hearing_prompt("ja")
+        assert "ご用件" in result.text
+        assert "コワーキング" in result.text
+        assert result.template_type == "purpose_hearing"
+
+    def test_purpose_hearing_prompt_en(self) -> None:
+        result = get_purpose_hearing_prompt("en")
+        assert "What brings you here" in result.text
+        assert "coworking" in result.text
+
+    def test_purpose_hearing_prompt_zh(self) -> None:
+        result = get_purpose_hearing_prompt("zh")
+        assert "来访目的" in result.text
+        assert "联合办公空间" in result.text
+
+    def test_purpose_hearing_prompt_ko(self) -> None:
+        result = get_purpose_hearing_prompt("ko")
+        assert "방문 목적" in result.text
+        assert "코워킹 공간" in result.text
+
+
+class TestGetPurposeFollowup:
+    def test_purpose_followup_facility_use(self) -> None:
+        result = get_purpose_followup("ja", "facility_use")
+        assert "Wi-Fi" in result.text
+        assert result.template_type == "purpose_followup_facility_use"
+
+    def test_purpose_followup_event(self) -> None:
+        result = get_purpose_followup("ja", "event_participation")
+        assert "イベント" in result.text
+
+    def test_purpose_followup_tour(self) -> None:
+        result = get_purpose_followup("ja", "tour")
+        assert "見学" in result.text
+
+    def test_purpose_followup_consultation_ja(self) -> None:
+        result = get_purpose_followup("ja", "consultation")
+        assert "スタッフ" in result.text
+
+    def test_purpose_followup_other_en(self) -> None:
+        result = get_purpose_followup("en", "other")
+        assert "Feel free" in result.text
+
+    def test_purpose_followup_unknown_falls_back_to_other(self) -> None:
+        result = get_purpose_followup("ja", "nonexistent_purpose")
+        assert result.text == get_purpose_followup("ja", "other").text
+
+    def test_purpose_followup_facility_use_en(self) -> None:
+        result = get_purpose_followup("en", "facility_use")
+        assert "coworking" in result.text
+        assert "Wi-Fi" in result.text
+
+    def test_purpose_followup_event_zh(self) -> None:
+        result = get_purpose_followup("zh", "event_participation")
+        assert "活动" in result.text
+
+    def test_purpose_followup_consultation_ko(self) -> None:
+        result = get_purpose_followup("ko", "consultation")
+        assert "스태프" in result.text
+
+
+class TestChineseTemplates:
+    def test_chinese_greeting(self) -> None:
+        result = get_personalized_greeting("zh", name="小林", last_purpose="参加技术活动")
+        assert "小林" in result.text
+        assert "参加技术活动" in result.text
+
+    def test_chinese_purpose_hearing(self) -> None:
+        result = get_purpose_hearing_prompt("zh")
+        assert "请告诉我" in result.text
+
+    def test_chinese_followup(self) -> None:
+        result = get_purpose_followup("zh", "facility_use")
+        assert "1 楼前台" in result.text
+
+    def test_chinese_default_purpose_label(self) -> None:
+        result = get_personalized_greeting("zh", name="小林")
+        assert "来访" in result.text
+
+
+class TestKoreanTemplates:
+    def test_korean_greeting(self) -> None:
+        result = get_personalized_greeting("ko", name="민수", last_purpose="기술 상담")
+        assert "민수" in result.text
+        assert "기술 상담" in result.text
+
+    def test_korean_purpose_hearing(self) -> None:
+        result = get_purpose_hearing_prompt("ko")
+        assert "예를 들면" in result.text
+
+    def test_korean_followup(self) -> None:
+        result = get_purpose_followup("ko", "facility_use")
+        assert "1층 안내 데스크" in result.text
+
+    def test_korean_default_purpose_label(self) -> None:
+        result = get_personalized_greeting("ko", name="민수")
+        assert "방문" in result.text

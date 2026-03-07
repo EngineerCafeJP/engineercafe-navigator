@@ -7,7 +7,8 @@ import { useAudioInteraction } from '@/lib/audio/audio-interaction-manager';
 import { VoiceRecorder } from '@/lib/voice-recorder';
 import { audioStateManager } from '@/lib/audio-state-manager';
 import { AlertCircle, Loader2, Mic, MicOff, Settings, Volume2, VolumeX } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useMicVAD, utils } from '@ricky0123/vad-react';
 
 interface VoiceInterfaceProps {
   onLanguageChange?: (language: 'ja' | 'en') => void;
@@ -53,8 +54,99 @@ export default function VoiceInterface({
   const audioQueueRef = useRef<AudioQueue | null>(null);
   const mobileAudioServiceRef = useRef<MobileAudioService | null>(null);
   const voiceRecorderRef = useRef<VoiceRecorder | null>(null);
+  const initialVolumeRef = useRef(volume);
+  const performAutoGreetingRef = useRef<() => Promise<void>>(async () => {});
   const { ensureAudioContext, isReady: isAudioReady, hasInteraction } = useAudioInteraction();
-  
+
+  // --- VAD barge-in integration ---
+  // VAD is active only while AI is speaking (conversationState === 'speaking')
+  const vadActiveRef = useRef(false);
+
+  // Keep vadActiveRef in sync with conversationState
+  useEffect(() => {
+    vadActiveRef.current = conversationState === 'speaking';
+  }, [conversationState]);
+
+  // Stable callback for processing VAD-captured audio
+  const processVadAudio = useCallback(async (audioBlob: Blob) => {
+    await processAudioInput(audioBlob);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentLanguage, isMuted]);
+
+  // Stable callback for VAD-triggered interruption
+  const handleVadInterrupt = useCallback(() => {
+    console.log('[VAD] Speech detected during AI playback - interrupting');
+
+    // 1. Stop AI audio playback
+    if (mobileAudioServiceRef.current) {
+      mobileAudioServiceRef.current.stop();
+    }
+    audioStateManager.stopAll();
+    if (audioQueueRef.current) {
+      audioQueueRef.current.clear();
+    }
+
+    // 2. Stop lip-sync
+    if (onVisemeControl) {
+      onVisemeControl('X', 0);
+    }
+
+    // 3. Update UI state
+    setIsSpeaking(false);
+    setConversationState('listening');
+
+    // 4. Notify backend of interruption (fire-and-forget)
+    fetch('/api/voice', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'handle_interruption' }),
+    }).catch((err) => console.error('[VAD] Failed to notify backend of interruption:', err));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onVisemeControl]);
+
+  const vadInstance = useMicVAD({
+    // Kiosk-optimized thresholds
+    positiveSpeechThreshold: 0.6,
+    negativeSpeechThreshold: 0.45,
+    minSpeechMs: 150,
+    redemptionMs: 400,
+    startOnLoad: true,
+
+    onSpeechStart: () => {
+      // Only act when AI is speaking
+      if (!vadActiveRef.current) return;
+      handleVadInterrupt();
+    },
+
+    onSpeechEnd: (audio: Float32Array) => {
+      // Only process if we were in a barge-in scenario (now in 'listening' state after interrupt)
+      // or if conversation is idle/listening (VAD detected real speech)
+      if (vadActiveRef.current) {
+        // Still speaking and speech ended quickly — treat as misfire, ignore
+        return;
+      }
+
+      // Convert Float32Array to WAV Blob and send to existing STT pipeline
+      const wavBuffer = utils.encodeWAV(audio);
+      const audioBlob = new Blob([wavBuffer], { type: 'audio/wav' });
+
+      // Only process if the blob has meaningful size (avoid empty/tiny misfires)
+      if (audioBlob.size < 1000) {
+        console.log('[VAD] Audio too short, ignoring');
+        return;
+      }
+
+      console.log('[VAD] Speech ended, sending audio to STT pipeline:', audioBlob.size, 'bytes');
+      setConversationState('processing');
+      processVadAudio(audioBlob);
+    },
+
+    onVADMisfire: () => {
+      console.log('[VAD] Misfire detected (false positive)');
+      // No action needed - if we already interrupted, audio is stopped and
+      // we cannot resume it. The brief false positive is acceptable for kiosk UX.
+    },
+  });
 
   // Audio unlock function
   const unlockAudio = async () => {
@@ -81,7 +173,7 @@ export default function VoiceInterface({
   useEffect(() => {
     if (!mobileAudioServiceRef.current) {
       mobileAudioServiceRef.current = new MobileAudioService({
-        volume: volume,
+        volume: initialVolumeRef.current,
         onPlay: () => setIsSpeaking(true),
         onEnded: () => setIsSpeaking(false),
         onError: (error) => {
@@ -90,7 +182,11 @@ export default function VoiceInterface({
         }
       });
     }
-    
+
+    const audioQueue = audioQueueRef.current;
+    const audioContext = audioContextRef.current;
+    const mobileAudioService = mobileAudioServiceRef.current;
+
     return () => {
       // Cleanup VoiceRecorder
       if (voiceRecorderRef.current) {
@@ -98,14 +194,14 @@ export default function VoiceInterface({
         voiceRecorderRef.current = null;
       }
       
-      if (audioContextRef.current) {
-        audioContextRef.current.close();
+      if (audioContext) {
+        audioContext.close();
       }
-      if (audioQueueRef.current) {
-        audioQueueRef.current.clear();
+      if (audioQueue) {
+        audioQueue.clear();
       }
-      if (mobileAudioServiceRef.current) {
-        mobileAudioServiceRef.current.dispose();
+      if (mobileAudioService) {
+        mobileAudioService.dispose();
       }
     };
   }, []);
@@ -125,7 +221,7 @@ export default function VoiceInterface({
   // Auto greeting when component mounts with autoGreeting enabled
   useEffect(() => {
     if (autoGreeting) {
-      performAutoGreeting();
+      void performAutoGreetingRef.current();
     }
   }, [autoGreeting, language]);
 
@@ -184,6 +280,8 @@ export default function VoiceInterface({
       setLoadingMessage('');
     }
   };
+
+  performAutoGreetingRef.current = performAutoGreeting;
 
 
   // Start voice recording

@@ -119,6 +119,20 @@ export default function MarpViewer({
   const narrationAbortControllerRef = useRef<AbortController | null>(null);
   const currentRequestIdRef = useRef<string>('');
   const currentAudioServiceRef = useRef<any>(null);
+  const loadSlideDataRef = useRef<(requestedLang?: string) => Promise<void>>(async () => {});
+  const narrateWithRetryRef = useRef<(retries?: number) => Promise<void>>(async () => {});
+  const stopAutoPlayRef = useRef<() => void>(() => {});
+  const previousSlideRef = useRef<() => Promise<void>>(async () => {});
+  const updateIframeSlideRef = useRef<(slideNumber: number, retryCount?: number) => void>(() => {});
+  const isNarratingRef = useRef(isNarrating);
+  const isNarrationInProgressRef = useRef(isNarrationInProgress);
+  const presentationStartTimeRef = useRef<number | null>(presentationStartTime);
+  const currentLanguageRef = useRef(currentLanguage);
+
+  isNarratingRef.current = isNarrating;
+  isNarrationInProgressRef.current = isNarrationInProgress;
+  presentationStartTimeRef.current = presentationStartTime;
+  currentLanguageRef.current = currentLanguage;
 
   // Analytics tracking
   const trackPresentationEvent = (event: string, data: any) => {
@@ -179,8 +193,8 @@ export default function MarpViewer({
       // Loading slides for current language
     }
     // Always load slide data when slideFile or language changes
-    loadSlideData(currentLanguage);
-  }, [slideFile, currentLanguage]); // Remove loadSlideData from dependencies to avoid circular reference
+    void loadSlideDataRef.current(currentLanguage);
+  }, [slideFile, currentLanguage]);
 
   // Track slide view duration
   useEffect(() => {
@@ -199,24 +213,31 @@ export default function MarpViewer({
 
   // Auto-play functionality with narration
   useEffect(() => {
-    if (isPlaying && totalSlides > 0 && !isNarrating && !isNarrationInProgress) {
+    if (
+      isPlaying &&
+      totalSlides > 0 &&
+      !isNarratingRef.current &&
+      !isNarrationInProgressRef.current
+    ) {
       // Auto-play triggered
-      if (!presentationStartTime) {
-        setPresentationStartTime(Date.now());
+      if (!presentationStartTimeRef.current) {
+        const startTime = Date.now();
+        presentationStartTimeRef.current = startTime;
+        setPresentationStartTime(startTime);
         trackPresentationEvent('presentation_started', {
           slideCount: totalSlides,
-          language,
+          language: currentLanguageRef.current,
           autoPlay: true
         });
       }
-      narrateWithRetry();
+      void narrateWithRetryRef.current();
     } else if (!isPlaying) {
-      stopAutoPlay();
+      stopAutoPlayRef.current();
     } else {
       // Auto-play skipped - already playing
     }
 
-    return () => stopAutoPlay();
+    return () => stopAutoPlayRef.current();
   }, [isPlaying, currentSlide, totalSlides]);
 
   // Save settings to localStorage whenever they change
@@ -261,7 +282,7 @@ export default function MarpViewer({
         // Force update the current language state immediately
         setCurrentLanguage(eventLanguage as 'ja' | 'en');
         
-        loadSlideData(eventLanguage).then(() => {
+        loadSlideDataRef.current(eventLanguage).then(() => {
           // Slide data loaded, starting auto-play
           setIsPlaying(true);
         }).catch((error) => {
@@ -301,12 +322,12 @@ export default function MarpViewer({
 
       if (event.data.type === 'slide-control') {
         if (event.data.action === 'previous') {
-          previousSlide();
+          void previousSlideRef.current();
         }
       } else if (event.data.type === 'marp-ready') {
         // Delay to ensure rendering is complete
         setTimeout(() => {
-          updateIframeSlide(currentSlide);
+          updateIframeSlideRef.current(currentSlide);
         }, 300);
       }
     };
@@ -320,7 +341,7 @@ export default function MarpViewer({
     if (renderedHtml && iframeRef.current && currentSlide > 0) {
       // Add a small delay to ensure iframe is ready
       const timer = setTimeout(() => {
-        updateIframeSlide(currentSlide);
+        updateIframeSlideRef.current(currentSlide);
       }, 100);
       
       return () => clearTimeout(timer);
@@ -499,7 +520,7 @@ export default function MarpViewer({
         // Give iframe time to render, then show first slide
         setTimeout(() => {
           setCurrentSlide(1);
-          updateIframeSlide(1);
+          updateIframeSlideRef.current(1);
         }, 1000);
       } else {
         setError(result.error || 'Failed to load slides');
@@ -529,7 +550,7 @@ export default function MarpViewer({
         setIsLoading(false);
       }
     }
-  }, [slideFile]); // Include slideFile as dependency
+  }, [slideFile]);
 
 
   const narrateCurrentSlide = async () => {
@@ -1048,7 +1069,7 @@ export default function MarpViewer({
         if (slides.length === 0 && retryCount < 10) {
           console.log(`Retrying slide detection (attempt ${retryCount + 1})`);
           setTimeout(() => {
-            updateIframeSlide(slideNumber, retryCount + 1);
+            updateIframeSlideRef.current(slideNumber, retryCount + 1);
           }, 200);
           return;
         }
@@ -1087,6 +1108,12 @@ export default function MarpViewer({
       }
     }
   };
+
+  loadSlideDataRef.current = loadSlideData;
+  narrateWithRetryRef.current = narrateWithRetry;
+  stopAutoPlayRef.current = stopAutoPlay;
+  previousSlideRef.current = previousSlide;
+  updateIframeSlideRef.current = updateIframeSlide;
 
   const handleQuestionSubmit = async () => {
     if (!questionText.trim()) return;

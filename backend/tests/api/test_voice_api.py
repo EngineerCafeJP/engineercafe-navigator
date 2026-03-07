@@ -38,6 +38,7 @@ class VoiceResponse(BaseModel):
     error: Optional[str] = None
     detectedLanguage: Optional[str] = None
     confidence: Optional[float] = None
+    interruptStatus: Optional[str] = None
 
 
 # =============================================================================
@@ -49,6 +50,7 @@ class VoiceResponse(BaseModel):
 
 mock_voice_agent = MagicMock()
 mock_stt_agent = MagicMock()
+mock_session_task_manager = MagicMock()
 
 _test_app = FastAPI()
 
@@ -119,6 +121,17 @@ async def voice_api(request: VoiceRequest):
         elif request.action == "speech_to_text":
             return await _handle_stt_test(request)
 
+        elif request.action == "interrupt":
+            if not request.sessionId:
+                raise HTTPException(status_code=400, detail="Missing sessionId for interrupt")
+
+            cancelled = await mock_session_task_manager.cancel_all_tasks(request.sessionId)
+            return VoiceResponse(
+                success=True,
+                sessionId=request.sessionId,
+                interruptStatus="cancelled" if cancelled else "no_active_task",
+            )
+
         else:
             raise HTTPException(status_code=400, detail=f"Unknown action: {request.action}")
 
@@ -148,6 +161,8 @@ def _reset_mocks():
     """各テスト前にモックをリセット"""
     mock_voice_agent.reset_mock()
     mock_stt_agent.reset_mock()
+    mock_session_task_manager.reset_mock()
+    mock_session_task_manager.cancel_all_tasks = AsyncMock(return_value=False)
 
 
 # =============================================================================
@@ -589,3 +604,59 @@ class TestLanguageParam:
 
         call_kwargs = mock_stt_agent.speech_to_text.call_args.kwargs
         assert call_kwargs["conversation_stage"] == "greeting"
+
+
+# =============================================================================
+# interrupt
+# =============================================================================
+
+
+class TestInterrupt:
+    """POST /api/voice  action=interrupt"""
+
+    def test_interrupt_cancelled(self):
+        """進行中タスクがある場合は cancelled を返す"""
+        mock_session_task_manager.cancel_all_tasks = AsyncMock(return_value=True)
+
+        resp = client.post(
+            "/api/voice",
+            json={
+                "action": "interrupt",
+                "sessionId": SAMPLE_SESSION_ID,
+            },
+        )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["success"] is True
+        assert body["sessionId"] == SAMPLE_SESSION_ID
+        assert body["interruptStatus"] == "cancelled"
+
+    def test_interrupt_no_active_task(self):
+        """進行中タスクがない場合は no_active_task を返す"""
+        mock_session_task_manager.cancel_all_tasks = AsyncMock(return_value=False)
+
+        resp = client.post(
+            "/api/voice",
+            json={
+                "action": "interrupt",
+                "sessionId": SAMPLE_SESSION_ID,
+            },
+        )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["success"] is True
+        assert body["interruptStatus"] == "no_active_task"
+
+    def test_interrupt_without_session_id_returns_400(self):
+        """sessionId なしのinterruptは400"""
+        resp = client.post(
+            "/api/voice",
+            json={
+                "action": "interrupt",
+            },
+        )
+
+        assert resp.status_code == 400
+        assert "Missing sessionId" in resp.json()["detail"]

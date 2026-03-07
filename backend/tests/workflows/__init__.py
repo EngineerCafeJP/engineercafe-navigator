@@ -1,1 +1,1 @@
-# Workflows tests
+"""Workflow tests package."""

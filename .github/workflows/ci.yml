@@ -259,6 +259,63 @@ jobs:
           path: backend/reports/
           retention-days: 30
 
+  # Backend: Deploy to Cloud Run (staging)
+  # Only runs on push to develop after backend tests pass
+  # NOTE: This is an optional deploy job - not included in ci-success gate
+  #
+  # Deployment strategy:
+  #   - develop branch -> staging (Cloud Run, asia-northeast1)
+  #   - main branch -> production (separate environment, not yet configured)
+  #
+  # TTS services (VoiceVox, Kokoro) are NOT available on Cloud Run.
+  # They require dedicated GPU/CPU instances or external API alternatives.
+  # The backend will start without TTS; voice endpoints will fail gracefully
+  # when TTS_PROVIDER is set to an unsupported value or TTS service is unreachable.
+  backend-deploy-staging:
+    needs: [changes, backend-test]
+    if: needs.changes.outputs.backend == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker asia-northeast1-docker.pkg.dev
+
+      - name: Build and push Docker image
+        run: |
+          docker build \
+            -t asia-northeast1-docker.pkg.dev/aipartner-426616/cloud-run-source-deploy/engineer-cafe-backend:${{ github.sha }} \
+            -t asia-northeast1-docker.pkg.dev/aipartner-426616/cloud-run-source-deploy/engineer-cafe-backend:latest \
+            --target production \
+            -f backend/Dockerfile \
+            backend/
+          docker push asia-northeast1-docker.pkg.dev/aipartner-426616/cloud-run-source-deploy/engineer-cafe-backend:${{ github.sha }}
+          docker push asia-northeast1-docker.pkg.dev/aipartner-426616/cloud-run-source-deploy/engineer-cafe-backend:latest
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy engineer-cafe-backend \
+            --image asia-northeast1-docker.pkg.dev/aipartner-426616/cloud-run-source-deploy/engineer-cafe-backend:${{ github.sha }} \
+            --region asia-northeast1 \
+            --platform managed \
+            --allow-unauthenticated \
+            --port 8000 \
+            --memory 2Gi \
+            --cpu 2 \
+            --min-instances 0 \
+            --max-instances 3 \
+            --set-env-vars "ENVIRONMENT=staging" \
+            --set-secrets "OPENROUTER_API_KEY=OPENROUTER_API_KEY:latest,SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_KEY=SUPABASE_KEY:latest,SUPABASE_DB_URI=SUPABASE_DB_URI:latest"
+
   # Frontend: Deploy to Cloudflare Workers (staging)
   # Only runs on push to develop when CLOUDFLARE_API_TOKEN is available
   frontend-deploy-staging:

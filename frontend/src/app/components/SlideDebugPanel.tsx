@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Bug, Eye, EyeOff, RefreshCw } from 'lucide-react';
 
 interface SlideDebugPanelProps {
@@ -20,7 +20,7 @@ export default function SlideDebugPanel({
   const [debugInfo, setDebugInfo] = useState<any>(null);
   const [showAllSlides, setShowAllSlides] = useState(false);
 
-  const analyzeSlides = () => {
+  const analyzeSlides = useCallback(() => {
     if (!iframeRef.current?.contentDocument) {
       setDebugInfo({ error: 'No iframe document available' });
       return;
@@ -96,7 +96,7 @@ export default function SlideDebugPanel({
     };
 
     setDebugInfo(info);
-  };
+  }, [iframeRef]);
 
   const toggleShowAllSlides = () => {
     if (!iframeRef.current?.contentDocument) return;
@@ -124,7 +124,7 @@ export default function SlideDebugPanel({
     if (isOpen) {
       analyzeSlides();
     }
-  }, [isOpen, currentSlide, totalSlides]);
+  }, [analyzeSlides, isOpen, currentSlide, totalSlides]);
 
   if (!isOpen) {
     return (

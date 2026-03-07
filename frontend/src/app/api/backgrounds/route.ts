@@ -23,8 +23,6 @@ export async function GET() {
       !file.toLowerCase().includes('readme')
     );
     
-    console.log(`Found ${imageFiles.length} background images:`, imageFiles);
-    
     return NextResponse.json({ 
       images: imageFiles,
       total: imageFiles.length 

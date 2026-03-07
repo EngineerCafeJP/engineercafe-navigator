@@ -662,10 +662,18 @@ class TestOrchestratorIntegration:
 
         mock_orchestrator_class.return_value = AsyncMock()
 
-        with patch("backend.utils.memory_helper.get_memory_helper") as mock_get_helper:
+        with (
+            patch("backend.utils.memory_helper.get_memory_helper") as mock_get_helper,
+            patch("backend.workflows.main_workflow.CharacterControlAgent") as mock_character_class,
+        ):
             mock_helper = AsyncMock()
             mock_helper.store_message = AsyncMock()
             mock_get_helper.return_value = mock_helper
+            mock_character = AsyncMock()
+            mock_character.process = AsyncMock(
+                return_value={"name": "idle", "duration": 1000, "keyframes": [{"time": 0}]}
+            )
+            mock_character_class.return_value = mock_character
 
             workflow = MainWorkflow()
 
@@ -673,14 +681,59 @@ class TestOrchestratorIntegration:
                 "query": "営業時間は？",
                 "answer": "9時から22時です。",
                 "session_id": "test-session",
+                "emotion": "neutral",
+                "metadata": {"agent": "BusinessInfoAgent"},
+                "context": {},
             }
 
             result = await workflow._format_response_node(state, _mock_runtime())
 
             assert "messages" in result
+            assert result["metadata"]["agent"] == "BusinessInfoAgent"
+            assert result["metadata"]["vrm_control"]["name"] == "idle"
+            assert result["metadata"]["lipsync_data"] == [{"time": 0}]
             assert len(result["messages"]) == 2
             assert result["messages"][0].content == "営業時間は？"
             assert result["messages"][1].content == "9時から22時です。"
+
+    @pytest.mark.asyncio
+    @patch("backend.workflows.main_workflow.OrchestratorAgent")
+    async def test_format_response_node_falls_back_when_character_control_fails(
+        self, mock_orchestrator_class
+    ):
+        """CharacterControlAgent が失敗しても応答生成は継続することを確認"""
+        from backend.workflows.main_workflow import MainWorkflow
+
+        mock_orchestrator_class.return_value = AsyncMock()
+
+        with (
+            patch("backend.utils.memory_helper.get_memory_helper") as mock_get_helper,
+            patch("backend.workflows.main_workflow.CharacterControlAgent") as mock_character_class,
+        ):
+            mock_helper = AsyncMock()
+            mock_helper.store_message = AsyncMock()
+            mock_get_helper.return_value = mock_helper
+            mock_character = AsyncMock()
+            mock_character.process = AsyncMock(side_effect=RuntimeError("character control failed"))
+            mock_character_class.return_value = mock_character
+
+            workflow = MainWorkflow()
+
+            state = {
+                "query": "営業時間は？",
+                "answer": "9時から22時です。",
+                "session_id": "test-session",
+                "emotion": "neutral",
+                "metadata": {"agent": "BusinessInfoAgent"},
+                "context": {},
+            }
+
+            result = await workflow._format_response_node(state, _mock_runtime())
+
+            assert result["metadata"]["agent"] == "BusinessInfoAgent"
+            assert result["metadata"]["vrm_control"] is None
+            assert result["metadata"]["lipsync_data"] == []
+            assert result["messages"][-1].content == "9時から22時です。"
 
 
 class TestAsyncWorkflowMethods:
