@@ -216,22 +216,3 @@ def get_openai_key() -> str:
         ValueError: キーが設定されていない場合
     """
     return require_env("OPENAI_API_KEY", settings.openai_api_key)
-
-
-# ============================================
-# エンジニアカフェ営業時間設定
-# ============================================
-# weekday: 月-金, saturday: 土, sunday: 日, holiday: 祝日
-# None は休館日を表す
-BUSINESS_HOURS: dict[str, dict[str, str] | None] = {
-    "weekday": {"open": "09:00", "close": "22:00"},
-    "saturday": {"open": "09:00", "close": "22:00"},
-    "sunday": None,
-    "holiday": None,
-}
-
-# 閉館警告を表示する閉館前の分数
-CLOSING_WARNING_MINUTES: int = 30
-
-# タイムゾーン（IANA識別子）
-TIMEZONE: str = "Asia/Tokyo"

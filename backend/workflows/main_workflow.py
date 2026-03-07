@@ -757,47 +757,6 @@ class MainWorkflow:
             "vrm_control": vrm_control,
             "lipsync_data": lipsync_data,
         }
-
-        # 時間帯情報と閉館警告をmetadataに追加
-        try:
-            from backend.config.routing_constants import CLOSING_WARNING_TEMPLATES
-            from backend.utils.time_utils import (
-                get_current_time_period,
-                get_minutes_until_closing,
-                get_now_jst,
-                get_today_business_hours,
-                is_closing_soon,
-            )
-
-            now = get_now_jst()
-            time_period = get_current_time_period(now.hour)
-            metadata["time_period"] = time_period
-
-            business_hours = get_today_business_hours(now.weekday())
-            closing_warning: dict[str, object] = {"is_closing_soon": False}
-
-            if business_hours is not None:
-                _, close_time = business_hours
-                closing_hour = close_time.hour
-                closing_minute = close_time.minute
-
-                if is_closing_soon(now, closing_hour, closing_minute):
-                    remaining = get_minutes_until_closing(now, closing_hour, closing_minute)
-                    closing_warning = {
-                        "is_closing_soon": True,
-                        "minutes_remaining": remaining,
-                    }
-                    # 応答に閉館警告を付加
-                    language = state.get("language", "ja")
-                    default_tmpl = CLOSING_WARNING_TEMPLATES["ja"]
-                    template = CLOSING_WARNING_TEMPLATES.get(language, default_tmpl)
-                    warning_text = template.format(minutes=remaining)
-                    answer = f"{answer}\n\n{warning_text}"
-
-            metadata["closing_warning"] = closing_warning
-        except Exception as time_err:
-            logger.warning("Time/closing warning processing failed: %s", time_err)
-
         # PII Defense-in-Depth: ワークフロー層でもスキャン（API層に加えて二重防御）
         try:
             masked, pii_items = scan_and_mask(answer)
