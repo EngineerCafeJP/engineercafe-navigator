@@ -1,7 +1,18 @@
 import { test, expect } from '@playwright/test'
 
 test.describe('API Proxy Tests', () => {
-  test('should respond to POST /api/qa', async ({ request }) => {
+  // Smoke test: verify the server is running and the endpoint exists with a concrete response
+  test('GET /api/backgrounds should return 200 with JSON', async ({ request }) => {
+    const response = await request.get('/api/backgrounds')
+
+    expect(response.status()).toBe(200)
+    const contentType = response.headers()['content-type']
+    expect(contentType).toContain('application/json')
+  })
+
+  // Backend-dependent: POST /api/qa requires a running backend and env vars.
+  // We assert a proper client or server error, never an undefined/network-level failure.
+  test('POST /api/qa should return a defined HTTP response', async ({ request }) => {
     const response = await request.post('/api/qa', {
       data: {
         question: 'test question',
@@ -12,51 +23,33 @@ test.describe('API Proxy Tests', () => {
       },
     })
 
-    // The API should respond (even if with an error due to missing backend/env)
-    // We verify the endpoint exists and responds, not necessarily with success
-    expect(response).not.toBeNull()
     const status = response.status()
-    // 200 = success, 500 = server error (missing env), 400 = bad request
-    // All are valid responses proving the endpoint exists
+    // 200 = success, 400 = bad request, 500 = backend not configured
+    // Anything in HTTP range is acceptable — what we reject is a network-level failure (no response)
     expect(status).toBeGreaterThanOrEqual(200)
     expect(status).toBeLessThan(600)
   })
 
-  test('should respond to GET /api/health/knowledge', async ({ request }) => {
+  // Backend-dependent: health endpoint may return 500 when DB is not configured in CI.
+  // We assert the endpoint exists and returns an HTTP response (not a network error).
+  test('GET /api/health/knowledge should return an HTTP response', async ({ request }) => {
     const response = await request.get('/api/health/knowledge')
 
-    expect(response).not.toBeNull()
     const status = response.status()
-    // Health endpoint should exist. May return 500 if DB not configured
+    // 200 = healthy, 500 = DB not configured (acceptable in CI without secrets)
     expect(status).toBeGreaterThanOrEqual(200)
     expect(status).toBeLessThan(600)
   })
 
-  test('should respond to GET /api/backgrounds', async ({ request }) => {
-    const response = await request.get('/api/backgrounds')
-
-    expect(response).not.toBeNull()
-    const status = response.status()
-    expect(status).toBeGreaterThanOrEqual(200)
-    expect(status).toBeLessThan(600)
-
-    // If successful, should return JSON
-    if (status === 200) {
-      const contentType = response.headers()['content-type']
-      expect(contentType).toContain('application/json')
-    }
-  })
-
-  test('should reject invalid methods on /api/qa', async ({ request }) => {
+  test('GET /api/qa should be rejected (POST-only endpoint)', async ({ request }) => {
     const response = await request.get('/api/qa')
 
-    expect(response).not.toBeNull()
-    // GET on a POST-only endpoint should return 405 or similar
     const status = response.status()
-    expect([405, 404, 400, 500]).toContain(status)
+    // Must be a client error (405 Method Not Allowed, 404, or 400)
+    expect([400, 404, 405]).toContain(status)
   })
 
-  test('should handle malformed JSON on /api/qa', async ({ request }) => {
+  test('POST /api/qa with malformed JSON should return 400', async ({ request }) => {
     const response = await request.post('/api/qa', {
       data: 'this is not json',
       headers: {
@@ -64,10 +57,9 @@ test.describe('API Proxy Tests', () => {
       },
     })
 
-    expect(response).not.toBeNull()
     const status = response.status()
-    // Should handle gracefully, not crash
-    expect(status).toBeGreaterThanOrEqual(200)
-    expect(status).toBeLessThan(600)
+    // Must be a client error, not a server crash (5xx)
+    expect(status).toBeGreaterThanOrEqual(400)
+    expect(status).toBeLessThan(500)
   })
 })
