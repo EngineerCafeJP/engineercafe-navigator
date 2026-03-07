@@ -233,6 +233,7 @@ class ChatResponse(BaseModel):
     answer: str
     emotion: str
     metadata: Dict[str, Any]
+    vrm_control: Optional[Dict[str, Any]] = None
 
 
 @app.get("/health")
@@ -308,10 +309,13 @@ async def chat(request: Request, body: ChatRequest):
         except Exception as e:
             logger.debug("PII scan skipped (non-critical): %s", e)
 
+        metadata = result.get("metadata", {"query": body.query, "session_id": body.session_id})
+
         return ChatResponse(
             answer=answer,
             emotion=result.get("emotion", "neutral"),
-            metadata=result.get("metadata", {"query": body.query, "session_id": body.session_id}),
+            metadata=metadata,
+            vrm_control=metadata.get("vrm_control"),
         )
     except Exception as e:
         logger.exception("Endpoint error: %s", e)

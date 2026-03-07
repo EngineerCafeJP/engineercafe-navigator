@@ -46,7 +46,7 @@ class TestChatEndpoint:
             return_value={
                 "answer": "テスト回答",
                 "emotion": "neutral",
-                "metadata": {},
+                "metadata": {"vrm_control": {"name": "idle", "duration": 1000, "keyframes": []}},
             }
         )
 
@@ -60,6 +60,7 @@ class TestChatEndpoint:
             body = ChatRequest(query="テスト", session_id="s1")
             response = await chat(_mock_request(), body)
             assert response.answer == "テスト回答"
+            assert response.vrm_control == {"name": "idle", "duration": 1000, "keyframes": []}
 
     @pytest.mark.asyncio
     async def test_chat_error_no_leak(self):
