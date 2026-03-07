@@ -1,40 +1,23 @@
 'use client';
 
-import { Toaster } from 'react-hot-toast';
+import { Toaster, toast } from 'react-hot-toast';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { KnowledgeEditor } from '../components/KnowledgeEditor';
+import { createKnowledge } from '@/lib/api/knowledge';
 
 export default function NewKnowledgePage() {
   const router = useRouter();
 
   const handleSave = async (formData: any) => {
-    console.log('🔍 handleSave called with:', formData);
-    
     try {
-      const response = await fetch('/api/admin/knowledge', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(formData),
-      });
-
-      console.log('🔍 API response status:', response.status);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('❌ API error:', errorText);
-        throw new Error(`Failed to save: ${response.status}`);
-      }
-
-      const result = await response.json();
-      console.log('✅ Save successful:', result);
-      
+      await createKnowledge(formData);
+      toast.success('作成しました');
       // Success - redirect to list page
       router.push('/admin/knowledge');
     } catch (error) {
-      console.error('❌ Save error:', error);
+      console.error('Save error:', error);
+      toast.error(error instanceof Error ? error.message : '保存に失敗しました');
       throw error; // Re-throw so KnowledgeEditor can handle it
     }
   };
