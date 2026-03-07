@@ -2,12 +2,12 @@
 
 > Current implementation status and roadmap for Engineer Cafe Navigator
 
-Last Updated: 2026-01-24
+Last Updated: 2026-03-07
 
 ## 🟢 Implemented Features
 
 ### Core Features
-- ✅ **9-Agent Architecture** - LangGraph backend coordinating specialized agents
+- ✅ **7+3 Agent Architecture** - LangGraph backend with 7 workflow agents + 3 support agents
 - ✅ **Voice Processing API** - Speech recognition, AI response generation, and text-to-speech using Google Cloud
 - ✅ **Google Cloud Service Account Authentication** - Secure authentication without API keys
 - ✅ **Multi-language Support** - Japanese and English voice interactions
@@ -47,24 +47,30 @@ Last Updated: 2026-01-24
 - ✅ **Lip-sync System** - Optimized with intelligent caching
 - ✅ **Production Monitoring** - Real-time metrics and alerting
 
-### 9-Agent Architecture (LangGraph Backend - 2026/01)
-- ✅ **RouterAgent** - Context-dependent query routing and classification
-- ✅ **BusinessInfoAgent** - Hours, pricing, location with Enhanced RAG
-- ✅ **FacilityAgent** - Equipment, basement facilities with Enhanced RAG
-- ✅ **EventAgent** - Calendar and event information
+### Agent Architecture (LangGraph Backend - 2026/03)
+
+**Workflow Agents** (LangGraph nodes):
+- ✅ **OrchestratorAgent** - Supervisor Pattern, LLM dynamic routing (RouterAgent統合済み)
+- ✅ **BusinessInfoAgent** - Hours, pricing, consultation, community (Enhanced RAG)
+- ✅ **FacilityAgent** - Equipment, basement, nearby facilities, lost & found (Enhanced RAG)
+- ✅ **EventAgent** - Google Calendar ICS + Connpass API v2
 - ✅ **SlideAgent** - Slide presentation and narration
-- ✅ **GeneralKnowledgeAgent** - Out-of-scope queries via Google Gemini Search
-- ✅ **MemoryAgent** - Conversation history and context management
-- ✅ **ClarificationAgent** - Ambiguous query clarification
+- ✅ **GeneralKnowledgeAgent** - Web search (Tavily) + memory queries (MemoryAgent統合済み)
+- ✅ **FarewellAgent** - Departure flow, card return reminder, brand message
+
+**Support Agents**:
 - ✅ **VoiceAgent** - STT/TTS processing
 - ✅ **CharacterControlAgent** - VRM character control
+- ✅ **OCRAgent (VisionAgent)** - Image/OCR processing
+
+**Deprecated**: ~~RouterAgent~~, ~~ClarificationAgent~~ (inline), ~~MemoryAgent~~ (→GKA)
 
 ## 🔴 Features NOT Implemented (Despite Being Referenced)
 
 ### Documented but Non-Existent Features
 - ❌ **Web Speech API Integration** - Hardcoded to false in VoiceInterface.tsx, never actually used
-- ❌ **Facial Expression Detection** - face-api.js is loaded but no implementation exists
-- ❌ **Test Framework** - No test command (`pnpm test`) configured despite references in documentation
+- ~~❌ **Facial Expression Detection** - face-api.js is loaded but no implementation exists~~ → ✅ Removed dead code (PR #184)
+- ✅ **Test Framework** - Backend: pytest 2587+ tests, Frontend: Playwright E2E setup
 
 ### Unused Environment Variables
 These variables are documented but not referenced in the actual codebase:
