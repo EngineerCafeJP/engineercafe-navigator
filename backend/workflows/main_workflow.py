@@ -195,16 +195,59 @@ class MainWorkflow:
         return {"answer": "情報の取得中です。", "emotion": "neutral"}
 
     def _format_response_node(self, state: WorkflowState) -> dict:
-        """応答フォーマットノード: 最終的な応答をフォーマット"""
+        """応答フォーマットノード: 最終的な応答をフォーマット
+
+        時間帯情報と閉館警告をmetadataに追加し、
+        閉館30分前の場合は応答に警告メッセージを付加する。
+        """
+        from backend.config.routing_constants import CLOSING_WARNING_TEMPLATES
+        from backend.utils.time_utils import (
+            get_current_time_period,
+            get_minutes_until_closing,
+            get_now_jst,
+            get_today_business_hours,
+            is_closing_soon,
+        )
+
         query = state.get("query", "")
         answer = state.get("answer", "回答を生成できませんでした。")
+        language = state.get("language", "ja")
+        metadata = dict(state.get("metadata", {}))
+
+        # 現在時刻から時間帯を判定
+        now = get_now_jst()
+        time_period = get_current_time_period(now.hour)
+        metadata["time_period"] = time_period
+
+        # 営業時間と閉館警告を確認
+        business_hours = get_today_business_hours(now.weekday())
+        closing_warning: dict[str, object] = {"is_closing_soon": False}
+
+        if business_hours is not None:
+            _, close_time = business_hours
+            closing_hour = close_time.hour
+            closing_minute = close_time.minute
+
+            if is_closing_soon(now, closing_hour, closing_minute):
+                remaining = get_minutes_until_closing(now, closing_hour, closing_minute)
+                closing_warning = {
+                    "is_closing_soon": True,
+                    "minutes_remaining": remaining,
+                }
+                # 応答に閉館警告を付加
+                template = CLOSING_WARNING_TEMPLATES.get(language, CLOSING_WARNING_TEMPLATES["ja"])
+                warning_text = template.format(minutes=remaining)
+                answer = f"{answer}\n\n{warning_text}"
+
+        metadata["closing_warning"] = closing_warning
 
         return {
             "messages": [
                 *state.get("messages", []),
                 HumanMessage(content=query),
                 AIMessage(content=answer),
-            ]
+            ],
+            "metadata": metadata,
         }
 
     async def ainvoke(self, input_data: dict) -> dict:
