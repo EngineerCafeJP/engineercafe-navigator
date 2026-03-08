@@ -651,6 +651,9 @@ class SlidesResponse(BaseModel):
     error: Optional[str] = None
 
 
+SUPPORTED_SLIDE_LANGUAGES = {"ja", "en"}
+
+
 class SlideContentRequest(BaseModel):
     language: str = "ja"
 
@@ -668,6 +671,8 @@ async def slides_content_api(body: SlideContentRequest):
     """Return raw slide markdown and narration data for frontend rendering."""
     try:
         language = body.language or "ja"
+        if language not in SUPPORTED_SLIDE_LANGUAGES:
+            language = "ja"
         backend_dir = os.path.dirname(os.path.abspath(__file__))
 
         md_path = os.path.join(backend_dir, "slides", language, "engineer-cafe.md")
