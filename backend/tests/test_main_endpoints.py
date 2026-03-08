@@ -1,6 +1,7 @@
 """Tests for backend/main.py endpoint fixes (Sprint 5)"""
 
 import pytest
+from httpx import ASGITransport, AsyncClient
 from unittest.mock import AsyncMock, patch
 from fastapi.testclient import TestClient
 from starlette.requests import Request
@@ -149,6 +150,62 @@ class TestSlidesEndpoint:
             with pytest.raises(HTTPException) as exc_info:
                 await slides_api(_mock_request(), body)
             assert "Slide DB error" not in exc_info.value.detail
+
+
+class TestSlidesContentEndpoint:
+    @pytest.mark.asyncio
+    async def test_slides_content_ja(self):
+        from backend.main import app
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.post("/api/slides/content", json={"language": "ja"})
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert "markdown" in data
+        assert "marp: true" in data["markdown"]
+        assert data["narrationData"] is not None
+        assert len(data["narrationData"]["slides"]) > 0
+
+    @pytest.mark.asyncio
+    async def test_slides_content_en(self):
+        from backend.main import app
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.post("/api/slides/content", json={"language": "en"})
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert data["markdown"] is not None
+
+    @pytest.mark.asyncio
+    async def test_slides_content_invalid_language_falls_back_to_ja(self):
+        """Unsupported language falls back to Japanese content."""
+        from backend.main import app
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.post("/api/slides/content", json={"language": "zh"})
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert data["metadata"]["language"] == "ja"
+        assert "marp: true" in data["markdown"]
+
+    @pytest.mark.asyncio
+    async def test_slides_content_path_traversal_blocked(self):
+        """Path traversal attempts are sanitized to default language."""
+        from backend.main import app
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.post("/api/slides/content", json={"language": "../../etc"})
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert data["metadata"]["language"] == "ja"
 
 
 class TestCORSConfiguration:

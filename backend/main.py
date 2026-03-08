@@ -651,6 +651,63 @@ class SlidesResponse(BaseModel):
     error: Optional[str] = None
 
 
+SUPPORTED_SLIDE_LANGUAGES = {"ja", "en"}
+
+
+class SlideContentRequest(BaseModel):
+    language: str = "ja"
+
+
+class SlideContentResponse(BaseModel):
+    success: bool
+    markdown: Optional[str] = None
+    narrationData: Optional[Dict[str, Any]] = None
+    metadata: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+
+
+@app.post("/api/slides/content", response_model=SlideContentResponse)
+async def slides_content_api(body: SlideContentRequest):
+    """Return raw slide markdown and narration data for frontend rendering."""
+    try:
+        language = body.language or "ja"
+        if language not in SUPPORTED_SLIDE_LANGUAGES:
+            language = "ja"
+        backend_dir = os.path.dirname(os.path.abspath(__file__))
+
+        md_path = os.path.join(backend_dir, "slides", language, "engineer-cafe.md")
+        if not os.path.exists(md_path):
+            md_path = os.path.join(backend_dir, "slides", "engineer-cafe.md")
+
+        if not os.path.exists(md_path):
+            return SlideContentResponse(success=False, error="Slide file not found")
+
+        with open(md_path, "r", encoding="utf-8") as file:
+            markdown = file.read()
+
+        narration_path = os.path.join(
+            backend_dir, "slides", "narration", f"engineer-cafe-{language}.json"
+        )
+        narration_data = None
+        if os.path.exists(narration_path):
+            with open(narration_path, "r", encoding="utf-8") as file:
+                narration_data = json.load(file)
+
+        title = "Engineer Cafe"
+        if narration_data:
+            title = narration_data.get("metadata", {}).get("title", title)
+
+        return SlideContentResponse(
+            success=True,
+            markdown=markdown,
+            narrationData=narration_data,
+            metadata={"language": language, "title": title},
+        )
+    except Exception as e:
+        logger.exception("slides_content error: %s", e)
+        return SlideContentResponse(success=False, error="Internal server error")
+
+
 @app.post("/api/slides", response_model=SlidesResponse, dependencies=[Depends(verify_api_key)])
 @_rate_limit("20/minute")
 async def slides_api(request: Request, body: SlidesRequest):
