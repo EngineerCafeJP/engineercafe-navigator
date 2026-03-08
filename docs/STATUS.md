@@ -2,7 +2,7 @@
 
 > Current implementation status and roadmap for Engineer Cafe Navigator
 
-Last Updated: 2026-03-07
+Last Updated: 2026-03-08
 
 ## 🟢 Implemented Features
 
@@ -24,7 +24,7 @@ Last Updated: 2026-03-07
 ### API Endpoints (Implemented)
 - ✅ **POST /api/voice** - Voice processing with multiple actions
 - ✅ **GET /api/voice** - Service status and language information
-- ✅ **POST /api/marp** - Slide rendering
+- ✅ **POST /api/marp** - Slide rendering (proxies to backend `/api/slides`)
 - ✅ **POST /api/slides** - Slide navigation
 - ✅ **POST /api/character** - Character control
 - ✅ **POST /api/qa** - Question answering
@@ -96,9 +96,10 @@ These variables are documented but not referenced in the actual codebase:
 - ✅ **VRM Expression Control** - 6 emotions controlled by text analysis
 
 ### Testing Framework
-- ⏳ **Unit Tests** - Jest + React Testing Library
-- ⏳ **E2E Tests** - Playwright browser testing
-- ⏳ **Component Tests** - Component-level testing
+- ✅ **Backend Unit Tests** - pytest 2638+ tests passing, 87% coverage
+- ✅ **Backend E2E Tests** - HTTP endpoint tests via httpx + ASGITransport
+- ✅ **Backend Integration Tests** - Real-service smoke tests with `pytest.mark.integration`
+- ⏳ **Frontend E2E Tests** - Playwright browser testing (setup済み)
 
 ## 🔴 Known Issues
 
@@ -108,9 +109,14 @@ These variables are documented but not referenced in the actual codebase:
 - **AudioContext Restrictions**: Requires explicit user interaction on iOS
 
 ### Technical Considerations
-- **Future Features**: face-api.js and Web Speech API reserved for future use
 - **Environment Variables**: Some vars reserved for planned features
 - **iOS Workarounds**: Tap-to-play required for audio on iPads
+
+### Production Issues (FIXED 2026-03-08)
+- ✅ VoiceVox TTS on Cloud Run — VoiceVox deployed as separate service
+- ✅ Checkpointer context manager — Fixed to use `__aenter__`/`__aexit__`
+- ✅ Marp API 503 — Frontend now proxies to backend `/api/slides`
+- ✅ CI/CD env var overwrite — `--update-env-vars` preserves TTS config
 
 ## 📊 API Implementation Status
 
