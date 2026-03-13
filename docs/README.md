@@ -70,9 +70,6 @@
   - トラブルシューティング
 
 ### 📚 技術資料・レポート
-- **[MIGRATION-GUIDE.md](MIGRATION-GUIDE.md)** - マイグレーションガイド
-- **[MIGRATION-COMPLETION-REPORT.md](MIGRATION-COMPLETION-REPORT.md)** - マイグレーション完了報告
-- **[RAG-SYSTEM-COMPLETION-REPORT.md](RAG-SYSTEM-COMPLETION-REPORT.md)** - RAGシステム完了報告
 - **[PRESENTATION-MODE-GUIDE.md](PRESENTATION-MODE-GUIDE.md)** - プレゼンテーションモードガイド
 - **[STATUS.md](STATUS.md)** - プロジェクトステータス
 - **[CHANGELOG.md](CHANGELOG.md)** - 変更履歴
@@ -89,11 +86,12 @@
 ### 🗃️ アーカイブドキュメント
 - **[archive/README.md](archive/README.md)** - アーカイブドキュメント一覧
 - 過去のレポート、古いバージョンのドキュメント等
-
-### 🔄 マイグレーション関連
-- **[migration/agents/](migration/agents/)** - エージェント移行関連ドキュメント
-  - 各エージェントの実装ガイド・仕様・テスト
-  - OpenRouter統合ベストプラクティス
+- **[archive/MIGRATION-GUIDE.md](archive/MIGRATION-GUIDE.md)** - マイグレーションガイド
+- **[archive/MIGRATION-COMPLETION-REPORT.md](archive/MIGRATION-COMPLETION-REPORT.md)** - マイグレーション完了報告
+- **[archive/RAG-SYSTEM-COMPLETION-REPORT.md](archive/RAG-SYSTEM-COMPLETION-REPORT.md)** - RAGシステム完了報告
+- **[archive/PRODUCTION-DIAGNOSTIC-REPORT.md](archive/PRODUCTION-DIAGNOSTIC-REPORT.md)** - 本番診断レポート
+- **[archive/QUALITY-REPORT-2026-02-22.md](archive/QUALITY-REPORT-2026-02-22.md)** - 品質レポート
+- **[archive/migration/](archive/migration/)** - エージェント移行関連ドキュメント
 
 ## 🎯 ドキュメント使用ガイド
 
@@ -149,7 +147,7 @@
 | **8エージェント体制** | マルチエージェントアーキテクチャ | ✅ 完了 | [README.md](../README.md#8エージェント体制への完全移行) |
 | **あいまいさ解消** | カフェ・会議室の明確化 | ✅ 完了 | [README.md](../README.md#あいまいさ解消機能) |
 | **会話記憶** | 3分間の短期記憶 | ✅ 完了 | [memory-rag-integration.md](memory-rag-integration.md) |
-| **Enhanced RAG** | エンティティ認識・優先度スコアリング | ✅ 完了 | [RAG-SYSTEM-COMPLETION-REPORT.md](RAG-SYSTEM-COMPLETION-REPORT.md) |
+| **Enhanced RAG** | エンティティ認識・優先度スコアリング | ✅ 完了 | [RAG-SYSTEM-COMPLETION-REPORT.md](archive/RAG-SYSTEM-COMPLETION-REPORT.md) |
 
 ### 🔄 実装予定機能
 
