@@ -635,7 +635,9 @@ class SlidesRequest(BaseModel):
     action: str
     slideId: Optional[str] = None
     targetSlide: Optional[int] = None
+    slideNumber: Optional[int] = None  # FE互換エイリアス (targetSlide)
     query: Optional[str] = None
+    question: Optional[str] = None  # FE互換エイリアス (query)
     sessionId: Optional[str] = None
     language: Optional[str] = "ja"
 
@@ -718,24 +720,30 @@ async def slides_api(request: Request, body: SlidesRequest):
     try:
         slide_agent = _get_slide_agent()
 
-        # アクションマッピング
+        # アクションマッピング（FE互換エイリアス含む）
         action_map = {
             "narrate": "narrate",
+            "narrate_current": "narrate",
             "next": "next",
             "previous": "previous",
             "goto": "goto",
             "question": "question",
+            "answer_question": "question",
         }
 
         slide_action = action_map.get(body.action)
         if not slide_action:
             raise HTTPException(status_code=400, detail=f"Unknown action: {body.action}")
 
+        # FE互換: slideNumber → targetSlide, question → query
+        query = body.query or body.question
+        target_slide = body.targetSlide or body.slideNumber
+
         # SlideAgentのhandle_slide_action呼び出し
         result = await slide_agent.handle_slide_action(
             action=slide_action,
-            query=body.query,
-            target_slide=body.targetSlide,
+            query=query,
+            target_slide=target_slide,
             language=body.language,
             session_id=body.sessionId or "default",
         )
