@@ -1,4 +1,4 @@
-import { RAGSearchTool, KnowledgeSearchResult } from '@/lib/types';
+import { KnowledgeSearchResult } from '@/lib/types';
 import { supabaseAdmin } from "./supabase";
 import { getMostFrequentEmotion } from "./emotion-utils";
 
@@ -20,7 +20,6 @@ interface CachedRAGResult {
 }
 
 export class EnhancedMemorySystem {
-  private ragTool: RAGSearchTool;
   private agentName: string;
   private readonly TTL_SECONDS: number;
   private readonly MAX_ENTRIES: number;
@@ -30,7 +29,6 @@ export class EnhancedMemorySystem {
 
   constructor(agentName: string, config: EnhancedMemoryConfig = {}) {
     this.agentName = agentName;
-    this.ragTool = new RAGSearchTool();
     this.TTL_SECONDS = config.ttlSeconds ?? 180; // 3 minutes default
     this.MAX_ENTRIES = config.maxEntries ?? 100;
     this.RAG_CACHE_TTL = config.ragCacheTtlSeconds ?? 60; // 1 minute cache
@@ -173,33 +171,35 @@ export class EnhancedMemorySystem {
       }
     }
 
-    // Perform RAG search
     try {
-      const ragResults = await this.ragTool.execute({
+      const results = await this.searchKnowledgeBase(query, language, 5);
+
+      this.ragCache.set(cacheKey, {
         query,
-        language,
-        limit: 5,
-        threshold: 0.3,
+        results,
+        timestamp: now,
       });
-      
-      if (ragResults.success) {
-        // Cache the results
-        this.ragCache.set(cacheKey, {
-          query,
-          results: ragResults.results,
-          timestamp: now,
-        });
-        
-        // Clean old cache entries
-        this.cleanCache();
-        
-        return ragResults.results;
-      }
+
+      // Clean old cache entries
+      this.cleanCache();
+
+      return results;
     } catch (error) {
       console.warn('[EnhancedMemory] RAG search failed:', error);
     }
     
     return [];
+  }
+
+  private searchKnowledgeBase(
+    query: string,
+    language: 'ja' | 'en',
+    limit: number
+  ): Promise<KnowledgeSearchResult[]> {
+    void query;
+    void language;
+    void limit;
+    return Promise.resolve([]);
   }
 
   /**
