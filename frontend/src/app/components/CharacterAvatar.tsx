@@ -89,6 +89,8 @@ const SETTINGS_TAB_LABELS: Record<
   audio: 'Audio',
 };
 
+const DEFAULT_LOOKAT_TARGET = new THREE.Vector3(0, 1, 1); // 1m ahead, 1m up
+
 const getSessionPoseOffsets = (sessionState: 'idle' | 'listening' | 'processing' | 'speaking') => {
   switch (sessionState) {
     case 'listening':
@@ -123,7 +125,7 @@ const getSessionPoseOffsets = (sessionState: 'idle' | 'listening' | 'processing'
 };
 
 const asRecord = (value: unknown): JsonRecord | null => {
-  if (!value || typeof value !== 'object') {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return null;
   }
 
@@ -149,17 +151,6 @@ const getVrmSpecVersion = (gltf: { parser?: { json?: { extensions?: JsonRecord }
 
   return null;
 };
-
-const isVrm0Model = (specVersion: string | null): boolean => specVersion?.startsWith('0') ?? false;
-
-const getErrorMessage = (error: unknown, fallback: string): string => {
-  if (error instanceof Error && error.message) {
-    return error.message;
-  }
-
-  return fallback;
-};
-
 export default function CharacterAvatar({
   modelPath = '/characters/models/sakura.vrm',
   initialExpression = 'neutral',
@@ -581,7 +572,6 @@ export default function CharacterAvatar({
 
     try {
       const gltf = await loader.loadAsync(animationUrl);
-      const specVersion = loadedVrmSpecVersionRef.current ?? getVrmSpecVersion(gltf, vrm);
       
       // Try different ways to access the animation
       const vrmAnimation = gltf.userData.vrmAnimations?.[0] || gltf.userData.vrmAnimation;
@@ -592,17 +582,11 @@ export default function CharacterAvatar({
         if (vrm.lookAt) {
           if (!vrm.lookAt.target) {
             const fallbackLookAtTarget = new THREE.Object3D();
-            fallbackLookAtTarget.position.set(0, 1, 1);
+            fallbackLookAtTarget.position.copy(DEFAULT_LOOKAT_TARGET);
             vrm.lookAt.target = fallbackLookAtTarget;
           }
 
           clip = createVRMAnimationClip(vrmAnimation, vrm as any);
-        } else if (isVrm0Model(specVersion)) {
-          console.warn(
-            `[CharacterAvatar] Skipping VRM lookAt animation tracks for VRM ${specVersion ?? '0.x'} model because lookAt proxy is unavailable.`
-          );
-        } else {
-          console.warn('[CharacterAvatar] Skipping VRM animation clip creation because vrm.lookAt is unavailable.');
         }
 
         if (!clip && gltf.animations && gltf.animations.length > 0) {
@@ -768,13 +752,7 @@ export default function CharacterAvatar({
         throw new Error('Failed to load VRM from file');
       }
 
-      const specVersion = getVrmSpecVersion(gltf, vrm);
-      loadedVrmSpecVersionRef.current = specVersion;
-      if (isVrm0Model(specVersion)) {
-        console.warn(
-          `[CharacterAvatar] Loaded VRM ${specVersion}. LookAt DegreeMap curves are not fully supported and lookAt animation tracks may be skipped.`
-        );
-      }
+      loadedVrmSpecVersionRef.current = getVrmSpecVersion(gltf, vrm);
 
       // Add to scene
       sceneRef.current.add(vrm.scene);
@@ -846,8 +824,6 @@ export default function CharacterAvatar({
           
           const vrmExpression = visemeMap[viseme] || 'neutral';
           blendShapeControllerRef.current.setViseme(vrmExpression, intensity);
-        } else {
-          console.warn('[CharacterAvatar] BlendShape controller not available');
         }
       };
 
@@ -881,7 +857,6 @@ export default function CharacterAvatar({
             if (weight > 0.1) {
               availableExpressions.forEach(name => {
                 if (name !== expression) {
-                  const oldValue = expressionManager.getValue(name);
                   expressionManager.setValue(name, 0);
                 }
               });
@@ -889,10 +864,7 @@ export default function CharacterAvatar({
             
             // Set the target expression
             if (expressionManager.expressionMap[mappedExpression]) {
-              const oldValue = expressionManager.getValue(mappedExpression);
               expressionManager.setValue(mappedExpression, weight);
-              if (mappedExpression !== expression) {
-              }
               
               // Store current expression for restoration after lip-sync
               currentExpressionRef.current = { expression: mappedExpression, weight };
@@ -911,8 +883,6 @@ export default function CharacterAvatar({
                 }, 5000);
               }
             } else {
-              console.warn(`[CharacterAvatar] Expression ${mappedExpression} not found in VRM model. Available:`, availableExpressions);
-              
               // Try to find a similar expression
               const similarExpression = availableExpressions.find(name => 
                 name.toLowerCase().includes(mappedExpression.toLowerCase()) ||
@@ -920,7 +890,6 @@ export default function CharacterAvatar({
               );
               
               if (similarExpression) {
-                const oldValue = expressionManager.getValue(similarExpression);
                 expressionManager.setValue(similarExpression, weight);
                 // Store current expression for restoration after lip-sync
                 currentExpressionRef.current = { expression: similarExpression, weight };
@@ -939,9 +908,7 @@ export default function CharacterAvatar({
                   }, 5000);
                 }
               } else {
-                console.warn(`[CharacterAvatar] No similar expression found for: ${mappedExpression} (original: ${expression}). Using neutral as fallback.`);
                 // Fallback to neutral expression which should always exist
-                const neutralValue = expressionManager.getValue('neutral');
                 expressionManager.setValue('neutral', 1.0);
                 currentExpressionRef.current = { expression: 'neutral', weight: 1.0 };
               }
@@ -1005,12 +972,7 @@ export default function CharacterAvatar({
       setIsLoading(false);
     } catch (error) {
       console.error('Error loading character:', error);
-      const message = getErrorMessage(error, 'Unknown error');
-      setError(
-        message.includes('LookAtDegreeMap')
-          ? 'Failed to load this VRM model. VRM 0.0 LookAt settings are not fully supported; please retry or use a VRM 1.0 compatible model.'
-          : `Failed to load character model: ${message}`
-      );
+      setError('Failed to load character model. Please try again.');
       setIsLoading(false);
     }
   };
@@ -1119,7 +1081,6 @@ export default function CharacterAvatar({
             // Store current expression for restoration after lip-sync
             currentExpressionRef.current = { expression: vrmExpression, weight: 1.0 };
           } else {
-            console.warn(`VRM expression '${vrmExpression}' not found in model`);
             // Try to find a similar expression
             const similarExpression = availableExpressions.find(expr => 
               expr.toLowerCase().includes(vrmExpression.toLowerCase()) ||
