@@ -34,6 +34,7 @@ export interface VoiceInterfaceMetadata {
   };
   clarification_options?: string[];
   requires_followup?: boolean;
+   reception_type?: string;
   [key: string]: unknown;
 }
 
@@ -75,6 +76,7 @@ interface VoiceInterfaceProps {
   children?: (props: VoiceInterfaceRenderProps) => ReactNode;
   showDefaultUI?: boolean;
   className?: string;
+  onMetadataChange?: (metadata: VoiceInterfaceMetadata | null) => void;
 }
 
 const DEFAULT_WAKE_WORDS = ['すみません', 'hello'];
@@ -158,6 +160,7 @@ export default function VoiceInterface({
   children,
   showDefaultUI,
   className,
+  onMetadataChange,
 }: VoiceInterfaceProps) {
   const [currentLanguage, setCurrentLanguage] = useState<'ja' | 'en'>(language);
   const [volume, setVolumeState] = useState(0.8);
@@ -189,6 +192,10 @@ export default function VoiceInterface({
   useEffect(() => {
     setCurrentLanguage(language);
   }, [language]);
+
+  useEffect(() => {
+    onMetadataChange?.(metadata);
+  }, [metadata, onMetadataChange]);
 
   const clearLipSyncTimers = useCallback(() => {
     lipSyncTimersRef.current.forEach((timerId) => window.clearTimeout(timerId));
