@@ -3,7 +3,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getBackendApiUrl } from '@/lib/api/backend-url';
 import { MarpProcessor } from '@/lib/marp-processor';
 
-const marpProcessor = new MarpProcessor();
+let marpProcessor: MarpProcessor | null = null;
+
+function getMarpProcessor(): MarpProcessor {
+  if (!marpProcessor) {
+    marpProcessor = new MarpProcessor();
+  }
+  return marpProcessor;
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -26,7 +33,7 @@ export async function POST(request: NextRequest) {
       throw new Error(backendData.error || 'No markdown content returned');
     }
 
-    const processed = marpProcessor.processMarkdown(backendData.markdown);
+    const processed = getMarpProcessor().processMarkdown(backendData.markdown);
     const title =
       backendData.metadata?.title || processed.metadata.title || 'Presentation';
 

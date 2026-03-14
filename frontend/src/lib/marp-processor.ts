@@ -1,5 +1,4 @@
 import { Marp } from '@marp-team/marp-core';
-import DOMPurify from 'isomorphic-dompurify';
 import matter from 'gray-matter';
 
 export interface MarpSlide {
@@ -70,26 +69,6 @@ export class MarpProcessor {
       .replace(/javascript\s*:/gi, '/* javascript: removed */')
       .replace(/-moz-binding\s*:/gi, '/* -moz-binding removed */')
       .replace(/behavior\s*:/gi, '/* behavior removed */');
-  }
-
-  private static sanitizeHtml(html: string): string {
-    return DOMPurify.sanitize(html, {
-      WHOLE_DOCUMENT: true,
-      ADD_TAGS: ['style', 'link', 'meta', 'svg', 'foreignObject', 'section'],
-      ADD_ATTR: [
-        'class', 'id', 'style', 'viewBox', 'xmlns', 'xmlns:xlink',
-        'data-marpit-svg', 'data-marpit-fragment', 'data-auto-scaling',
-        'data-theme', 'data-size', 'data-paginate',
-        'role', 'aria-hidden', 'aria-label', 'tabindex',
-        'width', 'height', 'preserveAspectRatio', 'transform',
-        'fill', 'stroke', 'd', 'x', 'y', 'rx', 'ry', 'cx', 'cy', 'r',
-        'x1', 'y1', 'x2', 'y2', 'points', 'offset', 'stop-color',
-        'font-family', 'font-size', 'text-anchor', 'dominant-baseline',
-      ],
-      FORBID_TAGS: ['script', 'object', 'embed', 'applet', 'base', 'form'],
-      FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'onfocus', 'onblur'],
-      ALLOW_DATA_ATTR: true,
-    });
   }
 
   private loadBuiltinThemes(): void {
@@ -278,15 +257,13 @@ export class MarpProcessor {
     const result = this.processMarkdown(markdown);
 
     if (!wrapInDocument) {
-      return MarpProcessor.sanitizeHtml(result.html);
+      return result.html;
     }
 
     const sanitizedCss = MarpProcessor.sanitizeCss(
       includeCSS ? result.css + '\n' + customCSS : customCSS
     );
     const escapedTitle = MarpProcessor.escapeHtml(title);
-    const sanitizedBody = MarpProcessor.sanitizeHtml(result.html);
-
     return `
       <!DOCTYPE html>
       <html>
@@ -297,7 +274,7 @@ export class MarpProcessor {
         ${sanitizedCss ? `<style>${sanitizedCss}</style>` : ''}
       </head>
       <body>
-        ${sanitizedBody}
+        ${result.html}
       </body>
       </html>
     `;
@@ -332,8 +309,6 @@ export class MarpProcessor {
         box-shadow: 0 4px 8px rgba(0,0,0,0.1);
       }
     `);
-    const sanitizedBody = MarpProcessor.sanitizeHtml(html);
-
     return `
       <!DOCTYPE html>
       <html>
@@ -344,7 +319,7 @@ export class MarpProcessor {
         <style>${previewCSS}</style>
       </head>
       <body>
-        ${sanitizedBody}
+        ${html}
       </body>
       </html>
     `;

@@ -2,7 +2,7 @@
 
 import { useKeyboardControls } from '@/app/hooks/useKeyboardControls';
 import { audioStateManager } from '@/lib/audio-state-manager';
-import DOMPurify from 'isomorphic-dompurify';
+import DOMPurify from 'dompurify';
 import { ChevronLeft, Keyboard, MessageCircle, Pause, Play, RotateCcw, Settings } from 'lucide-react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import SlideDebugPanel from './SlideDebugPanel';
@@ -936,6 +936,7 @@ export default function MarpViewer({
 
   // Sanitize HTML content to prevent XSS attacks using DOMPurify
   const sanitizeHtml = (html: string): string => {
+    if (typeof window === 'undefined') return html;
     return DOMPurify.sanitize(html, {
       WHOLE_DOCUMENT: true,
       ADD_TAGS: ['style', 'link', 'meta', 'svg', 'foreignObject', 'section'],
