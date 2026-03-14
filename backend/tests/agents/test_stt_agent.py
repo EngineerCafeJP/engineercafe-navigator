@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from backend.agents.stt_agent import (
+    MAX_AUDIO_UPLOAD_BYTES,
     LocalSTTClient,
     GoogleSTTClient,
     STTAgent,
@@ -243,6 +244,7 @@ class TestLocalSTTClient:
     def test_convert_audio_to_wav_uses_pydub_normalization(self, test_wav_16khz):
         """WebM conversion normalizes audio to 16kHz, 16-bit, mono WAV."""
         client = LocalSTTClient()
+        input_audio = b"\x1a\x45\xdf\xa3" + (b"webm" * 8)
         fake_segment = MagicMock()
         fake_segment.set_frame_rate.return_value = fake_segment
         fake_segment.set_sample_width.return_value = fake_segment
@@ -257,13 +259,25 @@ class TestLocalSTTClient:
         fake_pydub.AudioSegment.from_file.return_value = fake_segment
 
         with patch.dict("sys.modules", {"pydub": fake_pydub}):
-            wav_bytes = client._convert_audio_to_wav(b"\x1a\x45\xdf\xa3" + (b"webm" * 8))
+            wav_bytes = client._convert_audio_to_wav(input_audio)
 
         fake_pydub.AudioSegment.from_file.assert_called_once()
+        call_buffer = fake_pydub.AudioSegment.from_file.call_args.args[0]
+        assert isinstance(call_buffer, io.BytesIO)
+        assert call_buffer.getvalue() == input_audio
+        assert fake_pydub.AudioSegment.from_file.call_args.kwargs["format"] is None
         fake_segment.set_frame_rate.assert_called_once_with(16000)
         fake_segment.set_sample_width.assert_called_once_with(2)
         fake_segment.set_channels.assert_called_once_with(1)
         assert wav_bytes.startswith(b"RIFF")
+
+    def test_convert_audio_to_wav_rejects_oversized_payload(self):
+        """Oversized non-WAV payloads are rejected before conversion work starts."""
+        client = LocalSTTClient()
+        oversized_audio = b"\x1a\x45\xdf\xa3" + (b"x" * (MAX_AUDIO_UPLOAD_BYTES + 1))
+
+        with pytest.raises(ValueError, match="Audio payload too large"):
+            client._convert_audio_to_wav(oversized_audio)
 
     def test_convert_audio_to_wav_failure_raises_value_error(self):
         """pydub conversion failures are wrapped with a stable STT error."""

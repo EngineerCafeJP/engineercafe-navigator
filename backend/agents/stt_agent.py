@@ -33,6 +33,7 @@ logger = logging.getLogger(__name__)
 
 WAV_RIFF_HEADER = b"RIFF"
 MIN_WAV_HEADER_BYTES = 44
+MAX_AUDIO_UPLOAD_BYTES = 10 * 1024 * 1024
 TRUNCATED_WAV_AUDIO_ERROR = (
     "Audio data must be in WAV format (RIFF) and include a complete WAV header "
     "(minimum 44 bytes). Received truncated data."
@@ -238,13 +239,19 @@ class LocalSTTClient:
 
     def _convert_audio_to_wav(self, audio_data: bytes) -> bytes:
         """Convert WebM/Opus audio bytes to WAV PCM for Vosk."""
+        if len(audio_data) > MAX_AUDIO_UPLOAD_BYTES:
+            raise ValueError(
+                f"Audio payload too large ({len(audio_data)} bytes). "
+                f"Maximum: {MAX_AUDIO_UPLOAD_BYTES} bytes."
+            )
+
         try:
             from pydub import AudioSegment
         except ImportError as exc:
             raise ValueError(PYDUB_IMPORT_ERROR) from exc
 
         try:
-            segment = AudioSegment.from_file(io.BytesIO(audio_data), format="webm")
+            segment = AudioSegment.from_file(io.BytesIO(audio_data), format=None)
             normalized = segment.set_frame_rate(16000).set_sample_width(2).set_channels(1)
             wav_buffer = io.BytesIO()
             normalized.export(wav_buffer, format="wav")
