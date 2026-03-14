@@ -1,28 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
-// TODO: Re-enable after backend migration is complete
-// import { getEngineerCafeNavigator } from '@/mastra';
-// import { Config } from '@/mastra/types/config';
 
-import { getBackendApiUrl } from '@/lib/api/backend-url';
+import { backendFetch } from '@/lib/api/backend-proxy';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
 
-    // バックエンドAPIにプロキシ
-    const backendUrl = `${getBackendApiUrl()}/api/slides`;
-    const response = await fetch(backendUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+    const response = await backendFetch('/api/slides', {
+      body,
     });
 
     if (!response.ok) {
-      throw new Error(`Backend API error: ${response.statusText}`);
+      throw new Error(`Backend API error: ${response.status}`);
     }
 
-    const result = await response.json();
-    return NextResponse.json(result);
+    return NextResponse.json(response.data);
   } catch (error) {
     console.error('Slides API error:', error);
     return NextResponse.json(
