@@ -133,6 +133,7 @@ export function validateServerEnv(): EnvValidationResult {
   const recommendedOptional = [
     "SUPABASE_SERVICE_ROLE_KEY",
     "CRON_SECRET",
+    "GOOGLE_GENERATIVE_AI_API_KEY",
   ] as const;
 
   for (const key of recommendedOptional) {
