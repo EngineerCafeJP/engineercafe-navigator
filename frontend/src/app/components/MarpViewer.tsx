@@ -46,6 +46,7 @@ interface MarpViewerProps {
   slideFile?: string;
   language?: 'ja' | 'en';
   autoPlay?: boolean;
+  surface?: 'customer' | 'developer';
   onSlideChange?: (slideNumber: number) => void;
   onQuestionAsked?: (question: string) => void;
   onVisemeControl?: ((viseme: string, intensity: number) => void) | null;
@@ -53,10 +54,11 @@ interface MarpViewerProps {
   volume?: number;
 }
 
-export default function MarpViewer({ 
+export default function MarpViewer({
   slideFile = 'engineer-cafe',
   language = 'ja',
   autoPlay = false,
+  surface,
   onSlideChange,
   onQuestionAsked,
   onVisemeControl,
