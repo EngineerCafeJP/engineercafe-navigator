@@ -1,6 +1,6 @@
 type UserInteractionCallback = () => void | Promise<void>;
 
-const INTERACTION_EVENTS: Array<'click' | 'touchstart'> = ['click', 'touchstart'];
+const INTERACTION_EVENTS: Array<'click' | 'touchstart' | 'keydown'> = ['click', 'touchstart', 'keydown'];
 
 let hasUserInteracted = false;
 let listenersRegistered = false;

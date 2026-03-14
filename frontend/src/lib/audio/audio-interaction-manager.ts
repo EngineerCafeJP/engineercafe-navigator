@@ -28,6 +28,7 @@ export class AudioInteractionManager {
   private static instance: AudioInteractionManager;
   private globalAudioManager: GlobalAudioManager;
   private isContextInitialized = false;
+  private initializationPromise: Promise<void> | null = null;
   private pendingInteractionCallbacks: (() => void)[] = [];
   private interactionEventListeners: AudioInteractionEvents = {};
   private hasUserInteracted = false;
@@ -41,10 +42,40 @@ export class AudioInteractionManager {
   }
 
   public static getInstance(): AudioInteractionManager {
+    if (typeof window === 'undefined') {
+      throw new Error('AudioInteractionManager is not available during SSR');
+    }
+
     if (!AudioInteractionManager.instance) {
       AudioInteractionManager.instance = new AudioInteractionManager();
     }
     return AudioInteractionManager.instance;
+  }
+
+  private runCallbackSafely(callback: () => void): void {
+    try {
+      callback();
+    } catch (error) {
+      console.error('Error executing pending audio callback:', error);
+    }
+  }
+
+  private enqueuePendingInteractionCallback(callback: () => void): void {
+    if (this.isContextInitialized) {
+      this.runCallbackSafely(callback);
+      return;
+    }
+
+    this.pendingInteractionCallbacks.push(callback);
+  }
+
+  private flushPendingInteractionCallbacks(): void {
+    const callbacks = [...this.pendingInteractionCallbacks];
+    this.pendingInteractionCallbacks = [];
+
+    callbacks.forEach((callback) => {
+      this.runCallbackSafely(callback);
+    });
   }
 
   /**
@@ -70,31 +101,29 @@ export class AudioInteractionManager {
   private async initializeAudioContext(): Promise<void> {
     if (this.isContextInitialized) {
       await this.globalAudioManager.ensureResumed();
+      this.flushPendingInteractionCallbacks();
       return;
     }
 
-    try {
-      await this.globalAudioManager.initialize();
-      this.isContextInitialized = true;
-      
-      // Execute pending callbacks
-      const callbacks = [...this.pendingInteractionCallbacks];
-      this.pendingInteractionCallbacks = [];
-      
-      callbacks.forEach(callback => {
+    if (!this.initializationPromise) {
+      this.initializationPromise = (async () => {
         try {
-          callback();
-        } catch (error) {
-          console.error('Error executing pending audio callback:', error);
-        }
-      });
+          await this.globalAudioManager.initialize();
+          this.isContextInitialized = true;
+          this.flushPendingInteractionCallbacks();
 
-      this.interactionEventListeners.onContextInitialized?.();
-    } catch (error) {
-      console.error('Failed to initialize AudioContext:', error);
-      this.interactionEventListeners.onError?.(error as Error);
-      throw error;
+          this.interactionEventListeners.onContextInitialized?.();
+        } catch (error) {
+          console.error('Failed to initialize AudioContext:', error);
+          this.interactionEventListeners.onError?.(error as Error);
+          throw error;
+        } finally {
+          this.initializationPromise = null;
+        }
+      })();
     }
+
+    await this.initializationPromise;
   }
 
   /**
@@ -224,7 +253,7 @@ export class AudioInteractionManager {
       this.showInteractionPrompt(options);
 
       // Add to pending callbacks
-      this.pendingInteractionCallbacks.push(() => {
+      this.enqueuePendingInteractionCallback(() => {
         const context = this.globalAudioManager.getContext();
         if (context) {
           resolve(context);
@@ -244,13 +273,21 @@ export class AudioInteractionManager {
   public executeWhenReady(callback: () => void): void {
     this.hasUserInteracted = this.hasUserInteracted || hasAudioUserInteraction();
     if (this.isContextInitialized) {
-      callback();
-    } else {
-      this.pendingInteractionCallbacks.push(callback);
-      if (!this.hasUserInteracted) {
-        this.interactionEventListeners.onInteractionRequired?.();
-      }
+      this.runCallbackSafely(callback);
+      return;
     }
+
+    this.enqueuePendingInteractionCallback(callback);
+
+    if (this.hasUserInteracted) {
+      this.initializeAudioContext().catch((error) => {
+        console.error('Failed to initialize AudioContext for pending callback:', error);
+        this.interactionEventListeners.onError?.(error as Error);
+      });
+      return;
+    }
+
+    this.interactionEventListeners.onInteractionRequired?.();
   }
 
   /**
@@ -299,6 +336,7 @@ export class AudioInteractionManager {
   public reset(): void {
     this.hasUserInteracted = false;
     this.isContextInitialized = false;
+    this.initializationPromise = null;
     this.pendingInteractionCallbacks = [];
     resetAudioUserInteractionGate();
     this.globalAudioManager.dispose();
@@ -309,6 +347,7 @@ export class AudioInteractionManager {
    */
   public dispose(): void {
     this.globalAudioManager.dispose();
+    this.initializationPromise = null;
     this.pendingInteractionCallbacks = [];
     this.interactionEventListeners = {};
   }
