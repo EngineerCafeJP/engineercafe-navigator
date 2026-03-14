@@ -44,6 +44,7 @@ audio = [
     # vosk lacks macOS ARM wheels; install via: pip install -e ".[audio]"
     "vosk>=0.3.45",
     "soundfile>=0.12.1",
+    "pydub>=0.25.1",
 ]
 dev = [
     "pytest>=8.0.0",
@@ -93,6 +94,7 @@ slowapi = ">=0.1.9"
 [tool.poetry.group.audio.dependencies]
 vosk = "^0.3.45"
 soundfile = "^0.12.1"
+pydub = "^0.25.1"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"

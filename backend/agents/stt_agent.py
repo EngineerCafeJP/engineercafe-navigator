@@ -21,22 +21,25 @@ STTAgent - Speech-to-Text エージェント
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import io
 import json
 import logging
 import os
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
-import concurrent.futures
 
 logger = logging.getLogger(__name__)
 
 WAV_RIFF_HEADER = b"RIFF"
 MIN_WAV_HEADER_BYTES = 44
-NON_WAV_AUDIO_ERROR = "Audio data must be in WAV format (RIFF). Received non-WAV data."
 TRUNCATED_WAV_AUDIO_ERROR = (
     "Audio data must be in WAV format (RIFF) and include a complete WAV header "
     "(minimum 44 bytes). Received truncated data."
+)
+AUDIO_CONVERSION_ERROR_PREFIX = "Failed to convert WebM audio to WAV for STT transcription"
+PYDUB_IMPORT_ERROR = (
+    "WebM audio conversion requires pydub. Install backend dependencies with pydub included."
 )
 
 
@@ -233,6 +236,30 @@ class LocalSTTClient:
         self._models: Dict[str, Any] = {}
         logger.info("LocalSTTClient initialized (models will be loaded on first use)")
 
+    def _convert_audio_to_wav(self, audio_data: bytes) -> bytes:
+        """Convert WebM/Opus audio bytes to WAV PCM for Vosk."""
+        try:
+            from pydub import AudioSegment
+        except ImportError as exc:
+            raise ValueError(PYDUB_IMPORT_ERROR) from exc
+
+        try:
+            segment = AudioSegment.from_file(io.BytesIO(audio_data), format="webm")
+            normalized = segment.set_frame_rate(16000).set_sample_width(2).set_channels(1)
+            wav_buffer = io.BytesIO()
+            normalized.export(wav_buffer, format="wav")
+            wav_bytes = wav_buffer.getvalue()
+        except Exception as exc:
+            raise ValueError(f"{AUDIO_CONVERSION_ERROR_PREFIX}: {exc}") from exc
+
+        if not wav_bytes.startswith(WAV_RIFF_HEADER) or len(wav_bytes) < MIN_WAV_HEADER_BYTES:
+            raise ValueError(
+                f"{AUDIO_CONVERSION_ERROR_PREFIX}: converted output is not a valid WAV file"
+            )
+
+        logger.info("Converted non-WAV audio payload to 16kHz/16-bit/mono WAV for Vosk")
+        return wav_bytes
+
     def _load_model(self, lang: str):
         if lang not in self.model_paths:
             raise ValueError(
@@ -272,11 +299,11 @@ class LocalSTTClient:
         """
         import wave
 
-        if len(audio_data) < MIN_WAV_HEADER_BYTES:
-            raise ValueError(TRUNCATED_WAV_AUDIO_ERROR)
-
-        if not audio_data.startswith(WAV_RIFF_HEADER):
-            raise ValueError(NON_WAV_AUDIO_ERROR)
+        if audio_data[:4] == WAV_RIFF_HEADER:
+            if len(audio_data) < MIN_WAV_HEADER_BYTES:
+                raise ValueError(TRUNCATED_WAV_AUDIO_ERROR)
+        else:
+            audio_data = self._convert_audio_to_wav(audio_data)
 
         from vosk import KaldiRecognizer
 
@@ -355,11 +382,9 @@ class LocalSTTClient:
                     lambda: self._sync_transcribe(audio_data, language, grammar),
                 )
         except ValueError as e:
-            if str(e) in {NON_WAV_AUDIO_ERROR, TRUNCATED_WAV_AUDIO_ERROR}:
-                message = f"Invalid audio data for STT transcription: {e}"
-                logger.warning(message)
-                raise ValueError(message) from e
-            raise
+            message = f"Invalid audio data for STT transcription: {e}"
+            logger.warning(message)
+            raise ValueError(message) from e
         except Exception as e:
             logger.exception("Vosk transcription error: %s", e)
             raise
