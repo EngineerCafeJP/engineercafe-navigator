@@ -1,6 +1,4 @@
 import { Marp } from '@marp-team/marp-core';
-import fs from 'fs/promises';
-import path from 'path';
 import matter from 'gray-matter';
 
 export interface MarpSlide {
@@ -53,6 +51,32 @@ export class MarpProcessor {
     this.loadBuiltinThemes();
   }
 
+  public static escapeHtml(text: string): string {
+    const escapeMap: Record<string, string> = {
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#x27;',
+    };
+    return text.replace(/[&<>"']/g, (char) => escapeMap[char]);
+  }
+
+  public static sanitizeCss(css: string): string {
+    return css
+      .replace(/@import\b[^;]*;/gi, '/* @import removed */')
+      .replace(/@charset\b[^;]*;/gi, '/* @charset removed */')
+      .replace(/expression\s*\(/gi, '/* expression() removed */ (')
+      .replace(/javascript\s*:/gi, '/* javascript: removed */')
+      .replace(/vbscript\s*:/gi, '/* vbscript: removed */')
+      .replace(
+        /url\s*\(\s*['"]?\s*(?:javascript|data\s*:text\/html)[^)]*\)/gi,
+        '/* unsafe url() removed */'
+      )
+      .replace(/-moz-binding\s*:/gi, '/* -moz-binding removed */')
+      .replace(/behavior\s*:/gi, '/* behavior removed */');
+  }
+
   private loadBuiltinThemes(): void {
     // Load Marp core themes
     const coreThemes = ['default', 'gaia', 'uncover'];
@@ -60,31 +84,32 @@ export class MarpProcessor {
       try {
         // Note: In a real implementation, you'd load the actual theme CSS
         this.themes.set(themeName, `/* ${themeName} theme */`);
-      } catch (error) {
-        console.warn(`Failed to load theme: ${themeName}`);
+      } catch {
+        // Theme loading failed silently
       }
     });
   }
 
-  async loadCustomTheme(themeName: string, themePath: string): Promise<void> {
-    try {
-      const themeCSS = await fs.readFile(themePath, 'utf-8');
-      this.themes.set(themeName, themeCSS);
-      
-      // Register the theme with Marp
-      this.marp.themeSet.add(themeCSS);
-    } catch (error) {
-      throw new Error(`Failed to load custom theme ${themeName}: ${error}`);
-    }
+  /**
+   * Register a custom theme by name and CSS content.
+   * Callers are responsible for loading the CSS (e.g. via fetch).
+   */
+  registerCustomTheme(themeName: string, themeCSS: string): void {
+    this.themes.set(themeName, themeCSS);
+    this.marp.themeSet.add(themeCSS);
   }
 
-  async processMarkdownFile(filePath: string): Promise<ProcessedMarp> {
-    try {
-      const markdownContent = await fs.readFile(filePath, 'utf-8');
-      return this.processMarkdown(markdownContent);
-    } catch (error) {
-      throw new Error(`Failed to process markdown file: ${error}`);
+  /**
+   * Fetch a markdown file from a URL and process it.
+   * Works on both Node.js and edge/worker runtimes.
+   */
+  async processMarkdownFromUrl(url: string): Promise<ProcessedMarp> {
+    const res = await fetch(url);
+    if (!res.ok) {
+      throw new Error(`Failed to fetch markdown from ${url}: ${res.status}`);
     }
+    const markdownContent = await res.text();
+    return this.processMarkdown(markdownContent);
   }
 
   processMarkdown(markdown: string): ProcessedMarp {
@@ -241,16 +266,18 @@ export class MarpProcessor {
       return result.html;
     }
 
-    const css = includeCSS ? result.css + '\n' + customCSS : customCSS;
-
+    const sanitizedCss = MarpProcessor.sanitizeCss(
+      includeCSS ? result.css + '\n' + customCSS : customCSS
+    );
+    const escapedTitle = MarpProcessor.escapeHtml(title);
     return `
       <!DOCTYPE html>
       <html>
       <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>${title}</title>
-        ${css ? `<style>${css}</style>` : ''}
+        <title>${escapedTitle}</title>
+        ${sanitizedCss ? `<style>${sanitizedCss}</style>` : ''}
       </head>
       <body>
         ${result.html}
@@ -280,15 +307,14 @@ export class MarpProcessor {
     // Render just this slide
     const { html, css } = this.marp.render(slide.content);
 
-    const previewCSS = `
+    const previewCSS = MarpProcessor.sanitizeCss(`
       ${includeCSS ? css : ''}
       .marp-slide {
         width: ${width}px;
         height: ${height}px;
         box-shadow: 0 4px 8px rgba(0,0,0,0.1);
       }
-    `;
-
+    `);
     return `
       <!DOCTYPE html>
       <html>
@@ -320,15 +346,16 @@ export class MarpProcessor {
 
   async createSlideNavigation(result: ProcessedMarp): Promise<string> {
     const navigationItems = result.slides.map(slide => {
-      const title = slide.title || `Slide ${slide.slideNumber}`;
+      const rawTitle = slide.title || `Slide ${slide.slideNumber}`;
+      const escapedTitle = MarpProcessor.escapeHtml(rawTitle);
       return `
-        <button 
-          class="nav-item" 
+        <button
+          class="nav-item"
           data-slide="${slide.slideNumber}"
           onclick="goToSlide(${slide.slideNumber})"
         >
           <span class="nav-number">${slide.slideNumber}</span>
-          <span class="nav-title">${title}</span>
+          <span class="nav-title">${escapedTitle}</span>
         </button>
       `;
     }).join('');
@@ -405,24 +432,27 @@ export class MarpProcessor {
     return Array.from(this.themes.keys());
   }
 
-  async loadThemeDirectory(themesPath: string): Promise<void> {
-    try {
-      const files = await fs.readdir(themesPath);
-      
-      for (const file of files) {
-        if (file.endsWith('.css') || file.endsWith('.scss')) {
-          const themeName = path.basename(file, path.extname(file));
-          const themePath = path.join(themesPath, file);
-          
-          try {
-            await this.loadCustomTheme(themeName, themePath);
-          } catch (error) {
-            console.warn(`Failed to load theme ${themeName}:`, error);
-          }
-        }
-      }
-    } catch (error) {
-      console.warn(`Failed to load theme directory ${themesPath}:`, error);
+  /**
+   * Load multiple themes from a base URL and manifest.
+   *
+   * Expects a manifest.json at `${baseUrl}/manifest.json` that is an array of
+   * CSS filenames (e.g. ["engineer-cafe.css", "dark.css"]).
+   */
+  async loadThemesFromManifest(baseUrl: string): Promise<void> {
+    const res = await fetch(`${baseUrl}/manifest.json`);
+    if (!res.ok) return;
+
+    const files: string[] = await res.json();
+
+    for (const file of files) {
+      if (!file.endsWith('.css')) continue;
+
+      const themeName = file.replace(/\.css$/, '');
+      const cssRes = await fetch(`${baseUrl}/${file}`);
+      if (!cssRes.ok) continue;
+
+      const css = await cssRes.text();
+      this.registerCustomTheme(themeName, css);
     }
   }
 

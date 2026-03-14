@@ -1,37 +1,31 @@
 import { NextResponse } from 'next/server';
-import fs from 'fs/promises';
-import path from 'path';
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const backgroundsDir = path.join(process.cwd(), 'public/backgrounds');
-    
-    // Check if directory exists
-    try {
-      await fs.access(backgroundsDir);
-    } catch {
-      // Directory doesn't exist, create it
-      await fs.mkdir(backgroundsDir, { recursive: true });
-      return NextResponse.json({ images: [] });
+    const origin = new URL(request.url).origin;
+    const res = await fetch(`${origin}/backgrounds/manifest.json`);
+
+    if (!res.ok) {
+      return NextResponse.json({ images: [], total: 0 });
     }
-    
-    const files = await fs.readdir(backgroundsDir);
-    
-    const imageFiles = files.filter(file => 
-      /\.(jpg|jpeg|png|webp|svg)$/i.test(file) && 
-      !file.startsWith('.') &&
-      !file.toLowerCase().includes('readme')
+
+    const files: string[] = await res.json();
+
+    const imageFiles = files.filter(
+      (file) =>
+        /\.(jpg|jpeg|png|webp|svg)$/i.test(file) &&
+        !file.startsWith('.') &&
+        !file.toLowerCase().includes('readme'),
     );
-    
-    return NextResponse.json({ 
+
+    return NextResponse.json({
       images: imageFiles,
-      total: imageFiles.length 
+      total: imageFiles.length,
     });
-  } catch (error) {
-    console.error('Error reading backgrounds directory:', error);
-    return NextResponse.json({ 
+  } catch {
+    return NextResponse.json({
       images: [],
-      error: 'Failed to read backgrounds directory'
+      error: 'Failed to read backgrounds manifest',
     });
   }
 }

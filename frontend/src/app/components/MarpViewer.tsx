@@ -2,6 +2,7 @@
 
 import { useKeyboardControls } from '@/app/hooks/useKeyboardControls';
 import { audioStateManager } from '@/lib/audio-state-manager';
+import DOMPurify from 'dompurify';
 import { ChevronLeft, Keyboard, MessageCircle, Pause, Play, RotateCcw, Settings } from 'lucide-react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import SlideDebugPanel from './SlideDebugPanel';
@@ -46,6 +47,7 @@ interface MarpViewerProps {
   slideFile?: string;
   language?: 'ja' | 'en';
   autoPlay?: boolean;
+  surface?: 'customer' | 'developer';
   onSlideChange?: (slideNumber: number) => void;
   onQuestionAsked?: (question: string) => void;
   onVisemeControl?: ((viseme: string, intensity: number) => void) | null;
@@ -53,10 +55,11 @@ interface MarpViewerProps {
   volume?: number;
 }
 
-export default function MarpViewer({ 
+export default function MarpViewer({
   slideFile = 'engineer-cafe',
   language = 'ja',
   autoPlay = false,
+  surface,
   onSlideChange,
   onQuestionAsked,
   onVisemeControl,
@@ -494,7 +497,10 @@ export default function MarpViewer({
                     // Notify parent (safe since we're in a sandboxed iframe)
                     if (window.parent && window.parent.postMessage) {
                       try {
-                        window.parent.postMessage({ type: 'marp-ready', slideCount: slides.length }, '*');
+                        window.parent.postMessage(
+                          { type: 'marp-ready', slideCount: slides.length },
+                          window.location.origin
+                        );
                       } catch (e) {
                         console.warn('Could not send message to parent:', e);
                       }
@@ -931,54 +937,25 @@ export default function MarpViewer({
     }
   };
 
-  // Sanitize HTML content to prevent XSS attacks
-  // Note: This provides basic XSS protection. For production, consider using DOMPurify library
+  // Sanitize HTML content to prevent XSS attacks using DOMPurify
   const sanitizeHtml = (html: string): string => {
-    try {
-      // Create a temporary DOM parser
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(html, 'text/html');
-      
-      // Remove all script tags and their content (we'll add our own controlled scripts later)
-      const scripts = doc.querySelectorAll('script');
-      scripts.forEach(script => script.remove());
-      
-      // Remove javascript: URLs and on* event handlers
-      const allElements = doc.querySelectorAll('*');
-      allElements.forEach(element => {
-        // Remove all on* event handlers (onclick, onload, etc.)
-        Array.from(element.attributes).forEach(attr => {
-          if (attr.name.startsWith('on')) {
-            element.removeAttribute(attr.name);
-          }
-        });
-        
-        // Check and sanitize href and src attributes for javascript: URLs
-        ['href', 'src', 'action', 'formaction', 'data'].forEach(attrName => {
-          const attrValue = element.getAttribute(attrName);
-          if (attrValue && (
-            attrValue.toLowerCase().includes('javascript:') ||
-            attrValue.toLowerCase().includes('data:text/html') ||
-            attrValue.toLowerCase().includes('vbscript:')
-          )) {
-            element.removeAttribute(attrName);
-          }
-        });
-      });
-      
-      // Remove potentially dangerous tags
-      const dangerousTags = ['object', 'embed', 'applet', 'link[rel="import"]', 'meta[http-equiv]', 'base'];
-      dangerousTags.forEach(selector => {
-        const tags = doc.querySelectorAll(selector);
-        tags.forEach(tag => tag.remove());
-      });
-      
-      return doc.documentElement.outerHTML;
-    } catch (error) {
-      console.error('HTML sanitization failed:', error);
-      // Return empty HTML document as fallback
-      return '<!DOCTYPE html><html><head><title>Error</title></head><body><p>Content could not be displayed safely.</p></body></html>';
-    }
+    if (typeof window === 'undefined') return '';
+    return DOMPurify.sanitize(html, {
+      WHOLE_DOCUMENT: true,
+      ADD_TAGS: ['style', 'link', 'meta', 'svg', 'foreignObject', 'section'],
+      ADD_ATTR: [
+        'class', 'id', 'style', 'viewBox', 'xmlns', 'xmlns:xlink',
+        'data-marpit-svg', 'data-marpit-fragment', 'data-auto-scaling',
+        'data-theme', 'data-size', 'data-paginate',
+        'role', 'aria-hidden', 'aria-label', 'tabindex',
+        'width', 'height', 'preserveAspectRatio', 'transform',
+        'fill', 'stroke', 'd', 'x', 'y', 'rx', 'ry', 'cx', 'cy', 'r',
+        'x1', 'y1', 'x2', 'y2', 'points', 'offset', 'stop-color',
+        'font-family', 'font-size', 'text-anchor', 'dominant-baseline',
+      ],
+      FORBID_TAGS: ['script', 'object', 'embed', 'applet', 'base', 'form'],
+      ALLOW_DATA_ATTR: true,
+    });
   };
 
   const debugSlideStructure = () => {
@@ -1287,12 +1264,13 @@ export default function MarpViewer({
         {/* Main slide area */}
         <div className={`${showNotes ? 'w-2/3' : 'w-full'} h-full`}>
           {renderedHtml ? (
+            /* allow-scripts + allow-same-origin: required for Marp rendering + postMessage. Content is DOMPurify-sanitized. */
             <iframe
               ref={iframeRef}
               srcDoc={renderedHtml}
               className="w-full h-full border-0"
               title="Slide presentation"
-              sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
+              sandbox="allow-scripts allow-same-origin"
               onLoad={() => {
                 setTimeout(() => {
                   debugSlideStructure();

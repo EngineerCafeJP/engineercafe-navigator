@@ -29,7 +29,8 @@
     "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
     "deploy:staging": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
-    "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts"
+    "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
+    "setup:env": "cp -n .env.example .env.local 2>/dev/null || echo '.env.local already exists'"
   },
   "engines": {
     "node": ">=18.0.0",
@@ -62,6 +63,7 @@
     "@upstash/redis": "1.34.9",
     "ai": "^4.1.15",
     "cron": "4.3.1",
+    "dompurify": "3.3.3",
     "google-auth-library": "9.15.1",
     "googleapis": "149.0.0",
     "gray-matter": "^4.0.3",
@@ -82,6 +84,7 @@
   },
   "devDependencies": {
     "@playwright/test": "1.58.2",
+    "@types/dompurify": "3.2.0",
     "@types/react": "^19.1.4",
     "@types/react-dom": "^19.1.5",
     "@types/three": "^0.176.0",
