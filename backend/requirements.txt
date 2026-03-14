@@ -25,6 +25,7 @@ psycopg[binary]>=3.1.0
 # Audio processing (STT/TTS)
 vosk>=0.3.45
 soundfile>=0.12.1
+pydub>=0.25.1
 
 # Translation (CTranslate2 + Helsinki-NLP/opus-mt)
 ctranslate2>=4.0.0
