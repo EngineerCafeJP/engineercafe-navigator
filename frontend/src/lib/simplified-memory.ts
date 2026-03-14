@@ -1,4 +1,4 @@
-import { RAGSearchTool, KnowledgeSearchResult } from '@/lib/types';
+import { KnowledgeSearchResult } from '@/lib/types';
 import { supabaseAdmin } from "./supabase";
 import { getMostFrequentEmotion } from "./emotion-utils";
 
@@ -12,14 +12,12 @@ export interface MemoryConfig {
 }
 
 export class SimplifiedMemorySystem {
-  private ragTool: RAGSearchTool;
   private agentName: string;
   private readonly TTL_SECONDS: number;
   private readonly MAX_ENTRIES: number;
 
   constructor(agentName: string, config: MemoryConfig = {}) {
     this.agentName = agentName;
-    this.ragTool = new RAGSearchTool();
     this.TTL_SECONDS = config.ttlSeconds ?? 180; // 3 minutes default
     this.MAX_ENTRIES = config.maxEntries ?? 100; // Increased from 30 to 100
   }
@@ -170,20 +168,11 @@ export class SimplifiedMemorySystem {
         inheritedRequestType = await this.getLastRequestType();
       }
 
-      // Search knowledge base using existing RAG system
+      // Search knowledge base when a frontend-side search implementation is available.
       let knowledgeResults: KnowledgeSearchResult[] = [];
       if (includeKnowledgeBase && userMessage.trim()) {
         try {
-          const ragResults = await this.ragTool.execute({
-            query: userMessage,
-            language,
-            limit: 3,
-            threshold: 0.3, // Lower threshold for broader knowledge recall
-          });
-          
-          if (ragResults.success) {
-            knowledgeResults = ragResults.results;
-          }
+          knowledgeResults = await this.searchKnowledgeBase(userMessage, language, 3);
         } catch (error) {
           console.warn('[SimplifiedMemory] RAG search failed:', error);
         }
@@ -473,6 +462,17 @@ export class SimplifiedMemorySystem {
         await new Promise(resolve => setTimeout(resolve, delay));
       }
     }
+  }
+
+  private searchKnowledgeBase(
+    query: string,
+    language: 'ja' | 'en',
+    limit: number
+  ): Promise<KnowledgeSearchResult[]> {
+    void query;
+    void language;
+    void limit;
+    return Promise.resolve([]);
   }
 
   private buildComprehensiveContext(

@@ -261,15 +261,14 @@ export class RAGExperiment {
   
   private static async searchWithCurrentImplementation(query: string, options?: any): Promise<any[]> {
     // TODO: Implement after backend migration is complete
-    // const { ragSearchTool } = await import('@/mastra/tools/rag-search');
-    // const result = await ragSearchTool.searchKnowledgeBase(query, options?.language || 'ja');
     console.warn('[RAGExperiment] Current implementation disabled during migration');
+    void query;
+    void options;
     return []; // Return empty array during migration
   }
   
   private static async searchWithNewEmbeddings(query: string, options?: any): Promise<any[]> {
     // Placeholder for new implementation
-    // This would use the new Mastra vector query tool
     return this.searchWithCurrentImplementation(query, options);
   }
   
