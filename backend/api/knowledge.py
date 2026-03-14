@@ -8,12 +8,15 @@ embedding生成は自動で行われる。
 NOTE: 認証は別Issueで対応予定。現時点ではCORS制限のみ。
 """
 
+import asyncio
 import logging
 import os
 import re
 from typing import Any, Dict, List, Optional
 
+import httpx
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
+from postgrest import APIError
 from starlette.requests import Request
 from pydantic import BaseModel, Field
 from supabase import create_client
@@ -269,7 +272,13 @@ async def upload_knowledge(
     title: Optional[str] = Form(default=None),
 ):
     """ファイルアップロードでナレッジ登録（.md/.pdf → パース → embedding生成）"""
-    try:
+    effective_title = title or (file.filename.rsplit(".", 1)[0] if file.filename else "unknown")
+    file_type = "unknown"
+    content_size = 0
+
+    async def _perform_upload() -> KnowledgeResponse:
+        nonlocal effective_title, file_type, content_size
+
         if not file.filename:
             raise HTTPException(status_code=400, detail="Filename is required")
 
@@ -293,9 +302,10 @@ async def upload_knowledge(
 
         # ファイルサイズ制限チェック
         content_bytes = await file.read()
+        content_size = len(content_bytes)
         if not content_bytes:
             raise HTTPException(status_code=400, detail="File is empty")
-        if len(content_bytes) > MAX_UPLOAD_SIZE:
+        if content_size > MAX_UPLOAD_SIZE:
             raise HTTPException(
                 status_code=400,
                 detail=f"File too large. Maximum size is {MAX_UPLOAD_SIZE // (1024 * 1024)}MB.",
@@ -334,7 +344,41 @@ async def upload_knowledge(
 
         # Embedding生成
         embedding_text = f"{effective_title}\n{parsed_content}"
-        embedding = await generate_embedding(embedding_text)
+        embedding: List[float] = []
+        try:
+            embedding = await generate_embedding(embedding_text)
+            if not embedding:
+                logger.warning(
+                    "Embedding unavailable for upload: filename=%s title=%s file_type=%s "
+                    "content_size=%s",
+                    file.filename,
+                    effective_title,
+                    file_type,
+                    content_size,
+                )
+        except httpx.TimeoutException as exc:
+            logger.warning(
+                "Embedding generation timed out for upload: filename=%s title=%s file_type=%s "
+                "content_size=%s error=%s",
+                file.filename,
+                effective_title,
+                file_type,
+                content_size,
+                exc,
+            )
+            embedding = []
+        except Exception as exc:
+            logger.warning(
+                "Embedding generation failed for upload (%s): filename=%s title=%s "
+                "file_type=%s content_size=%s error=%s",
+                type(exc).__name__,
+                file.filename,
+                effective_title,
+                file_type,
+                content_size,
+                exc,
+            )
+            embedding = []
 
         # DB挿入
         insert_data: Dict[str, Any] = {
@@ -348,7 +392,29 @@ async def upload_knowledge(
         if embedding:
             insert_data["content_embedding"] = embedding
 
-        result = supabase.table("knowledge_base").insert(insert_data).execute()
+        try:
+            result = supabase.table("knowledge_base").insert(insert_data).execute()
+        except APIError as exc:
+            if _is_unique_violation(exc):
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Knowledge with title '{effective_title}' already exists",
+                )
+            logger.error(
+                "Supabase insert failed: table=knowledge_base title=%s filename=%s error=%s",
+                effective_title,
+                file.filename,
+                exc,
+            )
+            raise HTTPException(status_code=503, detail="Knowledge storage unavailable")
+        except httpx.HTTPError as exc:
+            logger.error(
+                "Supabase insert failed: table=knowledge_base title=%s filename=%s error=%s",
+                effective_title,
+                file.filename,
+                exc,
+            )
+            raise HTTPException(status_code=503, detail="Knowledge storage unavailable")
 
         if not result.data:
             raise HTTPException(status_code=500, detail="Failed to insert knowledge entry")
@@ -358,15 +424,32 @@ async def upload_knowledge(
             data=_row_to_item(result.data[0]),
         )
 
+    try:
+        return await asyncio.wait_for(_perform_upload(), timeout=60)
     except HTTPException:
         raise
+    except asyncio.TimeoutError:
+        logger.error(
+            "Knowledge upload timed out after 60 seconds: filename=%s file_type=%s content_size=%s",
+            file.filename,
+            file_type,
+            content_size,
+        )
+        raise HTTPException(status_code=504, detail="Knowledge upload timed out")
     except Exception as e:
         if _is_unique_violation(e):
             raise HTTPException(
                 status_code=409,
                 detail=f"Knowledge with title '{effective_title}' already exists",
             )
-        logger.error("Failed to upload knowledge: %s", e)
+        logger.error(
+            "Failed to upload knowledge (%s): %s; filename=%s file_type=%s content_size=%s",
+            type(e).__name__,
+            e,
+            file.filename,
+            file_type,
+            content_size,
+        )
         raise HTTPException(status_code=500, detail="Failed to upload knowledge entry")
 
 
