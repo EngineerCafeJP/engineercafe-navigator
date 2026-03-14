@@ -1,181 +1,79 @@
-# Engineer Cafe Navigator - Frontend
+# Frontend
 
-> Next.js 15 + TypeScript + React 19 フロントエンドアプリケーション
+Next.js 15 frontend for Engineer Cafe Navigator.
 
-English version: [../README-EN.md](../README-EN.md) (monorepo overview)
+The frontend is primarily responsible for:
 
-[![Next.js](https://img.shields.io/badge/Next.js-15.3.2-black)](https://nextjs.org/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.8.3-blue)](https://www.typescriptlang.org/)
-[![React](https://img.shields.io/badge/React-19.1.0-61dafb)](https://reactjs.org/)
-[![Three.js](https://img.shields.io/badge/Three.js-VRM-orange)](https://threejs.org/)
+- UI rendering
+- VRM character presentation
+- browser-side audio interaction
+- operator/admin screens
+- proxying browser requests to the FastAPI backend
 
-## 概要
+It should not be treated as the source of truth for AI workflow logic.
 
-エンジニアカフェナビゲーターのフロントエンドアプリケーション。UIとユーザーインタラクションを担当し、AIロジックはバックエンド（LangGraph）に委譲します。
+## Current Architecture
 
-**主要機能:**
-- 音声AIエージェントインターフェース
-- VRMキャラクター表示（Three.js + @pixiv/three-vrm）
-- リアルタイム会話
-- スライドプレゼンテーション（Marp）
-- 多言語対応（日本語・英語）
+Main route groups:
 
-## セットアップ
+- `src/app/page.tsx`: main kiosk UI
+- `src/app/api/voice/route.ts`: proxy to backend voice API
+- `src/app/api/qa/route.ts`: proxy to backend chat API
+- `src/app/api/slides/route.ts`: proxy to backend slides API
+- `src/app/api/character/route.ts`: proxy to backend character API
+- `src/app/api/reception/*`: proxy to backend reception API
+- `src/app/api/admin/*`: server-side admin endpoints
+- `src/app/api/monitoring/*`: server-side monitoring endpoints
+- `src/app/api/cron/*`: scheduled or operator-style actions
 
-### 前提条件
+Recent cleanup removed most direct Mastra-era remnants from active request paths.
 
-- Node.js >= 18.0.0
-- pnpm >= 8.0.0
+## Environment
 
-### インストール
+Actual usage varies by feature, but the important frontend-side variables currently include:
+
+- `BACKEND_API_URL`
+- `BACKEND_API_KEY`
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `CRON_SECRET`
+- `ALERT_WEBHOOK_SECRET`
+- `SLACK_WEBHOOK_URL`
+
+Important caveat:
+
+- `src/lib/env.ts` and `src/lib/env-client.ts` do not yet define a fully authoritative runtime contract.
+- Some documented variables are optional in practice.
+- Some validation helpers are not wired into startup.
+
+Use [docs/STATUS.md](../docs/STATUS.md) when deciding what is actually required right now.
+
+## Local Run
 
 ```bash
 cd frontend
 pnpm install
+cp .env.example .env.local
+pnpm dev
 ```
 
-### 環境変数
-
-`.env.local` を作成:
-
-```env
-NEXT_PUBLIC_API_URL=http://localhost:8000
-NEXT_PUBLIC_SUPABASE_URL=https://project.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
-GOOGLE_CLOUD_PROJECT_ID=your-gcp-project-id
-GOOGLE_CLOUD_CREDENTIALS=./config/service-account-key.json
-GOOGLE_GENERATIVE_AI_API_KEY=your-gemini-api-key
-OPENAI_API_KEY=your-openai-api-key
-```
-
-### 開発サーバー
+## Commands
 
 ```bash
-pnpm dev          # http://localhost:3000
-pnpm dev:clean    # キャッシュクリア後に起動
+cd frontend
+pnpm dev
+pnpm lint
+pnpm typecheck
+pnpm build
+pnpm test
+pnpm test:e2e
 ```
 
-## コマンド
+## Current Risks
 
-```bash
-# 開発
-pnpm dev                    # 開発サーバー起動
-pnpm build                  # プロダクションビルド（opennextjs-cloudflare）
-pnpm start                  # プロダクションサーバー起動
+- Admin, monitoring, and some cron-style routes still lack proper auth boundaries.
+- Audio behavior still depends on real browser/device validation even after recent fixes.
+- Some server routes still talk directly to Supabase, so auth and secret handling need tightening.
 
-# コード品質
-pnpm lint                   # ESLint
-pnpm typecheck              # TypeScriptチェック
-
-# テスト
-pnpm test                   # テストスイート実行
-pnpm test:e2e               # Playwright E2E テスト
-pnpm test:e2e:ui            # Playwright UI モード
-
-# デプロイ
-pnpm deploy                 # ビルド + Cloudflare Workersにデプロイ
-```
-
-## プロジェクト構造
-
-```
-frontend/src/
-├── app/                          # Next.js App Router
-│   ├── api/                      # API Routes
-│   │   ├── voice/route.ts        # 音声処理API
-│   │   ├── marp/route.ts         # スライドAPI
-│   │   ├── character/route.ts    # キャラクターAPI
-│   │   ├── slides/route.ts       # スライド操作API
-│   │   ├── qa/route.ts           # Q&A API
-│   │   └── monitoring/           # 監視・ヘルスチェックAPI
-│   ├── components/               # React Components
-│   │   ├── AudioControls.tsx     # 音声制御
-│   │   ├── BackgroundSelector.tsx # 背景選択
-│   │   ├── CharacterAvatar.tsx   # VRMキャラクター表示
-│   │   ├── LanguageSelector.tsx  # 言語切り替え
-│   │   ├── MarpViewer.tsx        # Marpスライドビューア
-│   │   └── VoiceInterface.tsx    # 音声インターフェース
-│   ├── globals.css               # グローバルスタイル
-│   └── page.tsx                  # メインページ
-├── lib/                          # 共通ライブラリ
-│   ├── audio/                    # 統一音声システム（Web Audio API専用）
-│   │   ├── audio-playback-service.ts  # 統一音声再生サービス
-│   │   ├── web-audio-player.ts   # Web Audio APIプレイヤー
-│   │   └── mobile-audio-service.ts # モバイル対応
-│   ├── marp-processor.ts         # Marp処理
-│   ├── simplified-memory.ts      # メモリシステム
-│   ├── stt-correction.ts         # STT誤認識補正
-│   ├── lip-sync-analyzer.ts      # リップシンク解析
-│   └── supabase.ts              # Supabase設定
-├── mastra/                       # Mastra設定（バックエンドLangGraphに移行中）
-│   ├── agents/                   # AIエージェント
-│   ├── workflows/                # ワークフロー
-│   └── tools/                    # Mastra Tools
-├── slides/                       # スライドコンテンツ
-│   ├── engineer-cafe.md          # メインスライド
-│   ├── themes/                   # カスタムテーマ
-│   └── narration/                # ナレーションJSON
-└── types/                        # 型定義
-```
-
-## 技術スタック
-
-| カテゴリ | 技術 |
-|---------|------|
-| フレームワーク | Next.js 15.3.2 + React 19.1.0 |
-| 言語 | TypeScript 5.8.3 |
-| スタイリング | Tailwind CSS v3.4.17 |
-| 3Dキャラクター | Three.js 0.176.0 + @pixiv/three-vrm 3.4.0 |
-| スライド | Marp Core 4.1.0 |
-| 音声 | Web Audio API（HTMLAudioElement不使用） |
-| デプロイ | Cloudflare Workers（opennextjs-cloudflare） |
-
-## 重要な制約
-
-### Tailwind CSS v3
-
-**Tailwind CSS v4 にアップグレードしないでください。** v4 には破壊的変更があります。
-
-```bash
-# 正しいバージョン
-pnpm add -D tailwindcss@3.4.17 postcss@8.4.47 autoprefixer@10.4.20
-```
-
-PostCSS設定では `tailwindcss: {}` を使用（`@tailwindcss/postcss: {}` ではありません）。
-
-### 音声システム
-
-全音声再生は Web Audio API 経由（`src/lib/audio/`）。HTMLAudioElement は使用禁止。
-
-### VRMモデル
-
-VRMファイルを `public/characters/models/` に配置:
-
-```
-public/characters/models/
-└── sakura.vrm              # メインガイドキャラクター
-```
-
-## トラブルシューティング
-
-### 音声認識が動作しない
-- ブラウザのマイクアクセス許可を確認
-- HTTPS環境であることを確認（localhostはHTTPでも可）
-- Google Cloud Speech APIが有効化されているか確認
-
-### キャラクターが表示されない
-- `public/characters/models/` にVRMファイルがあるか確認
-- ブラウザがWebGLに対応しているか確認
-
-### スライドが表示されない
-- `src/slides/` にMarkdownファイルがあるか確認
-- テーマファイル（`src/slides/themes/`）が存在するか確認
-
-## 関連ドキュメント
-
-- **[プロジェクト全体README](../README.md)** - モノレポ全体の概要
-- **[バックエンドREADME](../backend/README.md)** - Python LangGraphバックエンド
-- **[ドキュメント一覧](../docs/README.md)** - 全ドキュメントのインデックス
-- **[API仕様書](../docs/api/API.md)** - REST API仕様
-- **[開発ガイド](../docs/development/DEVELOPER-GUIDE.md)** - 開発者向け技術仕様
+The tracked status and GitHub issues are summarized in [docs/STATUS.md](../docs/STATUS.md).

@@ -1,5 +1,7 @@
 # Engineer Cafe Navigator 開発者ガイド
 
+> 注意: この文書には Mastra 移行期の記述が多く残っています。現行の入口は `docs/STATUS.md`、`docs/DEVELOPER-GUIDE.md`、ルートの `README.md` を優先してください。
+
 最終更新日: 2026年2月7日（LangGraph バックエンド + 共有インフラストラクチャ整備済み）
 
 ## 📋 目次

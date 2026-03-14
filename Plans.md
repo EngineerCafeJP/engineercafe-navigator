@@ -1,5 +1,7 @@
 # Plans.md - Engineer Cafe Navigator
 
+> 注意: この文書は 2026-03-07 時点の計画ベースで、現在の stabilization audit は `docs/STATUS.md` と `docs/plans/production-hardening-session-2026-03-14.md` を優先してください。
+
 > 最終更新: 2026-03-07
 > モード: 2-Agent (Cursor PM + Claude Code Worker)
 

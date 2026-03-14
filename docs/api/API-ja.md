@@ -1,5 +1,7 @@
 # API ドキュメント - Engineer Cafe Navigator
 
+> 注意: この文書には旧 deployment 前提や更新途中の route 説明が含まれる可能性があります。現行判断は `docs/STATUS.md` と実装コードを優先してください。
+
 > Engineer Cafe Navigator 音声AIエージェントシステムの完全なREST API仕様書
 
 [English](./API.md) | 日本語版
