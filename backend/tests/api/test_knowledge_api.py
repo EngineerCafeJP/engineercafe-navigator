@@ -1,9 +1,12 @@
 """Knowledge CRUD API Tests"""
 
+import asyncio
 import io
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
+from postgrest import APIError
 
 pytest.importorskip("fastapi", reason="fastapi not installed")
 
@@ -378,3 +381,89 @@ def test_upload_pdf(mock_get_sb, mock_embed, mock_parse_pdf):
     assert body["success"] is True
     mock_parse_pdf.assert_called_once()
     mock_embed.assert_called_once()
+
+
+@patch("backend.api.knowledge.parse_markdown")
+@patch("backend.api.knowledge.generate_embedding", new_callable=AsyncMock)
+@patch("backend.api.knowledge._get_supabase")
+def test_upload_continues_when_embedding_times_out(mock_get_sb, mock_embed, mock_parse_md):
+    """embedding timeout時も保存は継続し、embeddingなしで登録する"""
+    mock_embed.side_effect = httpx.TimeoutException("Request timed out")
+    mock_parse_md.return_value = "Parsed markdown content"
+    mock_sb = _mock_supabase()
+    mock_get_sb.return_value = mock_sb
+
+    mock_sb.table.return_value.select.return_value.eq.return_value.execute.return_value = (
+        _mock_table_result([])
+    )
+    uploaded_row = {
+        **SAMPLE_ROW,
+        "title": "timeout_doc",
+        "content": "Parsed markdown content",
+        "source": "file:timeout_doc.md",
+    }
+    mock_sb.table.return_value.insert.return_value.execute.return_value = _mock_table_result(
+        [uploaded_row]
+    )
+
+    response = client.post(
+        "/api/knowledge/upload",
+        data={"category": "general", "language": "ja"},
+        files={"file": ("timeout_doc.md", io.BytesIO(b"# Test"), "text/markdown")},
+    )
+
+    assert response.status_code == 201
+    insert_data = mock_sb.table.return_value.insert.call_args.args[0]
+    assert "content_embedding" not in insert_data
+
+
+@patch("backend.api.knowledge.parse_markdown")
+@patch("backend.api.knowledge.generate_embedding", new_callable=AsyncMock)
+@patch("backend.api.knowledge._get_supabase")
+def test_upload_returns_503_when_supabase_insert_fails(mock_get_sb, mock_embed, mock_parse_md):
+    """Supabase insert失敗時は503を返す"""
+    mock_embed.return_value = FAKE_EMBEDDING
+    mock_parse_md.return_value = "Parsed markdown content"
+    mock_sb = _mock_supabase()
+    mock_get_sb.return_value = mock_sb
+
+    mock_sb.table.return_value.select.return_value.eq.return_value.execute.return_value = (
+        _mock_table_result([])
+    )
+    mock_sb.table.return_value.insert.return_value.execute.side_effect = APIError(
+        {
+            "message": "Supabase unavailable",
+            "code": "08006",
+            "hint": "",
+            "details": "",
+        }
+    )
+
+    response = client.post(
+        "/api/knowledge/upload",
+        data={"category": "general", "language": "ja"},
+        files={"file": ("failed_doc.md", io.BytesIO(b"# Test"), "text/markdown")},
+    )
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Knowledge storage unavailable"
+
+
+@patch("backend.api.knowledge.asyncio.wait_for", new_callable=AsyncMock)
+def test_upload_returns_504_on_overall_timeout(mock_wait_for):
+    """全体のアップロード処理がタイムアウトした場合は504を返す"""
+
+    async def _raise_timeout(awaitable, timeout):
+        awaitable.close()
+        raise asyncio.TimeoutError()
+
+    mock_wait_for.side_effect = _raise_timeout
+
+    response = client.post(
+        "/api/knowledge/upload",
+        data={"category": "general", "language": "ja"},
+        files={"file": ("timeout_guard.md", io.BytesIO(b"# Test"), "text/markdown")},
+    )
+
+    assert response.status_code == 504
+    assert response.json()["detail"] == "Knowledge upload timed out"
