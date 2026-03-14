@@ -33,6 +33,8 @@ interface CharacterState {
   model: string;
 }
 
+type JsonRecord = Record<string, unknown>;
+
 export interface BackgroundOption {
   id?: string;
   name?: string;
@@ -87,6 +89,8 @@ const SETTINGS_TAB_LABELS: Record<
   audio: 'Audio',
 };
 
+const DEFAULT_LOOKAT_TARGET = new THREE.Vector3(0, 1, 1); // 1m ahead, 1m up
+
 const getSessionPoseOffsets = (sessionState: 'idle' | 'listening' | 'processing' | 'speaking') => {
   switch (sessionState) {
     case 'listening':
@@ -120,6 +124,33 @@ const getSessionPoseOffsets = (sessionState: 'idle' | 'listening' | 'processing'
   }
 };
 
+const asRecord = (value: unknown): JsonRecord | null => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+
+  return value as JsonRecord;
+};
+
+const getVrmSpecVersion = (gltf: { parser?: { json?: { extensions?: JsonRecord } } }, vrm?: VRM | null): string | null => {
+  const extensions = gltf.parser?.json?.extensions;
+  const vrm0Extension = asRecord(extensions?.VRM);
+  if (typeof vrm0Extension?.specVersion === 'string') {
+    return vrm0Extension.specVersion;
+  }
+
+  const vrm1Extension = asRecord(extensions?.VRMC_vrm);
+  if (typeof vrm1Extension?.specVersion === 'string') {
+    return vrm1Extension.specVersion;
+  }
+
+  const vrmMeta = asRecord(asRecord(vrm)?.meta);
+  if (typeof vrmMeta?.metaVersion === 'string') {
+    return vrmMeta.metaVersion;
+  }
+
+  return null;
+};
 export default function CharacterAvatar({
   modelPath = '/characters/models/sakura.vrm',
   initialExpression = 'neutral',
@@ -180,6 +211,7 @@ export default function CharacterAvatar({
   const updateCharacterAnimationRef = useRef<(animation: string) => Promise<void>>(async () => {});
   const updateSceneBackgroundRef = useRef<(options: BackgroundOption) => void>(() => {});
   const loadedModelPathRef = useRef(modelPath);
+  const loadedVrmSpecVersionRef = useRef<string | null>(null);
 
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -545,7 +577,25 @@ export default function CharacterAvatar({
       const vrmAnimation = gltf.userData.vrmAnimations?.[0] || gltf.userData.vrmAnimation;
       
       if (vrmAnimation) {
-        const clip = createVRMAnimationClip(vrmAnimation, vrm as any);
+        let clip: THREE.AnimationClip | null = null;
+
+        if (vrm.lookAt) {
+          if (!vrm.lookAt.target) {
+            const fallbackLookAtTarget = new THREE.Object3D();
+            fallbackLookAtTarget.position.copy(DEFAULT_LOOKAT_TARGET);
+            vrm.lookAt.target = fallbackLookAtTarget;
+          }
+
+          clip = createVRMAnimationClip(vrmAnimation, vrm as any);
+        }
+
+        if (!clip && gltf.animations && gltf.animations.length > 0) {
+          clip = gltf.animations[0];
+        }
+
+        if (!clip) {
+          return { success: false, duration: 0 };
+        }
         
         if (!mixerRef.current) {
           mixerRef.current = new THREE.AnimationMixer(vrm.scene);
@@ -683,6 +733,7 @@ export default function CharacterAvatar({
     try {
       setIsLoading(true);
       setError(null);
+      loadedVrmSpecVersionRef.current = null;
 
       // Remove existing character
       if (charactersRef.current) {
@@ -700,6 +751,8 @@ export default function CharacterAvatar({
       if (!vrm) {
         throw new Error('Failed to load VRM from file');
       }
+
+      loadedVrmSpecVersionRef.current = getVrmSpecVersion(gltf, vrm);
 
       // Add to scene
       sceneRef.current.add(vrm.scene);
@@ -750,7 +803,11 @@ export default function CharacterAvatar({
       await fetchAvailableFeatures();
       
       // Load default idle animation
-      await loadVRMAnimation('/animations/idle_loop.vrma', vrm, true, true);
+      try {
+        await loadVRMAnimation('/animations/idle_loop.vrma', vrm, true, true);
+      } catch (animationError) {
+        console.error('[CharacterAvatar] Failed to load default idle animation:', animationError);
+      }
 
       // Create viseme control function
       const setViseme = (viseme: string, intensity: number) => {
@@ -767,8 +824,6 @@ export default function CharacterAvatar({
           
           const vrmExpression = visemeMap[viseme] || 'neutral';
           blendShapeControllerRef.current.setViseme(vrmExpression, intensity);
-        } else {
-          console.warn('[CharacterAvatar] BlendShape controller not available');
         }
       };
 
@@ -802,7 +857,6 @@ export default function CharacterAvatar({
             if (weight > 0.1) {
               availableExpressions.forEach(name => {
                 if (name !== expression) {
-                  const oldValue = expressionManager.getValue(name);
                   expressionManager.setValue(name, 0);
                 }
               });
@@ -810,10 +864,7 @@ export default function CharacterAvatar({
             
             // Set the target expression
             if (expressionManager.expressionMap[mappedExpression]) {
-              const oldValue = expressionManager.getValue(mappedExpression);
               expressionManager.setValue(mappedExpression, weight);
-              if (mappedExpression !== expression) {
-              }
               
               // Store current expression for restoration after lip-sync
               currentExpressionRef.current = { expression: mappedExpression, weight };
@@ -832,8 +883,6 @@ export default function CharacterAvatar({
                 }, 5000);
               }
             } else {
-              console.warn(`[CharacterAvatar] Expression ${mappedExpression} not found in VRM model. Available:`, availableExpressions);
-              
               // Try to find a similar expression
               const similarExpression = availableExpressions.find(name => 
                 name.toLowerCase().includes(mappedExpression.toLowerCase()) ||
@@ -841,7 +890,6 @@ export default function CharacterAvatar({
               );
               
               if (similarExpression) {
-                const oldValue = expressionManager.getValue(similarExpression);
                 expressionManager.setValue(similarExpression, weight);
                 // Store current expression for restoration after lip-sync
                 currentExpressionRef.current = { expression: similarExpression, weight };
@@ -860,9 +908,7 @@ export default function CharacterAvatar({
                   }, 5000);
                 }
               } else {
-                console.warn(`[CharacterAvatar] No similar expression found for: ${mappedExpression} (original: ${expression}). Using neutral as fallback.`);
                 // Fallback to neutral expression which should always exist
-                const neutralValue = expressionManager.getValue('neutral');
                 expressionManager.setValue('neutral', 1.0);
                 currentExpressionRef.current = { expression: 'neutral', weight: 1.0 };
               }
@@ -926,7 +972,7 @@ export default function CharacterAvatar({
       setIsLoading(false);
     } catch (error) {
       console.error('Error loading character:', error);
-      setError('Failed to load character model');
+      setError('Failed to load character model. Please try again.');
       setIsLoading(false);
     }
   };
@@ -1035,7 +1081,6 @@ export default function CharacterAvatar({
             // Store current expression for restoration after lip-sync
             currentExpressionRef.current = { expression: vrmExpression, weight: 1.0 };
           } else {
-            console.warn(`VRM expression '${vrmExpression}' not found in model`);
             // Try to find a similar expression
             const similarExpression = availableExpressions.find(expr => 
               expr.toLowerCase().includes(vrmExpression.toLowerCase()) ||
@@ -1272,6 +1317,8 @@ export default function CharacterAvatar({
     if (charactersRef.current) {
       VRMUtils.dispose(charactersRef.current);
     }
+
+    loadedVrmSpecVersionRef.current = null;
   };
 
   initializeSceneRef.current = initializeScene;
