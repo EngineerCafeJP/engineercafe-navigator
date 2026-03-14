@@ -833,9 +833,7 @@ class TestMarpAPIUnit:
         )
         with open(route_path, "r", encoding="utf-8") as f:
             content = f.read()
-        assert (
-            "getBackendApiUrl" in content
-        ), "Marp route should proxy to backend via getBackendApiUrl"
+        assert "backendFetch" in content, "Marp route should proxy to backend via backendFetch"
         assert "503" not in content, "Marp route should not return hardcoded 503"
 
 
