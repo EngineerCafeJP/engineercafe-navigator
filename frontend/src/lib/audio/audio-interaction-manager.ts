@@ -4,6 +4,12 @@
  */
 
 import { GlobalAudioManager } from './web-audio-player';
+import {
+  hasAudioUserInteraction,
+  markAudioUserInteraction,
+  registerAudioInteractionCallback,
+  resetAudioUserInteractionGate
+} from './audio-user-interaction-gate';
 
 export interface AudioInteractionEvents {
   onContextInitialized?: () => void;
@@ -30,6 +36,7 @@ export class AudioInteractionManager {
 
   private constructor() {
     this.globalAudioManager = GlobalAudioManager.getInstance();
+    this.hasUserInteracted = hasAudioUserInteraction();
     this.setupInteractionListeners();
   }
 
@@ -44,56 +51,16 @@ export class AudioInteractionManager {
    * Setup interaction event listeners
    */
   private setupInteractionListeners(): void {
-    // List of user interaction events that can unlock audio
-    const interactionEvents = [
-      'touchstart',
-      'touchend',
-      'mousedown',
-      'mouseup',
-      'click',
-      'keydown'
-    ];
-
-    const handleUserInteraction = async (event: Event) => {
-      if (this.hasUserInteracted) return;
-      
-
+    registerAudioInteractionCallback(async () => {
       this.hasUserInteracted = true;
-      
-      // Hide interaction prompt if visible
       this.hideInteractionPrompt();
-      
+
       try {
         await this.initializeAudioContext();
-        
-        // Execute any pending callbacks
-        const callbacks = [...this.pendingInteractionCallbacks];
-        this.pendingInteractionCallbacks = [];
-        callbacks.forEach(callback => {
-          try {
-            callback();
-          } catch (err) {
-            console.error('Error executing pending callback:', err);
-          }
-        });
-        
-        // Remove event listeners after first interaction
-        interactionEvents.forEach(eventType => {
-          document.removeEventListener(eventType, handleUserInteraction, { capture: true });
-        });
       } catch (error) {
         console.error('Failed to initialize audio context on user interaction:', error);
         this.interactionEventListeners.onError?.(error as Error);
       }
-    };
-
-    // Add event listeners with capture phase to catch early
-    interactionEvents.forEach(eventType => {
-      document.addEventListener(eventType, handleUserInteraction, { 
-        capture: true, 
-        passive: true,
-        once: false // Don't use once in case first attempt fails
-      });
     });
   }
 
@@ -139,6 +106,7 @@ export class AudioInteractionManager {
       return this.globalAudioManager.getContext()!;
     }
 
+    this.hasUserInteracted = this.hasUserInteracted || hasAudioUserInteraction();
     if (!this.hasUserInteracted) {
       this.interactionEventListeners.onInteractionRequired?.();
       throw new Error('User interaction required for audio playback');
@@ -232,9 +200,22 @@ export class AudioInteractionManager {
    */
   public async requestUserInteraction(options: UserInteractionPromptOptions = {}): Promise<AudioContext> {
     return new Promise((resolve, reject) => {
+      this.hasUserInteracted = this.hasUserInteracted || hasAudioUserInteraction();
       if (this.isContextInitialized) {
         this.globalAudioManager.ensureResumed().then(() => {
           resolve(this.globalAudioManager.getContext()!);
+        }).catch(reject);
+        return;
+      }
+
+      if (this.hasUserInteracted) {
+        this.initializeAudioContext().then(() => {
+          const context = this.globalAudioManager.getContext();
+          if (context) {
+            resolve(context);
+          } else {
+            reject(new Error('Failed to get AudioContext'));
+          }
         }).catch(reject);
         return;
       }
@@ -261,6 +242,7 @@ export class AudioInteractionManager {
    * Execute callback when audio context is ready
    */
   public executeWhenReady(callback: () => void): void {
+    this.hasUserInteracted = this.hasUserInteracted || hasAudioUserInteraction();
     if (this.isContextInitialized) {
       callback();
     } else {
@@ -282,6 +264,7 @@ export class AudioInteractionManager {
    * Check if user has interacted
    */
   public hasUserInteraction(): boolean {
+    this.hasUserInteracted = this.hasUserInteracted || hasAudioUserInteraction();
     return this.hasUserInteracted;
   }
 
@@ -304,6 +287,7 @@ export class AudioInteractionManager {
    * Force initialize context (use with caution)
    */
   public async forceInitialize(): Promise<AudioContext> {
+    markAudioUserInteraction();
     this.hasUserInteracted = true;
     await this.initializeAudioContext();
     return this.globalAudioManager.getContext()!;
@@ -316,6 +300,7 @@ export class AudioInteractionManager {
     this.hasUserInteracted = false;
     this.isContextInitialized = false;
     this.pendingInteractionCallbacks = [];
+    resetAudioUserInteractionGate();
     this.globalAudioManager.dispose();
   }
 
