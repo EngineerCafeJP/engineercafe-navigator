@@ -18,7 +18,7 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, cast
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -170,6 +170,8 @@ app = FastAPI(
 )
 
 # Rate limiting (optional - requires slowapi)
+limiter: Optional[Any] = None
+
 try:
     from slowapi import Limiter, _rate_limit_exceeded_handler
     from slowapi.util import get_remote_address
@@ -177,11 +179,10 @@ try:
 
     limiter = Limiter(key_func=get_remote_address)
     app.state.limiter = limiter
-    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+    app.add_exception_handler(RateLimitExceeded, cast(Any, _rate_limit_exceeded_handler))
     _HAS_SLOWAPI = True
 except ImportError:
     _HAS_SLOWAPI = False
-    limiter = None
 
 
 def _rate_limit(limit_string: str):
@@ -274,9 +275,9 @@ async def _run_workflow_with_tracking(payload: Dict[str, Any], session_id: str) 
     from backend.workflows.main_workflow import get_workflow
 
     workflow = await get_workflow()
-    await _session_task_manager.register_session(session_id)
+    await _get_stm().register_session(session_id)
     llm_task = asyncio.create_task(workflow.ainvoke(payload))
-    await _session_task_manager.set_llm_task(session_id, llm_task)
+    await _get_stm().set_llm_task(session_id, llm_task)
 
     try:
         return await llm_task
@@ -441,18 +442,19 @@ async def invoke_agent(request: Request, body: ChatRequest):
     """
     from backend.utils.interrupt_manager import get_interrupt_manager
 
-    get_interrupt_manager().clear_interrupt(body.session_id)
+    session_id = cast(str, body.session_id)
+    get_interrupt_manager().clear_interrupt(session_id)
 
     try:
         result = await _run_workflow_with_tracking(
             payload={
                 "query": body.query,
-                "session_id": body.session_id,
+                "session_id": session_id,
                 "language": body.language,
                 "context": body.context or {},
                 "visitor_id": body.visitor_id,
             },
-            session_id=body.session_id,
+            session_id=session_id,
         )
 
         return {"status": "success", "result": result}
@@ -491,7 +493,14 @@ class VoiceResponse(BaseModel):
 _voice_agent: Optional[Any] = None  # VoiceAgent (lazy-loaded)
 _stt_agent: Optional[Any] = None  # STTAgent (lazy-loaded)
 _slide_agent: Optional[Any] = None  # SlideAgent (lazy-loaded)
-_session_task_manager = get_session_task_manager()
+_session_task_manager: Optional[Any] = None
+
+
+def _get_stm():
+    global _session_task_manager
+    if _session_task_manager is None:
+        _session_task_manager = get_session_task_manager()
+    return _session_task_manager
 
 
 def _get_voice_agent():
@@ -561,7 +570,7 @@ async def voice_api(request: Request, body: VoiceRequest):
                 raise HTTPException(status_code=400, detail="Missing text for text_to_speech")
 
             if body.sessionId:
-                await _session_task_manager.register_session(body.sessionId)
+                await _get_stm().register_session(body.sessionId)
 
             tts_task = asyncio.create_task(
                 _get_voice_agent().text_to_speech(
@@ -571,14 +580,14 @@ async def voice_api(request: Request, body: VoiceRequest):
                 )
             )
             if body.sessionId:
-                await _session_task_manager.set_tts_task(body.sessionId, tts_task)
+                await _get_stm().set_tts_task(body.sessionId, tts_task)
 
             result = await tts_task
 
             if body.sessionId and result.get("audioResponse"):
                 try:
                     audio_bytes = base64.b64decode(result["audioResponse"])
-                    await _session_task_manager.set_tts_buffer(body.sessionId, BytesIO(audio_bytes))
+                    await _get_stm().set_tts_buffer(body.sessionId, BytesIO(audio_bytes))
                 except Exception:
                     logger.debug("Failed to register TTS buffer for session %s", body.sessionId)
 
@@ -610,7 +619,7 @@ async def voice_api(request: Request, body: VoiceRequest):
             if not body.sessionId:
                 raise HTTPException(status_code=400, detail="Missing sessionId for interrupt")
 
-            cancelled = await _session_task_manager.cancel_all_tasks(body.sessionId)
+            cancelled = await _get_stm().cancel_all_tasks(body.sessionId)
             return VoiceResponse(
                 success=True,
                 sessionId=body.sessionId,
