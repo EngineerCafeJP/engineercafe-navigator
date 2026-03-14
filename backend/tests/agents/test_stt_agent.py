@@ -155,6 +155,40 @@ class TestLocalSTTClient:
                 with pytest.raises(RuntimeError):
                     await client.transcribe(test_wav_16khz, language="ja")
 
+    @pytest.mark.asyncio
+    async def test_transcribe_non_wav_data_raises_value_error(self):
+        """LocalSTTClient rejects non-WAV payloads before parsing."""
+        client = LocalSTTClient()
+        non_wav_audio = b"\x1a\x45\xdf\xa3" + (b"webm-opus-data" * 4)
+
+        with patch("backend.agents.stt_agent.LocalSTTClient._load_model") as mock_load:
+            with pytest.raises(ValueError, match="Invalid audio data for STT transcription"):
+                await client.transcribe(non_wav_audio, language="ja")
+
+        mock_load.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_transcribe_truncated_wav_header_raises_value_error(self):
+        """LocalSTTClient rejects payloads smaller than a WAV header."""
+        client = LocalSTTClient()
+        truncated_audio = b"RIFF123456"
+
+        with patch("backend.agents.stt_agent.LocalSTTClient._load_model") as mock_load:
+            with pytest.raises(ValueError, match="minimum 44 bytes"):
+                await client.transcribe(truncated_audio, language="ja")
+
+        mock_load.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_transcribe_auto_detect_non_wav_returns_error(self):
+        """transcribe_auto_detect handles non-WAV data gracefully via ValueError catch."""
+        client = LocalSTTClient()
+        non_wav_audio = b"\x1a\x45\xdf\xa3" + (b"webm-data" * 8)  # EBML/WebM header
+
+        with patch("backend.agents.stt_agent.LocalSTTClient._load_model"):
+            with pytest.raises(RuntimeError, match="Auto-detect failed"):
+                await client.transcribe_auto_detect(non_wav_audio)
+
 
 # ==============================================================================
 # Confidence Extraction Tests

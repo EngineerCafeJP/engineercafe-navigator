@@ -31,6 +31,14 @@ import concurrent.futures
 
 logger = logging.getLogger(__name__)
 
+WAV_RIFF_HEADER = b"RIFF"
+MIN_WAV_HEADER_BYTES = 44
+NON_WAV_AUDIO_ERROR = "Audio data must be in WAV format (RIFF). Received non-WAV data."
+TRUNCATED_WAV_AUDIO_ERROR = (
+    "Audio data must be in WAV format (RIFF) and include a complete WAV header "
+    "(minimum 44 bytes). Received truncated data."
+)
+
 
 # -----------------------------------------------------------------------------
 # TranscriptionResult
@@ -264,6 +272,12 @@ class LocalSTTClient:
         """
         import wave
 
+        if len(audio_data) < MIN_WAV_HEADER_BYTES:
+            raise ValueError(TRUNCATED_WAV_AUDIO_ERROR)
+
+        if not audio_data.startswith(WAV_RIFF_HEADER):
+            raise ValueError(NON_WAV_AUDIO_ERROR)
+
         from vosk import KaldiRecognizer
 
         bio = io.BytesIO(audio_data)
@@ -340,6 +354,12 @@ class LocalSTTClient:
                     pool,
                     lambda: self._sync_transcribe(audio_data, language, grammar),
                 )
+        except ValueError as e:
+            if str(e) in {NON_WAV_AUDIO_ERROR, TRUNCATED_WAV_AUDIO_ERROR}:
+                message = f"Invalid audio data for STT transcription: {e}"
+                logger.warning(message)
+                raise ValueError(message) from e
+            raise
         except Exception as e:
             logger.exception("Vosk transcription error: %s", e)
             raise
@@ -363,7 +383,7 @@ class LocalSTTClient:
             lang_grammar = (grammar or {}).get(lang)
             try:
                 return await self.transcribe(audio_data, lang, grammar=lang_grammar)
-            except RuntimeError as e:
+            except (RuntimeError, ValueError) as e:
                 logger.debug("Auto-detect: %s model returned error: %s", lang, e)
                 return None
 
