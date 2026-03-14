@@ -497,7 +497,10 @@ export default function MarpViewer({
                     // Notify parent (safe since we're in a sandboxed iframe)
                     if (window.parent && window.parent.postMessage) {
                       try {
-                        window.parent.postMessage({ type: 'marp-ready', slideCount: slides.length }, '*');
+                        window.parent.postMessage(
+                          { type: 'marp-ready', slideCount: slides.length },
+                          window.location.origin
+                        );
                       } catch (e) {
                         console.warn('Could not send message to parent:', e);
                       }
@@ -936,7 +939,7 @@ export default function MarpViewer({
 
   // Sanitize HTML content to prevent XSS attacks using DOMPurify
   const sanitizeHtml = (html: string): string => {
-    if (typeof window === 'undefined') return html;
+    if (typeof window === 'undefined') return '';
     return DOMPurify.sanitize(html, {
       WHOLE_DOCUMENT: true,
       ADD_TAGS: ['style', 'link', 'meta', 'svg', 'foreignObject', 'section'],
@@ -951,7 +954,6 @@ export default function MarpViewer({
         'font-family', 'font-size', 'text-anchor', 'dominant-baseline',
       ],
       FORBID_TAGS: ['script', 'object', 'embed', 'applet', 'base', 'form'],
-      FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'onfocus', 'onblur'],
       ALLOW_DATA_ATTR: true,
     });
   };
@@ -1262,6 +1264,7 @@ export default function MarpViewer({
         {/* Main slide area */}
         <div className={`${showNotes ? 'w-2/3' : 'w-full'} h-full`}>
           {renderedHtml ? (
+            /* allow-scripts + allow-same-origin: required for Marp rendering + postMessage. Content is DOMPurify-sanitized. */
             <iframe
               ref={iframeRef}
               srcDoc={renderedHtml}

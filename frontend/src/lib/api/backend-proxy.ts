@@ -8,8 +8,6 @@
 const BACKEND_API_URL =
   process.env.BACKEND_API_URL || "http://localhost:8000";
 
-const BACKEND_API_KEY = process.env.BACKEND_API_KEY || "";
-
 export interface BackendProxyOptions {
   /** HTTP method (defaults to POST). */
   readonly method?: "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
@@ -41,6 +39,7 @@ export async function backendFetch<T = unknown>(
   opts: BackendProxyOptions = {},
 ): Promise<BackendProxyResult<T>> {
   const { method = "POST", body, headers = {}, params, signal } = opts;
+  const apiKey = process.env.BACKEND_API_KEY || "";
 
   const url = buildUrl(path, params);
 
@@ -49,8 +48,8 @@ export async function backendFetch<T = unknown>(
     ...headers,
   };
 
-  if (BACKEND_API_KEY) {
-    mergedHeaders["X-API-Key"] = BACKEND_API_KEY;
+  if (apiKey) {
+    mergedHeaders["X-API-Key"] = apiKey;
   }
 
   const fetchInit: RequestInit = {

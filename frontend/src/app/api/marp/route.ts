@@ -37,13 +37,16 @@ export async function POST(request: NextRequest) {
     const title =
       backendData.metadata?.title || processed.metadata.title || 'Presentation';
 
+    const escapedTitle = MarpProcessor.escapeHtml(title);
+    const sanitizedCss = MarpProcessor.sanitizeCss(processed.css);
+
     const fullHtml = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${title}</title>
-  <style>${processed.css}</style>
+  <title>${escapedTitle}</title>
+  <style>${sanitizedCss}</style>
 </head>
 <body>
   ${processed.html}

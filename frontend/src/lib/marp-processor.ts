@@ -51,7 +51,7 @@ export class MarpProcessor {
     this.loadBuiltinThemes();
   }
 
-  private static escapeHtml(text: string): string {
+  public static escapeHtml(text: string): string {
     const escapeMap: Record<string, string> = {
       '&': '&amp;',
       '<': '&lt;',
@@ -62,11 +62,17 @@ export class MarpProcessor {
     return text.replace(/[&<>"']/g, (char) => escapeMap[char]);
   }
 
-  private static sanitizeCss(css: string): string {
+  public static sanitizeCss(css: string): string {
     return css
       .replace(/@import\b[^;]*;/gi, '/* @import removed */')
+      .replace(/@charset\b[^;]*;/gi, '/* @charset removed */')
       .replace(/expression\s*\(/gi, '/* expression() removed */ (')
       .replace(/javascript\s*:/gi, '/* javascript: removed */')
+      .replace(/vbscript\s*:/gi, '/* vbscript: removed */')
+      .replace(
+        /url\s*\(\s*['"]?\s*(?:javascript|data\s*:text\/html)[^)]*\)/gi,
+        '/* unsafe url() removed */'
+      )
       .replace(/-moz-binding\s*:/gi, '/* -moz-binding removed */')
       .replace(/behavior\s*:/gi, '/* behavior removed */');
   }
