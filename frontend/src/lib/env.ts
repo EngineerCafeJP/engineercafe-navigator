@@ -34,19 +34,6 @@ const requiredServerEnvSchema = z.object({
     .string()
     .min(1, "GOOGLE_CLOUD_CREDENTIALS path is required"),
 
-  // Gemini AI
-  GOOGLE_GENERATIVE_AI_API_KEY: z
-    .string()
-    .min(1, "GOOGLE_GENERATIVE_AI_API_KEY is required"),
-
-  // OpenAI (embeddings)
-  OPENAI_API_KEY: z.string().min(1, "OPENAI_API_KEY is required for embeddings"),
-
-  // Database
-  POSTGRES_URL: z
-    .string()
-    .min(1, "POSTGRES_URL is required (e.g. postgresql://user:pass@host:5432/db)"),
-
   // Next.js auth
   NEXTAUTH_URL: z.string().url("NEXTAUTH_URL must be a valid URL"),
   NEXTAUTH_SECRET: z.string().min(1, "NEXTAUTH_SECRET is required"),
@@ -63,6 +50,11 @@ const optionalServerEnvSchema = z.object({
   // Gemini model override
   GEMINI_MODEL: z.string().optional(),
   GEMINI_API_KEY: z.string().optional(),
+
+  // AI / DB integrations used by optional workflows
+  GOOGLE_GENERATIVE_AI_API_KEY: z.string().optional(),
+  OPENAI_API_KEY: z.string().optional(),
+  POSTGRES_URL: z.string().optional(),
 
   // Google Cloud services
   GOOGLE_SPEECH_API_KEY: z.string().optional(),
