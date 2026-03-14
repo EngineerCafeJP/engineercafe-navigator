@@ -43,10 +43,11 @@ export async function backendFetch<T = unknown>(
 
   const url = buildUrl(path, params);
 
-  const mergedHeaders: Record<string, string> = {
-    "Content-Type": "application/json",
-    ...headers,
-  };
+  const mergedHeaders: Record<string, string> = { ...headers };
+
+  if (!(method === "GET" && body === undefined)) {
+    mergedHeaders["Content-Type"] ??= "application/json";
+  }
 
   if (apiKey) {
     mergedHeaders["X-API-Key"] = apiKey;
@@ -63,7 +64,12 @@ export async function backendFetch<T = unknown>(
   }
 
   const response = await fetch(url, fetchInit);
-  const data = (await response.json()) as T;
+  let data: T;
+  try {
+    data = (await response.json()) as T;
+  } catch {
+    data = undefined as unknown as T;
+  }
 
   return { ok: response.ok, status: response.status, data };
 }

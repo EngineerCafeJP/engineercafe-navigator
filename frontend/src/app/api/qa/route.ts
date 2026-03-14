@@ -1,36 +1,34 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { getBackendApiUrl } from '@/lib/api/backend-url';
+import { backendFetch } from '@/lib/api/backend-proxy';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { action, question, sessionId, language, text, fromLanguage, toLanguage, visitorId } = body;
 
-    // バックエンドAPIにプロキシ
-    const backendUrl = `${getBackendApiUrl()}/api/chat`;
-    const response = await fetch(backendUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+    const response = await backendFetch<{
+      answer?: string;
+      emotion?: string;
+      metadata?: unknown;
+    }>('/api/chat', {
+      body: {
         query: question || text,
         session_id: sessionId,
         language: language || 'ja',
         visitor_id: visitorId,
-      }),
+      },
     });
 
-    if (!response.ok) {
-      throw new Error(`Backend API error: ${response.statusText}`);
+    if (!response.ok || !response.data) {
+      throw new Error(`Backend API error: ${response.status}`);
     }
-
-    const result = await response.json();
 
     return NextResponse.json({
       success: true,
-      answer: result.answer,
-      emotion: result.emotion,
-      metadata: result.metadata,
+      answer: response.data.answer,
+      emotion: response.data.emotion,
+      metadata: response.data.metadata,
     });
   } catch (error) {
     console.error('Q&A API error:', error);

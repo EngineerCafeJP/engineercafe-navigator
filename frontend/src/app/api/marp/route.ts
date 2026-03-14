@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { getBackendApiUrl } from '@/lib/api/backend-url';
+import { backendFetch } from '@/lib/api/backend-proxy';
 import { MarpProcessor } from '@/lib/marp-processor';
 
 let marpProcessor: MarpProcessor | null = null;
@@ -17,18 +17,23 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const language = body.language || 'ja';
 
-    const backendUrl = `${getBackendApiUrl()}/api/slides/content`;
-    const backendResponse = await fetch(backendUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ language }),
+    const backendResponse = await backendFetch<{
+      success?: boolean;
+      markdown?: string;
+      error?: string;
+      metadata?: {
+        title?: string;
+      };
+      narrationData?: unknown;
+    }>('/api/slides/content', {
+      body: { language },
     });
 
     if (!backendResponse.ok) {
-      throw new Error(`Backend error: ${backendResponse.statusText}`);
+      throw new Error(`Backend error: ${backendResponse.status}`);
     }
 
-    const backendData = await backendResponse.json();
+    const backendData = backendResponse.data;
     if (!backendData.success || !backendData.markdown) {
       throw new Error(backendData.error || 'No markdown content returned');
     }
