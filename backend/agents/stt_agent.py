@@ -383,7 +383,7 @@ class LocalSTTClient:
             lang_grammar = (grammar or {}).get(lang)
             try:
                 return await self.transcribe(audio_data, lang, grammar=lang_grammar)
-            except RuntimeError as e:
+            except (RuntimeError, ValueError) as e:
                 logger.debug("Auto-detect: %s model returned error: %s", lang, e)
                 return None
 

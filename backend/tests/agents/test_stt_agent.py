@@ -179,6 +179,16 @@ class TestLocalSTTClient:
 
         mock_load.assert_not_called()
 
+    @pytest.mark.asyncio
+    async def test_transcribe_auto_detect_non_wav_returns_error(self):
+        """transcribe_auto_detect handles non-WAV data gracefully via ValueError catch."""
+        client = LocalSTTClient()
+        non_wav_audio = b"\x1a\x45\xdf\xa3" + (b"webm-data" * 8)  # EBML/WebM header
+
+        with patch("backend.agents.stt_agent.LocalSTTClient._load_model"):
+            with pytest.raises(RuntimeError, match="Auto-detect failed"):
+                await client.transcribe_auto_detect(non_wav_audio)
+
 
 # ==============================================================================
 # Confidence Extraction Tests
