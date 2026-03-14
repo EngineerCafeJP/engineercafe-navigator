@@ -4,6 +4,10 @@
 # Note: For local PostgreSQL (LangGraph Checkpointer), use Supabase CLI:
 #   supabase start
 # This provides PostgreSQL at localhost:54322
+#
+# Access from iPad / other devices on the same network:
+#   - Open http://<MacBookのIPアドレス>:3000 (e.g. http://192.168.1.10:3000)
+#   - Ports are bound to 0.0.0.0 so the host accepts external connections
 
 services:
   # Frontend service - Next.js
@@ -13,7 +17,7 @@ services:
       target: development
     container_name: engineer-cafe-frontend
     ports:
-      - "3000:3000"
+      - "0.0.0.0:3000:3000"
     volumes:
       # Hot reload support
       - ./frontend:/app
@@ -22,6 +26,8 @@ services:
     environment:
       - NODE_ENV=development
       - NEXT_PUBLIC_API_URL=http://localhost:8000
+      # コンテナ内のAPIルートからバックエンドへはサービス名で参照
+      - BACKEND_API_URL=http://backend:8000
     env_file:
       - ./frontend/.env.local
     depends_on:
@@ -37,7 +43,7 @@ services:
       target: development
     container_name: engineer-cafe-backend
     ports:
-      - "8000:8000"
+      - "0.0.0.0:8000:8000"
     volumes:
       # Hot reload support
       - ./backend:/app
