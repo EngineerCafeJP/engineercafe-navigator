@@ -60,12 +60,20 @@ export default function KnowledgeAdminPage() {
               <h1 className="text-2xl font-bold text-gray-900">
                 知識ベース管理
               </h1>
-              <Link
-                href="/admin/knowledge/new"
-                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                新規作成
-              </Link>
+              <div className="flex gap-3">
+                <Link
+                  href="/admin/knowledge/upload"
+                  className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
+                >
+                  ファイルアップロード
+                </Link>
+                <Link
+                  href="/admin/knowledge/new"
+                  className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  新規作成
+                </Link>
+              </div>
             </div>
           </div>
 

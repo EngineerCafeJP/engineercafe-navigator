@@ -148,14 +148,23 @@ export async function deleteKnowledge(id: string): Promise<void> {
 
 /**
  * ファイルアップロード
+ * category と language は必須、title は任意
  */
-export async function uploadKnowledgeFile(
-  file: File
-): Promise<{ filename: string; url: string }> {
+export async function uploadKnowledgeFile(params: {
+  file: File;
+  category: string;
+  language: string;
+  title?: string;
+}): Promise<KnowledgeItem> {
   const url = `${getBackendUrl()}/knowledge/upload`;
 
   const formData = new FormData();
-  formData.append("file", file);
+  formData.append("file", params.file);
+  formData.append("category", params.category);
+  formData.append("language", params.language);
+  if (params.title) {
+    formData.append("title", params.title);
+  }
 
   const res = await fetch(url, {
     method: "POST",
@@ -168,7 +177,7 @@ export async function uploadKnowledgeFile(
   }
 
   const json = await res.json();
-  return json.data;
+  return json.data; // FastAPI は { success, data: KnowledgeItem } 形式なので data を unwrap
 }
 
 /**
