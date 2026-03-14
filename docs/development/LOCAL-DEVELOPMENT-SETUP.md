@@ -1,5 +1,7 @@
 # ローカル開発環境セットアップガイド
 
+> 注意: この文書には Mastra 移行期の記述が残っています。現行のセットアップ入口はルート `README.md`、`frontend/README.md`、`backend/README.md` を優先してください。
+
 このガイドでは、Engineer Cafe Navigator プロジェクトのローカル開発環境をセットアップする方法を説明します。
 
 ## 目次

@@ -1,5 +1,7 @@
 # Environment Variables Guide
 
+> 注意: この文書には deprecated agent 前提や古い env 依存が残っています。現行の env 判断は `docs/STATUS.md` と実装コードを優先してください。
+
 このドキュメントでは、Engineer Cafe Navigator のバックエンドで使用される環境変数について説明します。
 
 ## 目次

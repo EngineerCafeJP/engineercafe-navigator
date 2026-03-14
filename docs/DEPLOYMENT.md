@@ -1,5 +1,7 @@
 # デプロイメントガイド
 
+> 注意: この文書には Vercel 前提の記述が残っている可能性があります。現行の deploy 判断は `docs/STATUS.md` と `docs/DEVELOPER-GUIDE.md` を優先してください。
+
 > Engineer Cafe Navigator 本番環境デプロイ手順書
 
 ## 📖 概要

@@ -1,13 +1,24 @@
 # Archive
 
-This directory contains historical documentation and reports from completed features and migrations.
+This directory contains historical documents that are preserved for reference but are not the source of truth for the current system.
 
-## Archived Documents
+## What lives here
 
-- **navigation-system-final-report.md** - Final report on the navigation system implementation
-- **RAG-FIX-REPORT.md** - Report on RAG system fixes and improvements
-- **IMPLEMENTATION-HISTORY.md** - Historical implementation details
-- **ENHANCED-FEATURES-REPORT.md** - Report on enhanced features implementation
-- **PERFORMANCE-OPTIMIZATION-SUMMARY.md** - Summary of performance optimizations
+- migration-era planning and implementation notes
+- old frontend-only documentation sets
+- historical reports, audits, and summaries
+- issue-specific deep dives that no longer describe the live architecture
 
-These documents are preserved for historical reference but are no longer actively maintained.
+## How to use the archive
+
+- Start with [../STATUS.md](../STATUS.md) before trusting any archived document.
+- Treat Mastra-era docs as historical context unless explicitly revalidated against code.
+- Prefer current README files for runtime and setup information.
+
+## Current cleanup note
+
+As part of the 2026-03-14 documentation cleanup pass:
+
+- active entry docs were refreshed
+- current-vs-legacy boundaries were clarified
+- one duplicate file under `docs/spaces/` was removed

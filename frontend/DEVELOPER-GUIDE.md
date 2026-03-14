@@ -1,5 +1,7 @@
 # Engineer Cafe Navigator 開発者ガイド
 
+> Note: this guide reflects an older frontend-centric architecture. Prefer `docs/STATUS.md`, `docs/DEVELOPER-GUIDE.md`, and `frontend/README.md` for the current system.
+
 最終更新日: 2025年7月3日（RAGシステム完全近代化済み）
 
 ## 📋 目次

@@ -1,279 +1,232 @@
-# Implementation Status - Engineer Cafe Navigator
+# Current Status
 
-> Current implementation status and roadmap for Engineer Cafe Navigator
+Last updated: 2026-03-14
 
-Last Updated: 2026-03-08
+## Summary
 
-## 🟢 Implemented Features
+Engineer Cafe Navigator is in a stabilization phase, not a finished production phase.
 
-### Core Features
-- ✅ **7+3 Agent Architecture** - LangGraph backend with 7 workflow agents + 3 support agents
-- ✅ **Voice Processing API** - Speech recognition, AI response generation, and text-to-speech using Google Cloud
-- ✅ **Google Cloud Service Account Authentication** - Secure authentication without API keys
-- ✅ **Multi-language Support** - Japanese and English voice interactions
-- ✅ **Session Management** - Multi-turn conversation with context persistence via Supabase
-- ✅ **Emotion Detection** - Text-based emotion analysis for character expression control
-- ✅ **VRM Character Control** - 3D character with emotion-driven expressions and animations
-- ✅ **Slide System** - Marp-based presentation with voice narration
-- ✅ **Q&A System** - RAG-based question answering with knowledge base
-- ✅ **Background Management** - Dynamic background image selection
-- ✅ **External System Integration** - WebSocket support for reception system
-- ✅ **Ambiguity Resolution** - ClarificationAgent for cafe/meeting room disambiguation
-- ✅ **Memory-based Follow-ups** - Support for "What about the other one?" queries
+Confirmed current-state signals:
 
-### API Endpoints (Implemented)
-- ✅ **POST /api/voice** - Voice processing with multiple actions
-- ✅ **GET /api/voice** - Service status and language information
-- ✅ **POST /api/marp** - Slide rendering (proxies to backend `/api/slides`)
-- ✅ **POST /api/slides** - Slide navigation
-- ✅ **POST /api/character** - Character control
-- ✅ **POST /api/qa** - Question answering
-- ✅ **POST /api/external** - External system integration
-- ✅ **GET /api/backgrounds** - Background image list
+- Main frontend routes now proxy to the FastAPI backend.
+- Recent merged PRs focused on hardening, proxy unification, env cleanup, autoplay fixes, VRM compatibility, and WebM-to-WAV conversion.
+- Backend tests currently collect `2868` cases with `pytest --collect-only -q`.
+- Repository audit since 2025-12-14 shows `457` commits, `fix/feat = 1.07`, `test ratio = 2.0%`, and a recent fix streak of `5`.
 
-### Technical Implementation
-- ✅ **Next.js 15.3.2** with App Router (Frontend - 移行検討中)
-- ✅ **React 19.1.0** with TypeScript 5.8.3
-- ✅ **LangGraph 0.2.0** for AI agent orchestration (Backend)
-- ✅ **LangSmith** for evaluation and tracing
-- ✅ **Google Gemini API** for AI responses
-- ✅ **Three.js 0.176.0** with @pixiv/three-vrm 3.4.1
-- ✅ **Tailwind CSS v3.4.17** (NOT v4)
-- ✅ **PostgreSQL with pgvector** via Supabase 2.49.8
-- ✅ **Security measures** - XSS protection, iframe sandboxing
-- ✅ **Multi-language RAG** - Japanese/English with cross-language search
-- ✅ **Unified Memory System** - SimplifiedMemorySystem with 3-minute TTL
-- ✅ **Mobile Audio Compatibility** - Web Audio API with fallbacks
-- ✅ **Lip-sync System** - Optimized with intelligent caching
-- ✅ **Production Monitoring** - Real-time metrics and alerting
+Implication:
 
-### Agent Architecture (LangGraph Backend - 2026/03)
+- Core functionality exists.
+- Quality pressure is visible.
+- Several high-risk operational gaps remain before production sign-off.
 
-**Workflow Agents** (LangGraph nodes):
-- ✅ **OrchestratorAgent** - Supervisor Pattern, LLM dynamic routing (RouterAgent統合済み)
-- ✅ **BusinessInfoAgent** - Hours, pricing, consultation, community (Enhanced RAG)
-- ✅ **FacilityAgent** - Equipment, basement, nearby facilities, lost & found (Enhanced RAG)
-- ✅ **EventAgent** - Google Calendar ICS + Connpass API v2
-- ✅ **SlideAgent** - Slide presentation and narration
-- ✅ **GeneralKnowledgeAgent** - Web search (Tavily) + memory queries (MemoryAgent統合済み)
-- ✅ **FarewellAgent** - Departure flow, card return reminder, brand message
+## Current Architecture
 
-**Support Agents**:
-- ✅ **VoiceAgent** - STT/TTS processing
-- ✅ **CharacterControlAgent** - VRM character control
-- ✅ **OCRAgent (VisionAgent)** - Image/OCR processing
+### Frontend
 
-**Deprecated**: ~~RouterAgent~~, ~~ClarificationAgent~~ (inline), ~~MemoryAgent~~ (→GKA)
+- Next.js 15 App Router
+- UI, VRM, audio interaction, admin UI
+- `/api/*` routes primarily act as backend proxies
+- Some server routes still access Supabase directly for admin/monitoring jobs
 
-## 🔴 Features NOT Implemented (Despite Being Referenced)
+### Backend
 
-### Documented but Non-Existent Features
-- ❌ **Web Speech API Integration** - Hardcoded to false in VoiceInterface.tsx, never actually used
-- ~~❌ **Facial Expression Detection** - face-api.js is loaded but no implementation exists~~ → ✅ Removed dead code (PR #184)
-- ✅ **Test Framework** - Backend: pytest 2587+ tests, Frontend: Playwright E2E setup
+- FastAPI entrypoint in `backend/main.py`
+- LangGraph workflow for chat and domain routing
+- Dedicated APIs for chat, voice, slides, character, knowledge, STT vocabulary, and reception
+- Supabase-backed data and external integrations
 
-### Unused Environment Variables
-These variables are documented but not referenced in the actual codebase:
-- ❌ `NEXT_PUBLIC_ENABLE_FACIAL_EXPRESSION` - Defined but not referenced in code
-- ❌ `NEXT_PUBLIC_USE_WEB_SPEECH_API` - Defined but not referenced in code
-- ❌ `GOOGLE_CALENDAR_CLIENT_ID` & `GOOGLE_CALENDAR_CLIENT_SECRET` - Optional OAuth2
+### Current GitHub context
 
-### Actually Used Environment Variables
-✅ Core functionality:
-- `GOOGLE_CLOUD_PROJECT_ID`, `GOOGLE_CLOUD_CREDENTIALS`, `GOOGLE_GENERATIVE_AI_API_KEY`
-- `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`
-- `OPENAI_API_KEY` - For embeddings (1536 dimensions)
-- `POSTGRES_URL`, `DATABASE_URL`, `NEXTAUTH_URL`, `NEXTAUTH_SECRET`
+Open issues / PRs that materially affect delivery:
 
-✅ Optional integrations:
-- `WEBSOCKET_URL`, `RECEPTION_API_URL`, `SLACK_WEBHOOK_URL`
-- `UPSTASH_REDIS_URL`, `ENGINEER_CAFE_CALENDAR_ID`
-- `ALERT_WEBHOOK_SECRET`, `CRON_SECRET`
+- Issue `#232`: umbrella tracker for the 2026-03-14 production hardening sprint
+- Issue `#197`: protect admin / cron / monitoring routes
+- Issue `#209`: response bubble overlay for the fullscreen UI
+- Issue `#224`: complete frontend backend-proxy cleanup
+- Issue `#165`: Reception-2025 integration boundary and shared data usage
+- Issue `#113`: event participation / hosting flow guidance
+- Issue `#114`: feedback collection
+- Issue `#128`: non-camera visitor detection research
+- PR `#132`: draft admin authentication middleware
+- PR `#215`: new knowledge UI
 
-### What Actually Works Instead
-- ✅ **Text-based Emotion Detection** - Sophisticated keyword analysis system
-- ✅ **MediaRecorder + Google Cloud STT** - High-quality audio recording and transcription
-- ✅ **VRM Expression Control** - 6 emotions controlled by text analysis
+## Confirmed Risks
 
-### Testing Framework
-- ✅ **Backend Unit Tests** - pytest 2638+ tests passing, 87% coverage
-- ✅ **Backend E2E Tests** - HTTP endpoint tests via httpx + ASGITransport
-- ✅ **Backend Integration Tests** - Real-service smoke tests with `pytest.mark.integration`
-- ⏳ **Frontend E2E Tests** - Playwright browser testing (setup済み)
+### 1. Admin and ops routes are still exposed
 
-## 🔴 Known Issues
+Confirmed in code:
 
-### Mobile/Tablet Limitations
-- **iOS Safari**: Limited audio functionality due to strict autoplay policies
-- **Lip-sync on iPad**: May fail with "request not allowed" errors
-- **AudioContext Restrictions**: Requires explicit user interaction on iOS
+- [frontend/src/app/api/admin/knowledge/route.ts](/Users/teradakousuke/Developer/engineer-cafe-navigator2025/frontend/src/app/api/admin/knowledge/route.ts#L1) performs knowledge-base reads and writes with no auth check.
+- [frontend/src/app/api/cron/update-slides/route.ts](/Users/teradakousuke/Developer/engineer-cafe-navigator2025/frontend/src/app/api/cron/update-slides/route.ts#L1) allows unauthenticated slide import execution.
+- [frontend/src/app/api/alerts/webhook/route.ts](/Users/teradakousuke/Developer/engineer-cafe-navigator2025/frontend/src/app/api/alerts/webhook/route.ts#L165) exposes recent alert retrieval via `GET` without auth.
+- There is no `frontend/src/middleware.ts` in the repository as of 2026-03-14.
 
-### Technical Considerations
-- **Environment Variables**: Some vars reserved for planned features
-- **iOS Workarounds**: Tap-to-play required for audio on iPads
+Risk:
 
-### Production Issues (FIXED 2026-03-08)
-- ✅ VoiceVox TTS on Cloud Run — VoiceVox deployed as separate service
-- ✅ Checkpointer context manager — Fixed to use `__aenter__`/`__aexit__`
-- ✅ Marp API 503 — Frontend now proxies to backend `/api/slides`
-- ✅ CI/CD env var overwrite — `--update-env-vars` preserves TTS config
+- Unauthorized data access
+- Unauthorized operational actions
+- Monitoring leakage
 
-## 📊 API Implementation Status
+Required before production:
 
-| Endpoint | Status | Notes |
-|----------|--------|-------|
-| POST /api/voice | ✅ Implemented | Full functionality with all actions |
-| GET /api/voice | ✅ Implemented | Status and language info |
-| POST /api/knowledge/search | ✅ Implemented | RAG knowledge search |
-| GET /api/monitoring/dashboard | ✅ Implemented | System monitoring |
-| GET /api/monitoring/migration-success | ✅ Implemented | Migration status |
-| POST /api/alerts/webhook | ✅ Implemented | Alert webhooks |
-| POST /api/cron/update-knowledge-base | ✅ Implemented | Auto-sync every 6 hours |
-| POST /api/cron/update-slides | ✅ Implemented | Auto-update slide content |
-| GET /api/health/knowledge | ✅ Implemented | Knowledge base health check |
-| GET/POST /admin/knowledge | ✅ Implemented | Knowledge base management |
-| /api/admin/knowledge/* | ✅ Implemented | Category & metadata management |
-| POST /api/marp | ✅ Implemented | Slide rendering works |
-| POST /api/slides | ✅ Implemented | Navigation and narration |
-| POST /api/character | ✅ Implemented | Expression and animation control |
-| POST /api/qa | ✅ Implemented | Q&A with RAG |
-| POST /api/external | ✅ Implemented | External integration |
-| GET /api/backgrounds | ✅ Implemented | Background list (not in main docs) |
+- Route-level auth for admin, monitoring, alerts, and cron
+- Clear split between public proxy routes and operator-only routes
+- Tests for unauthorized access paths
 
-## 🛠️ Development Commands
+### 2. Backend protection is optional if a secret is missing
 
-### Currently Available
-```bash
-# Development
-pnpm dev                    # Start development server (http://localhost:3000)
-pnpm dev:clean              # Clean cache and start dev server
-pnpm build                  # Create production build
-pnpm start                  # Start production server
-pnpm lint                   # Run Next.js linting
-pnpm install:css            # Install correct Tailwind CSS v3 dependencies
+Confirmed in code:
 
-# Knowledge Base Management
-pnpm seed:knowledge         # Seed knowledge base with initial data
-pnpm migrate:embeddings     # Migrate existing knowledge to OpenAI embeddings
-pnpm import:knowledge       # Import knowledge from markdown files
-pnpm import:narrations      # Import slide narrations
+- [backend/main.py](/Users/teradakousuke/Developer/engineer-cafe-navigator2025/backend/main.py#L205) treats API key verification as optional.
+- [backend/main.py](/Users/teradakousuke/Developer/engineer-cafe-navigator2025/backend/main.py#L208) only logs a warning if `API_SECRET_KEY` is missing in production.
+- [backend/main.py](/Users/teradakousuke/Developer/engineer-cafe-navigator2025/backend/main.py#L214) returns early from auth when no secret is set.
 
-# Database Management
-pnpm db:migrate             # Run database migrations
-pnpm db:setup-admin         # Setup admin knowledge interface
+Risk:
 
-# CRON Jobs (Production)
-pnpm cron:update-knowledge  # Manually trigger knowledge base update
-pnpm cron:update-slides     # Manually trigger slide update
+- A misconfigured production deploy can expose backend write-capable endpoints.
 
-# Testing
-pnpm test:api               # Run API endpoint tests
-pnpm test:rag               # Test RAG search functionality
-pnpm test:external-apis     # Test external API integrations
-pnpm test:local             # Run local setup tests
-pnpm test:production        # Production deployment tests
-pnpm test:external-data     # Test external data fetcher
+Required before production:
 
-# Monitoring & Analysis
-pnpm monitor:baseline       # Collect performance baseline
-pnpm monitor:migration      # Monitor migration status
-pnpm compare:implementations # Compare implementation performance
-pnpm validate:production    # Validate production readiness
-pnpm check:deployment       # Check deployment readiness
-```
+- Fail startup when `ENVIRONMENT=production` and `API_SECRET_KEY` is absent
+- Document secret ownership and rotation
+- Add deployment validation
 
-### Documented but Not Available
-- `pnpm test` - No test framework configured
-- `pnpm type-check` - Command not defined
-- `pnpm logs:voice` - Command not defined
-- `pnpm logs:character` - Command not defined
-- `pnpm logs:marp` - Command not defined
-- `pnpm marp:validate` - Command not defined
+### 3. Reception state is not durable
 
-## 🔄 Migration Notes
+Confirmed in code:
 
-### Recent Changes (2026-01)
-1. **LangGraph Backend統合完了** - Python LangGraphバックエンドへの完全移行
-2. **9-Agent Architecture** - 9種のエージェント実装完了（62テストパス）
-3. **LangSmith統合** - エージェント評価・トレーシングシステム実装
-4. **フロントエンド→LangGraph移行開始** - Issue #37-42で段階的移行
-5. **Web検索統合** - Google Gemini API with Search Grounding
+- [backend/api/reception.py](/Users/teradakousuke/Developer/engineer-cafe-navigator2025/backend/api/reception.py#L54) stores active reception sessions in a process-local `OrderedDict`.
 
-### Previous Changes (2025-07-03)
-1. **8-Agent Architecture** - Complete migration to multi-agent system with MainQAWorkflow
-2. **ClarificationAgent Implementation** - Ambiguity resolution for cafe/meeting room queries
-3. **Legacy Code Removal** - Deleted old EnhancedQAAgent (2,342 lines)
-4. **Memory-based Follow-ups** - Support for contextual follow-up questions
+Risk:
 
-### Previous Changes (2025-06-30)
-1. **Service Account Authentication** - Migrated from API keys to Service Account
-2. **Supabase Integration** - Added persistent memory and session management
-3. **Enhanced Emotion System** - Text-based emotion detection for character control
-4. **Documentation Updates** - Updated to reflect actual implementation
-5. **Unified Memory System** - SimplifiedMemorySystem with conversation continuity
-6. **Mobile Audio Support** - Web Audio API with iOS/Android compatibility
-7. **Lip-sync Optimization** - Intelligent caching and performance improvements
-8. **Production Monitoring** - Real-time metrics dashboard and alerting
-9. **Multi-language RAG** - Cross-language search capabilities
-10. **Automated Updates** - CRON jobs for knowledge base synchronization
+- Session loss on restart
+- Inconsistent state across multiple instances
+- Weak observability and no recovery path
 
-### Breaking Changes
-- Environment variable `GOOGLE_SPEECH_API_KEY` is no longer used
-- Voice API now requires Service Account credentials
-- Session management is now mandatory for voice interactions
+Required before production:
 
-## 📝 Recommendations
+- Use the reception repository abstraction for durable storage
+- Add cleanup / expiry semantics at the persistence layer
+- Add multi-instance or restart recovery tests
 
-### High Priority
-1. Remove enhanced voice API documentation or implement the feature
-2. Configure a proper test framework (Jest + Testing Library)
-3. Clean up unused dependencies (face-api.js)
-4. Standardize environment variable usage
+### 4. Env validation exists but is not authoritative
 
-### Medium Priority
-1. Implement Web Speech API for cost reduction
-2. Add comprehensive API tests
-3. Create developer onboarding documentation
-4. Enhance mobile/tablet compatibility (iOS audio issues)
+Confirmed in code:
 
-### Low Priority
-1. Implement facial expression detection
-2. Add more language support beyond ja/en
-3. Create UI component library
-4. Add analytics dashboard beyond current monitoring
+- [frontend/src/lib/env.ts](/Users/teradakousuke/Developer/engineer-cafe-navigator2025/frontend/src/lib/env.ts#L1) still requires several vars that recent proxy cleanup has made optional.
+- The validation helpers are not used by the runtime.
 
-## 🆕 New Features Implemented
+Risk:
 
-### Memory System
-- **SimplifiedMemorySystem**: Unified memory with 3-minute conversation context
-- **Memory-aware Questions**: Handles "さっき何を聞いた？" type queries
-- **Agent Isolation**: Separate memory namespaces for different agents
-- **Automatic Cleanup**: TTL-based expiration via Supabase
+- Docs and code disagree on required configuration
+- False confidence from unused validation helpers
 
-### Audio System
-- **AudioPlaybackService**: Unified audio playback with lip-sync
-- **MobileAudioService**: Web Audio API with tablet optimization
-- **AudioInteractionManager**: Handles autoplay policy compliance
-- **WebAudioPlayer**: Core implementation with Safari/iOS compatibility
+Required before production:
 
-### RAG Enhancements
-- **Multi-language Support**: 84+ entries in Japanese and English
-- **Cross-language Search**: English queries can find Japanese content
-- **Google Embeddings**: text-embedding-004 (768D padded to 1536D)
-- **Smart Query Enhancement**: Better basement space detection
+- Choose one env contract per service
+- Enforce it at startup or build time
+- Remove or rewrite unused validation layers
 
-### Production Features
-- **Monitoring Dashboard**: Real-time performance metrics at /api/monitoring/dashboard
-- **Alert System**: Webhook integration for performance alerts
-- **CRON Jobs**: Automated knowledge base updates every 6 hours
-- **Health Checks**: Comprehensive system health monitoring
+### 5. Rate limiting is soft, not guaranteed
 
----
+Confirmed in code:
 
-<div align="center">
+- [backend/main.py](/Users/teradakousuke/Developer/engineer-cafe-navigator2025/backend/main.py#L188) makes rate limiting a no-op when `slowapi` is unavailable.
 
-**📊 Status Dashboard - Engineer Cafe Navigator**
+Risk:
 
-[🏠 Home](../README.md) • [📖 API Docs](API.md) • [🛠️ Development](DEVELOPMENT.md)
+- Accidental unbounded exposure in production
+- No explicit guarantee that abuse controls exist in every deploy
 
-</div>
+Required before production:
+
+- Make rate limiting mandatory
+- Document infra-level throttling
+- Add deploy-time verification
+
+### 6. Recent fixes still need manual device validation
+
+Recent merged PRs:
+
+- `#223` frontend hardening
+- `#225` proxy unification
+- `#226` Mastra-remnant cleanup
+- `#227` env cleanup
+- `#229` WebM-to-WAV conversion for Vosk
+- `#231` test fix for closing-time warnings
+
+Risk:
+
+- Browser and tablet behavior can still regress even when CI is green
+- Audio and VRM fixes are especially prone to environment-specific failures
+
+Required before production:
+
+- Repeatable smoke tests for kiosk browsers and tablets
+- Device matrix with pass/fail history
+- Post-deploy canary checks
+
+### 7. Some frontend feature-discovery paths are inconsistent with backend behavior
+
+Confirmed in code review:
+
+- `LanguageSelector` requests `GET /api/voice?action=supported_languages`, but the backend currently implements `POST /api/voice` only.
+- `CharacterAvatar` expects `GET /api/character?action=supported_features`, while the Next.js route returns a stub health payload.
+- STT vocabulary admin calls still have paths that bypass the normal server-proxy pattern.
+
+Risk:
+
+- Silent fallback behavior in the UI
+- Broken admin surfaces when backend auth is enabled
+- Integration regressions that basic smoke coverage does not catch
+
+Required before production:
+
+- Align UI capability discovery with actual backend routes
+- Move remaining browser-direct backend calls behind authenticated server routes
+- Expand frontend E2E coverage beyond the current thin proxy smoke layer
+
+## Production Readiness Gaps
+
+The minimum additional work to call this production-ready is:
+
+1. Authentication and authorization
+2. Durable reception/session persistence
+3. Mandatory secret validation and rate limiting
+4. Operator runbooks for cron, alerts, and knowledge import
+5. Browser/device smoke coverage for audio, VRM, and slides
+6. Documentation cleanup so active docs are clearly separated from legacy docs
+
+## Documentation State
+
+### Updated in this pass
+
+- [../README.md](/Users/teradakousuke/Developer/engineer-cafe-navigator2025/README.md)
+- [../README-EN.md](/Users/teradakousuke/Developer/engineer-cafe-navigator2025/README-EN.md)
+- [README.md](/Users/teradakousuke/Developer/engineer-cafe-navigator2025/docs/README.md)
+- [plans/production-hardening-session-2026-03-14.md](/Users/teradakousuke/Developer/engineer-cafe-navigator2025/docs/plans/production-hardening-session-2026-03-14.md)
+- [../frontend/README.md](/Users/teradakousuke/Developer/engineer-cafe-navigator2025/frontend/README.md)
+- [../backend/README.md](/Users/teradakousuke/Developer/engineer-cafe-navigator2025/backend/README.md)
+- [archive/README.md](/Users/teradakousuke/Developer/engineer-cafe-navigator2025/docs/archive/README.md)
+
+### Legacy docs still needing explicit refresh or archive decisions
+
+- `docs/api/`
+- `docs/architecture/`
+- `docs/DEPLOYMENT.md`
+- `docs/SECURITY.md`
+- `docs/development/`
+- Some API and testing docs that still mention Mastra-era behavior
+
+### Removed duplication
+
+- Deleted duplicate file `docs/spaces/spaces/basement-spaces.md`
+
+## Recommended Next Workstream
+
+1. Close Issue `#197` or merge/finish PR `#132`
+2. Persist reception sessions through the repository layer
+3. Rewrite env and deployment docs from actual runtime contracts
+4. Refresh API, architecture, security, and deployment docs to remove deprecated agent descriptions and Vercel-era assumptions
+5. Add operator-facing production checklist and smoke test checklist
+6. Use umbrella Issue `#232` as the execution tracker for the next hardening session
