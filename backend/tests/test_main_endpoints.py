@@ -210,14 +210,16 @@ class TestSlidesContentEndpoint:
 
 class TestCORSConfiguration:
     def test_cors_default_origins(self, monkeypatch):
-        """Without ALLOWED_ORIGINS env var, defaults are used"""
+        """Without ALLOWED_ORIGINS env var, production default is used"""
         monkeypatch.delenv("ALLOWED_ORIGINS", raising=False)
         import importlib
         import backend.main
 
         importlib.reload(backend.main)
-        assert "http://localhost:3000" in backend.main._allowed_origins
-        assert "http://localhost:3001" in backend.main._allowed_origins
+        assert (
+            "https://engineer-cafe-navigator.company-997.workers.dev"
+            in backend.main.ALLOWED_ORIGINS
+        )
 
     def test_cors_custom_origins(self, monkeypatch):
         """With ALLOWED_ORIGINS set, custom origins are used"""
@@ -226,8 +228,8 @@ class TestCORSConfiguration:
         import backend.main
 
         importlib.reload(backend.main)
-        assert "https://example.com" in backend.main._allowed_origins
-        assert "https://app.example.com" in backend.main._allowed_origins
+        assert "https://example.com" in backend.main.ALLOWED_ORIGINS
+        assert "https://app.example.com" in backend.main.ALLOWED_ORIGINS
         # Restore
         monkeypatch.delenv("ALLOWED_ORIGINS", raising=False)
         importlib.reload(backend.main)
