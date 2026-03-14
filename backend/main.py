@@ -17,7 +17,7 @@ from io import BytesIO
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any, cast
 
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -220,31 +220,32 @@ async def verify_api_key(request: Request) -> None:
         raise HTTPException(status_code=403, detail="Invalid or missing API key")
 
 
-# CORS設定
-_default_origins = ["http://localhost:3000", "http://localhost:3001"]
-_env = os.getenv("ENVIRONMENT", "development")
-_configured_origins = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "").split(",") if o.strip()]
-
-if _env == "production" and not _configured_origins:
-    logger.warning(
-        "ALLOWED_ORIGINS not set in production. "
-        "Falling back to localhost origins — this is insecure."
-    )
-
-_allowed_origins = _configured_origins or _default_origins
+ALLOWED_ORIGINS = os.getenv(
+    "ALLOWED_ORIGINS", "https://engineer-cafe-navigator.company-997.workers.dev"
+).split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_allowed_origins,
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization", "X-API-Key", "X-Request-ID"],
 )
 
 
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
+
+
 class ChatRequest(BaseModel):
-    query: str
+    query: str = Field(max_length=2000)
     session_id: Optional[str] = None
-    language: Optional[str] = "ja"
+    language: Optional[str] = Field(default="ja", max_length=10)
     context: Optional[Dict[str, Any]] = None
     visitor_id: Optional[str] = None  # Cross-session visitor identification
 
@@ -280,7 +281,7 @@ async def _run_workflow_with_tracking(payload: Dict[str, Any], session_id: str) 
     await _get_stm().set_llm_task(session_id, llm_task)
 
     try:
-        return await llm_task
+        return cast(Dict[str, Any], await llm_task)
     except asyncio.CancelledError:
         logger.info("LLM task cancelled for session %s", session_id)
         raise HTTPException(status_code=409, detail="Request interrupted")
@@ -470,8 +471,8 @@ class VoiceRequest(BaseModel):
     action: str
     audioData: Optional[str] = None
     sessionId: Optional[str] = None
-    language: Optional[str] = "ja"
-    text: Optional[str] = None
+    language: Optional[str] = Field(default="ja", max_length=10)
+    text: Optional[str] = Field(default=None, max_length=5000)
     streaming: Optional[bool] = False
     conversationStage: Optional[str] = None
     emotion: Optional[str] = None  # Emotion for TTS synthesis
