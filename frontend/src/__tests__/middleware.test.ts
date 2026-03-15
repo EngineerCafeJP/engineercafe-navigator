@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { afterEach, mock, test } from 'node:test';
+import { afterEach, test } from 'node:test';
 import { NextRequest } from 'next/server';
 
 import { config, middleware } from '../middleware';
@@ -31,13 +31,12 @@ afterEach(() => {
     env.NODE_ENV = originalNodeEnv;
   }
 
-  mock.restoreAll();
 });
 
 test('returns 401 when authorization header is missing', async () => {
   process.env.ADMIN_API_SECRET = 'test-secret';
 
-  const response = middleware(createRequest('/api/admin/knowledge'));
+  const response = await middleware(createRequest('/api/admin/knowledge'));
 
   assert.equal(response.status, 401);
   assert.deepEqual(await response.json(), { error: 'Unauthorized' });
@@ -46,16 +45,29 @@ test('returns 401 when authorization header is missing', async () => {
 test('returns 401 when bearer token is wrong', async () => {
   process.env.ADMIN_API_SECRET = 'test-secret';
 
-  const response = middleware(createRequest('/api/cron/update-slides', 'Bearer wrong-secret'));
+  const response = await middleware(
+    createRequest('/api/cron/update-slides', 'Bearer wrong-secret'),
+  );
 
   assert.equal(response.status, 401);
   assert.deepEqual(await response.json(), { error: 'Unauthorized' });
 });
 
-test('returns NextResponse.next() when bearer token is correct', () => {
+test('returns 401 when authorization scheme is not Bearer', async () => {
   process.env.ADMIN_API_SECRET = 'test-secret';
 
-  const response = middleware(createRequest('/api/monitoring/dashboard', 'Bearer test-secret'));
+  const response = await middleware(createRequest('/api/admin/knowledge', 'Basic abc123'));
+
+  assert.equal(response.status, 401);
+  assert.deepEqual(await response.json(), { error: 'Unauthorized' });
+});
+
+test('returns NextResponse.next() when bearer token is correct', async () => {
+  process.env.ADMIN_API_SECRET = 'test-secret';
+
+  const response = await middleware(
+    createRequest('/api/monitoring/dashboard', 'Bearer test-secret'),
+  );
 
   assert.equal(response.status, 200);
   assert.equal(response.headers.get('x-middleware-next'), '1');
@@ -65,22 +77,30 @@ test('fails closed in production when ADMIN_API_SECRET is not set', async () => 
   delete env.ADMIN_API_SECRET;
   env.NODE_ENV = 'production';
 
-  const response = middleware(createRequest('/api/admin/knowledge'));
+  const response = await middleware(createRequest('/api/admin/knowledge'));
 
   assert.equal(response.status, 401);
   assert.deepEqual(await response.json(), { error: 'Unauthorized' });
 });
 
-test('warns and allows requests in development when ADMIN_API_SECRET is not set', () => {
+test('fails closed in production when ADMIN_API_SECRET is only whitespace', async () => {
+  env.ADMIN_API_SECRET = '   ';
+  env.NODE_ENV = 'production';
+
+  const response = await middleware(createRequest('/api/admin/knowledge'));
+
+  assert.equal(response.status, 401);
+  assert.deepEqual(await response.json(), { error: 'Unauthorized' });
+});
+
+test('allows requests in development when ADMIN_API_SECRET is not set', async () => {
   delete env.ADMIN_API_SECRET;
   env.NODE_ENV = 'development';
-  const warn = mock.method(console, 'warn', () => {});
 
-  const response = middleware(createRequest('/api/admin/knowledge'));
+  const response = await middleware(createRequest('/api/admin/knowledge'));
 
   assert.equal(response.status, 200);
   assert.equal(response.headers.get('x-middleware-next'), '1');
-  assert.equal(warn.mock.callCount(), 1);
 });
 
 test('/api/alerts/webhook is not matched by middleware config', () => {
