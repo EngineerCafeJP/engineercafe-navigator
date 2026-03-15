@@ -12,24 +12,9 @@ importers:
 
   .:
     dependencies:
-      '@ai-sdk/google':
-        specifier: ^1.2.18
-        version: 1.2.18(zod@3.25.41)
-      '@ai-sdk/openai':
-        specifier: ^1.3.3
-        version: 1.3.22(zod@3.25.41)
-      '@google/generative-ai':
-        specifier: 0.24.1
-        version: 0.24.1
       '@headlessui/react':
         specifier: ^2.2.4
         version: 2.2.4(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@langchain/core':
-        specifier: ^0.3.0
-        version: 0.3.80(@opentelemetry/api@1.9.0)(@opentelemetry/exporter-trace-otlp-proto@0.201.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.0.1(@opentelemetry/api@1.9.0))(openai@5.8.2(ws@8.18.2)(zod@3.25.41))
-      '@langchain/langgraph':
-        specifier: ^0.2.0
-        version: 0.2.74(@langchain/core@0.3.80(@opentelemetry/api@1.9.0)(@opentelemetry/exporter-trace-otlp-proto@0.201.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.0.1(@opentelemetry/api@1.9.0))(openai@5.8.2(ws@8.18.2)(zod@3.25.41)))(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(zod-to-json-schema@3.24.5(zod@3.25.41))
       '@marp-team/marp-cli':
         specifier: ^4.1.2
         version: 4.1.2(typescript@5.8.3)
@@ -69,12 +54,6 @@ importers:
       dompurify:
         specifier: 3.3.3
         version: 3.3.3
-      google-auth-library:
-        specifier: 9.15.1
-        version: 9.15.1
-      googleapis:
-        specifier: 149.0.0
-        version: 149.0.0
       gray-matter:
         specifier: ^4.0.3
         version: 4.0.3

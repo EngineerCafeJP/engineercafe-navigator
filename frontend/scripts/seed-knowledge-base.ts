@@ -283,8 +283,8 @@ async function seedKnowledgeBase() {
       });
     }
 
-    // Update any missing embeddings
-    console.log('\n🔄 Updating missing embeddings...');
+    // Embeddings are now managed by the backend, so this remains a no-op.
+    console.log('\n🔄 Skipping frontend embedding backfill...');
     const updateResult = await knowledgeBaseUtils.updateMissingEmbeddings();
     console.log(`✅ Updated: ${updateResult.updated}`);
     console.log(`❌ Failed: ${updateResult.failed}`);

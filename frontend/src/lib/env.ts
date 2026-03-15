@@ -52,7 +52,6 @@ const optionalServerEnvSchema = z.object({
   GEMINI_API_KEY: z.string().optional(),
 
   // AI / DB integrations used by optional server-side workflows
-  GOOGLE_GENERATIVE_AI_API_KEY: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),
   POSTGRES_URL: z.string().optional(),
 
@@ -60,13 +59,6 @@ const optionalServerEnvSchema = z.object({
   GOOGLE_SPEECH_API_KEY: z.string().optional(),
   GOOGLE_TRANSLATE_API_KEY: z.string().optional(),
   GOOGLE_APPLICATION_CREDENTIALS: z.string().optional(),
-
-  // Google Calendar OAuth2
-  GOOGLE_CALENDAR_ICAL_URL: z.string().optional(),
-  GOOGLE_CALENDAR_CLIENT_ID: z.string().optional(),
-  GOOGLE_CALENDAR_CLIENT_SECRET: z.string().optional(),
-  GOOGLE_CALENDAR_REDIRECT_URI: z.string().optional(),
-  ENGINEER_CAFE_CALENDAR_ID: z.string().optional(),
 
   // Alert / monitoring
   ALERT_WEBHOOK_SECRET: z.string().optional(),
@@ -133,7 +125,6 @@ export function validateServerEnv(): EnvValidationResult {
   const recommendedOptional = [
     "SUPABASE_SERVICE_ROLE_KEY",
     "CRON_SECRET",
-    "GOOGLE_GENERATIVE_AI_API_KEY",
   ] as const;
 
   for (const key of recommendedOptional) {
