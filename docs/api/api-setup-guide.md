@@ -32,6 +32,9 @@ GOOGLE_CLOUD_CREDENTIALS=./config/service-account-key.json
 
 # Gemini AI（APIキーが必要）
 GOOGLE_GENERATIVE_AI_API_KEY=<取得したGemini APIキー>
+
+# Backend embeddings / RAG（OpenRouter 経由で OpenAI text-embedding-3-small, 1536次元）
+OPENROUTER_API_KEY=<取得したOpenRouter APIキー>
 ```
 
 ## 4. 接続テスト
