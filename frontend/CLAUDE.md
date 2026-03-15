@@ -6,13 +6,14 @@ See the root [CLAUDE.md](../CLAUDE.md) for full project context. This file cover
 
 ```bash
 pnpm dev              # Dev server at http://localhost:3000
-pnpm build            # Production build (opennextjs-cloudflare)
+pnpm build            # Production build
 pnpm lint             # ESLint
 pnpm typecheck        # tsc --noEmit
 pnpm test             # Test suite (scripts/tests/run-tests.ts)
 pnpm test:e2e         # Playwright E2E tests
 pnpm test:e2e:ui      # Playwright with UI
-pnpm deploy           # Build + deploy to Cloudflare Workers
+pnpm deploy           # Deploy to Vercel production
+pnpm deploy:dev       # Deploy to Vercel dev environment
 ```
 
 ## Frontend-Specific Constraints
@@ -20,7 +21,7 @@ pnpm deploy           # Build + deploy to Cloudflare Workers
 - **Tailwind CSS v3.4.17** — DO NOT upgrade to v4. PostCSS: `tailwindcss: {}` not `@tailwindcss/postcss: {}`.
 - **Marp**: `@marp-team/marp-core` is already installed. MarpProcessor at `src/lib/marp-processor.ts`.
 - **Audio**: All playback via Web Audio API (`src/lib/audio/`). No HTMLAudioElement.
-- **Cloudflare Workers**: Deployed via `opennextjs-cloudflare`. Some Node.js APIs unavailable at runtime.
+- **Vercel**: Deployed to the Vercel dev environment with the Node.js runtime configured in `vercel.json`.
 
 ## Key Directories
 

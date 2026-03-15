@@ -319,8 +319,7 @@ jobs:
             --update-env-vars "ENVIRONMENT=production,TTS_PROVIDER=voicevox,VOICEVOX_API_URL=https://voicevox-proto-639959525777.asia-northeast2.run.app" \
             --set-secrets "OPENROUTER_API_KEY=OPENROUTER_API_KEY:latest,SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_KEY=SUPABASE_KEY:latest,SUPABASE_DB_URI=SUPABASE_DB_URI:latest"
 
-  # Frontend: Deploy to Cloudflare Workers (staging)
-  # Only runs on push to develop when CLOUDFLARE_API_TOKEN is available
+  # Frontend: Deploy to Vercel (staging/dev environment)
   frontend-deploy-staging:
     needs: [changes, frontend-build]
     if: needs.changes.outputs.frontend == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/develop'
@@ -330,7 +329,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v2
+        uses: pnpm/action-setup@v4
         with:
           version: ${{ env.PNPM_VERSION }}
 
@@ -345,15 +344,15 @@ jobs:
         run: pnpm install --frozen-lockfile
         working-directory: frontend
 
-      - name: Build and deploy to Cloudflare Workers
-        run: pnpm run deploy
+      - name: Deploy to Vercel (Dev)
+        run: |
+          npx vercel pull --yes --environment=development --token=${{ secrets.VERCEL_TOKEN }}
+          npx vercel build --token=${{ secrets.VERCEL_TOKEN }}
+          npx vercel deploy --prebuilt --token=${{ secrets.VERCEL_TOKEN }}
         working-directory: frontend
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co' }}
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key' }}
-          NEXT_PUBLIC_BACKEND_API_URL: ${{ secrets.NEXT_PUBLIC_BACKEND_API_URL || 'https://engineer-cafe-backend-639959525777.asia-northeast1.run.app' }}
-          BACKEND_API_URL: ${{ secrets.BACKEND_API_URL || 'https://engineer-cafe-backend-639959525777.asia-northeast1.run.app' }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
 
   # Final status check for branch protection
   ci-success:
