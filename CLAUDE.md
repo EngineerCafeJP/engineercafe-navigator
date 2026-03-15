@@ -116,7 +116,7 @@ PostgreSQL (Supabase) with pgvector. Key tables:
 
 ## Deployment
 
-- **Frontend**: Cloudflare Workers via `opennextjs-cloudflare` (`pnpm deploy`)
+- **Frontend**: Vercel (`pnpm deploy` or auto-deploy on develop push)
 - **Backend**: Cloud Run `engineer-cafe-backend` in `asia-northeast1` (GCP project: `aipartner-426616`)
 - **VoiceVox**: Separate Cloud Run `voicevox-proto` in `asia-northeast2`
 - **Cloud Run env vars**: Use `--update-env-vars` (NOT `--set-env-vars` which overwrites ALL vars)
