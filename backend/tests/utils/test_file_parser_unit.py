@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from backend.utils.file_parser import detect_file_type, parse_markdown, parse_pdf
+from backend.utils.file_parser import chunk_text, detect_file_type, parse_markdown, parse_pdf
 
 
 # ---------------------------------------------------------------------------
@@ -412,3 +412,29 @@ class TestParsePdf:
                 parse_pdf(b"corrupted pdf")
 
             assert exc_info.value.__cause__ is original_error
+
+
+# ---------------------------------------------------------------------------
+# chunk_text
+# ---------------------------------------------------------------------------
+class TestChunkText:
+    """chunk_text のユニットテスト"""
+
+    def test_returns_empty_list_for_blank_text(self):
+        """空文字や空白のみは空配列を返す"""
+        assert chunk_text("") == []
+        assert chunk_text("   \n\n   ") == []
+
+    def test_returns_single_chunk_when_text_is_short(self):
+        """chunk_size 以下のテキストは単一チャンクを返す"""
+        assert chunk_text("  short text  ", chunk_size=50) == ["short text"]
+
+    def test_splits_long_text_into_multiple_chunks(self):
+        """長文は複数チャンクに分割される"""
+        text = "\n\n".join([f"paragraph {index} " + ("A" * 120) for index in range(12)])
+
+        chunks = chunk_text(text, chunk_size=180, chunk_overlap=20)
+
+        assert len(chunks) > 1
+        assert all(chunk.strip() == chunk for chunk in chunks)
+        assert all(len(chunk) <= 180 for chunk in chunks)

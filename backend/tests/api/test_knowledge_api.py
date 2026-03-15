@@ -325,6 +325,12 @@ def test_upload_markdown(mock_get_sb, mock_embed, mock_parse_md):
         "title": "test_doc",
         "content": "Parsed markdown content",
         "source": "file:test_doc.md",
+        "metadata": {
+            "original_filename": "test_doc.md",
+            "file_type": "markdown",
+            "chunk_index": 0,
+            "total_chunks": 1,
+        },
     }
     mock_sb.table.return_value.insert.return_value.execute.return_value = _mock_table_result(
         [uploaded_row]
@@ -340,8 +346,11 @@ def test_upload_markdown(mock_get_sb, mock_embed, mock_parse_md):
     assert response.status_code == 201
     body = response.json()
     assert body["success"] is True
+    assert body["data"]["metadata"]["chunk_index"] == 0
+    assert body["data"]["metadata"]["total_chunks"] == 1
     mock_parse_md.assert_called_once()
     mock_embed.assert_called_once()
+    assert mock_embed.await_args.args == ("test_doc\nParsed markdown content",)
 
 
 @patch("backend.api.knowledge.parse_pdf")
@@ -364,6 +373,12 @@ def test_upload_pdf(mock_get_sb, mock_embed, mock_parse_pdf):
         "title": "document",
         "content": "Parsed PDF content",
         "source": "file:document.pdf",
+        "metadata": {
+            "original_filename": "document.pdf",
+            "file_type": "pdf",
+            "chunk_index": 0,
+            "total_chunks": 1,
+        },
     }
     mock_sb.table.return_value.insert.return_value.execute.return_value = _mock_table_result(
         [uploaded_row]
@@ -379,8 +394,111 @@ def test_upload_pdf(mock_get_sb, mock_embed, mock_parse_pdf):
     assert response.status_code == 201
     body = response.json()
     assert body["success"] is True
+    assert body["data"]["metadata"]["chunk_index"] == 0
+    assert body["data"]["metadata"]["total_chunks"] == 1
     mock_parse_pdf.assert_called_once()
     mock_embed.assert_called_once()
+
+
+@patch("backend.api.knowledge.chunk_text")
+@patch("backend.api.knowledge.parse_markdown")
+@patch("backend.api.knowledge.generate_embedding", new_callable=AsyncMock)
+@patch("backend.api.knowledge._get_supabase")
+def test_upload_markdown_splits_into_chunks(
+    mock_get_sb, mock_embed, mock_parse_md, mock_chunk_text
+):
+    """長い.mdは複数チャンクに分割して保存する"""
+    mock_parse_md.return_value = "Parsed markdown content"
+    mock_chunk_text.return_value = ["Chunk one", "Chunk two"]
+    mock_embed.side_effect = [FAKE_EMBEDDING, FAKE_EMBEDDING]
+    mock_sb = _mock_supabase()
+    mock_get_sb.return_value = mock_sb
+
+    mock_sb.table.return_value.select.return_value.eq.return_value.execute.side_effect = [
+        _mock_table_result([]),
+        _mock_table_result([]),
+    ]
+    first_row = {
+        **SAMPLE_ROW,
+        "title": "multi_doc (part 1)",
+        "content": "Chunk one",
+        "source": "file:multi_doc.md",
+        "metadata": {
+            "original_filename": "multi_doc.md",
+            "file_type": "markdown",
+            "chunk_index": 0,
+            "total_chunks": 2,
+        },
+    }
+    second_row = {
+        **SAMPLE_ROW,
+        "title": "multi_doc (part 2)",
+        "content": "Chunk two",
+        "source": "file:multi_doc.md",
+        "metadata": {
+            "original_filename": "multi_doc.md",
+            "file_type": "markdown",
+            "chunk_index": 1,
+            "total_chunks": 2,
+        },
+    }
+    mock_sb.table.return_value.insert.return_value.execute.side_effect = [
+        _mock_table_result([first_row]),
+        _mock_table_result([second_row]),
+    ]
+
+    response = client.post(
+        "/api/knowledge/upload",
+        data={"category": "general", "language": "ja"},
+        files={"file": ("multi_doc.md", io.BytesIO(b"# Test"), "text/markdown")},
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["success"] is True
+    assert body["data"]["title"] == "multi_doc (part 1)"
+    assert body["data"]["metadata"]["chunk_index"] == 0
+    assert body["data"]["metadata"]["total_chunks"] == 2
+    assert mock_embed.await_args_list[0].args == ("Chunk one",)
+    assert mock_embed.await_args_list[1].args == ("Chunk two",)
+
+    insert_calls = mock_sb.table.return_value.insert.call_args_list
+    assert len(insert_calls) == 2
+    assert insert_calls[0].args[0]["title"] == "multi_doc (part 1)"
+    assert insert_calls[1].args[0]["title"] == "multi_doc (part 2)"
+    assert insert_calls[0].args[0]["metadata"]["chunk_index"] == 0
+    assert insert_calls[1].args[0]["metadata"]["chunk_index"] == 1
+    assert insert_calls[1].args[0]["metadata"]["total_chunks"] == 2
+
+
+@patch("backend.api.knowledge.chunk_text")
+@patch("backend.api.knowledge.parse_markdown")
+@patch("backend.api.knowledge._get_supabase")
+def test_upload_rejects_duplicate_chunk_title_before_insert(
+    mock_get_sb, mock_parse_md, mock_chunk_text
+):
+    """チャンクタイトル衝突時は挿入前に409を返す"""
+    mock_parse_md.return_value = "Parsed markdown content"
+    mock_chunk_text.return_value = ["Chunk one", "Chunk two"]
+    mock_sb = _mock_supabase()
+    mock_get_sb.return_value = mock_sb
+
+    mock_sb.table.return_value.select.return_value.eq.return_value.execute.side_effect = [
+        _mock_table_result([]),
+        _mock_table_result([SAMPLE_ROW]),
+    ]
+
+    response = client.post(
+        "/api/knowledge/upload",
+        data={"category": "general", "language": "ja"},
+        files={"file": ("duplicate_doc.md", io.BytesIO(b"# Test"), "text/markdown")},
+    )
+
+    assert response.status_code == 409
+    assert (
+        response.json()["detail"] == "Knowledge with title 'duplicate_doc (part 2)' already exists"
+    )
+    mock_sb.table.return_value.insert.assert_not_called()
 
 
 @patch("backend.api.knowledge.parse_markdown")

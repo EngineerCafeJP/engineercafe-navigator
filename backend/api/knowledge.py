@@ -9,6 +9,7 @@ NOTE: 認証は別Issueで対応予定。現時点ではCORS制限のみ。
 """
 
 import asyncio
+import json
 import logging
 import os
 import re
@@ -22,7 +23,7 @@ from pydantic import BaseModel, Field
 from supabase import create_client
 
 from backend.utils.embedding_service import generate_embedding
-from backend.utils.file_parser import detect_file_type, parse_markdown, parse_pdf
+from backend.utils.file_parser import chunk_text, detect_file_type, parse_markdown, parse_pdf
 from backend.utils.rate_limit import rate_limit
 
 logger = logging.getLogger(__name__)
@@ -132,6 +133,13 @@ def _is_unique_violation(error: Exception) -> bool:
     """Supabaseエラーがユニーク制約違反かを判定"""
     error_str = str(error).lower()
     return "unique" in error_str or "duplicate" in error_str or "23505" in error_str
+
+
+def _chunk_title(base_title: str, index: int, total_chunks: int) -> str:
+    """チャンク数に応じた保存タイトルを返す"""
+    if total_chunks <= 1:
+        return base_title
+    return f"{base_title} (part {index + 1})"
 
 
 # =============================================================================
@@ -270,6 +278,8 @@ async def upload_knowledge(
     category: str = Form(...),
     language: str = Form(default="ja"),
     title: Optional[str] = Form(default=None),
+    subcategory: Optional[str] = Form(default=None),
+    metadata: Optional[str] = Form(default=None),
 ):
     """ファイルアップロードでナレッジ登録（.md/.pdf → パース → embedding生成）"""
     effective_title = title or (file.filename.rsplit(".", 1)[0] if file.filename else "unknown")
@@ -292,6 +302,18 @@ async def upload_knowledge(
         # title長さバリデーション
         if title and len(title) > 200:
             raise HTTPException(status_code=400, detail="title must be 200 characters or less")
+
+        metadata_payload: Dict[str, Any] = {}
+        if metadata:
+            try:
+                parsed_metadata = json.loads(metadata)
+            except json.JSONDecodeError as exc:
+                raise HTTPException(status_code=400, detail="metadata must be valid JSON") from exc
+
+            if not isinstance(parsed_metadata, dict):
+                raise HTTPException(status_code=400, detail="metadata must be a JSON object")
+
+            metadata_payload = parsed_metadata
 
         file_type = detect_file_type(file.filename)
         if file_type not in ("markdown", "pdf"):
@@ -323,82 +345,118 @@ async def upload_knowledge(
         if not parsed_content.strip():
             raise HTTPException(status_code=400, detail="No text content extracted from file")
 
-        # 50000文字制限（PDF数十ページ分に対応）
-        if len(parsed_content) > 50000:
-            parsed_content = parsed_content[:50000]
-
         # titleが未指定の場合はファイル名から生成
         effective_title = title or file.filename.rsplit(".", 1)[0]
 
         supabase = _get_supabase()
+        chunks = chunk_text(parsed_content)
+        if not chunks:
+            raise HTTPException(status_code=400, detail="No text content extracted from file")
 
-        # 重複titleチェック
-        existing = (
-            supabase.table("knowledge_base").select("id").eq("title", effective_title).execute()
-        )
-        if existing.data:
+        chunk_titles = [
+            _chunk_title(effective_title, index, len(chunks)) for index in range(len(chunks))
+        ]
+        if any(len(chunk_title) > 200 for chunk_title in chunk_titles):
             raise HTTPException(
-                status_code=409,
-                detail=f"Knowledge with title '{effective_title}' already exists",
+                status_code=400,
+                detail="title must be 200 characters or less after chunk suffixes are applied",
             )
 
-        # Embedding生成
-        embedding_text = f"{effective_title}\n{parsed_content}"
-        embedding: List[float] = []
         try:
-            embedding = await generate_embedding(embedding_text)
-            if not embedding:
-                logger.warning(
-                    "Embedding unavailable for upload: filename=%s title=%s file_type=%s "
-                    "content_size=%s",
-                    file.filename,
-                    effective_title,
-                    file_type,
-                    content_size,
+            for chunk_title in chunk_titles:
+                existing = (
+                    supabase.table("knowledge_base").select("id").eq("title", chunk_title).execute()
                 )
-        except httpx.TimeoutException as exc:
-            logger.warning(
-                "Embedding generation timed out for upload: filename=%s title=%s file_type=%s "
-                "content_size=%s error=%s",
-                file.filename,
-                effective_title,
-                file_type,
-                content_size,
-                exc,
-            )
-            embedding = []
-        except Exception as exc:
-            logger.warning(
-                "Embedding generation failed for upload (%s): filename=%s title=%s "
-                "file_type=%s content_size=%s error=%s",
-                type(exc).__name__,
-                file.filename,
-                effective_title,
-                file_type,
-                content_size,
-                exc,
-            )
-            embedding = []
+                if existing.data:
+                    raise HTTPException(
+                        status_code=409,
+                        detail=f"Knowledge with title '{chunk_title}' already exists",
+                    )
 
-        # DB挿入
-        insert_data: Dict[str, Any] = {
-            "title": effective_title,
-            "content": parsed_content,
-            "category": category,
-            "language": language,
-            "source": f"file:{file.filename}",
-            "metadata": {"original_filename": file.filename, "file_type": file_type},
-        }
-        if embedding:
-            insert_data["content_embedding"] = embedding
+            inserted_rows: List[Dict[str, Any]] = []
+            total_chunks = len(chunks)
 
-        try:
-            result = supabase.table("knowledge_base").insert(insert_data).execute()
+            for index, chunk_content in enumerate(chunks):
+                chunk_title = chunk_titles[index]
+                embedding: List[float] = []
+                embedding_input = (
+                    f"{chunk_title}\n{chunk_content}" if total_chunks == 1 else chunk_content
+                )
+                try:
+                    embedding = await generate_embedding(embedding_input)
+                    if not embedding:
+                        logger.warning(
+                            "Embedding unavailable for upload: filename=%s title=%s "
+                            "file_type=%s content_size=%s chunk=%s/%s",
+                            file.filename,
+                            chunk_title,
+                            file_type,
+                            content_size,
+                            index + 1,
+                            total_chunks,
+                        )
+                except httpx.TimeoutException as exc:
+                    logger.warning(
+                        "Embedding generation timed out for upload: filename=%s title=%s "
+                        "file_type=%s content_size=%s chunk=%s/%s error=%s",
+                        file.filename,
+                        chunk_title,
+                        file_type,
+                        content_size,
+                        index + 1,
+                        total_chunks,
+                        exc,
+                    )
+                    embedding = []
+                except Exception as exc:
+                    logger.warning(
+                        "Embedding generation failed for upload (%s): filename=%s title=%s "
+                        "file_type=%s content_size=%s chunk=%s/%s error=%s",
+                        type(exc).__name__,
+                        file.filename,
+                        chunk_title,
+                        file_type,
+                        content_size,
+                        index + 1,
+                        total_chunks,
+                        exc,
+                    )
+                    embedding = []
+
+                insert_data: Dict[str, Any] = {
+                    "title": chunk_title,
+                    "content": chunk_content,
+                    "category": category,
+                    "subcategory": subcategory,
+                    "language": language,
+                    "source": f"file:{file.filename}",
+                    "metadata": {
+                        "original_filename": file.filename,
+                        "file_type": file_type,
+                        "chunk_index": index,
+                        "total_chunks": total_chunks,
+                        **metadata_payload,
+                    },
+                }
+                if embedding:
+                    insert_data["content_embedding"] = embedding
+
+                result = supabase.table("knowledge_base").insert(insert_data).execute()
+                if not result.data:
+                    raise HTTPException(status_code=500, detail="Failed to insert knowledge entry")
+
+                inserted_rows.append(result.data[0])
         except APIError as exc:
             if _is_unique_violation(exc):
+                conflict_title = effective_title
+                if exc.args:
+                    conflict_title = next(
+                        (chunk_title for chunk_title in chunk_titles if chunk_title in str(exc)),
+                        effective_title,
+                    )
                 raise HTTPException(
                     status_code=409,
-                    detail=f"Knowledge with title '{effective_title}' already exists",
+                    detail=f"Knowledge with title '{conflict_title}' already exists",
                 )
             logger.error(
                 "Supabase insert failed: table=knowledge_base title=%s filename=%s error=%s",
@@ -416,12 +474,9 @@ async def upload_knowledge(
             )
             raise HTTPException(status_code=503, detail="Knowledge storage unavailable")
 
-        if not result.data:
-            raise HTTPException(status_code=500, detail="Failed to insert knowledge entry")
-
         return KnowledgeResponse(
             success=True,
-            data=_row_to_item(result.data[0]),
+            data=_row_to_item(inserted_rows[0]),
         )
 
     try:

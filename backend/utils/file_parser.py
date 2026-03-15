@@ -10,6 +10,11 @@ from typing import Literal
 
 import pymupdf
 
+try:
+    from langchain.text_splitter import RecursiveCharacterTextSplitter
+except ImportError:  # pragma: no cover - compatibility for newer langchain packages
+    from langchain_text_splitters import RecursiveCharacterTextSplitter
+
 logger = logging.getLogger(__name__)
 
 
@@ -107,3 +112,26 @@ def parse_pdf(content: bytes) -> str:
 
     except pymupdf.FileDataError as e:
         raise ValueError(f"Invalid PDF file: {e}") from e
+
+
+def chunk_text(
+    text: str,
+    chunk_size: int = 1000,
+    chunk_overlap: int = 200,
+) -> list[str]:
+    """Split text into chunks using recursive character splitting."""
+    if not text or not text.strip():
+        return []
+
+    normalized_text = text.strip()
+    if len(normalized_text) <= chunk_size:
+        return [normalized_text]
+
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+        length_function=len,
+        separators=["\n\n", "\n", "。", ".", " ", ""],
+    )
+    chunks = splitter.split_text(normalized_text)
+    return [chunk.strip() for chunk in chunks if chunk.strip()]
