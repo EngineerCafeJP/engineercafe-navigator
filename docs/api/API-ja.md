@@ -1,760 +1,536 @@
 # API ドキュメント - Engineer Cafe Navigator
 
-> 注意: この文書には旧 deployment 前提や更新途中の route 説明が含まれる可能性があります。現行判断は `docs/STATUS.md` と実装コードを優先してください。
-
-> Engineer Cafe Navigator 音声AIエージェントシステムの完全なREST API仕様書
-
 [English](./API.md) | 日本語版
 
-## 📖 概要
+現在の Cloudflare Workers + FastAPI 構成に合わせて更新した API リファレンスです。
 
-Engineer Cafe Navigatorは以下のRESTful APIエンドポイントを提供します：
+## 概要
 
-- **音声処理**: 音声認識、合成、AI応答生成
-- **感情検出**: テキストと音声からのリアルタイム感情分析
-- **スライド制御**: Marpスライドの表示とナビゲーション
-- **キャラクター制御**: VRMキャラクターの表情とアニメーション
-- **外部連携**: WebSocket受付システム統合
-- **Q&Aシステム**: AI駆動の質問応答
-- **セッション管理**: コンテキスト永続化によるマルチターン会話
-- **背景制御**: 動的な背景管理
+Engineer Cafe Navigator は 2 層構成の API を採用しています。
 
-## 🔗 ベースURL
+- 公開クライアントは通常 `https://engineer-cafe-navigator.company-997.workers.dev/api` 配下のフロントエンド route を呼び出します。
+- フロントエンドの `/api/*` route は FastAPI バックエンドへプロキシし、`BACKEND_API_KEY` を使って `X-API-Key` を自動付与します。
+- `/api/admin/*`、`/api/cron/*`、`/api/monitoring/*` はフロントエンド側で `Authorization: Bearer <ADMIN_API_SECRET>` により保護されます。
+- `/api/chat` などのコアなバックエンド route は、通常ブラウザから直接呼び出す想定ではありません。
 
-```
-本番環境: https://engineer-cafe-navigator.vercel.app/api
-開発環境: http://localhost:3000/api
-```
+## ベース URL
 
-## 🔐 認証
-
-APIはGoogle CloudサービスにService Account認証を使用します。クライアントリクエストにはセッションベース認証を使用します。
-
-### Service Account設定
-
-1. Google Cloud ConsoleでService Accountを作成
-2. ロールを付与: `roles/speech.client` および `roles/texttospeech.client`
-3. JSONキーをダウンロードし `./config/service-account-key.json` に配置
-4. 環境変数を設定: `GOOGLE_CLOUD_CREDENTIALS=./config/service-account-key.json`
-
-### CRONジョブ認証
-
-CRONジョブエンドポイントは`CRON_SECRET`環境変数と一致するBearerトークンが必要です：
-
-```http
-Authorization: Bearer your-cron-secret
+```text
+フロントエンド本番: https://engineer-cafe-navigator.company-997.workers.dev/api
+フロントエンド local: http://localhost:3000/api
+バックエンド local:   http://localhost:8000
 ```
 
-## 🎤 音声処理 API
+## 認証
+
+| 対象 | 認証 |
+| --- | --- |
+| 公開フロントエンド proxy route | クライアント側シークレット不要 |
+| バックエンド直接呼び出し | `X-API-Key: <API_SECRET_KEY>` |
+| フロントエンドの admin / cron / monitoring | `Authorization: Bearer <ADMIN_API_SECRET>` |
+
+補足:
+
+- `BACKEND_API_KEY` はフロントエンドがバックエンドへプロキシするためのサーバー側シークレットです。
+- `ADMIN_API_SECRET` はフロントエンド middleware により `/api/admin/*`、`/api/cron/*`、`/api/monitoring/*` に適用されます。
+- バックエンドの CORS は `https://engineer-cafe-navigator.company-997.workers.dev` と local 開発 origin を許可しています。
+
+## アーキテクチャ補足
+
+フロントエンドの `/api/*` route は、そのままバックエンドそのものではありません。
+
+- `/api/voice`、`/api/qa`、`/api/slides`、`/api/character`、`/api/reception/*` はバックエンド route への proxy です。
+- `/api/marp` はフロントエンド専用のレンダリング endpoint です。バックエンド `/api/slides/content` から markdown を取得し、`MarpProcessor` で HTML 化します。
+- `/api/admin/*` は edge 保護されたフロントエンド admin route です。バックエンドへ proxy するものと、フロントエンド側の admin utility を使うものがあります。
+
+## フロントエンド API
 
 ### POST /api/voice
 
-音声データの処理とAI応答の生成を行います。
+バックエンド `POST /api/voice` への proxy です。
 
-#### リクエスト
+代表的なリクエスト:
 
-**ヘッダー:**
-```json
-{
-  "Content-Type": "application/json"
-}
-```
-
-**ボディ:**
 ```json
 {
   "action": "process_voice",
-  "audioData": "base64エンコードされた音声データ",
-  "sessionId": "セッションID",
+  "audioData": "base64-encoded-audio",
+  "sessionId": "session-123",
   "language": "ja"
 }
 ```
 
-**追加アクション:**
-- `start_session`: 新しい会話セッションを開始
-- `end_session`: 現在のセッションを終了
-- `set_language`: セッション言語を変更
-- `get_conversation_state`: 現在の会話状態を取得
-- `clear_conversation`: 会話履歴をクリア
-- `handle_interruption`: ユーザー割り込みを処理
-- `detect_language`: テキストから言語を自動検出
+現在のバックエンドでサポートされる action:
 
-**パラメータ:**
-- `action` (文字列, 必須): 実行する操作
-- `audioData` (文字列): Base64エンコードされた音声データ（WebM Opus形式推奨）
-- `sessionId` (文字列): start_sessionから取得したセッションID
-- `language` (文字列): 言語コード（"ja"または"en"、デフォルトは"ja"）
+- `process_voice`
+- `speech_to_text`
+- `text_to_speech`
+- `set_language`
+- `interrupt`
 
-#### レスポンス
+代表的なレスポンス:
 
-**成功 (200):**
 ```json
 {
   "success": true,
-  "transcript": "こんにちは、エンジニアカフェについて教えてください",
-  "response": "エンジニアカフェへようこそ！私たちは...",
-  "audioResponse": "base64エンコードされたMP3音声",
-  "shouldUpdateCharacter": true,
-  "characterAction": "greeting",
-  "emotion": {
-    "emotion": "explaining",
-    "intensity": 0.75,
-    "confidence": 0.82,
-    "duration": 2500
-  },
-  "sessionId": "セッションID"
+  "transcript": "エンジニアカフェについて教えてください",
+  "audioResponse": "base64-audio",
+  "emotion": "neutral",
+  "sessionId": "session-123"
 }
 ```
 
-### セッション管理の例
+### GET /api/backgrounds
 
-**セッション開始:**
-```json
-// リクエスト
-{
-  "action": "start_session",
-  "visitorId": "visitor-123",
-  "language": "ja"
-}
+フロントエンドの背景 manifest から画像ファイル名一覧を返します。
 
-// レスポンス
-{
-  "success": true,
-  "sessionId": "5caaff9e-bae9-4131-bf49-01c6694a3e9c"
-}
-```
+レスポンス例:
 
-**言語切り替え:**
-```json
-// リクエスト
-{
-  "action": "set_language",
-  "language": "en",
-  "sessionId": "セッションID"
-}
-
-// レスポンス
-{
-  "success": true,
-  "message": "Language updated"
-}
-```
-
-**会話状態取得:**
-```json
-// リクエスト
-{
-  "action": "get_conversation_state",
-  "sessionId": "セッションID"
-}
-
-// レスポンス
-{
-  "success": true,
-  "state": "idle",
-  "summary": "ユーザーはエンジニアカフェのサービスと料金について質問しました。"
-}
-```
-
-### GET /api/voice
-
-音声サービス情報の取得
-
-#### エンドポイント
-
-**ステータス確認:**
-```http
-GET /api/voice?action=status
-```
-
-**レスポンス:**
 ```json
 {
-  "success": true,
-  "status": "active",
-  "conversationState": "idle",
-  "timestamp": "2025-05-30T06:40:49.401Z"
+  "images": ["IMG_5573.JPG", "placeholder.svg"],
+  "total": 2
 }
 ```
-
-**サポート言語一覧:**
-```http
-GET /api/voice?action=supported_languages
-```
-
-**レスポンス:**
-```json
-{
-  "success": true,
-  "result": {
-    "supported": ["ja", "en"],
-    "current": "ja",
-    "details": {
-      "ja": {
-        "name": "日本語",
-        "englishName": "Japanese",
-        "code": "ja",
-        "flag": "🇯🇵",
-        "voice": {
-          "male": "ja-JP-Neural2-C",
-          "female": "ja-JP-Neural2-B",
-          "default": "ja-JP-Neural2-B"
-        }
-      },
-      "en": {
-        "name": "English",
-        "englishName": "English",
-        "code": "en",
-        "flag": "🇺🇸",
-        "voice": {
-          "male": "en-US-Neural2-D",
-          "female": "en-US-Neural2-F",
-          "default": "en-US-Neural2-F"
-        }
-      }
-    }
-  }
-}
-```
-
-## 📊 スライドAPI
 
 ### POST /api/marp
 
-Marpマークダウンをプレゼンテーションにレンダリング
+フロントエンド専用の Marp レンダリング endpoint です。
 
-#### リクエスト
+現在の処理フロー:
+
+1. `{ "language": "ja" }` または `{ "language": "en" }` を受け取る
+2. バックエンド `POST /api/slides/content` を呼ぶ
+3. 返却された markdown を `MarpProcessor` で処理する
+4. レンダリング済み HTML、解析済み slide data、narration data を返す
+
+リクエスト例:
+
 ```json
 {
-  "action": "render_with_narration",
-  "slideFile": "engineer-cafe",
-  "theme": "engineer-cafe",
-  "outputFormat": "both"
+  "language": "ja"
 }
 ```
 
-**パラメータ:**
-- `action` (文字列, 必須): "render", "render_file", "render_with_narration"
-- `slideFile` (文字列): スライドファイル名（拡張子なし）
-- `theme` (文字列): テーマ名（デフォルト: "default"）
-- `outputFormat` (文字列): 出力形式（"html", "json", "both"）
+レスポンス例:
 
-#### レスポンス
 ```json
 {
   "success": true,
-  "html": "<html>...</html>",
-  "css": "/* テーマスタイル */",
-  "slideCount": 10,
+  "html": "<!DOCTYPE html><html>...</html>",
   "slideData": {
-    "metadata": {
-      "title": "エンジニアカフェ紹介",
-      "theme": "engineer-cafe"
-    },
     "slides": [
       {
         "slideNumber": 1,
-        "title": "エンジニアカフェへようこそ",
-        "content": "# エンジニアカフェへようこそ\n\n福岡市のイノベーション拠点"
+        "title": "Engineer Cafe"
       }
     ]
+  },
+  "narrationData": {
+    "metadata": {
+      "title": "Engineer Cafe"
+    }
+  },
+  "slideCount": 12,
+  "metadata": {
+    "language": "ja",
+    "title": "Engineer Cafe"
   }
+}
+```
+
+`GET /api/marp` は簡易ステータスを返します。
+
+```json
+{
+  "status": "ok",
+  "backend": "connected"
 }
 ```
 
 ### POST /api/slides
 
-スライドナビゲーションとナレーション制御
+バックエンド `POST /api/slides` への proxy です。
 
-#### リクエスト
+この route はスライド移動、ナレーション、スライド内質問のための endpoint です。Marp レンダリング用 endpoint ではありません。
+
+現在のバックエンドでサポートされる action:
+
+- `narrate`
+- `narrate_current` (`narrate` の alias)
+- `next`
+- `previous`
+- `goto`
+- `question`
+- `answer_question` (`question` の alias)
+
+リクエスト例:
+
 ```json
 {
   "action": "next",
-  "slideFile": "engineer-cafe",
+  "slideNumber": 2,
   "language": "ja",
-  "currentSlide": 3
+  "sessionId": "session-123"
 }
 ```
 
-**アクション:**
-- `next`: 次のスライドへ
-- `previous`: 前のスライドへ
-- `goTo`: 指定スライドへジャンプ
-- `getCurrentNarration`: 現在のナレーション取得
-- `loadNarration`: ナレーションデータ読み込み
+レスポンス例:
 
-#### レスポンス
 ```json
 {
   "success": true,
-  "slideNumber": 4,
-  "narration": {
-    "auto": "次のスライドでは、エンジニアカフェの施設について説明します。",
-    "onEnter": "エンジニアカフェには様々な施設があります。",
-    "onDemand": {
-      "detail": "詳しく説明しますと..."
-    }
-  },
-  "audioUrl": "data:audio/mp3;base64,...",
-  "transition": {
-    "next": "施設の紹介に進みます",
-    "previous": "前のスライドに戻ります"
-  }
-}
-```
-
-## 🤖 キャラクターAPI
-
-### POST /api/character
-
-3D VRMキャラクターの制御
-
-#### リクエスト
-```json
-{
-  "action": "update",
-  "expression": "friendly",
-  "animation": "greeting",
-  "lookAt": { "x": 0, "y": 0, "z": 1 }
-}
-```
-
-**アクション:**
-- `update`: 複数のプロパティを更新
-- `setExpression`: 表情を設定
-- `playAnimation`: アニメーションを再生
-- `setLookAt`: 視線方向を設定
-- `reset`: デフォルト状態にリセット
-
-**利用可能な表情:**
-- `neutral`: 通常
-- `happy`: 喜び
-- `sad`: 悲しみ
-- `angry`: 怒り
-- `surprised`: 驚き
-- `thinking`: 考え中
-- `friendly`: 親しみやすい
-- `explaining`: 説明中
-
-**利用可能なアニメーション:**
-- `idle`: アイドル
-- `greeting`: 挨拶
-- `talking`: 話し中
-- `listening`: 聞いている
-- `thinking`: 考えている
-- `pointing`: 指差し
-- `bowing`: お辞儀
-- `waving`: 手を振る
-
-#### レスポンス
-```json
-{
-  "success": true,
-  "characterState": {
-    "expression": "friendly",
-    "animation": "greeting",
-    "lookAt": { "x": 0, "y": 0, "z": 1 }
-  }
-}
-```
-
-## ❓ Q&A API
-
-### POST /api/qa
-
-RAG（検索拡張生成）による質問応答
-
-#### リクエスト
-```json
-{
-  "action": "ask",
-  "question": "エンジニアカフェの利用料金は？",
-  "language": "ja",
-  "sessionId": "セッションID"
-}
-```
-
-#### レスポンス
-```json
-{
-  "success": true,
-  "answer": "エンジニアカフェは基本的に無料でご利用いただけます。",
-  "sources": [
-    {
-      "title": "料金について",
-      "content": "...",
-      "relevance": 0.95
-    }
-  ],
-  "suggestedQuestions": [
-    "会員登録は必要ですか？",
-    "営業時間を教えてください"
-  ]
-}
-```
-
-## 🔗 外部連携API
-
-### POST /api/external
-
-外部システムとの統合
-
-#### リクエスト
-```json
-{
-  "action": "sendToReception",
-  "visitorInfo": {
-    "name": "山田太郎",
-    "purpose": "workshop",
+  "answer": "次のスライドでは施設をご案内します。",
+  "emotion": "neutral",
+  "slideNumber": 3,
+  "metadata": {
     "language": "ja"
   }
 }
 ```
 
-**アクション:**
-- `sendToReception`: 受付に情報送信
-- `getReceptionStatus`: 受付状況取得
-- `websocket`: WebSocketイベント送信
+### POST /api/qa
 
-## 🏞️ 背景API
+バックエンド `POST /api/chat` への proxy です。
 
-### GET /api/backgrounds
+重要な点:
 
-アプリケーションで利用可能な背景画像を取得します。
+- フロントエンドは `question` または `text` を受け取ります。
+- バックエンドにはそれを `query` として転送します。
+- 旧説明にある `ask_question` は現行の実装説明としては不正確です。実際に呼ばれるのは `/api/chat` です。
 
-#### リクエスト
-
-パラメータは不要です。
-
-#### レスポンス
-
-**成功 (200):**
-```json
-{
-  "images": [
-    "IMG_5573.JPG",
-    "placeholder.svg"
-  ],
-  "total": 2
-}
-```
-
-**注記:**
-- `/public/backgrounds` ディレクトリ内のすべての画像ファイルを返します
-- サポート形式: `.jpg`, `.jpeg`, `.png`, `.webp`, `.svg`
-- 隠しファイル（`.`で始まる）とREADMEファイルは除外されます
-- ディレクトリが存在しない場合は自動的に作成されます
-```
-
-## 🚨 エラー処理
-
-### エラーレスポンス形式
-```json
-{
-  "error": "エラーメッセージ",
-  "details": "詳細なエラー情報",
-  "code": "ERROR_CODE",
-  "timestamp": "2025-05-30T12:00:00Z"
-}
-```
-
-### 一般的なエラーコード
-- `INVALID_REQUEST`: 無効なリクエストパラメータ
-- `SESSION_NOT_FOUND`: セッションIDが見つからないか期限切れ
-- `AUDIO_PROCESSING_ERROR`: 音声処理エラー
-- `AI_GENERATION_ERROR`: AI応答生成エラー
-- `CHARACTER_LOAD_ERROR`: キャラクターモデル読み込みエラー
-- `SLIDE_NOT_FOUND`: スライドファイルが見つからない
-- `EXTERNAL_API_ERROR`: 外部API接続エラー
-- `RATE_LIMIT_EXCEEDED`: リクエスト数制限超過
-
-### HTTPステータスコード
-- `200 OK`: リクエスト成功
-- `400 Bad Request`: 無効なパラメータ
-- `401 Unauthorized`: 認証が必要
-- `404 Not Found`: リソースが見つからない
-- `429 Too Many Requests`: レート制限超過
-- `500 Internal Server Error`: サーバーエラー
-
-## 🔒 レート制限
-
-APIの悪用を防ぐためのレート制限：
-
-### 制限値
-- 音声API: 10リクエスト/10秒/セッション
-- スライドAPI: 30リクエスト/分
-- キャラクターAPI: 60リクエスト/分
-- Q&A API: 20リクエスト/分
-- 外部API: 10リクエスト/分
-
-### レート制限ヘッダー
-```http
-X-RateLimit-Limit: 10
-X-RateLimit-Remaining: 7
-X-RateLimit-Reset: 1717066860
-```
-
-## 💻 コード例
-
-### JavaScript/TypeScript
-
-```typescript
-// セッション開始と音声処理
-async function startVoiceConversation() {
-  // セッション開始
-  const sessionRes = await fetch('/api/voice', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      action: 'start_session',
-      language: 'ja'
-    })
-  });
-  
-  const { sessionId } = await sessionRes.json();
-  
-  // 音声入力処理
-  const audioData = await recordAudio(); // 音声録音関数
-  const audioBase64 = btoa(String.fromCharCode.apply(null, Array.from(new Uint8Array(audioData))));
-  
-  const voiceRes = await fetch('/api/voice', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      action: 'process_voice',
-      audioData: audioBase64,
-      sessionId
-    })
-  });
-  
-  const result = await voiceRes.json();
-  console.log('文字起こし:', result.transcript);
-  console.log('応答:', result.response);
-  
-  // 音声応答を再生
-  const audio = new Audio(`data:audio/mp3;base64,${result.audioResponse}`);
-  await audio.play();
-}
-```
-
-### Python
-
-```python
-import requests
-import base64
-
-# セッション開始
-session_res = requests.post('http://localhost:3000/api/voice', json={
-    'action': 'start_session',
-    'language': 'ja'
-})
-session_id = session_res.json()['sessionId']
-
-# 音声処理
-with open('audio.webm', 'rb') as f:
-    audio_data = base64.b64encode(f.read()).decode('utf-8')
-
-voice_res = requests.post('http://localhost:3000/api/voice', json={
-    'action': 'process_voice',
-    'audioData': audio_data,
-    'sessionId': session_id
-})
-
-result = voice_res.json()
-print(f"文字起こし: {result['transcript']}")
-print(f"応答: {result['response']}")
-```
-
-### cURL
-
-```bash
-# セッション開始
-curl -X POST http://localhost:3000/api/voice \
-  -H "Content-Type: application/json" \
-  -d '{"action": "start_session", "language": "ja"}'
-
-# ステータス確認
-curl http://localhost:3000/api/voice?action=status
-
-# サポート言語取得
-curl http://localhost:3000/api/voice?action=supported_languages
-```
-
-## 📚 ベストプラクティス
-
-1. **セッション管理**: 音声処理の前に必ずセッションを開始
-2. **エラーハンドリング**: 一時的な障害に対するリトライロジックの実装
-3. **音声形式**: 最高の圧縮と品質のためWebM Opusを使用
-4. **言語検出**: 可能な限りシステムに言語を自動検出させる
-5. **キャラクター更新**: API呼び出しを減らすためバッチ更新を行う
-6. **キャッシング**: 可能な限りスライドコンテンツとキャラクター状態をキャッシュ
-
-## 📋 更新履歴
-
-### v2.0.0 (2025-05-30)
-- Service Account認証のサポート
-- Next.js互換性のための簡略化された音声サービス
-- Supabaseメモリアダプタ統合
-- マルチターン会話のサポート
-- セッション管理の改善
-- 感情検出機能の追加
-
-### v2.1.0 (2025-06-30)
-- SimplifiedMemorySystemによる3分間TTLメモリ
-- クロス言語検索対応のマルチ言語RAG
-- Web Audio APIによるモバイル音声互換性
-- インテリジェントキャッシング付きリップシンク最適化
-- 本番環境監視ダッシュボード
-- 知識更新用自動CRONジョブ
-- 管理者向け知識管理インターフェース
-- メモリを意識した会話処理
-
-### v1.2.0 (2024-01-30)
-- 背景制御API追加
-
-### v1.1.0 (2024-01-25)
-- セキュリティ強化、XSS保護
-
-### v1.0.0 (2024-01-20)
-- 初期APIリリース
-
----
-
-## 🔍 知識ベース検索API
-
-### POST /api/knowledge/search
-
-マルチ言語対応のRAG（検索拡張生成）ベースの知識ベース検索。
-
-#### リクエスト
+リクエスト例:
 
 ```json
 {
-  "query": "エンジニアカフェの利用時間は？",
+  "question": "営業時間を教えてください",
+  "sessionId": "session-123",
   "language": "ja",
-  "limit": 5,
-  "similarityThreshold": 0.7
+  "visitorId": "visitor-123"
 }
 ```
 
-#### レスポンス
+バックエンドへ転送される payload:
+
+```json
+{
+  "query": "営業時間を教えてください",
+  "session_id": "session-123",
+  "language": "ja",
+  "visitor_id": "visitor-123"
+}
+```
+
+レスポンス例:
 
 ```json
 {
   "success": true,
-  "results": [
-    {
-      "content": "エンジニアカフェの営業時間は9:00-22:00です",
-      "similarity": 0.85,
-      "metadata": {
-        "source": "facility-info",
-        "category": "基本情報",
-        "subcategory": "営業時間",
-        "language": "ja",
-        "importance": "high"
-      }
-    }
-  ],
-  "total": 1,
-  "embeddingModel": "text-embedding-004",
-  "searchLanguage": "ja"
-}
-```
-
-**機能:**
-- クロス言語検索: 英語の質問で日本語コンテンツを検索可能
-- Google text-embedding-004使用（768次元、1536次元にパディング）
-- OpenAI text-embedding-3-smallへのフォールバック
-- クロス言語結果の自動重複除去
-
-## 📊 監視API
-
-### GET /api/monitoring/dashboard
-
-システム監視ダッシュボード用データの取得。
-
-#### レスポンス
-
-```json
-{
-  "success": true,
-  "metrics": {
-    "ragSearchMetrics": {
-      "totalSearches": 1250,
-      "avgLatency": 580,
-      "successRate": 0.95
-    },
-    "cacheMetrics": {
-      "hitRate": 0.82,
-      "totalHits": 1025
-    },
-    "externalApiMetrics": {
-      "connpass": {
-        "totalCalls": 48,
-        "avgLatency": 1200
-      }
-    },
-    "systemHealth": {
-      "status": "healthy",
-      "uptime": 99.95
-    }
+  "answer": "Engineer Cafe は公開されている営業時間内に利用できます。",
+  "emotion": "neutral",
+  "metadata": {
+    "session_id": "session-123"
   }
 }
 ```
 
-## 🤖 管理API
+`GET /api/qa` はフロントエンド補助 action を持ちます。
 
-### GET /admin/knowledge
+- `action=question_categories`
+- `action=sample_questions&language=ja|en`
+- `action=health`
 
-Webベースの知識ベース管理インターフェース。
+### POST /api/character
 
-### POST /api/admin/knowledge/import
+バックエンド `POST /api/character` への proxy です。
 
-重複検出付きバッチインポート。
+リクエスト例:
 
-## 🔄 CRON API
+```json
+{
+  "action": "setExpression",
+  "emotion": "happy",
+  "animation": "greeting"
+}
+```
 
-### POST /api/cron/update-knowledge-base
+レスポンス例:
 
-外部ソースからの自動知識ベース同期。
+```json
+{
+  "success": true,
+  "message": "{\"emotion\":\"happy\"}"
+}
+```
 
-**ヘッダー:**
+`GET /api/character` は現在シンプルなフロントエンド status payload を返します。
+
+```json
+{
+  "status": "ok"
+}
+```
+
+## バックエンド API
+
+以下はフロントエンド proxy の背後にある主要な FastAPI route です。
+
+### POST /api/chat
+
+LangGraph ベースのメイン chat endpoint です。
+
+- `X-API-Key` 必須
+- request body は `query`、`session_id`、`language`、任意の `context`、任意の `visitor_id`
+- `answer`、`emotion`、`metadata`、任意の `vrm_control` を返します
+
+リクエスト例:
+
 ```http
-Authorization: Bearer your-cron-secret
+POST /api/chat
+X-API-Key: your-api-secret
+Content-Type: application/json
 ```
-
-**機能:**
-- 本番環境では6時間ごとに実行
-- Connpass、Googleカレンダー、Webサイトから同期
-- 期限切れイベントの自動クリーンアップ
-- マルチ言語コンテンツ生成
-
-### POST /api/cron/update-slides
-
-スライドコンテンツの自動更新。
-
-## 🏥 ヘルスチェックAPI
-
-### GET /api/health/knowledge
-
-知識ベースの健全性ステータス。
-
-#### レスポンス
 
 ```json
 {
-  "success": true,
-  "health": {
-    "totalEntries": 84,
-    "languages": {
-      "ja": 42,
-      "en": 42
-    },
-    "lastUpdate": "2025-06-30T12:00:00Z",
-    "embeddingModel": "text-embedding-004",
-    "status": "healthy"
+  "query": "Tell me about Engineer Cafe",
+  "session_id": "session-123",
+  "language": "en"
+}
+```
+
+### POST /api/chat/stream
+
+SSE 版の chat endpoint です。
+
+- `X-API-Key` 必須
+- request schema は `/api/chat` と同じ
+- `text/event-stream` を返します
+
+### POST /api/agent/invoke
+
+LangGraph を直接実行する endpoint です。
+
+- `X-API-Key` 必須
+- request schema は `/api/chat` と同じ
+- `{ "status": "success", "result": ... }` を返します
+
+### POST /api/interrupt
+
+進行中 session の割り込み endpoint です。
+
+- `X-API-Key` 必須
+- request body:
+
+```json
+{
+  "session_id": "session-123"
+}
+```
+
+### GET /health
+
+バックエンドの health endpoint です。
+
+- バックエンド service と依存先の health 情報を返します
+- 運用上の health check に使います
+- 現行実装では `/api/chat` と同じ `X-API-Key` 依存は付いていません
+
+レスポンス例:
+
+```json
+{
+  "status": "ok",
+  "service": "engineer-cafe-navigator-backend",
+  "checks": {
+    "api": "ok",
+    "supabase": "ok",
+    "llm_provider": "configured"
   }
 }
 ```
 
-詳細については[メインドキュメント](./README.md)を参照するか、開発チームにお問い合わせください。
+### 内部用スライド helper
+
+`POST /api/slides/content` はフロントエンド `/api/marp` が使う内部向け backend helper です。
+
+- request body: `{ "language": "ja" }`
+- raw markdown と narration data を返します
+- 公開 Marp render endpoint そのものではありません
+
+## Admin API
+
+フロントエンド admin route はすべて `/api/admin/*` 配下にあり、以下が必要です。
+
+```http
+Authorization: Bearer <ADMIN_API_SECRET>
+```
+
+### /api/admin/knowledge
+
+サポートメソッド:
+
+- `GET`: knowledge entry 一覧取得
+- `POST`: knowledge entry 作成
+
+現在の挙動:
+
+- バックエンド `/api/knowledge` へ proxy します
+- 一覧取得時はフロントエンドで `search` を `keyword` に正規化します
+
+### /api/admin/knowledge/[id]
+
+サポートメソッド:
+
+- `GET`: 単一 knowledge entry 取得
+- `PUT`: 単一 knowledge entry 更新
+- `DELETE`: 単一 knowledge entry 削除
+
+単一 entry の CRUD を提供する edge 保護されたフロントエンド admin route です。
+
+### /api/admin/knowledge/categories
+
+サポートメソッド:
+
+- `GET`: category、subcategory、source、language の metadata 取得
+
+### /api/admin/stt
+
+サポートメソッド:
+
+- `GET`: vocabulary 一覧、または `?id=...` で単一 item 取得
+- `POST`: vocabulary 作成
+- `PUT`: `?id=...` を使って vocabulary 更新
+- `DELETE`: `?id=...` を使って vocabulary 削除
+
+現在の挙動:
+
+- バックエンド `/api/stt/vocabulary` へ proxy します
+- 単一 item 操作の前に `id` 形式を検証します
+
+## Reception API
+
+フロントエンド reception route はバックエンド `/api/reception/*` へ proxy します。
+
+### POST /api/reception/start
+
+reception session を開始します。
+
+リクエスト例:
+
+```json
+{
+  "session_id": "session-123",
+  "language": "ja",
+  "trigger_type": "button_press"
+}
+```
+
+### POST /api/reception/respond
+
+reception 会話を継続します。
+
+リクエスト例:
+
+```json
+{
+  "session_id": "session-123",
+  "reception_session_id": "reception-123",
+  "message": "見学で来ました。"
+}
+```
+
+### POST /api/reception/complete
+
+reception から本体 workflow への handoff を完了します。
+
+リクエスト例:
+
+```json
+{
+  "session_id": "session-123",
+  "reception_session_id": "reception-123"
+}
+```
+
+### GET /api/reception/status/[id]
+
+現在の reception 状態を返します。
+
+任意 query parameter:
+
+- `session_id`
+
+レスポンス例:
+
+```json
+{
+  "session_id": "session-123",
+  "stage": "routing",
+  "visitor_type": "new",
+  "purpose": "tour"
+}
+```
+
+## Monitoring と定期実行 route
+
+### /api/monitoring/dashboard
+
+- `GET`
+- `Authorization: Bearer <ADMIN_API_SECRET>` 必須
+- フロントエンド側の運用 metrics を返します
+
+### /api/monitoring/migration-success
+
+- `GET`
+- `Authorization: Bearer <ADMIN_API_SECRET>` 必須
+- migration dashboard data を返します
+
+### /api/cron/update-knowledge-base
+
+- `POST`
+- `Authorization: Bearer <ADMIN_API_SECRET>` 必須
+
+### /api/cron/update-slides
+
+- `POST`
+- `Authorization: Bearer <ADMIN_API_SECRET>` 必須
+
+## Embeddings
+
+現行の canonical な embedding 設定:
+
+- モデル: `text-embedding-3-small`
+- バックエンド embedding service 上の provider path: `openai/text-embedding-3-small`
+- 次元数: `1536`
+
+RAG、admin knowledge ingestion、backend search の説明では、OpenAI `text-embedding-3-small` の 1536 次元を正としてください。
+
+## エラー処理
+
+代表的なエラーレスポンス:
+
+```json
+{
+  "error": "Internal server error"
+}
+```
+
+バックエンドの validation / auth failure でよく使われる status:
+
+- `400 Bad Request`
+- `401 Unauthorized`
+- `403 Forbidden`
+- `404 Not Found`
+- `409 Conflict`
+- `422 Unprocessable Entity`
+- `429 Too Many Requests`
+- `500 Internal Server Error`
+- `503 Service Unavailable`
+
+## 運用メモ
+
+- 必須フロントエンド secret: `BACKEND_API_URL`, `BACKEND_API_KEY`, `ADMIN_API_SECRET`
+- 必須バックエンド secret: `API_SECRET_KEY`
+- backend health と CORS は Cloudflare Workers の本番 domain を前提に設定されています
+- 旧 Vercel の demo / status link は廃止済みのため、この文書から除外しています
