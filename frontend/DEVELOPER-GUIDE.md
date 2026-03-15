@@ -357,17 +357,12 @@ GOOGLE_CLOUD_PROJECT_ID=your-project-id
 GOOGLE_APPLICATION_CREDENTIALS=path/to/service-account.json
 
 # AI Models
-GOOGLE_GENERATIVE_AI_API_KEY=your-gemini-api-key
 OPENAI_API_KEY=your-openai-api-key
 
 # Supabase
 NEXT_PUBLIC_SUPABASE_URL=your-supabase-url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
-
-# Calendar (Optional)
-GOOGLE_CALENDAR_CLIENT_ID=your-calendar-client-id
-GOOGLE_CALENDAR_CLIENT_SECRET=your-calendar-client-secret
 
 # CRON Jobs
 CRON_SECRET=your-cron-secret
