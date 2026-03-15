@@ -35,8 +35,6 @@ export async function GET(request: NextRequest) {
       headers: {
         'Content-Type': 'text/calendar; charset=utf-8',
         'Cache-Control': 'no-cache, no-store, must-revalidate',
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET',
       },
     });
   } catch (error) {
