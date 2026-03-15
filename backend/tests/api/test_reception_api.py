@@ -253,7 +253,7 @@ class TestReceptionStatus:
         start = _start_session(session_id="s1")
         rid = start["reception_session_id"]
 
-        response = client.get(f"/api/reception/status/{rid}")
+        response = client.get(f"/api/reception/status/{rid}", params={"session_id": "s1"})
         assert response.status_code == 200
         data = response.json()
         assert data["session_id"] == "s1"
@@ -278,14 +278,14 @@ class TestReceptionStatus:
             },
         )
 
-        response = client.get(f"/api/reception/status/{rid}")
+        response = client.get(f"/api/reception/status/{rid}", params={"session_id": "s1"})
         assert response.status_code == 200
         data = response.json()
         assert data["stage"] == "routing"
         assert data["purpose"] == "event_participation"
 
     def test_status_404_for_nonexistent_session(self):
-        response = client.get("/api/reception/status/no-such-id")
+        response = client.get("/api/reception/status/no-such-id", params={"session_id": "s1"})
         assert response.status_code == 404
 
     def test_status_with_different_languages(self):
@@ -294,7 +294,7 @@ class TestReceptionStatus:
             start = _start_session(session_id="s1", language=lang)
             rid = start["reception_session_id"]
 
-            response = client.get(f"/api/reception/status/{rid}")
+            response = client.get(f"/api/reception/status/{rid}", params={"session_id": "s1"})
             assert response.status_code == 200
             assert response.json()["stage"] == "greeting"
 

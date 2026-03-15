@@ -11,7 +11,7 @@ from collections import OrderedDict
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Literal, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from backend.domain.reception.models import (
@@ -520,7 +520,7 @@ async def complete_reception(
 @reception_router.get("/status/{reception_session_id}", response_model=ReceptionStatusResponse)
 async def get_reception_status(
     reception_session_id: str,
-    session_id: str = "",
+    session_id: str = Query(..., min_length=1, max_length=128),
 ) -> ReceptionStatusResponse:
     """Return the current state of a reception session."""
     session = await _load_session(reception_session_id, allow_completed=True)
@@ -530,7 +530,7 @@ async def get_reception_status(
             detail=f"Reception session not found: {reception_session_id}",
         )
 
-    if session_id and session.session_id != session_id:
+    if session.session_id != session_id:
         raise HTTPException(
             status_code=403,
             detail="Session ID mismatch",

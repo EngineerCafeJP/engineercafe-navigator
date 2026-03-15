@@ -30,7 +30,7 @@ Current important endpoints:
 
 Notable implementation details:
 
-- API-key protection exists, but becomes optional if `API_SECRET_KEY` is missing.
+- API-key protection exists, but becomes optional only in local/dev environments without `API_SECRET_KEY`; `staging`, `preview`, and `production` fail closed.
 - Rate limiting depends on `slowapi`; without it, the decorators become no-ops.
 - Reception session state is currently stored in process memory, not durable storage.
 - Recent STT fixes added WebM-to-WAV conversion, which means ffmpeg/runtime availability matters for some environments.

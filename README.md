@@ -37,7 +37,7 @@ Browser
 ## 現時点の主要リスク
 
 - フロント側の管理・監視系 endpoint に未認証 route が残っています。
-- バックエンドの API key 保護は `API_SECRET_KEY` 未設定時に無効化されます。
+- バックエンドの API key 保護は local/dev では `API_SECRET_KEY` 未設定時に無効化されますが、`staging` / `preview` / `production` では fail-closed です。
 - `backend/api/reception.py` は受付セッションをメモリ保持しており、再起動や複数インスタンスに弱いです。
 - ドキュメント群には Mastra 前提や古い agent 構成が残っており、文書の現役/履歴の区別が不十分でした。
 
