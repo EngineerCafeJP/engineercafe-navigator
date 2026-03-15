@@ -1,3 +1,4 @@
+import 'server-only';
 import { CronJob } from 'cron';
 import { connpassClient } from '../lib/external-apis/connpass-client';
 import { googleCalendarClient } from '../lib/external-apis/google-calendar-client';
@@ -7,6 +8,9 @@ import { v4 as uuidv4 } from 'uuid';
 
 /**
  * Automated knowledge base updater that syncs external data sources
+ *
+ * Server-only cron helper. Direct service-role access remains intentional until
+ * this workflow is fully owned by the backend.
  */
 export class KnowledgeBaseUpdater {
   private job: CronJob;

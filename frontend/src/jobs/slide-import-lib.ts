@@ -1,3 +1,4 @@
+import 'server-only';
 import fs from 'fs';
 import path from 'path';
 import { knowledgeBaseUtils } from '@/lib/knowledge-base-utils';
@@ -16,6 +17,8 @@ interface NarrationJSON {
 }
 
 export async function runSlideImport(): Promise<{ added: number; updated: number; duplicates: number; skipped: number }> {
+  // Server-only cron helper. Direct service-role access is still intentional
+  // here until slide ingestion is moved behind the backend.
   const narrationDir = path.resolve('src/slides/narration');
   const files = fs.readdirSync(narrationDir).filter((f) => f.endsWith('.json'));
 

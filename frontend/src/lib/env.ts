@@ -44,14 +44,14 @@ const requiredServerEnvSchema = z.object({
 // ---------------------------------------------------------------------------
 
 const optionalServerEnvSchema = z.object({
-  // Admin features
+  // Server-only admin, alerting, and cron features
   SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
 
   // Gemini model override
   GEMINI_MODEL: z.string().optional(),
   GEMINI_API_KEY: z.string().optional(),
 
-  // AI / DB integrations used by optional workflows
+  // AI / DB integrations used by optional server-side workflows
   GOOGLE_GENERATIVE_AI_API_KEY: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),
   POSTGRES_URL: z.string().optional(),

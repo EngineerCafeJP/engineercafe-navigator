@@ -36,7 +36,7 @@ Actual usage varies by feature, but the important frontend-side variables curren
 - `BACKEND_API_KEY`
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- `SUPABASE_SERVICE_ROLE_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY` (server-only; still needed by legacy cron/admin paths)
 - `CRON_SECRET`
 - `ADMIN_API_SECRET`
 - `ALERT_WEBHOOK_SECRET`

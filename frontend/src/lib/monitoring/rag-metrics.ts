@@ -1,7 +1,11 @@
+import 'server-only';
 import { supabaseAdmin } from '../supabase';
 
 /**
  * RAG Metrics for monitoring search performance and external API usage
+ *
+ * TODO(frontend-supabase-cleanup): Keep this server-only until monitoring and
+ * cron flows are fully handled by the backend.
  */
 export class RAGMetrics {
   private static instance: RAGMetrics;

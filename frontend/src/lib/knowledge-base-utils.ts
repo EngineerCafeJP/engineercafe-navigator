@@ -1,7 +1,13 @@
+import 'server-only';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { supabaseAdmin } from './supabase';
 import { SupportedLanguage } from '@/lib/types';
 
+/**
+ * TODO(frontend-supabase-cleanup): This server-only helper still uses direct
+ * Supabase access because active admin knowledge routes and cron jobs depend on
+ * it. Remove it after those paths proxy through the backend.
+ */
 export interface KnowledgeBaseEntry {
   content: string;
   category?: string;
