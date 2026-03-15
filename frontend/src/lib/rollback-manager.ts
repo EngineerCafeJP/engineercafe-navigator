@@ -1,8 +1,13 @@
+import 'server-only';
 import { featureFlags } from './feature-flags';
 import { supabaseAdmin } from './supabase';
 
 /**
  * Rollback manager for safe production deployments
+ *
+ * TODO(frontend-supabase-cleanup): Alerts still invoke this from a frontend
+ * route handler. Move the workflow behind the backend before removing direct
+ * Supabase access from frontend runtime code.
  */
 export class RollbackManager {
   private static instance: RollbackManager;
