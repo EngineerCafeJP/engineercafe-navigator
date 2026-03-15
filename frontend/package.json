@@ -103,6 +103,10 @@
     "wrangler": "4.69.0"
   },
   "pnpm": {
+    "overrides": {
+      "fast-xml-parser": "5.4.1",
+      "undici": "7.24.2"
+    },
     "onlyBuiltDependencies": [
       "esbuild",
       "sharp",
