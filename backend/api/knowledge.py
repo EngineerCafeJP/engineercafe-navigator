@@ -87,6 +87,21 @@ class KnowledgeResponse(BaseModel):
     error: Optional[str] = None
 
 
+class KnowledgeCategoriesStats(BaseModel):
+    totalCategories: int
+    totalSubcategories: int
+    totalSources: int
+    totalLanguages: int
+
+
+class KnowledgeCategoriesResponse(BaseModel):
+    categories: List[str]
+    subcategories: Dict[str, List[str]]
+    sources: List[str]
+    languages: List[str]
+    stats: KnowledgeCategoriesStats
+
+
 # =============================================================================
 # Helper
 # =============================================================================
@@ -155,6 +170,58 @@ def _rollback_uploaded_chunks(supabase: Any, inserted_ids: List[str]) -> None:
 # =============================================================================
 # Endpoints
 # =============================================================================
+
+
+@router.get("/knowledge/categories", response_model=KnowledgeCategoriesResponse)
+@rate_limit("60/minute")
+async def get_knowledge_categories(request: Request):
+    """ナレッジカテゴリ一覧取得"""
+    try:
+        supabase = _get_supabase()
+
+        cat_result = supabase.table("knowledge_base").select("category").execute()
+        categories = sorted(
+            {row["category"] for row in (cat_result.data or []) if row.get("category")}
+        )
+
+        sub_result = supabase.table("knowledge_base").select("category,subcategory").execute()
+        subcategory_sets: Dict[str, set[str]] = {}
+        for row in sub_result.data or []:
+            category = row.get("category")
+            subcategory = row.get("subcategory")
+            if not category or not subcategory:
+                continue
+            subcategory_sets.setdefault(category, set()).add(subcategory)
+
+        subcategories = {
+            category: sorted(values) for category, values in sorted(subcategory_sets.items())
+        }
+
+        src_result = supabase.table("knowledge_base").select("source").execute()
+        sources = sorted({row["source"] for row in (src_result.data or []) if row.get("source")})
+
+        lang_result = supabase.table("knowledge_base").select("language").execute()
+        languages = sorted(
+            {row["language"] for row in (lang_result.data or []) if row.get("language")}
+        )
+
+        return KnowledgeCategoriesResponse(
+            categories=categories,
+            subcategories=subcategories,
+            sources=sources,
+            languages=languages,
+            stats=KnowledgeCategoriesStats(
+                totalCategories=len(categories),
+                totalSubcategories=sum(len(values) for values in subcategories.values()),
+                totalSources=len(sources),
+                totalLanguages=len(languages),
+            ),
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to get knowledge categories: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to get knowledge categories")
 
 
 @router.get("/knowledge", response_model=KnowledgeListResponse)
