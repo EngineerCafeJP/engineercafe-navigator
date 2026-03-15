@@ -176,34 +176,32 @@ export class AudioInteractionManager {
       backdrop-filter: blur(10px);
     `;
 
-    this.interactionPromptElement.innerHTML = `
-      <div style="margin-bottom: 16px; font-size: 14px; line-height: 1.4;">
-        ${message}
-      </div>
-      <button id="audio-enable-btn" style="
-        background: #4CAF50;
-        color: white;
-        border: none;
-        padding: 12px 24px;
-        border-radius: 8px;
-        font-size: 16px;
-        cursor: pointer;
-        transition: background 0.2s;
-      ">
-        ${buttonText}
-      </button>
+    const messageElement = document.createElement('div');
+    messageElement.style.cssText = 'margin-bottom: 16px; font-size: 14px; line-height: 1.4;';
+    messageElement.textContent = message;
+
+    const button = document.createElement('button');
+    button.style.cssText = `
+      background: #4CAF50;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-size: 16px;
+      cursor: pointer;
+      transition: background 0.2s;
     `;
+    button.textContent = buttonText;
+
+    this.interactionPromptElement.append(messageElement, button);
 
     document.body.appendChild(this.interactionPromptElement);
     this.isPromptVisible = true;
 
     // Add click handler
-    const button = this.interactionPromptElement.querySelector('#audio-enable-btn');
-    if (button) {
-      button.addEventListener('click', () => {
-        // This will trigger the existing interaction handler
-      });
-    }
+    button.addEventListener('click', () => {
+      // This will trigger the existing interaction handler
+    });
 
     // Auto-hide after timeout
     if (timeout > 0) {

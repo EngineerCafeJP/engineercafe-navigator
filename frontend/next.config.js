@@ -11,10 +11,7 @@ const nextConfig = {
     serverActions: {
       allowedOrigins: [
         "localhost:3000",
-        "vercel.app",
-        "*.vercel.app",
-        "*.pages.dev",
-        "*.workers.dev",
+        "engineer-cafe-navigator.company-997.workers.dev",
       ],
     },
   },
