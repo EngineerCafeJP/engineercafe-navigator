@@ -200,7 +200,8 @@ app.add_middleware(RequestIDMiddleware)
 app.add_middleware(TokenTrackerMiddleware)
 
 
-_API_SECRET_KEY = os.getenv("API_SECRET_KEY")
+_raw_api_key = os.getenv("API_SECRET_KEY", "").strip()
+_API_SECRET_KEY = _raw_api_key if _raw_api_key else None
 
 if _ENVIRONMENT == "production" and not _API_SECRET_KEY:
     logger.critical("API_SECRET_KEY is required in production. Refusing to start.")

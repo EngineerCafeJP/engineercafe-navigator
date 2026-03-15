@@ -63,3 +63,11 @@ async def test_verify_api_key_returns_503_for_production_without_secret(monkeypa
 
     assert exc_info.value.status_code == 503
     assert exc_info.value.detail == "Server misconfigured"
+
+
+@pytest.mark.asyncio
+async def test_verify_api_key_skips_in_dev_when_no_secret(monkeypatch):
+    monkeypatch.setattr(main_mod, "_API_SECRET_KEY", None)
+    monkeypatch.setattr(main_mod, "_ENVIRONMENT", "development")
+
+    await main_mod.verify_api_key(_make_request())
