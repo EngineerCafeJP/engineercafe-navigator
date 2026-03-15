@@ -8,7 +8,8 @@ from __future__ import annotations
 
 import logging
 from collections import OrderedDict
-from typing import Literal, Optional
+from datetime import datetime
+from typing import TYPE_CHECKING, Any, Literal, Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -24,6 +25,10 @@ from backend.utils.reception_templates import (
     get_purpose_hearing_prompt,
     get_reception_response,
 )
+from backend.utils.reception_repository import ReceptionRepository
+
+if TYPE_CHECKING:
+    from backend.services.reception_handoff_service import ReceptionHandoffService
 
 logger = logging.getLogger(__name__)
 
@@ -57,16 +62,180 @@ reception_router = APIRouter(prefix="/api/reception", tags=["reception"])
 _MAX_SESSIONS = 1000
 
 _active_sessions: OrderedDict[str, ReceptionSession] = OrderedDict()
+_session_repository: Optional[ReceptionRepository] = None
 
 
 def _store_session(session: ReceptionSession) -> None:
-    """Store a session, evicting the oldest if at capacity."""
+    """Cache a session locally, evicting the oldest if at capacity."""
     if session.id in _active_sessions:
         _active_sessions.move_to_end(session.id)
     else:
         if len(_active_sessions) >= _MAX_SESSIONS:
             _active_sessions.popitem(last=False)
     _active_sessions[session.id] = session
+
+
+def _get_session_repository() -> ReceptionRepository:
+    global _session_repository
+    if _session_repository is None:
+        _session_repository = ReceptionRepository()
+    return _session_repository
+
+
+def _reset_session_storage() -> None:
+    """Reset cache and repository singleton for test isolation."""
+    global _session_repository
+    _session_repository = None
+    _active_sessions.clear()
+
+
+def _serialize_session(session: ReceptionSession, *, status: str = "active") -> dict[str, Any]:
+    visitor_identity: dict[str, Any] | None = None
+    if session.visitor_identity is not None:
+        visitor_identity = {
+            "visitor_type": session.visitor_identity.visitor_type.value,
+            "user_id": session.visitor_identity.user_id,
+            "name": session.visitor_identity.name,
+            "last_visit_date": (
+                session.visitor_identity.last_visit_date.isoformat()
+                if session.visitor_identity.last_visit_date is not None
+                else None
+            ),
+            "last_purpose": (
+                {
+                    "category": session.visitor_identity.last_purpose.category,
+                    "detail": session.visitor_identity.last_purpose.detail,
+                }
+                if session.visitor_identity.last_purpose is not None
+                else None
+            ),
+            "visit_count": session.visitor_identity.visit_count,
+        }
+
+    purpose: dict[str, Any] | None = None
+    if session.purpose is not None:
+        purpose = {
+            "category": session.purpose.category,
+            "detail": session.purpose.detail,
+        }
+
+    return {
+        "id": session.id,
+        "session_id": session.session_id,
+        "stage": session.stage,
+        "language": session.language,
+        "trigger_type": session.trigger_type,
+        "created_at": session.created_at.isoformat(),
+        "metadata": session.metadata,
+        "purpose": purpose,
+        "visitor_identity": visitor_identity,
+        "visitor_name": session.visitor_identity.name if session.visitor_identity else None,
+        "visitor_type": (
+            session.visitor_identity.visitor_type.value if session.visitor_identity else None
+        ),
+        "status": status,
+    }
+
+
+def _parse_datetime(value: Any) -> datetime | None:
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str) and value:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    return None
+
+
+def _deserialize_session(record: dict[str, Any]) -> ReceptionSession:
+    session_data = record.get("session_data") or {}
+
+    visitor_identity_data = session_data.get("visitor_identity") or {}
+    last_purpose_data = visitor_identity_data.get("last_purpose")
+    last_purpose = None
+    if isinstance(last_purpose_data, dict) and last_purpose_data.get("category"):
+        last_purpose = VisitPurpose(
+            category=last_purpose_data["category"],
+            detail=last_purpose_data.get("detail"),
+        )
+
+    visitor_identity = None
+    visitor_type = (
+        visitor_identity_data.get("visitor_type")
+        or record.get("visitor_type")
+        or ("returning" if record.get("user_id") else None)
+    )
+    if visitor_type in {"new", "returning"}:
+        visitor_identity = VisitorIdentity(
+            visitor_type=VisitorType(value=visitor_type),
+            user_id=visitor_identity_data.get("user_id", record.get("user_id")),
+            name=visitor_identity_data.get("name", record.get("visitor_name")),
+            last_visit_date=_parse_datetime(visitor_identity_data.get("last_visit_date")),
+            last_purpose=last_purpose,
+            visit_count=visitor_identity_data.get("visit_count", 0),
+        )
+
+    purpose_data = session_data.get("purpose")
+    if isinstance(purpose_data, dict):
+        purpose = (
+            VisitPurpose(
+                category=purpose_data["category"],
+                detail=purpose_data.get("detail"),
+            )
+            if purpose_data.get("category")
+            else None
+        )
+    else:
+        purpose = VisitPurpose(category=record["purpose"]) if record.get("purpose") else None
+
+    created_at = _parse_datetime(session_data.get("created_at")) or _parse_datetime(
+        record.get("created_at")
+    )
+    if created_at is None:
+        created_at = datetime.now()
+
+    return ReceptionSession(
+        id=record["id"],
+        session_id=session_data.get("session_id", ""),
+        visitor_identity=visitor_identity,
+        purpose=purpose,
+        stage=session_data.get("stage", record.get("stage", "initiated")),
+        language=session_data.get("language", record.get("language", "ja")),
+        trigger_type=session_data.get("trigger_type", record.get("trigger_type", "button_press")),
+        created_at=created_at,
+        metadata=session_data.get("metadata", record.get("metadata", {})),
+    )
+
+
+async def _persist_session(session: ReceptionSession, *, status: str = "active") -> None:
+    _store_session(session)
+    try:
+        await _get_session_repository().store_session(
+            session.id, _serialize_session(session, status=status)
+        )
+    except Exception as exc:
+        logger.warning("Reception persistence unavailable; using in-memory fallback: %s", exc)
+
+
+async def _load_session(
+    reception_session_id: str, *, allow_completed: bool = False
+) -> Optional[ReceptionSession]:
+    try:
+        record = await _get_session_repository().get_session_record(
+            reception_session_id,
+            include_completed=allow_completed,
+        )
+    except Exception as exc:
+        logger.warning("Reception persistence read failed; using in-memory fallback: %s", exc)
+        record = None
+
+    if record is not None:
+        session = _deserialize_session(record)
+        _store_session(session)
+        return session
+
+    session = _active_sessions.get(reception_session_id)
+    if session is not None:
+        _active_sessions.move_to_end(reception_session_id)
+    return session
 
 
 # ---------------------------------------------------------------------------
@@ -196,7 +365,7 @@ async def start_reception(request: ReceptionStartRequest) -> ReceptionStartRespo
     )
     session.advance_to("greeting")
 
-    _store_session(session)
+    await _persist_session(session)
 
     greeting_result = get_reception_response(request.language, is_returning=False)
     logger.info(
@@ -216,13 +385,12 @@ async def start_reception(request: ReceptionStartRequest) -> ReceptionStartRespo
 @reception_router.post("/respond", response_model=ReceptionRespondResponse)
 async def respond_reception(request: ReceptionRespondRequest) -> ReceptionRespondResponse:
     """Continue the reception conversation."""
-    session = _active_sessions.get(request.reception_session_id)
+    session = await _load_session(request.reception_session_id)
     if session is None:
         raise HTTPException(
             status_code=404,
             detail=f"Reception session not found: {request.reception_session_id}",
         )
-    _active_sessions.move_to_end(request.reception_session_id)
 
     if session.session_id != request.session_id:
         raise HTTPException(
@@ -237,6 +405,7 @@ async def respond_reception(request: ReceptionRespondRequest) -> ReceptionRespon
         identity = VisitorIdentity(visitor_type=VisitorType(value="new"))
         session.identify_visitor(identity)
         session.advance_to("purpose_hearing")
+        await _persist_session(session)
 
         prompt_result = get_purpose_hearing_prompt(language)
 
@@ -259,6 +428,7 @@ async def respond_reception(request: ReceptionRespondRequest) -> ReceptionRespon
         purpose = VisitPurpose(category=category, detail=request.message)
         session.set_purpose(purpose)
         session.advance_to("routing")
+        await _persist_session(session)
 
         followup_result = get_purpose_followup(language, category)
         return ReceptionRespondResponse(
@@ -270,6 +440,7 @@ async def respond_reception(request: ReceptionRespondRequest) -> ReceptionRespon
 
     if current_stage == "routing":
         session.advance_to("completed")
+        await _persist_session(session, status="completed")
 
         routing_messages = {
             "ja": "スタッフをお呼びします。少々お待ちください。",
@@ -296,13 +467,12 @@ async def complete_reception(
     Called when the session is in the 'routing' stage. Runs purpose-specific
     preprocessing and returns the workflow state for MainWorkflow invocation.
     """
-    session = _active_sessions.get(request.reception_session_id)
+    session = await _load_session(request.reception_session_id)
     if session is None:
         raise HTTPException(
             status_code=404,
             detail=(f"Reception session not found: " f"{request.reception_session_id}"),
         )
-    _active_sessions.move_to_end(request.reception_session_id)
 
     if session.session_id != request.session_id:
         raise HTTPException(
@@ -322,6 +492,7 @@ async def complete_reception(
     # Advance stage BEFORE async work to prevent duplicate processing
     # from concurrent requests (race condition guard).
     session.advance_to("completed")
+    await _persist_session(session, status="completed")
 
     handoff_service = _get_handoff_service()
     try:
@@ -352,13 +523,12 @@ async def get_reception_status(
     session_id: str = "",
 ) -> ReceptionStatusResponse:
     """Return the current state of a reception session."""
-    session = _active_sessions.get(reception_session_id)
+    session = await _load_session(reception_session_id, allow_completed=True)
     if session is None:
         raise HTTPException(
             status_code=404,
             detail=f"Reception session not found: {reception_session_id}",
         )
-    _active_sessions.move_to_end(reception_session_id)
 
     if session_id and session.session_id != session_id:
         raise HTTPException(

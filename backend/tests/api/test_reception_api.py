@@ -22,9 +22,9 @@ client = TestClient(app)
 @pytest.fixture(autouse=True)
 def clear_sessions():
     """Wipe the in-memory session store before every test."""
-    reception_module._active_sessions.clear()
+    reception_module._reset_session_storage()
     yield
-    reception_module._active_sessions.clear()
+    reception_module._reset_session_storage()
 
 
 def _start_session(session_id: str = "sess-001", language: str = "ja") -> dict:
