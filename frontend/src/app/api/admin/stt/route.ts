@@ -36,11 +36,11 @@ export async function GET(request: NextRequest) {
     }
 
     const params: Record<string, string> = {};
-    for (const [key, value] of searchParams.entries()) {
+    searchParams.forEach((value, key) => {
       if (ALLOWED_PARAMS.has(key)) {
         params[key] = value;
       }
-    }
+    });
 
     const response = await backendFetch('/api/stt/vocabulary', {
       method: 'GET',
