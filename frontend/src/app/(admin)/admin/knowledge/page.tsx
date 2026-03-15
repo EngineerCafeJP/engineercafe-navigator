@@ -1,12 +1,11 @@
 'use client';
 
-import { useState } from 'react';
-import useSWR from 'swr';
-import { Toaster } from 'react-hot-toast';
+import { useCallback, useState } from 'react';
 import Link from 'next/link';
+import useSWR from 'swr';
+import { Toaster, toast } from 'react-hot-toast';
+import { deleteKnowledge, getKnowledgeList } from '@/lib/api/knowledge';
 import { KnowledgeTable } from './components/KnowledgeTable';
-
-const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
 export default function KnowledgeAdminPage() {
   const [page, setPage] = useState(1);
@@ -14,41 +13,26 @@ export default function KnowledgeAdminPage() {
   const [language, setLanguage] = useState('');
   const [category, setCategory] = useState('');
 
-  const queryParams = new URLSearchParams();
-  if (page > 1) queryParams.set('page', page.toString());
-  if (search) queryParams.set('search', search);
-  if (language) queryParams.set('language', language);
-  if (category) queryParams.set('category', category);
+  const { data, error, mutate } = useSWR({ search, language, category, page }, getKnowledgeList);
 
-  const { data, error, mutate } = useSWR(
-    `/api/admin/knowledge?${queryParams.toString()}`,
-    fetcher
-  );
-
-  const handleSearch = (e: React.FormEvent) => {
+  const handleSearch = useCallback((e: React.FormEvent) => {
     e.preventDefault();
     setPage(1);
     mutate();
-  };
+  }, [mutate]);
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = useCallback(async (id: string) => {
     if (!confirm('削除してもよろしいですか？')) return;
 
     try {
-      const response = await fetch(`/api/admin/knowledge/${id}`, {
-        method: 'DELETE',
-      });
-
-      if (!response.ok) {
-        throw new Error('削除に失敗しました');
-      }
-
+      await deleteKnowledge(id);
+      toast.success('削除しました');
       mutate();
     } catch (error) {
       console.error('Delete error:', error);
-      alert('削除に失敗しました');
+      toast.error(error instanceof Error ? error.message : '削除に失敗しました');
     }
-  };
+  }, [mutate]);
 
   if (error) {
     return (
@@ -65,20 +49,26 @@ export default function KnowledgeAdminPage() {
   return (
     <div className="min-h-screen bg-gray-50 p-8">
       <Toaster position="top-right" />
-      
+
       <div className="max-w-7xl mx-auto">
         <div className="bg-white rounded-lg shadow-sm border border-gray-200">
           <div className="px-6 py-4 border-b border-gray-200">
             <div className="flex justify-between items-center">
-              <h1 className="text-2xl font-bold text-gray-900">
-                知識ベース管理
-              </h1>
-              <Link
-                href="/admin/knowledge/new"
-                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                新規作成
-              </Link>
+              <h1 className="text-2xl font-bold text-gray-900">知識ベース管理</h1>
+              <div className="flex gap-3">
+                <Link
+                  href="/admin/knowledge/upload"
+                  className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
+                >
+                  ファイルアップロード
+                </Link>
+                <Link
+                  href="/admin/knowledge/new"
+                  className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  新規作成
+                </Link>
+              </div>
             </div>
           </div>
 
@@ -86,9 +76,7 @@ export default function KnowledgeAdminPage() {
             <form onSubmit={handleSearch} className="mb-6">
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    検索
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">検索</label>
                   <input
                     type="text"
                     value={search}
@@ -97,11 +85,9 @@ export default function KnowledgeAdminPage() {
                     placeholder="コンテンツで検索..."
                   />
                 </div>
-                
+
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    言語
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">言語</label>
                   <select
                     value={language}
                     onChange={(e) => setLanguage(e.target.value)}
@@ -112,11 +98,9 @@ export default function KnowledgeAdminPage() {
                     <option value="en">英語</option>
                   </select>
                 </div>
-                
+
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    カテゴリ
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">カテゴリ</label>
                   <input
                     type="text"
                     value={category}
@@ -125,7 +109,7 @@ export default function KnowledgeAdminPage() {
                     placeholder="カテゴリ名..."
                   />
                 </div>
-                
+
                 <div className="flex items-end">
                   <button
                     type="submit"
@@ -146,7 +130,7 @@ export default function KnowledgeAdminPage() {
               />
             ) : (
               <div className="flex justify-center py-8">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
               </div>
             )}
           </div>

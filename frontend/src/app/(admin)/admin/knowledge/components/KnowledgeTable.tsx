@@ -1,19 +1,20 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { MarkdownViewer } from './MarkdownViewer';
 
 interface KnowledgeEntry {
   id: string;
+  title: string;
   content: string;
   category?: string;
   subcategory?: string;
   language: string;
   source?: string;
-  metadata: Record<string, any>;
-  created_at: string;
-  updated_at: string;
+  metadata?: Record<string, unknown>;
+  created_at?: string;
+  updated_at?: string;
 }
 
 interface KnowledgeTableProps {
@@ -30,33 +31,33 @@ interface KnowledgeTableProps {
 
 export function KnowledgeTable({ data, onDelete, page, onPageChange }: KnowledgeTableProps) {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  const totalPages = Math.ceil(data.total / data.limit);
+  const paginationButtons = useMemo(
+    () => Array.from({ length: totalPages }, (_, i) => i + 1),
+    [totalPages],
+  );
 
   const toggleRow = (id: string) => {
-    const newExpanded = new Set(expandedRows);
-    if (newExpanded.has(id)) {
-      newExpanded.delete(id);
+    const nextExpanded = new Set(expandedRows);
+    if (nextExpanded.has(id)) {
+      nextExpanded.delete(id);
     } else {
-      newExpanded.add(id);
+      nextExpanded.add(id);
     }
-    setExpandedRows(newExpanded);
+    setExpandedRows(nextExpanded);
   };
 
-  const totalPages = Math.ceil(data.total / data.limit);
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('ja-JP', {
+  const formatDate = (dateString: string) =>
+    new Date(dateString).toLocaleDateString('ja-JP', {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
       hour: '2-digit',
       minute: '2-digit',
     });
-  };
 
-  const truncateContent = (content: string, maxLength: number = 100) => {
-    if (content.length <= maxLength) return content;
-    return content.substring(0, maxLength) + '...';
-  };
+  const truncateContent = (content: string, maxLength = 100) =>
+    content.length <= maxLength ? content : `${content.substring(0, maxLength)}...`;
 
   return (
     <div>
@@ -90,6 +91,7 @@ export function KnowledgeTable({ data, onDelete, page, onPageChange }: Knowledge
               <tr key={entry.id} className="hover:bg-gray-50">
                 <td className="px-6 py-4">
                   <div>
+                    <div className="text-sm font-semibold text-gray-900 mb-1">{entry.title}</div>
                     <div className="text-sm text-gray-900">
                       {expandedRows.has(entry.id) ? (
                         <MarkdownViewer content={entry.content} />
@@ -112,16 +114,18 @@ export function KnowledgeTable({ data, onDelete, page, onPageChange }: Knowledge
                   )}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
-                  <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                    entry.language === 'ja' 
-                      ? 'bg-blue-100 text-blue-800' 
-                      : 'bg-green-100 text-green-800'
-                  }`}>
+                  <span
+                    className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                      entry.language === 'ja'
+                        ? 'bg-blue-100 text-blue-800'
+                        : 'bg-green-100 text-green-800'
+                    }`}
+                  >
                     {entry.language}
                   </span>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {formatDate(entry.updated_at)}
+                  {entry.updated_at ? formatDate(entry.updated_at) : '-'}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                   <div className="flex space-x-2">
@@ -155,8 +159,8 @@ export function KnowledgeTable({ data, onDelete, page, onPageChange }: Knowledge
             >
               前
             </button>
-            
-            {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
+
+            {paginationButtons.map((pageNum) => (
               <button
                 key={pageNum}
                 onClick={() => onPageChange(pageNum)}
@@ -169,7 +173,7 @@ export function KnowledgeTable({ data, onDelete, page, onPageChange }: Knowledge
                 {pageNum}
               </button>
             ))}
-            
+
             <button
               onClick={() => onPageChange(page + 1)}
               disabled={page === totalPages}

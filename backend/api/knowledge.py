@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional
 
 import httpx
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
+from fastapi.responses import FileResponse
 from postgrest import APIError
 from starlette.requests import Request
 from pydantic import BaseModel, Field
@@ -165,6 +166,44 @@ def _rollback_uploaded_chunks(supabase: Any, inserted_ids: List[str]) -> None:
             logger.error("Failed to rollback chunk %s", row_id)
 
 
+def _build_knowledge_categories_response(supabase: Any) -> KnowledgeCategoriesResponse:
+    """カテゴリ関連の編集設定データを構築する"""
+    cat_result = supabase.table("knowledge_base").select("category").execute()
+    categories = sorted({row["category"] for row in (cat_result.data or []) if row.get("category")})
+
+    sub_result = supabase.table("knowledge_base").select("category,subcategory").execute()
+    subcategory_sets: Dict[str, set[str]] = {}
+    for row in sub_result.data or []:
+        category = row.get("category")
+        subcategory = row.get("subcategory")
+        if not category or not subcategory:
+            continue
+        subcategory_sets.setdefault(category, set()).add(subcategory)
+
+    subcategories = {
+        category: sorted(values) for category, values in sorted(subcategory_sets.items())
+    }
+
+    src_result = supabase.table("knowledge_base").select("source").execute()
+    sources = sorted({row["source"] for row in (src_result.data or []) if row.get("source")})
+
+    lang_result = supabase.table("knowledge_base").select("language").execute()
+    languages = sorted({row["language"] for row in (lang_result.data or []) if row.get("language")})
+
+    return KnowledgeCategoriesResponse(
+        categories=categories,
+        subcategories=subcategories,
+        sources=sources,
+        languages=languages,
+        stats=KnowledgeCategoriesStats(
+            totalCategories=len(categories),
+            totalSubcategories=sum(len(values) for values in subcategories.values()),
+            totalSources=len(sources),
+            totalLanguages=len(languages),
+        ),
+    )
+
+
 # =============================================================================
 # Endpoints
 # =============================================================================
@@ -175,51 +214,25 @@ def _rollback_uploaded_chunks(supabase: Any, inserted_ids: List[str]) -> None:
 async def get_knowledge_categories(request: Request):
     """ナレッジカテゴリ一覧取得"""
     try:
-        supabase = _get_supabase()
-
-        cat_result = supabase.table("knowledge_base").select("category").execute()
-        categories = sorted(
-            {row["category"] for row in (cat_result.data or []) if row.get("category")}
-        )
-
-        sub_result = supabase.table("knowledge_base").select("category,subcategory").execute()
-        subcategory_sets: Dict[str, set[str]] = {}
-        for row in sub_result.data or []:
-            category = row.get("category")
-            subcategory = row.get("subcategory")
-            if not category or not subcategory:
-                continue
-            subcategory_sets.setdefault(category, set()).add(subcategory)
-
-        subcategories = {
-            category: sorted(values) for category, values in sorted(subcategory_sets.items())
-        }
-
-        src_result = supabase.table("knowledge_base").select("source").execute()
-        sources = sorted({row["source"] for row in (src_result.data or []) if row.get("source")})
-
-        lang_result = supabase.table("knowledge_base").select("language").execute()
-        languages = sorted(
-            {row["language"] for row in (lang_result.data or []) if row.get("language")}
-        )
-
-        return KnowledgeCategoriesResponse(
-            categories=categories,
-            subcategories=subcategories,
-            sources=sources,
-            languages=languages,
-            stats=KnowledgeCategoriesStats(
-                totalCategories=len(categories),
-                totalSubcategories=sum(len(values) for values in subcategories.values()),
-                totalSources=len(sources),
-                totalLanguages=len(languages),
-            ),
-        )
+        return _build_knowledge_categories_response(_get_supabase())
     except HTTPException:
         raise
     except Exception as e:
         logger.error("Failed to get knowledge categories: %s", e)
         raise HTTPException(status_code=500, detail="Failed to get knowledge categories")
+
+
+@router.get("/knowledge/editor-config", response_model=KnowledgeCategoriesResponse)
+@rate_limit("60/minute")
+async def get_editor_config(request: Request):
+    """エディタ起動時の設定データを取得"""
+    try:
+        return _build_knowledge_categories_response(_get_supabase())
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to get knowledge editor config: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to get knowledge editor config")
 
 
 @router.get("/knowledge", response_model=KnowledgeListResponse)
@@ -701,3 +714,25 @@ async def delete_knowledge(request: Request, knowledge_id: str):
     except Exception as e:
         logger.error("Failed to delete knowledge %s: %s", knowledge_id, e)
         raise HTTPException(status_code=500, detail="Failed to delete knowledge entry")
+
+
+@router.get("/knowledge/templates/{filename}")
+@rate_limit("30/minute")
+async def download_template(request: Request, filename: str):
+    """テンプレートファイルをダウンロードする"""
+    allowed_files = {"knowledge-template.md", "knowledge-pdf-template-guide.md"}
+
+    if filename not in allowed_files:
+        raise HTTPException(status_code=404, detail="Template not found")
+
+    templates_dir = os.path.join(os.path.dirname(__file__), "..", "static", "templates")
+    file_path = os.path.join(templates_dir, filename)
+
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="File not found")
+
+    return FileResponse(
+        path=file_path,
+        media_type="application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

@@ -1,24 +1,42 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { knowledgeBaseUtils, KnowledgeBaseEntry } from '@/lib/knowledge-base-utils';
+import { backendFetch } from '@/lib/api/backend-proxy';
+
+function toErrorBody(data: unknown, fallback: string) {
+  if (data && typeof data === 'object') {
+    const payload = data as {
+      detail?: string;
+      error?: string;
+      message?: string;
+    };
+    const error = payload.error || payload.detail || payload.message;
+    if (error) {
+      return { ...payload, error };
+    }
+  }
+
+  return { error: fallback };
+}
 
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params;
-    const entry = await knowledgeBaseUtils.getById(id);
+    const response = await backendFetch(`/api/knowledge/${id}`, {
+      method: 'GET',
+    });
 
-    if (!entry) {
+    if (!response.ok) {
       return NextResponse.json(
-        { error: 'Entry not found' },
-        { status: 404 }
+        toErrorBody(response.data, 'Failed to fetch knowledge entry'),
+        { status: response.status }
       );
     }
 
-    return NextResponse.json(entry);
-  } catch (error) {
-    console.error('Failed to get knowledge entry:', error);
+    const payload = response.data as { data?: unknown };
+    return NextResponse.json(payload.data ?? payload, { status: response.status });
+  } catch {
     return NextResponse.json(
       { error: 'Failed to get knowledge entry' },
       { status: 500 }
@@ -32,20 +50,21 @@ export async function PUT(
 ) {
   try {
     const { id } = await params;
-    const updates: Partial<KnowledgeBaseEntry> = await request.json();
+    const body = await request.json();
+    const response = await backendFetch(`/api/knowledge/${id}`, {
+      method: 'PUT',
+      body,
+    });
 
-    const result = await knowledgeBaseUtils.updateEntry(id, updates);
-
-    if (result.success) {
-      return NextResponse.json({ success: true });
-    } else {
+    if (!response.ok) {
       return NextResponse.json(
-        { error: result.error || 'Failed to update entry' },
-        { status: 400 }
+        toErrorBody(response.data, 'Failed to update knowledge entry'),
+        { status: response.status }
       );
     }
-  } catch (error) {
-    console.error('Failed to update knowledge entry:', error);
+
+    return NextResponse.json(response.data, { status: response.status });
+  } catch {
     return NextResponse.json(
       { error: 'Failed to update knowledge entry' },
       { status: 500 }
@@ -54,23 +73,24 @@ export async function PUT(
 }
 
 export async function DELETE(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params;
-    const success = await knowledgeBaseUtils.deleteEntry(id);
+    const response = await backendFetch(`/api/knowledge/${id}`, {
+      method: 'DELETE',
+    });
 
-    if (success) {
-      return NextResponse.json({ success: true });
-    } else {
+    if (!response.ok) {
       return NextResponse.json(
-        { error: 'Failed to delete entry' },
-        { status: 400 }
+        toErrorBody(response.data, 'Failed to delete knowledge entry'),
+        { status: response.status }
       );
     }
-  } catch (error) {
-    console.error('Failed to delete knowledge entry:', error);
+
+    return NextResponse.json(response.data, { status: response.status });
+  } catch {
     return NextResponse.json(
       { error: 'Failed to delete knowledge entry' },
       { status: 500 }
