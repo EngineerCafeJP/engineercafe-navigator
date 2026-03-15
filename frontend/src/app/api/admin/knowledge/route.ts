@@ -22,9 +22,9 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const params: Record<string, string> = {};
 
-    for (const [key, value] of searchParams.entries()) {
+    searchParams.forEach((value, key) => {
       params[key] = value;
-    }
+    });
 
     if (params.search && !params.keyword) {
       params.keyword = params.search;
@@ -43,8 +43,7 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.json(response.data, { status: response.status });
-  } catch (error) {
-    console.error('Failed to get knowledge entries:', error);
+  } catch {
     return NextResponse.json(
       { error: 'Failed to get knowledge entries' },
       { status: 500 }
@@ -76,8 +75,7 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json(response.data, { status: response.status });
-  } catch (error) {
-    console.error('Failed to create knowledge entry:', error);
+  } catch {
     return NextResponse.json(
       { error: 'Failed to create knowledge entry' },
       { status: 500 }
