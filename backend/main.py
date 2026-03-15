@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import re
+import sys
 import time
 from contextlib import asynccontextmanager
 from io import BytesIO
@@ -34,6 +35,7 @@ logger = logging.getLogger(__name__)
 
 
 _VALID_REQUEST_ID = re.compile(r"^[a-zA-Z0-9\-]{1,64}$")
+_ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
 
 
 class RequestIDMiddleware(BaseHTTPMiddleware):
@@ -115,7 +117,7 @@ async def lifespan(app: FastAPI):
         logger.error("起動時バリデーション失敗。環境変数を確認してください。")
         raise
 
-    if os.getenv("ENVIRONMENT", "development") == "production":
+    if _ENVIRONMENT == "production":
         setup_structured_logging()
 
     try:
@@ -169,31 +171,27 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Rate limiting (optional - requires slowapi)
-limiter: Optional[Any] = None
+# Rate limiting
+limiter: Any
 
 try:
     from slowapi import Limiter, _rate_limit_exceeded_handler
-    from slowapi.util import get_remote_address
     from slowapi.errors import RateLimitExceeded
+    from slowapi.util import get_remote_address
 
     limiter = Limiter(key_func=get_remote_address)
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, cast(Any, _rate_limit_exceeded_handler))
-    _HAS_SLOWAPI = True
-except ImportError:
-    _HAS_SLOWAPI = False
+except ImportError as exc:
+    logger.critical("slowapi is required for rate limiting but could not be imported: %s", exc)
+    if _ENVIRONMENT == "production":
+        sys.exit(1)
+    raise RuntimeError("slowapi is required for rate limiting") from exc
 
 
 def _rate_limit(limit_string: str):
-    """Return a rate-limit decorator; no-op when slowapi is unavailable."""
-    if _HAS_SLOWAPI and limiter is not None:
-        return limiter.limit(limit_string)
-
-    def _noop(func):
-        return func
-
-    return _noop
+    """Return the configured rate-limit decorator."""
+    return limiter.limit(limit_string)
 
 
 # Add custom middleware
@@ -202,18 +200,18 @@ app.add_middleware(RequestIDMiddleware)
 app.add_middleware(TokenTrackerMiddleware)
 
 
-# Optional API key authentication
 _API_SECRET_KEY = os.getenv("API_SECRET_KEY")
 
-if os.getenv("ENVIRONMENT", "development") == "production" and not _API_SECRET_KEY:
-    logger.warning(
-        "API_SECRET_KEY not set in production. " "All endpoints are unprotected — this is insecure."
-    )
+if _ENVIRONMENT == "production" and not _API_SECRET_KEY:
+    logger.critical("API_SECRET_KEY is required in production. Refusing to start.")
+    sys.exit(1)
 
 
 async def verify_api_key(request: Request) -> None:
-    """Optional API key verification - skipped if API_SECRET_KEY not set"""
+    """Verify API key, allowing missing keys only outside production."""
     if not _API_SECRET_KEY:
+        if _ENVIRONMENT == "production":
+            raise HTTPException(status_code=503, detail="Server misconfigured")
         return
     api_key = request.headers.get("X-API-Key")
     if not api_key or not hmac.compare_digest(api_key, _API_SECRET_KEY):
