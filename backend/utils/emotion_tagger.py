@@ -1,7 +1,7 @@
 """
 EmotionTagger - メッセージに感情タグを付与するユーティリティ
 
-ClarificationAgent などで使用される、シンプルな感情タグ付与機能。
+clarification templates などで使用される、シンプルな感情タグ付与機能。
 フロントエンドの EmotionTagger の Python 版。
 
 参考:

@@ -4,7 +4,7 @@ Clarification テンプレート - 曖昧なクエリに対する固定応答メ
 OrchestratorAgent がインラインで使用する。LLM 呼び出しなし。
 カテゴリと言語に基づいてテンプレートメッセージを返す純粋関数。
 
-元: backend/agents/clarification_agent.py の handle_clarification()
+旧 ClarificationAgent の固定応答ロジックを移設したもの。
 """
 
 import logging
@@ -152,7 +152,7 @@ def get_clarification_response(
     """
     カテゴリと言語に基づいてテンプレート応答を返す。
 
-    LLM 不要の純粋関数。元 ClarificationAgent.handle_clarification() と同等。
+    LLM 不要の純粋関数。従来の固定明確化応答と同等。
 
     Args:
         category: 曖昧性の種類

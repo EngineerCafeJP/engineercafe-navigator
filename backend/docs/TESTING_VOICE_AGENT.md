@@ -662,10 +662,11 @@ curl http://localhost:50021/version
 docker pull voicevox/voicevox_engine:latest
 ```
 
-### Q5: `backend.agents.clarification_agent` ImportError
+### Q5: `backend.agents.voice_agent` ImportError
 
-voice_agent.pyが `from backend.agents.clarification_agent import ...` を使っています。
-`backend` プレフィックス付きのimportなので、backendディレクトリの親からPYTHONPATHを通す必要がある場合があります。
+voice_agent.py は `backend.utils.clarification_templates` などを
+`backend` プレフィックス付きで import します。
+backendディレクトリの親からPYTHONPATHを通す必要がある場合があります。
 
 ```bash
 # backendディレクトリ内で実行する場合

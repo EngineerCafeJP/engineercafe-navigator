@@ -4,8 +4,6 @@ Knowledge Base CRUD API Router
 ナレッジベースのCRUD操作とファイルアップロードを提供する。
 テキスト入力に加え、.mdと.pdfファイルのアップロードにも対応。
 embedding生成は自動で行われる。
-
-NOTE: 認証は別Issueで対応予定。現時点ではCORS制限のみ。
 """
 
 import asyncio
