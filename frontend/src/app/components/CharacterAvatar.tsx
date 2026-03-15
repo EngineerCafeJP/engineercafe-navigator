@@ -746,72 +746,94 @@ export default function CharacterAvatar({
         charactersRef.current = null;
       }
 
-      // Load VRM model
-      const loader = new GLTFLoader();
-      loader.register((parser) => new VRMLoaderPlugin(parser));
-
-      const gltf = await loader.loadAsync(modelPath);
-      const vrm = gltf.userData.vrm as VRM;
-
-      if (!vrm) {
-        throw new Error('Failed to load VRM from file');
+      // Load VRM model via fetch + parseAsync so texture base path is correct.
+      // Force TextureLoader instead of ImageBitmapLoader: blob URLs from bufferView
+      // often fail with ImageBitmapLoader ("Couldn't load texture blob:..."), and
+      // failed textures become undefined, causing three-vrm setTextureColorSpace to throw.
+      const prev_create_image_bitmap =
+        typeof window !== 'undefined' ? window.createImageBitmap : undefined;
+      if (typeof window !== 'undefined') {
+        (window as unknown as { createImageBitmap?: unknown }).createImageBitmap = undefined;
       }
-
-      loadedVrmSpecVersionRef.current = getVrmSpecVersion(gltf, vrm);
-
-      // Add to scene
-      sceneRef.current.add(vrm.scene);
-      charactersRef.current = vrm;
-
-      // Rotate character 180 degrees to face forward
-      vrm.scene.rotation.set(
-        modelRotationOffset.x,
-        Math.PI + modelRotationOffset.y,
-        modelRotationOffset.z
-      );
-      
-      // Set initial position
-      vrm.scene.position.set(
-        modelPositionOffset.x,
-        modelPositionOffset.y,
-        modelPositionOffset.z
-      );
-
-      // Initialize lip-sync and expression controllers
-      blendShapeControllerRef.current = new VRMBlendShapeController(vrm);
-      expressionControllerRef.current = new ExpressionController();
-      
-      // Initialize LipSyncAnalyzer without AudioContext (will be initialized on first use)
-      lipSyncAnalyzerRef.current = new LipSyncAnalyzer();
-      
-      const available_expressions = blendShapeControllerRef.current.getAvailableExpressions();
-      setVrmExpressionNames(available_expressions);
-      const initial_weights: Record<string, number> = {};
-      available_expressions.forEach((name) => {
-        initial_weights[name] = name === 'neutral' ? 1 : 0;
-      });
-      setExpressionWeights(initial_weights);
-
-      if (vrm.expressionManager?.expressionMap) {
-      }
-      // Start automatic blinking
-      if (autoBlinkCleanupRef.current) {
-        autoBlinkCleanupRef.current();
-      }
-      autoBlinkCleanupRef.current = blendShapeControllerRef.current.startAutoBlink();
-
-      // Set initial pose
-      await updateCharacterExpression(characterState.expression);
-      await updateCharacterAnimation(characterState.animation);
-
-      // Get available expressions and animations
-      await fetchAvailableFeatures();
-      
-      // Load default idle animation
       try {
-        await loadVRMAnimation('/animations/idle_loop.vrma', vrm, true, true);
-      } catch (animationError) {
-        console.error('[CharacterAvatar] Failed to load default idle animation:', animationError);
+        const loader = new GLTFLoader();
+        loader.register((parser) => new VRMLoaderPlugin(parser));
+
+        const absolute_url = new URL(modelPath, window.location.origin).href;
+        const response = await fetch(absolute_url);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch VRM: ${response.status} ${response.statusText}`);
+        }
+        const array_buffer = await response.arrayBuffer();
+        const base_path = absolute_url.substring(0, absolute_url.lastIndexOf('/') + 1);
+        const gltf = await loader.parseAsync(array_buffer, base_path);
+        const vrm = gltf.userData.vrm as VRM;
+
+        if (!vrm) {
+          throw new Error('Failed to load VRM from file');
+        }
+
+        loadedVrmSpecVersionRef.current = getVrmSpecVersion(gltf, vrm);
+
+        // Add to scene
+        sceneRef.current.add(vrm.scene);
+        charactersRef.current = vrm;
+
+        // Rotate character 180 degrees to face forward
+        vrm.scene.rotation.set(
+          modelRotationOffset.x,
+          Math.PI + modelRotationOffset.y,
+          modelRotationOffset.z
+        );
+
+        // Set initial position
+        vrm.scene.position.set(
+          modelPositionOffset.x,
+          modelPositionOffset.y,
+          modelPositionOffset.z
+        );
+
+        // Initialize lip-sync and expression controllers
+        blendShapeControllerRef.current = new VRMBlendShapeController(vrm);
+        expressionControllerRef.current = new ExpressionController();
+
+        // Initialize LipSyncAnalyzer without AudioContext (will be initialized on first use)
+        lipSyncAnalyzerRef.current = new LipSyncAnalyzer();
+
+        const available_expressions = blendShapeControllerRef.current.getAvailableExpressions();
+        setVrmExpressionNames(available_expressions);
+        const initial_weights: Record<string, number> = {};
+        available_expressions.forEach((name) => {
+          initial_weights[name] = name === 'neutral' ? 1 : 0;
+        });
+        setExpressionWeights(initial_weights);
+
+        if (vrm.expressionManager?.expressionMap) {
+        }
+        // Start automatic blinking
+        if (autoBlinkCleanupRef.current) {
+          autoBlinkCleanupRef.current();
+        }
+        autoBlinkCleanupRef.current = blendShapeControllerRef.current.startAutoBlink();
+
+        // Set initial pose
+        await updateCharacterExpression(characterState.expression);
+        await updateCharacterAnimation(characterState.animation);
+
+        // Get available expressions and animations
+        await fetchAvailableFeatures();
+
+        // Load default idle animation
+        try {
+          await loadVRMAnimation('/animations/idle_loop.vrma', vrm, true, true);
+        } catch (animationError) {
+          console.error('[CharacterAvatar] Failed to load default idle animation:', animationError);
+        }
+      } finally {
+        if (typeof window !== 'undefined' && prev_create_image_bitmap !== undefined) {
+          (window as unknown as { createImageBitmap?: unknown }).createImageBitmap =
+            prev_create_image_bitmap;
+        }
       }
 
       // Create viseme control function
@@ -851,8 +873,8 @@ export default function CharacterAvatar({
         const mappedExpression = expressionFallbackMap[expression] || expression;
         
         if (blendShapeControllerRef.current) {
-          // Use the VRM expression manager to set expressions
-          const expressionManager = vrm.expressionManager;
+          // Use the VRM expression manager to set expressions (use ref so setExpression works outside inner try scope)
+          const expressionManager = charactersRef.current?.expressionManager;
           
           if (expressionManager) {
             // Log available expressions for debugging
@@ -969,7 +991,7 @@ export default function CharacterAvatar({
       };
 
       playKeyframeAnimationInternalRef.current = playKeyframeAnimation;
-      onCharacterLoad?.(vrm);
+      if (charactersRef.current) onCharacterLoad?.(charactersRef.current);
       onEmotionUpdate?.(applyEmotionToCharacter);
       onVisemeControl?.(setViseme);
       onExpressionControl?.(setExpression);
