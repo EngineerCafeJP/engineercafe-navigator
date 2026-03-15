@@ -54,6 +54,87 @@ def _mock_table_result(data, count=None):
 
 
 # =============================================================================
+# GET /api/knowledge/categories
+# =============================================================================
+
+
+@patch("backend.api.knowledge._get_supabase")
+def test_get_knowledge_categories(mock_get_sb):
+    """カテゴリ・サブカテゴリ・ソース・言語一覧取得"""
+    mock_sb = _mock_supabase()
+    mock_get_sb.return_value = mock_sb
+
+    table_mock = mock_sb.table.return_value
+
+    category_query = MagicMock()
+    category_query.execute.return_value = _mock_table_result(
+        [
+            {"category": "facility-info"},
+            {"category": "hours"},
+            {"category": "hours"},
+            {"category": None},
+        ]
+    )
+
+    subcategory_query = MagicMock()
+    subcategory_query.execute.return_value = _mock_table_result(
+        [
+            {"category": "hours", "subcategory": "holiday"},
+            {"category": "hours", "subcategory": "weekday"},
+            {"category": "hours", "subcategory": "holiday"},
+            {"category": "facility-info", "subcategory": "equipment"},
+            {"category": "facility-info", "subcategory": None},
+        ]
+    )
+
+    source_query = MagicMock()
+    source_query.execute.return_value = _mock_table_result(
+        [
+            {"source": "manual"},
+            {"source": "web"},
+            {"source": "manual"},
+            {"source": None},
+        ]
+    )
+
+    language_query = MagicMock()
+    language_query.execute.return_value = _mock_table_result(
+        [
+            {"language": "ja"},
+            {"language": "en"},
+            {"language": "ja"},
+            {"language": None},
+        ]
+    )
+
+    table_mock.select.side_effect = [
+        category_query,
+        subcategory_query,
+        source_query,
+        language_query,
+    ]
+
+    response = client.get("/api/knowledge/categories")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "categories": ["facility-info", "hours"],
+        "subcategories": {
+            "facility-info": ["equipment"],
+            "hours": ["holiday", "weekday"],
+        },
+        "sources": ["manual", "web"],
+        "languages": ["en", "ja"],
+        "stats": {
+            "totalCategories": 2,
+            "totalSubcategories": 3,
+            "totalSources": 2,
+            "totalLanguages": 2,
+        },
+    }
+
+
+# =============================================================================
 # GET /api/knowledge
 # =============================================================================
 
