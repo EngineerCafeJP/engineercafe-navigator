@@ -1,10 +1,3 @@
-// Initialize OpenNext Cloudflare bindings for local development
-if (process.env.NODE_ENV === "development") {
-  import("@opennextjs/cloudflare")
-    .then((m) => m.initOpenNextCloudflareForDev())
-    .catch(() => {});
-}
-
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   experimental: {
