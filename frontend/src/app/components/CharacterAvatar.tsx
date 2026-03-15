@@ -6,24 +6,17 @@ import { LipSyncAnalyzer } from '@/lib/lip-sync-analyzer';
 import { VRMBlendShapeController, VRMUtils } from '@/lib/vrm-utils';
 import { VRM, VRMLoaderPlugin } from '@pixiv/three-vrm';
 import { VRMAnimationLoaderPlugin, createVRMAnimationClip } from '@pixiv/three-vrm-animation';
-import {
-  Film,
-  Lightbulb,
-  Palette,
-  Settings,
-  SlidersHorizontal,
-  Volume2,
-  VolumeX,
-} from 'lucide-react';
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { Settings, VolumeX } from 'lucide-react';
+import { useEffect, useRef, useState, useCallback, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import type { CharacterAnimationData } from '../utils/character-animation-utils';
-import AudioSettings from './AudioSettings';
-import BackgroundSelector, { type BackgroundOption as BackgroundSelectorOption } from './BackgroundSelector';
-import ControlsSettings, { type VRMAnimationOption } from './ControlsSettings';
-import EnvironmentSettings from './EnvironmentSettings';
-import KeyframeSettings from './KeyframeSettings';
+import SettingsPanel, {
+  type SettingsPanelPropsFromSource,
+} from './SettingsPanel';
+import { type BackgroundOption as BackgroundSelectorOption } from './BackgroundSelector';
+import { type VRMAnimationOption } from './ControlsSettings';
 
 interface CharacterState {
   expression: string;
@@ -76,6 +69,16 @@ interface CharacterAvatarProps {
   onVolumeChange?: (value: number) => void;
   isMuted?: boolean;
   onMuteToggle?: () => void;
+  /** When set, settings panel is rendered into this element id (e.g. from page layout) */
+  settingsPortalTargetId?: string | null;
+  /** Controlled open state when using portal */
+  settingsOpen?: boolean;
+  /** Called when user closes the settings panel (when using portal) */
+  onSettingsClose?: () => void;
+  /** Extra tab shown first in settings (e.g. conversation history from page) */
+  extraSettingsTab?: { label: string; content: ReactNode };
+  /** When set, panel is rendered by parent (e.g. page); this ref is filled with panel props each render */
+  settingsPanelPropsRef?: React.MutableRefObject<SettingsPanelPropsFromSource | null>;
 }
 
 const SETTINGS_TAB_LABELS: Record<
@@ -181,6 +184,11 @@ export default function CharacterAvatar({
   onVolumeChange,
   isMuted = false,
   onMuteToggle,
+  settingsPortalTargetId = null,
+  settingsOpen = false,
+  onSettingsClose,
+  extraSettingsTab,
+  settingsPanelPropsRef,
 }: CharacterAvatarProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -225,9 +233,6 @@ export default function CharacterAvatar({
   const [showSettings, setShowSettings] = useState(false);
   const [availableExpressions, setAvailableExpressions] = useState<string[]>([]);
   const [availableAnimations, setAvailableAnimations] = useState<string[]>([]);
-  const [keyframeJsonInput, setKeyframeJsonInput] = useState('');
-  const [keyframeJsonError, setKeyframeJsonError] = useState('');
-  const [settingsPanelTab, setSettingsPanelTab] = useState<'controls' | 'keyframe' | 'background' | 'lighting' | 'audio'>('controls');
   const [vrmAnimationOptions, setVrmAnimationOptions] = useState<VRMAnimationOption[]>([]);
   const [vrmExpressionNames, setVrmExpressionNames] = useState<string[]>([]);
   const [expressionWeights, setExpressionWeights] = useState<Record<string, number>>({});
@@ -1370,8 +1375,8 @@ export default function CharacterAvatar({
         </div>
       )}
 
-      {/* Controls - z-30 so gear button stays in front of Settings Panel (z-20) */}
-      {showControls && !isLoading && (
+      {/* Controls - z-30 so gear button stays in front of Settings Panel (z-20). Hide gear when panel is rendered by parent (portal or ref). */}
+      {showControls && !isLoading && !settingsPortalTargetId && !settingsPanelPropsRef && (
         <div className="absolute top-4 right-4 z-30 flex flex-col space-y-2">
           <button
             onClick={() => setShowSettings(!showSettings)}
@@ -1380,107 +1385,81 @@ export default function CharacterAvatar({
           >
             <Settings className="w-5 h-5" />
           </button>
-
         </div>
       )}
 
-      {/* Settings Panel - right side, behind gear button (z-20) */}
-      {showSettings && (
-        <div className="absolute top-4 right-4 z-20 w-80 bg-white bg-opacity-95 rounded-lg p-4 shadow-lg max-h-[85vh] overflow-y-auto flex flex-col">
-          <h3 className="font-semibold mb-3">Settings</h3>
+      {/* Settings Panel - when settingsPanelPropsRef is set, parent renders the panel; otherwise render locally or via portal */}
+      {(() => {
+        if (settingsPanelPropsRef) {
+          settingsPanelPropsRef.current = {
+            controls_state: characterState,
+            vrm_expression_names: vrmExpressionNames,
+            expression_weights: expressionWeights,
+            on_expression_weight_change: handle_expression_weight_change,
+            vrm_animation_options: vrmAnimationOptions,
+            on_play_vrm_animation: handle_play_vrm_animation,
+            on_position_change: updateCharacterPosition,
+            on_rotation_change: updateCharacterRotation,
+            current_background: background as BackgroundSelectorOption,
+            on_background_change: (bg) => {
+              updateSceneBackground(bg);
+              onBackgroundChange?.(bg);
+            },
+            lighting_intensity: lightingIntensity,
+            on_lighting_change: onLightingChange ?? (() => {}),
+            volume: volume,
+            is_muted: isMuted,
+            on_volume_change: onVolumeChange,
+            on_mute_toggle: onMuteToggle,
+            on_run_keyframe: (animation) =>
+              playKeyframeAnimationInternalRef.current?.(animation),
+          };
+          return null;
+        }
 
-          {/* Tabs - wrap on narrow (icon only, title for tooltip) */}
-          <div className="flex flex-wrap gap-1 border-b border-gray-200 mb-3">
-            {(['controls', 'keyframe', 'background', 'lighting', 'audio'] as const).map((tab) => (
-              <button
-                key={tab}
-                type="button"
-                title={SETTINGS_TAB_LABELS[tab]}
-                onClick={() => setSettingsPanelTab(tab)}
-                className={`p-2 rounded-t-md transition-colors ${
-                  settingsPanelTab === tab
-                    ? 'bg-blue-100 text-blue-700 border-b-2 border-blue-500'
-                    : 'text-gray-600 hover:bg-gray-100'
-                }`}
-              >
-                {tab === 'controls' && <SlidersHorizontal className="size-4" />}
-                {tab === 'keyframe' && <Film className="size-4" />}
-                {tab === 'background' && <Palette className="size-4" />}
-                {tab === 'lighting' && <Lightbulb className="size-4" />}
-                {tab === 'audio' && <Volume2 className="size-4" />}
-              </button>
-            ))}
-          </div>
+        const is_panel_open = settingsPortalTargetId ? settingsOpen : showSettings;
+        if (!is_panel_open) return null;
 
-          {/* Tab: Controls */}
-          {settingsPanelTab === 'controls' && (
-            <div className="mb-4">
-              <ControlsSettings
-                state={characterState}
-                vrmExpressionNames={vrmExpressionNames}
-                expressionWeights={expressionWeights}
-                onExpressionWeightChange={handle_expression_weight_change}
-                vrmAnimationOptions={vrmAnimationOptions}
-                onPlayVRMAnimation={handle_play_vrm_animation}
-                onPositionChange={updateCharacterPosition}
-                onRotationChange={updateCharacterRotation}
-              />
-            </div>
-          )}
+        const panel_content = (
+          <SettingsPanel
+            show_close_button={Boolean(settingsPortalTargetId && onSettingsClose)}
+            on_close={onSettingsClose}
+            extra_tab={
+              extraSettingsTab
+                ? { label: extraSettingsTab.label, content: extraSettingsTab.content }
+                : undefined
+            }
+            controls_state={characterState}
+            vrm_expression_names={vrmExpressionNames}
+            expression_weights={expressionWeights}
+            on_expression_weight_change={handle_expression_weight_change}
+            vrm_animation_options={vrmAnimationOptions}
+            on_play_vrm_animation={handle_play_vrm_animation}
+            on_position_change={updateCharacterPosition}
+            on_rotation_change={updateCharacterRotation}
+            current_background={background as BackgroundSelectorOption}
+            on_background_change={(bg) => {
+              updateSceneBackground(bg);
+              onBackgroundChange?.(bg);
+            }}
+            lighting_intensity={lightingIntensity}
+            on_lighting_change={onLightingChange ?? (() => {})}
+            volume={volume}
+            is_muted={isMuted}
+            on_volume_change={onVolumeChange}
+            on_mute_toggle={onMuteToggle}
+            on_run_keyframe={(animation) =>
+              playKeyframeAnimationInternalRef.current?.(animation)
+            }
+          />
+        );
 
-          {/* Tab: Background (from left settings) */}
-          {settingsPanelTab === 'background' && (
-            <div className="mb-4">
-              <BackgroundSelector
-                currentBackground={background as BackgroundSelectorOption}
-                onBackgroundChange={(bg) => {
-                  updateSceneBackground(bg);
-                  onBackgroundChange?.(bg);
-                }}
-              />
-            </div>
-          )}
-
-          {/* Tab: Lighting (from left settings) */}
-          {settingsPanelTab === 'lighting' && (
-            <div className="mb-4">
-              <EnvironmentSettings
-                lightingIntensity={lightingIntensity}
-                onLightingChange={onLightingChange ?? (() => {})}
-              />
-            </div>
-          )}
-
-          {/* Tab: Audio */}
-          {settingsPanelTab === 'audio' && (
-            <div className="mb-4">
-              <AudioSettings
-                volume={volume}
-                isMuted={isMuted}
-                onVolumeChange={(value) => onVolumeChange?.(value)}
-                onMuteToggle={() => onMuteToggle?.()}
-              />
-            </div>
-          )}
-
-          {/* Tab: Keyframe */}
-          {settingsPanelTab === 'keyframe' && (
-            <div className="mb-4">
-              <KeyframeSettings
-                jsonInput={keyframeJsonInput}
-                onJsonInputChange={setKeyframeJsonInput}
-                error={keyframeJsonError}
-                onError={setKeyframeJsonError}
-                onRunKeyframe={(animation) =>
-                  playKeyframeAnimationInternalRef.current?.(animation)
-                }
-                onRunKeyframeClick={() => setSettingsPanelTab('controls')}
-              />
-            </div>
-          )}
-
-        </div>
-      )}
+        if (settingsPortalTargetId && settingsOpen && typeof document !== 'undefined') {
+          const portal_el = document.getElementById(settingsPortalTargetId);
+          return portal_el ? createPortal(panel_content, portal_el) : null;
+        }
+        return <div className="absolute top-4 right-4 z-20">{panel_content}</div>;
+      })()}
     </div>
   );
 }
