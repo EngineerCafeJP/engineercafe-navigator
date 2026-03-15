@@ -52,9 +52,9 @@ The FastAPI backend enforces an `API_SECRET_KEY` requirement at two points:
 
 1. **Startup gate**: If `ENVIRONMENT=production` and `API_SECRET_KEY` is absent or empty, the process calls `sys.exit(1)` and refuses to start. This prevents a misconfigured deployment from silently exposing write-capable endpoints.
 
-2. **Per-request dependency**: Protected endpoints declare `verify_api_key` as a FastAPI dependency. The function reads the `X-API-Key` request header and compares it against `_API_SECRET_KEY` using `hmac.compare_digest`, which provides constant-time comparison in CPython. If the key is missing or incorrect, the endpoint returns `403 Forbidden`. If somehow a production instance is running without a key (defence in depth), it returns `503 Service Unavailable` rather than permitting access.
+2. **Per-request dependency**: Protected endpoints declare `verify_api_key` as a FastAPI dependency. The function reads the `X-API-Key` request header and compares it against `_API_SECRET_KEY` using `hmac.compare_digest`, which provides constant-time comparison in CPython. If the key is missing or incorrect, the endpoint returns `403 Forbidden`. If a `production`, `staging`, or `preview` instance is running without a key (defence in depth), it returns `503 Service Unavailable` rather than permitting access.
 
-**Required environment variable**: `API_SECRET_KEY` — must be set as a Cloud Run secret before deploying to production.
+**Required environment variable**: `API_SECRET_KEY` — must be set as a Cloud Run secret before deploying to production, and should also be set for any staging or preview environment that is expected to remain protected.
 
 ### Defense-in-Depth Summary
 

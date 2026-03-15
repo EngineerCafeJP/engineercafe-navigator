@@ -209,9 +209,9 @@ if _ENVIRONMENT == "production" and not _API_SECRET_KEY:
 
 
 async def verify_api_key(request: Request) -> None:
-    """Verify API key, allowing missing keys only outside production."""
+    """Verify API key, allowing missing keys only outside protected environments."""
     if not _API_SECRET_KEY:
-        if _ENVIRONMENT == "production":
+        if _ENVIRONMENT in ("production", "staging", "preview"):
             raise HTTPException(status_code=503, detail="Server misconfigured")
         return
     api_key = request.headers.get("X-API-Key")
@@ -561,6 +561,18 @@ async def _handle_stt(body: VoiceRequest) -> VoiceResponse:
     )
 
 
+@app.get("/api/voice", dependencies=[Depends(verify_api_key)])
+async def voice_get_api(action: str = ""):
+    if action == "supported_languages":
+        return {
+            "languages": [
+                {"code": "ja", "name": "日本語"},
+                {"code": "en", "name": "English"},
+            ]
+        }
+    return {"status": "ok", "actions": ["speech_to_text", "text_to_speech", "supported_languages"]}
+
+
 @app.post("/api/voice", response_model=VoiceResponse, dependencies=[Depends(verify_api_key)])
 @_rate_limit("20/minute")
 async def voice_api(request: Request, body: VoiceRequest):
@@ -677,7 +689,11 @@ class SlideContentResponse(BaseModel):
     error: Optional[str] = None
 
 
-@app.post("/api/slides/content", response_model=SlideContentResponse)
+@app.post(
+    "/api/slides/content",
+    response_model=SlideContentResponse,
+    dependencies=[Depends(verify_api_key)],
+)
 async def slides_content_api(body: SlideContentRequest):
     """Return raw slide markdown and narration data for frontend rendering."""
     try:
@@ -840,7 +856,7 @@ app.include_router(alerts_router, dependencies=[Depends(verify_api_key)])
 # Reception API Router
 from backend.api.reception import reception_router  # noqa: E402
 
-app.include_router(reception_router)
+app.include_router(reception_router, dependencies=[Depends(verify_api_key)])
 
 
 if __name__ == "__main__":

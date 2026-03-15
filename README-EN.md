@@ -29,7 +29,7 @@ Browser
 ## Main Risks Right Now
 
 - Some frontend admin and monitoring routes are still unauthenticated.
-- Backend API-key protection becomes a no-op if `API_SECRET_KEY` is missing in production.
+- Backend API-key protection is a no-op only in local/dev environments without `API_SECRET_KEY`; `staging`, `preview`, and `production` now fail closed.
 - `backend/api/reception.py` keeps reception session state in memory, which is fragile across restarts and multi-instance deployments.
 - Many legacy docs still describe old Mastra-era architecture.
 
