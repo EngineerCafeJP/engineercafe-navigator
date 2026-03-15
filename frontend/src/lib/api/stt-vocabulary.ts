@@ -1,6 +1,6 @@
 /**
  * STT Vocabulary API Client
- * FastAPI に直接アクセスする API クライアント関数
+ * Admin proxy 経由で STT vocabulary API にアクセスするクライアント関数
  */
 
 import { VocabularyItem, VocabularyListResponse } from "@/types/vosk";
@@ -8,17 +8,6 @@ import { VocabularyItem, VocabularyListResponse } from "@/types/vosk";
 // ============================================================================
 // API クライアント
 // ============================================================================
-
-function getSttBackendUrl(): string {
-  const url = process.env.NEXT_PUBLIC_BACKEND_API_URL;
-  if (url) return url;
-  if (process.env.NODE_ENV === "development") return "http://localhost:8000/api";
-  throw new Error("NEXT_PUBLIC_BACKEND_API_URL environment variable is required");
-}
-
-function getBackendUrl(): string {
-  return getSttBackendUrl();
-}
 
 /**
  * 語彙一覧取得（URL生成とfetchを統合）
@@ -38,7 +27,7 @@ export async function getVocabularyList(params: {
   if (params.search) query.set("search", params.search);
   query.set("page", String(params.page ?? 1));
   query.set("limit", String(params.limit ?? 20));
-  const url = `${getBackendUrl()}/stt/vocabulary?${query.toString()}`;
+  const url = `/api/admin/stt?${query.toString()}`;
 
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Failed to fetch vocabulary: ${res.status}`);
@@ -49,7 +38,7 @@ export async function getVocabularyList(params: {
  * 語彙削除
  */
 export async function deleteVocabulary(id: string): Promise<void> {
-  const res = await fetch(`${getBackendUrl()}/stt/vocabulary/${id}`, {
+  const res = await fetch(`/api/admin/stt?id=${encodeURIComponent(id)}`, {
     method: "DELETE",
   });
   if (!res.ok) throw new Error(`Failed to delete vocabulary: ${res.status}`);
@@ -59,7 +48,7 @@ export async function deleteVocabulary(id: string): Promise<void> {
  * 語彙詳細取得（編集時に既存データを取得）
  */
 export async function getVocabularyDetail(id: string): Promise<VocabularyItem> {
-  const res = await fetch(`${getBackendUrl()}/stt/vocabulary/${id}`);
+  const res = await fetch(`/api/admin/stt?id=${encodeURIComponent(id)}`);
   if (!res.ok) throw new Error(`Failed to fetch vocabulary detail: ${res.status}`);
   const json = await res.json();
   return json.data;
@@ -74,7 +63,7 @@ export async function createVocabulary(data: {
   category: string;
   priority: number;
 }): Promise<VocabularyItem> {
-  const res = await fetch(`${getBackendUrl()}/stt/vocabulary`, {
+  const res = await fetch("/api/admin/stt", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -101,7 +90,7 @@ export async function updateVocabulary(
     priority: number;
   }
 ): Promise<VocabularyItem> {
-  const res = await fetch(`${getBackendUrl()}/stt/vocabulary/${id}`, {
+  const res = await fetch(`/api/admin/stt?id=${encodeURIComponent(id)}`, {
     method: "PUT",
     headers: {
       "Content-Type": "application/json",
