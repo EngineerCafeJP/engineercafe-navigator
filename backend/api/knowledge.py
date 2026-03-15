@@ -32,6 +32,7 @@ router = APIRouter(tags=["knowledge"])
 
 # 10MB upload size limit
 MAX_UPLOAD_SIZE = 10 * 1024 * 1024
+MAX_CHUNKS = 50
 
 
 # =============================================================================
@@ -140,6 +141,15 @@ def _chunk_title(base_title: str, index: int, total_chunks: int) -> str:
     if total_chunks <= 1:
         return base_title
     return f"{base_title} (part {index + 1})"
+
+
+def _rollback_uploaded_chunks(supabase: Any, inserted_ids: List[str]) -> None:
+    """アップロード途中で失敗したチャンクを削除する"""
+    for row_id in inserted_ids:
+        try:
+            supabase.table("knowledge_base").delete().eq("id", row_id).execute()
+        except Exception:
+            logger.error("Failed to rollback chunk %s", row_id)
 
 
 # =============================================================================
@@ -352,6 +362,11 @@ async def upload_knowledge(
         chunks = chunk_text(parsed_content)
         if not chunks:
             raise HTTPException(status_code=400, detail="No text content extracted from file")
+        if len(chunks) > MAX_CHUNKS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Document too large: {len(chunks)} chunks exceeds limit of {MAX_CHUNKS}",
+            )
 
         chunk_titles = [
             _chunk_title(effective_title, index, len(chunks)) for index in range(len(chunks))
@@ -362,20 +377,21 @@ async def upload_knowledge(
                 detail="title must be 200 characters or less after chunk suffixes are applied",
             )
 
+        existing = (
+            supabase.table("knowledge_base").select("title").in_("title", chunk_titles).execute()
+        )
+        if existing.data:
+            conflicting_title = existing.data[0]["title"]
+            raise HTTPException(
+                status_code=409,
+                detail=f"Knowledge with title '{conflicting_title}' already exists",
+            )
+
+        inserted_rows: List[Dict[str, Any]] = []
+        inserted_ids: List[str] = []
+        total_chunks = len(chunks)
+
         try:
-            for chunk_title in chunk_titles:
-                existing = (
-                    supabase.table("knowledge_base").select("id").eq("title", chunk_title).execute()
-                )
-                if existing.data:
-                    raise HTTPException(
-                        status_code=409,
-                        detail=f"Knowledge with title '{chunk_title}' already exists",
-                    )
-
-            inserted_rows: List[Dict[str, Any]] = []
-            total_chunks = len(chunks)
-
             for index, chunk_content in enumerate(chunks):
                 chunk_title = chunk_titles[index]
                 embedding: List[float] = []
@@ -446,7 +462,9 @@ async def upload_knowledge(
                     raise HTTPException(status_code=500, detail="Failed to insert knowledge entry")
 
                 inserted_rows.append(result.data[0])
+                inserted_ids.append(str(result.data[0]["id"]))
         except APIError as exc:
+            _rollback_uploaded_chunks(supabase, inserted_ids)
             if _is_unique_violation(exc):
                 conflict_title = effective_title
                 if exc.args:
@@ -466,6 +484,7 @@ async def upload_knowledge(
             )
             raise HTTPException(status_code=503, detail="Knowledge storage unavailable")
         except httpx.HTTPError as exc:
+            _rollback_uploaded_chunks(supabase, inserted_ids)
             logger.error(
                 "Supabase insert failed: table=knowledge_base title=%s filename=%s error=%s",
                 effective_title,
@@ -473,10 +492,18 @@ async def upload_knowledge(
                 exc,
             )
             raise HTTPException(status_code=503, detail="Knowledge storage unavailable")
+        except Exception:
+            _rollback_uploaded_chunks(supabase, inserted_ids)
+            raise
+
+        response_row = dict(inserted_rows[0])
+        response_metadata = dict(response_row.get("metadata") or {})
+        response_metadata["chunks_created"] = total_chunks
+        response_row["metadata"] = response_metadata
 
         return KnowledgeResponse(
             success=True,
-            data=_row_to_item(inserted_rows[0]),
+            data=_row_to_item(response_row),
         )
 
     try:

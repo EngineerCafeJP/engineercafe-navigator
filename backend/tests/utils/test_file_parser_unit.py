@@ -397,6 +397,24 @@ class TestParsePdf:
 
         mock_doc.close.assert_called_once()
 
+    def test_doc_close_called_when_page_processing_fails(self):
+        """ページ処理中の例外でも doc.close() が呼ばれる"""
+        mock_page = MagicMock()
+        mock_page.get_text.side_effect = RuntimeError("page read failed")
+        mock_doc = self._make_mock_doc([mock_page])
+
+        class FakeFileDataError(Exception):
+            pass
+
+        with patch("backend.utils.file_parser.pymupdf") as mock_pymupdf:
+            mock_pymupdf.open.return_value = mock_doc
+            mock_pymupdf.FileDataError = FakeFileDataError
+
+            with pytest.raises(RuntimeError, match="page read failed"):
+                parse_pdf(b"pdf bytes")
+
+        mock_doc.close.assert_called_once()
+
     def test_valueerror_from_file_data_error_chains_cause(self):
         """FileDataError から変換された ValueError に元の例外が __cause__ として連鎖する"""
 

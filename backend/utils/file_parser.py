@@ -98,12 +98,14 @@ def parse_pdf(content: bytes) -> str:
     """
     try:
         doc = pymupdf.open(stream=content, filetype="pdf")
-        pages_text = []
-        for page in doc:
-            page_text = page.get_text()
-            if page_text.strip():
-                pages_text.append(page_text.strip())
-        doc.close()
+        try:
+            pages_text = []
+            for page in doc:
+                page_text = page.get_text()
+                if page_text.strip():
+                    pages_text.append(page_text.strip())
+        finally:
+            doc.close()
 
         if not pages_text:
             raise ValueError("No text content found in PDF")
