@@ -81,6 +81,35 @@ class TestChatEndpoint:
             assert "secret" not in exc_info.value.detail
             assert "internal error" in exc_info.value.detail.lower()
 
+    @pytest.mark.asyncio
+    async def test_chat_forwards_image_data_to_workflow(self):
+        with patch(
+            "backend.main._run_workflow_with_tracking",
+            new_callable=AsyncMock,
+            return_value={
+                "answer": "OCR結果です",
+                "emotion": "neutral",
+                "metadata": {},
+            },
+        ) as mock_run:
+            from backend.main import chat, ChatRequest
+
+            body = ChatRequest(query="画像を読んで", session_id="s1", image_data="base64-image")
+            response = await chat(_mock_request(), body)
+
+            assert response.answer == "OCR結果です"
+            mock_run.assert_awaited_once_with(
+                payload={
+                    "query": "画像を読んで",
+                    "session_id": "s1",
+                    "language": "ja",
+                    "context": {},
+                    "visitor_id": None,
+                    "image_data": "base64-image",
+                },
+                session_id="s1",
+            )
+
 
 class TestInvokeEndpoint:
     @pytest.mark.asyncio

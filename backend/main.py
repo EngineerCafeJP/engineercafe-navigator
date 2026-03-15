@@ -247,6 +247,7 @@ class ChatRequest(BaseModel):
     language: Optional[str] = Field(default="ja", max_length=10)
     context: Optional[Dict[str, Any]] = None
     visitor_id: Optional[str] = None  # Cross-session visitor identification
+    image_data: str | None = None  # Base64 encoded image
 
 
 class ChatResponse(BaseModel):
@@ -284,6 +285,19 @@ async def _run_workflow_with_tracking(payload: Dict[str, Any], session_id: str) 
     except asyncio.CancelledError:
         logger.info("LLM task cancelled for session %s", session_id)
         raise HTTPException(status_code=409, detail="Request interrupted")
+
+
+def _build_workflow_payload(body: ChatRequest, session_id: str) -> Dict[str, Any]:
+    payload: Dict[str, Any] = {
+        "query": body.query,
+        "session_id": session_id,
+        "language": body.language,
+        "context": body.context or {},
+        "visitor_id": body.visitor_id,
+    }
+    if body.image_data:
+        payload["image_data"] = body.image_data
+    return payload
 
 
 @app.get("/health")
@@ -339,13 +353,7 @@ async def chat(request: Request, body: ChatRequest):
 
     try:
         result = await _run_workflow_with_tracking(
-            payload={
-                "query": body.query,
-                "session_id": session_id,
-                "language": body.language,
-                "context": body.context or {},
-                "visitor_id": body.visitor_id,
-            },
+            payload=_build_workflow_payload(body, session_id),
             session_id=session_id,
         )
 
@@ -403,15 +411,7 @@ async def chat_stream(request: Request, body: ChatRequest):
             workflow = await get_workflow()
 
             # Use astream for streaming
-            async for event in workflow.astream(
-                {
-                    "query": body.query,
-                    "session_id": session_id,
-                    "language": body.language,
-                    "context": body.context or {},
-                    "visitor_id": body.visitor_id,
-                }
-            ):
+            async for event in workflow.astream(_build_workflow_payload(body, session_id)):
                 if interrupt_mgr.is_interrupted(body.session_id):
                     yield f'data: {json.dumps({"type": "interrupted"})}\n\n'
                     break
@@ -447,13 +447,7 @@ async def invoke_agent(request: Request, body: ChatRequest):
 
     try:
         result = await _run_workflow_with_tracking(
-            payload={
-                "query": body.query,
-                "session_id": session_id,
-                "language": body.language,
-                "context": body.context or {},
-                "visitor_id": body.visitor_id,
-            },
+            payload=_build_workflow_payload(body, session_id),
             session_id=session_id,
         )
 
