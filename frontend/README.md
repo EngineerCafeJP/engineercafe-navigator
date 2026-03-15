@@ -38,6 +38,7 @@ Actual usage varies by feature, but the important frontend-side variables curren
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `CRON_SECRET`
+- `ADMIN_API_SECRET`
 - `ALERT_WEBHOOK_SECRET`
 - `SLACK_WEBHOOK_URL`
 
@@ -72,7 +73,7 @@ pnpm test:e2e
 
 ## Current Risks
 
-- Admin, monitoring, and some cron-style routes still lack proper auth boundaries.
+- Admin, cron, and monitoring API routes are protected by `src/middleware.ts`; any new sensitive API prefix must be added to that matcher explicitly.
 - Audio behavior still depends on real browser/device validation even after recent fixes.
 - Some server routes still talk directly to Supabase, so auth and secret handling need tightening.
 
