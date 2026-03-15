@@ -27,7 +27,10 @@ from typing import Any, Dict, List, Optional
 
 import httpx
 
-from backend.agents.clarification_agent import ClarificationAgent, ClarificationCategory
+from backend.utils.clarification_templates import (
+    ClarificationCategory,
+    get_clarification_response,
+)
 from backend.utils.language_processor import LanguageProcessor
 
 logger = logging.getLogger(__name__)
@@ -564,7 +567,7 @@ class VoiceAgent:
         tts_provider: str = "voicevox",
         tts_client: Optional[Any] = None,
         language_processor: Optional[LanguageProcessor] = None,
-        clarification_agent: Optional[ClarificationAgent] = None,
+        clarification_agent: Optional[Any] = None,
     ):
         """Initialize VoiceAgent with TTS provider switching.
 
@@ -574,8 +577,9 @@ class VoiceAgent:
                 If None, creates default client based on provider.
             language_processor: LanguageProcessor for language
                 detection. If None, creates default instance.
-            clarification_agent: ClarificationAgent for ambiguity
-                resolution. If None, creates default instance.
+            clarification_agent: Optional clarification handler for
+                ambiguity resolution. If None, built-in clarification
+                templates are used.
         """
         self.tts_provider = tts_provider
 
@@ -594,8 +598,8 @@ class VoiceAgent:
         self.language_processor = language_processor or LanguageProcessor(default_language="ja")
         logger.info("LanguageProcessor initialized for voice_agent")
 
-        self.clarification_agent = clarification_agent or ClarificationAgent()
-        logger.info("ClarificationAgent initialized for voice_agent")
+        self.clarification_agent = clarification_agent
+        logger.info("Clarification handler initialized for voice_agent")
 
         # Kokoro TTSクライアントを追加（英語TTS用）
         kokoro_api_url = os.getenv("KOKORO_API_URL", "http://localhost:8880")
@@ -644,7 +648,7 @@ class VoiceAgent:
 
         Features:
             - Automatic language detection (when language is None)
-            - Ambiguity checking (ClarificationAgent integration)
+            - Ambiguity checking (clarification template integration)
             - TTS provider switching (voicevox / google / kokoro)
 
         Args:
@@ -686,11 +690,17 @@ class VoiceAgent:
         if ambiguity_category:
             logger.info("Ambiguity detected: %s", ambiguity_category)
             try:
-                clarification_result = await self.clarification_agent.handle_clarification(
-                    query=text,
-                    category=ambiguity_category,
-                    language=language,
-                )
+                if self.clarification_agent is None:
+                    clarification_result = get_clarification_response(
+                        category=ambiguity_category,
+                        language=language,
+                    )
+                else:
+                    clarification_result = await self.clarification_agent.handle_clarification(
+                        query=text,
+                        category=ambiguity_category,
+                        language=language,
+                    )
                 clarification_text = clarification_result["response"]
                 logger.info("Using clarification response instead of original query")
                 processed = preprocess_tts(clarification_text, language)

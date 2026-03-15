@@ -71,15 +71,15 @@ def _get_slide_agent():
     return _agent_cache["slide"]
 
 
-def _get_memory_agent():
-    """MemoryAgentの遅延初期化"""
-    if "memory" not in _agent_cache:
-        from backend.agents.memory_agent import MemoryAgent
+def _get_memory_query_agent():
+    """会話履歴問い合わせ用GeneralKnowledgeAgentの遅延初期化"""
+    if "memory_query" not in _agent_cache:
+        from backend.agents.general_knowledge_agent import GeneralKnowledgeAgent
         from backend.utils.memory_helper import get_memory_helper
 
         memory_helper = get_memory_helper()
-        _agent_cache["memory"] = MemoryAgent(memory_system=memory_helper)
-    return _agent_cache["memory"]
+        _agent_cache["memory_query"] = GeneralKnowledgeAgent(memory_system=memory_helper)
+    return _agent_cache["memory_query"]
 
 
 @tool
@@ -226,8 +226,13 @@ async def memory_query_tool(
     Returns:
         会話履歴に関する回答テキスト
     """
-    agent = _get_memory_agent()
-    result = await agent.process_memory_query(query, session_id, language)
+    agent = _get_memory_query_agent()
+    result = await agent.answer_query(
+        query=query,
+        language=language,
+        session_id=session_id,
+        query_type="memory",
+    )
     return result.get("answer", "")
 
 
