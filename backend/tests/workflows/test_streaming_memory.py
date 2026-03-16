@@ -45,7 +45,7 @@ def _build_patches():
         "vision_agent": "backend.agents.ocr_agent.VisionAgent",
         "rag": "backend.tools.enhanced_rag.EnhancedRAGSearch",
         "classifier": "backend.utils.query_classifier.QueryClassifier",
-        "checkpointer": "backend.utils.checkpointer.create_checkpointer",
+        "checkpointer": "backend.utils.checkpointer.get_checkpointer",
         "clarification": "backend.utils.clarification_templates.get_clarification_response",
         "priority_engine": "backend.utils.context_priority.ContextPriorityEngine",
     }
@@ -252,6 +252,32 @@ class TestStreamingExecution:
 
         assert captured_kwargs.get("config") is not None
         assert captured_kwargs["config"]["configurable"]["thread_id"] == "cfg-test"
+
+    @pytest.mark.asyncio
+    @patch("backend.workflows.main_workflow.OrchestratorAgent")
+    async def test_ainvoke_retries_after_stale_checkpointer_probe(self, mock_orch_cls):
+        """stale connection を検知したら pool refresh 後に ainvoke を続行する"""
+        mock_orch_cls.return_value = AsyncMock()
+        workflow = MainWorkflow()
+
+        mock_checkpointer = AsyncMock()
+        mock_checkpointer.aget_tuple = AsyncMock(
+            side_effect=[RuntimeError("the connection is closed"), None]
+        )
+        mock_checkpointer.recreate = AsyncMock()
+        workflow.checkpointer = mock_checkpointer
+
+        workflow.graph = MagicMock()
+        workflow.graph.ainvoke = AsyncMock(
+            return_value={"answer": "recovered", "emotion": "neutral", "metadata": {}}
+        )
+
+        result = await workflow.ainvoke(_default_input(session_id="reconnect-session"))
+
+        assert result["answer"] == "recovered"
+        assert mock_checkpointer.aget_tuple.await_count == 2
+        mock_checkpointer.recreate.assert_awaited_once()
+        workflow.graph.ainvoke.assert_awaited_once()
 
 
 # ===========================================================================
@@ -583,11 +609,11 @@ class TestGetWorkflowSingleton:
 
     @pytest.mark.asyncio
     @patch("backend.workflows.main_workflow.OrchestratorAgent")
-    @patch("backend.utils.checkpointer.create_checkpointer", new_callable=AsyncMock)
-    async def test_get_workflow_returns_same_instance(self, mock_create_cp, mock_orch_cls):
+    @patch("backend.utils.checkpointer.get_checkpointer", new_callable=AsyncMock)
+    async def test_get_workflow_returns_same_instance(self, mock_get_cp, mock_orch_cls):
         """get_workflow() を 2 回呼ぶと同一インスタンスが返る"""
         mock_orch_cls.return_value = AsyncMock()
-        mock_create_cp.side_effect = ValueError("No SUPABASE_DB_URI")
+        mock_get_cp.side_effect = ValueError("No SUPABASE_DB_URI")
 
         wf1 = await get_workflow()
         wf2 = await get_workflow()
@@ -596,11 +622,11 @@ class TestGetWorkflowSingleton:
 
     @pytest.mark.asyncio
     @patch("backend.workflows.main_workflow.OrchestratorAgent")
-    @patch("backend.utils.checkpointer.create_checkpointer", new_callable=AsyncMock)
-    async def test_get_workflow_thread_safe(self, mock_create_cp, mock_orch_cls):
+    @patch("backend.utils.checkpointer.get_checkpointer", new_callable=AsyncMock)
+    async def test_get_workflow_thread_safe(self, mock_get_cp, mock_orch_cls):
         """複数タスクから同時に get_workflow() を呼んでもシングルトンが保証される"""
         mock_orch_cls.return_value = AsyncMock()
-        mock_create_cp.side_effect = ValueError("No SUPABASE_DB_URI")
+        mock_get_cp.side_effect = ValueError("No SUPABASE_DB_URI")
 
         results = await asyncio.gather(*[get_workflow() for _ in range(5)])
 
@@ -611,11 +637,11 @@ class TestGetWorkflowSingleton:
 
     @pytest.mark.asyncio
     @patch("backend.workflows.main_workflow.OrchestratorAgent")
-    @patch("backend.utils.checkpointer.create_checkpointer", new_callable=AsyncMock)
-    async def test_reset_workflow_clears_instance(self, mock_create_cp, mock_orch_cls):
+    @patch("backend.utils.checkpointer.get_checkpointer", new_callable=AsyncMock)
+    async def test_reset_workflow_clears_instance(self, mock_get_cp, mock_orch_cls):
         """reset_workflow() 後の get_workflow() は新しいインスタンスを返す"""
         mock_orch_cls.return_value = AsyncMock()
-        mock_create_cp.side_effect = ValueError("No SUPABASE_DB_URI")
+        mock_get_cp.side_effect = ValueError("No SUPABASE_DB_URI")
 
         wf1 = await get_workflow()
         reset_workflow()
@@ -625,11 +651,11 @@ class TestGetWorkflowSingleton:
 
     @pytest.mark.asyncio
     @patch("backend.workflows.main_workflow.OrchestratorAgent")
-    @patch("backend.utils.checkpointer.create_checkpointer", new_callable=AsyncMock)
-    async def test_get_workflow_without_checkpointer(self, mock_create_cp, mock_orch_cls):
-        """create_checkpointer が ValueError を投げても永続化なしで動作する"""
+    @patch("backend.utils.checkpointer.get_checkpointer", new_callable=AsyncMock)
+    async def test_get_workflow_without_checkpointer(self, mock_get_cp, mock_orch_cls):
+        """get_checkpointer が ValueError を投げても永続化なしで動作する"""
         mock_orch_cls.return_value = AsyncMock()
-        mock_create_cp.side_effect = ValueError("SUPABASE_DB_URI environment variable is not set.")
+        mock_get_cp.side_effect = ValueError("SUPABASE_DB_URI environment variable is not set.")
 
         wf = await get_workflow()
 
@@ -639,11 +665,11 @@ class TestGetWorkflowSingleton:
 
     @pytest.mark.asyncio
     @patch("backend.workflows.main_workflow.OrchestratorAgent")
-    @patch("backend.utils.checkpointer.create_checkpointer", new_callable=AsyncMock)
-    async def test_get_workflow_with_checkpointer_failure(self, mock_create_cp, mock_orch_cls):
-        """create_checkpointer が一般例外を投げても永続化なしで動作する"""
+    @patch("backend.utils.checkpointer.get_checkpointer", new_callable=AsyncMock)
+    async def test_get_workflow_with_checkpointer_failure(self, mock_get_cp, mock_orch_cls):
+        """get_checkpointer が一般例外を投げても永続化なしで動作する"""
         mock_orch_cls.return_value = AsyncMock()
-        mock_create_cp.side_effect = ConnectionError("DB unreachable")
+        mock_get_cp.side_effect = ConnectionError("DB unreachable")
 
         wf = await get_workflow()
 

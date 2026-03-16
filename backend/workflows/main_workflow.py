@@ -15,7 +15,7 @@ import os
 import time
 import uuid
 from dataclasses import dataclass
-from typing import Annotated, Any, Optional, TypedDict
+from typing import Annotated, Any, Optional, TypedDict, cast
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langgraph.graph import END, START, StateGraph
@@ -991,6 +991,36 @@ class MainWorkflow:
 
         return state, config
 
+    async def _ensure_checkpointer_ready(self, config: dict | None, session_id: str) -> None:
+        """Cold-start後の切断済み接続を graph 実行前に一度だけ張り直す。"""
+        if not self.checkpointer or not config:
+            return
+
+        aget_tuple = getattr(self.checkpointer, "aget_tuple", None)
+        if not callable(aget_tuple):
+            return
+
+        try:
+            await aget_tuple(config)
+        except Exception as error:
+            from backend.utils.checkpointer import is_checkpointer_connection_error
+
+            if not is_checkpointer_connection_error(error):
+                raise
+
+            recreate = getattr(self.checkpointer, "recreate", None)
+            if not callable(recreate):
+                raise
+
+            logger.warning(
+                "Checkpoint probe failed for session %s due to a stale PostgreSQL connection. "
+                "Refreshing the pool and retrying once.",
+                session_id,
+                exc_info=True,
+            )
+            await recreate(reason=error)
+            await aget_tuple(config)
+
     _AGENT_NODE_MAP: dict[str, str] = {
         "facility": "_facility_node",
         "event": "_event_node",
@@ -1029,7 +1059,7 @@ class MainWorkflow:
         agent_result = await agent_node(state)
 
         # Merge agent output into state for format_response
-        merged_state = {**state, **agent_result}
+        merged_state = cast(WorkflowStateDict, {**state, **agent_result})
 
         # format_response expects Runtime context — call directly with a
         # lightweight shim since we're outside the graph execution.
@@ -1058,6 +1088,7 @@ class MainWorkflow:
     async def ainvoke(self, input_data: dict) -> dict:
         """ワークフローを非同期実行"""
         state, config = self._prepare_state(input_data)
+        await self._ensure_checkpointer_ready(config, state["session_id"])
         visitor_id = input_data.get("visitor_id") or input_data.get("session_id", "anonymous")
         context = WorkflowContext(user_id=visitor_id)
         result = await self.graph.ainvoke(state, config=config, context=context)
@@ -1082,6 +1113,7 @@ class MainWorkflow:
             dict: {"type": "token", "content": str} or {"type": "complete", "data": dict}
         """
         state, config = self._prepare_state(input_data)
+        await self._ensure_checkpointer_ready(config, state["session_id"])
         visitor_id = input_data.get("visitor_id") or input_data.get("session_id", "anonymous")
         context = WorkflowContext(user_id=visitor_id)
         event_stream = self.graph.astream_events(
@@ -1147,9 +1179,9 @@ async def get_workflow() -> MainWorkflow:
                 store = None
 
                 try:
-                    from backend.utils.checkpointer import create_checkpointer
+                    from backend.utils.checkpointer import get_checkpointer
 
-                    checkpointer = await create_checkpointer()
+                    checkpointer = await get_checkpointer()
                     logger.info("Workflow initialized with AsyncPostgresSaver")
                 except ValueError:
                     logger.warning("SUPABASE_DB_URI not set, running without persistence.")

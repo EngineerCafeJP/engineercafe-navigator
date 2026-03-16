@@ -1,10 +1,8 @@
 """
-Checkpointer基盤実装
+Checkpointer utilities for LangGraph persistence.
 
-LangGraphの永続化機能を有効化するための AsyncPostgresSaver 実装。
-Supabase PostgreSQL を使用した langgraph-checkpoint-postgres 統合。
-
-参考: https://langchain-ai.github.io/langgraph/concepts/persistence/
+Uses a small psycopg async pool so Cloud Run cold starts do not keep serving
+through stale PostgreSQL connections after idle scale-to-zero periods.
 """
 
 import asyncio
@@ -12,186 +10,333 @@ import logging
 import os
 import re
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator, Optional
+from dataclasses import dataclass
+from typing import Any, AsyncGenerator, Awaitable, Callable, Optional, TypeVar, cast
 
+from langgraph.checkpoint.base import (
+    ChannelVersions,
+    Checkpoint,
+    CheckpointMetadata,
+    RunnableConfig,
+)
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from psycopg import AsyncConnection, InterfaceError, OperationalError
+from psycopg.rows import dict_row
+from psycopg_pool import AsyncConnectionPool, PoolClosed
 
 logger = logging.getLogger(__name__)
 
-# 非同期シングルトン用ロック
-_checkpointer_lock = asyncio.Lock()
+_T = TypeVar("_T")
 
-# コンテキストマネージャー参照（store.py と同パターン）
+_POOL_MIN_SIZE = 0
+_POOL_MAX_SIZE = 5
+_POOL_MAX_IDLE_SECONDS = 300
+_CONNECT_TIMEOUT_SECONDS = 10
+_KEEPALIVES_IDLE_SECONDS = 30
+
+_CONNECTION_ERROR_MESSAGES = (
+    "connection is closed",
+    "connection closed",
+    "pool is closed",
+    "server closed the connection unexpectedly",
+    "terminating connection",
+    "broken pipe",
+    "ssl connection has been closed unexpectedly",
+    "consuming input failed",
+)
+
+# Non-async types in tests still expect these module globals to exist.
+_checkpointer_lock = asyncio.Lock()
 _checkpointer_cm = None
+_checkpointer_instance: Optional[AsyncPostgresSaver] = None
 
 
 def _mask_connection_string(db_uri: str) -> str:
-    """
-    接続文字列から認証情報を安全にマスク
+    """Mask credentials in a PostgreSQL connection string for logs."""
+    return re.sub(r"(://[^:]+:)[^@]+(@)", r"\1****\2", db_uri)
 
-    Args:
-        db_uri: PostgreSQL接続文字列
 
-    Returns:
-        パスワードがマスクされた接続文字列
-    """
-    # パスワード部分をマスク: postgresql://user:password@host -> postgresql://user:****@host
-    masked = re.sub(r"(://[^:]+:)[^@]+(@)", r"\1****\2", db_uri)
-    return masked
+def is_checkpointer_connection_error(error: Exception) -> bool:
+    """Return True when the exception indicates a dead/closed DB connection."""
+    if isinstance(error, (OperationalError, InterfaceError, PoolClosed)):
+        return True
+
+    error_message = str(error).lower()
+    return any(message in error_message for message in _CONNECTION_ERROR_MESSAGES)
+
+
+async def _health_check_connection(conn: AsyncConnection[Any]) -> None:
+    """Fallback pool health check for psycopg versions without check_connection."""
+    async with conn.cursor() as cur:
+        await cur.execute("SELECT 1")
+
+
+def _pool_check_callback() -> Callable[[AsyncConnection[Any]], Awaitable[None]]:
+    callback = getattr(AsyncConnectionPool, "check_connection", None)
+    if callable(callback):
+        return cast(Callable[[AsyncConnection[Any]], Awaitable[None]], callback)
+    return _health_check_connection
+
+
+@dataclass(frozen=True)
+class _CheckpointerFactory:
+    """Factory for creating and re-creating resilient checkpointers."""
+
+    db_uri: str
+
+    @classmethod
+    def from_env(cls) -> "_CheckpointerFactory":
+        db_uri = os.getenv("SUPABASE_DB_URI")
+        if not db_uri:
+            error_msg = (
+                "SUPABASE_DB_URI environment variable is not set. "
+                "Please set it to your Supabase PostgreSQL connection string."
+            )
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+
+        return cls(db_uri=db_uri)
+
+    async def create_pool(self) -> AsyncConnectionPool:
+        pool = AsyncConnectionPool(
+            conninfo=self.db_uri,
+            open=False,
+            min_size=_POOL_MIN_SIZE,
+            max_size=_POOL_MAX_SIZE,
+            max_idle=_POOL_MAX_IDLE_SECONDS,
+            check=_pool_check_callback(),
+            kwargs={
+                "autocommit": True,
+                "prepare_threshold": 0,
+                "row_factory": dict_row,
+                "connect_timeout": _CONNECT_TIMEOUT_SECONDS,
+                "keepalives": 1,
+                "keepalives_idle": _KEEPALIVES_IDLE_SECONDS,
+            },
+        )
+        await pool.open()
+        return pool
+
+    async def create_checkpointer(self) -> "ResilientAsyncPostgresSaver":
+        pool = await self.create_pool()
+        saver = ResilientAsyncPostgresSaver(factory=self, pool=pool)
+        await saver.setup()
+        return saver
+
+    async def prewarm_pool(self, pool: AsyncConnectionPool) -> None:
+        async with pool.connection() as conn:
+            await _pool_check_callback()(conn)
+
+
+class ResilientAsyncPostgresSaver(AsyncPostgresSaver):
+    """AsyncPostgresSaver that can replace its own pool after connection loss."""
+
+    def __init__(self, factory: _CheckpointerFactory, pool: AsyncConnectionPool) -> None:
+        super().__init__(conn=pool)
+        self._factory = factory
+        self._pool_refresh_lock = asyncio.Lock()
+
+    @property
+    def pool(self) -> AsyncConnectionPool:
+        return cast(AsyncConnectionPool, self.conn)
+
+    async def prewarm(self) -> None:
+        await self._factory.prewarm_pool(self.pool)
+
+    async def recreate(self, reason: Exception | None = None) -> None:
+        async with self._pool_refresh_lock:
+            previous_pool = self.pool
+            new_pool = await self._factory.create_pool()
+            try:
+                await self._factory.prewarm_pool(new_pool)
+            except Exception:
+                await new_pool.close()
+                raise
+
+            async with self.lock:
+                self.conn = new_pool
+
+            try:
+                await previous_pool.close()
+            except Exception as close_error:
+                logger.warning(
+                    "Error closing previous checkpointer pool: %s",
+                    close_error,
+                    exc_info=True,
+                )
+
+            if reason is None:
+                logger.info("Recreated checkpointer connection pool")
+            else:
+                logger.warning(
+                    "Recreated checkpointer connection pool after failure: %s",
+                    reason,
+                )
+
+    async def aclose(self) -> None:
+        await self.pool.close()
+
+    async def _run_with_connection_retry(
+        self,
+        operation_name: str,
+        operation: Callable[..., Awaitable[_T]],
+        *args: Any,
+        **kwargs: Any,
+    ) -> _T:
+        try:
+            return await operation(*args, **kwargs)
+        except Exception as error:
+            if not is_checkpointer_connection_error(error):
+                raise
+
+            logger.warning(
+                "Checkpointer %s failed because the PostgreSQL connection is stale. "
+                "Recreating the pool and retrying once.",
+                operation_name,
+                exc_info=True,
+            )
+            await self.recreate(reason=error)
+            return await operation(*args, **kwargs)
+
+    async def aget_tuple(self, config: RunnableConfig) -> Any:
+        return await self._run_with_connection_retry("aget_tuple", super().aget_tuple, config)
+
+    async def alist(
+        self,
+        config: RunnableConfig | None,
+        *,
+        filter: dict[str, Any] | None = None,
+        before: RunnableConfig | None = None,
+        limit: int | None = None,
+    ) -> Any:
+        return await self._run_with_connection_retry(
+            "alist",
+            super().alist,
+            config,
+            filter=filter,
+            before=before,
+            limit=limit,
+        )
+
+    async def aput(
+        self,
+        config: RunnableConfig,
+        checkpoint: Checkpoint,
+        metadata: CheckpointMetadata,
+        new_versions: ChannelVersions,
+    ) -> RunnableConfig:
+        return await self._run_with_connection_retry(
+            "aput",
+            super().aput,
+            config,
+            checkpoint,
+            metadata,
+            new_versions,
+        )
+
+    async def aput_writes(
+        self,
+        config: RunnableConfig,
+        writes: Any,
+        task_id: str,
+        task_path: str = "",
+    ) -> None:
+        await self._run_with_connection_retry(
+            "aput_writes",
+            super().aput_writes,
+            config,
+            writes,
+            task_id,
+            task_path,
+        )
+
+    async def adelete_thread(self, thread_id: str) -> None:
+        await self._run_with_connection_retry("adelete_thread", super().adelete_thread, thread_id)
 
 
 async def create_checkpointer() -> AsyncPostgresSaver:
     """
-    AsyncPostgresSaverを作成（Supabase PostgreSQL使用）
-
-    環境変数 SUPABASE_DB_URI から PostgreSQL 接続文字列を取得し、
-    langgraph-checkpoint-postgres の AsyncPostgresSaver を初期化します。
-
-    環境変数:
-        SUPABASE_DB_URI: PostgreSQL接続文字列
-            例: postgresql://user:password@host:port/database
+    Create an AsyncPostgresSaver backed by a resilient AsyncConnectionPool.
 
     Returns:
-        AsyncPostgresSaver: LangGraph用のCheckpointerインスタンス
-
-    Raises:
-        ValueError: SUPABASE_DB_URI が設定されていない場合
-        ConnectionError: データベース接続に失敗した場合
-
-    Example:
-        >>> checkpointer = await create_checkpointer()
-        >>> # LangGraph workflow で使用
-        >>> workflow = StateGraph(WorkflowState).compile(checkpointer=checkpointer)
+        AsyncPostgresSaver: LangGraph checkpointer instance
     """
-    db_uri = os.getenv("SUPABASE_DB_URI")
-
-    if not db_uri:
-        error_msg = (
-            "SUPABASE_DB_URI environment variable is not set. "
-            "Please set it to your Supabase PostgreSQL connection string."
-        )
-        logger.error(error_msg)
-        raise ValueError(error_msg)
-
-    # 接続文字列をマスクしてログ出力（パスワード漏洩防止）
-    masked_uri = _mask_connection_string(db_uri)
-    logger.info("Creating AsyncPostgresSaver with connection: %s", masked_uri)
-
-    global _checkpointer_cm
+    factory = _CheckpointerFactory.from_env()
+    logger.info(
+        "Creating AsyncPostgresSaver with pooled connection: %s",
+        _mask_connection_string(factory.db_uri),
+    )
 
     try:
-        # from_conn_string は @asynccontextmanager でラップされているため、
-        # 呼び出すとコンテキストマネージャーが返される。
-        # シングルトンパターンのため、コンテキストマネージャーを保持し、__aenter__() で取得する。
-        _checkpointer_cm = AsyncPostgresSaver.from_conn_string(db_uri)
-        checkpointer = await _checkpointer_cm.__aenter__()
-        await checkpointer.setup()
+        checkpointer = await factory.create_checkpointer()
         logger.info("AsyncPostgresSaver created and initialized successfully")
         return checkpointer
-    except Exception as e:
-        logger.exception("Failed to create AsyncPostgresSaver: %s", e)
-        raise ConnectionError(f"Failed to connect to Supabase PostgreSQL: {e}") from e
+    except Exception as error:
+        logger.exception("Failed to create AsyncPostgresSaver: %s", error)
+        raise ConnectionError(f"Failed to connect to Supabase PostgreSQL: {error}") from error
 
 
 @asynccontextmanager
 async def get_checkpointer_context() -> AsyncGenerator[AsyncPostgresSaver, None]:
-    """
-    Checkpointerのコンテキストマネージャー
-
-    async with文で使用することで、接続の自動クリーンアップを保証します。
-
-    Yields:
-        AsyncPostgresSaver: Checkpointerインスタンス
-
-    Example:
-        >>> async with get_checkpointer_context() as checkpointer:
-        ...     graph = builder.compile(checkpointer=checkpointer)
-        ...     result = await graph.ainvoke(input_data)
-    """
-    db_uri = os.getenv("SUPABASE_DB_URI")
-
-    if not db_uri:
-        error_msg = (
-            "SUPABASE_DB_URI environment variable is not set. "
-            "Please set it to your Supabase PostgreSQL connection string."
-        )
-        logger.error(error_msg)
-        raise ValueError(error_msg)
-
-    async with AsyncPostgresSaver.from_conn_string(db_uri) as checkpointer:
-        await checkpointer.setup()
+    """Yield a one-off resilient checkpointer and close its pool afterwards."""
+    checkpointer = await create_checkpointer()
+    try:
         logger.info("AsyncPostgresSaver context created successfully")
         yield checkpointer
+    finally:
+        aclose = getattr(checkpointer, "aclose", None)
+        if callable(aclose):
+            await aclose()
 
 
 async def create_memory_checkpointer() -> AsyncPostgresSaver:
-    """
-    メモリ専用のCheckpointerを作成
-
-    メモリエージェント用に最適化されたCheckpointerインスタンスを作成します。
-    現在は通常のCheckpointerと同じ実装ですが、将来的に異なる設定を適用可能。
-
-    Returns:
-        AsyncPostgresSaver: メモリエージェント用のCheckpointerインスタンス
-    """
+    """Create the memory-specific checkpointer instance."""
     logger.info("Creating memory-specific checkpointer")
     return await create_checkpointer()
 
 
-# シングルトンインスタンス
-_checkpointer_instance: Optional[AsyncPostgresSaver] = None
-
-
 async def get_checkpointer() -> AsyncPostgresSaver:
-    """
-    Checkpointerのシングルトンインスタンスを取得（スレッドセーフ）
-
-    アプリケーション全体で単一のCheckpointerインスタンスを共有します。
-    複数のワークフローで同じCheckpointerを使用する場合に便利。
-    asyncio.Lockを使用してrace conditionを防止。
-
-    Returns:
-        AsyncPostgresSaver: Checkpointerのシングルトンインスタンス
-
-    Example:
-        >>> checkpointer = await get_checkpointer()
-        >>> workflow1 = StateGraph(State1).compile(checkpointer=checkpointer)
-        >>> workflow2 = StateGraph(State2).compile(checkpointer=checkpointer)
-    """
+    """Return the process-wide resilient checkpointer singleton."""
     global _checkpointer_instance
+
     if _checkpointer_instance is None:
         async with _checkpointer_lock:
-            # Double-check after acquiring lock
             if _checkpointer_instance is None:
                 _checkpointer_instance = await create_checkpointer()
                 logger.info("Checkpointer singleton instance created")
+
     return _checkpointer_instance
 
 
-async def close_checkpointer() -> None:
-    """
-    シングルトンCheckpointerをクローズ
+async def prewarm_checkpointer() -> AsyncPostgresSaver:
+    """Open and validate a pooled connection during application startup."""
+    checkpointer = await get_checkpointer()
+    prewarm = getattr(checkpointer, "prewarm", None)
+    if callable(prewarm):
+        await prewarm()
+        logger.info("Checkpointer connection pool pre-warmed")
+    return checkpointer
 
-    アプリケーション終了時に呼び出して、接続をクリーンアップします。
-    """
+
+async def close_checkpointer() -> None:
+    """Close the singleton checkpointer and drop the cached instance."""
     global _checkpointer_instance, _checkpointer_cm
-    if _checkpointer_instance is not None:
-        try:
-            # コンテキストマネージャーの __aexit__() を呼び出してクリーンアップ
-            if _checkpointer_cm is not None:
-                await _checkpointer_cm.__aexit__(None, None, None)
-            logger.info("Checkpointer singleton instance closed")
-        except Exception as e:
-            logger.warning("Error closing checkpointer: %s", e, exc_info=True)
-        finally:
-            _checkpointer_instance = None
-            _checkpointer_cm = None
+
+    if _checkpointer_instance is None:
+        return
+
+    try:
+        aclose = getattr(_checkpointer_instance, "aclose", None)
+        if callable(aclose):
+            await aclose()
+        logger.info("Checkpointer singleton instance closed")
+    except Exception as error:
+        logger.warning("Error closing checkpointer: %s", error, exc_info=True)
+    finally:
+        _checkpointer_instance = None
+        _checkpointer_cm = None
 
 
 async def reset_checkpointer() -> None:
-    """
-    Checkpointerインスタンスをリセット（テスト用）
-
-    既存の接続を適切にクローズしてからリセットします。
-    """
+    """Reset the singleton checkpointer instance for tests."""
     await close_checkpointer()
