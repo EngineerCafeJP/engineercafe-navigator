@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const BACKEND_API_URL = (process.env.BACKEND_API_URL || 'http://localhost:8000').replace(/\/+$/, '');
+const BACKEND_API_URL = process.env.BACKEND_API_URL?.replace(/\/+$/, '') ?? '';
+if (!BACKEND_API_URL) {
+  console.warn('BACKEND_API_URL is not set. Upload requests will fail.');
+}
 
 function backendUrl(path: string): string {
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
