@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const BACKEND_API_URL = (process.env.BACKEND_API_URL || 'http://localhost:8000').replace(/\/+$/, '');
+const BACKEND_API_URL = process.env.BACKEND_API_URL?.replace(/\/+$/, '') ?? '';
+if (!BACKEND_API_URL) {
+  console.warn('BACKEND_API_URL is not set. Template requests will fail.');
+}
 const ALLOWED_FILENAMES = new Set(['knowledge-template.md', 'knowledge-pdf-template-guide.md']);
 
 function backendUrl(path: string): string {
