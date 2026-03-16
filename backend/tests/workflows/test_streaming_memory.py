@@ -255,15 +255,13 @@ class TestStreamingExecution:
 
     @pytest.mark.asyncio
     @patch("backend.workflows.main_workflow.OrchestratorAgent")
-    async def test_ainvoke_retries_after_stale_checkpointer_probe(self, mock_orch_cls):
-        """stale connection を検知したら pool refresh 後に ainvoke を続行する"""
+    async def test_ainvoke_probes_checkpointer_before_invoke(self, mock_orch_cls):
+        """checkpointer の readiness probe を ainvoke 前に実行する"""
         mock_orch_cls.return_value = AsyncMock()
         workflow = MainWorkflow()
 
         mock_checkpointer = AsyncMock()
-        mock_checkpointer.aget_tuple = AsyncMock(
-            side_effect=[RuntimeError("the connection is closed"), None]
-        )
+        mock_checkpointer.aget_tuple = AsyncMock(return_value=None)
         mock_checkpointer.recreate = AsyncMock()
         workflow.checkpointer = mock_checkpointer
 
@@ -275,8 +273,10 @@ class TestStreamingExecution:
         result = await workflow.ainvoke(_default_input(session_id="reconnect-session"))
 
         assert result["answer"] == "recovered"
-        assert mock_checkpointer.aget_tuple.await_count == 2
-        mock_checkpointer.recreate.assert_awaited_once()
+        mock_checkpointer.aget_tuple.assert_awaited_once_with(
+            {"configurable": {"thread_id": "reconnect-session"}}
+        )
+        mock_checkpointer.recreate.assert_not_called()
         workflow.graph.ainvoke.assert_awaited_once()
 
 

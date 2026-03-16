@@ -143,8 +143,15 @@ class ResilientAsyncPostgresSaver(AsyncPostgresSaver):
     async def prewarm(self) -> None:
         await self._factory.prewarm_pool(self.pool)
 
-    async def recreate(self, reason: Exception | None = None) -> None:
+    async def recreate(
+        self,
+        reason: Exception | None = None,
+        stale_pool: AsyncConnectionPool | None = None,
+    ) -> None:
         async with self._pool_refresh_lock:
+            if stale_pool is not None and self.pool is not stale_pool:
+                return
+
             previous_pool = self.pool
             new_pool = await self._factory.create_pool()
             try:
@@ -183,6 +190,7 @@ class ResilientAsyncPostgresSaver(AsyncPostgresSaver):
         *args: Any,
         **kwargs: Any,
     ) -> _T:
+        stale_pool = self.pool
         try:
             return await operation(*args, **kwargs)
         except Exception as error:
@@ -195,7 +203,7 @@ class ResilientAsyncPostgresSaver(AsyncPostgresSaver):
                 operation_name,
                 exc_info=True,
             )
-            await self.recreate(reason=error)
+            await self.recreate(reason=error, stale_pool=stale_pool)
             return await operation(*args, **kwargs)
 
     async def aget_tuple(self, config: RunnableConfig) -> Any:
@@ -208,15 +216,33 @@ class ResilientAsyncPostgresSaver(AsyncPostgresSaver):
         filter: dict[str, Any] | None = None,
         before: RunnableConfig | None = None,
         limit: int | None = None,
-    ) -> Any:
-        return await self._run_with_connection_retry(
-            "alist",
-            super().alist,
-            config,
-            filter=filter,
-            before=before,
-            limit=limit,
-        )
+    ) -> AsyncGenerator[Any, None]:
+        stale_pool = self.pool
+        try:
+            async for item in super().alist(
+                config,
+                filter=filter,
+                before=before,
+                limit=limit,
+            ):
+                yield item
+        except Exception as error:
+            if not is_checkpointer_connection_error(error):
+                raise
+
+            logger.warning(
+                "Checkpointer alist failed because the PostgreSQL connection is stale. "
+                "Recreating the pool and retrying once.",
+                exc_info=True,
+            )
+            await self.recreate(reason=error, stale_pool=stale_pool)
+            async for item in super().alist(
+                config,
+                filter=filter,
+                before=before,
+                limit=limit,
+            ):
+                yield item
 
     async def aput(
         self,

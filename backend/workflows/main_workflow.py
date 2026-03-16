@@ -1000,26 +1000,7 @@ class MainWorkflow:
         if not callable(aget_tuple):
             return
 
-        try:
-            await aget_tuple(config)
-        except Exception as error:
-            from backend.utils.checkpointer import is_checkpointer_connection_error
-
-            if not is_checkpointer_connection_error(error):
-                raise
-
-            recreate = getattr(self.checkpointer, "recreate", None)
-            if not callable(recreate):
-                raise
-
-            logger.warning(
-                "Checkpoint probe failed for session %s due to a stale PostgreSQL connection. "
-                "Refreshing the pool and retrying once.",
-                session_id,
-                exc_info=True,
-            )
-            await recreate(reason=error)
-            await aget_tuple(config)
+        await aget_tuple(config)
 
     _AGENT_NODE_MAP: dict[str, str] = {
         "facility": "_facility_node",

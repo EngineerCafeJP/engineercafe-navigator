@@ -90,6 +90,76 @@ class TestCheckpointerFactory:
         assert "Failed to connect to Supabase PostgreSQL" in str(exc_info.value)
 
 
+class TestResilientAsyncPostgresSaver:
+    @pytest.mark.asyncio
+    async def test_alist_retries_after_stale_connection(self):
+        initial_pool = MagicMock()
+        initial_pool.close = AsyncMock()
+        recovered_pool = MagicMock()
+        recovered_pool.close = AsyncMock()
+
+        factory = MagicMock()
+        factory.create_pool = AsyncMock(return_value=recovered_pool)
+        factory.prewarm_pool = AsyncMock()
+
+        saver = checkpointer.ResilientAsyncPostgresSaver(factory=factory, pool=initial_pool)
+
+        attempts = 0
+
+        async def mock_alist(_self, config, *, filter=None, before=None, limit=None):
+            nonlocal attempts
+            attempts += 1
+            assert config == {"configurable": {"thread_id": "session-1"}}
+            assert filter == {"topic": "test"}
+            assert before is None
+            assert limit == 2
+            if attempts == 1:
+                raise RuntimeError("connection is closed")
+            yield {"checkpoint_id": "one"}
+            yield {"checkpoint_id": "two"}
+
+        with patch.object(checkpointer.AsyncPostgresSaver, "alist", mock_alist):
+            result = [
+                item
+                async for item in saver.alist(
+                    {"configurable": {"thread_id": "session-1"}},
+                    filter={"topic": "test"},
+                    limit=2,
+                )
+            ]
+
+        assert result == [{"checkpoint_id": "one"}, {"checkpoint_id": "two"}]
+        assert attempts == 2
+        factory.create_pool.assert_awaited_once()
+        factory.prewarm_pool.assert_awaited_once_with(recovered_pool)
+        initial_pool.close.assert_awaited_once()
+        assert saver.pool is recovered_pool
+
+    @pytest.mark.asyncio
+    async def test_recreate_returns_when_pool_already_refreshed(self):
+        initial_pool = MagicMock()
+        initial_pool.close = AsyncMock()
+        refreshed_pool = MagicMock()
+        refreshed_pool.close = AsyncMock()
+
+        factory = MagicMock()
+        factory.create_pool = AsyncMock()
+        factory.prewarm_pool = AsyncMock()
+
+        saver = checkpointer.ResilientAsyncPostgresSaver(factory=factory, pool=initial_pool)
+        saver.conn = refreshed_pool
+
+        await saver.recreate(
+            reason=RuntimeError("connection is closed"),
+            stale_pool=initial_pool,
+        )
+
+        factory.create_pool.assert_not_awaited()
+        factory.prewarm_pool.assert_not_awaited()
+        initial_pool.close.assert_not_awaited()
+        assert saver.pool is refreshed_pool
+
+
 class TestGetCheckpointer:
     @pytest.fixture(autouse=True)
     async def cleanup(self):
