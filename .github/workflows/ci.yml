@@ -331,8 +331,48 @@ jobs:
           echo "$HEALTH"
           echo "$HEALTH" | python3 -c "import sys,json; d=json.load(sys.stdin); assert d['status']=='ok', f'Health check failed: {d}'"
 
-  # Frontend: Vercel handles deploy via Git Integration (no CI job needed)
-  # Vercel auto-deploys: develop push -> Preview, main push -> Production
+  # Frontend: Deploy to Vercel production
+  # Only runs on push to develop after frontend build passes
+  # NOTE: This is an optional deploy job - not included in ci-success gate
+  #
+  # Vercel Production Branch is configured as "main", but this repo promotes
+  # frontend changes from "develop", so CI triggers an explicit production deploy.
+  frontend-deploy-production:
+    needs: [changes, frontend-build]
+    if: needs.changes.outputs.frontend == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-latest
+    env:
+      VERCEL_ORG_ID: team_874Dc9xaSKgX5A7meLBjWNvy
+      VERCEL_PROJECT_ID: prj_QUUdYbZBhbQqu3jvhSDNqyqMzgPs
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Check VERCEL_TOKEN secret
+        id: vercel-token
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          if [ -z "$VERCEL_TOKEN" ]; then
+            echo "::warning::VERCEL_TOKEN is not configured; skipping Vercel production deploy."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install Vercel CLI
+        if: steps.vercel-token.outputs.configured == 'true'
+        run: npm i -g vercel
+
+      - name: Deploy frontend to Vercel production
+        if: steps.vercel-token.outputs.configured == 'true'
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: vercel deploy --prod --yes --archive=tgz
 
   # Final status check for branch protection
   ci-success:
