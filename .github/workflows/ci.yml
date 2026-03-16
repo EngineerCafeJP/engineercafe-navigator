@@ -323,7 +323,11 @@ jobs:
         run: |
           SERVICE_URL=$(gcloud run services describe engineer-cafe-backend --region asia-northeast1 --format="value(status.url)")
           echo "Testing $SERVICE_URL/health ..."
-          HEALTH=$(curl -sf --max-time 30 "$SERVICE_URL/health")
+          for i in 1 2 3; do
+            HEALTH=$(curl -sf --max-time 30 "$SERVICE_URL/health") && break
+            echo "Attempt $i failed (cold start?), retrying in 10s..."
+            sleep 10
+          done
           echo "$HEALTH"
           echo "$HEALTH" | python3 -c "import sys,json; d=json.load(sys.stdin); assert d['status']=='ok', f'Health check failed: {d}'"
 
