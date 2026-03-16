@@ -1022,7 +1022,13 @@ export default function CharacterAvatar({
     try {
       const response = await fetch('/api/animations');
       const result = await response.json();
-      setVrmAnimationOptions(result.animations ?? []);
+      const files: string[] = result.animations ?? [];
+      setVrmAnimationOptions(
+        files.map((file) => ({
+          value: file.startsWith('/') ? file : `/animations/${file}`,
+          label: file,
+        })),
+      );
     } catch (error) {
       console.error('Error fetching VRM animations:', error);
     }
