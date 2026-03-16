@@ -2,7 +2,7 @@
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi.testclient import TestClient
 from starlette.requests import Request
 
@@ -36,6 +36,29 @@ class TestHealthCheck:
         # CI環境ではSupabase/LLM未接続のため "degraded" になりうる
         assert data["status"] in ("ok", "degraded")
         assert data["service"] == "engineer-cafe-navigator-backend"
+
+
+class TestLifespan:
+    @pytest.mark.asyncio
+    async def test_lifespan_prewarms_checkpointer(self):
+        import backend.main as main_mod
+
+        app = MagicMock()
+        session_task_manager = AsyncMock()
+
+        with (
+            patch("backend.utils.env_validator.validate_startup"),
+            patch("backend.utils.checkpoint_cleanup.CheckpointCleanup", return_value=MagicMock()),
+            patch("backend.main.get_session_task_manager", return_value=session_task_manager),
+            patch("backend.utils.checkpointer.prewarm_checkpointer", new=AsyncMock()) as prewarm,
+            patch("backend.utils.checkpointer.close_checkpointer", new=AsyncMock()),
+            patch("backend.utils.store.close_store", new=AsyncMock()),
+        ):
+            async with main_mod.lifespan(app):
+                prewarm.assert_awaited_once()
+                session_task_manager.initialize.assert_awaited_once()
+
+        session_task_manager.shutdown.assert_awaited_once()
 
 
 class TestChatEndpoint:
