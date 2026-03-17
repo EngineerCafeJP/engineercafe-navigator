@@ -15,7 +15,7 @@ const originalFetch = global.fetch;
 afterEach(() => {
   process.env.BACKEND_API_URL = originalBackendApiUrl;
   process.env.BACKEND_API_KEY = originalBackendApiKey;
-  process.env.NODE_ENV = originalNodeEnv;
+  (process.env as Record<string, string | undefined>).NODE_ENV = originalNodeEnv;
   global.fetch = originalFetch;
 });
 
@@ -45,7 +45,7 @@ test(
   'createInternalServerErrorResponse exposes details only in development',
   { concurrency: false },
   async () => {
-    process.env.NODE_ENV = 'development';
+    (process.env as Record<string, string | undefined>).NODE_ENV = 'development';
     const response = createInternalServerErrorResponse(new Error('backend timed out'));
 
     assert.equal(response.status, 500);
@@ -61,7 +61,7 @@ test(
   { concurrency: false },
   async () => {
     process.env.BACKEND_API_URL = 'https://backend.example.com';
-    process.env.NODE_ENV = 'test';
+    (process.env as Record<string, string | undefined>).NODE_ENV = 'test';
     mockBackendJsonResponse({ detail: 'validation failed' }, 422);
 
     const { POST } = await import('../app/api/qa/route');
@@ -83,7 +83,7 @@ test(
   { concurrency: false },
   async () => {
     process.env.BACKEND_API_URL = 'https://backend.example.com';
-    process.env.NODE_ENV = 'test';
+    (process.env as Record<string, string | undefined>).NODE_ENV = 'test';
     mockBackendJsonResponse({ error: 'Unsupported action' }, 400);
 
     const { GET } = await import('../app/api/voice/route');
