@@ -27,8 +27,8 @@ test('returns supported feature arrays when manifest is missing', async () => {
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), {
     success: true,
-    expressions: ['neutral', 'happy', 'sad', 'angry', 'relaxed', 'surprised', 'thinking'],
-    animations: ['idle', 'greeting', 'explaining', 'thinking', 'listening', 'speaking'],
+    expressions: ['neutral', 'happy', 'sad', 'angry', 'relaxed', 'surprised'],
+    animations: ['idle', 'bowing', 'greeting', 'looking', 'talking', 'thinking'],
   });
 });
 
@@ -51,8 +51,8 @@ test('returns manifest animations when a character animation manifest exists', a
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), {
     success: true,
-    expressions: ['neutral', 'happy', 'sad', 'angry', 'relaxed', 'surprised', 'thinking'],
-    animations: ['wave', 'bow'],
+    expressions: ['neutral', 'happy', 'sad', 'angry', 'relaxed', 'surprised'],
+    animations: ['idle', 'bowing', 'greeting', 'looking', 'talking', 'thinking'],
   });
 });
 

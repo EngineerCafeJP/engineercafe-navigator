@@ -15,7 +15,7 @@ export interface VRMAnimationOption {
   label: string;
 }
 
-const DEFAULT_VRM_ANIMATION = '/animations/idle_loop.vrma';
+const DEFAULT_VRM_ANIMATION = '/animations/idle.vrma';
 
 const VISEME_NAMES = ['aa', 'ih', 'ou', 'ee', 'oh'];
 

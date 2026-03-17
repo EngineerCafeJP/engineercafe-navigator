@@ -12,16 +12,15 @@ const DEFAULT_SUPPORTED_EXPRESSIONS = [
   'angry',
   'relaxed',
   'surprised',
-  'thinking',
 ];
 
 const DEFAULT_SUPPORTED_ANIMATIONS = [
   'idle',
+  'bowing',
   'greeting',
-  'explaining',
+  'looking',
+  'talking',
   'thinking',
-  'listening',
-  'speaking',
 ];
 
 const isStringArray = (value: unknown): value is string[] =>
