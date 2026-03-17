@@ -3,7 +3,7 @@
 import { EmotionData, EmotionManager } from '@/lib/emotion-manager';
 import { ExpressionController } from '@/lib/expression-controller';
 import { LipSyncAnalyzer } from '@/lib/lip-sync-analyzer';
-import { VRMBlendShapeController, VRMUtils, getMouthOverrideFactor } from '@/lib/vrm-utils';
+import { VRMBlendShapeController, VRMUtils, getLipSyncFactorFromEmotions } from '@/lib/vrm-utils';
 import { VRM, VRMLoaderPlugin } from '@pixiv/three-vrm';
 import { VRMAnimationLoaderPlugin, createVRMAnimationClip } from '@pixiv/three-vrm-animation';
 import { Settings, VolumeX } from 'lucide-react';
@@ -93,6 +93,10 @@ const SETTINGS_TAB_LABELS: Record<
   lighting: 'Lighting',
   audio: 'Audio',
 };
+
+const VISEME_NAMES = ['aa', 'ih', 'ou', 'ee', 'oh'] as const;
+const MIN_LIP_SYNC_UI_FACTOR = 0.2;
+const VISEME_SMOOTHING_ALPHA = 0.35;
 
 const DEFAULT_LOOKAT_TARGET = new THREE.Vector3(0, 1, 1); // 1m ahead, 1m up
 
@@ -214,7 +218,10 @@ export default function CharacterAvatar({
   const keyframeAnimationTimeoutsRef = useRef<NodeJS.Timeout[]>([]);
   const playKeyframeAnimationInternalRef = useRef<((animation: CharacterAnimationData) => void) | null>(null);
   const setExpressionWeightsRef = useRef<(weights: Record<string, number>) => void>(() => {});
-  const expressionWeightsSyncRef = useRef<Record<string, number>>({});
+  // VRM-applied expression weights (includes visemes after attenuation)
+  const expressionWeightsAppliedRef = useRef<Record<string, number>>({});
+  // UI display values (visemes may be shown as estimated raw values)
+  const expressionWeightsDisplayRef = useRef<Record<string, number>>({});
   const expressionWeightsUiRef = useRef<Record<string, number>>({});
   const lastManualExpressionUpdateMsRef = useRef<Record<string, number>>({});
   const lastSettingsPanelEmitMsRef = useRef(0);
@@ -843,7 +850,7 @@ export default function CharacterAvatar({
         }
       }
 
-      // Create viseme control function (attenuate intensity when expression uses mouth)
+      // Create viseme control function (attenuate based on active emotion max)
       const setViseme = (viseme: string, intensity: number) => {
         if (blendShapeControllerRef.current) {
           const visemeMap: Record<string, string> = {
@@ -855,8 +862,7 @@ export default function CharacterAvatar({
             'Closed': 'neutral'
           };
           const vrmExpression = visemeMap[viseme] || 'neutral';
-          const { expression, weight } = currentExpressionRef.current;
-          const factor = getMouthOverrideFactor(expression, weight);
+          const factor = getLipSyncFactorFromEmotions(expressionWeightsAppliedRef.current);
           blendShapeControllerRef.current.setViseme(vrmExpression, intensity * factor);
         }
       };
@@ -982,7 +988,16 @@ export default function CharacterAvatar({
               });
             }
             if (keyframe.expressions && blendShapeControllerRef.current) {
-              blendShapeControllerRef.current.setExpressions(keyframe.expressions);
+              const factor = getLipSyncFactorFromEmotions(keyframe.expressions);
+              const blended = { ...keyframe.expressions };
+              VISEME_NAMES.forEach((name) => {
+                const v = blended[name];
+                if (typeof v === 'number') {
+                  blended[name] = v * factor;
+                }
+              });
+
+              blendShapeControllerRef.current.setExpressions(blended);
               const current = blendShapeControllerRef.current.getCurrentExpressions();
               setExpressionWeightsRef.current(current);
             }
@@ -1049,6 +1064,13 @@ export default function CharacterAvatar({
   };
 
   const handle_expression_weight_change = (name: string, weight: number) => {
+    const is_viseme = (VISEME_NAMES as readonly string[]).includes(name);
+    const factor = is_viseme
+      ? getLipSyncFactorFromEmotions(expressionWeightsAppliedRef.current)
+      : 1;
+    const applied_weight = is_viseme ? weight * factor : weight;
+
+    // UI holds the raw value; attenuation happens only when applying to the VRM.
     const next = { ...expressionWeightsUiRef.current, [name]: weight };
     expressionWeightsUiRef.current = next;
     lastManualExpressionUpdateMsRef.current = {
@@ -1056,7 +1078,7 @@ export default function CharacterAvatar({
       [name]: Date.now(),
     };
     setExpressionWeights(next);
-    blendShapeControllerRef.current?.setExpression(name, weight);
+    blendShapeControllerRef.current?.setExpression(name, applied_weight);
   };
 
   useEffect(() => {
@@ -1261,7 +1283,7 @@ export default function CharacterAvatar({
       const blend_shape = blendShapeControllerRef.current;
       if (blend_shape) {
         const current = blend_shape.getCurrentExpressions();
-        const last = expressionWeightsSyncRef.current;
+        const last = expressionWeightsAppliedRef.current;
         const current_keys = Object.keys(current);
         const last_keys = Object.keys(last);
         const EPSILON = 0.0001;
@@ -1284,14 +1306,49 @@ export default function CharacterAvatar({
           const now = Date.now();
           const manual = lastManualExpressionUpdateMsRef.current;
           const ui = expressionWeightsUiRef.current;
-          const merged: Record<string, number> = { ...current };
+          // Convert VRM-applied viseme (often attenuated) into an estimated raw value for UI display:
+          // raw ≈ applied / factor, where factor is based on active mouth-using emotions.
+          const factor = getLipSyncFactorFromEmotions(current);
+          const display: Record<string, number> = { ...current };
+          if (factor > 0.001) {
+            const effective_factor = Math.max(factor, MIN_LIP_SYNC_UI_FACTOR);
+            VISEME_NAMES.forEach((name) => {
+              const v = display[name];
+              if (typeof v === 'number') {
+                display[name] = Math.max(0, Math.min(1, v / effective_factor));
+              }
+            });
+          } else {
+            // When factor is 0, lip-sync is fully suppressed; display raw as 0 to avoid inf/NaN.
+            VISEME_NAMES.forEach((name) => {
+              if (typeof display[name] === 'number') {
+                display[name] = 0;
+              }
+            });
+          }
+
+          // Smooth viseme sliders to avoid visual jitter and division noise amplification.
+          const prev_display = expressionWeightsDisplayRef.current;
+          VISEME_NAMES.forEach((name) => {
+            const next_value = display[name];
+            const prev_value = prev_display[name];
+            if (typeof next_value === 'number' && typeof prev_value === 'number') {
+              display[name] =
+                prev_value + (next_value - prev_value) * VISEME_SMOOTHING_ALPHA;
+            }
+          });
+
+          // Preserve user's manual slider input briefly to avoid "fight" with VRM updates.
           for (const [name, ts] of Object.entries(manual)) {
             if (now - ts < MANUAL_HOLD_MS && typeof ui[name] === 'number') {
-              merged[name] = ui[name];
+              display[name] = ui[name];
             }
           }
-          setExpressionWeightsRef.current(merged);
-          expressionWeightsSyncRef.current = { ...merged };
+
+          setExpressionWeightsRef.current(display);
+          expressionWeightsDisplayRef.current = { ...display };
+          // Keep this ref as the VRM-applied values (not the UI display values) for stable change detection.
+          expressionWeightsAppliedRef.current = { ...current };
         }
       }
 

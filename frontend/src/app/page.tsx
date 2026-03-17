@@ -251,6 +251,25 @@ export default function Home() {
 
   const showAvatarControls = process.env.NEXT_PUBLIC_SHOW_AVATAR_SETTINGS === 'true';
 
+  const handleSettingsPanelPropsChange = useCallback(
+    (props: SettingsPanelPropsFromSource) => {
+      settingsPanelPropsRef.current = props;
+      // Avoid re-rendering the whole page when settings panel is closed.
+      if (showSettingsPanel) {
+        setSettingsPanelProps(props);
+      }
+    },
+    [showSettingsPanel],
+  );
+
+  useEffect(() => {
+    if (showSettingsPanel) {
+      setSettingsPanelProps(settingsPanelPropsRef.current);
+    } else {
+      setSettingsPanelProps(null);
+    }
+  }, [showSettingsPanel]);
+
   const startPresentation = useCallback((language: 'ja' | 'en') => {
     setCurrentLanguage(language);
     setShowSlideMode(true);
@@ -393,7 +412,7 @@ export default function Home() {
                   onBackgroundChange={setCharacterBackground}
                   onLightingChange={setLightingIntensity}
                   settingsPanelPropsRef={settingsPanelPropsRef}
-                  onSettingsPanelPropsChange={setSettingsPanelProps}
+                  onSettingsPanelPropsChange={handleSettingsPanelPropsChange}
                 />
               </div>
 

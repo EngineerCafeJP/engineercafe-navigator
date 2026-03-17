@@ -646,15 +646,14 @@ export class VRMAnimationManager {
   }
 }
 
-/**
- * Returns a factor in [0, 1] to attenuate lip-sync intensity when an expression that uses the mouth is active.
- * Used for frontend procedural override: intensity' = intensity * getMouthOverrideFactor(expression, weight).
- */
-export function getMouthOverrideFactor(expression: string, weight: number): number {
-  if (VRMUtils.EXPRESSIONS_THAT_USE_MOUTH.includes(expression as (typeof VRMUtils.EXPRESSIONS_THAT_USE_MOUTH)[number])) {
-    return Math.max(0, 1 - weight);
-  }
-  return 1;
+export function getLipSyncFactorFromEmotions(
+  weights: Record<string, number>,
+): number {
+  const max_emotion = VRMUtils.EXPRESSIONS_THAT_USE_MOUTH.reduce((acc, name) => {
+    const v = weights[name] ?? 0;
+    return v > acc ? v : acc;
+  }, 0);
+  return Math.max(0, 1 - max_emotion);
 }
 
 // VRM BlendShape Controller for Lip-sync and Expressions
