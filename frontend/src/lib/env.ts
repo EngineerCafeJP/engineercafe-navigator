@@ -1,9 +1,9 @@
 /**
- * Server-side environment variable validation using Zod.
+ * Server-side environment variable validation using Zod for the vars tracked in
+ * frontend/.env.example.
  *
- * This module defines schemas for ALL server-side env vars used across
- * the frontend codebase. It does NOT replace direct process.env usage
- * in individual files yet — that is a separate refactor step.
+ * It does NOT replace direct process.env usage in individual files yet, and it
+ * does not attempt to validate platform-managed/runtime flags such as NODE_ENV.
  *
  * Usage:
  *   import { validateServerEnv } from '@/lib/env';
@@ -26,17 +26,13 @@ const requiredServerEnvSchema = z.object({
     .string()
     .min(1, "NEXT_PUBLIC_SUPABASE_ANON_KEY is required"),
 
-  // Google Cloud
-  GOOGLE_CLOUD_PROJECT_ID: z
+  // Backend proxy
+  BACKEND_API_URL: z
     .string()
-    .min(1, "GOOGLE_CLOUD_PROJECT_ID is required"),
-  GOOGLE_CLOUD_CREDENTIALS: z
+    .url("BACKEND_API_URL must be a valid URL"),
+  BACKEND_API_KEY: z
     .string()
-    .min(1, "GOOGLE_CLOUD_CREDENTIALS path is required"),
-
-  // Next.js auth
-  NEXTAUTH_URL: z.string().url("NEXTAUTH_URL must be a valid URL"),
-  NEXTAUTH_SECRET: z.string().min(1, "NEXTAUTH_SECRET is required"),
+    .min(1, "BACKEND_API_KEY is required"),
 });
 
 // ---------------------------------------------------------------------------
@@ -46,41 +42,20 @@ const requiredServerEnvSchema = z.object({
 const optionalServerEnvSchema = z.object({
   // Server-only admin, alerting, and cron features
   SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
+  ADMIN_API_SECRET: z.string().optional(),
+  CRON_SECRET: z.string().optional(),
 
-  // Gemini model override
-  GEMINI_MODEL: z.string().optional(),
-  GEMINI_API_KEY: z.string().optional(),
-
-  // AI / DB integrations used by optional server-side workflows
-  OPENAI_API_KEY: z.string().optional(),
-  POSTGRES_URL: z.string().optional(),
-
-  // Google Cloud services
-  GOOGLE_SPEECH_API_KEY: z.string().optional(),
-  GOOGLE_TRANSLATE_API_KEY: z.string().optional(),
-  GOOGLE_APPLICATION_CREDENTIALS: z.string().optional(),
-
-  // Alert / monitoring
+  // Alerting
   ALERT_WEBHOOK_SECRET: z.string().optional(),
   SLACK_WEBHOOK_URL: z.string().optional(),
-
-  // CRON authentication
-  CRON_SECRET: z.string().optional(),
 
   // Redis cache
   UPSTASH_REDIS_URL: z.string().optional(),
   UPSTASH_REDIS_TOKEN: z.string().optional(),
 
-  // External integrations
-  WEBSOCKET_URL: z.string().optional(),
-  RECEPTION_API_URL: z.string().optional(),
-
-  // Vercel
-  VERCEL_URL: z.string().optional(),
-  VERCEL_DEPLOYMENT_ID: z.string().optional(),
-
   // Feature flags
-  FF_NEW_EMBEDDINGS_PERCENTAGE: z.string().optional(),
+  NEXT_PUBLIC_ENABLE_FACIAL_EXPRESSION: z.string().optional(),
+  NEXT_PUBLIC_USE_WEB_SPEECH_API: z.string().optional(),
   NEXT_PUBLIC_SKIP_BACKEND: z.string().optional(),
 });
 
@@ -124,6 +99,7 @@ export function validateServerEnv(): EnvValidationResult {
   // Validate optional vars (collect warnings for missing recommended ones)
   const recommendedOptional = [
     "SUPABASE_SERVICE_ROLE_KEY",
+    "ADMIN_API_SECRET",
     "CRON_SECRET",
   ] as const;
 
