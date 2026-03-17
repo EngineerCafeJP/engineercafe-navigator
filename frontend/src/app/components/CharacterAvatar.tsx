@@ -277,7 +277,7 @@ export default function CharacterAvatar({
   useEffect(() => {
     if (charactersRef.current) {
       // Check if current animation is idle
-      const isCurrentlyIdle = currentAnimationUrlRef.current === '/animations/idle_loop.vrma' || isIdleAnimationActive.current;
+      const isCurrentlyIdle = currentAnimationUrlRef.current === '/animations/idle.vrma' || isIdleAnimationActive.current;
       const sessionPose = getSessionPoseOffsets(sessionState);
       
       if (isCurrentlyIdle) {
@@ -722,7 +722,7 @@ export default function CharacterAvatar({
     }
     
     // Return to idle animation
-    await loadVRMAnimation('/animations/idle_loop.vrma', vrm, true, true);
+    await loadVRMAnimation('/animations/idle.vrma', vrm, true, true);
     isPlayingSequence.current = false;
   };
 
@@ -825,7 +825,7 @@ export default function CharacterAvatar({
 
         // Load default idle animation
         try {
-          await loadVRMAnimation('/animations/idle_loop.vrma', vrm, true, true);
+          await loadVRMAnimation('/animations/idle.vrma', vrm, true, true);
         } catch (animationError) {
           console.error('[CharacterAvatar] Failed to load default idle animation:', animationError);
         }
@@ -1037,7 +1037,7 @@ export default function CharacterAvatar({
   const handle_play_vrm_animation = async (url: string, loop: boolean) => {
     const vrm = charactersRef.current;
     if (!vrm) return;
-    const is_idle = url.includes('idle_loop');
+    const is_idle = url.includes('idle');
     await loadVRMAnimation(url, vrm, loop, is_idle);
   };
 
