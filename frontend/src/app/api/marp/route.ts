@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import {
+  createBackendErrorResponse,
+  createInternalServerErrorResponse,
+} from '@/app/api/_shared/backend-error-response';
 import { backendFetch } from '@/lib/api/backend-proxy';
 import { MarpProcessor } from '@/lib/marp-processor';
 
@@ -30,7 +34,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (!backendResponse.ok) {
-      throw new Error(`Backend error: ${backendResponse.status}`);
+      return createBackendErrorResponse(backendResponse, 'Failed to render slides');
     }
 
     const backendData = backendResponse.data;
@@ -69,16 +73,7 @@ export async function POST(request: NextRequest) {
       metadata: backendData.metadata,
     });
   } catch (error) {
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Failed to render slides',
-        ...(process.env.NODE_ENV === 'development' && {
-          details: error instanceof Error ? error.message : 'Unknown error',
-        }),
-      },
-      { status: 500 }
-    );
+    return createInternalServerErrorResponse(error, 'Failed to render slides');
   }
 }
 
