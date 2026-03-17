@@ -1,5 +1,7 @@
 # 統一アーキテクチャ設計書
 
+> 注意: この文書は proposal / migration-era の内容を含みます。現行アーキテクチャの判断には `docs/STATUS.md` と `docs/architecture/SYSTEM-ARCHITECTURE.md` を優先してください。
+
 ## 現状の問題点
 
 1. **音声出力の分散**

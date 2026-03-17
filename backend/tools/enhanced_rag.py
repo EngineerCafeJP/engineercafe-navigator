@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 # text-embedding-3-small: 1536 dims (OpenAI)
 # text-embedding-3-large: 3072 dims (OpenAI)
 # The DB column dimension must match the model output dimension.
-DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
+DEFAULT_EMBEDDING_MODEL = "openai/text-embedding-3-small"
 DEFAULT_EMBEDDING_DIMENSIONS = 1536
 
 # RPC similarity thresholds per category
@@ -114,7 +114,7 @@ class EnhancedRAGSearch:
 
     Attributes:
         supabase: Supabaseクライアント
-        openai_api_key: OpenAI APIキー
+        api_key: OpenRouter APIキー（embedding生成用）
         embedding_model: 使用するembeddingモデル名
         embedding_dimensions: embeddingの次元数
     """
@@ -139,9 +139,9 @@ class EnhancedRAGSearch:
                 os.getenv("SUPABASE_URL", ""),
                 os.getenv("SUPABASE_KEY", ""),
             )
-        self.openai_api_key = os.getenv("OPENAI_API_KEY", "")
-        if not self.openai_api_key:
-            logger.warning("OPENAI_API_KEY not set, embedding search will fail")
+        self.api_key = os.getenv("OPENROUTER_API_KEY", "")
+        if not self.api_key:
+            logger.warning("OPENROUTER_API_KEY not set, embedding search will fail")
         self.embedding_model = embedding_model or os.getenv(
             "EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL
         )
@@ -527,7 +527,7 @@ class EnhancedRAGSearch:
             return []
 
     async def _generate_embedding(self, text: str) -> List[float]:
-        """OpenAI APIでエンベディングを生成。
+        """OpenRouter API経由でエンベディングを生成。
 
         Args:
             text: エンベディング対象テキスト
@@ -544,14 +544,14 @@ class EnhancedRAGSearch:
         }
 
         # text-embedding-3-* モデルは dimensions パラメータをサポート
-        if self.embedding_model.startswith("text-embedding-3-"):
+        if "text-embedding-3-" in self.embedding_model:
             request_body["dimensions"] = self.embedding_dimensions
 
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                "https://api.openai.com/v1/embeddings",
+                "https://openrouter.ai/api/v1/embeddings",
                 headers={
-                    "Authorization": f"Bearer {self.openai_api_key}",
+                    "Authorization": f"Bearer {self.api_key}",
                     "Content-Type": "application/json",
                 },
                 json=request_body,

@@ -1,7 +1,8 @@
 import { rollbackManager } from '@/lib/rollback-manager';
-import { supabaseAdmin } from '@/lib/supabase';
 import crypto from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
+
+import { backendFetch } from '@/lib/api/backend-proxy';
 
 /**
  * Webhook endpoint for production alerts
@@ -30,14 +31,16 @@ export async function POST(request: NextRequest) {
     }
     
     const alert = await request.json();
-    
-    // Log alert
-    await logAlert(alert);
+
+    const response = await backendFetch('/api/alerts', { method: 'POST', body: alert });
+    if (!response.ok) {
+      throw new Error(`Backend API error: ${response.status}`);
+    }
     
     // Process alert based on severity
-    const response = await processAlert(alert);
+    const processedAlert = await processAlert(alert);
     
-    return NextResponse.json(response);
+    return NextResponse.json(processedAlert, { status: response.status });
     
   } catch (error) {
     console.error('[Alert Webhook] Error:', error);
@@ -114,28 +117,6 @@ async function processAlert(alert: AlertPayload): Promise<AlertResponse> {
 }
 
 /**
- * Log alert to database
- */
-async function logAlert(alert: AlertPayload): Promise<void> {
-  try {
-    await supabaseAdmin
-      .from('production_alerts')
-      .insert({
-        type: alert.type,
-        severity: alert.severity,
-        metric: alert.metric,
-        value: alert.value,
-        threshold: alert.threshold,
-        source: alert.source,
-        metadata: alert.metadata,
-        created_at: new Date().toISOString(),
-      });
-  } catch (error) {
-    console.error('[Alert Webhook] Failed to log alert:', error);
-  }
-}
-
-/**
  * Send notification (placeholder - implement based on your notification service)
  */
 async function sendNotification(notification: {
@@ -165,28 +146,22 @@ async function sendNotification(notification: {
 export async function GET(request: NextRequest) {
   try {
     const url = new URL(request.url);
+    const params: Record<string, string> = {};
     const severity = url.searchParams.get('severity');
-    const limit = parseInt(url.searchParams.get('limit') || '50');
-    
-    let query = supabaseAdmin
-      .from('production_alerts')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(limit);
-    
     if (severity) {
-      query = query.eq('severity', severity);
+      params.severity = severity;
     }
-    
-    const { data, error } = await query;
-    
-    if (error) throw error;
-    
-    return NextResponse.json({
-      alerts: data || [],
-      count: data?.length || 0,
+    const limit = url.searchParams.get('limit');
+    if (limit) {
+      params.limit = limit;
+    }
+
+    const response = await backendFetch('/api/alerts', {
+      method: 'GET',
+      params: Object.keys(params).length > 0 ? params : undefined,
     });
-    
+
+    return NextResponse.json(response.data, { status: response.status });
   } catch (error) {
     console.error('[Alert Webhook] Error fetching alerts:', error);
     return NextResponse.json(

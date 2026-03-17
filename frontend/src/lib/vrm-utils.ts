@@ -48,6 +48,9 @@ export class VRMUtils {
     'Closed': 'neutral'
   };
 
+  /** Expressions that use mouth (VRM 1.0 emotion presets). When active, lip-sync intensity is attenuated. */
+  public static readonly EXPRESSIONS_THAT_USE_MOUTH = ['happy', 'angry', 'sad', 'relaxed', 'surprised'] as const;
+
   private static humanoidBoneNames = [
     'hips', 'spine', 'chest', 'upperChest', 'neck', 'head',
     'leftShoulder', 'leftUpperArm', 'leftLowerArm', 'leftHand',
@@ -641,6 +644,17 @@ export class VRMAnimationManager {
     this.clips.clear();
     this.currentAction = null;
   }
+}
+
+/**
+ * Returns a factor in [0, 1] to attenuate lip-sync intensity when an expression that uses the mouth is active.
+ * Used for frontend procedural override: intensity' = intensity * getMouthOverrideFactor(expression, weight).
+ */
+export function getMouthOverrideFactor(expression: string, weight: number): number {
+  if (VRMUtils.EXPRESSIONS_THAT_USE_MOUTH.includes(expression as (typeof VRMUtils.EXPRESSIONS_THAT_USE_MOUTH)[number])) {
+    return Math.max(0, 1 - weight);
+  }
+  return 1;
 }
 
 // VRM BlendShape Controller for Lip-sync and Expressions

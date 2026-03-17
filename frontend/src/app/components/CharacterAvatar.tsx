@@ -3,27 +3,20 @@
 import { EmotionData, EmotionManager } from '@/lib/emotion-manager';
 import { ExpressionController } from '@/lib/expression-controller';
 import { LipSyncAnalyzer } from '@/lib/lip-sync-analyzer';
-import { VRMBlendShapeController, VRMUtils } from '@/lib/vrm-utils';
+import { VRMBlendShapeController, VRMUtils, getMouthOverrideFactor } from '@/lib/vrm-utils';
 import { VRM, VRMLoaderPlugin } from '@pixiv/three-vrm';
 import { VRMAnimationLoaderPlugin, createVRMAnimationClip } from '@pixiv/three-vrm-animation';
-import {
-  Film,
-  Lightbulb,
-  Palette,
-  Settings,
-  SlidersHorizontal,
-  Volume2,
-  VolumeX,
-} from 'lucide-react';
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { Settings, VolumeX } from 'lucide-react';
+import { useEffect, useRef, useState, useCallback, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import type { CharacterAnimationData } from '../utils/character-animation-utils';
-import AudioSettings from './AudioSettings';
-import BackgroundSelector, { type BackgroundOption as BackgroundSelectorOption } from './BackgroundSelector';
-import ControlsSettings, { type VRMAnimationOption } from './ControlsSettings';
-import EnvironmentSettings from './EnvironmentSettings';
-import KeyframeSettings from './KeyframeSettings';
+import SettingsPanel, {
+  type SettingsPanelPropsFromSource,
+} from './SettingsPanel';
+import { type BackgroundOption as BackgroundSelectorOption } from './BackgroundSelector';
+import { type VRMAnimationOption } from './ControlsSettings';
 
 interface CharacterState {
   expression: string;
@@ -32,6 +25,8 @@ interface CharacterState {
   rotation: { x: number; y: number; z: number };
   model: string;
 }
+
+type JsonRecord = Record<string, unknown>;
 
 export interface BackgroundOption {
   id?: string;
@@ -74,6 +69,16 @@ interface CharacterAvatarProps {
   onVolumeChange?: (value: number) => void;
   isMuted?: boolean;
   onMuteToggle?: () => void;
+  /** When set, settings panel is rendered into this element id (e.g. from page layout) */
+  settingsPortalTargetId?: string | null;
+  /** Controlled open state when using portal */
+  settingsOpen?: boolean;
+  /** Called when user closes the settings panel (when using portal) */
+  onSettingsClose?: () => void;
+  /** Extra tab shown first in settings (e.g. conversation history from page) */
+  extraSettingsTab?: { label: string; content: ReactNode };
+  /** When set, panel is rendered by parent (e.g. page); this ref is filled with panel props each render */
+  settingsPanelPropsRef?: React.MutableRefObject<SettingsPanelPropsFromSource | null>;
 }
 
 const SETTINGS_TAB_LABELS: Record<
@@ -86,6 +91,8 @@ const SETTINGS_TAB_LABELS: Record<
   lighting: 'Lighting',
   audio: 'Audio',
 };
+
+const DEFAULT_LOOKAT_TARGET = new THREE.Vector3(0, 1, 1); // 1m ahead, 1m up
 
 const getSessionPoseOffsets = (sessionState: 'idle' | 'listening' | 'processing' | 'speaking') => {
   switch (sessionState) {
@@ -120,6 +127,33 @@ const getSessionPoseOffsets = (sessionState: 'idle' | 'listening' | 'processing'
   }
 };
 
+const asRecord = (value: unknown): JsonRecord | null => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+
+  return value as JsonRecord;
+};
+
+const getVrmSpecVersion = (gltf: { parser?: { json?: { extensions?: JsonRecord } } }, vrm?: VRM | null): string | null => {
+  const extensions = gltf.parser?.json?.extensions;
+  const vrm0Extension = asRecord(extensions?.VRM);
+  if (typeof vrm0Extension?.specVersion === 'string') {
+    return vrm0Extension.specVersion;
+  }
+
+  const vrm1Extension = asRecord(extensions?.VRMC_vrm);
+  if (typeof vrm1Extension?.specVersion === 'string') {
+    return vrm1Extension.specVersion;
+  }
+
+  const vrmMeta = asRecord(asRecord(vrm)?.meta);
+  if (typeof vrmMeta?.metaVersion === 'string') {
+    return vrmMeta.metaVersion;
+  }
+
+  return null;
+};
 export default function CharacterAvatar({
   modelPath = '/characters/models/sakura.vrm',
   initialExpression = 'neutral',
@@ -150,6 +184,11 @@ export default function CharacterAvatar({
   onVolumeChange,
   isMuted = false,
   onMuteToggle,
+  settingsPortalTargetId = null,
+  settingsOpen = false,
+  onSettingsClose,
+  extraSettingsTab,
+  settingsPanelPropsRef,
 }: CharacterAvatarProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -180,6 +219,7 @@ export default function CharacterAvatar({
   const updateCharacterAnimationRef = useRef<(animation: string) => Promise<void>>(async () => {});
   const updateSceneBackgroundRef = useRef<(options: BackgroundOption) => void>(() => {});
   const loadedModelPathRef = useRef(modelPath);
+  const loadedVrmSpecVersionRef = useRef<string | null>(null);
 
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -193,9 +233,6 @@ export default function CharacterAvatar({
   const [showSettings, setShowSettings] = useState(false);
   const [availableExpressions, setAvailableExpressions] = useState<string[]>([]);
   const [availableAnimations, setAvailableAnimations] = useState<string[]>([]);
-  const [keyframeJsonInput, setKeyframeJsonInput] = useState('');
-  const [keyframeJsonError, setKeyframeJsonError] = useState('');
-  const [settingsPanelTab, setSettingsPanelTab] = useState<'controls' | 'keyframe' | 'background' | 'lighting' | 'audio'>('controls');
   const [vrmAnimationOptions, setVrmAnimationOptions] = useState<VRMAnimationOption[]>([]);
   const [vrmExpressionNames, setVrmExpressionNames] = useState<string[]>([]);
   const [expressionWeights, setExpressionWeights] = useState<Record<string, number>>({});
@@ -240,7 +277,7 @@ export default function CharacterAvatar({
   useEffect(() => {
     if (charactersRef.current) {
       // Check if current animation is idle
-      const isCurrentlyIdle = currentAnimationUrlRef.current === '/animations/idle_loop.vrma' || isIdleAnimationActive.current;
+      const isCurrentlyIdle = currentAnimationUrlRef.current === '/animations/idle.vrma' || isIdleAnimationActive.current;
       const sessionPose = getSessionPoseOffsets(sessionState);
       
       if (isCurrentlyIdle) {
@@ -545,7 +582,25 @@ export default function CharacterAvatar({
       const vrmAnimation = gltf.userData.vrmAnimations?.[0] || gltf.userData.vrmAnimation;
       
       if (vrmAnimation) {
-        const clip = createVRMAnimationClip(vrmAnimation, vrm as any);
+        let clip: THREE.AnimationClip | null = null;
+
+        if (vrm.lookAt) {
+          if (!vrm.lookAt.target) {
+            const fallbackLookAtTarget = new THREE.Object3D();
+            fallbackLookAtTarget.position.copy(DEFAULT_LOOKAT_TARGET);
+            vrm.lookAt.target = fallbackLookAtTarget;
+          }
+
+          clip = createVRMAnimationClip(vrmAnimation, vrm as any);
+        }
+
+        if (!clip && gltf.animations && gltf.animations.length > 0) {
+          clip = gltf.animations[0];
+        }
+
+        if (!clip) {
+          return { success: false, duration: 0 };
+        }
         
         if (!mixerRef.current) {
           mixerRef.current = new THREE.AnimationMixer(vrm.scene);
@@ -667,7 +722,7 @@ export default function CharacterAvatar({
     }
     
     // Return to idle animation
-    await loadVRMAnimation('/animations/idle_loop.vrma', vrm, true, true);
+    await loadVRMAnimation('/animations/idle.vrma', vrm, true, true);
     isPlayingSequence.current = false;
   };
 
@@ -683,6 +738,7 @@ export default function CharacterAvatar({
     try {
       setIsLoading(true);
       setError(null);
+      loadedVrmSpecVersionRef.current = null;
 
       // Remove existing character
       if (charactersRef.current) {
@@ -690,72 +746,99 @@ export default function CharacterAvatar({
         charactersRef.current = null;
       }
 
-      // Load VRM model
-      const loader = new GLTFLoader();
-      loader.register((parser) => new VRMLoaderPlugin(parser));
+      // Load VRM model via fetch + parseAsync so texture base path is correct.
+      // Force TextureLoader instead of ImageBitmapLoader: blob URLs from bufferView
+      // often fail with ImageBitmapLoader ("Couldn't load texture blob:..."), and
+      // failed textures become undefined, causing three-vrm setTextureColorSpace to throw.
+      const prev_create_image_bitmap =
+        typeof window !== 'undefined' ? window.createImageBitmap : undefined;
+      if (typeof window !== 'undefined') {
+        (window as unknown as { createImageBitmap?: unknown }).createImageBitmap = undefined;
+      }
+      try {
+        const loader = new GLTFLoader();
+        loader.register((parser) => new VRMLoaderPlugin(parser));
 
-      const gltf = await loader.loadAsync(modelPath);
-      const vrm = gltf.userData.vrm as VRM;
+        const absolute_url = new URL(modelPath, window.location.origin).href;
+        const response = await fetch(absolute_url);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch VRM: ${response.status} ${response.statusText}`);
+        }
+        const array_buffer = await response.arrayBuffer();
+        const base_path = absolute_url.substring(0, absolute_url.lastIndexOf('/') + 1);
+        const gltf = await loader.parseAsync(array_buffer, base_path);
+        const vrm = gltf.userData.vrm as VRM;
 
-      if (!vrm) {
-        throw new Error('Failed to load VRM from file');
+        if (!vrm) {
+          throw new Error('Failed to load VRM from file');
+        }
+
+        loadedVrmSpecVersionRef.current = getVrmSpecVersion(gltf, vrm);
+
+        // Add to scene
+        sceneRef.current.add(vrm.scene);
+        charactersRef.current = vrm;
+
+        // Rotate character 180 degrees to face forward
+        vrm.scene.rotation.set(
+          modelRotationOffset.x,
+          Math.PI + modelRotationOffset.y,
+          modelRotationOffset.z
+        );
+
+        // Set initial position
+        vrm.scene.position.set(
+          modelPositionOffset.x,
+          modelPositionOffset.y,
+          modelPositionOffset.z
+        );
+
+        // Initialize lip-sync and expression controllers
+        blendShapeControllerRef.current = new VRMBlendShapeController(vrm);
+        expressionControllerRef.current = new ExpressionController();
+
+        // Initialize LipSyncAnalyzer without AudioContext (will be initialized on first use)
+        lipSyncAnalyzerRef.current = new LipSyncAnalyzer();
+
+        const available_expressions = blendShapeControllerRef.current.getAvailableExpressions();
+        setVrmExpressionNames(available_expressions);
+        const initial_weights: Record<string, number> = {};
+        available_expressions.forEach((name) => {
+          initial_weights[name] = name === 'neutral' ? 1 : 0;
+        });
+        setExpressionWeights(initial_weights);
+
+        if (vrm.expressionManager?.expressionMap) {
+        }
+        // Start automatic blinking
+        if (autoBlinkCleanupRef.current) {
+          autoBlinkCleanupRef.current();
+        }
+        autoBlinkCleanupRef.current = blendShapeControllerRef.current.startAutoBlink();
+
+        // Set initial pose
+        await updateCharacterExpression(characterState.expression);
+        await updateCharacterAnimation(characterState.animation);
+
+        // Get available expressions and animations
+        await fetchAvailableFeatures();
+
+        // Load default idle animation
+        try {
+          await loadVRMAnimation('/animations/idle.vrma', vrm, true, true);
+        } catch (animationError) {
+          console.error('[CharacterAvatar] Failed to load default idle animation:', animationError);
+        }
+      } finally {
+        if (typeof window !== 'undefined' && prev_create_image_bitmap !== undefined) {
+          (window as unknown as { createImageBitmap?: unknown }).createImageBitmap =
+            prev_create_image_bitmap;
+        }
       }
 
-      // Add to scene
-      sceneRef.current.add(vrm.scene);
-      charactersRef.current = vrm;
-
-      // Rotate character 180 degrees to face forward
-      vrm.scene.rotation.set(
-        modelRotationOffset.x,
-        Math.PI + modelRotationOffset.y,
-        modelRotationOffset.z
-      );
-      
-      // Set initial position
-      vrm.scene.position.set(
-        modelPositionOffset.x,
-        modelPositionOffset.y,
-        modelPositionOffset.z
-      );
-
-      // Initialize lip-sync and expression controllers
-      blendShapeControllerRef.current = new VRMBlendShapeController(vrm);
-      expressionControllerRef.current = new ExpressionController();
-      
-      // Initialize LipSyncAnalyzer without AudioContext (will be initialized on first use)
-      lipSyncAnalyzerRef.current = new LipSyncAnalyzer();
-      
-      const available_expressions = blendShapeControllerRef.current.getAvailableExpressions();
-      setVrmExpressionNames(available_expressions);
-      const initial_weights: Record<string, number> = {};
-      available_expressions.forEach((name) => {
-        initial_weights[name] = name === 'neutral' ? 1 : 0;
-      });
-      setExpressionWeights(initial_weights);
-
-      if (vrm.expressionManager?.expressionMap) {
-      }
-      // Start automatic blinking
-      if (autoBlinkCleanupRef.current) {
-        autoBlinkCleanupRef.current();
-      }
-      autoBlinkCleanupRef.current = blendShapeControllerRef.current.startAutoBlink();
-
-      // Set initial pose
-      await updateCharacterExpression(characterState.expression);
-      await updateCharacterAnimation(characterState.animation);
-
-      // Get available expressions and animations
-      await fetchAvailableFeatures();
-      
-      // Load default idle animation
-      await loadVRMAnimation('/animations/idle_loop.vrma', vrm, true, true);
-
-      // Create viseme control function
+      // Create viseme control function (attenuate intensity when expression uses mouth)
       const setViseme = (viseme: string, intensity: number) => {
         if (blendShapeControllerRef.current) {
-          // Map viseme to VRM expression name
           const visemeMap: Record<string, string> = {
             'A': 'aa',
             'I': 'ih',
@@ -764,11 +847,10 @@ export default function CharacterAvatar({
             'O': 'oh',
             'Closed': 'neutral'
           };
-          
           const vrmExpression = visemeMap[viseme] || 'neutral';
-          blendShapeControllerRef.current.setViseme(vrmExpression, intensity);
-        } else {
-          console.warn('[CharacterAvatar] BlendShape controller not available');
+          const { expression, weight } = currentExpressionRef.current;
+          const factor = getMouthOverrideFactor(expression, weight);
+          blendShapeControllerRef.current.setViseme(vrmExpression, intensity * factor);
         }
       };
 
@@ -791,8 +873,8 @@ export default function CharacterAvatar({
         const mappedExpression = expressionFallbackMap[expression] || expression;
         
         if (blendShapeControllerRef.current) {
-          // Use the VRM expression manager to set expressions
-          const expressionManager = vrm.expressionManager;
+          // Use the VRM expression manager to set expressions (use ref so setExpression works outside inner try scope)
+          const expressionManager = charactersRef.current?.expressionManager;
           
           if (expressionManager) {
             // Log available expressions for debugging
@@ -802,7 +884,6 @@ export default function CharacterAvatar({
             if (weight > 0.1) {
               availableExpressions.forEach(name => {
                 if (name !== expression) {
-                  const oldValue = expressionManager.getValue(name);
                   expressionManager.setValue(name, 0);
                 }
               });
@@ -810,10 +891,7 @@ export default function CharacterAvatar({
             
             // Set the target expression
             if (expressionManager.expressionMap[mappedExpression]) {
-              const oldValue = expressionManager.getValue(mappedExpression);
               expressionManager.setValue(mappedExpression, weight);
-              if (mappedExpression !== expression) {
-              }
               
               // Store current expression for restoration after lip-sync
               currentExpressionRef.current = { expression: mappedExpression, weight };
@@ -832,8 +910,6 @@ export default function CharacterAvatar({
                 }, 5000);
               }
             } else {
-              console.warn(`[CharacterAvatar] Expression ${mappedExpression} not found in VRM model. Available:`, availableExpressions);
-              
               // Try to find a similar expression
               const similarExpression = availableExpressions.find(name => 
                 name.toLowerCase().includes(mappedExpression.toLowerCase()) ||
@@ -841,7 +917,6 @@ export default function CharacterAvatar({
               );
               
               if (similarExpression) {
-                const oldValue = expressionManager.getValue(similarExpression);
                 expressionManager.setValue(similarExpression, weight);
                 // Store current expression for restoration after lip-sync
                 currentExpressionRef.current = { expression: similarExpression, weight };
@@ -860,9 +935,7 @@ export default function CharacterAvatar({
                   }, 5000);
                 }
               } else {
-                console.warn(`[CharacterAvatar] No similar expression found for: ${mappedExpression} (original: ${expression}). Using neutral as fallback.`);
                 // Fallback to neutral expression which should always exist
-                const neutralValue = expressionManager.getValue('neutral');
                 expressionManager.setValue('neutral', 1.0);
                 currentExpressionRef.current = { expression: 'neutral', weight: 1.0 };
               }
@@ -918,7 +991,7 @@ export default function CharacterAvatar({
       };
 
       playKeyframeAnimationInternalRef.current = playKeyframeAnimation;
-      onCharacterLoad?.(vrm);
+      if (charactersRef.current) onCharacterLoad?.(charactersRef.current);
       onEmotionUpdate?.(applyEmotionToCharacter);
       onVisemeControl?.(setViseme);
       onExpressionControl?.(setExpression);
@@ -926,7 +999,7 @@ export default function CharacterAvatar({
       setIsLoading(false);
     } catch (error) {
       console.error('Error loading character:', error);
-      setError('Failed to load character model');
+      setError('Failed to load character model. Please try again.');
       setIsLoading(false);
     }
   };
@@ -949,7 +1022,13 @@ export default function CharacterAvatar({
     try {
       const response = await fetch('/api/animations');
       const result = await response.json();
-      setVrmAnimationOptions(result.animations ?? []);
+      const files: string[] = result.animations ?? [];
+      setVrmAnimationOptions(
+        files.map((file) => ({
+          value: file.startsWith('/') ? file : `/animations/${file}`,
+          label: file,
+        })),
+      );
     } catch (error) {
       console.error('Error fetching VRM animations:', error);
     }
@@ -958,7 +1037,7 @@ export default function CharacterAvatar({
   const handle_play_vrm_animation = async (url: string, loop: boolean) => {
     const vrm = charactersRef.current;
     if (!vrm) return;
-    const is_idle = url.includes('idle_loop');
+    const is_idle = url.includes('idle');
     await loadVRMAnimation(url, vrm, loop, is_idle);
   };
 
@@ -1035,7 +1114,6 @@ export default function CharacterAvatar({
             // Store current expression for restoration after lip-sync
             currentExpressionRef.current = { expression: vrmExpression, weight: 1.0 };
           } else {
-            console.warn(`VRM expression '${vrmExpression}' not found in model`);
             // Try to find a similar expression
             const similarExpression = availableExpressions.find(expr => 
               expr.toLowerCase().includes(vrmExpression.toLowerCase()) ||
@@ -1272,6 +1350,8 @@ export default function CharacterAvatar({
     if (charactersRef.current) {
       VRMUtils.dispose(charactersRef.current);
     }
+
+    loadedVrmSpecVersionRef.current = null;
   };
 
   initializeSceneRef.current = initializeScene;
@@ -1323,8 +1403,8 @@ export default function CharacterAvatar({
         </div>
       )}
 
-      {/* Controls - z-30 so gear button stays in front of Settings Panel (z-20) */}
-      {showControls && !isLoading && (
+      {/* Controls - z-30 so gear button stays in front of Settings Panel (z-20). Hide gear when panel is rendered by parent (portal or ref). */}
+      {showControls && !isLoading && !settingsPortalTargetId && !settingsPanelPropsRef && (
         <div className="absolute top-4 right-4 z-30 flex flex-col space-y-2">
           <button
             onClick={() => setShowSettings(!showSettings)}
@@ -1333,107 +1413,81 @@ export default function CharacterAvatar({
           >
             <Settings className="w-5 h-5" />
           </button>
-
         </div>
       )}
 
-      {/* Settings Panel - right side, behind gear button (z-20) */}
-      {showSettings && (
-        <div className="absolute top-4 right-4 z-20 w-80 bg-white bg-opacity-95 rounded-lg p-4 shadow-lg max-h-[85vh] overflow-y-auto flex flex-col">
-          <h3 className="font-semibold mb-3">Settings</h3>
+      {/* Settings Panel - when settingsPanelPropsRef is set, parent renders the panel; otherwise render locally or via portal */}
+      {(() => {
+        if (settingsPanelPropsRef) {
+          settingsPanelPropsRef.current = {
+            controls_state: characterState,
+            vrm_expression_names: vrmExpressionNames,
+            expression_weights: expressionWeights,
+            on_expression_weight_change: handle_expression_weight_change,
+            vrm_animation_options: vrmAnimationOptions,
+            on_play_vrm_animation: handle_play_vrm_animation,
+            on_position_change: updateCharacterPosition,
+            on_rotation_change: updateCharacterRotation,
+            current_background: background as BackgroundSelectorOption,
+            on_background_change: (bg) => {
+              updateSceneBackground(bg);
+              onBackgroundChange?.(bg);
+            },
+            lighting_intensity: lightingIntensity,
+            on_lighting_change: onLightingChange ?? (() => {}),
+            volume: volume,
+            is_muted: isMuted,
+            on_volume_change: onVolumeChange,
+            on_mute_toggle: onMuteToggle,
+            on_run_keyframe: (animation) =>
+              playKeyframeAnimationInternalRef.current?.(animation),
+          };
+          return null;
+        }
 
-          {/* Tabs - wrap on narrow (icon only, title for tooltip) */}
-          <div className="flex flex-wrap gap-1 border-b border-gray-200 mb-3">
-            {(['controls', 'keyframe', 'background', 'lighting', 'audio'] as const).map((tab) => (
-              <button
-                key={tab}
-                type="button"
-                title={SETTINGS_TAB_LABELS[tab]}
-                onClick={() => setSettingsPanelTab(tab)}
-                className={`p-2 rounded-t-md transition-colors ${
-                  settingsPanelTab === tab
-                    ? 'bg-blue-100 text-blue-700 border-b-2 border-blue-500'
-                    : 'text-gray-600 hover:bg-gray-100'
-                }`}
-              >
-                {tab === 'controls' && <SlidersHorizontal className="size-4" />}
-                {tab === 'keyframe' && <Film className="size-4" />}
-                {tab === 'background' && <Palette className="size-4" />}
-                {tab === 'lighting' && <Lightbulb className="size-4" />}
-                {tab === 'audio' && <Volume2 className="size-4" />}
-              </button>
-            ))}
-          </div>
+        const is_panel_open = settingsPortalTargetId ? settingsOpen : showSettings;
+        if (!is_panel_open) return null;
 
-          {/* Tab: Controls */}
-          {settingsPanelTab === 'controls' && (
-            <div className="mb-4">
-              <ControlsSettings
-                state={characterState}
-                vrmExpressionNames={vrmExpressionNames}
-                expressionWeights={expressionWeights}
-                onExpressionWeightChange={handle_expression_weight_change}
-                vrmAnimationOptions={vrmAnimationOptions}
-                onPlayVRMAnimation={handle_play_vrm_animation}
-                onPositionChange={updateCharacterPosition}
-                onRotationChange={updateCharacterRotation}
-              />
-            </div>
-          )}
+        const panel_content = (
+          <SettingsPanel
+            show_close_button={Boolean(settingsPortalTargetId && onSettingsClose)}
+            on_close={onSettingsClose}
+            extra_tab={
+              extraSettingsTab
+                ? { label: extraSettingsTab.label, content: extraSettingsTab.content }
+                : undefined
+            }
+            controls_state={characterState}
+            vrm_expression_names={vrmExpressionNames}
+            expression_weights={expressionWeights}
+            on_expression_weight_change={handle_expression_weight_change}
+            vrm_animation_options={vrmAnimationOptions}
+            on_play_vrm_animation={handle_play_vrm_animation}
+            on_position_change={updateCharacterPosition}
+            on_rotation_change={updateCharacterRotation}
+            current_background={background as BackgroundSelectorOption}
+            on_background_change={(bg) => {
+              updateSceneBackground(bg);
+              onBackgroundChange?.(bg);
+            }}
+            lighting_intensity={lightingIntensity}
+            on_lighting_change={onLightingChange ?? (() => {})}
+            volume={volume}
+            is_muted={isMuted}
+            on_volume_change={onVolumeChange}
+            on_mute_toggle={onMuteToggle}
+            on_run_keyframe={(animation) =>
+              playKeyframeAnimationInternalRef.current?.(animation)
+            }
+          />
+        );
 
-          {/* Tab: Background (from left settings) */}
-          {settingsPanelTab === 'background' && (
-            <div className="mb-4">
-              <BackgroundSelector
-                currentBackground={background as BackgroundSelectorOption}
-                onBackgroundChange={(bg) => {
-                  updateSceneBackground(bg);
-                  onBackgroundChange?.(bg);
-                }}
-              />
-            </div>
-          )}
-
-          {/* Tab: Lighting (from left settings) */}
-          {settingsPanelTab === 'lighting' && (
-            <div className="mb-4">
-              <EnvironmentSettings
-                lightingIntensity={lightingIntensity}
-                onLightingChange={onLightingChange ?? (() => {})}
-              />
-            </div>
-          )}
-
-          {/* Tab: Audio */}
-          {settingsPanelTab === 'audio' && (
-            <div className="mb-4">
-              <AudioSettings
-                volume={volume}
-                isMuted={isMuted}
-                onVolumeChange={(value) => onVolumeChange?.(value)}
-                onMuteToggle={() => onMuteToggle?.()}
-              />
-            </div>
-          )}
-
-          {/* Tab: Keyframe */}
-          {settingsPanelTab === 'keyframe' && (
-            <div className="mb-4">
-              <KeyframeSettings
-                jsonInput={keyframeJsonInput}
-                onJsonInputChange={setKeyframeJsonInput}
-                error={keyframeJsonError}
-                onError={setKeyframeJsonError}
-                onRunKeyframe={(animation) =>
-                  playKeyframeAnimationInternalRef.current?.(animation)
-                }
-                onRunKeyframeClick={() => setSettingsPanelTab('controls')}
-              />
-            </div>
-          )}
-
-        </div>
-      )}
+        if (settingsPortalTargetId && settingsOpen && typeof document !== 'undefined') {
+          const portal_el = document.getElementById(settingsPortalTargetId);
+          return portal_el ? createPortal(panel_content, portal_el) : null;
+        }
+        return <div className="absolute top-4 right-4 z-20">{panel_content}</div>;
+      })()}
     </div>
   );
 }

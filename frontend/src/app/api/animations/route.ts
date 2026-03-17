@@ -1,45 +1,31 @@
 import { NextResponse } from 'next/server';
-import fs from 'fs/promises';
-import path from 'path';
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const animations_dir = path.join(process.cwd(), 'public', 'animations');
+    const origin = new URL(request.url).origin;
+    const res = await fetch(`${origin}/animations/manifest.json`);
 
-    try {
-      await fs.access(animations_dir);
-    } catch {
-      return NextResponse.json({ animations: [] });
+    if (!res.ok) {
+      return NextResponse.json({ animations: [], total: 0 });
     }
 
-    const files = await fs.readdir(animations_dir);
+    const files: string[] = await res.json();
 
-    const vrma_files = files.filter(
+    const animationFiles = files.filter(
       (file) =>
-        file.toLowerCase().endsWith('.vrma') &&
+        /\.vrma$/i.test(file) &&
         !file.startsWith('.') &&
-        !file.toLowerCase().includes('readme')
+        !file.toLowerCase().includes('readme'),
     );
 
-    const animations = vrma_files.map((file) => {
-      const base_name = file.replace(/\.vrma$/i, '');
-      const label =
-        base_name
-          .split(/[-_]/)
-          .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-          .join(' ') || base_name;
-      return {
-        value: `/animations/${file}`,
-        label,
-      };
+    return NextResponse.json({
+      animations: animationFiles,
+      total: animationFiles.length,
     });
-
-    return NextResponse.json({ animations });
-  } catch (error) {
-    console.error('Error reading animations directory:', error);
+  } catch {
     return NextResponse.json({
       animations: [],
-      error: 'Failed to read animations directory',
+      error: 'Failed to read animations manifest',
     });
   }
 }

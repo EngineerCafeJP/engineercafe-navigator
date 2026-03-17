@@ -1,5 +1,7 @@
 # Engineer Cafe Navigator 開発者ガイド
 
+> Note: this guide reflects an older frontend-centric architecture. Prefer `docs/STATUS.md`, `docs/DEVELOPER-GUIDE.md`, and `frontend/README.md` for the current system.
+
 最終更新日: 2025年7月3日（RAGシステム完全近代化済み）
 
 ## 📋 目次
@@ -355,17 +357,12 @@ GOOGLE_CLOUD_PROJECT_ID=your-project-id
 GOOGLE_APPLICATION_CREDENTIALS=path/to/service-account.json
 
 # AI Models
-GOOGLE_GENERATIVE_AI_API_KEY=your-gemini-api-key
 OPENAI_API_KEY=your-openai-api-key
 
 # Supabase
 NEXT_PUBLIC_SUPABASE_URL=your-supabase-url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
-
-# Calendar (Optional)
-GOOGLE_CALENDAR_CLIENT_ID=your-calendar-client-id
-GOOGLE_CALENDAR_CLIENT_SECRET=your-calendar-client-secret
 
 # CRON Jobs
 CRON_SECRET=your-cron-secret

@@ -57,6 +57,9 @@ class CharacterControlAgent:
     CharacterControlAgent
 
     VRMキャラクターの表情・モーション・リップシンクを制御するエージェント。
+    MainWorkflow ではオプション機能として初期化されますが、現時点では
+    ワークフローグラフのノードには組み込まれていません。
+    将来的な統合に備えて利用可能な状態を維持します。
 
     主な機能:
     - 感情タグから表情パラメータへのマッピング
@@ -1092,17 +1095,19 @@ class CharacterControlAgent:
                         }
                     )
 
-                if prev_viseme is not None:
-                    final_time = int(lipsync_data[-1]["time"] * 1000) + 50
-                    final_expressions = dict(base_expressions)
-                    final_expressions[prev_viseme] = 0.0
-                    keyframes.append(
-                        {
-                            "time": final_time,
-                            "bones": {},
-                            "expressions": final_expressions,
-                        }
-                    )
+                final_time = int(lipsync_data[-1]["time"] * 1000) + 50
+                reset_expressions: Dict[str, float] = {}
+                for expression_name in base_expressions.keys():
+                    reset_expressions[expression_name] = 0.0
+                for viseme_name in viseme_names:
+                    reset_expressions[viseme_name] = 0.0
+                keyframes.append(
+                    {
+                        "time": final_time,
+                        "bones": {},
+                        "expressions": reset_expressions,
+                    }
+                )
             else:
                 keyframes.append(
                     {

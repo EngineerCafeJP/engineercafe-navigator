@@ -162,15 +162,15 @@ class TestMemoryQueryTool:
     """memory_query_toolのテスト"""
 
     @pytest.mark.asyncio
-    @patch("backend.agents.agent_tools._get_memory_agent")
+    @patch("backend.agents.agent_tools._get_memory_query_agent")
     async def test_memory_query_tool_calls_agent(self, mock_get_agent):
-        """memory_query_toolがMemoryAgentを呼び出すことを確認"""
+        """memory_query_toolがメモリ対応GeneralKnowledgeAgentを呼び出すことを確認"""
         from backend.agents.agent_tools import memory_query_tool, clear_agent_cache
 
         clear_agent_cache()
 
         mock_agent = AsyncMock()
-        mock_agent.process_memory_query = AsyncMock(
+        mock_agent.answer_query = AsyncMock(
             return_value={"answer": "営業時間について質問されていました。", "emotion": "relaxed"}
         )
         mock_get_agent.return_value = mock_agent
@@ -180,6 +180,12 @@ class TestMemoryQueryTool:
         )
 
         assert result == "営業時間について質問されていました。"
+        mock_agent.answer_query.assert_awaited_once_with(
+            query="さっき何を聞いた？",
+            language="ja",
+            session_id="test-session",
+            query_type="memory",
+        )
 
 
 class TestToolMetadata:

@@ -1,7 +1,10 @@
+<<<<<<< HEAD
 /**
  * Knowledge Upload Form Validation & Transformation using Zod
  */
 
+=======
+>>>>>>> origin/develop
 import { z } from 'zod';
 
 export interface KnowledgeUploadFormData {
@@ -11,6 +14,7 @@ export interface KnowledgeUploadFormData {
   title: string;
 }
 
+<<<<<<< HEAD
 // Zod バリデーションスキーマ
 const uploadSchema = z.object({
   file: z.instanceof(File, { message: 'ファイルは必須です' })
@@ -43,6 +47,28 @@ export type ValidationErrors = Partial<Record<keyof KnowledgeUploadFormData, str
  */
 export function validateKnowledgeUploadForm(
   data: KnowledgeUploadFormData
+=======
+const uploadSchema = z.object({
+  file: z
+    .instanceof(File, { message: 'ファイルは必須です' })
+    .refine((file) => {
+      const ext = file.name.split('.').pop()?.toLowerCase();
+      return Boolean(ext && ['pdf', 'md', 'markdown'].includes(ext));
+    }, 'PDF または Markdown ファイルのみ対応しています')
+    .refine(
+      (file) => file.size <= 10 * 1024 * 1024,
+      'ファイルサイズは 10MB 以内にしてください',
+    ),
+  category: z.string().min(1, 'カテゴリは必須です'),
+  language: z.enum(['ja', 'en']),
+  title: z.string().max(200, 'タイトルは 200 文字以内にしてください').optional(),
+});
+
+export type ValidationErrors = Partial<Record<keyof KnowledgeUploadFormData, string>>;
+
+export function validateKnowledgeUploadForm(
+  data: KnowledgeUploadFormData,
+>>>>>>> origin/develop
 ): ValidationErrors {
   const result = uploadSchema.safeParse({
     file: data.file,
@@ -63,11 +89,16 @@ export function validateKnowledgeUploadForm(
   return {};
 }
 
+<<<<<<< HEAD
 /**
  * API送信用にデータを変換
  */
 export function transformKnowledgeUploadData(
   data: KnowledgeUploadFormData
+=======
+export function transformKnowledgeUploadData(
+  data: KnowledgeUploadFormData,
+>>>>>>> origin/develop
 ): {
   file: File;
   category: string;

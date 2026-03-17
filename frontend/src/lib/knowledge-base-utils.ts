@@ -1,7 +1,12 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import 'server-only';
 import { supabaseAdmin } from './supabase';
 import { SupportedLanguage } from '@/lib/types';
 
+/**
+ * TODO(frontend-supabase-cleanup): This server-only helper still uses direct
+ * Supabase access because active admin knowledge routes and cron jobs depend on
+ * it. Remove it after those paths proxy through the backend.
+ */
 export interface KnowledgeBaseEntry {
   content: string;
   category?: string;
@@ -12,19 +17,6 @@ export interface KnowledgeBaseEntry {
 }
 
 export class KnowledgeBaseUtils {
-  private genAI: GoogleGenerativeAI;
-  private embeddingModel: any;
-
-  constructor() {
-    const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
-    if (!apiKey) {
-      throw new Error('GOOGLE_GENERATIVE_AI_API_KEY is not set');
-    }
-    
-    this.genAI = new GoogleGenerativeAI(apiKey);
-    this.embeddingModel = this.genAI.getGenerativeModel({ model: 'text-embedding-004' });
-  }
-
   /**
    * Check if an entry already exists in the knowledge base
    */
@@ -69,15 +61,11 @@ export class KnowledgeBaseUtils {
         };
       }
       
-      // Generate embedding for the content
-      const embedding = await this.generateEmbedding(entry.content);
-
       // Insert into database
       const { data, error } = await supabaseAdmin
         .from('knowledge_base')
         .insert({
           content: entry.content,
-          content_embedding: embedding,
           category: entry.category,
           subcategory: entry.subcategory,
           language: entry.language,
@@ -134,48 +122,10 @@ export class KnowledgeBaseUtils {
   }
 
   /**
-   * Update the embedding for existing entries that have content but no embedding
+   * Embeddings are backend-managed now, so the frontend no longer backfills them.
    */
   async updateMissingEmbeddings(): Promise<{ updated: number; failed: number }> {
-    try {
-      // Get entries without embeddings
-      const { data: entries, error } = await supabaseAdmin
-        .from('knowledge_base')
-        .select('id, content')
-        .is('content_embedding', null);
-
-      if (error) {
-        throw error;
-      }
-
-      let updated = 0;
-      let failed = 0;
-
-      for (const entry of entries || []) {
-        try {
-          const embedding = await this.generateEmbedding(entry.content);
-          
-          const { error: updateError } = await supabaseAdmin
-            .from('knowledge_base')
-            .update({ content_embedding: embedding })
-            .eq('id', entry.id);
-
-          if (updateError) {
-            throw updateError;
-          }
-
-          updated++;
-        } catch (error) {
-          console.error(`Failed to update embedding for entry ${entry.id}:`, error);
-          failed++;
-        }
-      }
-
-      return { updated, failed };
-    } catch (error) {
-      console.error('Failed to update missing embeddings:', error);
-      return { updated: 0, failed: -1 };
-    }
+    return { updated: 0, failed: 0 };
   }
 
   /**
@@ -326,10 +276,9 @@ export class KnowledgeBaseUtils {
       if (updates.source !== undefined) updateData.source = updates.source;
       if (updates.metadata !== undefined) updateData.metadata = updates.metadata;
 
-      // If content is being updated, regenerate embedding
+      // Embeddings are generated outside the frontend runtime.
       if (updates.content !== undefined) {
         updateData.content = updates.content;
-        updateData.content_embedding = await this.generateEmbedding(updates.content);
       }
 
       const { error } = await supabaseAdmin
@@ -440,35 +389,9 @@ export class KnowledgeBaseUtils {
     }
   }
 
-  /**
-   * Generate embedding for text (public method for external use)
-   * Uses consistent padding method across the application
-   */
-  async generateEmbedding(text: string): Promise<number[]> {
-    try {
-      const result = await this.embeddingModel.embedContent(text);
-      const embedding = result.embedding.values;
-      
-      // Google text-embedding-004 returns 768 dimensions, but database expects 1536
-      // Use consistent padding method: duplicate the embedding to reach 1536 dimensions
-      if (embedding.length === 768) {
-        const paddedEmbedding = [
-          ...embedding,
-          ...embedding // Duplicate the embedding to reach 1536 total (768 * 2)
-        ];
-        return paddedEmbedding;
-      }
-      
-      return embedding;
-    } catch (error) {
-      console.error('Embedding generation error:', error);
-      throw new Error('Failed to generate embedding');
-    }
-  }
 }
 
-// Export a lazy-initialized singleton (Proxy defers construction until first use,
-// preventing build-time errors when GOOGLE_GENERATIVE_AI_API_KEY is not set)
+// Export a lazy-initialized singleton (Proxy defers construction until first use).
 let _knowledgeBaseUtilsInstance: KnowledgeBaseUtils | null = null
 
 function getKnowledgeBaseUtils(): KnowledgeBaseUtils {

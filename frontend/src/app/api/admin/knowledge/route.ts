@@ -1,26 +1,49 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { knowledgeBaseUtils, KnowledgeBaseEntry } from '@/lib/knowledge-base-utils';
+import { backendFetch } from '@/lib/api/backend-proxy';
+
+function toErrorBody(data: unknown, fallback: string) {
+  if (data && typeof data === 'object') {
+    const payload = data as {
+      detail?: string;
+      error?: string;
+      message?: string;
+    };
+    const error = payload.error || payload.detail || payload.message;
+    if (error) {
+      return { ...payload, error };
+    }
+  }
+
+  return { error: fallback };
+}
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '20');
-    const language = searchParams.get('language') as any;
-    const category = searchParams.get('category') || undefined;
-    const search = searchParams.get('search') || undefined;
+    const params: Record<string, string> = {};
 
-    const result = await knowledgeBaseUtils.getAll({
-      page,
-      limit,
-      language,
-      category,
-      search,
+    searchParams.forEach((value, key) => {
+      params[key] = value;
     });
 
-    return NextResponse.json(result);
-  } catch (error) {
-    console.error('Failed to get knowledge entries:', error);
+    if (params.search && !params.keyword) {
+      params.keyword = params.search;
+    }
+
+    const response = await backendFetch('/api/knowledge', {
+      method: 'GET',
+      params,
+    });
+
+    if (!response.ok) {
+      return NextResponse.json(
+        toErrorBody(response.data, 'Failed to fetch knowledge entries'),
+        { status: response.status }
+      );
+    }
+
+    return NextResponse.json(response.data, { status: response.status });
+  } catch {
     return NextResponse.json(
       { error: 'Failed to get knowledge entries' },
       { status: 500 }
@@ -30,21 +53,31 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const entry: KnowledgeBaseEntry = await request.json();
-    const result = await knowledgeBaseUtils.addEntry(entry);
+    const body = await request.json();
+    const response = await backendFetch('/api/knowledge', {
+      method: 'POST',
+      body: {
+        title: body.title,
+        content: body.content,
+        category: body.category,
+        subcategory: body.subcategory,
+        language: body.language || 'ja',
+        source: body.source || 'admin-ui',
+        metadata: body.metadata || {},
+      },
+    });
 
-    if (result.success) {
-      return NextResponse.json({ id: result.id, success: true });
-    } else {
+    if (!response.ok) {
       return NextResponse.json(
-        { error: result.error || 'Failed to create entry' },
-        { status: 400 }
+        toErrorBody(response.data, 'Failed to create entry'),
+        { status: response.status }
       );
     }
-  } catch (error) {
-    console.error('Failed to create knowledge entry:', error);
+
+    return NextResponse.json(response.data, { status: response.status });
+  } catch {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Failed to create knowledge entry' },
       { status: 500 }
     );
   }

@@ -25,8 +25,8 @@ COPY . .
 # Expose port
 EXPOSE 3000
 
-# Start development server
-CMD ["pnpm", "dev"]
+# Start development server (0.0.0.0 so iPad/other devices can connect)
+CMD ["pnpm", "run", "dev:network"]
 
 # Production build stage
 FROM base AS builder

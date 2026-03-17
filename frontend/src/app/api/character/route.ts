@@ -1,28 +1,82 @@
-import { NextRequest, NextResponse } from 'next/server';
-// TODO: Re-enable after backend migration is complete
-// import { getEngineerCafeNavigator } from '@/mastra';
-// import { Config } from '@/mastra/types/config';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 
-import { getBackendApiUrl } from '@/lib/api/backend-url';
+import { NextRequest, NextResponse } from 'next/server';
+
+import { backendFetch } from '@/lib/api/backend-proxy';
+
+const DEFAULT_SUPPORTED_EXPRESSIONS = [
+  'neutral',
+  'happy',
+  'sad',
+  'angry',
+  'relaxed',
+  'surprised',
+];
+
+const DEFAULT_SUPPORTED_ANIMATIONS = [
+  'idle',
+  'bowing',
+  'greeting',
+  'looking',
+  'talking',
+  'thinking',
+];
+
+const isStringArray = (value: unknown): value is string[] =>
+  Array.isArray(value) && value.every((entry) => typeof entry === 'string');
+
+async function getSupportedAnimations() {
+  const manifestPath = path.join(
+    process.cwd(),
+    'public',
+    'characters',
+    'animations',
+    'manifest.json'
+  );
+
+  try {
+    const manifestContent = await readFile(manifestPath, 'utf-8');
+    const manifest = JSON.parse(manifestContent) as unknown;
+
+    if (isStringArray(manifest)) {
+      return manifest;
+    }
+
+    if (
+      manifest &&
+      typeof manifest === 'object' &&
+      'animations' in manifest &&
+      isStringArray(manifest.animations)
+    ) {
+      return manifest.animations;
+    }
+
+    console.warn('[character route] Unsupported animation manifest format:', manifestPath);
+  } catch (error) {
+    const code = error && typeof error === 'object' && 'code' in error ? error.code : null;
+
+    if (code !== 'ENOENT') {
+      console.warn('[character route] Failed to load animation manifest:', error);
+    }
+  }
+
+  return DEFAULT_SUPPORTED_ANIMATIONS;
+}
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
 
-    // バックエンドAPIにプロキシ
-    const backendUrl = `${getBackendApiUrl()}/api/character`;
-    const response = await fetch(backendUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+    const response = await backendFetch('/api/character', {
+      body,
     });
 
     if (!response.ok) {
-      throw new Error(`Backend API error: ${response.statusText}`);
+      throw new Error(`Backend API error: ${response.status}`);
     }
 
-    const result = await response.json();
-    return NextResponse.json(result);
+    return NextResponse.json(response.data);
   } catch (error) {
     console.error('Character API error:', error);
     return NextResponse.json(
@@ -38,18 +92,19 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
+  const action = request.nextUrl.searchParams.get('action');
+
+  if (action === 'supported_features') {
+    const animations = await getSupportedAnimations();
+
+    return NextResponse.json({
+      success: true,
+      expressions: DEFAULT_SUPPORTED_EXPRESSIONS,
+      animations,
+    });
+  }
+
   return NextResponse.json({
     status: 'ok',
-  });
-}
-
-export async function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, {
-    status: 200,
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    },
   });
 }

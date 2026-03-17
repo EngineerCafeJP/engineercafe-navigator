@@ -439,10 +439,11 @@ class TestMiddleware:
 
     async def test_cors_headers_on_preflight(self, client: httpx.AsyncClient):
         """OPTIONS リクエストで CORS ヘッダーが設定されること"""
+        production_origin = "https://engineer-cafe-navigator.company-997.workers.dev"
         response = await client.options(
             "/api/chat",
             headers={
-                "Origin": "http://localhost:3000",
+                "Origin": production_origin,
                 "Access-Control-Request-Method": "POST",
                 "Access-Control-Request-Headers": "Content-Type, X-API-Key",
             },
@@ -456,19 +457,18 @@ class TestMiddleware:
 
     async def test_cors_allows_configured_origin(self, client: httpx.AsyncClient):
         """設定済みのオリジンが CORS で許可されること"""
+        production_origin = "https://engineer-cafe-navigator.company-997.workers.dev"
         response = await client.options(
             "/api/chat",
             headers={
-                "Origin": "http://localhost:3000",
+                "Origin": production_origin,
                 "Access-Control-Request-Method": "POST",
             },
         )
         assert response.status_code == 200
         allowed_origin = response.headers.get("access-control-allow-origin", "")
-        # localhost:3000 がデフォルトで許可されていること
-        assert (
-            allowed_origin == "http://localhost:3000"
-        ), f"許可オリジンが期待と異なる: {allowed_origin}"
+        # 本番オリジンがデフォルトで許可されていること
+        assert allowed_origin == production_origin, f"許可オリジンが期待と異なる: {allowed_origin}"
 
 
 # ---------------------------------------------------------------------------

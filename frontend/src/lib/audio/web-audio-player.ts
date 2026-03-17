@@ -13,6 +13,11 @@ import {
   type AudioInfo,
   type AudioPlaybackState
 } from './audio-interfaces';
+import {
+  hasAudioUserInteraction,
+  registerAudioContextResumeOnInteraction,
+  waitForAudioUserInteraction
+} from './audio-user-interaction-gate';
 
 export class WebAudioPlayer {
   private audioContext: AudioContext | null = null;
@@ -34,9 +39,7 @@ export class WebAudioPlayer {
    */
   public async initializeContext(): Promise<void> {
     if (this.audioContext) {
-      if (this.audioContext.state === 'suspended') {
-        await this.audioContext.resume();
-      }
+      await this.resumeContextIfNeeded();
       return;
     }
 
@@ -44,10 +47,8 @@ export class WebAudioPlayer {
       // Use webkitAudioContext for Safari compatibility
       const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
       this.audioContext = new AudioContextClass();
-
-      if (this.audioContext.state === 'suspended') {
-        await this.audioContext.resume();
-      }
+      registerAudioContextResumeOnInteraction(this.audioContext);
+      await this.resumeContextIfNeeded();
 
       // Create gain node for volume control
       this.gainNode = this.audioContext.createGain();
@@ -198,6 +199,8 @@ export class WebAudioPlayer {
     }
 
     try {
+      await this.resumeContextIfNeeded();
+
       // Stop current playback if any
       this.stop();
 
@@ -361,6 +364,20 @@ export class WebAudioPlayer {
   public getAudioContextState(): AudioContextState | null {
     return this.audioContext?.state || null;
   }
+
+  private async resumeContextIfNeeded(): Promise<void> {
+    if (!this.audioContext || this.audioContext.state !== 'suspended') {
+      return;
+    }
+
+    if (!hasAudioUserInteraction()) {
+      await waitForAudioUserInteraction();
+    }
+
+    if (this.audioContext.state === 'suspended') {
+      await this.audioContext.resume();
+    }
+  }
 }
 
 /**
@@ -382,19 +399,15 @@ export class GlobalAudioManager {
 
   public async initialize(): Promise<AudioContext> {
     if (this.audioContext && this.audioContext.state !== 'closed') {
-      if (this.audioContext.state === 'suspended') {
-        await this.audioContext.resume();
-      }
+      await this.ensureResumed();
       return this.audioContext;
     }
 
     try {
       const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
       this.audioContext = new AudioContextClass();
-
-      if (this.audioContext.state === 'suspended') {
-        await this.audioContext.resume();
-      }
+      registerAudioContextResumeOnInteraction(this.audioContext);
+      await this.ensureResumed();
 
       this.isInitialized = true;
       return this.audioContext;
@@ -409,7 +422,15 @@ export class GlobalAudioManager {
   }
 
   public async ensureResumed(): Promise<void> {
-    if (this.audioContext && this.audioContext.state === 'suspended') {
+    if (!this.audioContext || this.audioContext.state !== 'suspended') {
+      return;
+    }
+
+    if (!hasAudioUserInteraction()) {
+      await waitForAudioUserInteraction();
+    }
+
+    if (this.audioContext.state === 'suspended') {
       await this.audioContext.resume();
     }
   }

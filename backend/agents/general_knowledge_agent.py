@@ -3,7 +3,7 @@ GeneralKnowledgeAgent完全実装
 
 一般的な質問に対応するエージェント。
 Engineer Cafeに関する一般情報、AI・技術トピック、福岡のテックシーンなどに回答。
-メモリ関連クエリ（旧MemoryAgentの責務）も統合して処理する。
+メモリ関連クエリも統合して処理する。
 
 参考:
 - docs/migration/agents/general-knowledge-agent/README.md
@@ -17,7 +17,7 @@ Engineer Cafeに関する一般情報、AI・技術トピック、福岡のテ�
 5. 信頼度計算の最適化 ✓
 6. 感情タグの適切な設定 ✓
 7. エラーハンドリングとフォールバック ✓
-8. メモリクエリハンドリング（旧MemoryAgent統合） ✓
+8. メモリクエリハンドリング統合 ✓
 """
 
 import logging
@@ -194,7 +194,7 @@ class GeneralKnowledgeAgent:
             return self._handle_error(language)
 
     # =========================================================================
-    # メモリクエリ処理（旧MemoryAgentから統合）
+    # メモリクエリ処理
     # =========================================================================
 
     async def _handle_memory_query(

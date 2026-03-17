@@ -5,9 +5,11 @@ import json
 import io
 import wave
 import numpy as np
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from backend.agents.stt_agent import (
+    MAX_AUDIO_UPLOAD_BYTES,
     LocalSTTClient,
     GoogleSTTClient,
     STTAgent,
@@ -154,6 +156,138 @@ class TestLocalSTTClient:
             with patch("backend.agents.stt_agent.LocalSTTClient._load_model"):
                 with pytest.raises(RuntimeError):
                     await client.transcribe(test_wav_16khz, language="ja")
+
+    @pytest.mark.asyncio
+    async def test_transcribe_non_wav_data_converts_to_wav(self, test_wav_16khz):
+        """LocalSTTClient converts non-WAV payloads to WAV before Vosk parsing."""
+        client = LocalSTTClient()
+        non_wav_audio = b"\x1a\x45\xdf\xa3" + (b"webm-opus-data" * 4)
+        mock_recognizer = MagicMock()
+        mock_recognizer.FinalResult.return_value = json.dumps(
+            {"result": [{"conf": 0.88, "word": "こんにちは"}], "text": "こんにちは"}
+        )
+
+        with _vosk_patched():
+            _vosk_mock.KaldiRecognizer.return_value = mock_recognizer
+            with patch.object(
+                client, "_convert_audio_to_wav", return_value=test_wav_16khz
+            ) as mock_convert:
+                with patch("backend.agents.stt_agent.LocalSTTClient._load_model"):
+                    result = await client.transcribe(non_wav_audio, language="ja")
+
+        mock_convert.assert_called_once_with(non_wav_audio)
+        assert result.text == "こんにちは"
+        assert result.confidence == pytest.approx(0.88)
+        assert result.language == "ja"
+
+    @pytest.mark.asyncio
+    async def test_transcribe_truncated_wav_header_raises_value_error(self):
+        """LocalSTTClient rejects payloads smaller than a WAV header."""
+        client = LocalSTTClient()
+        truncated_audio = b"RIFF123456"
+
+        with patch("backend.agents.stt_agent.LocalSTTClient._load_model") as mock_load:
+            with pytest.raises(ValueError, match="minimum 44 bytes"):
+                await client.transcribe(truncated_audio, language="ja")
+
+        mock_load.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_transcribe_auto_detect_non_wav_returns_error(self):
+        """transcribe_auto_detect handles non-WAV data gracefully via ValueError catch."""
+        client = LocalSTTClient()
+        non_wav_audio = b"\x1a\x45\xdf\xa3" + (b"webm-data" * 8)  # EBML/WebM header
+
+        with patch("backend.agents.stt_agent.LocalSTTClient._load_model"):
+            with pytest.raises(RuntimeError, match="Auto-detect failed"):
+                await client.transcribe_auto_detect(non_wav_audio)
+
+    @pytest.mark.asyncio
+    async def test_transcribe_non_wav_conversion_failure_raises_value_error(self):
+        """LocalSTTClient surfaces WebM conversion failures with a clear message."""
+        client = LocalSTTClient()
+        non_wav_audio = b"\x1a\x45\xdf\xa3" + (b"webm-data" * 8)
+
+        with patch.object(
+            client,
+            "_convert_audio_to_wav",
+            side_effect=ValueError(
+                "Failed to convert WebM audio to WAV for STT transcription: boom"
+            ),
+        ) as mock_convert:
+            with patch("backend.agents.stt_agent.LocalSTTClient._load_model") as mock_load:
+                with pytest.raises(ValueError, match="Failed to convert WebM audio to WAV"):
+                    await client.transcribe(non_wav_audio, language="ja")
+
+        mock_convert.assert_called_once_with(non_wav_audio)
+        mock_load.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_transcribe_wav_audio_skips_conversion(self, test_wav_16khz):
+        """Existing WAV inputs should not trigger WebM conversion."""
+        client = LocalSTTClient()
+        mock_recognizer = MagicMock()
+        mock_recognizer.FinalResult.return_value = json.dumps(
+            {"result": [{"conf": 0.91, "word": "hello"}], "text": "hello"}
+        )
+
+        with _vosk_patched():
+            _vosk_mock.KaldiRecognizer.return_value = mock_recognizer
+            with patch.object(client, "_convert_audio_to_wav") as mock_convert:
+                with patch("backend.agents.stt_agent.LocalSTTClient._load_model"):
+                    result = await client.transcribe(test_wav_16khz, language="en")
+
+        mock_convert.assert_not_called()
+        assert result.text == "hello"
+        assert result.language == "en"
+
+    def test_convert_audio_to_wav_uses_pydub_normalization(self, test_wav_16khz):
+        """WebM conversion normalizes audio to 16kHz, 16-bit, mono WAV."""
+        client = LocalSTTClient()
+        input_audio = b"\x1a\x45\xdf\xa3" + (b"webm" * 8)
+        fake_segment = MagicMock()
+        fake_segment.set_frame_rate.return_value = fake_segment
+        fake_segment.set_sample_width.return_value = fake_segment
+        fake_segment.set_channels.return_value = fake_segment
+
+        def export_side_effect(buffer, format):
+            assert format == "wav"
+            buffer.write(test_wav_16khz)
+
+        fake_segment.export.side_effect = export_side_effect
+        fake_pydub = SimpleNamespace(AudioSegment=MagicMock())
+        fake_pydub.AudioSegment.from_file.return_value = fake_segment
+
+        with patch.dict("sys.modules", {"pydub": fake_pydub}):
+            wav_bytes = client._convert_audio_to_wav(input_audio)
+
+        fake_pydub.AudioSegment.from_file.assert_called_once()
+        call_buffer = fake_pydub.AudioSegment.from_file.call_args.args[0]
+        assert isinstance(call_buffer, io.BytesIO)
+        assert call_buffer.getvalue() == input_audio
+        assert fake_pydub.AudioSegment.from_file.call_args.kwargs["format"] is None
+        fake_segment.set_frame_rate.assert_called_once_with(16000)
+        fake_segment.set_sample_width.assert_called_once_with(2)
+        fake_segment.set_channels.assert_called_once_with(1)
+        assert wav_bytes.startswith(b"RIFF")
+
+    def test_convert_audio_to_wav_rejects_oversized_payload(self):
+        """Oversized non-WAV payloads are rejected before conversion work starts."""
+        client = LocalSTTClient()
+        oversized_audio = b"\x1a\x45\xdf\xa3" + (b"x" * (MAX_AUDIO_UPLOAD_BYTES + 1))
+
+        with pytest.raises(ValueError, match="Audio payload too large"):
+            client._convert_audio_to_wav(oversized_audio)
+
+    def test_convert_audio_to_wav_failure_raises_value_error(self):
+        """pydub conversion failures are wrapped with a stable STT error."""
+        client = LocalSTTClient()
+        fake_pydub = SimpleNamespace(AudioSegment=MagicMock())
+        fake_pydub.AudioSegment.from_file.side_effect = RuntimeError("ffmpeg missing")
+
+        with patch.dict("sys.modules", {"pydub": fake_pydub}):
+            with pytest.raises(ValueError, match="Failed to convert WebM audio to WAV"):
+                client._convert_audio_to_wav(b"\x1a\x45\xdf\xa3" + (b"webm" * 8))
 
 
 # ==============================================================================

@@ -30,7 +30,10 @@ uv pip install -r requirements.txt
 このコマンドで以下が自動実行されます：
 - `vosk>=0.3.44` — ローカル音声認識エンジン
 - `soundfile>=0.12.1` — WAV ファイル処理
+- `pydub>=0.25.1` — WebM(Opus) を WAV に正規化
 - `langchain` / `langchain-core` — 他エージェント用（VoiceAgent の import 時に必要）
+
+WebM(Opus) を WAV に変換する場合は `ffmpeg` または `libav` 互換のデコーダが実行環境に必要です。
 
 ### 2. Vosk モデルのダウンロード
 

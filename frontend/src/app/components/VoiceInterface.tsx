@@ -24,6 +24,7 @@ import {
 } from '../hooks/useVoiceSessionController';
 import type { WakeWordMatch } from '../hooks/useWakeWord';
 import { VoiceRecorder } from '@/lib/voice-recorder';
+import type { CharacterAnimationData } from '../utils/character-animation-utils';
 
 export type VoiceSessionState = 'idle' | 'listening' | 'processing' | 'speaking';
 
@@ -34,6 +35,8 @@ export interface VoiceInterfaceMetadata {
   };
   clarification_options?: string[];
   requires_followup?: boolean;
+   reception_type?: string;
+  vrm_control?: CharacterAnimationData | null;
   [key: string]: unknown;
 }
 
@@ -75,6 +78,8 @@ interface VoiceInterfaceProps {
   children?: (props: VoiceInterfaceRenderProps) => ReactNode;
   showDefaultUI?: boolean;
   className?: string;
+  onMetadataChange?: (metadata: VoiceInterfaceMetadata | null) => void;
+  onAssistantPlaybackStart?: (payload: { metadata: VoiceInterfaceMetadata | null }) => void;
 }
 
 const DEFAULT_WAKE_WORDS = ['すみません', 'hello'];
@@ -109,6 +114,22 @@ const LOADING_LABELS = {
   },
 } as const;
 
+/** UUID v4 を生成する。crypto.randomUUID が無い環境（HTTP や古いブラウザ）用のフォールバック付き。 */
+const generateUuid = (): string => {
+  if (typeof window !== 'undefined' && typeof window.crypto?.randomUUID === 'function') {
+    return window.crypto.randomUUID();
+  }
+  if (typeof window !== 'undefined' && window.crypto?.getRandomValues) {
+    const bytes = new Uint8Array(16);
+    window.crypto.getRandomValues(bytes);
+    bytes[6] = (bytes[6]! & 0x0f) | 0x40;
+    bytes[8] = (bytes[8]! & 0x3f) | 0x80;
+    const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+  }
+  return `fallback-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+};
+
 const getOrCreateVisitorId = (): string => {
   if (typeof window === 'undefined') {
     return 'anonymous';
@@ -120,7 +141,7 @@ const getOrCreateVisitorId = (): string => {
     return existing;
   }
 
-  const created = window.crypto.randomUUID();
+  const created = generateUuid();
   window.localStorage.setItem(key, created);
   return created;
 };
@@ -158,6 +179,8 @@ export default function VoiceInterface({
   children,
   showDefaultUI,
   className,
+  onMetadataChange,
+  onAssistantPlaybackStart,
 }: VoiceInterfaceProps) {
   const [currentLanguage, setCurrentLanguage] = useState<'ja' | 'en'>(language);
   const [volume, setVolumeState] = useState(0.8);
@@ -189,6 +212,10 @@ export default function VoiceInterface({
   useEffect(() => {
     setCurrentLanguage(language);
   }, [language]);
+
+  useEffect(() => {
+    onMetadataChange?.(metadata);
+  }, [metadata, onMetadataChange]);
 
   const clearLipSyncTimers = useCallback(() => {
     lipSyncTimersRef.current.forEach((timerId) => window.clearTimeout(timerId));
@@ -291,9 +318,10 @@ export default function VoiceInterface({
   );
 
   const playAssistantAudio = useCallback(
-    async (audioBase64: string) => {
+    async (audioBase64: string, metadataForPlayback?: VoiceInterfaceMetadata | null) => {
       if (isMuted) {
         voiceController.notifySpeaking();
+        onAssistantPlaybackStart?.({ metadata: metadataForPlayback ?? null });
         window.setTimeout(() => {
           voiceController.notifySpeakingComplete();
         }, 240);
@@ -305,7 +333,7 @@ export default function VoiceInterface({
         audioBytes = Uint8Array.from(atob(audioBase64), (char) => char.charCodeAt(0));
       } catch (decodeError) {
         console.error('Audio decode failed:', decodeError);
-        voiceController.notifySpeakingComplete();
+        voiceController.notifySpeakingComplete(true);
         return;
       }
       const audioBlob = new Blob([audioBytes], { type: 'audio/mpeg' });
@@ -318,9 +346,13 @@ export default function VoiceInterface({
       setLoadingMessage(LOADING_LABELS[currentLanguage].speaking);
       voiceController.notifySpeaking();
 
-      await applyLipSync(audioBlob).catch(() => {
-        clearLipSyncTimers();
-      });
+      onAssistantPlaybackStart?.({ metadata: metadataForPlayback ?? null });
+
+      if (!metadataForPlayback?.vrm_control) {
+        await applyLipSync(audioBlob).catch(() => {
+          clearLipSyncTimers();
+        });
+      }
 
       audioService.updateEventHandlers({
         onEnded: () => {
@@ -330,14 +362,14 @@ export default function VoiceInterface({
         onError: (playbackError) => {
           cleanupAudioPlayback();
           setError(formatError(playbackError, currentLanguage));
-          voiceController.notifySpeakingComplete();
+          voiceController.notifySpeakingComplete(true);
         },
       });
 
       const result = await audioService.playAudio(audioUrl);
       if (!result.success) {
         cleanupAudioPlayback();
-        voiceController.notifySpeakingComplete();
+        voiceController.notifySpeakingComplete(true);
         throw result.error ?? new Error('音声再生に失敗しました');
       }
     },
@@ -348,6 +380,7 @@ export default function VoiceInterface({
       currentLanguage,
       ensureAudioService,
       isMuted,
+      onAssistantPlaybackStart,
       revokeAudioUrl,
       voiceController,
     ],
@@ -421,7 +454,7 @@ export default function VoiceInterface({
         }
 
         if (typeof ttsResult.audioResponse === 'string' && ttsResult.audioResponse.length > 0) {
-          await playAssistantAudio(ttsResult.audioResponse);
+          await playAssistantAudio(ttsResult.audioResponse, qaResult.metadata ?? null);
         } else {
           voiceController.notifySpeaking();
           window.setTimeout(() => {
@@ -434,7 +467,7 @@ export default function VoiceInterface({
         }
 
         setError(formatError(sendError, currentLanguage));
-        voiceController.notifySpeakingComplete();
+        voiceController.notifySpeakingComplete(true);
       } finally {
         if (requestAbortRef.current === abortController) {
           requestAbortRef.current = null;
@@ -490,7 +523,7 @@ export default function VoiceInterface({
         }
 
         setError(formatError(recordingError, currentLanguage));
-        voiceController.notifySpeakingComplete();
+        voiceController.notifySpeakingComplete(true);
       } finally {
         if (requestAbortRef.current === abortController) {
           requestAbortRef.current = null;

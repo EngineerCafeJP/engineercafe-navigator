@@ -4,7 +4,7 @@ This directory contains VRM animation files (.vrma) for the 3D character.
 
 ## Available Animations
 
-- `idle_loop.vrma` - Default idle animation that loops continuously
+- `idle.vrma` - Default idle animation that loops continuously
 
 ## Adding New Animations
 

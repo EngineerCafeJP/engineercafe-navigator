@@ -1,20 +1,10 @@
-// Initialize OpenNext Cloudflare bindings for local development
-if (process.env.NODE_ENV === "development") {
-  import("@opennextjs/cloudflare")
-    .then((m) => m.initOpenNextCloudflareForDev())
-    .catch(() => {});
-}
-
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   experimental: {
     serverActions: {
       allowedOrigins: [
         "localhost:3000",
-        "vercel.app",
-        "*.vercel.app",
-        "*.pages.dev",
-        "*.workers.dev",
+        "engineer-cafe-navigator.company-997.workers.dev",
       ],
     },
   },
@@ -68,6 +58,21 @@ const nextConfig = {
       {
         source: "/(.*)",
         headers: [
+          {
+            key: "Content-Security-Policy",
+            value: [
+              "default-src 'self'",
+              "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+              "style-src 'self' 'unsafe-inline'",
+              "img-src 'self' data: blob:",
+              "font-src 'self' data:",
+              "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
+              "media-src 'self' blob:",
+              "frame-src 'none'",
+              "object-src 'none'",
+              "base-uri 'self'",
+            ].join("; "),
+          },
           {
             key: "Cross-Origin-Embedder-Policy",
             value: "unsafe-none",

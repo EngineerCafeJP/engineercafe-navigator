@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { getBackendApiUrl } from '@/lib/api/backend-url';
+import { backendFetch } from '@/lib/api/backend-proxy';
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,28 +13,22 @@ export async function POST(request: NextRequest) {
 
     const { action, audioData, sessionId, language, text, streaming } = body;
 
-    // バックエンドAPIにプロキシ
-    const backendUrl = `${getBackendApiUrl()}/api/voice`;
-    const response = await fetch(backendUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+    const response = await backendFetch('/api/voice', {
+      body: {
         action,
         audioData,
         sessionId,
         language: language || 'ja',
         text,
         streaming: streaming || false,
-      }),
+      },
     });
 
     if (!response.ok) {
-      throw new Error(`Backend API error: ${response.statusText}`);
+      throw new Error(`Backend API error: ${response.status}`);
     }
 
-    const result = await response.json();
-
-    return NextResponse.json(result);
+    return NextResponse.json(response.data);
   } catch (error) {
     console.error('Voice API error:', error);
     return NextResponse.json(
@@ -54,20 +48,16 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const action = searchParams.get('action');
 
-    // バックエンドAPIにプロキシ
-    const backendUrl = `${getBackendApiUrl()}/api/voice?action=${action}`;
-    const response = await fetch(backendUrl, {
+    const response = await backendFetch('/api/voice', {
       method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
+      params: action ? { action } : undefined,
     });
 
     if (!response.ok) {
-      throw new Error(`Backend API error: ${response.statusText}`);
+      throw new Error(`Backend API error: ${response.status}`);
     }
 
-    const result = await response.json();
-
-    return NextResponse.json(result);
+    return NextResponse.json(response.data);
   } catch (error) {
     console.error('Voice API GET error:', error);
     return NextResponse.json(
@@ -80,16 +70,4 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
-}
-
-// Handle OPTIONS for CORS
-export async function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, {
-    status: 200,
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    },
-  });
 }

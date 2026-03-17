@@ -2,7 +2,7 @@
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi.testclient import TestClient
 from starlette.requests import Request
 
@@ -36,6 +36,29 @@ class TestHealthCheck:
         # CI環境ではSupabase/LLM未接続のため "degraded" になりうる
         assert data["status"] in ("ok", "degraded")
         assert data["service"] == "engineer-cafe-navigator-backend"
+
+
+class TestLifespan:
+    @pytest.mark.asyncio
+    async def test_lifespan_prewarms_checkpointer(self):
+        import backend.main as main_mod
+
+        app = MagicMock()
+        session_task_manager = AsyncMock()
+
+        with (
+            patch("backend.utils.env_validator.validate_startup"),
+            patch("backend.utils.checkpoint_cleanup.CheckpointCleanup", return_value=MagicMock()),
+            patch("backend.main.get_session_task_manager", return_value=session_task_manager),
+            patch("backend.utils.checkpointer.prewarm_checkpointer", new=AsyncMock()) as prewarm,
+            patch("backend.utils.checkpointer.close_checkpointer", new=AsyncMock()),
+            patch("backend.utils.store.close_store", new=AsyncMock()),
+        ):
+            async with main_mod.lifespan(app):
+                prewarm.assert_awaited_once()
+                session_task_manager.initialize.assert_awaited_once()
+
+        session_task_manager.shutdown.assert_awaited_once()
 
 
 class TestChatEndpoint:
@@ -80,6 +103,35 @@ class TestChatEndpoint:
             assert exc_info.value.status_code == 500
             assert "secret" not in exc_info.value.detail
             assert "internal error" in exc_info.value.detail.lower()
+
+    @pytest.mark.asyncio
+    async def test_chat_forwards_image_data_to_workflow(self):
+        with patch(
+            "backend.main._run_workflow_with_tracking",
+            new_callable=AsyncMock,
+            return_value={
+                "answer": "OCR結果です",
+                "emotion": "neutral",
+                "metadata": {},
+            },
+        ) as mock_run:
+            from backend.main import chat, ChatRequest
+
+            body = ChatRequest(query="画像を読んで", session_id="s1", image_data="base64-image")
+            response = await chat(_mock_request(), body)
+
+            assert response.answer == "OCR結果です"
+            mock_run.assert_awaited_once_with(
+                payload={
+                    "query": "画像を読んで",
+                    "session_id": "s1",
+                    "language": "ja",
+                    "context": {},
+                    "visitor_id": None,
+                    "image_data": "base64-image",
+                },
+                session_id="s1",
+            )
 
 
 class TestInvokeEndpoint:
@@ -210,14 +262,16 @@ class TestSlidesContentEndpoint:
 
 class TestCORSConfiguration:
     def test_cors_default_origins(self, monkeypatch):
-        """Without ALLOWED_ORIGINS env var, defaults are used"""
+        """Without ALLOWED_ORIGINS env var, production default is used"""
         monkeypatch.delenv("ALLOWED_ORIGINS", raising=False)
         import importlib
         import backend.main
 
         importlib.reload(backend.main)
-        assert "http://localhost:3000" in backend.main._allowed_origins
-        assert "http://localhost:3001" in backend.main._allowed_origins
+        assert (
+            "https://engineer-cafe-navigator.company-997.workers.dev"
+            in backend.main.ALLOWED_ORIGINS
+        )
 
     def test_cors_custom_origins(self, monkeypatch):
         """With ALLOWED_ORIGINS set, custom origins are used"""
@@ -226,8 +280,8 @@ class TestCORSConfiguration:
         import backend.main
 
         importlib.reload(backend.main)
-        assert "https://example.com" in backend.main._allowed_origins
-        assert "https://app.example.com" in backend.main._allowed_origins
+        assert "https://example.com" in backend.main.ALLOWED_ORIGINS
+        assert "https://app.example.com" in backend.main.ALLOWED_ORIGINS
         # Restore
         monkeypatch.delenv("ALLOWED_ORIGINS", raising=False)
         importlib.reload(backend.main)

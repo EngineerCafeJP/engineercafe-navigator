@@ -1,12 +1,14 @@
+import 'server-only';
 import { CronJob } from 'cron';
 import { connpassClient } from '../lib/external-apis/connpass-client';
-import { googleCalendarClient } from '../lib/external-apis/google-calendar-client';
 import { supabaseAdmin } from '../lib/supabase';
-import { knowledgeBaseUtils } from '../lib/knowledge-base-utils';
 import { v4 as uuidv4 } from 'uuid';
 
 /**
  * Automated knowledge base updater that syncs external data sources
+ *
+ * Server-only cron helper. Direct service-role access remains intentional until
+ * this workflow is fully owned by the backend.
  */
 export class KnowledgeBaseUpdater {
   private job: CronJob;
@@ -57,8 +59,7 @@ export class KnowledgeBaseUpdater {
       // Log results
       results.forEach((result, index) => {
         const source = ['Connpass', 'Google Calendar', 'Website'][index];
-        if (result.status === 'fulfilled') {
-        } else {
+        if (result.status === 'rejected') {
           console.error(`[KnowledgeBaseUpdater] ${source} update failed:`, result.reason);
         }
       });
@@ -73,7 +74,7 @@ export class KnowledgeBaseUpdater {
         duration,
         sources: {
           connpass: results[0].status === 'fulfilled',
-          googleCalendar: results[1].status === 'fulfilled',
+          googleCalendar: results[1].status === 'fulfilled' && results[1].value !== 'Skipped - handled by backend',
           website: results[2].status === 'fulfilled',
         },
       });
@@ -130,7 +131,6 @@ export class KnowledgeBaseUpdater {
             .from('knowledge_base')
             .update({
               ...knowledgeEntry,
-              content_embedding: await knowledgeBaseUtils.generateEmbedding(knowledgeEntry.content),
               updated_at: new Date().toISOString(),
             })
             .eq('id', existing.id);
@@ -143,7 +143,6 @@ export class KnowledgeBaseUpdater {
             .insert({
               id: uuidv4(),
               ...knowledgeEntry,
-              content_embedding: await knowledgeBaseUtils.generateEmbedding(knowledgeEntry.content),
               created_at: new Date().toISOString(),
               updated_at: new Date().toISOString(),
             });
@@ -163,83 +162,7 @@ export class KnowledgeBaseUpdater {
    * Update knowledge base from Google Calendar
    */
   private async updateFromGoogleCalendar(): Promise<string> {
-    try {
-      // Check if OAuth2 credentials are configured
-      if (!process.env.GOOGLE_CALENDAR_CLIENT_ID || 
-          !process.env.GOOGLE_CALENDAR_CLIENT_SECRET || 
-          !process.env.GOOGLE_CALENDAR_REDIRECT_URI) {
-        console.warn('[updateFromGoogleCalendar] OAuth2 credentials not configured, skipping');
-        return 'Skipped - OAuth2 not configured';
-      }
-      
-      // Authenticate with service account
-      await googleCalendarClient.authenticateWithServiceAccount();
-      
-      // Get upcoming events for the next 30 days
-      const events = await googleCalendarClient.getUpcomingEvents(30);
-      
-      let added = 0;
-      let updated = 0;
-      
-      for (const event of events) {
-        const knowledgeEntry = {
-          title: event.summary,
-          content: this.formatGoogleCalendarEvent(event),
-          category: 'events',
-          subcategory: 'schedule',
-          language: this.detectLanguage(event.summary + ' ' + (event.description || '')),
-          metadata: {
-            source: 'google_calendar',
-            event_id: event.id,
-            event_url: event.htmlLink,
-            start_date: event.start,
-            end_date: event.end,
-            location: event.location,
-            status: event.status,
-            updated_at: event.updated,
-          },
-        };
-        
-        // Check if event already exists
-        const { data: existing } = await supabaseAdmin
-          .from('knowledge_base')
-          .select('id')
-          .eq('metadata->>event_id', event.id)
-          .single();
-        
-        if (existing) {
-          // Update existing entry
-          const { error } = await supabaseAdmin
-            .from('knowledge_base')
-            .update({
-              ...knowledgeEntry,
-              content_embedding: await knowledgeBaseUtils.generateEmbedding(knowledgeEntry.content),
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', existing.id);
-          
-          if (!error) updated++;
-        } else {
-          // Add new entry
-          const { error } = await supabaseAdmin
-            .from('knowledge_base')
-            .insert({
-              id: uuidv4(),
-              ...knowledgeEntry,
-              content_embedding: await knowledgeBaseUtils.generateEmbedding(knowledgeEntry.content),
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-            });
-          
-          if (!error) added++;
-        }
-      }
-      
-      return `Added ${added}, updated ${updated} calendar events`;
-    } catch (error) {
-      console.error('[updateFromGoogleCalendar] Error:', error);
-      throw error;
-    }
+    return 'Skipped - handled by backend';
   }
   
   /**
@@ -274,27 +197,6 @@ export class KnowledgeBaseUpdater {
       event.waiting > 0 ? `キャンセル待ち: ${event.waiting}名` : '',
       `詳細: ${event.description.substring(0, 500)}...`,
       `URL: ${event.event_url}`,
-      `情報取得時刻: ${currentJST}`,
-    ].filter(Boolean);
-    
-    return parts.join('\n');
-  }
-  
-  /**
-   * Format Google Calendar event for knowledge base
-   */
-  private formatGoogleCalendarEvent(event: any): string {
-    const currentJST = this.getCurrentJSTTime();
-    const eventStatus = this.getEventStatusForKnowledge(event);
-    
-    const parts = [
-      `イベント名: ${event.summary}`,
-      eventStatus ? `状態: ${eventStatus}` : '',
-      `開催日時: ${this.formatDateTime(event.start)} - ${this.formatDateTime(event.end)}`,
-      event.location ? `場所: ${event.location}` : '',
-      event.description ? `詳細: ${event.description.substring(0, 500)}...` : '',
-      `ステータス: ${event.status}`,
-      event.htmlLink ? `カレンダーリンク: ${event.htmlLink}` : '',
       `情報取得時刻: ${currentJST}`,
     ].filter(Boolean);
     

@@ -1,6 +1,5 @@
 'use client';
 
-import { Dialog, DialogPanel, DialogTitle } from '@headlessui/react';
 import { cn } from '@/lib/cn';
 import { ClarificationUtils } from '@/lib/clarification-utils';
 import {
@@ -9,18 +8,35 @@ import {
   MessageSquare,
   Mic,
   MicOff,
-  Presentation,
   SendHorizontal,
+  Settings,
   Volume2,
   X,
   XCircle,
 } from 'lucide-react';
-import { useCallback, useState, type CSSProperties, type KeyboardEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type Dispatch,
+  type KeyboardEvent,
+  type MutableRefObject,
+  type SetStateAction,
+} from 'react';
+import type { CharacterAnimationData } from './utils/character-animation-utils';
 import type { BackgroundOption } from './components/BackgroundSelector';
 import CharacterAvatar from './components/CharacterAvatar';
 import ClarificationButtons from './components/ClarificationButtons';
+import SettingsPanel, {
+  type SettingsPanelPropsFromSource,
+} from './components/SettingsPanel';
 import MarpViewer from './components/MarpViewer';
-import VoiceInterface, { type VoiceSessionState } from './components/VoiceInterface';
+import VoiceInterface, {
+  type VoiceInterfaceMetadata,
+  type VoiceSessionState,
+} from './components/VoiceInterface';
 
 const overlayLabels = {
   ja: {
@@ -36,8 +52,8 @@ const overlayLabels = {
     speakingAction: '応答を再生中',
     defaultPrompt: 'マイクを押して、エンジニアカフェについて聞いてください。',
     helperPrompt: '音声が中心です。必要なときだけテキスト入力を開けます。',
-    textToggleOpen: 'テキスト入力',
-    textToggleClose: '入力を閉じる',
+    switchTextInput: '文字入力',
+    switchVoiceInput: '音声入力',
     textPlaceholder: 'ここに質問を入力します',
     send: '送信',
     openSlides: 'スライド案内',
@@ -61,15 +77,15 @@ const overlayLabels = {
     speakingAction: 'Speaking',
     defaultPrompt: 'Tap the mic and ask anything about Engineer Cafe.',
     helperPrompt: 'Voice comes first. Open text input only when you need a backup.',
-    textToggleOpen: 'Text input',
-    textToggleClose: 'Hide text input',
+    switchTextInput: 'Text input',
+    switchVoiceInput: 'Voice input',
     textPlaceholder: 'Type your question here',
     send: 'Send',
     openSlides: 'Open slides',
     closeSlides: 'Close slides',
     clearConversation: 'Clear conversation',
     cancelSession: 'Cancel current turn',
-    languageJa: 'Japanese',
+    languageJa: '日本語',
     languageEn: 'English',
     currentLocale: 'Current: English',
   },
@@ -113,6 +129,56 @@ const transcriptClampStyle: CSSProperties = {
   WebkitLineClamp: 2,
   overflow: 'hidden',
 };
+
+type ConversationHistoryItem = {
+  id: string;
+  role: 'user' | 'assistant';
+  text: string;
+};
+
+function ConversationHistoryEffects({
+  transcript,
+  response,
+  lastTranscriptRef,
+  lastResponseRef,
+  setConversationHistory,
+}: {
+  transcript: string;
+  response: string;
+  lastTranscriptRef: MutableRefObject<string>;
+  lastResponseRef: MutableRefObject<string>;
+  setConversationHistory: Dispatch<SetStateAction<ConversationHistoryItem[]>>;
+}) {
+  useEffect(() => {
+    if (transcript && transcript !== lastTranscriptRef.current) {
+      lastTranscriptRef.current = transcript;
+      setConversationHistory((prev) => [
+        ...prev,
+        {
+          id: `u-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          role: 'user',
+          text: transcript,
+        },
+      ]);
+    }
+  }, [lastTranscriptRef, setConversationHistory, transcript]);
+
+  useEffect(() => {
+    if (response && response !== lastResponseRef.current) {
+      lastResponseRef.current = response;
+      setConversationHistory((prev) => [
+        ...prev,
+        {
+          id: `a-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          role: 'assistant',
+          text: response,
+        },
+      ]);
+    }
+  }, [lastResponseRef, response, setConversationHistory]);
+
+  return null;
+}
 
 const getClarificationOptions = (
   currentLanguage: 'ja' | 'en',
@@ -172,6 +238,16 @@ export default function Home() {
   const [setExpressionFunction, setSetExpressionFunction] = useState<((expression: string, weight: number) => void) | null>(null);
   const [textDraft, setTextDraft] = useState('');
   const [showTextInput, setShowTextInput] = useState(false);
+  const [latestMetadata, setLatestMetadata] = useState<VoiceInterfaceMetadata | null>(null);
+  const [conversationHistory, setConversationHistory] = useState<ConversationHistoryItem[]>([]);
+  const [showSettingsPanel, setShowSettingsPanel] = useState(false);
+  const settingsPanelPropsRef = useRef<SettingsPanelPropsFromSource | null>(null);
+  const playKeyframeAnimationRef = useRef<((data: CharacterAnimationData) => void) | null>(null);
+  const lastVrmControlPlayedRef = useRef<unknown>(null);
+  const lastTranscriptRef = useRef<string>('');
+  const lastResponseRef = useRef<string>('');
+
+  const showAvatarControls = process.env.NEXT_PUBLIC_SHOW_AVATAR_SETTINGS === 'true';
 
   const startPresentation = useCallback((language: 'ja' | 'en') => {
     setCurrentLanguage(language);
@@ -186,12 +262,34 @@ export default function Home() {
     }, 150);
   }, []);
 
+  useEffect(() => {
+    if (!showSlideMode && latestMetadata?.reception_type === 'first_time') {
+      startPresentation(currentLanguage);
+    }
+  }, [currentLanguage, latestMetadata, showSlideMode, startPresentation]);
+
+  // Fallback: play vrm_control when metadata arrives (in case onAssistantPlaybackStart ran before ref was set)
+  useEffect(() => {
+    const vc = latestMetadata?.vrm_control;
+    if (!vc || !playKeyframeAnimationRef.current || lastVrmControlPlayedRef.current === vc) return;
+    lastVrmControlPlayedRef.current = vc;
+    playKeyframeAnimationRef.current(vc);
+  }, [latestMetadata?.vrm_control]);
+
   return (
     <VoiceInterface
       language={currentLanguage}
       onLanguageChange={setCurrentLanguage}
       onVisemeControl={setVisemeFunction}
       showDefaultUI={false}
+      onMetadataChange={setLatestMetadata}
+      onAssistantPlaybackStart={({ metadata: playbackMetadata }) => {
+        const vc = playbackMetadata?.vrm_control;
+        if (vc && playKeyframeAnimationRef.current && lastVrmControlPlayedRef.current !== vc) {
+          lastVrmControlPlayedRef.current = vc;
+          playKeyframeAnimationRef.current(vc);
+        }
+      }}
     >
       {(voice) => {
         const labels = overlayLabels[voice.currentLanguage];
@@ -229,6 +327,23 @@ export default function Home() {
         const micButtonLabel = labels[buttonCopy[visualState]];
         const isInputDisabled = isListening || isProcessing;
 
+        const screenPadding = {
+          paddingTop: 'max(1.5rem, env(safe-area-inset-top))',
+          paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom))',
+          paddingLeft: 'max(1.5rem, env(safe-area-inset-left))',
+          paddingRight: 'max(1.5rem, env(safe-area-inset-right))',
+        } satisfies CSSProperties;
+
+        const characterCameraOffset = showSlideMode
+          ? { x: 0.2, y: 0, z: 0.0 }
+          : { x: 0, y: 0, z: 0 };
+        const characterModelOffset = showSlideMode
+          ? { x: -0.7, y: 0, z: 0 }
+          : { x: 0, y: 0, z: 0 };
+        const characterRotationOffset = showSlideMode
+          ? { x: 0, y: 0.35, z: 0 }
+          : { x: 0, y: -0.2, z: 0 };
+
         const submitTextDraft = async () => {
           const trimmed = textDraft.trim();
           if (!trimmed) {
@@ -239,15 +354,15 @@ export default function Home() {
           setTextDraft('');
         };
 
-        const handleDraftKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-          if (event.key === 'Enter' && !event.shiftKey) {
-            event.preventDefault();
-            void submitTextDraft();
-          }
-        };
-
         return (
           <>
+            <ConversationHistoryEffects
+              transcript={voice.transcript}
+              response={voice.response}
+              lastTranscriptRef={lastTranscriptRef}
+              lastResponseRef={lastResponseRef}
+              setConversationHistory={setConversationHistory}
+            />
             <main className="relative h-[100svh] w-screen overflow-hidden">
               <div className="absolute inset-0 -z-10" style={stageBackgroundStyle}>
                 <CharacterAvatar
@@ -255,8 +370,11 @@ export default function Home() {
                   sessionState={voice.sessionState}
                   background={characterBackground}
                   lightingIntensity={lightingIntensity}
+                  cameraPositionOffset={characterCameraOffset}
+                  modelPositionOffset={characterModelOffset}
+                  modelRotationOffset={characterRotationOffset}
                   enableClickAnimation={!showSlideMode}
-                  showControls={!showSlideMode}
+                  showControls={showAvatarControls && !showSlideMode}
                   volume={Math.round(voice.volume * 100)}
                   isMuted={voice.isMuted}
                   onVolumeChange={(value) => voice.setVolume(value / 100)}
@@ -267,258 +385,275 @@ export default function Home() {
                   onExpressionControl={(setExpression) => {
                     setSetExpressionFunction(() => setExpression);
                   }}
+                  onKeyframeAnimationControl={(play) => {
+                    playKeyframeAnimationRef.current = play;
+                  }}
                   onBackgroundChange={setCharacterBackground}
                   onLightingChange={setLightingIntensity}
+                  settingsPanelPropsRef={settingsPanelPropsRef}
                 />
               </div>
 
-              <div
-                className="pointer-events-none absolute inset-x-0 top-0 z-10 flex justify-center px-4 md:px-6"
-                style={{
-                  paddingTop: 'max(1rem, env(safe-area-inset-top))',
-                  paddingLeft: 'max(1rem, env(safe-area-inset-left))',
-                  paddingRight: 'max(1rem, env(safe-area-inset-right))',
-                }}
-              >
-                <div className="pointer-events-auto w-full max-w-lg rounded-[28px] bg-black/60 p-4 text-white shadow-xl backdrop-blur-md transition-opacity duration-200 ease-out md:p-5">
-                  <div className="flex items-center justify-between gap-3 text-xs font-medium text-white/70">
-                    <span>{bubbleHeading}</span>
-                    <span>
-                      {voice.wakeWord.isSupported && !voice.error
-                        ? labels.wakeWordReady
-                        : labels.wakeWordOff}
-                    </span>
-                  </div>
-
-                  {voice.transcript ? (
-                    <div className="mt-3 rounded-2xl bg-white/8 px-3 py-2">
-                      <p className="text-xs font-medium text-white/60">{labels.transcriptLabel}</p>
-                      <p className="mt-1 text-sm text-pretty text-white/85" style={transcriptClampStyle}>
-                        {voice.transcript}
-                      </p>
-                    </div>
-                  ) : null}
-
-                  <div className="mt-3">
-                    <p className="text-base leading-7 text-pretty text-white md:text-lg" style={responseClampStyle}>
-                      {bubbleBody}
-                    </p>
-                    {!voice.response && !voice.isLoading ? (
-                      <p className="mt-2 text-sm text-pretty text-white/65">{labels.helperPrompt}</p>
-                    ) : null}
-                  </div>
-
-                  {clarificationOptions.length > 0 ? (
-                    <div className="mt-4">
-                      <ClarificationButtons
-                        options={clarificationOptions}
-                        onSelect={voice.sendMessage}
-                      />
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-
-              <div
-                className="absolute z-30"
-                style={{
-                  top: 'max(1rem, env(safe-area-inset-top))',
-                  right: 'max(4.75rem, calc(env(safe-area-inset-right) + 1rem))',
-                }}
-              >
-                <button
-                  type="button"
-                  onClick={() => startPresentation(voice.currentLanguage)}
-                  aria-label={labels.openSlides}
-                  className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-black/45 px-3 py-2 text-sm font-medium text-white shadow-lg backdrop-blur-md transition-transform duration-200 ease-out hover:scale-105"
-                >
-                  <Presentation className="size-4" />
-                  <span className="hidden sm:inline">{labels.openSlides}</span>
-                  <span className="rounded-full bg-white/10 px-2 py-1 text-xs font-semibold">
-                    {voice.currentLanguage.toUpperCase()}
-                  </span>
-                </button>
-              </div>
-
-              <div
-                className="absolute inset-x-0 bottom-0 z-20 px-4 md:px-6"
-                style={{
-                  paddingBottom: 'max(1rem, env(safe-area-inset-bottom))',
-                  paddingLeft: 'max(1rem, env(safe-area-inset-left))',
-                  paddingRight: 'max(1rem, env(safe-area-inset-right))',
-                }}
-              >
-                <div className="mx-auto flex w-full max-w-md flex-col items-center gap-3">
-                  {voice.error ? (
-                    <div className="w-full rounded-2xl border border-rose-400/30 bg-rose-500/20 px-4 py-3 text-sm text-white shadow-lg">
-                      {voice.error}
-                    </div>
-                  ) : null}
-
-                  <div className="w-full rounded-[32px] border border-white/15 bg-black/35 px-4 py-4 text-white shadow-xl backdrop-blur-md md:px-5">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm font-medium text-white/70">
-                        {visualState === 'idle'
-                          ? labels.currentLocale
-                          : labels[buttonCopy[visualState]]}
-                      </p>
-                      {canCancelTurn || showConversationReset ? (
-                        <button
-                          type="button"
-                          onClick={canCancelTurn ? voice.cancelSession : voice.clearConversation}
-                          aria-label={canCancelTurn ? labels.cancelSession : labels.clearConversation}
-                          className="inline-flex size-10 items-center justify-center rounded-full bg-white/10 text-white transition-transform duration-200 ease-out hover:scale-105"
-                        >
-                          {canCancelTurn ? <XCircle className="size-5" /> : <X className="size-5" />}
-                        </button>
-                      ) : (
-                        <div className="size-10" aria-hidden="true" />
-                      )}
-                    </div>
-
-                    <div className="mt-4 flex items-end justify-center gap-2">
-                      {waveformBars.map((bar, index) => (
-                        <span
-                          key={`${index}-${bar}`}
-                          className={cn(
-                            'h-8 w-1.5 rounded-full bg-white/80 transition-transform duration-200 ease-out md:h-10',
-                            isProcessing && 'bg-amber-100',
-                          )}
-                          style={{
-                            transform: `scaleY(${bar})`,
-                            transformOrigin: 'center bottom',
-                          }}
-                        />
-                      ))}
-                    </div>
-
-                    <div className="mt-4 flex justify-center">
-                      <button
-                        type="button"
-                        onClick={isListening ? voice.stopListening : voice.startListening}
-                        disabled={isProcessing}
-                        aria-label={micButtonLabel}
-                        className={cn(
-                          'inline-flex size-20 items-center justify-center rounded-full shadow-xl transition-transform duration-200 ease-out md:size-24',
-                          'hover:scale-105 disabled:cursor-not-allowed disabled:hover:scale-100',
-                          visualState === 'idle' && 'bg-white text-slate-900',
-                          visualState === 'listening' && 'bg-rose-500 text-white motion-safe:animate-pulse',
-                          visualState === 'processing' && 'bg-amber-500 text-white',
-                          visualState === 'speaking' && 'bg-sky-500 text-white',
-                        )}
-                      >
-                        {visualState === 'processing' ? (
-                          <Loader2 className="size-8 animate-spin md:size-9" />
-                        ) : visualState === 'listening' ? (
-                          <MicOff className="size-8 md:size-9" />
-                        ) : visualState === 'speaking' ? (
-                          <Volume2 className="size-8 md:size-9" />
-                        ) : (
-                          <Mic className="size-8 md:size-9" />
-                        )}
-                      </button>
-                    </div>
-
-                    <div className="mt-4 flex items-center justify-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setCurrentLanguage('ja')}
-                        className={cn(
-                          'rounded-full px-3 py-1.5 text-sm font-medium transition-colors',
-                          voice.currentLanguage === 'ja'
-                            ? 'bg-white/90 text-slate-900'
-                            : 'bg-white/20 text-white/70',
-                        )}
-                      >
-                        {labels.languageJa}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setCurrentLanguage('en')}
-                        className={cn(
-                          'rounded-full px-3 py-1.5 text-sm font-medium transition-colors',
-                          voice.currentLanguage === 'en'
-                            ? 'bg-white/90 text-slate-900'
-                            : 'bg-white/20 text-white/70',
-                        )}
-                      >
-                        {labels.languageEn}
-                      </button>
-                    </div>
-
-                    <div className="mt-4 flex items-center justify-center">
-                      <button
-                        type="button"
-                        onClick={() => setShowTextInput((current) => !current)}
-                        className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-2 text-sm font-medium text-white transition-transform duration-200 ease-out hover:scale-105"
-                      >
-                        {showTextInput ? <ChevronDown className="size-4" /> : <MessageSquare className="size-4" />}
-                        {showTextInput ? labels.textToggleClose : labels.textToggleOpen}
-                      </button>
-                    </div>
-                  </div>
-
-                  {showTextInput ? (
-                    <div className="w-full rounded-[28px] border border-white/20 bg-white/10 p-4 text-white shadow-xl backdrop-blur-md">
-                      <label className="sr-only" htmlFor="voice-text-draft">
-                        {labels.textPlaceholder}
-                      </label>
-                      <textarea
-                        id="voice-text-draft"
-                        value={textDraft}
-                        onChange={(event) => setTextDraft(event.target.value)}
-                        onKeyDown={handleDraftKeyDown}
-                        rows={3}
-                        placeholder={labels.textPlaceholder}
-                        aria-label={labels.textPlaceholder}
-                        className="min-h-24 w-full resize-none rounded-2xl border border-white/15 bg-black/20 px-4 py-3 text-sm text-white placeholder:text-white/45 focus:outline-none focus:ring-2 focus:ring-white/30"
-                      />
-                      <div className="mt-3 flex items-center justify-between gap-3">
-                        <p className="text-sm text-white/65">{labels.helperPrompt}</p>
-                        <button
-                          type="button"
-                          onClick={() => void submitTextDraft()}
-                          disabled={!textDraft.trim() || isInputDisabled}
-                          aria-label={labels.send}
-                          className="inline-flex size-11 items-center justify-center rounded-full bg-white text-slate-900 shadow-lg transition-transform duration-200 ease-out hover:scale-105 disabled:cursor-not-allowed disabled:bg-white/40 disabled:text-slate-500 disabled:hover:scale-100"
-                        >
-                          <SendHorizontal className="size-5" />
-                        </button>
+              {!showSlideMode && (
+                <>
+                  <div
+                    className="pointer-events-none absolute inset-0 z-20"
+                    style={screenPadding}
+                  >
+                    <div
+                      className={
+                        showTextInput
+                          ? 'pointer-events-auto grid h-full w-full grid-cols-[1fr_1fr] grid-rows-[3fr_1fr] gap-4'
+                          : 'pointer-events-auto grid h-full w-full grid-cols-[3fr_1fr] grid-rows-[3fr_1fr] gap-4'
+                      }
+                    >
+                    <div className="row-start-2 col-start-1 h-full">
+                      <div className="h-full rounded-[28px] bg-black/55 p-4 text-white shadow-xl backdrop-blur-md">
+                        <div className="h-full overflow-y-auto pr-1">
+                          <p className="text-base leading-7 text-pretty text-white/90 md:text-lg md:leading-8">
+                            {voice.response || bubbleBody}
+                          </p>
+                        </div>
                       </div>
                     </div>
-                  ) : null}
-                </div>
-              </div>
-            </main>
 
-            <Dialog
-              open={showSlideMode}
-              onClose={setShowSlideMode}
-              className="relative z-40"
-            >
-              <div className="fixed inset-0 bg-black/50 backdrop-blur-sm" aria-hidden="true" />
-              <div className="fixed inset-0 flex items-center justify-center px-4 py-6 md:px-8">
-                <DialogPanel className="relative w-full max-w-5xl overflow-hidden rounded-[32px] bg-white shadow-2xl">
-                  <DialogTitle className="sr-only">{labels.openSlides}</DialogTitle>
-                  <button
-                    type="button"
-                    onClick={() => setShowSlideMode(false)}
-                    aria-label={labels.closeSlides}
-                    className="absolute right-4 top-4 z-10 inline-flex size-11 items-center justify-center rounded-full bg-black/70 text-white shadow-lg transition-transform duration-200 ease-out hover:scale-105"
-                  >
-                    <X className="size-5" />
-                  </button>
-                  <div className="h-[82svh] w-full bg-white md:h-[46rem]">
-                    <MarpViewer
-                      language={voice.currentLanguage}
-                      onVisemeControl={setVisemeFunction}
-                      onExpressionControl={setExpressionFunction}
-                      volume={Math.round(voice.volume * 100)}
-                    />
+                    <div className="row-start-1 col-start-2 flex h-full flex-col items-end justify-start gap-2">
+                      {voice.error ? (
+                        <div className="w-full rounded-2xl border border-rose-400/30 bg-rose-500/20 px-3 py-2 text-xs text-white shadow-lg">
+                          {voice.error}
+                        </div>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => setShowSettingsPanel(true)}
+                        aria-label={voice.currentLanguage === 'ja' ? '設定' : 'Settings'}
+                        className="inline-flex size-11 shrink-0 items-center justify-center rounded-full border border-white/15 bg-black/45 text-white shadow-lg backdrop-blur-md transition-transform duration-200 ease-out hover:scale-105"
+                      >
+                        <Settings className="size-5" />
+                      </button>
+                    </div>
+
+                    <div className="row-start-2 col-start-2 h-full">
+                      <div className="flex h-full flex-col rounded-[32px] border border-white/15 bg-black/35 px-4 py-3 text-white shadow-xl backdrop-blur-md md:px-5">
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-sm font-medium text-white/70">
+                            {visualState === 'idle' ? ' ' : labels[buttonCopy[visualState]]}
+                          </p>
+                          {canCancelTurn || showConversationReset ? (
+                            <button
+                              type="button"
+                              onClick={canCancelTurn ? voice.cancelSession : voice.clearConversation}
+                              aria-label={canCancelTurn ? labels.cancelSession : labels.clearConversation}
+                              className="inline-flex size-9 items-center justify-center rounded-full bg-white/10 text-white transition-transform duration-200 ease-out hover:scale-105"
+                            >
+                              {canCancelTurn ? <XCircle className="size-4" /> : <X className="size-4" />}
+                            </button>
+                          ) : (
+                            <div className="size-9" aria-hidden="true" />
+                          )}
+                        </div>
+
+                        <div className="mt-3 flex min-h-0 flex-1 items-stretch gap-3">
+                          <div className="flex min-h-0 min-w-0 flex-[2] flex-col">
+                            {showTextInput ? (
+                              <div className="flex min-h-0 flex-1 flex-col">
+                                <label className="sr-only" htmlFor="voice-text-draft">
+                                  {labels.textPlaceholder}
+                                </label>
+                                <textarea
+                                  id="voice-text-draft"
+                                  value={textDraft}
+                                  onChange={(event) => setTextDraft(event.target.value)}
+                                  placeholder={labels.textPlaceholder}
+                                  aria-label={labels.textPlaceholder}
+                                  className="min-h-20 flex-1 resize-none overflow-auto rounded-2xl border border-white/15 bg-black/20 px-4 py-2 text-sm text-white placeholder:text-white/45 focus:outline-none focus:ring-2 focus:ring-white/30"
+                                />
+                                <div className="mt-2 flex shrink-0 justify-end">
+                                  <button
+                                    type="button"
+                                    onClick={() => void submitTextDraft()}
+                                    disabled={!textDraft.trim() || isInputDisabled}
+                                    aria-label={labels.send}
+                                    className={cn(
+                                      'inline-flex size-10 items-center justify-center rounded-full shadow-lg transition-transform duration-200 ease-out disabled:cursor-not-allowed',
+                                      !textDraft.trim() || isInputDisabled
+                                        ? 'bg-black/40 text-white/70 hover:scale-100'
+                                        : 'bg-white/90 text-slate-900 hover:scale-105',
+                                    )}
+                                  >
+                                    <SendHorizontal className="size-5" />
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="flex h-full items-center justify-center">
+                                <button
+                                  type="button"
+                                  onClick={isListening ? voice.stopListening : voice.startListening}
+                                  disabled={isProcessing}
+                                  aria-label={micButtonLabel}
+                                  className={cn(
+                                    'inline-flex size-16 items-center justify-center rounded-full shadow-xl transition-transform duration-200 ease-out md:size-20',
+                                    'hover:scale-105 disabled:cursor-not-allowed disabled:hover:scale-100',
+                                    visualState === 'idle' && 'bg-white text-slate-900',
+                                    visualState === 'listening' && 'bg-rose-500 text-white motion-safe:animate-pulse',
+                                    visualState === 'processing' && 'bg-amber-500 text-white',
+                                    visualState === 'speaking' && 'bg-sky-500 text-white',
+                                  )}
+                                >
+                                  {visualState === 'processing' ? (
+                                    <Loader2 className="size-7 animate-spin md:size-8" />
+                                  ) : visualState === 'listening' ? (
+                                    <MicOff className="size-7 md:size-8" />
+                                  ) : visualState === 'speaking' ? (
+                                    <Volume2 className="size-7 md:size-8" />
+                                  ) : (
+                                    <Mic className="size-7 md:size-8" />
+                                  )}
+                                </button>
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="flex w-[150px] shrink-0 flex-col justify-between">
+                            <div className="flex flex-col items-center justify-start gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setCurrentLanguage('ja')}
+                                className={cn(
+                                  'rounded-full px-3 py-1 text-xs font-medium text-xl transition-colors',
+                                  voice.currentLanguage === 'ja'
+                                    ? 'bg-white/90 text-slate-900'
+                                    : 'bg-white/20 text-white/70',
+                                )}
+                              >
+                                {labels.languageJa}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setCurrentLanguage('en')}
+                                className={cn(
+                                  'rounded-full px-3 py-1 text-xs font-medium text-xl transition-colors',
+                                  voice.currentLanguage === 'en'
+                                    ? 'bg-white/90 text-slate-900'
+                                    : 'bg-white/20 text-white/70',
+                                )}
+                              >
+                                {labels.languageEn}
+                              </button>
+                            </div>
+
+                            <div className="flex items-center justify-end">
+                              <button
+                                type="button"
+                                onClick={() => setShowTextInput((current) => !current)}
+                                className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 text-xs font-medium text-white transition-transform duration-200 ease-out hover:scale-105"
+                              >
+                                {showTextInput ? (
+                                  <Mic className="size-6" />
+                                ) : (
+                                  <MessageSquare className="size-6" />
+                                )}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                </DialogPanel>
-              </div>
-            </Dialog>
+                </div>
+
+                {showSettingsPanel && settingsPanelPropsRef.current ? (
+                  <div
+                    className="absolute inset-0 z-30 pointer-events-none"
+                    aria-hidden={!showSettingsPanel}
+                  >
+                    <div
+                      className="pointer-events-auto absolute top-0 flex max-h-full justify-end"
+                      style={{
+                        top: screenPadding.paddingTop,
+                        right: screenPadding.paddingRight,
+                      }}
+                    >
+                      <SettingsPanel
+                        {...settingsPanelPropsRef.current}
+                        show_close_button
+                        on_close={() => setShowSettingsPanel(false)}
+                        extra_tab={{
+                          label: voice.currentLanguage === 'ja' ? '会話履歴' : 'Conversation',
+                          content: (
+                            <div className="space-y-2 overflow-y-auto pr-1">
+                              {conversationHistory.length === 0 ? (
+                                <p className="text-sm text-gray-600">{labels.helperPrompt}</p>
+                              ) : (
+                                conversationHistory.map((item) => (
+                                  <div
+                                    key={item.id}
+                                    className={cn(
+                                      'rounded-2xl px-3 py-2 text-sm leading-6',
+                                      item.role === 'user'
+                                        ? 'bg-gray-100 text-gray-800'
+                                        : 'bg-blue-50 text-gray-800',
+                                    )}
+                                  >
+                                    <p className="text-xs font-medium text-gray-500">
+                                      {item.role === 'user'
+                                        ? voice.currentLanguage === 'ja'
+                                          ? 'あなた'
+                                          : 'You'
+                                        : 'Navigator'}
+                                    </p>
+                                    <p className="mt-1 whitespace-pre-wrap">{item.text}</p>
+                                  </div>
+                                ))
+                              )}
+                            </div>
+                          ),
+                        }}
+                        slide_mode_open={showSlideMode}
+                        on_open_slides={() => startPresentation(voice.currentLanguage)}
+                        on_close_slides={() => setShowSlideMode(false)}
+                        open_slides_label={labels.openSlides}
+                        close_slides_label={labels.closeSlides}
+                      />
+                    </div>
+                  </div>
+                ) : null}
+                </>
+              )}
+              {showSlideMode ? (
+                <div
+                  className="pointer-events-none absolute inset-y-0 right-0 z-30 flex w-full justify-end"
+                  style={screenPadding}
+                >
+                  <div className="pointer-events-auto flex h-full w-full max-w-5xl transform-gpu rounded-[32px] bg-white/95 shadow-2xl transition-all duration-300 ease-out">
+                    <div className="hidden h-full flex-[1.05] items-center justify-center border-r border-slate-100/80 bg-gradient-to-br from-white/0 via-white/10 to-white/30 px-4 lg:flex">
+                      <p className="text-sm font-medium text-slate-500">
+                        {labels.guideLabel}
+                      </p>
+                    </div>
+                    <div className="relative flex h-full flex-[1.4] flex-col bg-white">
+                      <button
+                        type="button"
+                        onClick={() => setShowSlideMode(false)}
+                        aria-label={labels.closeSlides}
+                        className="absolute right-4 top-4 z-10 inline-flex size-11 items-center justify-center rounded-full bg-black/70 text-white shadow-lg transition-transform duration-200 ease-out hover:scale-105"
+                      >
+                        <X className="size-5" />
+                      </button>
+                      <div className="h-full w-full pt-4">
+                        <MarpViewer
+                          language={voice.currentLanguage}
+                          onVisemeControl={setVisemeFunction}
+                          onExpressionControl={setExpressionFunction}
+                          volume={Math.round(voice.volume * 100)}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+            </main>
           </>
         );
       }}

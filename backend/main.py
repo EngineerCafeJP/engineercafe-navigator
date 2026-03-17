@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import re
+import sys
 import time
 from contextlib import asynccontextmanager
 from io import BytesIO
@@ -17,8 +18,8 @@ from io import BytesIO
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
-from typing import Optional, Dict, Any
+from pydantic import BaseModel, Field
+from typing import Optional, Dict, Any, cast
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -34,6 +35,7 @@ logger = logging.getLogger(__name__)
 
 
 _VALID_REQUEST_ID = re.compile(r"^[a-zA-Z0-9\-]{1,64}$")
+_ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
 
 
 class RequestIDMiddleware(BaseHTTPMiddleware):
@@ -115,7 +117,7 @@ async def lifespan(app: FastAPI):
         logger.error("起動時バリデーション失敗。環境変数を確認してください。")
         raise
 
-    if os.getenv("ENVIRONMENT", "development") == "production":
+    if _ENVIRONMENT == "production":
         setup_structured_logging()
 
     try:
@@ -134,6 +136,15 @@ async def lifespan(app: FastAPI):
         logger.info("Session task manager initialized")
     except Exception as e:
         logger.warning("Session task manager setup failed (non-critical): %s", e)
+
+    try:
+        from backend.utils.checkpointer import prewarm_checkpointer
+
+        await prewarm_checkpointer()
+    except ValueError:
+        logger.warning("SUPABASE_DB_URI not set, skipping checkpointer warm-up.")
+    except Exception as e:
+        logger.warning("Checkpointer warm-up failed (non-critical): %s", e)
 
     yield
 
@@ -169,30 +180,27 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Rate limiting (optional - requires slowapi)
+# Rate limiting
+limiter: Any
+
 try:
     from slowapi import Limiter, _rate_limit_exceeded_handler
-    from slowapi.util import get_remote_address
     from slowapi.errors import RateLimitExceeded
+    from slowapi.util import get_remote_address
 
     limiter = Limiter(key_func=get_remote_address)
     app.state.limiter = limiter
-    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-    _HAS_SLOWAPI = True
-except ImportError:
-    _HAS_SLOWAPI = False
-    limiter = None
+    app.add_exception_handler(RateLimitExceeded, cast(Any, _rate_limit_exceeded_handler))
+except ImportError as exc:
+    logger.critical("slowapi is required for rate limiting but could not be imported: %s", exc)
+    if _ENVIRONMENT == "production":
+        sys.exit(1)
+    raise RuntimeError("slowapi is required for rate limiting") from exc
 
 
 def _rate_limit(limit_string: str):
-    """Return a rate-limit decorator; no-op when slowapi is unavailable."""
-    if _HAS_SLOWAPI and limiter is not None:
-        return limiter.limit(limit_string)
-
-    def _noop(func):
-        return func
-
-    return _noop
+    """Return the configured rate-limit decorator."""
+    return limiter.limit(limit_string)
 
 
 # Add custom middleware
@@ -201,51 +209,81 @@ app.add_middleware(RequestIDMiddleware)
 app.add_middleware(TokenTrackerMiddleware)
 
 
-# Optional API key authentication
-_API_SECRET_KEY = os.getenv("API_SECRET_KEY")
+_raw_api_key = os.getenv("API_SECRET_KEY", "").strip()
+_API_SECRET_KEY = _raw_api_key if _raw_api_key else None
 
-if os.getenv("ENVIRONMENT", "development") == "production" and not _API_SECRET_KEY:
-    logger.warning(
-        "API_SECRET_KEY not set in production. " "All endpoints are unprotected — this is insecure."
-    )
+if _ENVIRONMENT == "production" and not _API_SECRET_KEY:
+    logger.critical("API_SECRET_KEY is required in production. Refusing to start.")
+    sys.exit(1)
 
 
 async def verify_api_key(request: Request) -> None:
-    """Optional API key verification - skipped if API_SECRET_KEY not set"""
+    """Verify API key, allowing missing keys only outside protected environments."""
     if not _API_SECRET_KEY:
+        if _ENVIRONMENT in ("production", "staging", "preview"):
+            raise HTTPException(status_code=503, detail="Server misconfigured")
         return
     api_key = request.headers.get("X-API-Key")
     if not api_key or not hmac.compare_digest(api_key, _API_SECRET_KEY):
         raise HTTPException(status_code=403, detail="Invalid or missing API key")
 
 
-# CORS設定
-_default_origins = ["http://localhost:3000", "http://localhost:3001"]
-_env = os.getenv("ENVIRONMENT", "development")
-_configured_origins = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "").split(",") if o.strip()]
-
-if _env == "production" and not _configured_origins:
-    logger.warning(
-        "ALLOWED_ORIGINS not set in production. "
-        "Falling back to localhost origins — this is insecure."
-    )
-
-_allowed_origins = _configured_origins or _default_origins
+ALLOWED_ORIGINS = os.getenv(
+    "ALLOWED_ORIGINS", "https://engineer-cafe-navigator.company-997.workers.dev"
+).split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_allowed_origins,
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization", "X-API-Key", "X-Request-ID"],
 )
 
 
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    is_docs_path = request.url.path.startswith("/docs") or request.url.path.startswith("/redoc")
+    if is_docs_path:
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; "
+            "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+            "img-src 'self' data: blob:; "
+            "font-src 'self' data:; "
+            "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://openrouter.ai; "
+            "media-src 'self' blob:; "
+            "frame-src 'none'; "
+            "object-src 'none'; "
+            "base-uri 'self'"
+        )
+    else:
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data: blob:; "
+            "font-src 'self' data:; "
+            "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://openrouter.ai; "
+            "media-src 'self' blob:; "
+            "frame-src 'none'; "
+            "object-src 'none'; "
+            "base-uri 'self'"
+        )
+    response.headers["X-XSS-Protection"] = "0"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
+
+
 class ChatRequest(BaseModel):
-    query: str
+    query: str = Field(max_length=2000)
     session_id: Optional[str] = None
-    language: Optional[str] = "ja"
+    language: Optional[str] = Field(default="ja", max_length=10)
     context: Optional[Dict[str, Any]] = None
     visitor_id: Optional[str] = None  # Cross-session visitor identification
+    image_data: str | None = None  # Base64 encoded image
 
 
 class ChatResponse(BaseModel):
@@ -274,15 +312,28 @@ async def _run_workflow_with_tracking(payload: Dict[str, Any], session_id: str) 
     from backend.workflows.main_workflow import get_workflow
 
     workflow = await get_workflow()
-    await _session_task_manager.register_session(session_id)
+    await _get_stm().register_session(session_id)
     llm_task = asyncio.create_task(workflow.ainvoke(payload))
-    await _session_task_manager.set_llm_task(session_id, llm_task)
+    await _get_stm().set_llm_task(session_id, llm_task)
 
     try:
-        return await llm_task
+        return cast(Dict[str, Any], await llm_task)
     except asyncio.CancelledError:
         logger.info("LLM task cancelled for session %s", session_id)
         raise HTTPException(status_code=409, detail="Request interrupted")
+
+
+def _build_workflow_payload(body: ChatRequest, session_id: str) -> Dict[str, Any]:
+    payload: Dict[str, Any] = {
+        "query": body.query,
+        "session_id": session_id,
+        "language": body.language,
+        "context": body.context or {},
+        "visitor_id": body.visitor_id,
+    }
+    if body.image_data:
+        payload["image_data"] = body.image_data
+    return payload
 
 
 @app.get("/health")
@@ -338,13 +389,7 @@ async def chat(request: Request, body: ChatRequest):
 
     try:
         result = await _run_workflow_with_tracking(
-            payload={
-                "query": body.query,
-                "session_id": session_id,
-                "language": body.language,
-                "context": body.context or {},
-                "visitor_id": body.visitor_id,
-            },
+            payload=_build_workflow_payload(body, session_id),
             session_id=session_id,
         )
 
@@ -402,15 +447,7 @@ async def chat_stream(request: Request, body: ChatRequest):
             workflow = await get_workflow()
 
             # Use astream for streaming
-            async for event in workflow.astream(
-                {
-                    "query": body.query,
-                    "session_id": session_id,
-                    "language": body.language,
-                    "context": body.context or {},
-                    "visitor_id": body.visitor_id,
-                }
-            ):
+            async for event in workflow.astream(_build_workflow_payload(body, session_id)):
                 if interrupt_mgr.is_interrupted(body.session_id):
                     yield f'data: {json.dumps({"type": "interrupted"})}\n\n'
                     break
@@ -441,18 +478,13 @@ async def invoke_agent(request: Request, body: ChatRequest):
     """
     from backend.utils.interrupt_manager import get_interrupt_manager
 
-    get_interrupt_manager().clear_interrupt(body.session_id)
+    session_id = cast(str, body.session_id)
+    get_interrupt_manager().clear_interrupt(session_id)
 
     try:
         result = await _run_workflow_with_tracking(
-            payload={
-                "query": body.query,
-                "session_id": body.session_id,
-                "language": body.language,
-                "context": body.context or {},
-                "visitor_id": body.visitor_id,
-            },
-            session_id=body.session_id,
+            payload=_build_workflow_payload(body, session_id),
+            session_id=session_id,
         )
 
         return {"status": "success", "result": result}
@@ -468,8 +500,8 @@ class VoiceRequest(BaseModel):
     action: str
     audioData: Optional[str] = None
     sessionId: Optional[str] = None
-    language: Optional[str] = "ja"
-    text: Optional[str] = None
+    language: Optional[str] = Field(default="ja", max_length=10)
+    text: Optional[str] = Field(default=None, max_length=5000)
     streaming: Optional[bool] = False
     conversationStage: Optional[str] = None
     emotion: Optional[str] = None  # Emotion for TTS synthesis
@@ -491,7 +523,14 @@ class VoiceResponse(BaseModel):
 _voice_agent: Optional[Any] = None  # VoiceAgent (lazy-loaded)
 _stt_agent: Optional[Any] = None  # STTAgent (lazy-loaded)
 _slide_agent: Optional[Any] = None  # SlideAgent (lazy-loaded)
-_session_task_manager = get_session_task_manager()
+_session_task_manager: Optional[Any] = None
+
+
+def _get_stm():
+    global _session_task_manager
+    if _session_task_manager is None:
+        _session_task_manager = get_session_task_manager()
+    return _session_task_manager
 
 
 def _get_voice_agent():
@@ -552,6 +591,18 @@ async def _handle_stt(body: VoiceRequest) -> VoiceResponse:
     )
 
 
+@app.get("/api/voice", dependencies=[Depends(verify_api_key)])
+async def voice_get_api(action: str = ""):
+    if action == "supported_languages":
+        return {
+            "languages": [
+                {"code": "ja", "name": "日本語"},
+                {"code": "en", "name": "English"},
+            ]
+        }
+    return {"status": "ok", "actions": ["speech_to_text", "text_to_speech", "supported_languages"]}
+
+
 @app.post("/api/voice", response_model=VoiceResponse, dependencies=[Depends(verify_api_key)])
 @_rate_limit("20/minute")
 async def voice_api(request: Request, body: VoiceRequest):
@@ -561,7 +612,7 @@ async def voice_api(request: Request, body: VoiceRequest):
                 raise HTTPException(status_code=400, detail="Missing text for text_to_speech")
 
             if body.sessionId:
-                await _session_task_manager.register_session(body.sessionId)
+                await _get_stm().register_session(body.sessionId)
 
             tts_task = asyncio.create_task(
                 _get_voice_agent().text_to_speech(
@@ -571,14 +622,14 @@ async def voice_api(request: Request, body: VoiceRequest):
                 )
             )
             if body.sessionId:
-                await _session_task_manager.set_tts_task(body.sessionId, tts_task)
+                await _get_stm().set_tts_task(body.sessionId, tts_task)
 
             result = await tts_task
 
             if body.sessionId and result.get("audioResponse"):
                 try:
                     audio_bytes = base64.b64decode(result["audioResponse"])
-                    await _session_task_manager.set_tts_buffer(body.sessionId, BytesIO(audio_bytes))
+                    await _get_stm().set_tts_buffer(body.sessionId, BytesIO(audio_bytes))
                 except Exception:
                     logger.debug("Failed to register TTS buffer for session %s", body.sessionId)
 
@@ -610,7 +661,7 @@ async def voice_api(request: Request, body: VoiceRequest):
             if not body.sessionId:
                 raise HTTPException(status_code=400, detail="Missing sessionId for interrupt")
 
-            cancelled = await _session_task_manager.cancel_all_tasks(body.sessionId)
+            cancelled = await _get_stm().cancel_all_tasks(body.sessionId)
             return VoiceResponse(
                 success=True,
                 sessionId=body.sessionId,
@@ -668,7 +719,11 @@ class SlideContentResponse(BaseModel):
     error: Optional[str] = None
 
 
-@app.post("/api/slides/content", response_model=SlideContentResponse)
+@app.post(
+    "/api/slides/content",
+    response_model=SlideContentResponse,
+    dependencies=[Depends(verify_api_key)],
+)
 async def slides_content_api(body: SlideContentRequest):
     """Return raw slide markdown and narration data for frontend rendering."""
     try:
@@ -818,10 +873,20 @@ from backend.api.stt_vocabulary import router as stt_vocabulary_router  # noqa: 
 
 app.include_router(stt_vocabulary_router, prefix="/api", dependencies=[Depends(verify_api_key)])
 
+# Monitoring API Router
+from backend.api.monitoring import router as monitoring_router  # noqa: E402
+
+app.include_router(monitoring_router, dependencies=[Depends(verify_api_key)])
+
+# Alerts API Router
+from backend.api.alerts import router as alerts_router  # noqa: E402
+
+app.include_router(alerts_router, dependencies=[Depends(verify_api_key)])
+
 # Reception API Router
 from backend.api.reception import reception_router  # noqa: E402
 
-app.include_router(reception_router)
+app.include_router(reception_router, dependencies=[Depends(verify_api_key)])
 
 
 if __name__ == "__main__":
