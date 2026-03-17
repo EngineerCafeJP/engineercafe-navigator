@@ -37,21 +37,26 @@ Notable implementation details:
 
 ## Environment
 
-The exact contract should be validated against code before deploy, but the main backend-side variables currently include:
+Use the checked-in example files as the first source of truth:
 
-- `ENVIRONMENT`
-- `API_SECRET_KEY`
-- `ALLOWED_ORIGINS`
-- `OPENROUTER_API_KEY`
-- `OPENAI_API_KEY`
-- `SUPABASE_URL`
-- `SUPABASE_KEY`
-- `SUPABASE_DB_URI`
-- `TTS_PROVIDER`
-- `VOICEVOX_API_URL`
+- `backend/.env.example`: local development and shared defaults
+- `backend/.env.staging.example`: Cloud Run staging shape
+- `backend/.env.production.example`: production-only additions and hardening
+
+The shared backend contract across those examples includes:
+
+- `ENVIRONMENT`, `PORT`, `APP_URL`
+- `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `TAVILY_API_KEY`
+- `GOOGLE_CALENDAR_ICAL_URL`, `CONNPASS_API_KEY`
+- `SUPABASE_URL`, `SUPABASE_KEY`, `SUPABASE_DB_URI`
+- `API_SECRET_KEY`, `ALLOWED_ORIGINS` for non-dev fail-closed deployments
+- `TTS_PROVIDER`, `VOICEVOX_API_URL`, `KOKORO_API_URL` for voice runtime selection
+- `LANGSMITH_API_KEY`, `LANGSMITH_PROJECT`, `DISCORD_WEBHOOK_URL` when tracing/alerts are enabled
+
+Additional optional Google voice credentials are still code-backed when using Google-powered STT/TTS paths:
+
 - `GOOGLE_CLOUD_PROJECT_ID`
 - `GOOGLE_CLOUD_CREDENTIALS`
-- `GOOGLE_GENERATIVE_AI_API_KEY`
 
 Do not rely on old migration-era docs for env setup. Use [docs/STATUS.md](../docs/STATUS.md) plus the actual code paths.
 
