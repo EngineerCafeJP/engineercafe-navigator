@@ -242,6 +242,8 @@ export default function Home() {
   const [conversationHistory, setConversationHistory] = useState<ConversationHistoryItem[]>([]);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
   const settingsPanelPropsRef = useRef<SettingsPanelPropsFromSource | null>(null);
+  const [settingsPanelProps, setSettingsPanelProps] =
+    useState<SettingsPanelPropsFromSource | null>(null);
   const playKeyframeAnimationRef = useRef<((data: CharacterAnimationData) => void) | null>(null);
   const lastVrmControlPlayedRef = useRef<unknown>(null);
   const lastTranscriptRef = useRef<string>('');
@@ -391,6 +393,7 @@ export default function Home() {
                   onBackgroundChange={setCharacterBackground}
                   onLightingChange={setLightingIntensity}
                   settingsPanelPropsRef={settingsPanelPropsRef}
+                  onSettingsPanelPropsChange={setSettingsPanelProps}
                 />
               </div>
 
@@ -563,7 +566,7 @@ export default function Home() {
                   </div>
                 </div>
 
-                {showSettingsPanel && settingsPanelPropsRef.current ? (
+                {showSettingsPanel && settingsPanelProps ? (
                   <div
                     className="absolute inset-0 z-30 pointer-events-none"
                     aria-hidden={!showSettingsPanel}
@@ -576,7 +579,7 @@ export default function Home() {
                       }}
                     >
                       <SettingsPanel
-                        {...settingsPanelPropsRef.current}
+                        {...settingsPanelProps}
                         show_close_button
                         on_close={() => setShowSettingsPanel(false)}
                         extra_tab={{

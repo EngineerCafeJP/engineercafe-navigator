@@ -79,6 +79,8 @@ interface CharacterAvatarProps {
   extraSettingsTab?: { label: string; content: ReactNode };
   /** When set, panel is rendered by parent (e.g. page); this ref is filled with panel props each render */
   settingsPanelPropsRef?: React.MutableRefObject<SettingsPanelPropsFromSource | null>;
+  /** When using settingsPanelPropsRef, notify parent to re-render */
+  onSettingsPanelPropsChange?: (props: SettingsPanelPropsFromSource) => void;
 }
 
 const SETTINGS_TAB_LABELS: Record<
@@ -189,6 +191,7 @@ export default function CharacterAvatar({
   onSettingsClose,
   extraSettingsTab,
   settingsPanelPropsRef,
+  onSettingsPanelPropsChange,
 }: CharacterAvatarProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -212,6 +215,9 @@ export default function CharacterAvatar({
   const playKeyframeAnimationInternalRef = useRef<((animation: CharacterAnimationData) => void) | null>(null);
   const setExpressionWeightsRef = useRef<(weights: Record<string, number>) => void>(() => {});
   const expressionWeightsSyncRef = useRef<Record<string, number>>({});
+  const expressionWeightsUiRef = useRef<Record<string, number>>({});
+  const lastManualExpressionUpdateMsRef = useRef<Record<string, number>>({});
+  const lastSettingsPanelEmitMsRef = useRef(0);
   const initializeSceneRef = useRef<() => void | (() => void)>(() => undefined);
   const loadCharacterRef = useRef<() => Promise<void>>(async () => {});
   const cleanupRef = useRef<() => void>(() => {});
@@ -237,7 +243,10 @@ export default function CharacterAvatar({
   const [vrmExpressionNames, setVrmExpressionNames] = useState<string[]>([]);
   const [expressionWeights, setExpressionWeights] = useState<Record<string, number>>({});
 
-  setExpressionWeightsRef.current = setExpressionWeights;
+  setExpressionWeightsRef.current = (weights: Record<string, number>) => {
+    expressionWeightsUiRef.current = { ...weights };
+    setExpressionWeights(weights);
+  };
 
   // Initialize Three.js scene
   useEffect(() => {
@@ -1042,7 +1051,13 @@ export default function CharacterAvatar({
   };
 
   const handle_expression_weight_change = (name: string, weight: number) => {
-    setExpressionWeights((prev) => ({ ...prev, [name]: weight }));
+    const next = { ...expressionWeightsUiRef.current, [name]: weight };
+    expressionWeightsUiRef.current = next;
+    lastManualExpressionUpdateMsRef.current = {
+      ...lastManualExpressionUpdateMsRef.current,
+      [name]: Date.now(),
+    };
+    setExpressionWeights(next);
     blendShapeControllerRef.current?.setExpression(name, weight);
   };
 
@@ -1261,28 +1276,41 @@ export default function CharacterAvatar({
     if (charactersRef.current) {
       charactersRef.current.update(deltaTime);
 
-      // Sync expression weights from VRM to Controls sliders (keyframe, .vrma, lip-sync, etc.)
+      // Sync expression weights from VRM to Character sliders (keyframe, .vrma, lip-sync, etc.)
       const blend_shape = blendShapeControllerRef.current;
       if (blend_shape) {
         const current = blend_shape.getCurrentExpressions();
         const last = expressionWeightsSyncRef.current;
         const current_keys = Object.keys(current);
         const last_keys = Object.keys(last);
+        const EPSILON = 0.0001;
+        const MANUAL_HOLD_MS = 250;
         let changed = current_keys.length !== last_keys.length;
         if (!changed) {
           for (let i = 0; i < current_keys.length; i++) {
             const name = current_keys[i];
             const a = current[name] ?? 0;
             const b = last[name] ?? 0;
-            if (Math.abs(a - b) > 0.001) {
+            // Lip-sync (viseme) weights can change in very small increments; use a tighter epsilon
+            // so the UI sliders track the current VRM state smoothly.
+            if (Math.abs(a - b) > EPSILON) {
               changed = true;
               break;
             }
           }
         }
         if (changed) {
-          setExpressionWeightsRef.current(current);
-          expressionWeightsSyncRef.current = { ...current };
+          const now = Date.now();
+          const manual = lastManualExpressionUpdateMsRef.current;
+          const ui = expressionWeightsUiRef.current;
+          const merged: Record<string, number> = { ...current };
+          for (const [name, ts] of Object.entries(manual)) {
+            if (now - ts < MANUAL_HOLD_MS && typeof ui[name] === 'number') {
+              merged[name] = ui[name];
+            }
+          }
+          setExpressionWeightsRef.current(merged);
+          expressionWeightsSyncRef.current = { ...merged };
         }
       }
 
@@ -1419,7 +1447,7 @@ export default function CharacterAvatar({
       {/* Settings Panel - when settingsPanelPropsRef is set, parent renders the panel; otherwise render locally or via portal */}
       {(() => {
         if (settingsPanelPropsRef) {
-          settingsPanelPropsRef.current = {
+          const next_props: SettingsPanelPropsFromSource = {
             controls_state: characterState,
             vrm_expression_names: vrmExpressionNames,
             expression_weights: expressionWeights,
@@ -1442,6 +1470,15 @@ export default function CharacterAvatar({
             on_run_keyframe: (animation) =>
               playKeyframeAnimationInternalRef.current?.(animation),
           };
+          settingsPanelPropsRef.current = next_props;
+          if (onSettingsPanelPropsChange) {
+            const now = Date.now();
+            const EMIT_INTERVAL_MS = 100;
+            if (now - lastSettingsPanelEmitMsRef.current >= EMIT_INTERVAL_MS) {
+              lastSettingsPanelEmitMsRef.current = now;
+              onSettingsPanelPropsChange(next_props);
+            }
+          }
           return null;
         }
 

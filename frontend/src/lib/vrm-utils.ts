@@ -678,13 +678,10 @@ export class VRMBlendShapeController {
     }
 
     try {
-      const expression = this.vrm.expressionManager.getExpression(expressionName);
-      if (expression) {
-        const clampedWeight = Math.max(0, Math.min(1, weight));
-        expression.weight = clampedWeight;
-      } else {
-        console.warn(`Expression "${expressionName}" not found in VRM model`);
-      }
+      const clampedWeight = Math.max(0, Math.min(1, weight));
+      // Use expressionManager.setValue() as the single source of truth.
+      // Reading via expression objects' .weight can drift from the actual applied value depending on VRM version.
+      this.vrm.expressionManager.setValue(expressionName, clampedWeight);
     } catch (error) {
       console.warn(`Error setting expression "${expressionName}":`, error);
     }
@@ -868,8 +865,8 @@ export class VRMBlendShapeController {
     if (!this.vrm.expressionManager) return {};
     
     const current: Record<string, number> = {};
-    this.vrm.expressionManager.expressions.forEach(expr => {
-      current[expr.expressionName] = expr.weight;
+    this.vrm.expressionManager.expressions.forEach((expr) => {
+      current[expr.expressionName] = this.vrm.expressionManager?.getValue(expr.expressionName) ?? 0;
     });
     
     return current;
