@@ -10,7 +10,8 @@ export async function POST(request: NextRequest) {
     const response = await backendFetch<{
       answer?: string;
       emotion?: string;
-      metadata?: unknown;
+      metadata?: { vrm_control?: unknown } & Record<string, unknown>;
+      vrm_control?: { name: string; duration: number; keyframes: unknown[] } | null;
     }>('/api/chat', {
       body: {
         query: question || text,
@@ -29,6 +30,10 @@ export async function POST(request: NextRequest) {
       answer: response.data.answer,
       emotion: response.data.emotion,
       metadata: response.data.metadata,
+      vrm_control:
+        response.data.vrm_control ??
+        (response.data.metadata as { vrm_control?: unknown } | undefined)?.vrm_control ??
+        null,
     });
   } catch (error) {
     console.error('Q&A API error:', error);

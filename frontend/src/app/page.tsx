@@ -25,6 +25,7 @@ import {
   type MutableRefObject,
   type SetStateAction,
 } from 'react';
+import type { CharacterAnimationData } from './utils/character-animation-utils';
 import type { BackgroundOption } from './components/BackgroundSelector';
 import CharacterAvatar from './components/CharacterAvatar';
 import ClarificationButtons from './components/ClarificationButtons';
@@ -241,6 +242,8 @@ export default function Home() {
   const [conversationHistory, setConversationHistory] = useState<ConversationHistoryItem[]>([]);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
   const settingsPanelPropsRef = useRef<SettingsPanelPropsFromSource | null>(null);
+  const playKeyframeAnimationRef = useRef<((data: CharacterAnimationData) => void) | null>(null);
+  const lastVrmControlPlayedRef = useRef<unknown>(null);
   const lastTranscriptRef = useRef<string>('');
   const lastResponseRef = useRef<string>('');
 
@@ -265,6 +268,14 @@ export default function Home() {
     }
   }, [currentLanguage, latestMetadata, showSlideMode, startPresentation]);
 
+  // Fallback: play vrm_control when metadata arrives (in case onAssistantPlaybackStart ran before ref was set)
+  useEffect(() => {
+    const vc = latestMetadata?.vrm_control;
+    if (!vc || !playKeyframeAnimationRef.current || lastVrmControlPlayedRef.current === vc) return;
+    lastVrmControlPlayedRef.current = vc;
+    playKeyframeAnimationRef.current(vc);
+  }, [latestMetadata?.vrm_control]);
+
   return (
     <VoiceInterface
       language={currentLanguage}
@@ -272,6 +283,13 @@ export default function Home() {
       onVisemeControl={setVisemeFunction}
       showDefaultUI={false}
       onMetadataChange={setLatestMetadata}
+      onAssistantPlaybackStart={({ metadata: playbackMetadata }) => {
+        const vc = playbackMetadata?.vrm_control;
+        if (vc && playKeyframeAnimationRef.current && lastVrmControlPlayedRef.current !== vc) {
+          lastVrmControlPlayedRef.current = vc;
+          playKeyframeAnimationRef.current(vc);
+        }
+      }}
     >
       {(voice) => {
         const labels = overlayLabels[voice.currentLanguage];
@@ -366,6 +384,9 @@ export default function Home() {
                   }}
                   onExpressionControl={(setExpression) => {
                     setSetExpressionFunction(() => setExpression);
+                  }}
+                  onKeyframeAnimationControl={(play) => {
+                    playKeyframeAnimationRef.current = play;
                   }}
                   onBackgroundChange={setCharacterBackground}
                   onLightingChange={setLightingIntensity}
