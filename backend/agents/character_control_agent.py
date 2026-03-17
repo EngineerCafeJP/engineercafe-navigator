@@ -1095,17 +1095,19 @@ class CharacterControlAgent:
                         }
                     )
 
-                if prev_viseme is not None:
-                    final_time = int(lipsync_data[-1]["time"] * 1000) + 50
-                    final_expressions = dict(base_expressions)
-                    final_expressions[prev_viseme] = 0.0
-                    keyframes.append(
-                        {
-                            "time": final_time,
-                            "bones": {},
-                            "expressions": final_expressions,
-                        }
-                    )
+                final_time = int(lipsync_data[-1]["time"] * 1000) + 50
+                reset_expressions: Dict[str, float] = {}
+                for expression_name in base_expressions.keys():
+                    reset_expressions[expression_name] = 0.0
+                for viseme_name in viseme_names:
+                    reset_expressions[viseme_name] = 0.0
+                keyframes.append(
+                    {
+                        "time": final_time,
+                        "bones": {},
+                        "expressions": reset_expressions,
+                    }
+                )
             else:
                 keyframes.append(
                     {

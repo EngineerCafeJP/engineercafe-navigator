@@ -3,7 +3,7 @@
 import { EmotionData, EmotionManager } from '@/lib/emotion-manager';
 import { ExpressionController } from '@/lib/expression-controller';
 import { LipSyncAnalyzer } from '@/lib/lip-sync-analyzer';
-import { VRMBlendShapeController, VRMUtils } from '@/lib/vrm-utils';
+import { VRMBlendShapeController, VRMUtils, getMouthOverrideFactor } from '@/lib/vrm-utils';
 import { VRM, VRMLoaderPlugin } from '@pixiv/three-vrm';
 import { VRMAnimationLoaderPlugin, createVRMAnimationClip } from '@pixiv/three-vrm-animation';
 import { Settings, VolumeX } from 'lucide-react';
@@ -836,10 +836,9 @@ export default function CharacterAvatar({
         }
       }
 
-      // Create viseme control function
+      // Create viseme control function (attenuate intensity when expression uses mouth)
       const setViseme = (viseme: string, intensity: number) => {
         if (blendShapeControllerRef.current) {
-          // Map viseme to VRM expression name
           const visemeMap: Record<string, string> = {
             'A': 'aa',
             'I': 'ih',
@@ -848,9 +847,10 @@ export default function CharacterAvatar({
             'O': 'oh',
             'Closed': 'neutral'
           };
-          
           const vrmExpression = visemeMap[viseme] || 'neutral';
-          blendShapeControllerRef.current.setViseme(vrmExpression, intensity);
+          const { expression, weight } = currentExpressionRef.current;
+          const factor = getMouthOverrideFactor(expression, weight);
+          blendShapeControllerRef.current.setViseme(vrmExpression, intensity * factor);
         }
       };
 
