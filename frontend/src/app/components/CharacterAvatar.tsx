@@ -16,7 +16,7 @@ import SettingsPanel, {
   type SettingsPanelPropsFromSource,
 } from './SettingsPanel';
 import { type BackgroundOption as BackgroundSelectorOption } from './BackgroundSelector';
-import { type VRMAnimationOption } from './ControlsSettings';
+import { type VRMAnimationOption } from './CharacterSettings';
 
 interface CharacterState {
   expression: string;
@@ -85,7 +85,7 @@ const SETTINGS_TAB_LABELS: Record<
   'controls' | 'keyframe' | 'background' | 'lighting' | 'audio',
   string
 > = {
-  controls: 'Controls',
+  controls: 'Character',
   keyframe: 'Keyframe',
   background: 'Background',
   lighting: 'Lighting',
