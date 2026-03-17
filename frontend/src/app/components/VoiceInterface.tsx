@@ -333,7 +333,7 @@ export default function VoiceInterface({
         audioBytes = Uint8Array.from(atob(audioBase64), (char) => char.charCodeAt(0));
       } catch (decodeError) {
         console.error('Audio decode failed:', decodeError);
-        voiceController.notifySpeakingComplete();
+        voiceController.notifySpeakingComplete(true);
         return;
       }
       const audioBlob = new Blob([audioBytes], { type: 'audio/mpeg' });
@@ -362,14 +362,14 @@ export default function VoiceInterface({
         onError: (playbackError) => {
           cleanupAudioPlayback();
           setError(formatError(playbackError, currentLanguage));
-          voiceController.notifySpeakingComplete();
+          voiceController.notifySpeakingComplete(true);
         },
       });
 
       const result = await audioService.playAudio(audioUrl);
       if (!result.success) {
         cleanupAudioPlayback();
-        voiceController.notifySpeakingComplete();
+        voiceController.notifySpeakingComplete(true);
         throw result.error ?? new Error('音声再生に失敗しました');
       }
     },
@@ -467,7 +467,7 @@ export default function VoiceInterface({
         }
 
         setError(formatError(sendError, currentLanguage));
-        voiceController.notifySpeakingComplete();
+        voiceController.notifySpeakingComplete(true);
       } finally {
         if (requestAbortRef.current === abortController) {
           requestAbortRef.current = null;
@@ -523,7 +523,7 @@ export default function VoiceInterface({
         }
 
         setError(formatError(recordingError, currentLanguage));
-        voiceController.notifySpeakingComplete();
+        voiceController.notifySpeakingComplete(true);
       } finally {
         if (requestAbortRef.current === abortController) {
           requestAbortRef.current = null;

@@ -45,7 +45,7 @@ export interface UseVoiceSessionControllerResult {
   endManualSession: () => void;
   notifyProcessing: () => void;
   notifySpeaking: () => void;
-  notifySpeakingComplete: () => void;
+  notifySpeakingComplete: (skipAutoResume?: boolean) => void;
   isWakeWordSupported: boolean;
   isWakeWordListening: boolean;
   wakeWordError: string | null;
@@ -221,10 +221,13 @@ export function useVoiceSessionController({
     beginSpeaking();
   }, [beginSpeaking, enabled, isConversationActive, startSession]);
 
-  const notifySpeakingComplete = useCallback(() => {
-    hasDetectedSpeechRef.current = false;
-    completeAssistantTurn();
-  }, [completeAssistantTurn]);
+  const notifySpeakingComplete = useCallback(
+    (skipAutoResume = false) => {
+      hasDetectedSpeechRef.current = false;
+      completeAssistantTurn(skipAutoResume);
+    },
+    [completeAssistantTurn],
+  );
 
   const characterState = useMemo<VoiceCharacterState>(() => {
     if (mode === 'listening') {

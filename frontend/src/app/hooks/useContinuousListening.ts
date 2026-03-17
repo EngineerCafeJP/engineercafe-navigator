@@ -32,7 +32,7 @@ export interface UseContinuousListeningResult {
   beginListening: () => void;
   beginProcessing: () => void;
   beginSpeaking: () => void;
-  completeAssistantTurn: () => void;
+  completeAssistantTurn: (skipAutoResume?: boolean) => void;
   pauseListening: () => void;
   resumeListening: () => void;
 }
@@ -116,29 +116,34 @@ export function useContinuousListening({
     setTurnCount((currentTurnCount) => currentTurnCount + 1);
   }, [clearResumeTimer, updateShouldListen]);
 
-  const completeAssistantTurn = useCallback(() => {
-    clearResumeTimer();
+  const completeAssistantTurn = useCallback(
+    (skipAutoResume = false) => {
+      clearResumeTimer();
 
-    if (!enabled || !isConversationActive) {
-      setMode(enabled ? 'wake-word' : 'idle');
+      if (!enabled || !isConversationActive) {
+        setMode(enabled ? 'wake-word' : 'idle');
+        updateShouldListen(false);
+        return;
+      }
+
+      setMode('idle');
       updateShouldListen(false);
-      return;
-    }
 
-    setMode('idle');
-    updateShouldListen(false);
-
-    resumeTimerRef.current = window.setTimeout(() => {
-      setMode('listening');
-      updateShouldListen(true);
-    }, autoResumeDelayMs);
-  }, [
-    autoResumeDelayMs,
-    clearResumeTimer,
-    enabled,
-    isConversationActive,
-    updateShouldListen,
-  ]);
+      if (!skipAutoResume) {
+        resumeTimerRef.current = window.setTimeout(() => {
+          setMode('listening');
+          updateShouldListen(true);
+        }, autoResumeDelayMs);
+      }
+    },
+    [
+      autoResumeDelayMs,
+      clearResumeTimer,
+      enabled,
+      isConversationActive,
+      updateShouldListen,
+    ],
+  );
 
   const pauseListening = useCallback(() => {
     clearResumeTimer();
