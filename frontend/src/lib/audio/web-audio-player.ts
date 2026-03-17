@@ -101,10 +101,6 @@ export class WebAudioPlayer {
       // Direct conversion for better performance
       if (typeof data === 'string') {
         // Base64 string - convert directly to ArrayBuffer
-        console.log('[WebAudioPlayer] Converting base64 to ArrayBuffer:', {
-          base64Length: data.length,
-          base64Prefix: data.substring(0, 50)
-        });
         
         // Clean base64 data
         let cleanedBase64 = data;
@@ -140,13 +136,6 @@ export class WebAudioPlayer {
         );
       }
       
-      console.log('[WebAudioPlayer] Attempting to decode audio data:', {
-        arrayBufferSize: arrayBuffer.byteLength,
-        audioFormat,
-        audioContextState: this.audioContext?.state,
-        sampleRate: this.audioContext?.sampleRate,
-        firstFewBytes: arrayBuffer.byteLength > 0 ? Array.from(new Uint8Array(arrayBuffer.slice(0, 10))) : 'NO DATA'
-      });
       
       if (arrayBuffer.byteLength === 0) {
         throw new AudioError(
@@ -156,14 +145,7 @@ export class WebAudioPlayer {
       }
       
       try {
-        console.log('[WebAudioPlayer] Starting audio decode...');
         this.audioBuffer = await this.audioContext!.decodeAudioData(arrayBuffer.slice(0)); // Clone to avoid issues
-        console.log('[WebAudioPlayer] Audio decode successful:', {
-          duration: this.audioBuffer.duration,
-          numberOfChannels: this.audioBuffer.numberOfChannels,
-          sampleRate: this.audioBuffer.sampleRate,
-          length: this.audioBuffer.length
-        });
       } catch (decodeError) {
         console.error('[WebAudioPlayer] Failed to decode audio data:', {
           error: decodeError,

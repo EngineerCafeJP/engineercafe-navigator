@@ -110,9 +110,6 @@ export function applySttCorrections(transcript: string, language: string = 'ja',
   // Log corrections if any were made
   if (corrections.length > 0) {
     if (process.env.NODE_ENV !== 'production') {
-      console.log('[STT Corrections] Original:', transcript);
-      console.log('[STT Corrections] Corrected:', corrected);
-      console.log('[STT Corrections] Rules applied:', corrections);
     }
 
     // Log to monitoring system (lazy import to avoid circular dependencies)

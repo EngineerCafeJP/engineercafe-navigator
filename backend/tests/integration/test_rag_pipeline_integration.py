@@ -8,6 +8,8 @@ from backend.tools.enhanced_rag import (
     RPC_SIMILARITY_THRESHOLDS,
 )
 
+pytestmark = pytest.mark.integration
+
 
 @pytest.fixture
 def rag():

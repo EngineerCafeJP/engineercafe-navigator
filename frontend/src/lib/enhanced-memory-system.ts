@@ -76,11 +76,6 @@ export class EnhancedMemorySystem {
       // Update message index for efficient retrieval
       await this.updateMessageIndex(timestamp);
 
-      console.log(`[EnhancedMemory] Stored ${role} message with metadata`, {
-        agentName: this.agentName,
-        isContextualResponse: metadata?.isContextualResponse,
-        requestType: metadata?.requestType,
-      });
     } catch (error) {
       console.error('[EnhancedMemory] Error storing message:', error);
       throw error;
@@ -114,7 +109,6 @@ export class EnhancedMemorySystem {
 
       // Get recent messages with context depth control
       const recentMessages = await this.getRecentMessages(contextDepth);
-      console.log(`[EnhancedMemory] Found ${recentMessages.length} recent messages`);
 
       // Determine if this is a contextual query
       const isContextual = this.isContextualQuery(userMessage, recentMessages);
@@ -123,7 +117,6 @@ export class EnhancedMemorySystem {
       let enhancedQuery = userMessage;
       if (this.ENABLE_CONTEXTUAL_RAG && isContextual && recentMessages.length > 0) {
         enhancedQuery = this.buildContextualQuery(userMessage, recentMessages);
-        console.log('[EnhancedMemory] Enhanced query for RAG:', enhancedQuery);
       }
 
       // Search knowledge base with caching
@@ -176,7 +169,6 @@ export class EnhancedMemorySystem {
     if (!forceRefresh && this.ragCache.has(cacheKey)) {
       const cached = this.ragCache.get(cacheKey)!;
       if (now - cached.timestamp < this.RAG_CACHE_TTL * 1000) {
-        console.log('[EnhancedMemory] Using cached RAG results');
         return cached.results;
       }
     }

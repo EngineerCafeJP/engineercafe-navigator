@@ -217,6 +217,10 @@ export class VoiceRecorder {
     return this.mediaRecorder !== null && this.stream !== null;
   }
 
+  public getStream(): MediaStream | null {
+    return this.stream;
+  }
+
   private getSupportedMimeType(): string {
     // Check if we're on iOS
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
@@ -237,7 +241,6 @@ export class VoiceRecorder {
 
     for (const mimeType of mimeTypes) {
       if (MediaRecorder.isTypeSupported(mimeType)) {
-        console.log(`Selected mime type: ${mimeType}`);
         return mimeType;
       }
     }

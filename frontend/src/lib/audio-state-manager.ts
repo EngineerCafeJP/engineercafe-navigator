@@ -18,14 +18,12 @@ export class AudioStateManager {
   incrementProcessingCount(): void {
     this.audioProcessingCount++;
     if (process.env.NODE_ENV === 'development') {
-      console.log(`[AudioStateManager] Processing count incremented to ${this.audioProcessingCount}`);
     }
   }
   
   decrementProcessingCount(): void {
     this.audioProcessingCount--;
     if (process.env.NODE_ENV === 'development') {
-      console.log(`[AudioStateManager] Processing count decremented to ${this.audioProcessingCount}`);
     }
     
     if (this.audioProcessingCount === 0) {
@@ -139,7 +137,6 @@ export class AudioStateManager {
   
   private onAllAudioComplete(): void {
     if (process.env.NODE_ENV === 'development') {
-      console.log('[AudioStateManager] All audio processing complete');
     }
     window.dispatchEvent(new CustomEvent('audioProcessingComplete'));
   }

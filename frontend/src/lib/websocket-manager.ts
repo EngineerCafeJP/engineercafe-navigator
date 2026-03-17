@@ -366,7 +366,6 @@ export class ReceptionSystemWebSocket extends WebSocketManager {
         // Handle system alerts
         break;
       default:
-        console.log('Unhandled reception message:', message);
     }
   }
 }
@@ -430,7 +429,6 @@ export class AINavigatorWebSocket extends WebSocketManager {
         // Handle configuration changes
         break;
       default:
-        console.log('Unhandled navigator message:', message);
     }
   }
 }
@@ -556,22 +554,17 @@ export class WebSocketUtils {
       
       switch (event.type) {
         case 'open':
-          console.log(`[${timestamp}] WebSocket connected`);
           break;
         case 'close':
-          console.log(`[${timestamp}] WebSocket disconnected:`, event.data);
           break;
         case 'error':
           console.error(`[${timestamp}] WebSocket error:`, event.error);
           break;
         case 'message':
-          console.log(`[${timestamp}] WebSocket message:`, event.message);
           break;
         case 'reconnect':
-          console.log(`[${timestamp}] WebSocket reconnecting (attempt ${event.data?.attempt})`);
           break;
         default:
-          console.log(`[${timestamp}] WebSocket event:`, event.type, event);
       }
     };
   }

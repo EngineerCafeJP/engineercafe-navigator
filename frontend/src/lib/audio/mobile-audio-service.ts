@@ -83,13 +83,6 @@ export class MobileAudioService {
     try {
       const isTablet = /iPad|Android.*Tablet/i.test(navigator.userAgent);
       
-      console.log('[MOBILE-AUDIO] Attempting Web Audio playback...', {
-        isTablet,
-        hasWebAudioPlayer: !!this.webAudioPlayer,
-        audioDataType: typeof audioData,
-        audioDataSize: audioData instanceof ArrayBuffer ? audioData.byteLength : 
-                      audioData instanceof Blob ? audioData.size : audioData.length
-      });
 
       // Ensure audio context is ready
       try {
@@ -97,7 +90,6 @@ export class MobileAudioService {
       } catch (error) {
         // If user interaction is required, let the UI handle it
         if (error instanceof Error && error.message.includes('User interaction required')) {
-          console.log('[MOBILE-AUDIO] User interaction required - letting UI handle this');
           throw new AudioError(
             AudioErrorType.USER_INTERACTION_REQUIRED,
             'User interaction required for audio playback',
@@ -111,11 +103,9 @@ export class MobileAudioService {
 
       // For tablets, always recreate the player to avoid state issues
       if (!this.webAudioPlayer) {
-        console.log('[MOBILE-AUDIO] Creating new WebAudioPlayer');
         this.webAudioPlayer = new WebAudioPlayer(this.options);
       } else if (isTablet) {
         // Reset existing player for tablets to avoid state issues
-        console.log('[MOBILE-AUDIO] Resetting WebAudioPlayer for tablet compatibility');
         this.webAudioPlayer.reset();
       }
 
@@ -135,7 +125,6 @@ export class MobileAudioService {
         return playResult;
       }
 
-      console.log('[MOBILE-AUDIO] Web Audio playback started successfully');
       
       // Simply return success - let AudioPlaybackService handle the waiting
       return {
@@ -176,7 +165,6 @@ export class MobileAudioService {
       // Reset for tablets to prevent state issues
       const isTablet = /iPad|Android.*Tablet/i.test(navigator.userAgent);
       if (isTablet) {
-        console.log('[MOBILE-AUDIO] Resetting WebAudioPlayer after stop for tablet compatibility');
         this.webAudioPlayer.reset();
       }
     }

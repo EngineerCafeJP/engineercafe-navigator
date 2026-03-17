@@ -48,6 +48,7 @@ interface CharacterAvatarProps {
   modelPath?: string;
   initialExpression?: string;
   initialAnimation?: string;
+  sessionState?: 'idle' | 'listening' | 'processing' | 'speaking';
   autoRotate?: boolean;
   showControls?: boolean;
   background?: BackgroundOption;
@@ -86,10 +87,44 @@ const SETTINGS_TAB_LABELS: Record<
   audio: 'Audio',
 };
 
+const getSessionPoseOffsets = (sessionState: 'idle' | 'listening' | 'processing' | 'speaking') => {
+  switch (sessionState) {
+    case 'listening':
+      return {
+        position: { x: 0, y: 0, z: 0.08 },
+        rotation: { x: -0.08, y: 0, z: 0 },
+        expression: 'happy',
+        animation: 'idle',
+      };
+    case 'processing':
+      return {
+        position: { x: 0.02, y: 0, z: 0.04 },
+        rotation: { x: -0.03, y: 0.08, z: 0.03 },
+        expression: 'thinking',
+        animation: 'idle',
+      };
+    case 'speaking':
+      return {
+        position: { x: 0.03, y: 0, z: 0.05 },
+        rotation: { x: -0.04, y: -0.04, z: 0 },
+        expression: 'happy',
+        animation: 'idle',
+      };
+    default:
+      return {
+        position: { x: 0, y: 0, z: 0 },
+        rotation: { x: 0, y: 0, z: 0 },
+        expression: 'neutral',
+        animation: 'idle',
+      };
+  }
+};
+
 export default function CharacterAvatar({
   modelPath = '/characters/models/sakura.vrm',
   initialExpression = 'neutral',
   initialAnimation = 'idle',
+  sessionState = 'idle',
   autoRotate = false,
   showControls = true,
   background = {
@@ -206,34 +241,36 @@ export default function CharacterAvatar({
     if (charactersRef.current) {
       // Check if current animation is idle
       const isCurrentlyIdle = currentAnimationUrlRef.current === '/animations/idle_loop.vrma' || isIdleAnimationActive.current;
+      const sessionPose = getSessionPoseOffsets(sessionState);
       
       if (isCurrentlyIdle) {
         // Apply idle animation position adjustment
         charactersRef.current.scene.position.set(
-          modelPositionOffset.x + 0.15,
-          modelPositionOffset.y,
-          modelPositionOffset.z
+          modelPositionOffset.x + 0.15 + sessionPose.position.x,
+          modelPositionOffset.y + sessionPose.position.y,
+          modelPositionOffset.z + sessionPose.position.z
         );
       } else {
         charactersRef.current.scene.position.set(
-          modelPositionOffset.x,
-          modelPositionOffset.y,
-          modelPositionOffset.z
+          modelPositionOffset.x + sessionPose.position.x,
+          modelPositionOffset.y + sessionPose.position.y,
+          modelPositionOffset.z + sessionPose.position.z
         );
       }
     }
-  }, [modelPositionOffset]);
+  }, [modelPositionOffset, sessionState]);
 
   // Update model rotation when offset changes
   useEffect(() => {
     if (charactersRef.current) {
+      const sessionPose = getSessionPoseOffsets(sessionState);
       charactersRef.current.scene.rotation.set(
-        modelRotationOffset.x,
-        Math.PI + modelRotationOffset.y,
-        modelRotationOffset.z
+        modelRotationOffset.x + sessionPose.rotation.x,
+        Math.PI + modelRotationOffset.y + sessionPose.rotation.y,
+        modelRotationOffset.z + sessionPose.rotation.z
       );
     }
-  }, [modelRotationOffset]);
+  }, [modelRotationOffset, sessionState]);
 
   // Update character state when props change
   useEffect(() => {
@@ -242,6 +279,16 @@ export default function CharacterAvatar({
       void updateCharacterAnimationRef.current(initialAnimation);
     }
   }, [initialExpression, initialAnimation]);
+
+  useEffect(() => {
+    if (!charactersRef.current) {
+      return;
+    }
+
+    const sessionPose = getSessionPoseOffsets(sessionState);
+    void updateCharacterExpressionRef.current(sessionPose.expression);
+    void updateCharacterAnimationRef.current(sessionPose.animation);
+  }, [sessionState]);
 
   // Update background when options change
   useEffect(() => {
@@ -580,7 +627,6 @@ export default function CharacterAvatar({
             );
           }
           
-          console.log('Playing standard GLTF animation');
           
           return { success: true, duration: clip.duration };
         }
@@ -603,7 +649,6 @@ export default function CharacterAvatar({
     const animName = animations[randomIndex];
     const animUrl = `/animations/${animName}.vrma`;
     
-    console.log(`Playing animation: ${animName}`);
     
     try {
       // Load animation without looping and get its duration
@@ -612,7 +657,6 @@ export default function CharacterAvatar({
       if (result.success) {
         // Wait for the animation to complete based on its actual duration
         const waitTime = (result.duration * 1000) + 100; // Add 100ms buffer
-        console.log(`Animation duration: ${result.duration}s, waiting: ${waitTime}ms`);
         await new Promise(resolve => setTimeout(resolve, waitTime));
       } else {
         // Fallback wait time if duration couldn't be determined
@@ -683,7 +727,6 @@ export default function CharacterAvatar({
       lipSyncAnalyzerRef.current = new LipSyncAnalyzer();
       
       const available_expressions = blendShapeControllerRef.current.getAvailableExpressions();
-      console.log('Available VRM expressions:', available_expressions);
       setVrmExpressionNames(available_expressions);
       const initial_weights: Record<string, number> = {};
       available_expressions.forEach((name) => {
@@ -692,20 +735,12 @@ export default function CharacterAvatar({
       setExpressionWeights(initial_weights);
 
       if (vrm.expressionManager?.expressionMap) {
-        console.log('Expression map keys:', Object.keys(vrm.expressionManager.expressionMap));
       }
-
-      const has_surprised = available_expressions.includes('surprised');
-      if (!has_surprised) {
-        console.warn('⚠️ "surprised" expression not found in VRM model!');
-      }
-
       // Start automatic blinking
       if (autoBlinkCleanupRef.current) {
         autoBlinkCleanupRef.current();
       }
       autoBlinkCleanupRef.current = blendShapeControllerRef.current.startAutoBlink();
-      console.log('Auto-blink started');
 
       // Set initial pose
       await updateCharacterExpression(characterState.expression);
@@ -758,25 +793,17 @@ export default function CharacterAvatar({
         if (blendShapeControllerRef.current) {
           // Use the VRM expression manager to set expressions
           const expressionManager = vrm.expressionManager;
-          console.log(`[CharacterAvatar] Expression manager available:`, !!expressionManager);
           
           if (expressionManager) {
             // Log available expressions for debugging
             const availableExpressions = Object.keys(expressionManager.expressionMap);
-            console.log(`[CharacterAvatar] Available expressions:`, availableExpressions);
-            console.log(`[CharacterAvatar] Current expression values:`, availableExpressions.map(name => ({ 
-              name, 
-              value: expressionManager.getValue(name) 
-            })));
             
             // Reset all expressions first if weight is significant
             if (weight > 0.1) {
-              console.log(`[CharacterAvatar] Resetting all expressions except ${expression}`);
               availableExpressions.forEach(name => {
                 if (name !== expression) {
                   const oldValue = expressionManager.getValue(name);
                   expressionManager.setValue(name, 0);
-                  console.log(`[CharacterAvatar] Reset ${name}: ${oldValue} -> 0`);
                 }
               });
             }
@@ -785,21 +812,15 @@ export default function CharacterAvatar({
             if (expressionManager.expressionMap[mappedExpression]) {
               const oldValue = expressionManager.getValue(mappedExpression);
               expressionManager.setValue(mappedExpression, weight);
-              console.log(`[CharacterAvatar] Set ${mappedExpression}: ${oldValue} -> ${weight}`);
               if (mappedExpression !== expression) {
-                console.log(`[CharacterAvatar] (Mapped from ${expression} to ${mappedExpression})`);
               }
-              console.log(`[CharacterAvatar] Verified ${mappedExpression} value:`, expressionManager.getValue(mappedExpression));
               
               // Store current expression for restoration after lip-sync
               currentExpressionRef.current = { expression: mappedExpression, weight };
-              console.log(`[CharacterAvatar] Stored current expression:`, currentExpressionRef.current);
               
               // Set timer to return to neutral after 5 seconds (only for non-neutral expressions)
               if (mappedExpression !== 'neutral' && weight > 0.1) {
-                console.log(`[CharacterAvatar] Setting timer to return to neutral in 5 seconds`);
                 expressionTimeoutRef.current = setTimeout(() => {
-                  console.log(`[CharacterAvatar] Timer triggered: returning to neutral`);
                   // Gradually transition back to neutral
                   availableExpressions.forEach(name => {
                     if (name !== 'neutral') {
@@ -808,7 +829,6 @@ export default function CharacterAvatar({
                   });
                   expressionManager.setValue('neutral', 1.0);
                   currentExpressionRef.current = { expression: 'neutral', weight: 1.0 };
-                  console.log(`[CharacterAvatar] Returned to neutral expression`);
                 }, 5000);
               }
             } else {
@@ -821,18 +841,14 @@ export default function CharacterAvatar({
               );
               
               if (similarExpression) {
-                console.log(`[CharacterAvatar] Using similar expression: ${similarExpression}`);
                 const oldValue = expressionManager.getValue(similarExpression);
                 expressionManager.setValue(similarExpression, weight);
-                console.log(`[CharacterAvatar] Set ${similarExpression}: ${oldValue} -> ${weight}`);
                 // Store current expression for restoration after lip-sync
                 currentExpressionRef.current = { expression: similarExpression, weight };
                 
                 // Set timer to return to neutral after 5 seconds (only for non-neutral expressions)
                 if (similarExpression !== 'neutral' && weight > 0.1) {
-                  console.log(`[CharacterAvatar] Setting timer to return to neutral in 5 seconds`);
                   expressionTimeoutRef.current = setTimeout(() => {
-                    console.log(`[CharacterAvatar] Timer triggered: returning to neutral`);
                     // Gradually transition back to neutral
                     availableExpressions.forEach(name => {
                       if (name !== 'neutral') {
@@ -841,7 +857,6 @@ export default function CharacterAvatar({
                     });
                     expressionManager.setValue('neutral', 1.0);
                     currentExpressionRef.current = { expression: 'neutral', weight: 1.0 };
-                    console.log(`[CharacterAvatar] Returned to neutral expression`);
                   }, 5000);
                 }
               } else {
@@ -849,7 +864,6 @@ export default function CharacterAvatar({
                 // Fallback to neutral expression which should always exist
                 const neutralValue = expressionManager.getValue('neutral');
                 expressionManager.setValue('neutral', 1.0);
-                console.log(`[CharacterAvatar] Set neutral: ${neutralValue} -> 1.0 (fallback from ${expression})`);
                 currentExpressionRef.current = { expression: 'neutral', weight: 1.0 };
               }
             }
@@ -859,13 +873,11 @@ export default function CharacterAvatar({
         } else {
           console.error('[CharacterAvatar] BlendShape controller not available');
         }
-        console.log(`[CharacterAvatar] === setExpression end ===`);
       };
 
       // Initialize with neutral expression
       try {
         setExpression('neutral', 1.0);
-        console.log('[CharacterAvatar] Initialized with neutral expression');
       } catch (error) {
         console.error('[CharacterAvatar] Error setting initial neutral expression:', error);
       }
@@ -969,7 +981,6 @@ export default function CharacterAvatar({
         transition: true,
       };
 
-      console.log('Sending character expression request:', requestBody);
 
       const response = await fetch('/api/character', {
         method: 'POST',
@@ -995,22 +1006,19 @@ export default function CharacterAvatar({
             'happy': 'happy',
             'sad': 'sad',
             'angry': 'angry',
-            'surprised': 'curious',  // VRMモデルがsurprisedをサポートしていない場合はcuriousにマッピング
+            'surprised': 'happy',
             'relaxed': 'relaxed',
-            // Additional mappings for character actions
             'thinking': 'relaxed',
-            'speaking': 'neutral',
-            'listening': 'neutral',
+            'speaking': 'happy',
+            'listening': 'happy',
             'greeting': 'happy',
             'explaining': 'neutral'
           };
           
           const vrmExpression = expressionMapping[expression] || expression;
-          console.log(`Mapping expression '${expression}' to VRM expression '${vrmExpression}'`);
           
           // Get available expressions for debugging
           const availableExpressions = Object.keys(expressionManager.expressionMap);
-          console.log('Available VRM expressions:', availableExpressions);
           
           // Reset all expressions with gradual transition
           Object.keys(expressionManager.expressionMap).forEach(name => {
@@ -1023,7 +1031,6 @@ export default function CharacterAvatar({
 
           // Set new expression with full intensity
           if (expressionManager.expressionMap[vrmExpression]) {
-            console.log(`Setting VRM expression '${vrmExpression}' to 1.0`);
             expressionManager.setValue(vrmExpression, 1);
             // Store current expression for restoration after lip-sync
             currentExpressionRef.current = { expression: vrmExpression, weight: 1.0 };
@@ -1035,7 +1042,6 @@ export default function CharacterAvatar({
               vrmExpression.toLowerCase().includes(expr.toLowerCase())
             );
             if (similarExpression) {
-              console.log(`Using similar expression: ${similarExpression}`);
               expressionManager.setValue(similarExpression, 1);
               // Store current expression for restoration after lip-sync
               currentExpressionRef.current = { expression: similarExpression, weight: 1.0 };
@@ -1063,7 +1069,6 @@ export default function CharacterAvatar({
       setCharacterState(prev => ({ ...prev, expression: mapping.primary }));
       onStateChange?.({ ...characterState, expression: mapping.primary });
 
-      console.log('Applied emotion to character:', emotionData);
     } catch (error) {
       console.error('Error applying emotion to character:', error);
     }
@@ -1079,7 +1084,6 @@ export default function CharacterAvatar({
         transition: true,
       };
 
-      console.log('Sending character animation request:', requestBody);
 
       const response = await fetch('/api/character', {
         method: 'POST',
@@ -1132,7 +1136,6 @@ export default function CharacterAvatar({
         transition: true,
       };
 
-      console.log('Sending character reset request:', requestBody);
 
       const response = await fetch('/api/character', {
         method: 'POST',

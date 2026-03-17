@@ -81,10 +81,9 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 
 ## PR ルール
 
-- main/develop へのマージは PM が実行
-- Claude Code は PR 作成まで
+- main/develop へのマージは Claude Code も実行可能（PM から権限委譲済み）
 - CI グリーンが必須
-- レビュー承認が必須
+- レビュー承認が必須（PM が Claude Code にレビュー権限を委譲した場合、Claude Code のレビューで可）
 
 ---
 

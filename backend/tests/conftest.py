@@ -28,7 +28,9 @@ def pytest_collection_modifyitems(config, items):
 
     skip_e2e = pytest.mark.skip(reason="need --run-e2e option to run")
     for item in items:
-        if "e2e" in item.keywords:
+        # @pytest.mark.e2e が明示的に付与されたテストのみスキップ
+        # (ディレクトリ名 "e2e" によるマッチを除外)
+        if item.get_closest_marker("e2e") is not None:
             item.add_marker(skip_e2e)
 
 

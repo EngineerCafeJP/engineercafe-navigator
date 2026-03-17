@@ -100,16 +100,12 @@ export function KnowledgeEditor({ entry, onSave, onCancel }: KnowledgeEditorProp
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    console.log('🔍 Form submit triggered');
-    console.log('🔍 Form data:', formData);
     
     if (!formData.content.trim()) {
-      console.log('❌ Content validation failed');
       toast.error('コンテンツは必須です');
       return;
     }
 
-    console.log('✅ Content validation passed');
     setLoading(true);
     
     try {
@@ -117,28 +113,22 @@ export function KnowledgeEditor({ entry, onSave, onCancel }: KnowledgeEditorProp
         await onSave(formData);
       } else {
         // Fallback: Direct API call without parent page callback
-        try {
-          if (entry?.id) {
-            await updateKnowledge(entry.id, formData);
-            toast.success('更新しました');
-          } else {
-            await createKnowledge(formData as Parameters<typeof createKnowledge>[0]);
-            toast.success('作成しました');
-            setFormData({
-              id: undefined,
-              title: '',
-              content: '',
-              category: '',
-              subcategory: '',
-              language: 'ja',
-              source: '',
-              metadata: {},
-            });
-          }
-        } catch (error) {
-          const msg = error instanceof Error ? error.message : '保存に失敗しました';
-          console.error('API error:', error);
-          throw new Error(msg);
+        if (entry?.id) {
+          await updateKnowledge(entry.id, formData);
+          toast.success('更新しました');
+        } else {
+          await createKnowledge(formData as Parameters<typeof createKnowledge>[0]);
+          toast.success('作成しました');
+          setFormData({
+            id: undefined,
+            title: '',
+            content: '',
+            category: '',
+            subcategory: '',
+            language: 'ja',
+            source: '',
+            metadata: {},
+          });
         }
       }
     } catch (error) {
@@ -146,7 +136,6 @@ export function KnowledgeEditor({ entry, onSave, onCancel }: KnowledgeEditorProp
       toast.error(error instanceof Error ? error.message : '保存に失敗しました');
     } finally {
       setLoading(false);
-      console.log('🔍 Form submit completed');
     }
   };
 

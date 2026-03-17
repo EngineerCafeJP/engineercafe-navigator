@@ -67,7 +67,6 @@ export class GreetingCache {
     );
     
     if (cachedGreeting) {
-      console.log('[GreetingCache] Using cached greeting');
       return cachedGreeting;
     }
 
@@ -75,7 +74,6 @@ export class GreetingCache {
     const templates = this.GREETING_TEMPLATES[language];
     const template = templates.find(t => t.contexts.includes(context)) || templates[0];
     
-    console.log('[GreetingCache] Using template greeting');
     return {
       text: template.text,
       language,
@@ -104,7 +102,6 @@ export class GreetingCache {
       const finalGreetings = [...jaGreetings, ...enGreetings];
       
       localStorage.setItem(this.CACHE_KEY, JSON.stringify(finalGreetings));
-      console.log('[GreetingCache] Cached greeting:', greeting.text.substring(0, 50) + '...');
     } catch (error) {
       console.warn('[GreetingCache] Failed to cache greeting:', error);
     }
@@ -136,7 +133,6 @@ export class GreetingCache {
   static clearCache(): void {
     try {
       localStorage.removeItem(this.CACHE_KEY);
-      console.log('[GreetingCache] Cache cleared');
     } catch (error) {
       console.warn('[GreetingCache] Failed to clear cache:', error);
     }
@@ -146,7 +142,6 @@ export class GreetingCache {
    * Pre-generate greetings for both languages
    */
   static async preGenerateGreetings(): Promise<void> {
-    console.log('[GreetingCache] Pre-generating greetings...');
     
     for (const language of ['ja', 'en'] as const) {
       for (const template of this.GREETING_TEMPLATES[language]) {
@@ -175,7 +170,6 @@ export class GreetingCache {
               timestamp: Date.now()
             });
             
-            console.log(`[GreetingCache] Pre-generated ${language} greeting`);
           }
         } catch (error) {
           console.warn(`[GreetingCache] Failed to pre-generate ${language} greeting:`, error);

@@ -242,7 +242,7 @@ app.add_middleware(
 
 class ChatRequest(BaseModel):
     query: str
-    session_id: str
+    session_id: Optional[str] = None
     language: Optional[str] = "ja"
     context: Optional[Dict[str, Any]] = None
     visitor_id: Optional[str] = None  # Cross-session visitor identification
@@ -328,20 +328,24 @@ async def chat(request: Request, body: ChatRequest):
     チャットエンドポイント
     LangGraphエージェントを使用してクエリを処理します
     """
+    import uuid as _uuid
+
     from backend.utils.interrupt_manager import get_interrupt_manager
 
-    get_interrupt_manager().clear_interrupt(body.session_id)
+    session_id = body.session_id or str(_uuid.uuid4())
+
+    get_interrupt_manager().clear_interrupt(session_id)
 
     try:
         result = await _run_workflow_with_tracking(
             payload={
                 "query": body.query,
-                "session_id": body.session_id,
+                "session_id": session_id,
                 "language": body.language,
                 "context": body.context or {},
                 "visitor_id": body.visitor_id,
             },
-            session_id=body.session_id,
+            session_id=session_id,
         )
 
         answer = result.get("answer", "回答を生成できませんでした。")
@@ -360,7 +364,7 @@ async def chat(request: Request, body: ChatRequest):
         except Exception as e:
             logger.debug("PII scan skipped (non-critical): %s", e)
 
-        metadata = result.get("metadata", {"query": body.query, "session_id": body.session_id})
+        metadata = result.get("metadata", {"query": body.query, "session_id": session_id})
 
         return ChatResponse(
             answer=answer,
@@ -382,10 +386,14 @@ async def chat_stream(request: Request, body: ChatRequest):
     SSEストリーミングチャットエンドポイント
     Server-Sent Events でレスポンスをストリーミング
     """
+    import uuid as _uuid
+
     from backend.utils.interrupt_manager import get_interrupt_manager
 
+    session_id = body.session_id or str(_uuid.uuid4())
+
     interrupt_mgr = get_interrupt_manager()
-    interrupt_mgr.clear_interrupt(body.session_id)
+    interrupt_mgr.clear_interrupt(session_id)
 
     async def event_generator():
         try:
@@ -397,7 +405,7 @@ async def chat_stream(request: Request, body: ChatRequest):
             async for event in workflow.astream(
                 {
                     "query": body.query,
-                    "session_id": body.session_id,
+                    "session_id": session_id,
                     "language": body.language,
                     "context": body.context or {},
                     "visitor_id": body.visitor_id,
@@ -627,7 +635,9 @@ class SlidesRequest(BaseModel):
     action: str
     slideId: Optional[str] = None
     targetSlide: Optional[int] = None
+    slideNumber: Optional[int] = None  # FE互換エイリアス (targetSlide)
     query: Optional[str] = None
+    question: Optional[str] = None  # FE互換エイリアス (query)
     sessionId: Optional[str] = None
     language: Optional[str] = "ja"
 
@@ -643,6 +653,63 @@ class SlidesResponse(BaseModel):
     error: Optional[str] = None
 
 
+SUPPORTED_SLIDE_LANGUAGES = {"ja", "en"}
+
+
+class SlideContentRequest(BaseModel):
+    language: str = "ja"
+
+
+class SlideContentResponse(BaseModel):
+    success: bool
+    markdown: Optional[str] = None
+    narrationData: Optional[Dict[str, Any]] = None
+    metadata: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+
+
+@app.post("/api/slides/content", response_model=SlideContentResponse)
+async def slides_content_api(body: SlideContentRequest):
+    """Return raw slide markdown and narration data for frontend rendering."""
+    try:
+        language = body.language or "ja"
+        if language not in SUPPORTED_SLIDE_LANGUAGES:
+            language = "ja"
+        backend_dir = os.path.dirname(os.path.abspath(__file__))
+
+        md_path = os.path.join(backend_dir, "slides", language, "engineer-cafe.md")
+        if not os.path.exists(md_path):
+            md_path = os.path.join(backend_dir, "slides", "engineer-cafe.md")
+
+        if not os.path.exists(md_path):
+            return SlideContentResponse(success=False, error="Slide file not found")
+
+        with open(md_path, "r", encoding="utf-8") as file:
+            markdown = file.read()
+
+        narration_path = os.path.join(
+            backend_dir, "slides", "narration", f"engineer-cafe-{language}.json"
+        )
+        narration_data = None
+        if os.path.exists(narration_path):
+            with open(narration_path, "r", encoding="utf-8") as file:
+                narration_data = json.load(file)
+
+        title = "Engineer Cafe"
+        if narration_data:
+            title = narration_data.get("metadata", {}).get("title", title)
+
+        return SlideContentResponse(
+            success=True,
+            markdown=markdown,
+            narrationData=narration_data,
+            metadata={"language": language, "title": title},
+        )
+    except Exception as e:
+        logger.exception("slides_content error: %s", e)
+        return SlideContentResponse(success=False, error="Internal server error")
+
+
 @app.post("/api/slides", response_model=SlidesResponse, dependencies=[Depends(verify_api_key)])
 @_rate_limit("20/minute")
 async def slides_api(request: Request, body: SlidesRequest):
@@ -653,24 +720,30 @@ async def slides_api(request: Request, body: SlidesRequest):
     try:
         slide_agent = _get_slide_agent()
 
-        # アクションマッピング
+        # アクションマッピング（FE互換エイリアス含む）
         action_map = {
             "narrate": "narrate",
+            "narrate_current": "narrate",
             "next": "next",
             "previous": "previous",
             "goto": "goto",
             "question": "question",
+            "answer_question": "question",
         }
 
         slide_action = action_map.get(body.action)
         if not slide_action:
             raise HTTPException(status_code=400, detail=f"Unknown action: {body.action}")
 
+        # FE互換: slideNumber → targetSlide, question → query
+        query = body.query or body.question
+        target_slide = body.targetSlide or body.slideNumber
+
         # SlideAgentのhandle_slide_action呼び出し
         result = await slide_agent.handle_slide_action(
             action=slide_action,
-            query=body.query,
-            target_slide=body.targetSlide,
+            query=query,
+            target_slide=target_slide,
             language=body.language,
             session_id=body.sessionId or "default",
         )

@@ -18,12 +18,10 @@ export class RAGCache {
           token: process.env.UPSTASH_REDIS_TOKEN,
         });
         this.isRedisAvailable = true;
-        console.log('[RAGCache] Redis cache initialized');
       } catch (error) {
         console.warn('[RAGCache] Redis initialization failed, using memory cache:', error);
       }
     } else {
-      console.log('[RAGCache] Redis credentials not found, using memory cache');
     }
   }
   
@@ -45,14 +43,12 @@ export class RAGCache {
       if (this.isRedisAvailable && this.redis) {
         const cached = await this.redis.get<number[]>(key);
         if (cached) {
-          console.log('[RAGCache] Embedding cache hit');
           return cached;
         }
       } else {
         // Fallback to memory cache
         const cached = this.getFromMemoryCache(key);
         if (cached) {
-          console.log('[RAGCache] Embedding memory cache hit');
           return cached;
         }
       }
@@ -95,14 +91,12 @@ export class RAGCache {
       if (this.isRedisAvailable && this.redis) {
         const cached = await this.redis.get<any[]>(key);
         if (cached) {
-          console.log('[RAGCache] Search results cache hit');
           return cached;
         }
       } else {
         // Fallback to memory cache
         const cached = this.getFromMemoryCache(key);
         if (cached) {
-          console.log('[RAGCache] Search results memory cache hit');
           return cached;
         }
       }
@@ -180,14 +174,12 @@ export class RAGCache {
       if (this.isRedisAvailable && this.redis) {
         const cached = await this.redis.get(key);
         if (cached) {
-          console.log(`[RAGCache] External ${source} cache hit`);
           return cached;
         }
       } else {
         // Fallback to memory cache
         const cached = this.getFromMemoryCache(key);
         if (cached) {
-          console.log(`[RAGCache] External ${source} memory cache hit`);
           return cached;
         }
       }
@@ -205,7 +197,6 @@ export class RAGCache {
     try {
       if (this.isRedisAvailable && this.redis) {
         // In production, you'd want to use SCAN to find and delete keys
-        console.log(`[RAGCache] Clearing ${prefix} cache in Redis`);
       }
       
       // Clear memory cache
@@ -217,7 +208,6 @@ export class RAGCache {
       });
       
       keysToDelete.forEach(key => this.memoryCache.delete(key));
-      console.log(`[RAGCache] Cleared ${keysToDelete.length} ${prefix} entries from memory cache`);
     } catch (error) {
       console.error('[RAGCache] Error clearing cache:', error);
     }

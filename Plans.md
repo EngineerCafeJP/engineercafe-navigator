@@ -1,6 +1,6 @@
 # Plans.md - Engineer Cafe Navigator
 
-> 最終更新: 2026-02-15
+> 最終更新: 2026-03-07
 > モード: 2-Agent (Cursor PM + Claude Code Worker)
 
 ---
@@ -9,11 +9,11 @@
 
 | 項目 | 状態 |
 |------|------|
-| **フェーズ** | ✅ 全フェーズ完了 (A/B/C/D/E) |
+| **フェーズ** | ✅ Phase A-E 完了 + Wave 1 完了 |
 | **CI/CD** | ✅ グリーン |
-| **テスト** | ✅ 852 passed (25 skipped), E2E 10/10 PASS (KW率100%) |
-| **オープン PR** | #78 (RouterAgent削除 + クリーンアップ) |
-| **エージェント数** | 8種（RouterAgent削除済み、ClarificationAgent・MemoryAgent吸収済み） |
+| **テスト** | ✅ 2587 passed (172 skipped) |
+| **マージ済みPR** | #184 (VRM UI復元), #185 (Reception tour), #186 (Wave 1 Agents) |
+| **エージェント数** | 7 workflow + 3 support（FarewellAgent追加） |
 
 ---
 
@@ -80,34 +80,79 @@
 
 ---
 
-## エージェント実装状況（8種）
+## エージェント実装状況（7 workflow + 3 support）
 
+### Workflow Agents（LangGraphノード）
 | エージェント | 系統 | 備考 |
 |-------------|------|------|
-| orchestrator-agent | 統括 | RouterAgent機能統合済み |
-| business-info-agent | 実務系 | |
-| event-agent | 実務系 | |
-| facility-agent | 実務系 | |
-| slide-agent | 実務系 | |
-| general-knowledge-agent | 実務系 | Web検索Tavily移行済み、メモリクエリ処理統合済み |
-| ~~clarification-agent~~ | 音声系 | ✅ ワークフロー吸収済み（voice_agentのみ参照） |
-| voice-agent | 音声系 | |
-| character-control-agent | UI系 | |
+| orchestrator-agent | 統括 | RouterAgent機能統合済み、LLM動的ルーティング |
+| business-info-agent | 実務系 | 営業時間、料金、相談、コミュニティ |
+| facility-agent | 実務系 | 設備、地下、**近隣施設(#109)**、**忘れ物(#110)** |
+| event-agent | 実務系 | Google Calendar + Connpass |
+| slide-agent | 実務系 | Marpスライド + ナレーション |
+| general-knowledge-agent | 実務系 | Web検索Tavily移行済み、メモリクエリ統合済み |
+| **farewell-agent** | 実務系 | **退館フロー(#108)** 受付カード返却案内、荷物確認 |
 
-レビュー中: ocr-agent
-統合済み: ~~memory-agent~~ → general-knowledge-agent (#55)
-削除済み: ~~router-agent~~ (#78, -793行)
+### Support Agents
+| エージェント | 系統 | 備考 |
+|-------------|------|------|
+| voice-agent | 音声系 | STT/TTS |
+| character-control-agent | UI系 | VRM表情制御 |
+| ocr-agent (vision) | 入力系 | 画像/OCR処理 |
+
+### 統合・削除済み
+- ~~router-agent~~ → orchestrator-agent (#78, -793行)
+- ~~clarification-agent~~ → orchestratorインライン処理
+- ~~memory-agent~~ → general-knowledge-agent (#55)
 
 ---
 
-## チーム編成
+## チーム編成（2026-03-08更新）
 
-| チーム | 担当者 | 主なタスク |
-|--------|--------|-----------|
-| 実務系統括記憶 | テリスケ | Supabase統合、Memory/RAG再設計 |
-| 音声系 | Jun, Chie, たけがわ | STT/TTS連携、音声フロー |
-| OCR系 | けいてぃー, たけがわ | 画像認識→ルーター連携 |
-| フロント系 | takegg0311, 中村 | VRM制御、API移行 |
+| 担当 | メンバー | 主なタスク |
+|------|---------|-----------|
+| バックエンド | terisuke | エージェント実装、RAG改善、Memory/RAG再設計 |
+| フロントエンド（カスタマーUI） | takegg0311, NKMAK | VRM制御、キャラクターコントロール、ダッシュボード、スライド表示 |
+| フロントエンド（管理者UI） | NKMAK | ナレッジ管理UI (#72) |
+| 音声系 | takegawa333, junfabregas4 | STT/TTS連携、音声フロー |
+| デバイス | chie0349ja | デバイス検知 (#128) |
+| OCR/受付 | hisajima000keita | 会員証/QRコード認識、受付フロー |
+
+## オープンIssue（2026-03-07時点）
+
+### P0
+| # | タイトル | 担当 | 状態 |
+|---|---------|------|------|
+| #183 | VTuber UI復元 | takegg0311/NKMAK | PR #184マージ済み、残受入基準あり |
+
+### P1 Backend
+| # | タイトル | 担当 | 状態 |
+|---|---------|------|------|
+| #137 | answer_correctness 0.7+改善 | terisuke | RAGAS未検証 |
+| #138 | 多言語対応品質改善 | terisuke | 中国語/韓国語テスト不足 |
+| #141 | RAG context_precision改善 | terisuke | Reranker未実装 |
+
+### P1 Frontend
+| # | タイトル | 担当 | 状態 |
+|---|---------|------|------|
+| #72 | ナレッジ管理UI | NKMAK | BE API実装済み、FEファイルアップロードUI未実装 |
+| #117 | 自律受付フロー統合 | takegg0311/NKMAK | BE実装済み、FE ReceptionPanel未統合 |
+| #139 | FE E2Eテスト | takegg0311/NKMAK | Playwright設定済み |
+
+### P1 Other
+| # | タイトル | 担当 | 状態 |
+|---|---------|------|------|
+| #122 | Admin認証ミドルウェア | NKMAK | Phase 2 |
+| #128 | デバイス検知調査 | chie0349ja | 調査中 |
+| #140 | 負荷テスト | terisuke | 未着手 |
+
+### P2 (Infrastructure)
+| # | タイトル |
+|---|---------|
+| #150-#154 | Oracle Cloud VM / Docker / Cloudflare Tunnel / 本番デプロイ |
+| #165 | Reception-2025 × Navigator統合境界分析 |
+| #169 | FE Supabase直接接続→BE API経由分離 |
+| #174 | FE Supabase環境変数バリデーション |
 
 ---
 

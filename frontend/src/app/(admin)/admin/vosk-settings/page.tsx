@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import useSWR from "swr";
 import { Toaster, toast } from "react-hot-toast";
 import {
@@ -8,23 +9,21 @@ import {
   VocabularyListResponse,
   VocabularyCategory,
 } from "@/types/vosk";
-import {
-  getVocabularyList,
-  deleteVocabulary,
-} from "@/lib/api/stt-vocabulary";
-import { DeleteConfirmModal } from "./components/DeleteConfirmModal";
-import { VoskVocabularyFilter } from "./components/VoskVocabularyFilter";
-import { VoskVocabularyStats } from "./components/VoskVocabularyStats";
-import { VoskVocabularyTable } from "./components/VoskVocabularyTable";
+import { getVocabularyList, deleteVocabulary } from "@/lib/api/stt-vocabulary";
+import { DeleteConfirmModal } from "./components/list/DeleteConfirmModal";
+import { VoskVocabularyFilter } from "./components/list/VoskVocabularyFilter";
+import { VoskVocabularyStats } from "./components/list/VoskVocabularyStats";
+import { VoskVocabularyTable } from "./components/list/VoskVocabularyTable";
 
 const ITEMS_PER_PAGE = 20;
 
 export default function VoskSettingsPage() {
+  const router = useRouter();
   const [page, setPage] = useState(1);
   const [searchInput, setSearchInput] = useState("");
   const [appliedSearch, setAppliedSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<VocabularyCategory | "">(
-    ""
+    "",
   );
   const [deletingItem, setDeletingItem] = useState<VocabularyItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -37,13 +36,13 @@ export default function VoskSettingsPage() {
       page,
       limit: ITEMS_PER_PAGE,
     }),
-    [categoryFilter, appliedSearch, page]
+    [categoryFilter, appliedSearch, page],
   );
 
   // SWR でデータを取得
   const { data, error, isLoading, mutate } = useSWR<VocabularyListResponse>(
     swrKey,
-    getVocabularyList
+    getVocabularyList,
   );
 
   const vocabularyData = data?.data ?? [];
@@ -84,6 +83,14 @@ export default function VoskSettingsPage() {
     setDeletingItem(null);
   }, []);
 
+  // 編集ページへ遷移
+  const handleEditClick = useCallback(
+    (item: VocabularyItem) => {
+      router.push(`/admin/vosk-settings/${item.id}`);
+    },
+    [router],
+  );
+
   const hasFilter = !!(categoryFilter || appliedSearch);
 
   return (
@@ -99,9 +106,8 @@ export default function VoskSettingsPage() {
             </h1>
             <div className="flex gap-3">
               <button
-                disabled
-                title="この機能は準備中です"
-                className="px-4 py-2 bg-blue-300 cursor-not-allowed opacity-60 text-white font-medium rounded-lg"
+                onClick={() => router.push("/admin/vosk-settings/create")}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg"
               >
                 + 新規追加
               </button>
@@ -151,6 +157,7 @@ export default function VoskSettingsPage() {
                     itemsPerPage={ITEMS_PER_PAGE}
                     onPageChange={setPage}
                     onDeleteClick={setDeletingItem}
+                    onEditClick={handleEditClick}
                     hasFilter={hasFilter}
                   />
                 )}

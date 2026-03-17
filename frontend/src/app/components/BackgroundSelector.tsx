@@ -81,7 +81,6 @@ export default function BackgroundSelector({
       const data = await response.json();
       const imagePaths = data.images || [];
       
-      console.log('Loading background images:', imagePaths);
 
       const imageBackgrounds: BackgroundOption[] = [];
       
@@ -107,7 +106,6 @@ export default function BackgroundSelector({
             thumbnail: fullPath,
           });
           
-          console.log(`Successfully loaded background: ${filename}`);
         } catch (e) {
           console.warn(`Failed to load background image: ${filename}`, e);
         }
@@ -119,9 +117,7 @@ export default function BackgroundSelector({
           ...prev.filter(bg => bg.type !== 'image'), // Keep gradients and solids
           ...imageBackgrounds
         ]);
-        console.log(`Added ${imageBackgrounds.length} background images`);
       } else {
-        console.log('No background images found in /public/backgrounds/');
       }
     } catch (error) {
       console.error('Error loading background images:', error);

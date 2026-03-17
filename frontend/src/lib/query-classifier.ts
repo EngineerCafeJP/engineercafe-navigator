@@ -205,7 +205,6 @@ export class QueryClassifier {
       // 既にエンジニアカフェと明示されている場合
       if (normalizedQuestion.includes('エンジニアカフェ') || normalizedQuestion.includes('engineercafe')) {
         if (this.debugMode) {
-          console.log('[QueryClassifier] Explicit Engineer Cafe query, treating as facility');
         }
         return {
           needsClarification: false,
@@ -217,7 +216,6 @@ export class QueryClassifier {
       // Sainoカフェと明示されている場合
       if (normalizedQuestion.includes('saino') || normalizedQuestion.includes('サイノ')) {
         if (this.debugMode) {
-          console.log('[QueryClassifier] Explicit Saino Cafe query, treating as saino-cafe');
         }
         return {
           needsClarification: false,
@@ -443,12 +441,7 @@ export class QueryClassifier {
    */
   public logClassification(result: QueryClassificationResult, query: string): void {
     if (this.debugMode) {
-      console.log('[QueryClassifier] Classification result:');
-      console.log(`  Query: ${query}`);
-      console.log(`  Category: ${result.category}`);
-      console.log(`  Confidence: ${result.confidence}`);
       if (result.debugInfo) {
-        console.log(`  Debug Info:`, result.debugInfo);
       }
     }
   }

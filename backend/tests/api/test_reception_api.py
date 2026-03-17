@@ -134,6 +134,46 @@ class TestRespondReception:
         data = response.json()
         assert data["purpose"]["category"] == "event_participation"
 
+    def test_respond_with_tour_purpose_classified_in_japanese(self):
+        start = _start_session(session_id="s1")
+        rid = start["reception_session_id"]
+
+        client.post(
+            "/api/reception/respond",
+            json={"session_id": "s1", "reception_session_id": rid, "message": "こんにちは"},
+        )
+        response = client.post(
+            "/api/reception/respond",
+            json={
+                "session_id": "s1",
+                "reception_session_id": rid,
+                "message": "館内を見学したいです",
+            },
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["purpose"]["category"] == "tour"
+
+    def test_respond_with_tour_purpose_classified_in_english(self):
+        start = _start_session(session_id="s1", language="en")
+        rid = start["reception_session_id"]
+
+        client.post(
+            "/api/reception/respond",
+            json={"session_id": "s1", "reception_session_id": rid, "message": "Hello"},
+        )
+        response = client.post(
+            "/api/reception/respond",
+            json={
+                "session_id": "s1",
+                "reception_session_id": rid,
+                "message": "I would like a guided tour of the facility",
+            },
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["purpose"]["category"] == "tour"
+
     def test_respond_unknown_purpose_stays_in_purpose_hearing(self):
         start = _start_session(session_id="s1")
         rid = start["reception_session_id"]

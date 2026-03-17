@@ -74,6 +74,16 @@ def _store_session(session: ReceptionSession) -> None:
 # ---------------------------------------------------------------------------
 
 _PURPOSE_KEYWORDS: dict[str, list[str]] = {
+    "tour": [
+        "tour",
+        "guide",
+        "guided",
+        "guidance",
+        "見学",
+        "ツアー",
+        "案内",
+        "館内",
+    ],
     "facility_use": [
         "cowork",
         "coworking",

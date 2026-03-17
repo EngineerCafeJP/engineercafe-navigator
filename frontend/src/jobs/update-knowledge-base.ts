@@ -25,7 +25,6 @@ export class KnowledgeBaseUpdater {
    */
   start() {
     this.job.start();
-    console.log('[KnowledgeBaseUpdater] Started - will run every 6 hours');
   }
   
   /**
@@ -33,7 +32,6 @@ export class KnowledgeBaseUpdater {
    */
   stop() {
     this.job.stop();
-    console.log('[KnowledgeBaseUpdater] Stopped');
   }
   
   /**
@@ -41,7 +39,6 @@ export class KnowledgeBaseUpdater {
    */
   async runUpdate(): Promise<void> {
     if (this.isRunning) {
-      console.log('[KnowledgeBaseUpdater] Update already in progress, skipping...');
       return;
     }
     
@@ -49,7 +46,6 @@ export class KnowledgeBaseUpdater {
     const startTime = Date.now();
     
     try {
-      console.log('[KnowledgeBaseUpdater] Starting knowledge base update...');
       
       // Run all updates in parallel
       const results = await Promise.allSettled([
@@ -62,7 +58,6 @@ export class KnowledgeBaseUpdater {
       results.forEach((result, index) => {
         const source = ['Connpass', 'Google Calendar', 'Website'][index];
         if (result.status === 'fulfilled') {
-          console.log(`[KnowledgeBaseUpdater] ${source} update completed: ${result.value}`);
         } else {
           console.error(`[KnowledgeBaseUpdater] ${source} update failed:`, result.reason);
         }
@@ -72,7 +67,6 @@ export class KnowledgeBaseUpdater {
       await this.cleanupOldEntries();
       
       const duration = Date.now() - startTime;
-      console.log(`[KnowledgeBaseUpdater] Update completed in ${duration}ms`);
       
       // Track metrics
       await this.trackUpdateMetrics({

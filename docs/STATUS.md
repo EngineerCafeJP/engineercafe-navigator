@@ -2,12 +2,12 @@
 
 > Current implementation status and roadmap for Engineer Cafe Navigator
 
-Last Updated: 2026-01-24
+Last Updated: 2026-03-08
 
 ## 🟢 Implemented Features
 
 ### Core Features
-- ✅ **9-Agent Architecture** - LangGraph backend coordinating specialized agents
+- ✅ **7+3 Agent Architecture** - LangGraph backend with 7 workflow agents + 3 support agents
 - ✅ **Voice Processing API** - Speech recognition, AI response generation, and text-to-speech using Google Cloud
 - ✅ **Google Cloud Service Account Authentication** - Secure authentication without API keys
 - ✅ **Multi-language Support** - Japanese and English voice interactions
@@ -24,7 +24,7 @@ Last Updated: 2026-01-24
 ### API Endpoints (Implemented)
 - ✅ **POST /api/voice** - Voice processing with multiple actions
 - ✅ **GET /api/voice** - Service status and language information
-- ✅ **POST /api/marp** - Slide rendering
+- ✅ **POST /api/marp** - Slide rendering (proxies to backend `/api/slides`)
 - ✅ **POST /api/slides** - Slide navigation
 - ✅ **POST /api/character** - Character control
 - ✅ **POST /api/qa** - Question answering
@@ -47,24 +47,30 @@ Last Updated: 2026-01-24
 - ✅ **Lip-sync System** - Optimized with intelligent caching
 - ✅ **Production Monitoring** - Real-time metrics and alerting
 
-### 9-Agent Architecture (LangGraph Backend - 2026/01)
-- ✅ **RouterAgent** - Context-dependent query routing and classification
-- ✅ **BusinessInfoAgent** - Hours, pricing, location with Enhanced RAG
-- ✅ **FacilityAgent** - Equipment, basement facilities with Enhanced RAG
-- ✅ **EventAgent** - Calendar and event information
+### Agent Architecture (LangGraph Backend - 2026/03)
+
+**Workflow Agents** (LangGraph nodes):
+- ✅ **OrchestratorAgent** - Supervisor Pattern, LLM dynamic routing (RouterAgent統合済み)
+- ✅ **BusinessInfoAgent** - Hours, pricing, consultation, community (Enhanced RAG)
+- ✅ **FacilityAgent** - Equipment, basement, nearby facilities, lost & found (Enhanced RAG)
+- ✅ **EventAgent** - Google Calendar ICS + Connpass API v2
 - ✅ **SlideAgent** - Slide presentation and narration
-- ✅ **GeneralKnowledgeAgent** - Out-of-scope queries via Google Gemini Search
-- ✅ **MemoryAgent** - Conversation history and context management
-- ✅ **ClarificationAgent** - Ambiguous query clarification
+- ✅ **GeneralKnowledgeAgent** - Web search (Tavily) + memory queries (MemoryAgent統合済み)
+- ✅ **FarewellAgent** - Departure flow, card return reminder, brand message
+
+**Support Agents**:
 - ✅ **VoiceAgent** - STT/TTS processing
 - ✅ **CharacterControlAgent** - VRM character control
+- ✅ **OCRAgent (VisionAgent)** - Image/OCR processing
+
+**Deprecated**: ~~RouterAgent~~, ~~ClarificationAgent~~ (inline), ~~MemoryAgent~~ (→GKA)
 
 ## 🔴 Features NOT Implemented (Despite Being Referenced)
 
 ### Documented but Non-Existent Features
 - ❌ **Web Speech API Integration** - Hardcoded to false in VoiceInterface.tsx, never actually used
-- ❌ **Facial Expression Detection** - face-api.js is loaded but no implementation exists
-- ❌ **Test Framework** - No test command (`pnpm test`) configured despite references in documentation
+- ~~❌ **Facial Expression Detection** - face-api.js is loaded but no implementation exists~~ → ✅ Removed dead code (PR #184)
+- ✅ **Test Framework** - Backend: pytest 2587+ tests, Frontend: Playwright E2E setup
 
 ### Unused Environment Variables
 These variables are documented but not referenced in the actual codebase:
@@ -90,9 +96,10 @@ These variables are documented but not referenced in the actual codebase:
 - ✅ **VRM Expression Control** - 6 emotions controlled by text analysis
 
 ### Testing Framework
-- ⏳ **Unit Tests** - Jest + React Testing Library
-- ⏳ **E2E Tests** - Playwright browser testing
-- ⏳ **Component Tests** - Component-level testing
+- ✅ **Backend Unit Tests** - pytest 2638+ tests passing, 87% coverage
+- ✅ **Backend E2E Tests** - HTTP endpoint tests via httpx + ASGITransport
+- ✅ **Backend Integration Tests** - Real-service smoke tests with `pytest.mark.integration`
+- ⏳ **Frontend E2E Tests** - Playwright browser testing (setup済み)
 
 ## 🔴 Known Issues
 
@@ -102,9 +109,14 @@ These variables are documented but not referenced in the actual codebase:
 - **AudioContext Restrictions**: Requires explicit user interaction on iOS
 
 ### Technical Considerations
-- **Future Features**: face-api.js and Web Speech API reserved for future use
 - **Environment Variables**: Some vars reserved for planned features
 - **iOS Workarounds**: Tap-to-play required for audio on iPads
+
+### Production Issues (FIXED 2026-03-08)
+- ✅ VoiceVox TTS on Cloud Run — VoiceVox deployed as separate service
+- ✅ Checkpointer context manager — Fixed to use `__aenter__`/`__aexit__`
+- ✅ Marp API 503 — Frontend now proxies to backend `/api/slides`
+- ✅ CI/CD env var overwrite — `--update-env-vars` preserves TTS config
 
 ## 📊 API Implementation Status
 

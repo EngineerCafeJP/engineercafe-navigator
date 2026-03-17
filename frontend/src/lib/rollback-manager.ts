@@ -55,7 +55,6 @@ export class RollbackManager {
       
       if (error) throw error;
       
-      console.log(`[RollbackManager] Created snapshot: ${data.id}`);
       return data.id;
     } catch (error) {
       console.error('[RollbackManager] Failed to create snapshot:', error);
@@ -68,7 +67,6 @@ export class RollbackManager {
    */
   async rollback(snapshotId: string): Promise<void> {
     try {
-      console.log(`[RollbackManager] Rolling back to snapshot: ${snapshotId}`);
       
       // Get snapshot
       const { data: snapshot, error } = await supabaseAdmin
@@ -87,7 +85,6 @@ export class RollbackManager {
       // Log rollback
       await this.logRollback(snapshotId, 'manual');
       
-      console.log(`[RollbackManager] Rollback completed to snapshot: ${snapshotId}`);
     } catch (error) {
       console.error('[RollbackManager] Rollback failed:', error);
       throw error;
@@ -267,7 +264,6 @@ export class FeatureCircuitBreaker {
         if (attempts >= this.HALF_OPEN_REQUESTS) {
           if ((this.halfOpenFailures.get(featureName) || 0) === 0) {
             // 全て成功
-            console.log(`[CircuitBreaker] Circuit closing for ${featureName}`);
             this.circuitState.set(featureName, 'closed');
             this.failures.set(featureName, 0);
           } else {
@@ -342,7 +338,6 @@ export class FeatureCircuitBreaker {
     this.failures.delete(featureName);
     this.lastFailureTime.delete(featureName);
     this.circuitState.delete(featureName);
-    console.log(`[CircuitBreaker] Reset circuit for ${featureName}`);
   }
 }
 

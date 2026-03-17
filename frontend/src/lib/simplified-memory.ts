@@ -110,13 +110,6 @@ export class SimplifiedMemorySystem {
       // Update message index for efficient retrieval
       await this.updateMessageIndex(timestamp);
 
-      console.log(`[SimplifiedMemory] Stored ${role} message with 3-minute TTL`, {
-        agentName: this.agentName,
-        key: `message_${timestamp}`,
-        requestType: metadata?.requestType,
-        sessionId: metadata?.sessionId,
-        expiresAt
-      });
     } catch (error) {
       console.error('[SimplifiedMemory] Error storing message:', error);
       throw error; // Rethrow to allow caller to handle the error
@@ -134,7 +127,6 @@ export class SimplifiedMemorySystem {
       for (let i = recentMessages.length - 1; i >= 0; i--) {
         const message = recentMessages[i];
         if (message.role === 'assistant' && message.metadata?.requestType) {
-          console.log(`[SimplifiedMemory] Found last request type: ${message.metadata.requestType}`);
           return message.metadata.requestType;
         }
       }
@@ -171,7 +163,6 @@ export class SimplifiedMemorySystem {
 
       // Get recent messages from agent_memory table (within 3-minute window)
       const recentMessages = await this.getRecentMessages();
-      console.log(`[SimplifiedMemory] Found ${recentMessages.length} recent messages for ${this.agentName}`);
 
       // Check for context inheritance needs
       let inheritedRequestType: string | null = null;
@@ -281,7 +272,6 @@ export class SimplifiedMemorySystem {
         .eq('agent_name', this.agentName)
         .lt('expires_at', new Date().toISOString());
       
-      console.log('[SimplifiedMemory] Cleanup completed');
     } catch (error) {
       console.error('[SimplifiedMemory] Error during cleanup:', error);
     }
@@ -349,7 +339,6 @@ export class SimplifiedMemorySystem {
   private async getRecentMessages(): Promise<Array<{ role: string; content: string; metadata?: any }>> {
     try {
       const currentTime = new Date().toISOString();
-      console.log(`[SimplifiedMemory] Querying messages for agent: ${this.agentName}, current time: ${currentTime}`);
       
       const { data, error } = await supabaseAdmin
         .from('agent_memory')
@@ -364,7 +353,6 @@ export class SimplifiedMemorySystem {
         return [];
       }
       
-      console.log(`[SimplifiedMemory] Retrieved ${data?.length || 0} messages from database`);
 
       return (data || []).map(item => ({
         role: item.value.role,
@@ -550,7 +538,6 @@ export class SimplifiedMemorySystem {
           if (sessionId && msg.metadata?.sessionId !== sessionId) {
             continue;
           }
-          console.log(`[SimplifiedMemory] Found previous request type: ${msg.metadata.requestType} for session: ${sessionId || 'any'}`);
           return msg.metadata.requestType;
         }
       }

@@ -56,6 +56,7 @@ export function useWakeWord({
   const shouldRunRef = useRef(enabled);
   const manualStopRef = useRef(false);
   const lastDetectionRef = useRef<WakeWordMatch | null>(null);
+  const startListeningRef = useRef<() => boolean>(() => false);
 
   const [isSupported, setIsSupported] = useState(false);
   const [isListening, setIsListening] = useState(false);
@@ -175,7 +176,7 @@ export function useWakeWord({
 
       clearRestartTimer();
       restartTimeoutRef.current = window.setTimeout(() => {
-        startListening();
+        startListeningRef.current();
       }, restartDelayMs);
     };
 
@@ -221,6 +222,10 @@ export function useWakeWord({
       return false;
     }
   }, [createRecognition, enabled, isListening]);
+
+  useEffect(() => {
+    startListeningRef.current = startListening;
+  }, [startListening]);
 
   const stopListening = useCallback(() => {
     shouldRunRef.current = false;

@@ -48,11 +48,6 @@ export class SttCorrectionMonitor {
 
     // Log to console in development
     if (process.env.NODE_ENV !== 'production') {
-      console.log('[STT Monitor] Correction logged:', {
-        from: original,
-        to: corrected,
-        corrections: correctionsApplied
-      });
     }
 
     // Flush if we've reached the batch size
@@ -109,7 +104,6 @@ export class SttCorrectionMonitor {
         // Put events back if storage failed
         this.corrections.unshift(...toFlush);
       } else {
-        console.log(`[STT Monitor] Flushed ${toFlush.length} correction events`);
       }
     } catch (error) {
       console.error('[STT Monitor] Error flushing corrections:', error);

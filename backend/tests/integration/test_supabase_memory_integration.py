@@ -30,6 +30,7 @@ _supabase_available = bool(
 )
 
 pytestmark = [
+    pytest.mark.integration,
     pytest.mark.asyncio,
     pytest.mark.skipif(
         not _supabase_available,

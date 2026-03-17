@@ -35,6 +35,7 @@ _is_local = any(m in _supabase_url for m in ["localhost", "127.0.0.1", "kong"])
 _available = bool(_supabase_url and _supabase_key and _is_local)
 
 pytestmark = [
+    pytest.mark.integration,
     pytest.mark.asyncio,
     pytest.mark.skipif(
         not _available,

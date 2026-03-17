@@ -18,6 +18,8 @@
     "import:markdown": "tsx -r dotenv/config scripts/import-markdown-knowledge.ts",
     "setup:admin": "tsx -r dotenv/config scripts/setup-admin-knowledge.ts",
     "test": "cd scripts/tests && tsx run-tests.ts",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
     "test:integrated": "cd scripts/tests && tsx run-tests.ts integrated",
     "test:router": "cd scripts/tests && tsx run-tests.ts router",
     "test:calendar": "cd scripts/tests && tsx run-tests.ts calendar",
@@ -78,14 +80,8 @@
     "ws": "^8.18.2",
     "zod": "^3.24.4"
   },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "esbuild",
-      "sharp",
-      "workerd"
-    ]
-  },
   "devDependencies": {
+    "@playwright/test": "1.58.2",
     "@types/react": "^19.1.4",
     "@types/react-dom": "^19.1.5",
     "@types/three": "^0.176.0",
@@ -102,5 +98,12 @@
     "tsx": "^4.19.4",
     "typescript": "^5.8.3",
     "wrangler": "4.69.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "sharp",
+      "workerd"
+    ]
   }
 }

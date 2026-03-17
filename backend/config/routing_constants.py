@@ -20,6 +20,7 @@ AgentNodeName = Literal[
     "event",
     "general_knowledge",
     "slide",
+    "farewell",
 ]
 
 RoutingTarget = Literal[
@@ -28,6 +29,7 @@ RoutingTarget = Literal[
     "event",
     "general_knowledge",
     "slide",
+    "farewell",
     "__end__",
 ]
 
@@ -38,6 +40,7 @@ AgentName = Literal[
     "GeneralKnowledgeAgent",
     "TimeAgent",
     "SlideAgent",
+    "FarewellAgent",
 ]
 
 
@@ -266,6 +269,45 @@ EMERGENCY_KEYWORDS = [
     "defibrillator",
 ]
 
+LOST_FOUND_KEYWORDS = [
+    "忘れ物",
+    "落とし物",
+    "なくした",
+    "なくし",
+    "失くした",
+    "見つからない",
+    "落とした",
+    "紛失",
+    "置き忘れ",
+    "忘れた",
+    "lost",
+    "found",
+    "missing",
+    "left behind",
+    "forgot",
+    "lost and found",
+    "misplaced",
+]
+
+FAREWELL_KEYWORDS = [
+    "さようなら",
+    "帰ります",
+    "帰る",
+    "退館",
+    "お先に",
+    "失礼します",
+    "またね",
+    "バイバイ",
+    "おつかれ",
+    "goodbye",
+    "bye",
+    "leaving",
+    "going home",
+    "see you",
+    "heading out",
+    "gotta go",
+]
+
 EARTHQUAKE_KEYWORDS = [
     "地震",
     "earthquake",
@@ -350,6 +392,46 @@ PARKING_KEYWORDS = [
     "parking",
     "park",
     "car park",
+]
+
+NEARBY_FACILITY_KEYWORDS = [
+    "コンビニ",
+    "ATM",
+    "薬局",
+    "病院",
+    "ドラッグストア",
+    "タクシー",
+    "バス",
+    "バス停",
+    "タクシー乗り場",
+    "近く",
+    "近所",
+    "周辺",
+    "近隣",
+    "そば",
+    "convenience store",
+    "pharmacy",
+    "hospital",
+    "clinic",
+    "taxi",
+    "bus",
+    "bus stop",
+    "taxi stand",
+    "nearby",
+    "around here",
+    "close by",
+    "neighborhood",
+    "ホテル",
+    "宿泊",
+    "hotel",
+    "accommodation",
+    "ランチ",
+    "レストラン",
+    "lunch",
+    "restaurant",
+    "食事",
+    "カフェ",
+    "喫茶店",
 ]
 
 BICYCLE_KEYWORDS = [
@@ -481,6 +563,57 @@ POLICY_KEYWORDS = [
 
 
 # =============================================================================
+# 挨拶キーワード・テンプレート（時間帯別挨拶・閉館警告機能で使用）
+# =============================================================================
+
+# 挨拶キーワード（ルーターで挨拶意図を検出するために使用）
+GREETING_KEYWORDS: list[str] = [
+    "おはよう",
+    "こんにちは",
+    "こんばんは",
+    "hello",
+    "good morning",
+    "good afternoon",
+    "good evening",
+    "hi",
+    "hey",
+]
+
+# 時間帯別挨拶テンプレート
+TIME_GREETING_TEMPLATES: dict[str, dict[str, str]] = {
+    "morning": {
+        "ja": "おはようございます！エンジニアカフェへようこそ。",
+        "en": "Good morning! Welcome to Engineer Cafe.",
+    },
+    "afternoon": {
+        "ja": "こんにちは！エンジニアカフェへようこそ。",
+        "en": "Good afternoon! Welcome to Engineer Cafe.",
+    },
+    "evening": {
+        "ja": "こんばんは！エンジニアカフェへようこそ。",
+        "en": "Good evening! Welcome to Engineer Cafe.",
+    },
+    "night": {
+        "ja": "こんばんは！エンジニアカフェへようこそ。",
+        "en": "Good evening! Welcome to Engineer Cafe.",
+    },
+}
+
+# 閉館警告テンプレート
+CLOSING_WARNING_TEMPLATES: dict[str, str] = {
+    "ja": "なお、閉館まであと約{minutes}分です。お忘れ物のないようご注意ください。",
+    "en": "Please note that we will be closing in about {minutes} minutes. "
+    "Please make sure you have all your belongings.",
+}
+
+# 休館日メッセージテンプレート
+CLOSED_DAY_TEMPLATES: dict[str, str] = {
+    "ja": "本日は休館日です。次の営業日にお越しください。",
+    "en": "We are closed today. Please visit us on the next business day.",
+}
+
+
+# =============================================================================
 # エージェント説明・マッピング
 # =============================================================================
 
@@ -501,6 +634,10 @@ AGENT_DESCRIPTIONS: Dict[str, str] = {
         "一般知識エージェント: " "上記以外の一般的な質問、" "および過去の会話履歴に関する質問に回答"
     ),
     "slide": ("スライドエージェント: " "スライドのナレーション、操作、質問応答を処理"),
+    "farewell": (
+        "退館エージェント: さようなら、帰ります等の退館メッセージに対して"
+        "温かい退館メッセージ、受付カード返却案内、荷物確認リマインダーを応答"
+    ),
 }
 
 CATEGORY_TO_AGENT_MAP: Dict[str, AgentNodeName] = {
@@ -530,6 +667,9 @@ CATEGORY_TO_AGENT_MAP: Dict[str, AgentNodeName] = {
     "emergency": "facility",
     "reception": "business_info",
     "floor_layout": "facility",
+    "nearby": "facility",
+    "lost_found": "facility",
+    "farewell": "farewell",
 }
 
 
@@ -564,6 +704,10 @@ def extract_request_type(query: str) -> Optional[str]:
 
     if match_keywords(lower_query, EMERGENCY_KEYWORDS):
         return "emergency"
+    if match_keywords(lower_query, FAREWELL_KEYWORDS):
+        return "farewell"
+    if match_keywords(lower_query, LOST_FOUND_KEYWORDS):
+        return "lost_found"
     if match_keywords(lower_query, WIFI_KEYWORDS):
         return "wifi"
     if match_keywords(lower_query, BUSINESS_HOURS_KEYWORDS):
@@ -576,6 +720,8 @@ def extract_request_type(query: str) -> Optional[str]:
         return "community"
     if match_keywords(lower_query, ACCESS_DIRECTION_KEYWORDS):
         return "access"
+    if match_keywords(lower_query, NEARBY_FACILITY_KEYWORDS):
+        return "nearby"
     if match_keywords(lower_query, BUILDING_KEYWORDS):
         return "building"
     # 新しいキーワード（bicycle, parking, smoking, food_drink）を LOCATION_KEYWORDS より優先

@@ -80,12 +80,14 @@ class MainWorkflow:
         from backend.agents.business_info_agent import BusinessInfoAgent
         from backend.agents.event_agent import EventAgent
         from backend.agents.facility_agent import FacilityAgent
+        from backend.agents.farewell_agent import FarewellAgent
         from backend.agents.general_knowledge_agent import GeneralKnowledgeAgent
         from backend.agents.slide_agent import SlideAgent
 
         self._business_info_agent = BusinessInfoAgent()
         self._facility_agent = FacilityAgent()
         self._event_agent = EventAgent()
+        self._farewell_agent = FarewellAgent()
         self._slide_agent = SlideAgent()
         try:
             self._character_control_agent = CharacterControlAgent()
@@ -142,6 +144,7 @@ class MainWorkflow:
         workflow.add_node("event", self._event_node, retry_policy=llm_retry)
         workflow.add_node("slide", self._slide_node, retry_policy=llm_retry)
         workflow.add_node("general_knowledge", self._general_knowledge_node, retry_policy=llm_retry)
+        workflow.add_node("farewell", self._farewell_node, retry_policy=llm_retry)
 
         # エッジの定義（Supervisor Pattern）
         # START → (text: memory_loader, image: vision) → memory_loader → orchestrator
@@ -162,6 +165,7 @@ class MainWorkflow:
         workflow.add_edge("event", "format_response")
         workflow.add_edge("slide", "format_response")
         workflow.add_edge("general_knowledge", "format_response")
+        workflow.add_edge("farewell", "format_response")
         workflow.add_edge("format_response", END)
 
         compile_kwargs = {}
@@ -595,6 +599,24 @@ class MainWorkflow:
             "metadata": {**state.get("metadata", {}), **result.get("metadata", {})},
         }
 
+    async def _farewell_node(self, state: WorkflowStateDict) -> dict:
+        """退館ノード: 退館フローを処理"""
+        query = state.get("query", "")
+        language = state.get("language", "ja")
+        session_id = state.get("session_id", "")
+
+        result = await self._farewell_agent.handle_farewell(
+            query=query,
+            language=language,
+            session_id=session_id,
+        )
+
+        return {
+            "answer": result.get("answer", ""),
+            "emotion": result.get("emotion", "happy"),
+            "metadata": {**state.get("metadata", {}), **result.get("metadata", {})},
+        }
+
     async def _facility_node(self, state: WorkflowStateDict) -> dict:
         """施設ノード: 施設情報を処理"""
         query = state.get("query", "")
@@ -757,7 +779,6 @@ class MainWorkflow:
             "vrm_control": vrm_control,
             "lipsync_data": lipsync_data,
         }
-
         # PII Defense-in-Depth: ワークフロー層でもスキャン（API層に加えて二重防御）
         try:
             masked, pii_items = scan_and_mask(answer)
@@ -896,6 +917,46 @@ class MainWorkflow:
         existing_msgs = state.get("messages", [])
         windowed = apply_message_window(existing_msgs)
 
+        # 時間帯情報と閉館警告をmetadataに追加
+        try:
+            from backend.config.routing_constants import CLOSING_WARNING_TEMPLATES
+            from backend.utils.time_utils import (
+                get_current_time_period,
+                get_minutes_until_closing,
+                get_now_jst,
+                get_today_business_hours,
+                is_closing_soon,
+            )
+
+            now = get_now_jst()
+            time_period = get_current_time_period(now.hour)
+            metadata["time_period"] = time_period
+
+            business_hours = get_today_business_hours(now.weekday())
+            closing_warning: dict[str, object] = {"is_closing_soon": False}
+
+            if business_hours is not None:
+                _, close_time = business_hours
+                closing_hour = close_time.hour
+                closing_minute = close_time.minute
+
+                if is_closing_soon(now, closing_hour, closing_minute):
+                    remaining = get_minutes_until_closing(now, closing_hour, closing_minute)
+                    closing_warning = {
+                        "is_closing_soon": True,
+                        "minutes_remaining": remaining,
+                    }
+                    # 応答に閉館警告を付加
+                    template = CLOSING_WARNING_TEMPLATES.get(
+                        language, CLOSING_WARNING_TEMPLATES["ja"]
+                    )
+                    warning_text = template.format(minutes=remaining)
+                    answer = f"{answer}\n\n{warning_text}"
+
+            metadata["closing_warning"] = closing_warning
+        except Exception as time_err:
+            logger.warning("Time period/closing warning processing failed: %s", time_err)
+
         return {
             "metadata": metadata,
             "messages": windowed
@@ -936,6 +997,7 @@ class MainWorkflow:
         "slide": "_slide_node",
         "general_knowledge": "_general_knowledge_node",
         "business_info": "_business_info_node",
+        "farewell": "_farewell_node",
     }
 
     async def ainvoke_from_reception(self, handoff: Any) -> dict:

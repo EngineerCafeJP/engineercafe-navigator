@@ -124,6 +124,8 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY || 'placeholder-service-role-key' }}
           GOOGLE_GENERATIVE_AI_API_KEY: ${{ secrets.GOOGLE_GENERATIVE_AI_API_KEY || 'placeholder-google-ai-key' }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY || 'placeholder-openai-key' }}
+          NEXT_PUBLIC_BACKEND_API_URL: ${{ secrets.NEXT_PUBLIC_BACKEND_API_URL || 'https://engineer-cafe-backend-639959525777.asia-northeast1.run.app' }}
+          BACKEND_API_URL: ${{ secrets.BACKEND_API_URL || 'https://engineer-cafe-backend-639959525777.asia-northeast1.run.app' }}
 
   # Backend: Lint
   backend-lint:
@@ -313,7 +315,7 @@ jobs:
             --cpu 2 \
             --min-instances 0 \
             --max-instances 3 \
-            --set-env-vars "ENVIRONMENT=staging" \
+            --update-env-vars "ENVIRONMENT=staging,TTS_PROVIDER=voicevox,VOICEVOX_API_URL=https://voicevox-proto-639959525777.asia-northeast2.run.app" \
             --set-secrets "OPENROUTER_API_KEY=OPENROUTER_API_KEY:latest,SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_KEY=SUPABASE_KEY:latest,SUPABASE_DB_URI=SUPABASE_DB_URI:latest"
 
   # Frontend: Deploy to Cloudflare Workers (staging)
@@ -349,6 +351,8 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co' }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key' }}
+          NEXT_PUBLIC_BACKEND_API_URL: ${{ secrets.NEXT_PUBLIC_BACKEND_API_URL || 'https://engineer-cafe-backend-639959525777.asia-northeast1.run.app' }}
+          BACKEND_API_URL: ${{ secrets.BACKEND_API_URL || 'https://engineer-cafe-backend-639959525777.asia-northeast1.run.app' }}
 
   # Final status check for branch protection
   ci-success:

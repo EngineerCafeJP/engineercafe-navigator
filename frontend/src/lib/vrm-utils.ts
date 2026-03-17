@@ -668,7 +668,6 @@ export class VRMBlendShapeController {
       if (expression) {
         const clampedWeight = Math.max(0, Math.min(1, weight));
         expression.weight = clampedWeight;
-        console.log(`Set expression "${expressionName}" to weight ${clampedWeight}`);
       } else {
         console.warn(`Expression "${expressionName}" not found in VRM model`);
       }
