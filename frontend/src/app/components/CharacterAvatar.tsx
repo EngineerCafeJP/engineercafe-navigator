@@ -321,7 +321,6 @@ export default function CharacterAvatar({
   // Update character state when props change
   useEffect(() => {
     if (charactersRef.current) {
-      void updateCharacterExpressionRef.current(initialExpression);
       void updateCharacterAnimationRef.current(initialAnimation);
     }
   }, [initialExpression, initialAnimation]);
@@ -332,7 +331,6 @@ export default function CharacterAvatar({
     }
 
     const sessionPose = getSessionPoseOffsets(sessionState);
-    void updateCharacterExpressionRef.current(sessionPose.expression);
     void updateCharacterAnimationRef.current(sessionPose.animation);
   }, [sessionState]);
 
@@ -1094,45 +1092,28 @@ export default function CharacterAvatar({
         // Apply expression to VRM model
         const expressionManager = charactersRef.current.expressionManager;
         if (expressionManager) {
-          // Map emotion names to VRM expression names if needed
-          const expressionMapping: Record<string, string> = {
-            'neutral': 'neutral',
-            'happy': 'happy',
-            'sad': 'sad',
-            'angry': 'angry',
-            'surprised': 'happy',
-            'relaxed': 'relaxed',
-            'thinking': 'relaxed',
-            'speaking': 'happy',
-            'listening': 'happy',
-            'greeting': 'happy',
-            'explaining': 'neutral'
-          };
-          
-          const vrmExpression = expressionMapping[expression] || expression;
-          
           // Get available expressions for debugging
           const availableExpressions = Object.keys(expressionManager.expressionMap);
           
           // Reset all expressions with gradual transition
           Object.keys(expressionManager.expressionMap).forEach(name => {
             const currentValue = expressionManager.getValue(name) || 0;
-            if (currentValue > 0 && name !== vrmExpression) {
+            if (currentValue > 0 && name !== expression) {
               // Gradual fade out for smooth transition
               expressionManager.setValue(name, 0);
             }
           });
 
           // Set new expression with full intensity
-          if (expressionManager.expressionMap[vrmExpression]) {
-            expressionManager.setValue(vrmExpression, 1);
+          if (expressionManager.expressionMap[expression]) {
+            expressionManager.setValue(expression, 1);
             // Store current expression for restoration after lip-sync
-            currentExpressionRef.current = { expression: vrmExpression, weight: 1.0 };
+            currentExpressionRef.current = { expression, weight: 1.0 };
           } else {
             // Try to find a similar expression
             const similarExpression = availableExpressions.find(expr => 
-              expr.toLowerCase().includes(vrmExpression.toLowerCase()) ||
-              vrmExpression.toLowerCase().includes(expr.toLowerCase())
+              expr.toLowerCase().includes(expression.toLowerCase()) ||
+              expression.toLowerCase().includes(expr.toLowerCase())
             );
             if (similarExpression) {
               expressionManager.setValue(similarExpression, 1);
