@@ -169,24 +169,24 @@ export async function uploadKnowledgeFile(params: {
 }
 
 export async function getKnowledgeEditorConfig(): Promise<KnowledgeEditorConfig> {
-  const [categoriesResponse, templatesResponse] = await Promise.all([
-    fetch('/api/admin/knowledge/categories'),
+  const [editorConfigResponse, templatesResponse] = await Promise.all([
+    fetch('/api/admin/knowledge/editor-config'),
     fetch('/api/admin/knowledge/metadata-templates'),
   ]);
 
-  if (!categoriesResponse.ok) {
-    throw new Error(await getErrorMessage(categoriesResponse, 'Failed to fetch categories'));
+  if (!editorConfigResponse.ok) {
+    throw new Error(await getErrorMessage(editorConfigResponse, 'Failed to fetch editor config'));
   }
 
   if (!templatesResponse.ok) {
     throw new Error(await getErrorMessage(templatesResponse, 'Failed to fetch metadata templates'));
   }
 
-  const categories = (await categoriesResponse.json()) as KnowledgeCategoriesResponse;
+  const editorConfig = (await editorConfigResponse.json()) as KnowledgeCategoriesResponse;
   const templates = (await templatesResponse.json()) as KnowledgeTemplatesResponse;
 
   return {
-    ...categories,
+    ...editorConfig,
     templates: templates.templates,
     availableCategories: templates.availableCategories,
   };

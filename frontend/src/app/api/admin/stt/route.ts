@@ -58,8 +58,10 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const action = request.nextUrl.searchParams.get('action');
     const body = await request.json();
-    const response = await backendFetch('/api/stt/vocabulary', {
+    const path = action === 'test' ? '/api/stt/vocabulary/test' : '/api/stt/vocabulary';
+    const response = await backendFetch(path, {
       method: 'POST',
       body,
     });
