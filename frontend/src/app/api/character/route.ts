@@ -3,6 +3,10 @@ import path from 'node:path';
 
 import { NextRequest, NextResponse } from 'next/server';
 
+import {
+  createBackendErrorResponse,
+  createInternalServerErrorResponse,
+} from '@/app/api/_shared/backend-error-response';
 import { backendFetch } from '@/lib/api/backend-proxy';
 
 const DEFAULT_SUPPORTED_EXPRESSIONS = [
@@ -73,21 +77,13 @@ export async function POST(request: NextRequest) {
     });
 
     if (!response.ok) {
-      throw new Error(`Backend API error: ${response.status}`);
+      return createBackendErrorResponse(response);
     }
 
     return NextResponse.json(response.data);
   } catch (error) {
     console.error('Character API error:', error);
-    return NextResponse.json(
-      {
-        error: 'Internal server error',
-        ...(process.env.NODE_ENV === 'development' && {
-          details: error instanceof Error ? error.message : 'Unknown error',
-        }),
-      },
-      { status: 500 }
-    );
+    return createInternalServerErrorResponse(error);
   }
 }
 

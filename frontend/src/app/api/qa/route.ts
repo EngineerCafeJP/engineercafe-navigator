@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import {
+  createBackendErrorResponse,
+  createInternalServerErrorResponse,
+} from '@/app/api/_shared/backend-error-response';
 import { backendFetch } from '@/lib/api/backend-proxy';
 
 export async function POST(request: NextRequest) {
@@ -21,8 +25,12 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    if (!response.ok || !response.data) {
-      throw new Error(`Backend API error: ${response.status}`);
+    if (!response.ok) {
+      return createBackendErrorResponse(response);
+    }
+
+    if (!response.data) {
+      throw new Error('Backend API returned an empty response');
     }
 
     return NextResponse.json({
@@ -37,15 +45,7 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('Q&A API error:', error);
-    return NextResponse.json(
-      {
-        error: 'Internal server error',
-        ...(process.env.NODE_ENV === 'development' && {
-          details: error instanceof Error ? error.message : 'Unknown error',
-        }),
-      },
-      { status: 500 }
-    );
+    return createInternalServerErrorResponse(error);
   }
 }
 
@@ -155,14 +155,6 @@ export async function GET(request: NextRequest) {
     }
   } catch (error) {
     console.error('Q&A API GET error:', error);
-    return NextResponse.json(
-      {
-        error: 'Internal server error',
-        ...(process.env.NODE_ENV === 'development' && {
-          details: error instanceof Error ? error.message : 'Unknown error',
-        }),
-      },
-      { status: 500 }
-    );
+    return createInternalServerErrorResponse(error);
   }
 }

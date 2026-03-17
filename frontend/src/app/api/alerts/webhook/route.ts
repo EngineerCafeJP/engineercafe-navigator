@@ -2,6 +2,10 @@ import { rollbackManager } from '@/lib/rollback-manager';
 import crypto from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 
+import {
+  createBackendErrorResponse,
+  createInternalServerErrorResponse,
+} from '@/app/api/_shared/backend-error-response';
 import { backendFetch } from '@/lib/api/backend-proxy';
 
 /**
@@ -34,7 +38,7 @@ export async function POST(request: NextRequest) {
 
     const response = await backendFetch('/api/alerts', { method: 'POST', body: alert });
     if (!response.ok) {
-      throw new Error(`Backend API error: ${response.status}`);
+      return createBackendErrorResponse(response);
     }
     
     // Process alert based on severity
@@ -44,10 +48,7 @@ export async function POST(request: NextRequest) {
     
   } catch (error) {
     console.error('[Alert Webhook] Error:', error);
-    return NextResponse.json(
-      { error: 'Failed to process alert' },
-      { status: 500 }
-    );
+    return createInternalServerErrorResponse(error, 'Failed to process alert');
   }
 }
 
