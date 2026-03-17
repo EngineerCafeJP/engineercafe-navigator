@@ -14,6 +14,16 @@ interface SlideData {
   notes?: string;
 }
 
+interface SlidesApiResponse {
+  success?: boolean;
+  slideNumber?: number;
+  answer?: string;
+  error?: string;
+  transitionMessage?: string;
+  characterAction?: string;
+  audioResponse?: string | null;
+}
+
 interface NarrationData {
   metadata: {
     title: string;
@@ -147,6 +157,42 @@ export default function MarpViewer({
   const resetNarrationFlags = () => {
     setIsNarrating(false);
     setIsNarrationInProgress(false);
+  };
+
+  const advancePresentation = (delayMs = 0) => {
+    const advance = () => {
+      autoPlayTimerRef.current = null;
+      resetNarrationFlags();
+
+      if (!isPlaying) {
+        return;
+      }
+
+      if (currentSlide < totalSlides) {
+        setCurrentSlide(prev => {
+          const nextSlide = prev + 1;
+          onSlideChange?.(nextSlide);
+          return nextSlide;
+        });
+        return;
+      }
+
+      setIsPlaying(false);
+      trackPresentationEvent('presentation_completed', {
+        totalDuration: presentationStartTimeRef.current ? Date.now() - presentationStartTimeRef.current : 0
+      });
+    };
+
+    if (delayMs <= 0) {
+      advance();
+      return;
+    }
+
+    if (autoPlayTimerRef.current) {
+      clearTimeout(autoPlayTimerRef.current);
+    }
+
+    autoPlayTimerRef.current = setTimeout(advance, delayMs);
   };
 
   // Error recovery with retry logic
@@ -563,7 +609,7 @@ export default function MarpViewer({
     setIsNarrating(true);
     
     try {
-      let result: any = null;
+      let result: SlidesApiResponse | null = null;
       
       // Create new AbortController for this narration
       narrationAbortControllerRef.current = new AbortController();
@@ -600,9 +646,12 @@ export default function MarpViewer({
         throw new Error('Invalid response format - expected JSON');
       }
       
-      result = await response.json();
-      
-      
+      result = await response.json() as SlidesApiResponse;
+
+      if (result?.characterAction) {
+        updateCharacterAction(result.characterAction);
+      }
+
       if (result.audioResponse) {
         try {
           // Starting audio playback
@@ -611,22 +660,7 @@ export default function MarpViewer({
           await playAudioWithLipSync(result.audioResponse);
           
           // Audio playback completed
-          resetNarrationFlags();
-          
-          // Advance to next slide only after audio completion
-          if (isPlaying && currentSlide < totalSlides) {
-            setCurrentSlide(prev => {
-              const nextSlide = prev + 1;
-              onSlideChange?.(nextSlide);
-              return nextSlide;
-            });
-          } else if (currentSlide >= totalSlides) {
-            // Presentation completed
-            setIsPlaying(false);
-            trackPresentationEvent('presentation_completed', {
-              totalDuration: presentationStartTime ? Date.now() - presentationStartTime : 0
-            });
-          }
+          advancePresentation();
         } catch (error: any) {
           // Error during audio playback
           
@@ -644,25 +678,12 @@ export default function MarpViewer({
           }
           
           // Continue to next slide even if audio fails (for other errors)
-          if (isPlaying && currentSlide < totalSlides) {
-            setTimeout(() => {
-              resetNarrationFlags();
-              setCurrentSlide(prev => {
-                const nextSlide = prev + 1;
-                onSlideChange?.(nextSlide);
-                return nextSlide;
-              });
-            }, 1000);
+          if (isPlaying) {
+            advancePresentation(1000);
           }
         }
-        
-        // Note: Expressions disabled for slide mode - only lip sync is used
-        // This provides natural presentation without distracting facial expressions
-        if (result?.characterAction) {
-          updateCharacterAction(result.characterAction);
-        }
       } else {
-        resetNarrationFlags();
+        advancePresentation(300);
       }
     } catch (error) {
       // Check if the error is due to abort
@@ -792,7 +813,7 @@ export default function MarpViewer({
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
-      const result = await response.json();
+      const result = await response.json() as SlidesApiResponse;
 
       if (result.success && result.slideNumber) {
         // Only update if we got a valid slide number
@@ -1076,7 +1097,7 @@ export default function MarpViewer({
         throw new Error('Invalid response format - expected JSON');
       }
 
-      const result = await response.json();
+      const result = await response.json() as SlidesApiResponse;
       
       if (process.env.NODE_ENV !== 'production') {
       }

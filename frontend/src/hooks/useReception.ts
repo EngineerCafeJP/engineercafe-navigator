@@ -48,7 +48,7 @@ function createMessage(role: ReceptionMessage['role'], text: string): ReceptionM
 export function useReception({
   sessionId,
   language = 'ja',
-  triggerType = 'manual',
+  triggerType = 'button_press',
 }: UseReceptionOptions): UseReceptionResult {
   const [stage, setStage] = useState<ReceptionStage>('idle');
   const [responseText, setResponseText] = useState<string | null>(null);

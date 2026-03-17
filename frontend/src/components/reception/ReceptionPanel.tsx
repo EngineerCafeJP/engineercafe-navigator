@@ -17,7 +17,7 @@ interface ReceptionPanelProps {
 export function ReceptionPanel({
   sessionId,
   language = 'ja',
-  triggerType = 'manual',
+  triggerType = 'button_press',
   className,
 }: ReceptionPanelProps) {
   const [draft, setDraft] = useState('');

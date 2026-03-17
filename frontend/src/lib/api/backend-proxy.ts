@@ -5,8 +5,13 @@
  * and attaches the X-API-Key header to every outgoing request.
  */
 
-const BACKEND_API_URL =
-  process.env.BACKEND_API_URL || "http://localhost:8000";
+const BACKEND_API_URL = process.env.BACKEND_API_URL;
+
+if (!BACKEND_API_URL) {
+  console.warn(
+    "BACKEND_API_URL is not set. Backend proxy requests will fail.",
+  );
+}
 
 export interface BackendProxyOptions {
   /** HTTP method (defaults to POST). */
@@ -79,6 +84,11 @@ function buildUrl(
   path: string,
   params?: Readonly<Record<string, string>>,
 ): string {
+  if (!BACKEND_API_URL) {
+    throw new Error(
+      "BACKEND_API_URL environment variable is not set. Cannot proxy to backend.",
+    );
+  }
   const base = BACKEND_API_URL.replace(/\/+$/, "");
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   const url = new URL(`${base}${normalizedPath}`);

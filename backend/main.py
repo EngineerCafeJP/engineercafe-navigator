@@ -137,6 +137,15 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("Session task manager setup failed (non-critical): %s", e)
 
+    try:
+        from backend.utils.checkpointer import prewarm_checkpointer
+
+        await prewarm_checkpointer()
+    except ValueError:
+        logger.warning("SUPABASE_DB_URI not set, skipping checkpointer warm-up.")
+    except Exception as e:
+        logger.warning("Checkpointer warm-up failed (non-critical): %s", e)
+
     yield
 
     # Shutdown
