@@ -268,10 +268,7 @@ class TestCORSConfiguration:
         import backend.main
 
         importlib.reload(backend.main)
-        assert (
-            "https://engineer-cafe-navigator.company-997.workers.dev"
-            in backend.main.ALLOWED_ORIGINS
-        )
+        assert "https://frontend-delta-six-20.vercel.app" in backend.main.ALLOWED_ORIGINS
 
     def test_cors_custom_origins(self, monkeypatch):
         """With ALLOWED_ORIGINS set, custom origins are used"""

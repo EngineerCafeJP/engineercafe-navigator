@@ -261,13 +261,15 @@ jobs:
           path: backend/reports/
           retention-days: 30
 
-  # Backend: Deploy to Cloud Run (staging)
+  # Backend: Deploy to Cloud Run
   # Only runs on push to develop after backend tests pass
   # NOTE: This is an optional deploy job - not included in ci-success gate
   #
   # Deployment strategy:
-  #   - develop branch -> staging (Cloud Run, asia-northeast1)
-  #   - main branch -> production (separate environment, not yet configured)
+  #   - develop branch -> Cloud Run (asia-northeast1) with ENVIRONMENT=production
+  #
+  # IMPORTANT: Use --update-secrets (NOT --set-secrets) to avoid destroying
+  # existing secret bindings like API_SECRET_KEY. See CRIT-1 (2026-03-18).
   #
   # TTS services (VoiceVox, Kokoro) are NOT available on Cloud Run.
   # They require dedicated GPU/CPU instances or external API alternatives.
@@ -316,8 +318,8 @@ jobs:
             --cpu 2 \
             --min-instances 0 \
             --max-instances 3 \
-            --update-env-vars "ENVIRONMENT=production,TTS_PROVIDER=voicevox,VOICEVOX_API_URL=https://voicevox-proto-639959525777.asia-northeast2.run.app" \
-            --set-secrets "OPENROUTER_API_KEY=OPENROUTER_API_KEY:latest,SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_KEY=SUPABASE_KEY:latest,SUPABASE_DB_URI=SUPABASE_DB_URI:latest"
+            --update-env-vars "ENVIRONMENT=production,TTS_PROVIDER=voicevox,VOICEVOX_API_URL=https://voicevox-proto-639959525777.asia-northeast2.run.app,ALLOWED_ORIGINS=https://frontend-delta-six-20.vercel.app" \
+            --update-secrets "OPENROUTER_API_KEY=OPENROUTER_API_KEY:latest,SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_KEY=SUPABASE_KEY:latest,SUPABASE_DB_URI=SUPABASE_DB_URI:latest,API_SECRET_KEY=API_SECRET_KEY:latest"
 
       - name: Smoke test deployed service
         run: |
@@ -331,48 +333,9 @@ jobs:
           echo "$HEALTH"
           echo "$HEALTH" | python3 -c "import sys,json; d=json.load(sys.stdin); assert d['status']=='ok', f'Health check failed: {d}'"
 
-  # Frontend: Deploy to Vercel production
-  # Only runs on push to develop after frontend build passes
-  # NOTE: This is an optional deploy job - not included in ci-success gate
-  #
-  # Vercel Production Branch is configured as "main", but this repo promotes
-  # frontend changes from "develop", so CI triggers an explicit production deploy.
-  frontend-deploy-production:
-    needs: [changes, frontend-build]
-    if: needs.changes.outputs.frontend == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/develop'
-    runs-on: ubuntu-latest
-    env:
-      VERCEL_ORG_ID: team_874Dc9xaSKgX5A7meLBjWNvy
-      VERCEL_PROJECT_ID: prj_QUUdYbZBhbQqu3jvhSDNqyqMzgPs
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      - name: Check VERCEL_TOKEN secret
-        id: vercel-token
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-        run: |
-          if [ -z "$VERCEL_TOKEN" ]; then
-            echo "::warning::VERCEL_TOKEN is not configured; skipping Vercel production deploy."
-            echo "configured=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "configured=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Install Vercel CLI
-        if: steps.vercel-token.outputs.configured == 'true'
-        run: npm i -g vercel
-
-      - name: Deploy frontend to Vercel production
-        if: steps.vercel-token.outputs.configured == 'true'
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-        run: vercel deploy --prod --yes --archive=tgz
+  # Frontend: Vercel deploy is handled by Vercel Deploy Hook (auto-deploy on push).
+  # The former CI-based `frontend-deploy-production` job was removed 2026-03-18
+  # because Vercel's Deploy Hook integration is sufficient and more reliable.
 
   # Final status check for branch protection
   ci-success:
@@ -382,12 +345,23 @@ jobs:
     steps:
       - name: Check all jobs passed
         run: |
-          if [[ "${{ needs.frontend-lint.result }}" == "failure" ]] || \
-             [[ "${{ needs.frontend-typecheck.result }}" == "failure" ]] || \
-             [[ "${{ needs.frontend-build.result }}" == "failure" ]] || \
-             [[ "${{ needs.backend-lint.result }}" == "failure" ]] || \
-             [[ "${{ needs.backend-test.result }}" == "failure" ]]; then
-            echo "One or more jobs failed"
+          # Each job result is one of: success, failure, cancelled, skipped.
+          # "skipped" is OK — it means the path-filter determined no changes
+          # in that area (e.g., backend-only PR skips frontend jobs).
+          # We fail on "failure" or "cancelled".
+          FAILED=false
+          for job_result in \
+            "${{ needs.frontend-lint.result }}" \
+            "${{ needs.frontend-typecheck.result }}" \
+            "${{ needs.frontend-build.result }}" \
+            "${{ needs.backend-lint.result }}" \
+            "${{ needs.backend-test.result }}"; do
+            if [[ "$job_result" == "failure" ]] || [[ "$job_result" == "cancelled" ]]; then
+              FAILED=true
+            fi
+          done
+          if [[ "$FAILED" == "true" ]]; then
+            echo "One or more jobs failed or were cancelled"
             exit 1
           fi
-          echo "All CI checks passed!"
+          echo "All CI checks passed (skipped jobs are OK — no changes in that area)"

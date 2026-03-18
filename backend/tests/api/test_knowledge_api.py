@@ -66,53 +66,50 @@ def test_get_knowledge_categories(mock_get_sb):
 
     table_mock = mock_sb.table.return_value
 
-    category_query = MagicMock()
-    category_query.execute.return_value = _mock_table_result(
+    # Single query returns all 4 columns; Python-side deduplication handles the rest
+    combined_query = MagicMock()
+    combined_query.execute.return_value = _mock_table_result(
         [
-            {"category": "facility-info"},
-            {"category": "hours"},
-            {"category": "hours"},
-            {"category": None},
+            {
+                "category": "facility-info",
+                "subcategory": "equipment",
+                "source": "manual",
+                "language": "ja",
+            },
+            {
+                "category": "hours",
+                "subcategory": "holiday",
+                "source": "web",
+                "language": "en",
+            },
+            {
+                "category": "hours",
+                "subcategory": "weekday",
+                "source": "manual",
+                "language": "ja",
+            },
+            {
+                "category": "hours",
+                "subcategory": "holiday",
+                "source": "manual",
+                "language": "ja",
+            },
+            {
+                "category": "facility-info",
+                "subcategory": None,
+                "source": None,
+                "language": None,
+            },
+            {
+                "category": None,
+                "subcategory": None,
+                "source": None,
+                "language": None,
+            },
         ]
     )
 
-    subcategory_query = MagicMock()
-    subcategory_query.execute.return_value = _mock_table_result(
-        [
-            {"category": "hours", "subcategory": "holiday"},
-            {"category": "hours", "subcategory": "weekday"},
-            {"category": "hours", "subcategory": "holiday"},
-            {"category": "facility-info", "subcategory": "equipment"},
-            {"category": "facility-info", "subcategory": None},
-        ]
-    )
-
-    source_query = MagicMock()
-    source_query.execute.return_value = _mock_table_result(
-        [
-            {"source": "manual"},
-            {"source": "web"},
-            {"source": "manual"},
-            {"source": None},
-        ]
-    )
-
-    language_query = MagicMock()
-    language_query.execute.return_value = _mock_table_result(
-        [
-            {"language": "ja"},
-            {"language": "en"},
-            {"language": "ja"},
-            {"language": None},
-        ]
-    )
-
-    table_mock.select.side_effect = [
-        category_query,
-        subcategory_query,
-        source_query,
-        language_query,
-    ]
+    table_mock.select.return_value = combined_query
 
     response = client.get("/api/knowledge/categories")
 

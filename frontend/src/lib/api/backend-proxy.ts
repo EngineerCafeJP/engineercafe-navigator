@@ -58,10 +58,14 @@ export async function backendFetch<T = unknown>(
     mergedHeaders["X-API-Key"] = apiKey;
   }
 
+  // 35s > backend's 30s workflow timeout, so the backend can return its
+  // graceful timeout response before the frontend aborts the connection.
+  const effectiveSignal = signal ?? AbortSignal.timeout(35_000);
+
   const fetchInit: RequestInit = {
     method,
     headers: mergedHeaders,
-    signal,
+    signal: effectiveSignal,
   };
 
   if (body !== undefined && method !== "GET") {

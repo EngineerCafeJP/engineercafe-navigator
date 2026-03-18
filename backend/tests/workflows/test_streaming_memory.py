@@ -558,18 +558,19 @@ class TestConcurrentInvocations:
 
             call_count = 0
 
-            async def mock_answer(query, **kwargs):
+            async def mock_graph_ainvoke(state, *, config=None, context=None):
                 nonlocal call_count
                 call_count += 1
                 # asyncio.sleep で並行性をシミュレート
                 await asyncio.sleep(0.01)
                 return {
-                    "answer": f"Response to: {query}",
+                    **state,
+                    "answer": f"Response to: {state.get('query', '')}",
                     "emotion": "neutral",
                     "metadata": {},
                 }
 
-            workflow._general_knowledge_agent.answer_query = AsyncMock(side_effect=mock_answer)
+            workflow.graph.ainvoke = AsyncMock(side_effect=mock_graph_ainvoke)
 
             tasks = [
                 workflow.ainvoke(
