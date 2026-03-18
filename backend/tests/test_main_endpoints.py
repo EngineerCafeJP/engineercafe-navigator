@@ -269,7 +269,7 @@ class TestCORSConfiguration:
 
         importlib.reload(backend.main)
         assert (
-            "https://engineer-cafe-navigator.company-997.workers.dev"
+            "https://frontend-delta-six-20.vercel.app"
             in backend.main.ALLOWED_ORIGINS
         )
 

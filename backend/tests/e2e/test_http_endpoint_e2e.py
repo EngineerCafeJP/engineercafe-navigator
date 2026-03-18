@@ -439,7 +439,7 @@ class TestMiddleware:
 
     async def test_cors_headers_on_preflight(self, client: httpx.AsyncClient):
         """OPTIONS リクエストで CORS ヘッダーが設定されること"""
-        production_origin = "https://engineer-cafe-navigator.company-997.workers.dev"
+        production_origin = "https://frontend-delta-six-20.vercel.app"
         response = await client.options(
             "/api/chat",
             headers={
@@ -457,7 +457,7 @@ class TestMiddleware:
 
     async def test_cors_allows_configured_origin(self, client: httpx.AsyncClient):
         """設定済みのオリジンが CORS で許可されること"""
-        production_origin = "https://engineer-cafe-navigator.company-997.workers.dev"
+        production_origin = "https://frontend-delta-six-20.vercel.app"
         response = await client.options(
             "/api/chat",
             headers={
