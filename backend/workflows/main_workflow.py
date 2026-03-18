@@ -1072,7 +1072,22 @@ class MainWorkflow:
         await self._ensure_checkpointer_ready(config, state["session_id"])
         visitor_id = input_data.get("visitor_id") or input_data.get("session_id", "anonymous")
         context = WorkflowContext(user_id=visitor_id)
-        result = await self.graph.ainvoke(state, config=config, context=context)
+
+        try:
+            result = await asyncio.wait_for(
+                self.graph.ainvoke(state, config=config, context=context),
+                timeout=30,
+            )
+        except asyncio.TimeoutError:
+            logger.error(
+                "Workflow timed out after 30s for session %s",
+                state["session_id"],
+            )
+            return {
+                "answer": "申し訳ございません。処理がタイムアウトしました。",
+                "emotion": "neutral",
+                "metadata": {"error": "Request timed out after 30 seconds"},
+            }
 
         return {
             "answer": result.get("answer", ""),

@@ -1,12 +1,29 @@
 import { rollbackManager } from '@/lib/rollback-manager';
 import crypto from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 
 import {
   createBackendErrorResponse,
   createInternalServerErrorResponse,
 } from '@/app/api/_shared/backend-error-response';
 import { backendFetch } from '@/lib/api/backend-proxy';
+
+/**
+ * Strict Zod schema for alert webhook payloads.
+ * Only known alert types and severity levels are accepted.
+ * This prevents crafted payloads from triggering emergencyShutdown().
+ */
+const AlertPayloadSchema = z.object({
+  id: z.string().max(256).optional(),
+  type: z.enum(['error_rate', 'response_time', 'cache_hit_rate', 'api_failure', 'memory_usage']),
+  severity: z.enum(['info', 'warning', 'critical']),
+  metric: z.string().min(1).max(256),
+  value: z.number().finite(),
+  threshold: z.number().finite(),
+  source: z.string().min(1).max(256),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
 
 /**
  * Webhook endpoint for production alerts
@@ -34,7 +51,21 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    const alert = await request.json();
+    const rawBody = await request.json();
+    const parsed = AlertPayloadSchema.safeParse(rawBody);
+    if (!parsed.success) {
+      return NextResponse.json(
+        {
+          error: 'Invalid alert payload',
+          details: parsed.error.issues.map((i) => ({
+            path: i.path.join('.'),
+            message: i.message,
+          })),
+        },
+        { status: 400 }
+      );
+    }
+    const alert = parsed.data;
 
     const response = await backendFetch('/api/alerts', { method: 'POST', body: alert });
     if (!response.ok) {
@@ -172,17 +203,8 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// Type definitions
-interface AlertPayload {
-  id?: string;
-  type: 'error_rate' | 'response_time' | 'cache_hit_rate' | 'api_failure' | 'memory_usage';
-  severity: 'info' | 'warning' | 'critical';
-  metric: string;
-  value: number;
-  threshold: number;
-  source: string;
-  metadata?: Record<string, any>;
-}
+// Type definitions (derived from Zod schema)
+type AlertPayload = z.infer<typeof AlertPayloadSchema>;
 
 interface AlertResponse {
   received: boolean;

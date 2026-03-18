@@ -167,39 +167,54 @@ def _rollback_uploaded_chunks(supabase: Any, inserted_ids: List[str]) -> None:
 
 
 def _build_knowledge_categories_response(supabase: Any) -> KnowledgeCategoriesResponse:
-    """カテゴリ関連の編集設定データを構築する"""
-    cat_result = supabase.table("knowledge_base").select("category").execute()
-    categories = sorted({row["category"] for row in (cat_result.data or []) if row.get("category")})
+    """カテゴリ関連の編集設定データを構築する
 
-    sub_result = supabase.table("knowledge_base").select("category,subcategory").execute()
+    単一クエリで必要な4カラムのみ取得し、Python側で重複排除する。
+    Supabase REST APIはSELECT DISTINCTを直接サポートしないため、
+    カラム指定 + Python setで代替する。
+    """
+    result = (
+        supabase.table("knowledge_base").select("category, subcategory, source, language").execute()
+    )
+    rows = result.data or []
+
+    categories: set[str] = set()
     subcategory_sets: Dict[str, set[str]] = {}
-    for row in sub_result.data or []:
-        category = row.get("category")
-        subcategory = row.get("subcategory")
-        if not category or not subcategory:
-            continue
-        subcategory_sets.setdefault(category, set()).add(subcategory)
+    sources: set[str] = set()
+    languages: set[str] = set()
 
-    subcategories = {
+    for row in rows:
+        cat = row.get("category")
+        sub = row.get("subcategory")
+        src = row.get("source")
+        lang = row.get("language")
+
+        if cat:
+            categories.add(cat)
+            if sub:
+                subcategory_sets.setdefault(cat, set()).add(sub)
+        if src:
+            sources.add(src)
+        if lang:
+            languages.add(lang)
+
+    sorted_categories = sorted(categories)
+    sorted_subcategories = {
         category: sorted(values) for category, values in sorted(subcategory_sets.items())
     }
-
-    src_result = supabase.table("knowledge_base").select("source").execute()
-    sources = sorted({row["source"] for row in (src_result.data or []) if row.get("source")})
-
-    lang_result = supabase.table("knowledge_base").select("language").execute()
-    languages = sorted({row["language"] for row in (lang_result.data or []) if row.get("language")})
+    sorted_sources = sorted(sources)
+    sorted_languages = sorted(languages)
 
     return KnowledgeCategoriesResponse(
-        categories=categories,
-        subcategories=subcategories,
-        sources=sources,
-        languages=languages,
+        categories=sorted_categories,
+        subcategories=sorted_subcategories,
+        sources=sorted_sources,
+        languages=sorted_languages,
         stats=KnowledgeCategoriesStats(
-            totalCategories=len(categories),
-            totalSubcategories=sum(len(values) for values in subcategories.values()),
-            totalSources=len(sources),
-            totalLanguages=len(languages),
+            totalCategories=len(sorted_categories),
+            totalSubcategories=sum(len(values) for values in sorted_subcategories.values()),
+            totalSources=len(sorted_sources),
+            totalLanguages=len(sorted_languages),
         ),
     )
 
@@ -214,7 +229,7 @@ def _build_knowledge_categories_response(supabase: Any) -> KnowledgeCategoriesRe
 async def get_knowledge_categories(request: Request):
     """ナレッジカテゴリ一覧取得"""
     try:
-        return _build_knowledge_categories_response(_get_supabase())
+        return await asyncio.to_thread(_build_knowledge_categories_response, _get_supabase())
     except HTTPException:
         raise
     except Exception as e:
@@ -227,7 +242,7 @@ async def get_knowledge_categories(request: Request):
 async def get_editor_config(request: Request):
     """エディタ起動時の設定データを取得"""
     try:
-        return _build_knowledge_categories_response(_get_supabase())
+        return await asyncio.to_thread(_build_knowledge_categories_response, _get_supabase())
     except HTTPException:
         raise
     except Exception as e:

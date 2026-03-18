@@ -58,10 +58,12 @@ export async function backendFetch<T = unknown>(
     mergedHeaders["X-API-Key"] = apiKey;
   }
 
+  const effectiveSignal = signal ?? AbortSignal.timeout(25_000);
+
   const fetchInit: RequestInit = {
     method,
     headers: mergedHeaders,
-    signal,
+    signal: effectiveSignal,
   };
 
   if (body !== undefined && method !== "GET") {
