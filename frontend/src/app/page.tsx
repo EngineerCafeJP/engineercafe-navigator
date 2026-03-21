@@ -1,5 +1,7 @@
 'use client';
 
+import ReactMarkdown from 'react-markdown';
+
 import { cn } from '@/lib/cn';
 import { ClarificationUtils } from '@/lib/clarification-utils';
 import {
@@ -413,12 +415,37 @@ export default function Home() {
                         data-testid="response-bubble"
                       >
                         <div className="h-full overflow-y-auto pr-1">
-                          <p
+                          <div
                             className="text-base leading-7 text-pretty text-white/90 md:text-lg md:leading-8"
                             data-testid="response-text"
                           >
-                            {voice.response || bubbleBody}
-                          </p>
+                            <ReactMarkdown
+                              components={{
+                                p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+                                strong: ({ children }) => <strong className="font-bold text-white">{children}</strong>,
+                                ul: ({ children }) => <ul className="mb-2 ml-4 list-disc">{children}</ul>,
+                                ol: ({ children }) => <ol className="mb-2 ml-4 list-decimal">{children}</ol>,
+                                li: ({ children }) => <li className="mb-1">{children}</li>,
+                                h1: ({ children }) => <h2 className="mb-2 text-lg font-bold text-white">{children}</h2>,
+                                h2: ({ children }) => <h3 className="mb-2 text-base font-bold text-white">{children}</h3>,
+                                h3: ({ children }) => <h4 className="mb-1 text-sm font-bold text-white">{children}</h4>,
+                                code: ({ children }) => (
+                                  <code className="rounded bg-white/10 px-1 py-0.5 text-sm">{children}</code>
+                                ),
+                                pre: ({ children }) => (
+                                  <pre className="mb-2 overflow-x-auto rounded bg-white/10 p-2 text-sm">{children}</pre>
+                                ),
+                                blockquote: ({ children }) => (
+                                  <blockquote className="mb-2 border-l-4 border-white/30 pl-4 italic text-white/70">{children}</blockquote>
+                                ),
+                                a: ({ href, children }) => (
+                                  <a href={href} className="text-blue-300 underline" target="_blank" rel="noopener noreferrer">{children}</a>
+                                ),
+                              }}
+                            >
+                              {voice.response || bubbleBody}
+                            </ReactMarkdown>
+                          </div>
                         </div>
                       </div>
                     </div>
