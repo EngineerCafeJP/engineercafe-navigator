@@ -432,6 +432,12 @@ export default function Home() {
                                 code: ({ children }) => (
                                   <code className="rounded bg-white/10 px-1 py-0.5 text-sm">{children}</code>
                                 ),
+                                pre: ({ children }) => (
+                                  <pre className="mb-2 overflow-x-auto rounded bg-white/10 p-2 text-sm">{children}</pre>
+                                ),
+                                blockquote: ({ children }) => (
+                                  <blockquote className="mb-2 border-l-4 border-white/30 pl-4 italic text-white/70">{children}</blockquote>
+                                ),
                                 a: ({ href, children }) => (
                                   <a href={href} className="text-blue-300 underline" target="_blank" rel="noopener noreferrer">{children}</a>
                                 ),
