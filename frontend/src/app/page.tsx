@@ -638,7 +638,7 @@ export default function Home() {
                   style={screenPadding}
                 >
                   <div className="pointer-events-auto flex h-full w-full max-w-6xl transform-gpu rounded-[32px] bg-white/95 shadow-2xl transition-all duration-300 ease-out">
-                    <div className="relative flex h-full w-full flex-col bg-white rounded-[32px]">
+                    <div className="relative flex h-full w-full flex-col overflow-hidden rounded-[32px]">
                       <button
                         type="button"
                         onClick={() => setShowSlideMode(false)}
