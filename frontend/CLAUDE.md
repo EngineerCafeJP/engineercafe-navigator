@@ -28,7 +28,7 @@ pnpm deploy:dev       # Deploy to Vercel dev environment
 - `frontend/.env.example` is pruned to the manually managed vars still documented for `frontend/src`.
 - Keep `BACKEND_API_URL`, `BACKEND_API_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, and `NEXT_PUBLIC_SUPABASE_ANON_KEY` populated in local/dev envs.
 - Runtime-managed vars such as `NODE_ENV` and `VERCEL_DEPLOYMENT_ID` are intentionally not listed in `.env.example`.
-- Additional ad hoc flags still read in `frontend/src` include `GOOGLE_CALENDAR_ICAL_URL`, `NEXT_PUBLIC_SHOW_AVATAR_SETTINGS`, and the `FF_*` rollout flags in `src/lib/feature-flags.ts`.
+- Additional ad hoc flags still read in `frontend/src` include `NEXT_PUBLIC_SHOW_AVATAR_SETTINGS` and the `FF_*` rollout flags in `src/lib/feature-flags.ts`.
 
 ## Key Directories
 

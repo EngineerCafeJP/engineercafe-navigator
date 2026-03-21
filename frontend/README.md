@@ -19,6 +19,7 @@ Main route groups:
 - `src/app/page.tsx`: main kiosk UI
 - `src/app/api/voice/route.ts`: proxy to backend voice API
 - `src/app/api/qa/route.ts`: proxy to backend chat API
+- `src/app/api/calendar/route.ts`: proxy to backend calendar API
 - `src/app/api/slides/route.ts`: proxy to backend slides API
 - `src/app/api/character/route.ts`: proxy to backend character API
 - `src/app/api/reception/*`: proxy to backend reception API
