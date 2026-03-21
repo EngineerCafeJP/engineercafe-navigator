@@ -610,7 +610,8 @@ _CALENDAR_TIME_RANGES = {"today", "thisWeek", "nextWeek", "thisMonth"}
 
 
 @app.get("/api/calendar", dependencies=[Depends(verify_api_key)])
-async def calendar_api(timeRange: str = "thisWeek"):
+@_rate_limit("60/minute")
+async def calendar_api(request: Request, timeRange: str = "thisWeek"):
     """Return calendar events fetched from the backend-managed ICS feed."""
     if timeRange not in _CALENDAR_TIME_RANGES:
         raise HTTPException(status_code=400, detail="Invalid timeRange")

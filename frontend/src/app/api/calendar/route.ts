@@ -6,10 +6,17 @@ import {
 } from '@/app/api/_shared/backend-error-response';
 import { backendFetch } from '@/lib/api/backend-proxy';
 
-export async function GET(_request: NextRequest) {
+export async function GET(request: NextRequest) {
   try {
+    const timeRange = request.nextUrl.searchParams.get('timeRange');
+    const params: Record<string, string> = {};
+    if (timeRange) {
+      params.timeRange = timeRange;
+    }
+
     const response = await backendFetch('/api/calendar', {
       method: 'GET',
+      params,
     });
 
     if (!response.ok) {
@@ -18,7 +25,6 @@ export async function GET(_request: NextRequest) {
 
     return NextResponse.json(response.data, { status: response.status });
   } catch (error) {
-    console.error('Calendar API error:', error);
     return createInternalServerErrorResponse(error, 'Failed to fetch calendar data');
   }
 }
