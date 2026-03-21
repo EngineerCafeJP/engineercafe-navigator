@@ -1,0 +1,1 @@
+{"task":"Wave 4a: sensor-trigger webhook + WebSocket endpoint for reception flow","evaluated_skills":["senior-backend","websocket-engineer"],"selected_skill":null,"reason":"Backend Python implementation - no frontend skill needed. WebSocket is simple enough to implement directly without spawning websocket-engineer agent. LSP unavailable for .py files."}
