@@ -18,6 +18,7 @@ This service is the authoritative runtime for chat, voice, slides, character con
 Current important endpoints:
 
 - `GET /health`
+- `GET /api/calendar`
 - `POST /api/chat`
 - `POST /api/chat/stream`
 - `POST /api/voice`
