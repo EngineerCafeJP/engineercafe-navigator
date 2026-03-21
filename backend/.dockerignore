@@ -52,8 +52,10 @@ htmlcov/
 .git/
 .gitignore
 
-# Documentation
-*.md
+# Documentation (keep slides/*.md for Marp content)
+README.md
+CHANGELOG.md
+CONTRIBUTING.md
 docs/
 
 # Supabase
