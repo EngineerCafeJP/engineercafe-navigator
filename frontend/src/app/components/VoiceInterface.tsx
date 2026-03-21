@@ -338,7 +338,7 @@ export default function VoiceInterface({
         voiceController.notifySpeakingComplete(true);
         return;
       }
-      const audioBlob = new Blob([audioBytes], { type: 'audio/mpeg' });
+      const audioBlob = new Blob([audioBytes], { type: 'audio/wav' });
       const audioUrl = URL.createObjectURL(audioBlob);
       const audioService = ensureAudioService();
 
@@ -368,7 +368,7 @@ export default function VoiceInterface({
         },
       });
 
-      const result = await audioService.playAudio(audioUrl);
+      const result = await audioService.playAudio(audioBlob);
       if (!result.success) {
         cleanupAudioPlayback();
         voiceController.notifySpeakingComplete(true);
