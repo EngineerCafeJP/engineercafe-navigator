@@ -11,6 +11,14 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { action, question, sessionId, language, text, fromLanguage, toLanguage, visitorId } = body;
 
+    const query = (question || text || '').trim();
+    if (!query) {
+      return NextResponse.json(
+        { error: '質問を入力してください', success: false },
+        { status: 400 }
+      );
+    }
+
     const response = await backendFetch<{
       answer?: string;
       emotion?: string;
@@ -18,7 +26,7 @@ export async function POST(request: NextRequest) {
       vrm_control?: { name: string; duration: number; keyframes: unknown[] } | null;
     }>('/api/chat', {
       body: {
-        query: question || text,
+        query,
         session_id: sessionId,
         language: language || 'ja',
         visitor_id: visitorId,

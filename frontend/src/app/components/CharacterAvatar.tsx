@@ -3,7 +3,7 @@
 import { EmotionData, EmotionManager } from '@/lib/emotion-manager';
 import { ExpressionController } from '@/lib/expression-controller';
 import { LipSyncAnalyzer } from '@/lib/lip-sync-analyzer';
-import { VRMBlendShapeController, VRMUtils, getMouthOverrideFactor } from '@/lib/vrm-utils';
+import { VRMBlendShapeController, VRMUtils, getLipSyncFactorFromEmotions } from '@/lib/vrm-utils';
 import { VRM, VRMLoaderPlugin } from '@pixiv/three-vrm';
 import { VRMAnimationLoaderPlugin, createVRMAnimationClip } from '@pixiv/three-vrm-animation';
 import { Settings, VolumeX } from 'lucide-react';
@@ -16,7 +16,7 @@ import SettingsPanel, {
   type SettingsPanelPropsFromSource,
 } from './SettingsPanel';
 import { type BackgroundOption as BackgroundSelectorOption } from './BackgroundSelector';
-import { type VRMAnimationOption } from './ControlsSettings';
+import { type VRMAnimationOption } from './CharacterSettings';
 
 interface CharacterState {
   expression: string;
@@ -79,18 +79,24 @@ interface CharacterAvatarProps {
   extraSettingsTab?: { label: string; content: ReactNode };
   /** When set, panel is rendered by parent (e.g. page); this ref is filled with panel props each render */
   settingsPanelPropsRef?: React.MutableRefObject<SettingsPanelPropsFromSource | null>;
+  /** When using settingsPanelPropsRef, notify parent to re-render */
+  onSettingsPanelPropsChange?: (props: SettingsPanelPropsFromSource) => void;
 }
 
 const SETTINGS_TAB_LABELS: Record<
   'controls' | 'keyframe' | 'background' | 'lighting' | 'audio',
   string
 > = {
-  controls: 'Controls',
+  controls: 'Character',
   keyframe: 'Keyframe',
   background: 'Background',
   lighting: 'Lighting',
   audio: 'Audio',
 };
+
+const VISEME_NAMES = ['aa', 'ih', 'ou', 'ee', 'oh'] as const;
+const MIN_LIP_SYNC_UI_FACTOR = 0.2;
+const VISEME_SMOOTHING_ALPHA = 0.35;
 
 const DEFAULT_LOOKAT_TARGET = new THREE.Vector3(0, 1, 1); // 1m ahead, 1m up
 
@@ -189,6 +195,7 @@ export default function CharacterAvatar({
   onSettingsClose,
   extraSettingsTab,
   settingsPanelPropsRef,
+  onSettingsPanelPropsChange,
 }: CharacterAvatarProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -211,7 +218,13 @@ export default function CharacterAvatar({
   const keyframeAnimationTimeoutsRef = useRef<NodeJS.Timeout[]>([]);
   const playKeyframeAnimationInternalRef = useRef<((animation: CharacterAnimationData) => void) | null>(null);
   const setExpressionWeightsRef = useRef<(weights: Record<string, number>) => void>(() => {});
-  const expressionWeightsSyncRef = useRef<Record<string, number>>({});
+  // VRM-applied expression weights (includes visemes after attenuation)
+  const expressionWeightsAppliedRef = useRef<Record<string, number>>({});
+  // UI display values (visemes may be shown as estimated raw values)
+  const expressionWeightsDisplayRef = useRef<Record<string, number>>({});
+  const expressionWeightsUiRef = useRef<Record<string, number>>({});
+  const lastManualExpressionUpdateMsRef = useRef<Record<string, number>>({});
+  const lastSettingsPanelEmitMsRef = useRef(0);
   const initializeSceneRef = useRef<() => void | (() => void)>(() => undefined);
   const loadCharacterRef = useRef<() => Promise<void>>(async () => {});
   const cleanupRef = useRef<() => void>(() => {});
@@ -237,7 +250,10 @@ export default function CharacterAvatar({
   const [vrmExpressionNames, setVrmExpressionNames] = useState<string[]>([]);
   const [expressionWeights, setExpressionWeights] = useState<Record<string, number>>({});
 
-  setExpressionWeightsRef.current = setExpressionWeights;
+  setExpressionWeightsRef.current = (weights: Record<string, number>) => {
+    expressionWeightsUiRef.current = { ...weights };
+    setExpressionWeights(weights);
+  };
 
   // Initialize Three.js scene
   useEffect(() => {
@@ -312,7 +328,6 @@ export default function CharacterAvatar({
   // Update character state when props change
   useEffect(() => {
     if (charactersRef.current) {
-      void updateCharacterExpressionRef.current(initialExpression);
       void updateCharacterAnimationRef.current(initialAnimation);
     }
   }, [initialExpression, initialAnimation]);
@@ -323,7 +338,6 @@ export default function CharacterAvatar({
     }
 
     const sessionPose = getSessionPoseOffsets(sessionState);
-    void updateCharacterExpressionRef.current(sessionPose.expression);
     void updateCharacterAnimationRef.current(sessionPose.animation);
   }, [sessionState]);
 
@@ -836,7 +850,7 @@ export default function CharacterAvatar({
         }
       }
 
-      // Create viseme control function (attenuate intensity when expression uses mouth)
+      // Create viseme control function (attenuate based on active emotion max)
       const setViseme = (viseme: string, intensity: number) => {
         if (blendShapeControllerRef.current) {
           const visemeMap: Record<string, string> = {
@@ -848,8 +862,7 @@ export default function CharacterAvatar({
             'Closed': 'neutral'
           };
           const vrmExpression = visemeMap[viseme] || 'neutral';
-          const { expression, weight } = currentExpressionRef.current;
-          const factor = getMouthOverrideFactor(expression, weight);
+          const factor = getLipSyncFactorFromEmotions(expressionWeightsAppliedRef.current);
           blendShapeControllerRef.current.setViseme(vrmExpression, intensity * factor);
         }
       };
@@ -975,7 +988,16 @@ export default function CharacterAvatar({
               });
             }
             if (keyframe.expressions && blendShapeControllerRef.current) {
-              blendShapeControllerRef.current.setExpressions(keyframe.expressions);
+              const factor = getLipSyncFactorFromEmotions(keyframe.expressions);
+              const blended = { ...keyframe.expressions };
+              VISEME_NAMES.forEach((name) => {
+                const v = blended[name];
+                if (typeof v === 'number') {
+                  blended[name] = v * factor;
+                }
+              });
+
+              blendShapeControllerRef.current.setExpressions(blended);
               const current = blendShapeControllerRef.current.getCurrentExpressions();
               setExpressionWeightsRef.current(current);
             }
@@ -1042,8 +1064,21 @@ export default function CharacterAvatar({
   };
 
   const handle_expression_weight_change = (name: string, weight: number) => {
-    setExpressionWeights((prev) => ({ ...prev, [name]: weight }));
-    blendShapeControllerRef.current?.setExpression(name, weight);
+    const is_viseme = (VISEME_NAMES as readonly string[]).includes(name);
+    const factor = is_viseme
+      ? getLipSyncFactorFromEmotions(expressionWeightsAppliedRef.current)
+      : 1;
+    const applied_weight = is_viseme ? weight * factor : weight;
+
+    // UI holds the raw value; attenuation happens only when applying to the VRM.
+    const next = { ...expressionWeightsUiRef.current, [name]: weight };
+    expressionWeightsUiRef.current = next;
+    lastManualExpressionUpdateMsRef.current = {
+      ...lastManualExpressionUpdateMsRef.current,
+      [name]: Date.now(),
+    };
+    setExpressionWeights(next);
+    blendShapeControllerRef.current?.setExpression(name, applied_weight);
   };
 
   useEffect(() => {
@@ -1079,45 +1114,28 @@ export default function CharacterAvatar({
         // Apply expression to VRM model
         const expressionManager = charactersRef.current.expressionManager;
         if (expressionManager) {
-          // Map emotion names to VRM expression names if needed
-          const expressionMapping: Record<string, string> = {
-            'neutral': 'neutral',
-            'happy': 'happy',
-            'sad': 'sad',
-            'angry': 'angry',
-            'surprised': 'happy',
-            'relaxed': 'relaxed',
-            'thinking': 'relaxed',
-            'speaking': 'happy',
-            'listening': 'happy',
-            'greeting': 'happy',
-            'explaining': 'neutral'
-          };
-          
-          const vrmExpression = expressionMapping[expression] || expression;
-          
           // Get available expressions for debugging
           const availableExpressions = Object.keys(expressionManager.expressionMap);
           
           // Reset all expressions with gradual transition
           Object.keys(expressionManager.expressionMap).forEach(name => {
             const currentValue = expressionManager.getValue(name) || 0;
-            if (currentValue > 0 && name !== vrmExpression) {
+            if (currentValue > 0 && name !== expression) {
               // Gradual fade out for smooth transition
               expressionManager.setValue(name, 0);
             }
           });
 
           // Set new expression with full intensity
-          if (expressionManager.expressionMap[vrmExpression]) {
-            expressionManager.setValue(vrmExpression, 1);
+          if (expressionManager.expressionMap[expression]) {
+            expressionManager.setValue(expression, 1);
             // Store current expression for restoration after lip-sync
-            currentExpressionRef.current = { expression: vrmExpression, weight: 1.0 };
+            currentExpressionRef.current = { expression, weight: 1.0 };
           } else {
             // Try to find a similar expression
             const similarExpression = availableExpressions.find(expr => 
-              expr.toLowerCase().includes(vrmExpression.toLowerCase()) ||
-              vrmExpression.toLowerCase().includes(expr.toLowerCase())
+              expr.toLowerCase().includes(expression.toLowerCase()) ||
+              expression.toLowerCase().includes(expr.toLowerCase())
             );
             if (similarExpression) {
               expressionManager.setValue(similarExpression, 1);
@@ -1261,28 +1279,76 @@ export default function CharacterAvatar({
     if (charactersRef.current) {
       charactersRef.current.update(deltaTime);
 
-      // Sync expression weights from VRM to Controls sliders (keyframe, .vrma, lip-sync, etc.)
+      // Sync expression weights from VRM to Character sliders (keyframe, .vrma, lip-sync, etc.)
       const blend_shape = blendShapeControllerRef.current;
       if (blend_shape) {
         const current = blend_shape.getCurrentExpressions();
-        const last = expressionWeightsSyncRef.current;
+        const last = expressionWeightsAppliedRef.current;
         const current_keys = Object.keys(current);
         const last_keys = Object.keys(last);
+        const EPSILON = 0.0001;
+        const MANUAL_HOLD_MS = 250;
         let changed = current_keys.length !== last_keys.length;
         if (!changed) {
           for (let i = 0; i < current_keys.length; i++) {
             const name = current_keys[i];
             const a = current[name] ?? 0;
             const b = last[name] ?? 0;
-            if (Math.abs(a - b) > 0.001) {
+            // Lip-sync (viseme) weights can change in very small increments; use a tighter epsilon
+            // so the UI sliders track the current VRM state smoothly.
+            if (Math.abs(a - b) > EPSILON) {
               changed = true;
               break;
             }
           }
         }
         if (changed) {
-          setExpressionWeightsRef.current(current);
-          expressionWeightsSyncRef.current = { ...current };
+          const now = Date.now();
+          const manual = lastManualExpressionUpdateMsRef.current;
+          const ui = expressionWeightsUiRef.current;
+          // Convert VRM-applied viseme (often attenuated) into an estimated raw value for UI display:
+          // raw ≈ applied / factor, where factor is based on active mouth-using emotions.
+          const factor = getLipSyncFactorFromEmotions(current);
+          const display: Record<string, number> = { ...current };
+          if (factor > 0.001) {
+            const effective_factor = Math.max(factor, MIN_LIP_SYNC_UI_FACTOR);
+            VISEME_NAMES.forEach((name) => {
+              const v = display[name];
+              if (typeof v === 'number') {
+                display[name] = Math.max(0, Math.min(1, v / effective_factor));
+              }
+            });
+          } else {
+            // When factor is 0, lip-sync is fully suppressed; display raw as 0 to avoid inf/NaN.
+            VISEME_NAMES.forEach((name) => {
+              if (typeof display[name] === 'number') {
+                display[name] = 0;
+              }
+            });
+          }
+
+          // Smooth viseme sliders to avoid visual jitter and division noise amplification.
+          const prev_display = expressionWeightsDisplayRef.current;
+          VISEME_NAMES.forEach((name) => {
+            const next_value = display[name];
+            const prev_value = prev_display[name];
+            if (typeof next_value === 'number' && typeof prev_value === 'number') {
+              display[name] =
+                prev_value + (next_value - prev_value) * VISEME_SMOOTHING_ALPHA;
+            }
+          });
+
+          // Preserve user's manual slider input briefly to avoid "fight" with VRM updates.
+          for (const [name, ts] of Object.entries(manual)) {
+            if (now - ts < MANUAL_HOLD_MS && typeof ui[name] === 'number') {
+              display[name] = ui[name];
+            }
+          }
+
+          setExpressionWeightsRef.current(display);
+          expressionWeightsDisplayRef.current = { ...display };
+          // Keep this ref as the VRM-applied values (not the UI display values) for stable change detection.
+          expressionWeightsAppliedRef.current = { ...current };
         }
       }
 
@@ -1419,7 +1485,7 @@ export default function CharacterAvatar({
       {/* Settings Panel - when settingsPanelPropsRef is set, parent renders the panel; otherwise render locally or via portal */}
       {(() => {
         if (settingsPanelPropsRef) {
-          settingsPanelPropsRef.current = {
+          const next_props: SettingsPanelPropsFromSource = {
             controls_state: characterState,
             vrm_expression_names: vrmExpressionNames,
             expression_weights: expressionWeights,
@@ -1442,6 +1508,15 @@ export default function CharacterAvatar({
             on_run_keyframe: (animation) =>
               playKeyframeAnimationInternalRef.current?.(animation),
           };
+          settingsPanelPropsRef.current = next_props;
+          if (onSettingsPanelPropsChange) {
+            const now = Date.now();
+            const EMIT_INTERVAL_MS = 100;
+            if (now - lastSettingsPanelEmitMsRef.current >= EMIT_INTERVAL_MS) {
+              lastSettingsPanelEmitMsRef.current = now;
+              onSettingsPanelPropsChange(next_props);
+            }
+          }
           return null;
         }
 

@@ -1,6 +1,7 @@
 'use client';
 
 import { AudioQueue } from '@/lib/audio-queue';
+import { markAudioUserInteraction } from '@/lib/audio/audio-user-interaction-gate';
 import { MobileAudioService } from '@/lib/audio/mobile-audio-service';
 import { audioStateManager } from '@/lib/audio-state-manager';
 import { cn } from '@/lib/cn';
@@ -257,6 +258,7 @@ export default function VoiceInterface({
     wakeWords: DEFAULT_WAKE_WORDS,
     language: toLocale(currentLanguage),
     onWakeWord: () => {
+      markAudioUserInteraction();
       setError(null);
     },
   });
@@ -616,6 +618,7 @@ export default function VoiceInterface({
   }, [sessionState, startRecorderCapture, stopRecorderCapture, voiceController.shouldListen]);
 
   const startListening = useCallback(() => {
+    markAudioUserInteraction();
     cancelPendingRequest();
     stopPlayback(false);
     setError(null);

@@ -198,9 +198,9 @@ export class AudioInteractionManager {
     document.body.appendChild(this.interactionPromptElement);
     this.isPromptVisible = true;
 
-    // Add click handler
+    // Add click handler to unlock audio
     button.addEventListener('click', () => {
-      // This will trigger the existing interaction handler
+      markAudioUserInteraction();
     });
 
     // Auto-hide after timeout

@@ -7,7 +7,7 @@ import {
   MessageSquare,
   Palette,
   Presentation,
-  SlidersHorizontal,
+  User,
   Volume2,
   X,
 } from 'lucide-react';
@@ -18,10 +18,10 @@ import BackgroundSelector, {
   type BackgroundOption as BackgroundSelectorOption,
 } from './BackgroundSelector';
 import CameraSettings from './CameraSettings';
-import ControlsSettings, {
+import CharacterSettings, {
   type ControlsState,
   type VRMAnimationOption,
-} from './ControlsSettings';
+} from './CharacterSettings';
 import EnvironmentSettings from './EnvironmentSettings';
 import KeyframeSettings from './KeyframeSettings';
 
@@ -30,7 +30,7 @@ const SETTINGS_TAB_LABELS: Record<
   string
 > = {
   camera: 'Camera',
-  controls: 'Controls',
+  controls: 'Character',
   keyframe: 'Keyframe',
   background: 'Background',
   lighting: 'Lighting',
@@ -52,7 +52,7 @@ export interface SettingsPanelProps {
   show_close_button?: boolean;
   on_close?: () => void;
   extra_tab?: { label: string; content: ReactNode };
-  /** Controls tab (uses ControlsSettings component) */
+  /** Character tab (uses CharacterSettings component) */
   controls_state: ControlsState;
   vrm_expression_names: string[];
   expression_weights: Record<string, number>;
@@ -176,7 +176,7 @@ export default function SettingsPanel({
             {tab === 'conversation' && <MessageSquare className="size-4" />}
             {tab === 'slides' && <Presentation className="size-4" />}
             {tab === 'camera' && <Camera className="size-4" />}
-            {tab === 'controls' && <SlidersHorizontal className="size-4" />}
+            {tab === 'controls' && <User className="size-4" />}
             {tab === 'keyframe' && <Film className="size-4" />}
             {tab === 'background' && <Palette className="size-4" />}
             {tab === 'lighting' && <Lightbulb className="size-4" />}
@@ -218,7 +218,7 @@ export default function SettingsPanel({
 
       {active_tab === 'controls' ? (
         <div className="mb-4">
-          <ControlsSettings
+          <CharacterSettings
             state={controls_state}
             vrmExpressionNames={vrm_expression_names}
             expressionWeights={expression_weights}

@@ -1,5 +1,8 @@
 'use client';
 
+import { markAudioUserInteraction } from '@/lib/audio/audio-user-interaction-gate';
+import ReactMarkdown from 'react-markdown';
+
 import { cn } from '@/lib/cn';
 import { ClarificationUtils } from '@/lib/clarification-utils';
 import {
@@ -242,12 +245,33 @@ export default function Home() {
   const [conversationHistory, setConversationHistory] = useState<ConversationHistoryItem[]>([]);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
   const settingsPanelPropsRef = useRef<SettingsPanelPropsFromSource | null>(null);
+  const [settingsPanelProps, setSettingsPanelProps] =
+    useState<SettingsPanelPropsFromSource | null>(null);
   const playKeyframeAnimationRef = useRef<((data: CharacterAnimationData) => void) | null>(null);
   const lastVrmControlPlayedRef = useRef<unknown>(null);
   const lastTranscriptRef = useRef<string>('');
   const lastResponseRef = useRef<string>('');
 
   const showAvatarControls = process.env.NEXT_PUBLIC_SHOW_AVATAR_SETTINGS === 'true';
+
+  const handleSettingsPanelPropsChange = useCallback(
+    (props: SettingsPanelPropsFromSource) => {
+      settingsPanelPropsRef.current = props;
+      // Avoid re-rendering the whole page when settings panel is closed.
+      if (showSettingsPanel) {
+        setSettingsPanelProps(props);
+      }
+    },
+    [showSettingsPanel],
+  );
+
+  useEffect(() => {
+    if (showSettingsPanel) {
+      setSettingsPanelProps(settingsPanelPropsRef.current);
+    } else {
+      setSettingsPanelProps(null);
+    }
+  }, [showSettingsPanel]);
 
   const startPresentation = useCallback((language: 'ja' | 'en') => {
     setCurrentLanguage(language);
@@ -345,6 +369,7 @@ export default function Home() {
           : { x: 0, y: -0.2, z: 0 };
 
         const submitTextDraft = async () => {
+          markAudioUserInteraction();
           const trimmed = textDraft.trim();
           if (!trimmed) {
             return;
@@ -391,6 +416,7 @@ export default function Home() {
                   onBackgroundChange={setCharacterBackground}
                   onLightingChange={setLightingIntensity}
                   settingsPanelPropsRef={settingsPanelPropsRef}
+                  onSettingsPanelPropsChange={handleSettingsPanelPropsChange}
                 />
               </div>
 
@@ -413,12 +439,37 @@ export default function Home() {
                         data-testid="response-bubble"
                       >
                         <div className="h-full overflow-y-auto pr-1">
-                          <p
+                          <div
                             className="text-base leading-7 text-pretty text-white/90 md:text-lg md:leading-8"
                             data-testid="response-text"
                           >
-                            {voice.response || bubbleBody}
-                          </p>
+                            <ReactMarkdown
+                              components={{
+                                p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+                                strong: ({ children }) => <strong className="font-bold text-white">{children}</strong>,
+                                ul: ({ children }) => <ul className="mb-2 ml-4 list-disc">{children}</ul>,
+                                ol: ({ children }) => <ol className="mb-2 ml-4 list-decimal">{children}</ol>,
+                                li: ({ children }) => <li className="mb-1">{children}</li>,
+                                h1: ({ children }) => <h2 className="mb-2 text-lg font-bold text-white">{children}</h2>,
+                                h2: ({ children }) => <h3 className="mb-2 text-base font-bold text-white">{children}</h3>,
+                                h3: ({ children }) => <h4 className="mb-1 text-sm font-bold text-white">{children}</h4>,
+                                code: ({ children }) => (
+                                  <code className="rounded bg-white/10 px-1 py-0.5 text-sm">{children}</code>
+                                ),
+                                pre: ({ children }) => (
+                                  <pre className="mb-2 overflow-x-auto rounded bg-white/10 p-2 text-sm">{children}</pre>
+                                ),
+                                blockquote: ({ children }) => (
+                                  <blockquote className="mb-2 border-l-4 border-white/30 pl-4 italic text-white/70">{children}</blockquote>
+                                ),
+                                a: ({ href, children }) => (
+                                  <a href={href} className="text-blue-300 underline" target="_blank" rel="noopener noreferrer">{children}</a>
+                                ),
+                              }}
+                            >
+                              {voice.response || bubbleBody}
+                            </ReactMarkdown>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -574,7 +625,7 @@ export default function Home() {
                   </div>
                 </div>
 
-                {showSettingsPanel && settingsPanelPropsRef.current ? (
+                {showSettingsPanel && settingsPanelProps ? (
                   <div
                     className="absolute inset-0 z-30 pointer-events-none"
                     aria-hidden={!showSettingsPanel}
@@ -587,7 +638,7 @@ export default function Home() {
                       }}
                     >
                       <SettingsPanel
-                        {...settingsPanelPropsRef.current}
+                        {...settingsPanelProps}
                         show_close_button
                         on_close={() => setShowSettingsPanel(false)}
                         extra_tab={{
@@ -637,13 +688,8 @@ export default function Home() {
                   className="pointer-events-none absolute inset-y-0 right-0 z-30 flex w-full justify-end"
                   style={screenPadding}
                 >
-                  <div className="pointer-events-auto flex h-full w-full max-w-5xl transform-gpu rounded-[32px] bg-white/95 shadow-2xl transition-all duration-300 ease-out">
-                    <div className="hidden h-full flex-[1.05] items-center justify-center border-r border-slate-100/80 bg-gradient-to-br from-white/0 via-white/10 to-white/30 px-4 lg:flex">
-                      <p className="text-sm font-medium text-slate-500">
-                        {labels.guideLabel}
-                      </p>
-                    </div>
-                    <div className="relative flex h-full flex-[1.4] flex-col bg-white">
+                  <div className="pointer-events-auto flex h-full w-full max-w-6xl transform-gpu rounded-[32px] bg-white/95 shadow-2xl transition-all duration-300 ease-out">
+                    <div className="relative flex h-full w-full flex-col overflow-hidden rounded-[32px]">
                       <button
                         type="button"
                         onClick={() => setShowSlideMode(false)}
