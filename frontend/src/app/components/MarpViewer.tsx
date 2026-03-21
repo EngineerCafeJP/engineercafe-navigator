@@ -496,14 +496,14 @@ export default function MarpViewer({
                 overflow: hidden;
                 background: white;
               }
-              
+
               /* Marp container styles */
               .marpit {
                 width: 100%;
                 height: 100vh;
                 position: relative;
               }
-              
+
               /* Handle both SVG and section-based slides */
               .marpit > svg,
               section[data-marpit-fragment],
@@ -515,13 +515,26 @@ export default function MarpViewer({
                 height: 100%;
                 display: none;
               }
-              
-              /* Show visible slides */
+
+              /* Show first slide by default so content is visible even if JS fails */
+              .marpit > svg:first-of-type,
+              section[data-marpit-fragment]:first-of-type,
+              [data-marpit-svg]:first-of-type {
+                display: block;
+              }
+
+              /* Show visible slides (inline style override) */
               .marpit > svg[style*="display: block"],
               section[style*="display: block"] {
                 display: block !important;
               }
-              
+
+              /* Hide slides explicitly hidden by JS */
+              .marpit > svg[style*="display: none"],
+              section[style*="display: none"] {
+                display: none !important;
+              }
+
               /* Ensure content is visible */
               * {
                 visibility: visible !important;
@@ -531,24 +544,26 @@ export default function MarpViewer({
           );
           
           // Add controlled script for slide detection (safe since we control this content)
+          // NOTE: Script is injected AFTER DOMPurify sanitization so it is not stripped
           const scriptEnhancedHtml = enhancedHtml.replace(
             '</body>',
             `<script>
               // Wait for Marp to finish rendering
               window.addEventListener('DOMContentLoaded', function() {
-                const checkSlides = setInterval(() => {
-                  const slides = document.querySelectorAll('.marpit > svg, section[data-marpit-fragment]');
+                var checkSlides = setInterval(function() {
+                  var slides = document.querySelectorAll('.marpit > svg, section[data-marpit-fragment]');
                   if (slides.length > 0) {
                     clearInterval(checkSlides);
                     // Notify parent (safe since we're in a sandboxed iframe)
+                    // Use '*' as targetOrigin because srcdoc iframes have origin "null"
                     if (window.parent && window.parent.postMessage) {
                       try {
                         window.parent.postMessage(
                           { type: 'marp-ready', slideCount: slides.length },
-                          window.location.origin
+                          '*'
                         );
                       } catch (e) {
-                        console.warn('Could not send message to parent:', e);
+                        // postMessage failed — parent onLoad fallback will handle slide display
                       }
                     }
                   }
