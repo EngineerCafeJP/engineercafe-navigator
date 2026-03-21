@@ -1,5 +1,6 @@
 'use client';
 
+import { markAudioUserInteraction } from '@/lib/audio/audio-user-interaction-gate';
 import ReactMarkdown from 'react-markdown';
 
 import { cn } from '@/lib/cn';
@@ -368,6 +369,7 @@ export default function Home() {
           : { x: 0, y: -0.2, z: 0 };
 
         const submitTextDraft = async () => {
+          markAudioUserInteraction();
           const trimmed = textDraft.trim();
           if (!trimmed) {
             return;
