@@ -244,12 +244,33 @@ export default function Home() {
   const [conversationHistory, setConversationHistory] = useState<ConversationHistoryItem[]>([]);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
   const settingsPanelPropsRef = useRef<SettingsPanelPropsFromSource | null>(null);
+  const [settingsPanelProps, setSettingsPanelProps] =
+    useState<SettingsPanelPropsFromSource | null>(null);
   const playKeyframeAnimationRef = useRef<((data: CharacterAnimationData) => void) | null>(null);
   const lastVrmControlPlayedRef = useRef<unknown>(null);
   const lastTranscriptRef = useRef<string>('');
   const lastResponseRef = useRef<string>('');
 
   const showAvatarControls = process.env.NEXT_PUBLIC_SHOW_AVATAR_SETTINGS === 'true';
+
+  const handleSettingsPanelPropsChange = useCallback(
+    (props: SettingsPanelPropsFromSource) => {
+      settingsPanelPropsRef.current = props;
+      // Avoid re-rendering the whole page when settings panel is closed.
+      if (showSettingsPanel) {
+        setSettingsPanelProps(props);
+      }
+    },
+    [showSettingsPanel],
+  );
+
+  useEffect(() => {
+    if (showSettingsPanel) {
+      setSettingsPanelProps(settingsPanelPropsRef.current);
+    } else {
+      setSettingsPanelProps(null);
+    }
+  }, [showSettingsPanel]);
 
   const startPresentation = useCallback((language: 'ja' | 'en') => {
     setCurrentLanguage(language);
@@ -393,6 +414,7 @@ export default function Home() {
                   onBackgroundChange={setCharacterBackground}
                   onLightingChange={setLightingIntensity}
                   settingsPanelPropsRef={settingsPanelPropsRef}
+                  onSettingsPanelPropsChange={handleSettingsPanelPropsChange}
                 />
               </div>
 
@@ -601,7 +623,7 @@ export default function Home() {
                   </div>
                 </div>
 
-                {showSettingsPanel && settingsPanelPropsRef.current ? (
+                {showSettingsPanel && settingsPanelProps ? (
                   <div
                     className="absolute inset-0 z-30 pointer-events-none"
                     aria-hidden={!showSettingsPanel}
@@ -614,7 +636,7 @@ export default function Home() {
                       }}
                     >
                       <SettingsPanel
-                        {...settingsPanelPropsRef.current}
+                        {...settingsPanelProps}
                         show_close_button
                         on_close={() => setShowSettingsPanel(false)}
                         extra_tab={{

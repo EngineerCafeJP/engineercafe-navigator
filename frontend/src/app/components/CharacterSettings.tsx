@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Play, SlidersHorizontal } from 'lucide-react';
+import { Play, User } from 'lucide-react';
 
 export interface ControlsState {
   expression: string;
@@ -27,7 +27,7 @@ const VISEME_LABELS: Record<string, string> = {
   oh: 'O',
 };
 
-interface ControlsSettingsProps {
+interface CharacterSettingsProps {
   state: ControlsState;
   vrmExpressionNames: string[];
   expressionWeights: Record<string, number>;
@@ -38,7 +38,7 @@ interface ControlsSettingsProps {
   onRotationChange: (rotation: ControlsState['rotation']) => void;
 }
 
-export default function ControlsSettings({
+export default function CharacterSettings({
   state,
   vrmExpressionNames,
   expressionWeights,
@@ -47,7 +47,7 @@ export default function ControlsSettings({
   onPlayVRMAnimation,
   onPositionChange,
   onRotationChange,
-}: ControlsSettingsProps) {
+}: CharacterSettingsProps) {
   const [selected_vrm_animation, set_selected_vrm_animation] = useState<string>(DEFAULT_VRM_ANIMATION);
   const [vrm_animation_loop, set_vrm_animation_loop] = useState(true);
 
@@ -63,8 +63,8 @@ export default function ControlsSettings({
   return (
     <div className="bg-white rounded-lg p-4 shadow-sm">
       <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-        <SlidersHorizontal className="w-4 h-4" />
-        Controls
+        <User className="w-4 h-4" />
+        Character
       </h3>
 
       {vrmExpressionNames.length > 0 && (
@@ -244,3 +244,4 @@ export default function ControlsSettings({
     </div>
   );
 }
+

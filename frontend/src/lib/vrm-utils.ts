@@ -646,15 +646,14 @@ export class VRMAnimationManager {
   }
 }
 
-/**
- * Returns a factor in [0, 1] to attenuate lip-sync intensity when an expression that uses the mouth is active.
- * Used for frontend procedural override: intensity' = intensity * getMouthOverrideFactor(expression, weight).
- */
-export function getMouthOverrideFactor(expression: string, weight: number): number {
-  if (VRMUtils.EXPRESSIONS_THAT_USE_MOUTH.includes(expression as (typeof VRMUtils.EXPRESSIONS_THAT_USE_MOUTH)[number])) {
-    return Math.max(0, 1 - weight);
-  }
-  return 1;
+export function getLipSyncFactorFromEmotions(
+  weights: Record<string, number>,
+): number {
+  const max_emotion = VRMUtils.EXPRESSIONS_THAT_USE_MOUTH.reduce((acc, name) => {
+    const v = weights[name] ?? 0;
+    return v > acc ? v : acc;
+  }, 0);
+  return Math.max(0, 1 - max_emotion);
 }
 
 // VRM BlendShape Controller for Lip-sync and Expressions
@@ -678,13 +677,10 @@ export class VRMBlendShapeController {
     }
 
     try {
-      const expression = this.vrm.expressionManager.getExpression(expressionName);
-      if (expression) {
-        const clampedWeight = Math.max(0, Math.min(1, weight));
-        expression.weight = clampedWeight;
-      } else {
-        console.warn(`Expression "${expressionName}" not found in VRM model`);
-      }
+      const clampedWeight = Math.max(0, Math.min(1, weight));
+      // Use expressionManager.setValue() as the single source of truth.
+      // Reading via expression objects' .weight can drift from the actual applied value depending on VRM version.
+      this.vrm.expressionManager.setValue(expressionName, clampedWeight);
     } catch (error) {
       console.warn(`Error setting expression "${expressionName}":`, error);
     }
@@ -868,8 +864,8 @@ export class VRMBlendShapeController {
     if (!this.vrm.expressionManager) return {};
     
     const current: Record<string, number> = {};
-    this.vrm.expressionManager.expressions.forEach(expr => {
-      current[expr.expressionName] = expr.weight;
+    this.vrm.expressionManager.expressions.forEach((expr) => {
+      current[expr.expressionName] = this.vrm.expressionManager?.getValue(expr.expressionName) ?? 0;
     });
     
     return current;
