@@ -10,10 +10,14 @@ LangGraphのSupervisor Agentパターンに従い、OrchestratorAgentが
 """
 
 import asyncio
+import base64
 import logging
 import os
 import time
 import uuid
+
+import cv2
+import numpy as np
 from dataclasses import dataclass
 from typing import Annotated, Any, Optional, TypedDict, cast
 
@@ -966,9 +970,22 @@ class MainWorkflow:
             ],
         }
 
+    def _decode_image_data(self, image_data: Any) -> Any:
+        """Convert base64-encoded image string to np.ndarray for VisionAgent. Other types pass through."""
+        if not isinstance(image_data, str):
+            return image_data
+        try:
+            raw = base64.b64decode(image_data)
+            arr = np.frombuffer(raw, dtype=np.uint8)
+            decoded = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+            return decoded if decoded is not None else image_data
+        except Exception:
+            return image_data
+
     def _prepare_state(self, input_data: dict) -> tuple[WorkflowStateDict, dict | None]:
         """ainvoke/astream共通: 入力データからstate + configを構築"""
         session_id = input_data.get("session_id", "default")
+        raw_image = input_data.get("image_data")
         state: WorkflowStateDict = {
             "messages": [],
             "query": input_data.get("query", ""),
@@ -979,7 +996,7 @@ class MainWorkflow:
             "emotion": None,
             "metadata": {},
             "context": input_data.get("context", {}),
-            "image_data": input_data.get("image_data"),
+            "image_data": self._decode_image_data(raw_image) if raw_image is not None else None,
             "ocr_result": None,
         }
         config = None

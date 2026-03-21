@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  Camera,
   Film,
   Lightbulb,
   MessageSquare,
@@ -16,6 +17,7 @@ import AudioSettings from './AudioSettings';
 import BackgroundSelector, {
   type BackgroundOption as BackgroundSelectorOption,
 } from './BackgroundSelector';
+import CameraSettings from './CameraSettings';
 import ControlsSettings, {
   type ControlsState,
   type VRMAnimationOption,
@@ -24,9 +26,10 @@ import EnvironmentSettings from './EnvironmentSettings';
 import KeyframeSettings from './KeyframeSettings';
 
 const SETTINGS_TAB_LABELS: Record<
-  'controls' | 'keyframe' | 'background' | 'lighting' | 'audio' | 'slides',
+  'camera' | 'controls' | 'keyframe' | 'background' | 'lighting' | 'audio' | 'slides',
   string
 > = {
+  camera: 'Camera',
   controls: 'Controls',
   keyframe: 'Keyframe',
   background: 'Background',
@@ -37,6 +40,7 @@ const SETTINGS_TAB_LABELS: Record<
 
 export type SettingsPanelTab =
   | 'conversation'
+  | 'camera'
   | 'controls'
   | 'keyframe'
   | 'background'
@@ -128,6 +132,7 @@ export default function SettingsPanel({
   const tab_list: SettingsPanelTab[] = [
     ...(extra_tab ? (['conversation'] as const) : []),
     ...(has_slides_tab ? (['slides'] as const) : []),
+    'camera',
     'controls',
     'keyframe',
     'background',
@@ -170,6 +175,7 @@ export default function SettingsPanel({
           >
             {tab === 'conversation' && <MessageSquare className="size-4" />}
             {tab === 'slides' && <Presentation className="size-4" />}
+            {tab === 'camera' && <Camera className="size-4" />}
             {tab === 'controls' && <SlidersHorizontal className="size-4" />}
             {tab === 'keyframe' && <Film className="size-4" />}
             {tab === 'background' && <Palette className="size-4" />}
@@ -251,6 +257,12 @@ export default function SettingsPanel({
             onVolumeChange={(value) => on_volume_change?.(value)}
             onMuteToggle={() => on_mute_toggle?.()}
           />
+        </div>
+      ) : null}
+
+      {active_tab === 'camera' ? (
+        <div className="mb-4">
+          <CameraSettings />
         </div>
       ) : null}
 
