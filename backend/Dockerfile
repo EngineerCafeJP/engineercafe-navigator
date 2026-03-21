@@ -7,12 +7,13 @@ FROM python:3.11-slim AS base
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies (curl/unzip for Vosk model download)
+# Install system dependencies (curl/unzip for Vosk model download, ffmpeg for pydub audio conversion)
 RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
     curl \
     unzip \
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements
