@@ -971,7 +971,10 @@ class MainWorkflow:
         }
 
     def _decode_image_data(self, image_data: Any) -> Any:
-        """Convert base64-encoded image string to np.ndarray for VisionAgent. Other types pass through."""
+        """Convert base64 image string to np.ndarray for VisionAgent.
+
+        Other types pass through unchanged.
+        """
         if not isinstance(image_data, str):
             return image_data
         try:
