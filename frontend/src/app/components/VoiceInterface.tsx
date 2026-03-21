@@ -1,6 +1,7 @@
 'use client';
 
 import { AudioQueue } from '@/lib/audio-queue';
+import { AudioDataProcessor } from '@/lib/audio/audio-data-processor';
 import { markAudioUserInteraction } from '@/lib/audio/audio-user-interaction-gate';
 import { MobileAudioService } from '@/lib/audio/mobile-audio-service';
 import { audioStateManager } from '@/lib/audio-state-manager';
@@ -338,7 +339,8 @@ export default function VoiceInterface({
         voiceController.notifySpeakingComplete(true);
         return;
       }
-      const audioBlob = new Blob([audioBytes], { type: 'audio/wav' });
+      const detectedFormat = AudioDataProcessor.detectAudioFormat(audioBytes.buffer as ArrayBuffer);
+      const audioBlob = new Blob([audioBytes], { type: detectedFormat });
       const audioUrl = URL.createObjectURL(audioBlob);
       const audioService = ensureAudioService();
 
