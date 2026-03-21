@@ -23,8 +23,16 @@ test.describe('Chat flow', () => {
 
     await expect(textarea).toHaveValue('');
     await expect(sendButton).toBeDisabled();
-    await expect(sendButton).toBeEnabled({ timeout: 60_000 });
-    await expect(page.getByTestId('response-text')).not.toHaveText(defaultPrompt);
+
+    // Intermediate assertion: response text should change from the default prompt
+    // before the full response completes (proves the backend started responding)
+    await expect(page.getByTestId('response-text')).not.toHaveText(defaultPrompt, {
+      timeout: 30_000,
+    });
+
+    // Then wait for full completion (button re-enabled)
+    await expect(sendButton).toBeEnabled({ timeout: 30_000 });
+
     await expect
       .poll(
         async () => ((await page.getByTestId('response-text').textContent()) ?? '').trim().length,
