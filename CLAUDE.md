@@ -55,71 +55,95 @@ make debug-agent                    # Interactive agent debugger
 ```
 frontend/          Next.js 15 (App Router) + React 19 + TypeScript
   src/app/         Pages and API routes
-  src/app/api/     API route handlers (voice, slides, marp, qa, character, etc.)
+  src/app/api/     API route handlers (voice, slides, marp, qa, character, calendar, admin)
   src/lib/         Shared libraries (audio, memory, STT correction, lip-sync)
-  src/mastra/      Mastra multi-agent system (frontend AI layer — being migrated)
+  e2e/             Playwright E2E tests
 
 backend/           FastAPI + LangGraph + Python 3.11+
   main.py          FastAPI application entry point
-  agents/          Agent implementations (13 agents)
+  agents/          Agent implementations (12 agents)
   workflows/       LangGraph workflow definitions (main_workflow, reception_workflow)
+  tools/           Shared tools (calendar_service, enhanced_rag, tavily_search)
   config/          Routing constants, prompt templates
   utils/           Input sanitizer, custom exceptions
   tests/           pytest test suite
-  evaluation/      LangSmith evaluation scripts
+  evaluation/      RAGAS evaluation scripts
 
 supabase/          Database migrations and config
 ```
 
-### Dual AI Layer (Migration in Progress)
+### AI Agent Architecture
 
-The project has **two AI agent layers** — this is the most important architectural detail:
+The backend uses **LangGraph** with a Supervisor Pattern:
 
-1. **Frontend Mastra agents** (`frontend/src/mastra/`): Original implementation with 8 specialized agents (Router, BusinessInfo, Facility, Memory, Event, GeneralKnowledge, Clarification). Uses Gemini for responses, OpenAI for embeddings.
+- **OrchestratorAgent** controls 12 specialized agents
+- Agents: BusinessInfoAgent, FacilityAgent, EventAgent, GeneralKnowledgeAgent, CharacterControlAgent, SlideAgent, STTAgent, VoiceAgent, OCRAgent, FarewellAgent, plus agent_tools
+- LLM: OpenRouter (Gemini) via LangChain
+- RAG: EnhancedRAGSearch with Supabase RPC `search_knowledge_base()` + Tavily web search fallback
+- Embeddings: OpenRouter API (`openai/text-embedding-3-small`, 1536 dimensions)
 
-2. **Backend LangGraph agents** (`backend/agents/`): New implementation using Supervisor Pattern with OrchestratorAgent controlling 13 agents. Uses OpenRouter (Gemini) via LangChain.
-
-**Migration direction**: Frontend Mastra → Backend LangGraph. Frontend is being "thinned" to become a pure UI layer. Both systems are currently active.
+The frontend is a **pure UI layer** — all AI processing is proxied to the backend via `backendFetch()`.
 
 ### Key Data Flow
 
-- Voice: Browser → `/api/voice` (FE route) → Google Cloud STT → AI Agent → Google Cloud TTS → Browser
-- Q&A: Browser → `/api/qa` (FE route) → Mastra agents → Supabase RAG → Response
+- Voice: Browser → `/api/voice` (FE proxy) → Backend STT/TTS → Browser
+- Q&A: Browser → `/api/qa` (FE proxy) → Backend `/api/chat` → LangGraph → RAG/Web search → Response
+- Calendar: Browser → `/api/calendar` (FE proxy) → Backend `/api/calendar` → Google Calendar ICS
 - Slides: Marp markdown in `frontend/src/slides/` → `/api/marp` renders HTML → MarpViewer component
-- Backend API: Frontend → `http://localhost:8000/api/...` → FastAPI → LangGraph workflow
 
 ### Database
 
 PostgreSQL (Supabase) with pgvector. Key tables:
-- `knowledge_base`: RAG entries with 1536-dim OpenAI embeddings
+- `knowledge_base`: RAG entries with 1536-dim embeddings (OpenRouter via text-embedding-3-small)
 - `conversation_sessions` / `conversation_history`: Chat state
 - `agent_memory`: Short-term memory with 3-minute TTL
+- `reception_sessions` / `visits`: Reception flow state
 - RLS enabled on all tables; use service role key for server-side access
 
 ### External Services
 
-- **Google Cloud**: STT, TTS, Gemini AI (needs service account at `config/service-account-key.json`)
-- **OpenAI**: text-embedding-3-small for vector embeddings (1536 dimensions)
+- **Google Cloud**: STT, TTS (needs service account at `config/service-account-key.json`)
+- **OpenRouter**: LLM provider (Gemini) + embeddings (text-embedding-3-small, 1536d)
 - **Supabase**: PostgreSQL + pgvector + auth
-- **OpenRouter**: LLM provider for backend agents
-- **Connpass API / Google Calendar**: Event data sources
+- **Tavily**: Web search fallback for GeneralKnowledgeAgent
+- **Google Calendar**: ICS feed for event data (backend managed via `GOOGLE_CALENDAR_ICAL_URL`)
 
 ## Critical Constraints
 
+- **`/api/marp` (FE) ≠ `/api/slides` (BE)**: Marp = markdown→HTML rendering. Slides = narration/navigation. Different purposes entirely.
+- **Embeddings**: Always 1536 dimensions, always `openai/text-embedding-3-small` via OpenRouter API. No mixing.
+
+<important if="you are modifying frontend code (TypeScript, React, Next.js, CSS)">
 - **Tailwind CSS v3.4.17** — DO NOT upgrade to v4. PostCSS config uses `tailwindcss: {}`, not `@tailwindcss/postcss: {}`.
+- CI: `cd frontend && pnpm lint && pnpm typecheck && pnpm build`
+</important>
+
+<important if="you are modifying backend Python code">
 - **Black/Ruff line-length: 100** (configured in `pyproject.toml`).
 - **pytest markers**: `ragas`, `e2e`, `integration`, `slow`, `vision`, `perf`, `adversarial` — use `-m` to filter.
-- **`/api/marp` (FE) ≠ `/api/slides` (BE)**: Marp = markdown→HTML rendering. Slides = narration/navigation. Different purposes entirely.
-- **Embeddings**: Always 1536 dimensions, always OpenAI text-embedding-3-small. No mixing.
-- **Docker on Apple Silicon**: Use `--platform linux/amd64` when building for Cloud Run (GCP).
+- CI: `cd backend && ruff check . && black --check .`
 - **CI env**: `SUPABASE_DB_URI=postgresql://test:test@localhost:0/test` causes real connection attempts in CI.
+</important>
 
-## Deployment
-
+<important if="you are deploying, building Docker images, or modifying CI/CD">
+- **Docker on Apple Silicon**: Use `--platform linux/amd64` when building for Cloud Run (GCP).
 - **Frontend**: Vercel (`pnpm deploy` or auto-deploy on develop push)
 - **Backend**: Cloud Run `engineer-cafe-backend` in `asia-northeast1` (GCP project: `aipartner-426616`)
 - **VoiceVox**: Separate Cloud Run `voicevox-proto` in `asia-northeast2`
 - **Cloud Run env vars**: Use `--update-env-vars` (NOT `--set-env-vars` which overwrites ALL vars)
+</important>
+
+<important if="you are creating or modifying API endpoints">
+- ALWAYS trace full data flow: client → API route → backend → response
+- 4つ全て一致しなければ「修正」ではない
+- `/api/marp` (FE) ≠ `/api/slides` (BE) — different purposes entirely
+</important>
+
+<important if="you are working with database, embeddings, or Supabase">
+- PostgreSQL (Supabase) with pgvector — RLS enabled on all tables
+- Embeddings: Always 1536 dimensions, always OpenAI text-embedding-3-small
+- Use service role key for server-side access
+</important>
 
 ## CI Checks (must pass before merge)
 
@@ -130,3 +154,17 @@ cd frontend && pnpm lint && pnpm typecheck && pnpm build
 # Backend
 cd backend && ruff check . && black --check .
 ```
+
+## Skill Usage Guide
+
+### Think → Plan phase (gstack)
+- `/office-hours` — YC-style product discovery (before writing code)
+- `/plan-ceo-review` — CEO/founder scope validation (4 modes: Expansion/Hold/Reduction)
+- `/plan-eng-review` — Architecture locking with diagrams + test matrices
+- `/plan-design-review` — Design quality audit (0-10 rating per dimension)
+- `/retro` — Team-aware weekly retrospective
+
+### Build → Review → Ship phase (existing skills + hooks)
+- Use existing `code-reviewer`, `review-loop`, `e2e`, `bugfix` skills
+- Use existing hook system for CI/CD quality gates (PR merge blocks, review requirements)
+- Do NOT use gstack's `/review`, `/ship` for this project — existing hooks are stricter
