@@ -1,5 +1,6 @@
 'use client';
 
+import { markAudioUserInteraction } from '@/lib/audio/audio-user-interaction-gate';
 import { cn } from '@/lib/cn';
 import { ClarificationUtils } from '@/lib/clarification-utils';
 import {
@@ -345,6 +346,7 @@ export default function Home() {
           : { x: 0, y: -0.2, z: 0 };
 
         const submitTextDraft = async () => {
+          markAudioUserInteraction();
           const trimmed = textDraft.trim();
           if (!trimmed) {
             return;
