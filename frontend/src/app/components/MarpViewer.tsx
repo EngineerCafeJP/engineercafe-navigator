@@ -359,16 +359,18 @@ export default function MarpViewer({
       ];
       
       if (!allowedOrigins.includes(event.origin)) {
-        // Rejected message from untrusted origin
         return;
       }
 
-      if (event.data.type === 'slide-control') {
-        if (event.data.action === 'previous') {
-          void previousSlideRef.current();
-        }
-      } else if (event.data.type === 'marp-ready') {
-        // Delay to ensure rendering is complete
+      // Strict type guard: validate message shape before acting
+      const data = event.data;
+      if (typeof data !== 'object' || data === null || typeof data.type !== 'string') {
+        return;
+      }
+
+      if (data.type === 'slide-control' && data.action === 'previous') {
+        void previousSlideRef.current();
+      } else if (data.type === 'marp-ready') {
         setTimeout(() => {
           updateIframeSlideRef.current(currentSlide);
         }, 300);
@@ -535,10 +537,6 @@ export default function MarpViewer({
                 display: none !important;
               }
 
-              /* Ensure content is visible */
-              * {
-                visibility: visible !important;
-              }
             </style>
             </head>`
           );
@@ -554,8 +552,9 @@ export default function MarpViewer({
                   var slides = document.querySelectorAll('.marpit > svg, section[data-marpit-fragment]');
                   if (slides.length > 0) {
                     clearInterval(checkSlides);
-                    // Notify parent (safe since we're in a sandboxed iframe)
-                    // Use '*' as targetOrigin because srcdoc iframes have origin "null"
+                    // srcdoc iframes have origin "null" (string), not the parent's origin.
+                    // postMessage(data, specificOrigin) always fails from srcdoc.
+                    // The parent's message handler validates event.origin and event.data shape.
                     if (window.parent && window.parent.postMessage) {
                       try {
                         window.parent.postMessage(
