@@ -258,6 +258,7 @@ export default function VoiceInterface({
     wakeWords: DEFAULT_WAKE_WORDS,
     language: toLocale(currentLanguage),
     onWakeWord: () => {
+      markAudioUserInteraction();
       setError(null);
     },
   });
