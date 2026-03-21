@@ -1,47 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import {
+  createBackendErrorResponse,
+  createInternalServerErrorResponse,
+} from '@/app/api/_shared/backend-error-response';
+import { backendFetch } from '@/lib/api/backend-proxy';
+
 export async function GET(request: NextRequest) {
   try {
-    // Get iCal URL from environment variables
-    const icalUrl = process.env.GOOGLE_CALENDAR_ICAL_URL;
-    
-    if (!icalUrl) {
-      return NextResponse.json(
-        { error: 'Calendar URL not configured' },
-        { status: 500 }
-      );
+    const timeRange = request.nextUrl.searchParams.get('timeRange');
+    const params: Record<string, string> = {};
+    if (timeRange) {
+      params.timeRange = timeRange;
     }
 
-    // Fetch the iCal data from Google Calendar
-    const response = await fetch(icalUrl, {
-      headers: {
-        'Accept': 'text/calendar',
-      },
+    const response = await backendFetch('/api/calendar', {
+      method: 'GET',
+      params,
     });
 
     if (!response.ok) {
-      return NextResponse.json(
-        { error: 'Failed to fetch calendar data' },
-        { status: response.status }
-      );
+      return createBackendErrorResponse(response, 'Failed to fetch calendar data');
     }
 
-    // Get the response as text (iCal format)
-    const icalData = await response.text();
-
-    // Return the iCal data with proper headers
-    return new NextResponse(icalData, {
-      status: 200,
-      headers: {
-        'Content-Type': 'text/calendar; charset=utf-8',
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-      },
-    });
+    return NextResponse.json(response.data, { status: response.status });
   } catch (error) {
-    console.error('Calendar API error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return createInternalServerErrorResponse(error, 'Failed to fetch calendar data');
   }
 }

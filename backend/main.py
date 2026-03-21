@@ -24,6 +24,7 @@ from typing import Optional, Dict, Any, cast
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 
+from backend.tools.calendar_service import CalendarService, TimeRange
 from backend.utils.structured_logging import (
     request_id_var,
     generate_request_id,
@@ -603,6 +604,26 @@ async def voice_get_api(action: str = ""):
             ]
         }
     return {"status": "ok", "actions": ["speech_to_text", "text_to_speech", "supported_languages"]}
+
+
+_CALENDAR_TIME_RANGES = {"today", "thisWeek", "nextWeek", "thisMonth"}
+
+
+@app.get("/api/calendar", dependencies=[Depends(verify_api_key)])
+@_rate_limit("60/minute")
+async def calendar_api(request: Request, timeRange: str = "thisWeek"):
+    """Return calendar events fetched from the backend-managed ICS feed."""
+    if timeRange not in _CALENDAR_TIME_RANGES:
+        raise HTTPException(status_code=400, detail="Invalid timeRange")
+
+    result = await CalendarService().search_events(cast(TimeRange, timeRange))
+    if not result.get("success"):
+        raise HTTPException(
+            status_code=502,
+            detail=result.get("error", "Failed to fetch calendar events"),
+        )
+
+    return result
 
 
 @app.post("/api/voice", response_model=VoiceResponse, dependencies=[Depends(verify_api_key)])
