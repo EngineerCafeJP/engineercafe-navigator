@@ -217,12 +217,20 @@ def clean_text_for_tts(text: str) -> str:
     # Horizontal rules: ---, ***, ___ (3+ chars on their own line)
     t = re.sub(r"^[-\*_]{3,}\s*$", "", t, flags=re.M)
 
-    # HTML tags: <br>, <br/>, <p>, </p>, etc.
-    t = re.sub(r"<[^>]+>", "", t)
+    # HTML tags: only strip common HTML tags that LLMs may emit
+    # (preserves non-HTML angle brackets like vector<int>, 1 < 2)
+    t = re.sub(
+        r"</?(?:br|p|div|span|strong|em|b|i|u|a|h[1-6]"
+        r"|ul|ol|li|table|tr|td|th|hr|img|pre|code|blockquote)(?=[\s>/])[^>]*>",
+        "",
+        t,
+        flags=re.I,
+    )
 
-    # Table syntax: remove pipe characters and separator rows
+    # Table syntax: remove separator rows and table-like lines (2+ pipes)
+    # but preserve single pipes in technical content (e.g. grep foo | sort)
     t = re.sub(r"^\|?[-:]+\|[-:|]+\|?\s*$", "", t, flags=re.M)
-    t = re.sub(r"\|", " ", t)
+    t = re.sub(r"^\s*\|.*\|.*$", "", t, flags=re.M)
 
     # Convert markdown links [text](url) -> text
     t = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", t)
