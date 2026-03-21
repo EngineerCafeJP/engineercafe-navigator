@@ -113,6 +113,18 @@ def build_facility_prompt(
     Returns:
         構築されたプロンプト
     """
+    oral_instruction_ja = (
+        "回答は口語（話し言葉）で返してください。"
+        "Markdownの見出し・箇条書き・太字・表などは使わないでください。"
+        "音声で読み上げた時に自然に聞こえるような文章にしてください。"
+    )
+    oral_instruction_en = (
+        "Respond in natural spoken language. "
+        "Do NOT use Markdown formatting such as "
+        "headers, bullet points, bold, or tables. "
+        "Write as if speaking aloud to someone."
+    )
+
     if request_type:
         prompt_info = FACILITY_REQUEST_TYPE_PROMPTS.get(
             request_type, {"en": "requested information", "ja": "要求された情報"}
@@ -132,7 +144,8 @@ def build_facility_prompt(
                 f"Answer in 2-3 sentences with specific, relevant "
                 f"details. Do not include unrelated information.\n"
                 f"IMPORTANT: Start your response with [relaxed] "
-                f"for information or [happy] for positive news."
+                f"for information or [happy] for positive news.\n"
+                f"{oral_instruction_en}"
             )
         else:
             return (
@@ -147,7 +160,8 @@ def build_facility_prompt(
                 f"質問と無関係な情報は含めないでください。\n"
                 f"重要: 情報提供の場合は[relaxed]、"
                 f"良いニュースの場合は[happy]で回答を始めてください。\n"
-                f"必ず日本語で回答してください。"
+                f"必ず日本語で回答してください。\n"
+                f"{oral_instruction_ja}"
             )
     else:
         if language == "en":
@@ -160,7 +174,8 @@ def build_facility_prompt(
                 f"relevant information.\n"
                 f"IMPORTANT: Start your response with an emotion "
                 f"tag: [relaxed] for information, [happy] for "
-                f"positive news, [sad] for unavailable services."
+                f"positive news, [sad] for unavailable services.\n"
+                f"{oral_instruction_en}"
             )
         else:
             return (
@@ -173,5 +188,6 @@ def build_facility_prompt(
                 f"重要: 感情タグで回答を始めてください: "
                 f"情報提供は[relaxed]、良いニュースは[happy]、"
                 f"利用できないサービスは[sad]。\n"
-                f"必ず日本語で回答してください。"
+                f"必ず日本語で回答してください。\n"
+                f"{oral_instruction_ja}"
             )

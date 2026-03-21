@@ -35,6 +35,18 @@ def build_event_prompt(query: str, events_text: str, time_range: str, language: 
     """
     time_range_text = get_time_range_label(time_range, language)
 
+    oral_instruction_ja = (
+        "回答は口語（話し言葉）で返してください。"
+        "Markdownの見出し・箇条書き・太字・表などは使わないでください。"
+        "音声で読み上げた時に自然に聞こえるような文章にしてください。"
+    )
+    oral_instruction_en = (
+        "Respond in natural spoken language. "
+        "Do NOT use Markdown formatting such as "
+        "headers, bullet points, bold, or tables. "
+        "Write as if speaking aloud to someone."
+    )
+
     if language == "en":
         return f"""Based on the following event information \
 for {time_range_text}, answer the question.
@@ -45,7 +57,8 @@ Events {time_range_text}:
 {events_text}
 
 Provide a brief and friendly summary of the events. Start your response with [happy] emotion tag.
-Maximum 2-3 sentences."""
+Maximum 2-3 sentences.
+{oral_instruction_en}"""
     else:
         return f"""{time_range_text}のイベント情報に基づいて、質問に答えてください。
 
@@ -55,4 +68,5 @@ Maximum 2-3 sentences."""
 {events_text}
 
 イベントについて簡潔でフレンドリーな説明を提供してください。[happy]の感情タグで回答を始めてください。
-最大2-3文。"""
+最大2-3文。
+{oral_instruction_ja}"""

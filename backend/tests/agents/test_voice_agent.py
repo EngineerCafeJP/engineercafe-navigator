@@ -66,6 +66,24 @@ def test_clean_text_for_tts_strips_markdown_links_code():
     assert "print(" not in cleaned
 
 
+def test_clean_text_for_tts_preserves_technical_symbols_and_single_pipes():
+    text = """
+    <p>Use vector<int> when 1 < 2.</p>
+    | name | value |
+    grep foo | sort
+    """
+
+    cleaned = clean_text_for_tts(text)
+
+    assert "<p>" not in cleaned
+    assert "</p>" not in cleaned
+    assert "vector<int>" in cleaned
+    assert "1 < 2" in cleaned
+    assert "name" not in cleaned
+    assert "value" not in cleaned
+    assert "grep foo | sort" in cleaned
+
+
 def test_truncate_by_bytes_over_limit():
     """5000 bytes 制限を超える入力が 5000 bytes 以下に収まること"""
     text = "あ" * 3000

@@ -195,6 +195,9 @@ def preprocess_tts(text: str, lang: str) -> str:
 def clean_text_for_tts(text: str) -> str:
     t = text
 
+    # Remove fenced code blocks ```...``` (non-greedy, before inline markers)
+    t = re.sub(r"```[\s\S]*?```", "", t)
+
     # Remove markdown emphasis markers
     t = re.sub(r"\*\*", "", t)
     t = re.sub(r"\*", "", t)
@@ -202,17 +205,41 @@ def clean_text_for_tts(text: str) -> str:
     # Numbered list prefixes
     t = re.sub(r"^\d+\.\s*", "", t, flags=re.M)
 
+    # Bullet points: - item or * item at start of line
+    t = re.sub(r"^[-\*]\s+", "", t, flags=re.M)
+
     # Headers (requires # at start of line)
     t = re.sub(r"^#+\s+", "", t, flags=re.M)
 
-    # Convert markdown links [text](url) -> text  ✅ r"\1" が正しい
+    # Blockquotes: > text at start of line
+    t = re.sub(r"^>\s*", "", t, flags=re.M)
+
+    # Horizontal rules: ---, ***, ___ (3+ chars on their own line)
+    t = re.sub(r"^[-\*_]{3,}\s*$", "", t, flags=re.M)
+
+    # HTML tags: only strip common HTML tags that LLMs may emit
+    # (preserves non-HTML angle brackets like vector<int>, 1 < 2)
+    t = re.sub(
+        r"</?(?:br|p|div|span|strong|em|b|i|u|a|h[1-6]"
+        r"|ul|ol|li|table|tr|td|th|hr|img|pre|code|blockquote)(?=[\s>/])[^>]*>",
+        "",
+        t,
+        flags=re.I,
+    )
+
+    # Table syntax: remove separator rows and table-like lines (2+ pipes)
+    # but preserve single pipes in technical content (e.g. grep foo | sort)
+    t = re.sub(r"^\|?[-:]+\|[-:|]+\|?\s*$", "", t, flags=re.M)
+    t = re.sub(r"^\s*\|.*\|.*$", "", t, flags=re.M)
+
+    # Convert markdown links [text](url) -> text
     t = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", t)
 
-    # Remove fenced code blocks ```...``` (non-greedy)
-    t = re.sub(r"```[\s\S]*?```", "", t)
-
-    # Inline code `code` -> code  ✅ r"\1" が正しい
+    # Inline code `code` -> code
     t = re.sub(r"`([^`]+)`", r"\1", t)
+
+    # Normalize multiple newlines to single space
+    t = re.sub(r"\n{2,}", " ", t)
 
     # Normalize whitespace
     t = re.sub(r"\s+", " ", t).strip()

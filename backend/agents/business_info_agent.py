@@ -266,6 +266,18 @@ class BusinessInfoAgent:
             language,
         )
 
+        oral_instruction_ja = (
+            "回答は口語（話し言葉）で返してください。"
+            "Markdownの見出し・箇条書き・太字・表などは使わないでください。"
+            "音声で読み上げた時に自然に聞こえるような文章にしてください。"
+        )
+        oral_instruction_en = (
+            "Respond in natural spoken language. "
+            "Do NOT use Markdown formatting such as "
+            "headers, bullet points, bold, or tables. "
+            "Write as if speaking aloud to someone."
+        )
+
         if request_type:
             request_type_prompt = self._get_request_type_prompt(request_type, language)
 
@@ -281,7 +293,8 @@ class BusinessInfoAgent:
                     " Do not include any other information.\n"
                     "IMPORTANT: Start your response with"
                     " [relaxed] for information"
-                    " or [happy] for positive news."
+                    " or [happy] for positive news.\n"
+                    f"{oral_instruction_en}"
                 )
                 return f"""{header}
 
@@ -296,7 +309,8 @@ Information: {context}
 情報: {context}
 
 {request_type_prompt}のみを答えてください。最大1-2文。他の情報は含めないでください。
-重要: 情報提供の場合は[relaxed]、良いニュースの場合は[happy]で回答を始めてください。"""
+重要: 情報提供の場合は[relaxed]、良いニュースの場合は[happy]で回答を始めてください。
+{oral_instruction_ja}"""
 
         else:
             if language == "en":
@@ -311,7 +325,8 @@ Information: {context}
                     "IMPORTANT: Start your response with"
                     " an emotion tag: [relaxed] for"
                     " information, [happy] for positive"
-                    " news, [sad] for unavailable services."
+                    " news, [sad] for unavailable services.\n"
+                    f"{oral_instruction_en}"
                 )
                 return f"""{header}
 
@@ -327,7 +342,8 @@ Information: {context}
                     "関連する情報のみを簡潔に（1-2文）答えてください。\n"
                     "重要: 感情タグで回答を始めてください: "
                     "情報提供は[relaxed]、良いニュースは[happy]、"
-                    "利用できないサービスは[sad]。"
+                    "利用できないサービスは[sad]。\n"
+                    f"{oral_instruction_ja}"
                 )
                 return f"""{header}
 
