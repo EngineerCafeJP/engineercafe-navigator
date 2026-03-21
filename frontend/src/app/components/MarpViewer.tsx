@@ -712,7 +712,7 @@ export default function MarpViewer({
           }
           
           // Continue to next slide even if audio fails (for other errors)
-          if (isPlaying) {
+          if (isPlayingRef.current) {
             advancePresentation(1000);
           }
         }
