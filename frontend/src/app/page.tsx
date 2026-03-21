@@ -637,13 +637,8 @@ export default function Home() {
                   className="pointer-events-none absolute inset-y-0 right-0 z-30 flex w-full justify-end"
                   style={screenPadding}
                 >
-                  <div className="pointer-events-auto flex h-full w-full max-w-5xl transform-gpu rounded-[32px] bg-white/95 shadow-2xl transition-all duration-300 ease-out">
-                    <div className="hidden h-full flex-[1.05] items-center justify-center border-r border-slate-100/80 bg-gradient-to-br from-white/0 via-white/10 to-white/30 px-4 lg:flex">
-                      <p className="text-sm font-medium text-slate-500">
-                        {labels.guideLabel}
-                      </p>
-                    </div>
-                    <div className="relative flex h-full flex-[1.4] flex-col bg-white">
+                  <div className="pointer-events-auto flex h-full w-full max-w-6xl transform-gpu rounded-[32px] bg-white/95 shadow-2xl transition-all duration-300 ease-out">
+                    <div className="relative flex h-full w-full flex-col bg-white rounded-[32px]">
                       <button
                         type="button"
                         onClick={() => setShowSlideMode(false)}
