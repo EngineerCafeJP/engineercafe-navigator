@@ -408,9 +408,15 @@ export default function Home() {
                       }
                     >
                     <div className="row-start-2 col-start-1 h-full">
-                      <div className="h-full rounded-[28px] bg-black/55 p-4 text-white shadow-xl backdrop-blur-md">
+                      <div
+                        className="h-full rounded-[28px] bg-black/55 p-4 text-white shadow-xl backdrop-blur-md"
+                        data-testid="response-bubble"
+                      >
                         <div className="h-full overflow-y-auto pr-1">
-                          <p className="text-base leading-7 text-pretty text-white/90 md:text-lg md:leading-8">
+                          <p
+                            className="text-base leading-7 text-pretty text-white/90 md:text-lg md:leading-8"
+                            data-testid="response-text"
+                          >
                             {voice.response || bubbleBody}
                           </p>
                         </div>
@@ -547,6 +553,11 @@ export default function Home() {
                               <button
                                 type="button"
                                 onClick={() => setShowTextInput((current) => !current)}
+                                aria-label={
+                                  showTextInput ? labels.switchVoiceInput : labels.switchTextInput
+                                }
+                                aria-pressed={showTextInput}
+                                data-testid="text-input-toggle"
                                 className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 text-xs font-medium text-white transition-transform duration-200 ease-out hover:scale-105"
                               >
                                 {showTextInput ? (

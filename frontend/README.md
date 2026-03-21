@@ -70,7 +70,10 @@ pnpm typecheck
 pnpm build
 pnpm test
 pnpm test:e2e
+pnpm test:e2e:ui
 ```
+
+`pnpm test:e2e` は `frontend/playwright.config.ts` を使って Next.js 開発サーバーを自動起動します。`chat.spec.ts` を通すには `BACKEND_API_URL` と `BACKEND_API_KEY` を `.env.local` かシェル環境へ設定してください。
 
 ## Current Risks
 
