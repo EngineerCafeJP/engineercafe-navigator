@@ -375,6 +375,18 @@ class GeneralKnowledgeAgent:
         """プロンプトを構築"""
         source_info = " and ".join(sources) if sources else "available information"
 
+        oral_instruction_ja = (
+            "回答は口語（話し言葉）で返してください。"
+            "Markdownの見出し・箇条書き・太字・表などは使わないでください。"
+            "音声で読み上げた時に自然に聞こえるような文章にしてください。"
+        )
+        oral_instruction_en = (
+            "Respond in natural spoken language. "
+            "Do NOT use Markdown formatting such as "
+            "headers, bullet points, bold, or tables. "
+            "Write as if speaking aloud to someone."
+        )
+
         if language == "en":
             header = (
                 "Answer the following question using"
@@ -398,7 +410,8 @@ Information:
 
 Provide a comprehensive but concise answer.
 If the information is from web search, mention that it's current information.
-Be helpful and informative."""
+Be helpful and informative.
+{oral_instruction_en}"""
         else:
             return f"""{source_info}から提供された情報を使用して、次の質問に答えてください。
 
@@ -416,7 +429,8 @@ Be helpful and informative."""
 情報:
 {context}
 
-包括的だが簡潔な回答を提供してください。情報がウェブ検索からのものである場合は、それが最新の情報であることを述べてください。役立つ情報を提供してください。"""
+包括的だが簡潔な回答を提供してください。情報がウェブ検索からのものである場合は、それが最新の情報であることを述べてください。役立つ情報を提供してください。
+{oral_instruction_ja}"""
 
     def _calculate_confidence(self, sources: List[str]) -> float:
         """信頼度を計算"""
