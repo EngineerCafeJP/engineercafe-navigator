@@ -65,6 +65,9 @@ interface MarpViewerProps {
   volume?: number;
 }
 
+const SLIDE_TRANSITION_DELAY_MS = 500;
+const NARRATION_SCHEDULE_DELAY_MS = 300;
+
 export default function MarpViewer({
   slideFile = 'engineer-cafe',
   language = 'ja',
@@ -128,6 +131,7 @@ export default function MarpViewer({
 
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const autoPlayTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const narrationScheduleTimerRef = useRef<NodeJS.Timeout | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const narrationAbortControllerRef = useRef<AbortController | null>(null);
   const currentRequestIdRef = useRef<string>('');
@@ -139,11 +143,13 @@ export default function MarpViewer({
   const updateIframeSlideRef = useRef<(slideNumber: number, retryCount?: number) => void>(() => {});
   const isNarratingRef = useRef(isNarrating);
   const isNarrationInProgressRef = useRef(isNarrationInProgress);
+  const isPlayingRef = useRef(isPlaying);
   const presentationStartTimeRef = useRef<number | null>(presentationStartTime);
   const currentLanguageRef = useRef(currentLanguage);
 
   isNarratingRef.current = isNarrating;
   isNarrationInProgressRef.current = isNarrationInProgress;
+  isPlayingRef.current = isPlaying;
   presentationStartTimeRef.current = presentationStartTime;
   currentLanguageRef.current = currentLanguage;
 
@@ -159,12 +165,12 @@ export default function MarpViewer({
     setIsNarrationInProgress(false);
   };
 
-  const advancePresentation = (delayMs = 0) => {
+  const advancePresentation = (delayMs = SLIDE_TRANSITION_DELAY_MS) => {
     const advance = () => {
       autoPlayTimerRef.current = null;
       resetNarrationFlags();
 
-      if (!isPlaying) {
+      if (!isPlayingRef.current) {
         return;
       }
 
@@ -174,6 +180,14 @@ export default function MarpViewer({
           onSlideChange?.(nextSlide);
           return nextSlide;
         });
+        // Explicitly schedule next narration after slide transition
+        // Instead of relying on useEffect re-trigger via currentSlide dependency
+        narrationScheduleTimerRef.current = setTimeout(() => {
+          narrationScheduleTimerRef.current = null;
+          if (isPlayingRef.current) {
+            void narrateWithRetryRef.current();
+          }
+        }, NARRATION_SCHEDULE_DELAY_MS);
         return;
       }
 
@@ -219,7 +233,7 @@ export default function MarpViewer({
               : 'Narration unavailable. Continue without audio?'
           );
           
-          if (shouldContinue && isPlaying && currentSlide < totalSlides) {
+          if (shouldContinue && isPlayingRef.current && currentSlide < totalSlides) {
             setTimeout(() => {
               resetNarrationFlags();
               setCurrentSlide(prev => {
@@ -227,6 +241,12 @@ export default function MarpViewer({
                 onSlideChange?.(nextSlide);
                 return nextSlide;
               });
+              // Schedule follow-up narration for the next slide
+              setTimeout(() => {
+                if (isPlayingRef.current) {
+                  void narrateWithRetryRef.current();
+                }
+              }, NARRATION_SCHEDULE_DELAY_MS);
             }, 1000);
           }
         } else {
@@ -287,7 +307,7 @@ export default function MarpViewer({
     }
 
     return () => stopAutoPlayRef.current();
-  }, [isPlaying, currentSlide, totalSlides]);
+  }, [isPlaying, totalSlides]);
 
   // Save settings to localStorage whenever they change
   useEffect(() => {
@@ -311,10 +331,11 @@ export default function MarpViewer({
           onExpressionControl('neutral', 1.0);
         }
         
+        // Always reset to slide 1 before starting a new presentation
+        setCurrentSlide(1);
         // Stop any currently playing presentation first
         if (isPlaying) {
           setIsPlaying(false);
-          setCurrentSlide(1);
           setRenderedHtml('');
         }
         
@@ -674,7 +695,7 @@ export default function MarpViewer({
           await playAudioWithLipSync(result.audioResponse);
           
           // Audio playback completed
-          advancePresentation();
+          advancePresentation(500);
         } catch (error: any) {
           // Error during audio playback
           
@@ -692,12 +713,12 @@ export default function MarpViewer({
           }
           
           // Continue to next slide even if audio fails (for other errors)
-          if (isPlaying) {
+          if (isPlayingRef.current) {
             advancePresentation(1000);
           }
         }
       } else {
-        advancePresentation(300);
+        advancePresentation(500);
       }
     } catch (error) {
       // Check if the error is due to abort
@@ -751,6 +772,8 @@ export default function MarpViewer({
   };
 
   const updateCharacterAction = async (action: string) => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
     try {
       await fetch('/api/character', {
         method: 'POST',
@@ -760,9 +783,12 @@ export default function MarpViewer({
           animation: action,
           transition: true,
         }),
+        signal: controller.signal,
       });
-    } catch (error) {
-      console.error('[MarpViewer] Error updating character:', error);
+    } catch {
+      // Character action failed or timed out - non-blocking, continue presentation
+    } finally {
+      clearTimeout(timeoutId);
     }
   };
 
@@ -778,6 +804,10 @@ export default function MarpViewer({
     if (autoPlayTimerRef.current) {
       clearTimeout(autoPlayTimerRef.current);
       autoPlayTimerRef.current = null;
+    }
+    if (narrationScheduleTimerRef.current) {
+      clearTimeout(narrationScheduleTimerRef.current);
+      narrationScheduleTimerRef.current = null;
     }
     resetNarrationFlags();
     audioStateManager.stopAll();
