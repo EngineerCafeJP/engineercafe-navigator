@@ -117,9 +117,11 @@ export class MarpProcessor {
       // Parse frontmatter
       const { data: frontmatter, content } = matter(markdown);
 
-      // Apply theme if specified
+      // Apply custom theme if specified (built-in themes like default/gaia/uncover
+      // are already registered in Marp Core — only add genuinely custom CSS)
       const theme = frontmatter.theme;
-      if (theme && this.themes.has(theme)) {
+      const builtinThemes = new Set(['default', 'gaia', 'uncover']);
+      if (theme && this.themes.has(theme) && !builtinThemes.has(theme)) {
         const themeCSS = this.themes.get(theme)!;
         this.marp.themeSet.add(themeCSS);
       }
