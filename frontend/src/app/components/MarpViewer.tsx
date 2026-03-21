@@ -331,10 +331,11 @@ export default function MarpViewer({
           onExpressionControl('neutral', 1.0);
         }
         
+        // Always reset to slide 1 before starting a new presentation
+        setCurrentSlide(1);
         // Stop any currently playing presentation first
         if (isPlaying) {
           setIsPlaying(false);
-          setCurrentSlide(1);
           setRenderedHtml('');
         }
         
