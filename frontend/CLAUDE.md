@@ -34,10 +34,11 @@ pnpm deploy:dev       # Deploy to Vercel dev environment
 
 ```
 src/app/           Pages (App Router) and API routes
-src/app/api/       Route handlers: voice, slides, marp, qa, character, admin
+src/app/api/       Route handlers: voice, slides, marp, qa, character, calendar, admin
 src/lib/           Shared libs: audio, memory, STT correction, lip-sync
 src/lib/audio/     AudioPlaybackService, MobileAudioService, WebAudioPlayer
-src/mastra/        Mastra multi-agent system (being migrated to backend LangGraph)
+src/lib/api/       Backend proxy (backendFetch)
 src/slides/        Marp markdown slides + narration JSON
+e2e/               Playwright E2E tests
 public/characters/ VRM models and character assets
 ```

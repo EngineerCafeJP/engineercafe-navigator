@@ -338,30 +338,32 @@ make debug-agent   # インタラクティブなエージェントデバッガ�
 engineer-cafe-navigator2025/
 ├── frontend/          Next.js 15 (App Router) + TypeScript
 │   ├── src/app/       ページと API ルート
-│   ├── src/app/api/   APIルートハンドラ (voice, slides, marp, qa など)
+│   ├── src/app/api/   APIルートハンドラ (voice, slides, marp, qa, character, calendar, admin)
 │   ├── src/lib/       共通ライブラリ (audio, memory, STT補正 など)
-│   └── src/mastra/    Mastra マルチエージェント (バックエンドへ移行中)
+│   └── e2e/           Playwright E2E テスト
 │
 ├── backend/           FastAPI + LangGraph + Python 3.11
 │   ├── main.py        FastAPI エントリーポイント
-│   ├── agents/        エージェント実装 (13エージェント)
+│   ├── agents/        エージェント実装 (12エージェント)
 │   ├── workflows/     LangGraph ワークフロー定義
+│   ├── tools/         共有ツール (calendar_service, enhanced_rag, tavily_search)
 │   ├── config/        ルーティング定数、プロンプトテンプレート
 │   └── tests/         pytest テストスイート
 │
 └── supabase/          DBマイグレーションと設定
 ```
 
-### 重要: 2つのAIエージェント層について
+### AIエージェント構成
 
-このプロジェクトには AIエージェントが **2箇所** あります。混乱しやすいので注意してください。
+バックエンドの **LangGraph** が唯一のAIレイヤーです（フロントエンドは純粋なUIプロキシ）。
 
-| 層 | 場所 | 状態 | 技術 |
-|----|------|------|------|
-| フロントエンド Mastra | `frontend/src/mastra/` | 移行中 (現在も稼働) | Gemini + OpenAI embeddings |
-| バックエンド LangGraph | `backend/agents/` | 新実装 (主体) | OpenRouter + LangChain |
-
-移行方向: フロントエンド Mastra → バックエンド LangGraph。フロントエンドは純粋なUIレイヤーへ薄化中です。
+| 構成要素 | 技術 |
+|---------|------|
+| オーケストレーション | OrchestratorAgent (Supervisor Pattern) |
+| 専門エージェント | BusinessInfo, Facility, Event, GeneralKnowledge, CharacterControl, Slide, STT, Voice, OCR, Farewell + agent_tools |
+| LLM | OpenRouter (Gemini) via LangChain |
+| RAG | EnhancedRAGSearch (Supabase RPC) + Tavily Web検索フォールバック |
+| Embeddings | OpenRouter API (`openai/text-embedding-3-small`, 1536次元) |
 
 ### 重要: APIエンドポイントの混同に注意
 
@@ -375,9 +377,10 @@ engineer-cafe-navigator2025/
 ### データフローの概要
 
 ```
-音声: ブラウザ → /api/voice (FE) → Google Cloud STT → AIエージェント → Google Cloud TTS → ブラウザ
-Q&A:  ブラウザ → /api/qa (FE) → Mastraエージェント → Supabase RAG → レスポンス
-バックエンドAPI: フロントエンド → http://localhost:8000/api/... → FastAPI → LangGraph
+音声:     ブラウザ → /api/voice (FE proxy) → Backend STT/TTS → ブラウザ
+Q&A:      ブラウザ → /api/qa (FE proxy) → Backend /api/chat → LangGraph → RAG/Web検索 → レスポンス
+カレンダー: ブラウザ → /api/calendar (FE proxy) → Backend /api/calendar → Google Calendar ICS
+スライド:  Marp markdown → /api/marp (FE) → HTML レンダリング → MarpViewer
 ```
 
 ---
