@@ -228,15 +228,10 @@ const getStageBackgroundStyle = (background: BackgroundOption): CSSProperties =>
   return background.value ? { backgroundColor: background.value } : {};
 };
 
-function createReceptionSessionId(): string {
-  return `reception_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-}
-
 export default function Home() {
   const [currentLanguage, setCurrentLanguage] = useState<'ja' | 'en'>('ja');
   const [showSlideMode, setShowSlideMode] = useState(false);
   const [receptionCompleted, setReceptionCompleted] = useState(false);
-  const receptionSessionIdRef = useRef(createReceptionSessionId());
   const [characterBackground, setCharacterBackground] = useState<BackgroundOption>({
     id: 'engineer-cafe-bg',
     name: 'Engineer Cafe',
@@ -725,7 +720,7 @@ export default function Home() {
                   style={screenPadding}
                 >
                   <ReceptionPanel
-                    sessionId={receptionSessionIdRef.current}
+                    sessionId={voice.sessionId}
                     language={voice.currentLanguage}
                     onReceptionComplete={() => setReceptionCompleted(true)}
                   />

@@ -121,8 +121,9 @@ export function useReception({
   const handleOcrSuccess = useCallback(
     (result: OcrResponse) => {
       const identity: VisitorIdentity = {
-        user_id: result.member_id ? parseInt(result.member_id, 10) || undefined : undefined,
-        name: result.visitor_name,
+        user_id: result.member_number ?? undefined,
+        name: result.recognized_text ?? undefined,
+        ...(result.visitor_identity as Partial<VisitorIdentity> | undefined),
       };
       void startReception(identity);
     },

@@ -43,14 +43,16 @@ async def check_reception_status(session_id: str) -> dict[str, Any]:
         - purpose: Optional[dict]
     """
     if not session_id:
-        return {"completed": False, "stage": "none"}
+        # No session ID provided -- allow normal chat
+        return {"completed": True, "stage": "none"}
 
     try:
         repo = _get_repository()
-        record = await repo.get_active_session_by_conversation_id(session_id)
+        record = await repo.get_session_by_conversation_id(session_id)
 
         if record is None:
-            return {"completed": False, "stage": "none"}
+            # No reception session exists -- allow normal chat
+            return {"completed": True, "stage": "none"}
 
         session_data = record.get("session_data", {})
         stage = session_data.get("stage", record.get("stage", "initiated"))

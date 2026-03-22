@@ -285,9 +285,9 @@ export function ReceptionPanel({
         {(stage === 'camera_ocr' || stage === 'text_input') && (
           <OcrCameraView
             mode={stage === 'camera_ocr' ? 'member_card' : 'handwriting'}
-            language={language}
             onSuccess={handleOcrSuccess}
             onFallback={handleOcrFallback}
+            onSkip={handleOcrFallback}
           />
         )}
 

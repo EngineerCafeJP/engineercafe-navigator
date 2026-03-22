@@ -43,6 +43,7 @@ export interface VoiceInterfaceMetadata {
 }
 
 export interface VoiceInterfaceRenderProps {
+  sessionId: string;
   sessionState: VoiceSessionState;
   characterState: VoiceCharacterState;
   transcript: string;
@@ -681,6 +682,7 @@ export default function VoiceInterface({
 
   const renderProps = useMemo<VoiceInterfaceRenderProps>(
     () => ({
+      sessionId: sessionIdRef.current,
       sessionState,
       characterState: voiceController.characterState,
       transcript,

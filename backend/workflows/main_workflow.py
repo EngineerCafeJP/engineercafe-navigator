@@ -406,11 +406,14 @@ class MainWorkflow:
         # --- Reception status gate (before LLM call) ---
         reception_status = await check_reception_status(session_id)
 
-        if not reception_status.get("completed"):
+        if not reception_status.get("completed") and reception_status.get("stage") not in (
+            "none",
+            "error",
+        ):
             stage = reception_status.get("stage", "none")
             language = state.get("language", "ja")
 
-            if stage in ("none", "initiated"):
+            if stage == "initiated":
                 # New session -- greet visitor
                 greeting = get_reception_response(language, is_returning=False)
                 return Command(

@@ -434,8 +434,10 @@ async def respond_reception(request: ReceptionRespondRequest) -> ReceptionRespon
     current_stage = session.stage
 
     if current_stage == "greeting":
-        identity = VisitorIdentity(visitor_type=VisitorType(value="new"))
-        session.identify_visitor(identity)
+        # Only identify as new if not already identified (e.g., from OCR)
+        if session.visitor_identity is None:
+            identity = VisitorIdentity(visitor_type=VisitorType(value="new"))
+            session.identify_visitor(identity)
         session.advance_to("purpose_hearing")
         await _persist_session(session)
 
