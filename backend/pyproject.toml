@@ -14,7 +14,7 @@ authors = [
     { name = "EngineerCafeJP" }
 ]
 dependencies = [
-    "langgraph>=0.2.0",
+    "langgraph>=1.0,<1.2",
     "langchain>=0.3.0",
     "langchain-openai>=0.2.0",
     "langchain-text-splitters>=0.3.0",
@@ -70,7 +70,7 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.11"
-langgraph = "^0.2.0"
+langgraph = ">=1.0,<1.2"
 langchain = "^0.3.0"
 langchain-openai = "^0.2.0"
 langsmith = "^0.3.12"
