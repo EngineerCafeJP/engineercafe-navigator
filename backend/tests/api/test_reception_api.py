@@ -19,12 +19,80 @@ import backend.api.reception as reception_module
 client = TestClient(app)
 
 
+def _fake_canonical_classify_purpose(
+    message: str,
+    language: str = "ja",
+) -> tuple[str, str | None, float]:
+    lower = message.lower()
+
+    if any(keyword in lower for keyword in ("event", "seminar", "workshop", "meetup")) or (
+        "イベント" in message or "セミナー" in message or "ワークショップ" in message
+    ):
+        return "event_participation", message, 0.9
+
+    if any(
+        keyword in lower
+        for keyword in (
+            "tour",
+            "guided",
+            "visit",
+            "look around",
+            "show me",
+        )
+    ) or ("見学" in message or "案内" in message or "ツアー" in message):
+        return "tour", message, 0.9
+
+    if any(
+        keyword in lower
+        for keyword in (
+            "consult",
+            "advice",
+            "inquiry",
+            "question",
+            "ask",
+        )
+    ) or ("相談" in message or "質問" in message):
+        return "consultation", message, 0.9
+
+    if any(
+        keyword in lower
+        for keyword in (
+            "cowork",
+            "coworking",
+            "study",
+            "work",
+            "wifi",
+            "facility",
+            "space",
+            "room",
+        )
+    ) or (
+        "作業" in message
+        or "利用" in message
+        or "勉強" in message
+        or "コワーキング" in message
+        or "施設" in message
+    ):
+        return "facility_use", message, 0.9
+
+    return "other", None, 0.3
+
+
 @pytest.fixture(autouse=True)
 def clear_sessions():
     """Wipe the in-memory session store before every test."""
     reception_module._reset_session_storage()
     yield
     reception_module._reset_session_storage()
+
+
+@pytest.fixture(autouse=True)
+def mock_canonical_classifier():
+    with patch(
+        "backend.api.reception.canonical_classify_purpose",
+        side_effect=_fake_canonical_classify_purpose,
+    ):
+        yield
 
 
 def _start_session(session_id: str = "sess-001", language: str = "ja") -> dict:
