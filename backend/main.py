@@ -911,6 +911,11 @@ from backend.api.reception import reception_router  # noqa: E402
 
 app.include_router(reception_router, dependencies=[Depends(verify_api_key)])
 
+# OCR API Router
+from backend.api.ocr import ocr_router  # noqa: E402
+
+app.include_router(ocr_router, dependencies=[Depends(verify_api_key)])
+
 
 if __name__ == "__main__":
     import uvicorn
