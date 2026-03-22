@@ -1,10 +1,27 @@
-export type ReceptionStage = 'idle' | 'greeting' | 'purpose_hearing' | 'routing' | 'completed';
-export type ReceptionActiveStage = Exclude<ReceptionStage, 'idle'>;
+export type ReceptionStage =
+  | 'idle'
+  | 'welcome'
+  | 'camera_ocr'
+  | 'text_input'
+  | 'greeting'
+  | 'purpose_hearing'
+  | 'routing'
+  | 'completed';
+
+export type ReceptionActiveStage = Exclude<ReceptionStage, 'idle' | 'welcome' | 'camera_ocr' | 'text_input'>;
+
+export interface VisitorIdentity {
+  member_id?: string;
+  visitor_name?: string;
+  ocr_text?: string;
+  ocr_confidence?: number;
+}
 
 export interface StartReceptionRequest {
   session_id: string;
   language: string;
   trigger_type: string;
+  visitor_identity?: VisitorIdentity;
 }
 
 export interface StartReceptionResponse {

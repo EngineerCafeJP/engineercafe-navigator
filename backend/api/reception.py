@@ -308,6 +308,7 @@ class ReceptionStartRequest(BaseModel):
     session_id: str = Field(min_length=1, max_length=128)
     language: Literal["ja", "en", "zh", "ko"] = "ja"
     trigger_type: Literal["face_detection", "button_press", "wake_word", "nfc"] = "button_press"
+    visitor_identity: Optional[dict] = None  # From OCR identification
 
 
 class ReceptionStartResponse(BaseModel):
@@ -357,22 +358,46 @@ class ReceptionStatusResponse(BaseModel):
 
 @reception_router.post("/start", response_model=ReceptionStartResponse)
 async def start_reception(request: ReceptionStartRequest) -> ReceptionStartResponse:
-    """Initiate a new reception session."""
+    """Initiate a new reception session.
+
+    If ``visitor_identity`` is provided (e.g. from OCR identification),
+    the visitor is identified immediately and a personalized greeting
+    is generated.
+    """
     session = ReceptionSession(
         session_id=request.session_id,
         language=request.language,
         trigger_type=request.trigger_type,
     )
-    session.advance_to("greeting")
 
+    # If visitor_identity provided (from OCR), identify immediately
+    if request.visitor_identity and request.visitor_identity.get("user_id"):
+        from backend.utils.reception_templates import get_personalized_greeting
+
+        identity = VisitorIdentity(
+            visitor_type=VisitorType(value="returning"),
+            user_id=request.visitor_identity.get("user_id"),
+            name=request.visitor_identity.get("name"),
+            visit_count=request.visitor_identity.get("visit_count", 0),
+        )
+        session.identify_visitor(identity)
+
+        greeting_result = get_personalized_greeting(
+            language=request.language,
+            name=request.visitor_identity.get("name", ""),
+            last_purpose=request.visitor_identity.get("last_purpose"),
+        )
+    else:
+        greeting_result = get_reception_response(request.language, is_returning=False)
+
+    session.advance_to("greeting")
     await _persist_session(session)
 
-    greeting_result = get_reception_response(request.language, is_returning=False)
     logger.info(
-        "Reception session started: id=%s session_id=%s language=%s",
+        "Reception session started: id=%s session_id=%s visitor=%s",
         session.id,
         request.session_id,
-        request.language,
+        "identified" if request.visitor_identity else "new",
     )
 
     return ReceptionStartResponse(
@@ -500,6 +525,18 @@ async def complete_reception(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    # Invoke MainWorkflow with the handoff to get an agent response
+    agent_response: Optional[str] = None
+    try:
+        from backend.workflows.main_workflow import MainWorkflow
+
+        workflow = MainWorkflow()
+        agent_result = await workflow.ainvoke_from_reception(result)
+        agent_response = agent_result.get("answer")
+    except Exception as exc:
+        logger.warning("MainWorkflow invocation after reception failed: %s", exc)
+        # Not critical -- the handoff info is still returned
+
     logger.info(
         "Reception completed: id=%s target=%s requires_staff=%s",
         session.id,
@@ -508,7 +545,7 @@ async def complete_reception(
     )
 
     return ReceptionCompleteResponse(
-        response_text=result.purpose_flow.response_text,
+        response_text=agent_response or result.purpose_flow.response_text,
         target_agent=result.target_agent,
         requires_staff=result.requires_staff,
         purpose_category=session.purpose.category,

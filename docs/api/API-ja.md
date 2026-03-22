@@ -39,7 +39,7 @@ Engineer Cafe Navigator は 2 層構成の API を採用しています。
 
 フロントエンドの `/api/*` route は、そのままバックエンドそのものではありません。
 
-- `/api/voice`、`/api/qa`、`/api/slides`、`/api/character`、`/api/reception/*` はバックエンド route への proxy です。
+- `/api/voice`、`/api/qa`、`/api/slides`、`/api/character`、`/api/ocr`、`/api/reception/*` はバックエンド route への proxy です。
 - `/api/marp` はフロントエンド専用のレンダリング endpoint です。バックエンド `/api/slides/content` から markdown を取得し、`MarpProcessor` で HTML 化します。
 - `/api/admin/*` は edge 保護されたフロントエンド admin route です。バックエンドへ proxy するものと、フロントエンド側の admin utility を使うものがあります。
 
@@ -408,13 +408,52 @@ Authorization: Bearer <ADMIN_API_SECRET>
 - バックエンド `/api/stt/vocabulary` へ proxy します
 - 単一 item 操作の前に `id` 形式を検証します
 
+## OCR API
+
+### POST /api/ocr
+
+バックエンド `POST /api/ocr` への proxy です。カメラ画像から来訪者を識別します。
+
+サポートモード:
+
+- `member_card` — 会員証バーコードまたは ID のスキャン
+- `handwriting` — 手書きフォームからのテキスト抽出
+
+リクエスト例:
+
+```json
+{
+  "mode": "member_card",
+  "imageData": "base64-encoded-image",
+  "sessionId": "session-123"
+}
+```
+
+レスポンス例:
+
+```json
+{
+  "success": true,
+  "visitorIdentity": {
+    "memberId": "M-12345",
+    "name": "Engineer Taro"
+  },
+  "rawText": "M-12345 Engineer Taro",
+  "sessionId": "session-123"
+}
+```
+
+レート制限があります。制限超過時は `429 Too Many Requests` を返します。
+
+OCR バックエンドは `backend/api/ocr.py` に実装され、OCRAgent に処理を委譲します。
+
 ## Reception API
 
 フロントエンド reception route はバックエンド `/api/reception/*` へ proxy します。
 
 ### POST /api/reception/start
 
-reception session を開始します。
+reception session を開始します。OCR などで事前に識別済みの場合は `visitor_identity` フィールドを渡すことができます。
 
 リクエスト例:
 
@@ -422,9 +461,15 @@ reception session を開始します。
 {
   "session_id": "session-123",
   "language": "ja",
-  "trigger_type": "button_press"
+  "trigger_type": "button_press",
+  "visitor_identity": {
+    "memberId": "M-12345",
+    "name": "Engineer Taro"
+  }
 }
 ```
+
+`visitor_identity` は任意です。reception 開始前に身元が確定していない場合は省略してください。
 
 ### POST /api/reception/respond
 
@@ -442,7 +487,7 @@ reception 会話を継続します。
 
 ### POST /api/reception/complete
 
-reception から本体 workflow への handoff を完了します。
+reception を完了し、`ainvoke_from_reception()` 経由でメイン workflow を起動します。reception 中に収集した来訪者コンテキストを使ってエージェントが応答を生成します。
 
 リクエスト例:
 

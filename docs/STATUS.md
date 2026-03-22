@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-03-14
+Last updated: 2026-03-22
 
 ## Summary
 
@@ -9,14 +9,16 @@ Engineer Cafe Navigator is in a stabilization phase, not a finished production p
 Confirmed current-state signals:
 
 - Main frontend routes now proxy to the FastAPI backend.
-- Recent merged PRs focused on hardening, proxy unification, env cleanup, autoplay fixes, VRM compatibility, and WebM-to-WAV conversion.
+- Wave 1 (PR #320): OCR frontend connection — `POST /api/ocr` endpoint and `backend/api/ocr.py` orchestration layer added.
+- Wave 2 (PR #321): Reception workflow integration — orchestrator gates on reception status, `POST /api/reception/start` accepts `visitor_identity`, `POST /api/reception/complete` calls `ainvoke_from_reception()`, Welcome screen with 3-button UI, device webhook interface added.
+- Wave 3 (PR #322): Bug fixes — TTS HTML tag handling, table row preservation, slide white rendering, `/api/character` 504 timeout.
 - Backend tests currently collect `2868` cases with `pytest --collect-only -q`.
 - Repository audit since 2025-12-14 shows `457` commits, `fix/feat = 1.07`, `test ratio = 2.0%`, and a recent fix streak of `5`.
 
 Implication:
 
 - Core functionality exists.
-- Quality pressure is visible.
+- Reception flow is now integrated end-to-end: sensor/button → OCR or voice → reception workflow → main agent.
 - Several high-risk operational gaps remain before production sign-off.
 
 ## Current Architecture
@@ -32,7 +34,9 @@ Implication:
 
 - FastAPI entrypoint in `backend/main.py`
 - LangGraph workflow for chat and domain routing
-- Dedicated APIs for chat, voice, slides, character, knowledge, STT vocabulary, and reception
+- Dedicated APIs for chat, voice, slides, character, knowledge, STT vocabulary, reception, and OCR
+- OrchestratorAgent gates on reception status before LLM routing
+- `ainvoke_from_reception()` in main workflow handles handoff from completed reception sessions
 - Supabase-backed data and external integrations
 
 ### Current GitHub context

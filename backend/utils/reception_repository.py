@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Optional
 from uuid import UUID
 
 from supabase import Client
@@ -80,6 +80,41 @@ class ReceptionRepository:
         if result.data:
             return result.data[0]
         return None
+
+    async def get_active_session_by_conversation_id(
+        self, session_id: str
+    ) -> Optional[dict[str, Any]]:
+        """Look up the most recent active reception session for a conversation session_id.
+
+        Unlike ``get_session_record`` which queries by the reception session's
+        own ``id``, this method queries by the conversation ``session_id`` column.
+
+        Args:
+            session_id: The conversation session ID (UUID string).
+
+        Returns:
+            The most recent active reception session record, or ``None``.
+        """
+        try:
+            client = await self._get_client()
+            parsed = _parse_uuid(session_id)
+            if parsed is None:
+                return None
+            result = (
+                client.table("reception_sessions")
+                .select("*")
+                .eq("session_id", parsed)
+                .eq("status", "active")
+                .order("created_at", desc=True)
+                .limit(1)
+                .execute()
+            )
+            if result.data:
+                return result.data[0]
+            return None
+        except Exception as exc:
+            logger.warning("Failed to look up reception session: %s", exc)
+            return None
 
     async def complete_session(self, session_id: str) -> None:
         client = await self._get_client()

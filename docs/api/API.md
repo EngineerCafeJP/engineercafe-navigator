@@ -39,7 +39,7 @@ Notes:
 
 Frontend `/api/*` routes are not the backend itself. They are a proxy and integration layer:
 
-- `/api/voice`, `/api/qa`, `/api/slides`, `/api/character`, and `/api/reception/*` forward requests to backend routes.
+- `/api/voice`, `/api/qa`, `/api/slides`, `/api/character`, `/api/ocr`, and `/api/reception/*` forward requests to backend routes.
 - `/api/marp` is a frontend-only render endpoint. It fetches backend slide markdown from `/api/slides/content`, then renders it with `MarpProcessor`.
 - Admin routes under `/api/admin/*` are edge-protected frontend routes. Some proxy to backend APIs, and some use frontend-side admin utilities directly.
 
@@ -408,13 +408,52 @@ Current behavior:
 - Proxies to backend `/api/stt/vocabulary`
 - Validates `id` format before proxying single-item requests
 
+## OCR API
+
+### POST /api/ocr
+
+Frontend proxy for backend `POST /api/ocr`. Identifies visitors via camera image.
+
+Supported modes:
+
+- `member_card` — scan a membership card barcode or ID
+- `handwriting` — extract handwritten text from a form
+
+Example request:
+
+```json
+{
+  "mode": "member_card",
+  "imageData": "base64-encoded-image",
+  "sessionId": "session-123"
+}
+```
+
+Example response:
+
+```json
+{
+  "success": true,
+  "visitorIdentity": {
+    "memberId": "M-12345",
+    "name": "Taro Engineer"
+  },
+  "rawText": "M-12345 Taro Engineer",
+  "sessionId": "session-123"
+}
+```
+
+Rate limiting applies. Returns `429 Too Many Requests` when the limit is exceeded.
+
+The OCR backend is implemented in `backend/api/ocr.py` and delegates to OCRAgent for processing.
+
 ## Reception API
 
 Frontend reception routes proxy to backend `/api/reception/*`.
 
 ### POST /api/reception/start
 
-Starts a reception session.
+Starts a reception session. Accepts an optional `visitor_identity` field for pre-identified visitors (e.g. via OCR).
 
 Example request:
 
@@ -422,9 +461,15 @@ Example request:
 {
   "session_id": "session-123",
   "language": "ja",
-  "trigger_type": "button_press"
+  "trigger_type": "button_press",
+  "visitor_identity": {
+    "memberId": "M-12345",
+    "name": "Taro Engineer"
+  }
 }
 ```
+
+`visitor_identity` is optional. Omit it when identity has not been established before reception starts.
 
 ### POST /api/reception/respond
 
@@ -442,7 +487,7 @@ Example request:
 
 ### POST /api/reception/complete
 
-Completes reception handoff.
+Completes reception and invokes the main workflow via `ainvoke_from_reception()`. The backend generates an agent response using the full visitor context collected during reception.
 
 Example request:
 
