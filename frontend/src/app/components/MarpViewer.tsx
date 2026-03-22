@@ -141,6 +141,7 @@ export default function MarpViewer({
   const stopAutoPlayRef = useRef<() => void>(() => {});
   const previousSlideRef = useRef<() => Promise<void>>(async () => {});
   const updateIframeSlideRef = useRef<(slideNumber: number, retryCount?: number) => void>(() => {});
+  const lastRenderedSlideRef = useRef<number>(0);
   const isNarratingRef = useRef(isNarrating);
   const isNarrationInProgressRef = useRef(isNarrationInProgress);
   const isPlayingRef = useRef(isPlaying);
@@ -1041,25 +1042,28 @@ export default function MarpViewer({
   };
 
   const updateIframeSlide = (slideNumber: number, retryCount = 0) => {
+    // Early return if slide hasn't changed (skip for retries finding DOM elements)
+    if (retryCount === 0 && slideNumber === lastRenderedSlideRef.current) return;
+
     if (iframeRef.current && iframeRef.current.contentWindow) {
       try {
         const iframeDoc = iframeRef.current.contentDocument || iframeRef.current.contentWindow.document;
-        
+
         // Try multiple selectors for better compatibility
         let slides = iframeDoc.querySelectorAll('section[data-marpit-fragment]');
-        
+
         if (slides.length === 0) {
           slides = iframeDoc.querySelectorAll('.marpit > svg');
         }
-        
+
         if (slides.length === 0) {
           slides = iframeDoc.querySelectorAll('[data-marpit-svg]');
         }
-        
+
         if (slides.length === 0) {
           slides = iframeDoc.querySelectorAll('div.marpit > svg');
         }
-        
+
         // If still no slides and haven't retried too many times, retry after delay
         if (slides.length === 0 && retryCount < 10) {
           setTimeout(() => {
@@ -1067,35 +1071,39 @@ export default function MarpViewer({
           }, 200);
           return;
         }
-        
+
         if (slides.length === 0) {
           console.error('No slides found after multiple attempts');
           return;
         }
-        
-        
-        // Hide all slides
-        slides.forEach((slide) => {
-          const el = slide as HTMLElement;
-          el.style.display = 'none';
-          el.style.visibility = 'hidden';
+
+        lastRenderedSlideRef.current = slideNumber;
+
+        // Use requestAnimationFrame to batch DOM mutations and avoid blank frames
+        requestAnimationFrame(() => {
+          // Hide all slides
+          slides.forEach((slide) => {
+            const el = slide as HTMLElement;
+            el.style.display = 'none';
+            el.style.visibility = 'hidden';
+          });
+
+          // Show only the current slide
+          if (slides[slideNumber - 1]) {
+            const currentSlide = slides[slideNumber - 1] as HTMLElement;
+            currentSlide.style.display = 'block';
+            currentSlide.style.visibility = 'visible';
+            currentSlide.style.position = 'relative';
+            currentSlide.style.width = '100%';
+            currentSlide.style.height = '100%';
+          }
+
+          // Update counter
+          const slideCounter = iframeDoc.getElementById('slideCounter');
+          if (slideCounter) {
+            slideCounter.textContent = `Slide ${slideNumber} of ${slides.length}`;
+          }
         });
-        
-        // Show only the current slide
-        if (slides[slideNumber - 1]) {
-          const currentSlide = slides[slideNumber - 1] as HTMLElement;
-          currentSlide.style.display = 'block';
-          currentSlide.style.visibility = 'visible';
-          currentSlide.style.position = 'relative';
-          currentSlide.style.width = '100%';
-          currentSlide.style.height = '100%';
-        }
-        
-        // Update counter
-        const slideCounter = iframeDoc.getElementById('slideCounter');
-        if (slideCounter) {
-          slideCounter.textContent = `Slide ${slideNumber} of ${slides.length}`;
-        }
       } catch (error) {
         console.error('Error updating slide visibility:', error);
       }

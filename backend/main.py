@@ -868,16 +868,25 @@ async def character_api(request: Request, body: CharacterRequest):
         from backend.agents.character_control_agent import CharacterControlAgent
 
         agent = CharacterControlAgent()
-        result = await agent.process(
-            emotion=body.emotion or "neutral",
-            text=None,
-            context={"action": body.action, "animation": body.animation},
+        result = await asyncio.wait_for(
+            agent.process(
+                emotion=body.emotion or "neutral",
+                text=None,
+                context={"action": body.action, "animation": body.animation},
+            ),
+            timeout=10.0,
         )
         return CharacterResponse(
             success=True,
             message=(
                 json.dumps(result, ensure_ascii=False) if isinstance(result, dict) else str(result)
             ),
+        )
+    except asyncio.TimeoutError:
+        logger.warning("CharacterControlAgent timed out after 10s")
+        return CharacterResponse(
+            success=True,
+            message="Character action timed out",
         )
     except Exception as e:
         logger.exception("Endpoint error: %s", e)
