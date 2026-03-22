@@ -17,6 +17,8 @@ import numpy as np
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from backend.utils.rate_limit import rate_limit
+
 if TYPE_CHECKING:
     from backend.agents.ocr_agent import VisionAgent
     from backend.services.visitor_identification_service import VisitorIdentificationService
@@ -66,16 +68,24 @@ ocr_router = APIRouter(prefix="/api/ocr", tags=["ocr"])
 # ---------------------------------------------------------------------------
 
 _DATA_URI_PREFIX = re.compile(r"^data:image/[a-z]+;base64,", re.IGNORECASE)
-_MEMBER_NUMBER_RE = re.compile(r"\b(\d{1,4})\b")
+# Anchor on membership card context; fall back to standalone 3-4 digit numbers
+_MEMBER_NUMBER_RE = re.compile(
+    r"(?:No\.?|Member|会員番号|会員No)\s*(\d{1,4})" r"|(?<!\d)(\d{3,4})(?!\d)",
+    re.IGNORECASE,
+)
+
+# 10 MB base64 ≈ ~7.5 MB decoded (generous for 640px JPEG)
+_MAX_IMAGE_DATA_LENGTH = 10 * 1024 * 1024
 
 
 class OcrRequest(BaseModel):
     image_data: str = Field(
         ...,
+        max_length=_MAX_IMAGE_DATA_LENGTH,
         description="JPEG image as base64 string (with or without data URI prefix)",
     )
     mode: Literal["member_card", "handwriting"] = "member_card"
-    session_id: str = ""
+    session_id: str = Field("", max_length=128)
 
 
 class OcrResponse(BaseModel):
@@ -99,12 +109,12 @@ _CJK_RANGES: dict[str, tuple[tuple[str, str], ...]] = {
     "ja": (
         ("\u3040", "\u309f"),  # Hiragana
         ("\u30a0", "\u30ff"),  # Katakana
+        ("\u4e00", "\u9fff"),  # CJK Ideographs (default to ja for Fukuoka venue)
     ),
     "ko": (
         ("\uac00", "\ud7af"),  # Hangul Syllables
         ("\u1100", "\u11ff"),  # Hangul Jamo
     ),
-    "zh": (("\u4e00", "\u9fff"),),  # CJK Unified Ideographs
 }
 
 
@@ -188,9 +198,10 @@ def _decode_image(image_data: str) -> np.ndarray:
     try:
         image_bytes = base64.b64decode(raw_b64)
     except Exception as exc:
+        logger.warning("Base64 decode failed: %s", exc)
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid base64 image data: {exc}",
+            detail="Invalid image data",
         ) from exc
 
     arr = np.frombuffer(image_bytes, dtype=np.uint8)
@@ -209,6 +220,7 @@ def _decode_image(image_data: str) -> np.ndarray:
 
 
 @ocr_router.post("", response_model=OcrResponse)
+@rate_limit("10/minute")
 async def recognize_image(request: OcrRequest) -> OcrResponse:
     """Run OCR on an uploaded image.
 
@@ -234,7 +246,7 @@ async def recognize_image(request: OcrRequest) -> OcrResponse:
             success=False,
             mode=request.mode,
             processing_time_ms=elapsed_ms,
-            error=f"Vision processing failed: {exc}",
+            error="Vision processing failed",
         )
 
     text_result: dict[str, Any] = vision_result.get("text", {})
@@ -259,7 +271,7 @@ async def recognize_image(request: OcrRequest) -> OcrResponse:
         if recognized_text:
             match = _MEMBER_NUMBER_RE.search(recognized_text)
             if match:
-                member_number = int(match.group(1))
+                member_number = int(match.group(1) or match.group(2))
                 try:
                     svc = _get_visitor_id_service()
                     visitor_identity = await svc.identify_by_member_number(member_number)

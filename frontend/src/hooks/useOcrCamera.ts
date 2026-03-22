@@ -3,7 +3,7 @@
  *
  * Camera control hook for OCR with:
  * - MediaStream management
- * - Quality-filtered frame capture (200ms analysis interval)
+ * - Quality-filtered frame capture (200ms scan interval)
  * - API submission at 2-second intervals (quality-passing frames only)
  * - Max 8 attempts → fallback
  * - State management for OCR flow
@@ -37,6 +37,7 @@ export interface UseOcrCameraReturn {
   state: OcrCameraState;
   videoRef: React.RefObject<HTMLVideoElement | null>;
   attempts: number;
+  maxAttempts: number;
   lastResult: OcrResponse | null;
   qualityInfo: { laplacianVariance: number; brightness: number } | null;
   startCamera: () => Promise<void>;
@@ -48,7 +49,7 @@ const DEFAULT_MAX_ATTEMPTS = 8;
 const DEFAULT_SUBMIT_INTERVAL_MS = 2000;
 const DEFAULT_CONFIDENCE_THRESHOLD_MEMBER = 0.8;
 const DEFAULT_CONFIDENCE_THRESHOLD_HANDWRITING = 0.7;
-const QUALITY_CHECK_INTERVAL_MS = 200;
+const SCAN_LOOP_INTERVAL_MS = 200;
 
 export function useOcrCamera(options: UseOcrCameraOptions): UseOcrCameraReturn {
   const {
@@ -56,8 +57,6 @@ export function useOcrCamera(options: UseOcrCameraOptions): UseOcrCameraReturn {
     sessionId = '',
     maxAttempts = DEFAULT_MAX_ATTEMPTS,
     submitIntervalMs = DEFAULT_SUBMIT_INTERVAL_MS,
-    onSuccess,
-    onFallback,
   } = options;
 
   const confidenceThreshold =
@@ -76,21 +75,29 @@ export function useOcrCamera(options: UseOcrCameraOptions): UseOcrCameraReturn {
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const qualityTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const submitTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const scanLoopTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastSubmitTimeRef = useRef<number>(0);
   const isSubmittingRef = useRef(false);
   const attemptsRef = useRef(0);
 
+  // Stable refs for callbacks to avoid stale closures (HIGH-1 fix)
+  const onSuccessRef = useRef(options.onSuccess);
+  const onFallbackRef = useRef(options.onFallback);
+  useEffect(() => {
+    onSuccessRef.current = options.onSuccess;
+  }, [options.onSuccess]);
+  useEffect(() => {
+    onFallbackRef.current = options.onFallback;
+  }, [options.onFallback]);
+
+  // Reuse a single offscreen canvas to avoid GC pressure (HIGH-4 fix)
+  const qualityCanvasRef = useRef<HTMLCanvasElement | null>(null);
+
   // Cleanup
   const stopCamera = useCallback(() => {
-    if (qualityTimerRef.current) {
-      clearInterval(qualityTimerRef.current);
-      qualityTimerRef.current = null;
-    }
-    if (submitTimerRef.current) {
-      clearInterval(submitTimerRef.current);
-      submitTimerRef.current = null;
+    if (scanLoopTimerRef.current) {
+      clearInterval(scanLoopTimerRef.current);
+      scanLoopTimerRef.current = null;
     }
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((t) => t.stop());
@@ -109,8 +116,13 @@ export function useOcrCamera(options: UseOcrCameraOptions): UseOcrCameraReturn {
     const now = Date.now();
     if (now - lastSubmitTimeRef.current < submitIntervalMs) return;
 
-    // Quality check
-    const quality = checkFrameQuality(video);
+    // Lazy-create reusable canvas
+    if (!qualityCanvasRef.current) {
+      qualityCanvasRef.current = document.createElement('canvas');
+    }
+
+    // Quality check with reusable canvas
+    const quality = checkFrameQuality(video, qualityCanvasRef.current);
     setQualityInfo({
       laplacianVariance: quality.laplacianVariance,
       brightness: quality.brightness,
@@ -137,17 +149,16 @@ export function useOcrCamera(options: UseOcrCameraOptions): UseOcrCameraReturn {
       });
       setLastResult(result);
 
-      const isSuccess =
-        result.success && result.confidence >= confidenceThreshold;
+      const isSuccess = result.success && result.confidence >= confidenceThreshold;
 
       if (isSuccess) {
         setState('success');
         stopCamera();
-        onSuccess?.(result);
+        onSuccessRef.current?.(result);
       } else if (currentAttempt >= maxAttempts) {
         setState('fallback');
         stopCamera();
-        onFallback?.();
+        onFallbackRef.current?.();
       } else {
         setState('scanning');
       }
@@ -155,23 +166,14 @@ export function useOcrCamera(options: UseOcrCameraOptions): UseOcrCameraReturn {
       if (currentAttempt >= maxAttempts) {
         setState('fallback');
         stopCamera();
-        onFallback?.();
+        onFallbackRef.current?.();
       } else {
         setState('scanning');
       }
     } finally {
       isSubmittingRef.current = false;
     }
-  }, [
-    mode,
-    sessionId,
-    maxAttempts,
-    submitIntervalMs,
-    confidenceThreshold,
-    stopCamera,
-    onSuccess,
-    onFallback,
-  ]);
+  }, [mode, sessionId, maxAttempts, submitIntervalMs, confidenceThreshold, stopCamera]);
 
   // Start camera
   const startCamera = useCallback(async () => {
@@ -194,10 +196,10 @@ export function useOcrCamera(options: UseOcrCameraOptions): UseOcrCameraReturn {
 
       setState('scanning');
 
-      // Start quality check + submit loop
-      submitTimerRef.current = setInterval(() => {
+      // Start scan loop (quality check + submit)
+      scanLoopTimerRef.current = setInterval(() => {
         void submitFrame();
-      }, QUALITY_CHECK_INTERVAL_MS);
+      }, SCAN_LOOP_INTERVAL_MS);
     } catch {
       setState('error');
     }
@@ -207,8 +209,8 @@ export function useOcrCamera(options: UseOcrCameraOptions): UseOcrCameraReturn {
   const skip = useCallback(() => {
     stopCamera();
     setState('fallback');
-    onFallback?.();
-  }, [stopCamera, onFallback]);
+    onFallbackRef.current?.();
+  }, [stopCamera]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -221,6 +223,7 @@ export function useOcrCamera(options: UseOcrCameraOptions): UseOcrCameraReturn {
     state,
     videoRef,
     attempts,
+    maxAttempts,
     lastResult,
     qualityInfo,
     startCamera,

@@ -56,6 +56,7 @@ export function OcrCameraView({
     state,
     videoRef,
     attempts,
+    maxAttempts,
     lastResult,
     qualityInfo,
     startCamera,
@@ -108,7 +109,7 @@ export function OcrCameraView({
       {/* Attempt counter */}
       {(state === 'scanning' || state === 'submitting') && (
         <div className="flex items-center gap-4 text-sm text-gray-500">
-          <span>試行 {attempts} / 8</span>
+          <span>試行 {attempts} / {maxAttempts}</span>
           {qualityInfo && (
             <span>
               鮮明度: {Math.round(qualityInfo.laplacianVariance)} |
@@ -156,6 +157,23 @@ export function OcrCameraView({
           >
             スキップ
           </button>
+        )}
+
+        {state === 'fallback' && (
+          <>
+            <button
+              onClick={() => void startCamera()}
+              className="rounded-lg bg-blue-600 px-6 py-3 text-white hover:bg-blue-700"
+            >
+              再試行
+            </button>
+            <button
+              onClick={handleSkip}
+              className="rounded-lg border border-gray-300 px-6 py-3 text-gray-600 hover:bg-gray-50"
+            >
+              手動入力へ
+            </button>
+          </>
         )}
 
         {state === 'error' && (

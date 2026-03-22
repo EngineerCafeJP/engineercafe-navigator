@@ -7,10 +7,12 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
 
     if (!body.image_data) {
-      return NextResponse.json(
-        { error: 'Missing image_data field' },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: 'Missing image_data field' }, { status: 400 });
+    }
+
+    // 10MB limit matching backend OcrRequest.max_length
+    if (typeof body.image_data === 'string' && body.image_data.length > 10 * 1024 * 1024) {
+      return NextResponse.json({ error: 'Image too large' }, { status: 413 });
     }
 
     const response = await backendFetch('/api/ocr', {
