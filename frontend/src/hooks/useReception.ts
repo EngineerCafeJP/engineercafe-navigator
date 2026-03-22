@@ -121,10 +121,8 @@ export function useReception({
   const handleOcrSuccess = useCallback(
     (result: OcrResponse) => {
       const identity: VisitorIdentity = {
-        member_id: result.member_id,
-        visitor_name: result.visitor_name,
-        ocr_text: result.text,
-        ocr_confidence: result.confidence,
+        user_id: result.member_id ? parseInt(result.member_id, 10) || undefined : undefined,
+        name: result.visitor_name,
       };
       void startReception(identity);
     },
@@ -159,7 +157,7 @@ export function useReception({
         startTransition(() => {
           setStage(result.stage);
           setResponseText(result.response);
-          setPurpose(result.purpose);
+          setPurpose(result.purpose?.category ?? null);
           setMessages((currentMessages) => [
             ...currentMessages,
             createMessage('assistant', result.response),

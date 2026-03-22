@@ -11,7 +11,7 @@ from collections import OrderedDict
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Literal, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Path, Query
 from pydantic import BaseModel, Field
 
 from backend.domain.reception.models import (
@@ -304,11 +304,18 @@ def _classify_purpose(message: str) -> Optional[str]:
 # ---------------------------------------------------------------------------
 
 
+class VisitorIdentityInput(BaseModel):
+    user_id: Optional[int] = None
+    name: Optional[str] = Field(None, max_length=256)
+    visit_count: int = 0
+    last_purpose: Optional[dict] = None
+
+
 class ReceptionStartRequest(BaseModel):
     session_id: str = Field(min_length=1, max_length=128)
     language: Literal["ja", "en", "zh", "ko"] = "ja"
     trigger_type: Literal["face_detection", "button_press", "wake_word", "nfc"] = "button_press"
-    visitor_identity: Optional[dict] = None  # From OCR identification
+    visitor_identity: Optional[VisitorIdentityInput] = None  # From OCR identification
 
 
 class ReceptionStartResponse(BaseModel):
@@ -371,21 +378,21 @@ async def start_reception(request: ReceptionStartRequest) -> ReceptionStartRespo
     )
 
     # If visitor_identity provided (from OCR), identify immediately
-    if request.visitor_identity and request.visitor_identity.get("user_id"):
+    if request.visitor_identity and request.visitor_identity.user_id:
         from backend.utils.reception_templates import get_personalized_greeting
 
         identity = VisitorIdentity(
             visitor_type=VisitorType(value="returning"),
-            user_id=request.visitor_identity.get("user_id"),
-            name=request.visitor_identity.get("name"),
-            visit_count=request.visitor_identity.get("visit_count", 0),
+            user_id=request.visitor_identity.user_id,
+            name=request.visitor_identity.name,
+            visit_count=request.visitor_identity.visit_count,
         )
         session.identify_visitor(identity)
 
         greeting_result = get_personalized_greeting(
             language=request.language,
-            name=request.visitor_identity.get("name", ""),
-            last_purpose=request.visitor_identity.get("last_purpose"),
+            name=request.visitor_identity.name or "",
+            last_purpose=request.visitor_identity.last_purpose,
         )
     else:
         greeting_result = get_reception_response(request.language, is_returning=False)
@@ -414,7 +421,7 @@ async def respond_reception(request: ReceptionRespondRequest) -> ReceptionRespon
     if session is None:
         raise HTTPException(
             status_code=404,
-            detail=f"Reception session not found: {request.reception_session_id}",
+            detail="Reception session not found",
         )
 
     if session.session_id != request.session_id:
@@ -496,7 +503,7 @@ async def complete_reception(
     if session is None:
         raise HTTPException(
             status_code=404,
-            detail=(f"Reception session not found: " f"{request.reception_session_id}"),
+            detail="Reception session not found",
         )
 
     if session.session_id != request.session_id:
@@ -556,7 +563,7 @@ async def complete_reception(
 
 @reception_router.get("/status/{reception_session_id}", response_model=ReceptionStatusResponse)
 async def get_reception_status(
-    reception_session_id: str,
+    reception_session_id: str = Path(..., min_length=1, max_length=128),
     session_id: str = Query(..., min_length=1, max_length=128),
 ) -> ReceptionStatusResponse:
     """Return the current state of a reception session."""
@@ -564,7 +571,7 @@ async def get_reception_status(
     if session is None:
         raise HTTPException(
             status_code=404,
-            detail=f"Reception session not found: {reception_session_id}",
+            detail="Reception session not found",
         )
 
     if session.session_id != session_id:

@@ -65,4 +65,4 @@ async def check_reception_status(session_id: str) -> dict[str, Any]:
     except Exception as exc:
         logger.warning("Reception status check failed: %s", exc)
         # Fail open -- allow chat to proceed without reception
-        return {"completed": True, "stage": "unknown"}
+        return {"completed": True, "stage": "error", "error": str(exc)}

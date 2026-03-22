@@ -55,6 +55,12 @@ export function ReceptionPanel({
     triggerType,
   });
 
+  // Wrap resetReception to also clear the auto-complete guard
+  const handleReset = useCallback(() => {
+    hasAutoCompletedRef.current = false;
+    resetReception();
+  }, [resetReception]);
+
   // --- 10-second welcome timeout ---
   const clearWelcomeTimer = useCallback(() => {
     if (welcomeTimerRef.current) {
@@ -79,7 +85,6 @@ export function ReceptionPanel({
   // --- Auto-complete when routing ---
   useEffect(() => {
     if (stage !== 'routing') {
-      hasAutoCompletedRef.current = false;
       return;
     }
 
@@ -89,7 +94,7 @@ export function ReceptionPanel({
 
     hasAutoCompletedRef.current = true;
     void completeReception().catch(() => {
-      hasAutoCompletedRef.current = false;
+      // Don't reset on error — let manual retry handle it
     });
   }, [completeReception, isLoading, stage]);
 
@@ -180,7 +185,7 @@ export function ReceptionPanel({
           {showResetButton && (
             <button
               type="button"
-              onClick={resetReception}
+              onClick={handleReset}
               className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
             >
               Reset

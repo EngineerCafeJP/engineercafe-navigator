@@ -11,10 +11,10 @@ export type ReceptionStage =
 export type ReceptionActiveStage = Exclude<ReceptionStage, 'idle' | 'welcome' | 'camera_ocr' | 'text_input'>;
 
 export interface VisitorIdentity {
-  member_id?: string;
-  visitor_name?: string;
-  ocr_text?: string;
-  ocr_confidence?: number;
+  user_id?: number;
+  name?: string;
+  visit_count?: number;
+  last_purpose?: { category: string; detail?: string };
 }
 
 export interface StartReceptionRequest {
@@ -39,7 +39,7 @@ export interface RespondReceptionRequest {
 export interface RespondReceptionResponse {
   response: string;
   stage: ReceptionActiveStage;
-  purpose: string | null;
+  purpose: { category: string; detail?: string } | null;
   next_action: string | null;
 }
 

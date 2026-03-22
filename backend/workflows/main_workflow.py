@@ -452,7 +452,8 @@ class MainWorkflow:
                     category, detail, confidence = await pc.classify_purpose(
                         query=query, language=language
                     )
-                except Exception:
+                except Exception as classify_exc:
+                    logger.warning("Purpose classification failed: %s", classify_exc)
                     category, detail, confidence = "other", None, 0.3
 
                 followup = get_purpose_followup(language, category)
@@ -1156,6 +1157,7 @@ class MainWorkflow:
             class _RuntimeShim:
                 def __init__(self, ctx: WorkflowContext) -> None:
                     self.context = ctx
+                    self.store = None  # No store available outside graph execution
 
             formatted = await self._format_response_node(merged_state, _RuntimeShim(context))
         except Exception:
