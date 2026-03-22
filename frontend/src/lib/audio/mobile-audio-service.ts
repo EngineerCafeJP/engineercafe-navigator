@@ -119,6 +119,8 @@ export class MobileAudioService {
         };
       }
 
+      this.webAudioPlayer.setOptions(this.options);
+
       // Start audio playback
       const playResult = await this.webAudioPlayer.play();
       if (!playResult.success) {

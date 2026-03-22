@@ -8,7 +8,7 @@ import { audioStateManager } from '@/lib/audio-state-manager';
 import { cn } from '@/lib/cn';
 import { EmotionTagParser } from '@/lib/emotion-tag-parser';
 import { formatError } from '@/lib/error-messages';
-import { LipSyncAnalyzer } from '@/lib/lip-sync-analyzer';
+import { LipSyncAnalyzer, type LipSyncFrame } from '@/lib/lip-sync-analyzer';
 import { preprocessTTS } from '@/utils/tts-preprocess';
 import { AlertCircle, Loader2, Mic, MicOff, Volume2, VolumeX, XCircle } from 'lucide-react';
 import {
@@ -286,20 +286,13 @@ export default function VoiceInterface({
     sessionIdRef.current = createSessionId();
   }, []);
 
-  const applyLipSync = useCallback(
-    async (audioBlob: Blob) => {
+  const scheduleLipSyncFrames = useCallback(
+    (frames: LipSyncFrame[]) => {
       if (!onVisemeControl) {
         return;
       }
-
-      if (!lipSyncAnalyzerRef.current) {
-        lipSyncAnalyzerRef.current = new LipSyncAnalyzer();
-      }
-
-      const lipSyncData = await lipSyncAnalyzerRef.current.analyzeLipSync(audioBlob);
       clearLipSyncTimers();
-
-      lipSyncData.frames.forEach((frame) => {
+      frames.forEach((frame) => {
         const timerId = window.setTimeout(() => {
           onVisemeControl(frame.mouthShape, frame.mouthOpen);
         }, frame.time * 1000);
@@ -348,18 +341,30 @@ export default function VoiceInterface({
       revokeAudioUrl();
       audioUrlRef.current = audioUrl;
 
+      let lipSyncFrames: LipSyncFrame[] | null = null;
+      if (!metadataForPlayback?.vrm_control && onVisemeControl) {
+        try {
+          if (!lipSyncAnalyzerRef.current) {
+            lipSyncAnalyzerRef.current = new LipSyncAnalyzer();
+          }
+          const lipSyncData = await lipSyncAnalyzerRef.current.analyzeLipSync(audioBlob);
+          lipSyncFrames = lipSyncData.frames;
+        } catch {
+          clearLipSyncTimers();
+          lipSyncFrames = null;
+        }
+      }
+
       setLoadingMessage(LOADING_LABELS[currentLanguage].speaking);
       voiceController.notifySpeaking();
 
-      onAssistantPlaybackStart?.({ metadata: metadataForPlayback ?? null });
-
-      if (!metadataForPlayback?.vrm_control) {
-        await applyLipSync(audioBlob).catch(() => {
-          clearLipSyncTimers();
-        });
-      }
-
       audioService.updateEventHandlers({
+        onPlay: () => {
+          onAssistantPlaybackStart?.({ metadata: metadataForPlayback ?? null });
+          if (lipSyncFrames && lipSyncFrames.length > 0) {
+            scheduleLipSyncFrames(lipSyncFrames);
+          }
+        },
         onEnded: () => {
           cleanupAudioPlayback();
           voiceController.notifySpeakingComplete();
@@ -379,14 +384,15 @@ export default function VoiceInterface({
       }
     },
     [
-      applyLipSync,
       cleanupAudioPlayback,
       clearLipSyncTimers,
       currentLanguage,
       ensureAudioService,
       isMuted,
       onAssistantPlaybackStart,
+      onVisemeControl,
       revokeAudioUrl,
+      scheduleLipSyncFrames,
       voiceController,
     ],
   );

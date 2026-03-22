@@ -241,7 +241,7 @@ export default function Home() {
   const [setExpressionFunction, setSetExpressionFunction] = useState<((expression: string, weight: number) => void) | null>(null);
   const [textDraft, setTextDraft] = useState('');
   const [showTextInput, setShowTextInput] = useState(false);
-  const [latestMetadata, setLatestMetadata] = useState<VoiceInterfaceMetadata | null>(null);
+  const [, setLatestMetadata] = useState<VoiceInterfaceMetadata | null>(null);
   const [conversationHistory, setConversationHistory] = useState<ConversationHistoryItem[]>([]);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
   const settingsPanelPropsRef = useRef<SettingsPanelPropsFromSource | null>(null);
@@ -249,6 +249,8 @@ export default function Home() {
     useState<SettingsPanelPropsFromSource | null>(null);
   const playKeyframeAnimationRef = useRef<((data: CharacterAnimationData) => void) | null>(null);
   const lastVrmControlPlayedRef = useRef<unknown>(null);
+  /** Set when vrm_control playback runs before keyframe control ref is ready; flushed in onKeyframeAnimationControl. */
+  const pendingVrmPlaybackRef = useRef<CharacterAnimationData | null>(null);
   const lastTranscriptRef = useRef<string>('');
   const lastResponseRef = useRef<string>('');
 
@@ -286,14 +288,6 @@ export default function Home() {
     }, 150);
   }, []);
 
-  // Fallback: play vrm_control when metadata arrives (in case onAssistantPlaybackStart ran before ref was set)
-  useEffect(() => {
-    const vc = latestMetadata?.vrm_control;
-    if (!vc || !playKeyframeAnimationRef.current || lastVrmControlPlayedRef.current === vc) return;
-    lastVrmControlPlayedRef.current = vc;
-    playKeyframeAnimationRef.current(vc);
-  }, [latestMetadata?.vrm_control]);
-
   return (
     <VoiceInterface
       language={currentLanguage}
@@ -303,9 +297,17 @@ export default function Home() {
       onMetadataChange={setLatestMetadata}
       onAssistantPlaybackStart={({ metadata: playbackMetadata }) => {
         const vc = playbackMetadata?.vrm_control;
-        if (vc && playKeyframeAnimationRef.current && lastVrmControlPlayedRef.current !== vc) {
-          lastVrmControlPlayedRef.current = vc;
-          playKeyframeAnimationRef.current(vc);
+        if (!vc) {
+          return;
+        }
+        if (playKeyframeAnimationRef.current) {
+          if (lastVrmControlPlayedRef.current !== vc) {
+            lastVrmControlPlayedRef.current = vc;
+            playKeyframeAnimationRef.current(vc);
+          }
+          pendingVrmPlaybackRef.current = null;
+        } else {
+          pendingVrmPlaybackRef.current = vc;
         }
       }}
     >
@@ -406,6 +408,12 @@ export default function Home() {
                   }}
                   onKeyframeAnimationControl={(play) => {
                     playKeyframeAnimationRef.current = play;
+                    const pending = pendingVrmPlaybackRef.current;
+                    if (pending && lastVrmControlPlayedRef.current !== pending) {
+                      lastVrmControlPlayedRef.current = pending;
+                      play(pending);
+                      pendingVrmPlaybackRef.current = null;
+                    }
                   }}
                   onBackgroundChange={setCharacterBackground}
                   onLightingChange={setLightingIntensity}
