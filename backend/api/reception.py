@@ -20,6 +20,7 @@ from backend.domain.reception.models import (
     VisitorIdentity,
     VisitorType,
 )
+from backend.utils.purpose_classifier import classify_purpose as canonical_classify_purpose
 from backend.utils.reception_templates import (
     get_purpose_followup,
     get_purpose_hearing_prompt,
@@ -239,67 +240,6 @@ async def _load_session(
 
 
 # ---------------------------------------------------------------------------
-# Purpose keyword classifier (lightweight, no LLM required for basic cases)
-# ---------------------------------------------------------------------------
-
-_PURPOSE_KEYWORDS: dict[str, list[str]] = {
-    "tour": [
-        "tour",
-        "guide",
-        "guided",
-        "guidance",
-        "見学",
-        "ツアー",
-        "案内",
-        "館内",
-    ],
-    "facility_use": [
-        "cowork",
-        "coworking",
-        "コワーキング",
-        "デスク",
-        "facility",
-        "room",
-        "space",
-        "施設",
-        "利用",
-        "部屋",
-        "スペース",
-    ],
-    "event_participation": [
-        "event",
-        "seminar",
-        "workshop",
-        "meetup",
-        "イベント",
-        "セミナー",
-        "ワークショップ",
-        "勉強会",
-    ],
-    "consultation": [
-        "inquiry",
-        "question",
-        "info",
-        "ask",
-        "consult",
-        "問い合わせ",
-        "質問",
-        "相談",
-        "聞きたい",
-    ],
-}
-
-
-def _classify_purpose(message: str) -> Optional[str]:
-    """Classify a visitor's message into a purpose category."""
-    lower = message.lower()
-    for category, keywords in _PURPOSE_KEYWORDS.items():
-        if any(kw in lower for kw in keywords):
-            return category
-    return None
-
-
-# ---------------------------------------------------------------------------
 # Pydantic request / response models
 # ---------------------------------------------------------------------------
 
@@ -450,8 +390,16 @@ async def respond_reception(request: ReceptionRespondRequest) -> ReceptionRespon
         )
 
     if current_stage == "purpose_hearing":
-        category = _classify_purpose(request.message)
-        if category is None:
+        try:
+            category, detail, confidence = await canonical_classify_purpose(
+                request.message,
+                language,
+            )
+        except Exception as exc:
+            logger.warning("Purpose classification failed: %s", exc)
+            category, detail, confidence = "other", None, 0.3
+
+        if category == "other":
             prompt_result = get_purpose_hearing_prompt(language)
             return ReceptionRespondResponse(
                 response=prompt_result.text,
@@ -459,6 +407,13 @@ async def respond_reception(request: ReceptionRespondRequest) -> ReceptionRespon
                 next_action="clarify_purpose",
             )
 
+        logger.info(
+            "Purpose classified: session_id=%s category=%s confidence=%.2f detail=%s",
+            session.session_id,
+            category,
+            confidence,
+            detail,
+        )
         purpose = VisitPurpose(category=category, detail=request.message)
         session.set_purpose(purpose)
         session.advance_to("routing")
