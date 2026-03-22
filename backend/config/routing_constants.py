@@ -575,8 +575,6 @@ GREETING_KEYWORDS: list[str] = [
     "good morning",
     "good afternoon",
     "good evening",
-    "hi",
-    "hey",
 ]
 
 # 時間帯別挨拶テンプレート
@@ -634,6 +632,11 @@ AGENT_DESCRIPTIONS: Dict[str, str] = {
         "一般知識エージェント: " "上記以外の一般的な質問、" "および過去の会話履歴に関する質問に回答"
     ),
     "slide": ("スライドエージェント: " "スライドのナレーション、操作、質問応答を処理"),
+    "greeting": (
+        "挨拶処理（インライン）: こんにちは、おはよう等の挨拶に対して"
+        "エンジニアカフェの温かい歓迎メッセージを応答。"
+        "オーケストレーターがインラインで処理する。"
+    ),
     "farewell": (
         "退館エージェント: さようなら、帰ります等の退館メッセージに対して"
         "温かい退館メッセージ、受付カード返却案内、荷物確認リマインダーを応答"
@@ -669,6 +672,7 @@ CATEGORY_TO_AGENT_MAP: Dict[str, AgentNodeName] = {
     "floor_layout": "facility",
     "nearby": "facility",
     "lost_found": "facility",
+    "greeting": "business_info",
     "farewell": "farewell",
 }
 

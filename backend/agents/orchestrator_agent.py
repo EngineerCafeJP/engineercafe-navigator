@@ -39,6 +39,7 @@ from backend.config.routing_constants import (
     EMERGENCY_KEYWORDS,
     EXCLUSIVE_RENTAL_KEYWORDS,
     EVENT_KEYWORDS,
+    GREETING_KEYWORDS,
     FACILITY_EQUIPMENT_KEYWORDS,
     FLOOR_KEYWORDS,
     FLOOR_LAYOUT_KEYWORDS,
@@ -375,6 +376,25 @@ class OrchestratorAgent:
                 "request_type": "emergency",
                 "reasoning": "Emergency keyword detected",
             }
+
+        # 挨拶キーワード → greeting（インライン処理）
+        # Strip matched greeting keyword and check if meaningful content remains.
+        # This prevents false positives like "こんにちは 営業時間は？" or "hello wifi?".
+        if match_keywords(lower_query, GREETING_KEYWORDS):
+            stripped = lower_query.strip()
+            remaining = stripped
+            for kw in sorted(GREETING_KEYWORDS, key=len, reverse=True):
+                remaining = remaining.replace(kw.lower(), "").strip()
+            # Remove common punctuation
+            remaining = remaining.strip("!！?？。、.,  ")
+            # Only route as greeting if no meaningful content remains
+            if len(remaining) <= 3:
+                return {
+                    "agent": "business_info",
+                    "category": "greeting",
+                    "request_type": "greeting",
+                    "reasoning": f"Greeting keyword detected: {stripped[:30]}",
+                }
 
         # カフェ曖昧性: "カフェ" + "どっち/どちら/which" → clarification
         # (orchestrator_node がcategory基準でインライン処理する)
