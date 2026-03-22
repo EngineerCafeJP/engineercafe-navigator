@@ -120,6 +120,40 @@ class MainWorkflow:
 
         self.graph = self._build_graph()
 
+    async def _store_reception_session(
+        self,
+        *,
+        session_id: str,
+        stage: str,
+        language: str,
+        trigger_type: str = "voice",
+        status: str = "active",
+        metadata: Optional[dict[str, Any]] = None,
+        purpose: Optional[dict[str, Any]] = None,
+    ) -> None:
+        """Persist reception state for /api/chat-driven multi-turn flows."""
+        if not session_id:
+            return
+
+        from backend.utils.reception_repository import ReceptionRepository
+
+        payload: dict[str, Any] = {
+            "session_id": session_id,
+            "stage": stage,
+            "language": language,
+            "trigger_type": trigger_type,
+            "status": status,
+        }
+        if metadata is not None:
+            payload["metadata"] = metadata
+        if purpose is not None:
+            payload["purpose"] = purpose
+
+        try:
+            await ReceptionRepository().store_session(session_id, payload)
+        except Exception as exc:
+            logger.warning("Reception session persistence failed: %s", exc)
+
     # LLMノード用リトライポリシー: 一時的な障害(レート制限, タイムアウト等)に対応
     LLM_RETRY_POLICY = RetryPolicy(
         initial_interval=1.0,
@@ -415,6 +449,12 @@ class MainWorkflow:
 
             if stage == "initiated":
                 # New session -- greet visitor
+                await self._store_reception_session(
+                    session_id=session_id,
+                    stage="greeting",
+                    language=language,
+                    metadata={"reception_action": "start_reception"},
+                )
                 greeting = get_reception_response(language, is_returning=False)
                 return Command(
                     goto="format_response",
@@ -432,6 +472,12 @@ class MainWorkflow:
 
             if stage == "greeting":
                 # Waiting for purpose -- ask
+                await self._store_reception_session(
+                    session_id=session_id,
+                    stage="purpose_hearing",
+                    language=language,
+                    metadata={"reception_action": "hear_purpose"},
+                )
                 prompt = get_purpose_hearing_prompt(language)
                 return Command(
                     goto="format_response",
@@ -459,6 +505,18 @@ class MainWorkflow:
                     logger.warning("Purpose classification failed: %s", classify_exc)
                     category, detail, confidence = "other", None, 0.3
 
+                purpose = {
+                    "category": category,
+                    "detail": detail,
+                    "confidence": confidence,
+                }
+                await self._store_reception_session(
+                    session_id=session_id,
+                    stage="routing",
+                    language=language,
+                    metadata={"reception_action": "classify_purpose"},
+                    purpose=purpose,
+                )
                 followup = get_purpose_followup(language, category)
 
                 return Command(
@@ -471,13 +529,18 @@ class MainWorkflow:
                             "agent": "reception",
                             "reception_stage": "routing",
                             "reception_action": "classify_purpose",
-                            "purpose": {
-                                "category": category,
-                                "detail": detail,
-                                "confidence": confidence,
-                            },
+                            "purpose": purpose,
                         },
                     },
+                )
+            if stage == "routing":
+                await self._store_reception_session(
+                    session_id=session_id,
+                    stage="completed",
+                    language=language,
+                    status="completed",
+                    metadata={"reception_action": "complete_reception"},
+                    purpose=reception_status.get("purpose"),
                 )
             # For "routing" or other intermediate stages, fall through to
             # normal orchestrator LLM routing.
@@ -558,6 +621,12 @@ class MainWorkflow:
                 period,
                 query[:80],
             )
+            await self._store_reception_session(
+                session_id=session_id,
+                stage="greeting",
+                language=lang,
+                metadata={"reception_action": "start_reception"},
+            )
 
             return Command(
                 goto="format_response",
@@ -573,6 +642,12 @@ class MainWorkflow:
                     },
                     "answer": greeting_msg,
                     "emotion": "happy",
+                    "metadata": {
+                        **state.get("metadata", {}),
+                        "agent": "reception",
+                        "reception_stage": "greeting",
+                        "reception_action": "start_reception",
+                    },
                 },
             )
 
