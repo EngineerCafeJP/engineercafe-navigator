@@ -217,23 +217,21 @@ def clean_text_for_tts(text: str) -> str:
     # Horizontal rules: ---, ***, ___ (3+ chars on their own line)
     t = re.sub(r"^[-\*_]{3,}\s*$", "", t, flags=re.M)
 
-    # HTML tags: strip common HTML tags that LLMs may emit, replacing with
-    # space to prevent word concatenation (e.g. "</p><p>" won't merge text).
-    # Preserves non-HTML angle brackets like vector<int>, 1 < 2.
-    _html_tags = (
-        r"(?:br|p|div|span|strong|em|b|i|u|a|h[1-6]"
-        r"|ul|ol|li|table|tr|td|th|hr|img|pre|code|blockquote)"
+    # HTML tags: replace with space to prevent word concatenation
+    # (preserves non-HTML angle brackets like vector<int>, 1 < 2)
+    t = re.sub(
+        r"</?(?:br|p|div|span|strong|em|b|i|u|a|h[1-6]"
+        r"|ul|ol|li|table|tr|td|th|hr|img|pre|code|blockquote)(?=[\s>/])[^>]*>",
+        " ",
+        t,
+        flags=re.I,
     )
-    t = re.sub(rf"</?(?:{_html_tags})(?=[\s>/])[^>]*/?>", " ", t, flags=re.I)
 
     # Table syntax: remove separator rows, convert data rows to plain text
-    # Separator rows: |---|---| or |:---:|:---:| etc.
     t = re.sub(r"^\|?[-:]+\|[-:|]+\|?\s*$", "", t, flags=re.M)
-    # Data rows: remove pipe characters but keep cell content as plain text
-    # Only match lines with 2+ pipes (preserves single pipe in e.g. grep foo | sort)
     t = re.sub(
-        r"^(\s*\|.*\|.*)$",
-        lambda m: re.sub(r"\|", " ", m.group(1)).strip(),
+        r"^\s*\|(.+\|.+)\s*$",
+        lambda m: m.group(1).replace("|", " ").strip(),
         t,
         flags=re.M,
     )
