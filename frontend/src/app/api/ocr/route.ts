@@ -13,20 +13,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const response = await backendFetch('/api/chat', {
+    const response = await backendFetch('/api/ocr', {
       method: 'POST',
       body: {
-        query: body.query || 'この画像を分析してください',
-        session_id: body.session_id || '',
-        language: body.language || 'ja',
         image_data: body.image_data,
+        mode: body.mode || 'member_card',
+        session_id: body.session_id || '',
       },
     });
 
     return NextResponse.json(response.data, { status: response.status });
   } catch {
     return NextResponse.json(
-      { error: 'Failed to process image' },
+      { error: 'Failed to process OCR' },
       { status: 500 },
     );
   }
