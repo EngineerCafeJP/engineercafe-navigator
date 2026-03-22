@@ -19,7 +19,7 @@ Current important endpoints:
 
 - `GET /health`
 - `GET /api/calendar`
-- `POST /api/chat`
+- `POST /api/chat` (also handles OCR/vision when `image_data` is provided)
 - `POST /api/chat/stream`
 - `POST /api/voice`
 - `POST /api/slides`
@@ -35,6 +35,8 @@ Notable implementation details:
 - API-key protection exists, but becomes optional only in local/dev environments without `API_SECRET_KEY`; `staging`, `preview`, and `production` fail closed.
 - Rate limiting depends on `slowapi`; without it, the decorators become no-ops.
 - Reception session state is currently stored in process memory, not durable storage.
+- Agent prompts include oral/conversational style instructions for natural TTS output.
+- `clean_text_for_tts` in `utils/text_utils.py` strips Markdown artifacts (headers, bold, lists, links, code blocks) before speech synthesis.
 - Recent STT fixes added WebM-to-WAV conversion, which means ffmpeg/runtime availability matters for some environments.
 - OrchestratorAgent gates on reception status before LLM routing — sessions with an active reception are handled by the reception workflow first.
 - `POST /api/reception/complete` invokes `ainvoke_from_reception()` in the main workflow to generate an agent response using the full visitor context.

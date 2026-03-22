@@ -240,6 +240,38 @@ Engineer Cafe Navigator は 2 層構成の API を採用しています。
 - `action=sample_questions&language=ja|en`
 - `action=health`
 
+### POST /api/ocr
+
+バックエンド `POST /api/chat` への proxy です（画像データ付き）。
+
+画像と任意のクエリを受け取り、`image_data` 付きでバックエンドの chat endpoint に転送して OCR/ビジョン処理を行います。
+
+リクエスト例:
+
+```json
+{
+  "image_data": "base64-encoded-image",
+  "query": "この画像を分析してください",
+  "session_id": "session-123",
+  "language": "ja"
+}
+```
+
+レスポンス例:
+
+```json
+{
+  "success": true,
+  "answer": "この画像には名刺が写っており...",
+  "emotion": "neutral",
+  "metadata": {
+    "session_id": "session-123"
+  }
+}
+```
+
+補足: フロントエンドは `image_data` の存在を検証してから proxy します。バックエンドはビジョン機能を持つ既存の chat パイプラインで画像を処理します。
+
 ### POST /api/character
 
 バックエンド `POST /api/character` への proxy です。

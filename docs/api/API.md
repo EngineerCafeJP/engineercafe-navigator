@@ -240,6 +240,38 @@ Example response:
 - `action=sample_questions&language=ja|en`
 - `action=health`
 
+### POST /api/ocr
+
+Frontend proxy for backend `POST /api/chat` with image data.
+
+This route accepts an image and optional query, then forwards it to the backend chat endpoint with `image_data` for OCR/vision processing.
+
+Example request:
+
+```json
+{
+  "image_data": "base64-encoded-image",
+  "query": "Analyze this image",
+  "session_id": "session-123",
+  "language": "en"
+}
+```
+
+Example response:
+
+```json
+{
+  "success": true,
+  "answer": "The image shows a business card with ...",
+  "emotion": "neutral",
+  "metadata": {
+    "session_id": "session-123"
+  }
+}
+```
+
+Note: The frontend validates that `image_data` is present before proxying. The backend processes the image through its existing chat pipeline with vision capabilities.
+
 ### POST /api/character
 
 Frontend proxy for backend `POST /api/character`.
