@@ -387,12 +387,102 @@ class MainWorkflow:
         適切なエージェントにCommand patternでルーティング。
         clarification カテゴリはインラインでテンプレート応答を生成し、
         format_response に直接ルーティングする。
+
+        Reception integration: before the LLM routing call, check if the
+        session has an active (incomplete) reception flow. If so, short-circuit
+        with the appropriate reception stage response.
         """
         from backend.utils.clarification_templates import get_clarification_response
-        from backend.utils.reception_templates import get_reception_response
+        from backend.utils.reception_status import check_reception_status
+        from backend.utils.reception_templates import (
+            get_purpose_followup,
+            get_purpose_hearing_prompt,
+            get_reception_response,
+        )
 
         query = state.get("query", "")
         session_id = state.get("session_id", "")
+
+        # --- Reception status gate (before LLM call) ---
+        reception_status = await check_reception_status(session_id)
+
+        if not reception_status.get("completed") and reception_status.get("stage") not in (
+            "none",
+            "error",
+        ):
+            stage = reception_status.get("stage", "none")
+            language = state.get("language", "ja")
+
+            if stage == "initiated":
+                # New session -- greet visitor
+                greeting = get_reception_response(language, is_returning=False)
+                return Command(
+                    goto="format_response",
+                    update={
+                        "answer": greeting.text,
+                        "emotion": "happy",
+                        "metadata": {
+                            **state.get("metadata", {}),
+                            "agent": "reception",
+                            "reception_stage": "greeting",
+                            "reception_action": "start_reception",
+                        },
+                    },
+                )
+
+            if stage == "greeting":
+                # Waiting for purpose -- ask
+                prompt = get_purpose_hearing_prompt(language)
+                return Command(
+                    goto="format_response",
+                    update={
+                        "answer": prompt.text,
+                        "emotion": "neutral",
+                        "metadata": {
+                            **state.get("metadata", {}),
+                            "agent": "reception",
+                            "reception_stage": "purpose_hearing",
+                            "reception_action": "hear_purpose",
+                        },
+                    },
+                )
+
+            if stage == "purpose_hearing":
+                # Classify the purpose from the user's message
+                from backend.utils import purpose_classifier as pc
+
+                try:
+                    category, detail, confidence = await pc.classify_purpose(
+                        query=query, language=language
+                    )
+                except Exception as classify_exc:
+                    logger.warning("Purpose classification failed: %s", classify_exc)
+                    category, detail, confidence = "other", None, 0.3
+
+                followup = get_purpose_followup(language, category)
+
+                return Command(
+                    goto="format_response",
+                    update={
+                        "answer": followup.text,
+                        "emotion": "neutral",
+                        "metadata": {
+                            **state.get("metadata", {}),
+                            "agent": "reception",
+                            "reception_stage": "routing",
+                            "reception_action": "classify_purpose",
+                            "purpose": {
+                                "category": category,
+                                "detail": detail,
+                                "confidence": confidence,
+                            },
+                        },
+                    },
+                )
+            # For "routing" or other intermediate stages, fall through to
+            # normal orchestrator LLM routing.
+
+        # --- Normal orchestrator LLM routing ---
         memory_context = state.get("context", {}).get("memory")
 
         decision = await self.orchestrator.decide_next_agent(
@@ -1070,6 +1160,7 @@ class MainWorkflow:
             class _RuntimeShim:
                 def __init__(self, ctx: WorkflowContext) -> None:
                     self.context = ctx
+                    self.store = None  # No store available outside graph execution
 
             formatted = await self._format_response_node(merged_state, _RuntimeShim(context))
         except Exception:

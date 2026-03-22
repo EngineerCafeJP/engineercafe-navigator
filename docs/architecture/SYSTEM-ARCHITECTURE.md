@@ -80,10 +80,13 @@ Engineer Cafe Navigator is a multilingual AI navigation system for the Engineer 
 
 ## 📊 Data Flow
 
+### Standard Chat Flow
+
 ```
 User Query → Frontend → FastAPI Backend (Python)
     ↓
 OrchestratorAgent (LLM-based Supervisor Pattern routing)
+  [Reception gate: checks if session has active reception before LLM routing]
     ↓
 [Route to Appropriate Specialized Agent]
     ├─→ BusinessInfoAgent (Enhanced RAG: hours, pricing, consultation, community)
@@ -97,6 +100,28 @@ Response Generation (OpenRouter LLM)
     ↓
 Frontend (Avatar + TTS + UI)
 ```
+
+### Reception Flow
+
+```
+Sensor/Button → Welcome Screen (3 buttons: member card / handwriting / voice)
+    ↓
+[Member card or handwriting path]
+    ↓
+POST /api/ocr → backend/api/ocr.py → OCRAgent → visitor_identity
+    ↓
+POST /api/reception/start (visitor_identity optional)
+    ↓
+Reception Workflow (purpose collection, visitor type classification)
+    ↓
+POST /api/reception/complete → ainvoke_from_reception() → Main Workflow
+    ↓
+OrchestratorAgent routes with visitor context
+    ↓
+Frontend (Avatar + TTS + UI)
+```
+
+Device integration (M5Stack, physical sensors) sends events to `frontend/src/lib/api/device-webhook.ts`, which triggers the Welcome screen.
 
 ### Query Processing Pipeline (LangGraph)
 1. **STT Processing**: Speech recognition with STT corrections (Vosk local / Google Cloud)

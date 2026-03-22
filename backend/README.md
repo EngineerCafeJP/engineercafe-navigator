@@ -24,6 +24,7 @@ Current important endpoints:
 - `POST /api/voice`
 - `POST /api/slides`
 - `POST /api/character`
+- `POST /api/ocr` — member card and handwriting OCR; implemented in `backend/api/ocr.py`
 - `POST /api/interrupt`
 - `/api/knowledge/*`
 - `/api/stt-vocabulary/*`
@@ -35,6 +36,10 @@ Notable implementation details:
 - Rate limiting depends on `slowapi`; without it, the decorators become no-ops.
 - Reception session state is currently stored in process memory, not durable storage.
 - Recent STT fixes added WebM-to-WAV conversion, which means ffmpeg/runtime availability matters for some environments.
+- OrchestratorAgent gates on reception status before LLM routing — sessions with an active reception are handled by the reception workflow first.
+- `POST /api/reception/complete` invokes `ainvoke_from_reception()` in the main workflow to generate an agent response using the full visitor context.
+- `POST /api/reception/start` accepts an optional `visitor_identity` field for OCR-pre-identified visitors.
+- `backend/utils/reception_status.py` provides the reception status checker used by the orchestrator gate.
 
 ## Environment
 

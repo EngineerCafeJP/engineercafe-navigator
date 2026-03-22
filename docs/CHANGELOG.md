@@ -1,5 +1,28 @@
 # Changelog
 
+## [Unreleased] - Wave 1-3 (PRs #320, #321, #322)
+
+### Added
+
+- `POST /api/ocr` dedicated endpoint for member card and handwriting OCR (#320)
+  - Supports `member_card` and `handwriting` modes
+  - Backend implementation in `backend/api/ocr.py`, delegates to OCRAgent
+- Reception gate in OrchestratorAgent — all chat queries check reception status before LLM routing (#321)
+- Welcome screen with 3 action buttons: member card scan / handwriting / voice (#321)
+- Device webhook interface for M5Stack and sensor integration (`frontend/src/lib/api/device-webhook.ts`) (#321)
+- `visitor_identity` parameter on `POST /api/reception/start` for OCR-identified visitors (#321)
+- `ainvoke_from_reception()` integration in `POST /api/reception/complete` — main workflow generates agent response using reception context (#321)
+- Smoke test script for reception flow
+
+### Fixed
+
+- HTML tags in TTS output (`clean_text_for_tts`) no longer read out tag names (#322)
+- Table data rows preserved in TTS output — previously deleted by HTML stripping (#322)
+- Slide content white rendering on rapid navigation — fixed with `requestAnimationFrame` and deduplication (#322)
+- `/api/character` 504 timeout — added 10s timeout with proper error response (#322)
+
+---
+
 ## [2026-02-15] - Backend Knowledge Base Complete Expansion (PR #76)
 
 ### Added

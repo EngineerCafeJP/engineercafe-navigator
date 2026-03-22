@@ -1,6 +1,6 @@
 'use client';
 
-import { startTransition, useState } from 'react';
+import { startTransition, useCallback, useState } from 'react';
 
 import {
   completeReception as completeReceptionRequest,
@@ -8,7 +8,9 @@ import {
   startReception as startReceptionRequest,
   type CompleteReceptionResponse,
   type ReceptionStage,
+  type VisitorIdentity,
 } from '@/lib/reception-api';
+import type { OcrResponse } from '@/lib/api/ocr-api';
 
 export interface ReceptionMessage {
   id: string;
@@ -31,7 +33,11 @@ interface UseReceptionResult {
   receptionSessionId: string | null;
   completion: CompleteReceptionResponse | null;
   messages: ReceptionMessage[];
-  startReception: () => Promise<void>;
+  enterWelcome: () => void;
+  startOcr: (mode: 'member_card' | 'handwriting') => void;
+  handleOcrSuccess: (result: OcrResponse) => void;
+  handleOcrFallback: () => void;
+  startReception: (identity?: VisitorIdentity) => Promise<void>;
   sendMessage: (message: string) => Promise<void>;
   completeReception: () => Promise<CompleteReceptionResponse>;
   resetReception: () => void;
@@ -59,7 +65,7 @@ export function useReception({
   const [completion, setCompletion] = useState<CompleteReceptionResponse | null>(null);
   const [messages, setMessages] = useState<ReceptionMessage[]>([]);
 
-  const resetReception = () => {
+  const resetReception = useCallback(() => {
     setStage('idle');
     setResponseText(null);
     setPurpose(null);
@@ -68,68 +74,108 @@ export function useReception({
     setReceptionSessionId(null);
     setCompletion(null);
     setMessages([]);
-  };
+  }, []);
 
-  const startReception = async () => {
-    setIsLoading(true);
+  const enterWelcome = useCallback(() => {
+    setStage('welcome');
     setError(null);
+  }, []);
 
-    try {
-      const result = await startReceptionRequest({
-        session_id: sessionId,
-        language,
-        trigger_type: triggerType,
-      });
-
-      startTransition(() => {
-        setReceptionSessionId(result.reception_session_id);
-        setStage(result.stage);
-        setResponseText(result.greeting);
-        setPurpose(null);
-        setCompletion(null);
-        setMessages([createMessage('assistant', result.greeting)]);
-      });
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Failed to start reception');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const sendMessage = async (message: string) => {
-    const trimmedMessage = message.trim();
-    if (!trimmedMessage || !receptionSessionId) {
-      return;
-    }
-
-    setIsLoading(true);
+  const startOcr = useCallback((mode: 'member_card' | 'handwriting') => {
+    setStage(mode === 'member_card' ? 'camera_ocr' : 'text_input');
     setError(null);
-    setMessages((currentMessages) => [...currentMessages, createMessage('visitor', trimmedMessage)]);
+  }, []);
 
-    try {
-      const result = await respondReception({
-        session_id: sessionId,
-        reception_session_id: receptionSessionId,
-        message: trimmedMessage,
-      });
+  const startReception = useCallback(
+    async (identity?: VisitorIdentity) => {
+      setIsLoading(true);
+      setError(null);
 
-      startTransition(() => {
-        setStage(result.stage);
-        setResponseText(result.response);
-        setPurpose(result.purpose);
-        setMessages((currentMessages) => [
-          ...currentMessages,
-          createMessage('assistant', result.response),
-        ]);
-      });
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Failed to send message');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+      try {
+        const result = await startReceptionRequest({
+          session_id: sessionId,
+          language,
+          trigger_type: triggerType,
+          visitor_identity: identity,
+        });
 
-  const completeReception = async (): Promise<CompleteReceptionResponse> => {
+        startTransition(() => {
+          setReceptionSessionId(result.reception_session_id);
+          setStage(result.stage);
+          setResponseText(result.greeting);
+          setPurpose(null);
+          setCompletion(null);
+          setMessages([createMessage('assistant', result.greeting)]);
+        });
+      } catch (requestError) {
+        setError(
+          requestError instanceof Error ? requestError.message : 'Failed to start reception',
+        );
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [language, sessionId, triggerType],
+  );
+
+  const handleOcrSuccess = useCallback(
+    (result: OcrResponse) => {
+      const identity: VisitorIdentity = {
+        user_id: result.member_number ?? undefined,
+        name: result.recognized_text ?? undefined,
+        ...(result.visitor_identity as Partial<VisitorIdentity> | undefined),
+      };
+      void startReception(identity);
+    },
+    [startReception],
+  );
+
+  const handleOcrFallback = useCallback(() => {
+    void startReception();
+  }, [startReception]);
+
+  const sendMessage = useCallback(
+    async (message: string) => {
+      const trimmedMessage = message.trim();
+      if (!trimmedMessage || !receptionSessionId) {
+        return;
+      }
+
+      setIsLoading(true);
+      setError(null);
+      setMessages((currentMessages) => [
+        ...currentMessages,
+        createMessage('visitor', trimmedMessage),
+      ]);
+
+      try {
+        const result = await respondReception({
+          session_id: sessionId,
+          reception_session_id: receptionSessionId,
+          message: trimmedMessage,
+        });
+
+        startTransition(() => {
+          setStage(result.stage);
+          setResponseText(result.response);
+          setPurpose(result.purpose?.category ?? null);
+          setMessages((currentMessages) => [
+            ...currentMessages,
+            createMessage('assistant', result.response),
+          ]);
+        });
+      } catch (requestError) {
+        setError(
+          requestError instanceof Error ? requestError.message : 'Failed to send message',
+        );
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [receptionSessionId, sessionId],
+  );
+
+  const completeReception = useCallback(async (): Promise<CompleteReceptionResponse> => {
     if (!receptionSessionId) {
       throw new Error('Reception session has not started');
     }
@@ -163,7 +209,7 @@ export function useReception({
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [receptionSessionId, sessionId]);
 
   return {
     stage,
@@ -174,6 +220,10 @@ export function useReception({
     receptionSessionId,
     completion,
     messages,
+    enterWelcome,
+    startOcr,
+    handleOcrSuccess,
+    handleOcrFallback,
     startReception,
     sendMessage,
     completeReception,

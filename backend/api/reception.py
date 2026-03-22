@@ -11,7 +11,7 @@ from collections import OrderedDict
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Literal, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Path, Query
 from pydantic import BaseModel, Field
 
 from backend.domain.reception.models import (
@@ -304,10 +304,18 @@ def _classify_purpose(message: str) -> Optional[str]:
 # ---------------------------------------------------------------------------
 
 
+class VisitorIdentityInput(BaseModel):
+    user_id: Optional[int] = None
+    name: Optional[str] = Field(None, max_length=256)
+    visit_count: int = 0
+    last_purpose: Optional[dict] = None
+
+
 class ReceptionStartRequest(BaseModel):
     session_id: str = Field(min_length=1, max_length=128)
     language: Literal["ja", "en", "zh", "ko"] = "ja"
     trigger_type: Literal["face_detection", "button_press", "wake_word", "nfc"] = "button_press"
+    visitor_identity: Optional[VisitorIdentityInput] = None  # From OCR identification
 
 
 class ReceptionStartResponse(BaseModel):
@@ -357,22 +365,46 @@ class ReceptionStatusResponse(BaseModel):
 
 @reception_router.post("/start", response_model=ReceptionStartResponse)
 async def start_reception(request: ReceptionStartRequest) -> ReceptionStartResponse:
-    """Initiate a new reception session."""
+    """Initiate a new reception session.
+
+    If ``visitor_identity`` is provided (e.g. from OCR identification),
+    the visitor is identified immediately and a personalized greeting
+    is generated.
+    """
     session = ReceptionSession(
         session_id=request.session_id,
         language=request.language,
         trigger_type=request.trigger_type,
     )
-    session.advance_to("greeting")
 
+    # If visitor_identity provided (from OCR), identify immediately
+    if request.visitor_identity and request.visitor_identity.user_id:
+        from backend.utils.reception_templates import get_personalized_greeting
+
+        identity = VisitorIdentity(
+            visitor_type=VisitorType(value="returning"),
+            user_id=request.visitor_identity.user_id,
+            name=request.visitor_identity.name,
+            visit_count=request.visitor_identity.visit_count,
+        )
+        session.identify_visitor(identity)
+
+        greeting_result = get_personalized_greeting(
+            language=request.language,
+            name=request.visitor_identity.name or "",
+            last_purpose=request.visitor_identity.last_purpose,
+        )
+    else:
+        greeting_result = get_reception_response(request.language, is_returning=False)
+
+    session.advance_to("greeting")
     await _persist_session(session)
 
-    greeting_result = get_reception_response(request.language, is_returning=False)
     logger.info(
-        "Reception session started: id=%s session_id=%s language=%s",
+        "Reception session started: id=%s session_id=%s visitor=%s",
         session.id,
         request.session_id,
-        request.language,
+        "identified" if request.visitor_identity else "new",
     )
 
     return ReceptionStartResponse(
@@ -389,7 +421,7 @@ async def respond_reception(request: ReceptionRespondRequest) -> ReceptionRespon
     if session is None:
         raise HTTPException(
             status_code=404,
-            detail=f"Reception session not found: {request.reception_session_id}",
+            detail="Reception session not found",
         )
 
     if session.session_id != request.session_id:
@@ -402,8 +434,10 @@ async def respond_reception(request: ReceptionRespondRequest) -> ReceptionRespon
     current_stage = session.stage
 
     if current_stage == "greeting":
-        identity = VisitorIdentity(visitor_type=VisitorType(value="new"))
-        session.identify_visitor(identity)
+        # Only identify as new if not already identified (e.g., from OCR)
+        if session.visitor_identity is None:
+            identity = VisitorIdentity(visitor_type=VisitorType(value="new"))
+            session.identify_visitor(identity)
         session.advance_to("purpose_hearing")
         await _persist_session(session)
 
@@ -471,7 +505,7 @@ async def complete_reception(
     if session is None:
         raise HTTPException(
             status_code=404,
-            detail=(f"Reception session not found: " f"{request.reception_session_id}"),
+            detail="Reception session not found",
         )
 
     if session.session_id != request.session_id:
@@ -500,6 +534,18 @@ async def complete_reception(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    # Invoke MainWorkflow with the handoff to get an agent response
+    agent_response: Optional[str] = None
+    try:
+        from backend.workflows.main_workflow import MainWorkflow
+
+        workflow = MainWorkflow()
+        agent_result = await workflow.ainvoke_from_reception(result)
+        agent_response = agent_result.get("answer")
+    except Exception as exc:
+        logger.warning("MainWorkflow invocation after reception failed: %s", exc)
+        # Not critical -- the handoff info is still returned
+
     logger.info(
         "Reception completed: id=%s target=%s requires_staff=%s",
         session.id,
@@ -508,7 +554,7 @@ async def complete_reception(
     )
 
     return ReceptionCompleteResponse(
-        response_text=result.purpose_flow.response_text,
+        response_text=agent_response or result.purpose_flow.response_text,
         target_agent=result.target_agent,
         requires_staff=result.requires_staff,
         purpose_category=session.purpose.category,
@@ -519,7 +565,7 @@ async def complete_reception(
 
 @reception_router.get("/status/{reception_session_id}", response_model=ReceptionStatusResponse)
 async def get_reception_status(
-    reception_session_id: str,
+    reception_session_id: str = Path(..., min_length=1, max_length=128),
     session_id: str = Query(..., min_length=1, max_length=128),
 ) -> ReceptionStatusResponse:
     """Return the current state of a reception session."""
@@ -527,7 +573,7 @@ async def get_reception_status(
     if session is None:
         raise HTTPException(
             status_code=404,
-            detail=f"Reception session not found: {reception_session_id}",
+            detail="Reception session not found",
         )
 
     if session.session_id != session_id:

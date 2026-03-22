@@ -6,21 +6,27 @@ import { cn } from '@/lib/cn';
 import type { ReceptionStage } from '@/lib/reception-api';
 
 const STAGES = [
+  { key: 'welcome', label: 'Welcome' },
   { key: 'greeting', label: 'Greeting' },
   { key: 'purpose_hearing', label: 'Purpose' },
   { key: 'routing', label: 'Routing' },
   { key: 'completed', label: 'Complete' },
 ] as const;
 
+/** Maps any stage to the corresponding index in the STAGES array. */
+function resolveActiveIndex(currentStage: ReceptionStage): number {
+  if (currentStage === 'idle') return -1;
+  // camera_ocr and text_input are sub-states of welcome
+  if (currentStage === 'camera_ocr' || currentStage === 'text_input') return 0;
+  return STAGES.findIndex((s) => s.key === currentStage);
+}
+
 interface StageIndicatorProps {
   currentStage: ReceptionStage;
 }
 
 export function StageIndicator({ currentStage }: StageIndicatorProps) {
-  const activeIndex =
-    currentStage === 'idle'
-      ? -1
-      : STAGES.findIndex((stage) => stage.key === currentStage);
+  const activeIndex = resolveActiveIndex(currentStage);
 
   return (
     <ol className="flex items-start gap-3" aria-label="Reception progress">
@@ -36,7 +42,7 @@ export function StageIndicator({ currentStage }: StageIndicatorProps) {
                   'flex size-8 items-center justify-center rounded-full border text-sm font-semibold',
                   isCompleted && 'border-emerald-600 bg-emerald-600 text-white',
                   isCurrent && 'border-slate-900 bg-slate-900 text-white',
-                  !isCompleted && !isCurrent && 'border-slate-300 bg-white text-slate-400'
+                  !isCompleted && !isCurrent && 'border-slate-300 bg-white text-slate-400',
                 )}
               >
                 {isCompleted ? <Check className="size-4" aria-hidden="true" /> : index + 1}
@@ -44,7 +50,7 @@ export function StageIndicator({ currentStage }: StageIndicatorProps) {
               <span
                 className={cn(
                   'text-center text-xs font-medium',
-                  isCompleted || isCurrent ? 'text-slate-900' : 'text-slate-400'
+                  isCompleted || isCurrent ? 'text-slate-900' : 'text-slate-400',
                 )}
               >
                 {stage.label}
@@ -54,7 +60,7 @@ export function StageIndicator({ currentStage }: StageIndicatorProps) {
               <div
                 className={cn(
                   'mt-4 h-px flex-1',
-                  activeIndex > index ? 'bg-emerald-600' : 'bg-slate-200'
+                  activeIndex > index ? 'bg-emerald-600' : 'bg-slate-200',
                 )}
                 aria-hidden="true"
               />

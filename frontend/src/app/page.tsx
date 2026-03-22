@@ -40,6 +40,7 @@ import VoiceInterface, {
   type VoiceInterfaceMetadata,
   type VoiceSessionState,
 } from './components/VoiceInterface';
+import { ReceptionPanel } from '@/components/reception/ReceptionPanel';
 
 const overlayLabels = {
   ja: {
@@ -230,6 +231,7 @@ const getStageBackgroundStyle = (background: BackgroundOption): CSSProperties =>
 export default function Home() {
   const [currentLanguage, setCurrentLanguage] = useState<'ja' | 'en'>('ja');
   const [showSlideMode, setShowSlideMode] = useState(false);
+  const [receptionCompleted, setReceptionCompleted] = useState(false);
   const [characterBackground, setCharacterBackground] = useState<BackgroundOption>({
     id: 'engineer-cafe-bg',
     name: 'Engineer Cafe',
@@ -710,6 +712,20 @@ export default function Home() {
                   </div>
                 </div>
               ) : null}
+
+              {/* Reception overlay — shown until reception is completed */}
+              {!receptionCompleted && !showSlideMode && (
+                <div
+                  className="absolute inset-0 z-40 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+                  style={screenPadding}
+                >
+                  <ReceptionPanel
+                    sessionId={voice.sessionId}
+                    language={voice.currentLanguage}
+                    onReceptionComplete={() => setReceptionCompleted(true)}
+                  />
+                </div>
+              )}
             </main>
           </>
         );

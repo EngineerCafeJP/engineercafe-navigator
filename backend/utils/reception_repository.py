@@ -4,24 +4,13 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Any
-from uuid import UUID
+from typing import Any, Optional
 
 from supabase import Client
 
 from backend.utils.supabase_helper import get_supabase_client
 
 logger = logging.getLogger(__name__)
-
-
-def _parse_uuid(value: Any) -> str | None:
-    if not isinstance(value, str):
-        return None
-
-    try:
-        return str(UUID(value))
-    except ValueError:
-        return None
 
 
 class ReceptionRepository:
@@ -45,7 +34,7 @@ class ReceptionRepository:
 
         payload = {
             "id": session_id,
-            "session_id": _parse_uuid(data.get("session_id")),
+            "session_id": data.get("session_id"),
             "user_id": visitor_identity.get("user_id"),
             "stage": data.get("stage", "initiated"),
             "purpose": purpose.get("category") if isinstance(purpose, dict) else purpose,
@@ -80,6 +69,48 @@ class ReceptionRepository:
         if result.data:
             return result.data[0]
         return None
+
+    async def get_session_by_conversation_id(self, session_id: str) -> Optional[dict[str, Any]]:
+        """Look up the most recent reception session for a conversation session_id.
+
+        Unlike ``get_session_record`` which queries by the reception session's
+        own ``id``, this method queries by the conversation ``session_id`` column.
+        Both active and completed sessions are returned so that the orchestrator
+        can recognise that a session has already finished reception.
+
+        Args:
+            session_id: The conversation session ID (any string format).
+
+        Returns:
+            The most recent reception session record, or ``None``.
+        """
+        if not session_id or not session_id.strip():
+            return None
+        # Do NOT validate as UUID -- session_id can be any string format
+        # (e.g. "voice-session-*" from the browser).
+        try:
+            client = await self._get_client()
+            result = (
+                client.table("reception_sessions")
+                .select("*")
+                .eq("session_id", session_id)
+                .in_("status", ["active", "completed"])
+                .order("created_at", desc=True)
+                .limit(1)
+                .execute()
+            )
+            if result.data:
+                return result.data[0]
+            return None
+        except Exception as exc:
+            logger.warning("Failed to look up reception session: %s", exc)
+            return None
+
+    async def get_active_session_by_conversation_id(
+        self, session_id: str
+    ) -> Optional[dict[str, Any]]:
+        """Backward-compatible alias for ``get_session_by_conversation_id``."""
+        return await self.get_session_by_conversation_id(session_id)
 
     async def complete_session(self, session_id: str) -> None:
         client = await self._get_client()
