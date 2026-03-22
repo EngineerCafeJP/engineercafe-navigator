@@ -112,7 +112,11 @@ POST /api/ocr → backend/api/ocr.py → OCRAgent → visitor_identity
     ↓
 POST /api/reception/start (visitor_identity optional)
     ↓
-Reception Workflow (purpose collection, visitor type classification)
+Reception Workflow (purpose identification, visitor classification)
+    ├─→ Tour → Guided slide presentation (SlideAgent)
+    ├─→ Event → Event info + check-in (EventAgent)
+    ├─→ Coworking → Seat availability + registration (FacilityAgent)
+    └─→ General → Handoff to main chat (GeneralKnowledgeAgent)
     ↓
 POST /api/reception/complete → ainvoke_from_reception() → Main Workflow
     ↓

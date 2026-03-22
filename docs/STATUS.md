@@ -4,22 +4,21 @@ Last updated: 2026-03-22
 
 ## Summary
 
-Engineer Cafe Navigator is in a stabilization phase, not a finished production phase.
+Engineer Cafe Navigator is in active stabilization after completing Waves 1-3 of production integration.
 
 Confirmed current-state signals:
 
-- Main frontend routes now proxy to the FastAPI backend.
-- Wave 1 (PR #320): OCR frontend connection — `POST /api/ocr` endpoint and `backend/api/ocr.py` orchestration layer added.
-- Wave 2 (PR #321): Reception workflow integration — orchestrator gates on reception status, `POST /api/reception/start` accepts `visitor_identity`, `POST /api/reception/complete` calls `ainvoke_from_reception()`, Welcome screen with 3-button UI, device webhook interface added.
-- Wave 3 (PR #322): Bug fixes — TTS HTML tag handling, table row preservation, slide white rendering, `/api/character` 504 timeout.
-- Backend tests currently collect `2868` cases with `pytest --collect-only -q`.
-- Repository audit since 2025-12-14 shows `457` commits, `fix/feat = 1.07`, `test ratio = 2.0%`, and a recent fix streak of `5`.
+- All frontend routes proxy to the FastAPI backend via `backendFetch()`.
+- Wave 1 (PR #320): OCR frontend connection — `POST /api/ocr` endpoint added.
+- Wave 2 (PR #321): Reception workflow integration — orchestrator gates on reception status, Welcome screen, device webhook.
+- Wave 3 (PR #322): Bug fixes — TTS, slide rendering, character timeout.
+- RAGAS baseline: context_precision 1.000, answer_correctness 0.770, answer_relevancy 0.895, faithfulness 0.871.
 
 Implication:
 
-- Core functionality exists.
-- Reception flow is now integrated end-to-end: sensor/button → OCR or voice → reception workflow → main agent.
-- Several high-risk operational gaps remain before production sign-off.
+- Core functionality is complete including OCR, reception flow, and chat.
+- Reception flow integrated end-to-end: sensor/button → OCR or voice → reception workflow → main agent.
+- Remaining gaps are operational (auth hardening, durable sessions, device testing).
 
 ## Current Architecture
 
@@ -27,8 +26,8 @@ Implication:
 
 - Next.js 15 App Router
 - UI, VRM, audio interaction, admin UI
-- `/api/*` routes primarily act as backend proxies
-- Some server routes still access Supabase directly for admin/monitoring jobs
+- `/api/*` routes act as backend proxies (voice, qa, slides, character, reception, ocr)
+- OCR route (`/api/ocr`) proxies image data to backend chat with vision capabilities
 
 ### Backend
 
@@ -36,23 +35,23 @@ Implication:
 - LangGraph workflow for chat and domain routing
 - Dedicated APIs for chat, voice, slides, character, knowledge, STT vocabulary, reception, and OCR
 - OrchestratorAgent gates on reception status before LLM routing
-- `ainvoke_from_reception()` in main workflow handles handoff from completed reception sessions
+- Agent prompts include oral/conversational style for natural TTS output
+- `clean_text_for_tts` strips Markdown and HTML before speech synthesis
 - Supabase-backed data and external integrations
 
 ### Current GitHub context
 
 Open issues / PRs that materially affect delivery:
 
-- Issue `#232`: umbrella tracker for the 2026-03-14 production hardening sprint
-- Issue `#197`: protect admin / cron / monitoring routes
-- Issue `#209`: response bubble overlay for the fullscreen UI
-- Issue `#224`: complete frontend backend-proxy cleanup
+- Issue `#301`: QA oral style improvements (merged via PR #313)
+- Issue `#315`: Slide cascade fix (merged via PR #318)
+- Issue `#314`: OCR frontend orchestration (merged via PR #320)
 - Issue `#165`: Reception-2025 integration boundary and shared data usage
-- Issue `#113`: event participation / hosting flow guidance
-- Issue `#114`: feedback collection
-- Issue `#128`: non-camera visitor detection research
-- PR `#132`: draft admin authentication middleware
-- PR `#215`: new knowledge UI
+- Issue `#138`: Multi-language improvements (English OK, Korean/Chinese need work)
+- Issue `#117`: Autonomous reception flow integration
+- Issue `#128`: Non-camera visitor detection research
+- Issue `#113`: Event participation / hosting flow guidance
+- Issue `#114`: Feedback collection
 
 ## Confirmed Risks
 
