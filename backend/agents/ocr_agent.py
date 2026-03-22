@@ -77,7 +77,7 @@ class VisionAgent:
         graph.add_conditional_edges(
             "vision",
             tools_condition,
-            {"tools": "tools", "end": END},
+            {"tools": "tools", "__end__": END},
         )
 
         graph.add_edge("tools", "vision")
@@ -165,7 +165,7 @@ class VisionAgent:
         frame: np.ndarray = input["image"]
 
         # ⭐ 新仕様（後方互換あり）
-        mode: str = input.get("mode", "member_card")
+        mode: str = input.get("mode") or input.get("recognition_type") or "member_card"
 
         # ---------- resize ----------
         MAX_WIDTH = 640
