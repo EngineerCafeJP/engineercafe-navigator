@@ -733,6 +733,65 @@ class MainWorkflow:
             },
         )
 
+    async def _handle_reception_inline(
+        self,
+        state: WorkflowStateDict,
+        decision: OrchestratorDecision,
+    ) -> Optional[Command[RoutingTarget]]:
+        """Handle reception category inline (before topic_guard)."""
+        if decision.request_type != "reception":
+            return None
+
+        from backend.utils.reception_templates import get_reception_response
+
+        query = state.get("query", "")
+        logger.info(
+            "Inline reception: lang=%s, query=%s",
+            decision.language,
+            query[:80],
+        )
+        # first_time / returning / general の判定
+        long_term_memory = state.get("context", {}).get("long_term_memory")
+        lower_query = query.lower()
+        first_time_keywords = [
+            "初めて",
+            "はじめて",
+            "初回",
+            "first time",
+            "first visit",
+        ]
+        if any(kw in lower_query for kw in first_time_keywords):
+            reception_type = "first_time"
+        elif long_term_memory:
+            reception_type = "returning"
+        else:
+            reception_type = "general"
+
+        result = get_reception_response(
+            language=decision.language,
+            reception_type=reception_type,
+        )
+        return Command(
+            goto="format_response",
+            update={
+                "language": decision.language,
+                "routing": self._build_routing_payload(
+                    decision,
+                    agent="orchestrator_inline",
+                    category="reception",
+                ),
+                "answer": result["response"],
+                "emotion": result["emotion"],
+                "metadata": {
+                    **state.get("metadata", {}),
+                    "reception": {
+                        **result["metadata"],
+                        "reception_type": reception_type,
+                    },
+                },
+            },
+        )
+
     async def _handle_topic_guard(
         self,
         state: WorkflowStateDict,
@@ -819,6 +878,10 @@ class MainWorkflow:
                 current_state,
                 current_decision,
             ),
+            lambda current_state, current_decision: self._handle_reception_inline(
+                current_state,
+                current_decision,
+            ),
             lambda current_state, current_decision: self._handle_topic_guard(
                 current_state,
                 current_decision,
@@ -827,57 +890,6 @@ class MainWorkflow:
             cmd = await handler(state, decision)
             if cmd is not None:
                 return cmd
-
-        # reception カテゴリをインライン処理
-        if decision.request_type == "reception":
-            from backend.utils.reception_templates import get_reception_response
-
-            logger.info(
-                "Inline reception: lang=%s, query=%s",
-                decision.language,
-                query[:80],
-            )
-            # first_time / returning / general の判定
-            long_term_memory = state.get("context", {}).get("long_term_memory")
-            lower_query = query.lower()
-            first_time_keywords = [
-                "初めて",
-                "はじめて",
-                "初回",
-                "first time",
-                "first visit",
-            ]
-            if any(kw in lower_query for kw in first_time_keywords):
-                reception_type = "first_time"
-            elif long_term_memory:
-                reception_type = "returning"
-            else:
-                reception_type = "general"
-
-            result = get_reception_response(
-                language=decision.language,
-                reception_type=reception_type,
-            )
-            return Command(
-                goto="format_response",
-                update={
-                    "language": decision.language,
-                    "routing": self._build_routing_payload(
-                        decision,
-                        agent="orchestrator_inline",
-                        category="reception",
-                    ),
-                    "answer": result["response"],
-                    "emotion": result["emotion"],
-                    "metadata": {
-                        **state.get("metadata", {}),
-                        "reception": {
-                            **result["metadata"],
-                            "reception_type": reception_type,
-                        },
-                    },
-                },
-            )
 
         return Command(
             goto=decision.next_agent,
