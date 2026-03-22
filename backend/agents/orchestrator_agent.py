@@ -22,7 +22,6 @@ from typing import Optional
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import END
-from langgraph.types import Command
 
 from backend.config.routing_constants import (
     ACCESSIBILITY_KEYWORDS,
@@ -632,42 +631,3 @@ class OrchestratorAgent:
     async def close(self):
         """リソースのクリーンアップ"""
         await self.provider.close()
-
-
-# Supervisor Node用のヘルパー関数
-def create_orchestrator_node(orchestrator: OrchestratorAgent):
-    """
-    LangGraph Supervisor Node を作成するファクトリ関数
-
-    Returns:
-        Command を返すノード関数
-    """
-
-    async def orchestrator_node(state: dict) -> Command[RoutingTarget]:
-        """Supervisor ノード: クエリを適切なエージェントにルーティング"""
-        query = state.get("query", "")
-        session_id = state.get("session_id", "")
-        memory_context = state.get("context", {}).get("memory")
-
-        decision = await orchestrator.decide_next_agent(
-            query=query,
-            session_id=session_id,
-            memory_context=memory_context,
-        )
-
-        return Command(
-            goto=decision.next_agent,
-            update={
-                "language": decision.language,
-                "routing": {
-                    "agent": decision.next_agent,
-                    "category": decision.category,
-                    "request_type": decision.request_type,
-                    "confidence": decision.confidence,
-                    "reasoning": decision.reasoning,
-                    "debug_info": decision.debug_info,
-                },
-            },
-        )
-
-    return orchestrator_node
