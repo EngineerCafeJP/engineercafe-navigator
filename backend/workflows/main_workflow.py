@@ -30,6 +30,7 @@ from langgraph.types import Command, RetryPolicy
 from backend.agents.character_control_agent import CharacterControlAgent
 from backend.agents.orchestrator_agent import (
     OrchestratorAgent,
+    OrchestratorDecision,
     RoutingTarget,
 )
 
@@ -163,6 +164,13 @@ class MainWorkflow:
         backoff_factor=2.0,
         max_interval=10.0,
         max_attempts=3,
+    )
+    _CLARIFICATION_CATEGORIES = (
+        "cafe-clarification-needed",
+        "meeting-room-clarification-needed",
+        "event-clarification-needed",
+        "space-clarification-needed",
+        "general-clarification-needed",
     )
 
     def _build_graph(self) -> StateGraph:
@@ -559,6 +567,270 @@ class MainWorkflow:
         # normal orchestrator LLM routing.
         return None
 
+    @staticmethod
+    def _build_routing_payload(
+        decision: OrchestratorDecision,
+        *,
+        agent: str,
+        category: Optional[str] = None,
+        request_type: Optional[str] = None,
+        confidence: Optional[float] = None,
+        reasoning: Optional[str] = None,
+    ) -> dict[str, Any]:
+        return {
+            "agent": agent,
+            "category": category or decision.category,
+            "request_type": request_type or decision.request_type,
+            "confidence": confidence if confidence is not None else decision.confidence,
+            "reasoning": reasoning or decision.reasoning,
+            "debug_info": decision.debug_info,
+        }
+
+    async def _handle_emergency(
+        self,
+        state: WorkflowStateDict,
+        decision: OrchestratorDecision,
+    ) -> Optional[Command[RoutingTarget]]:
+        if decision.category != "emergency":
+            return None
+
+        from backend.utils.emergency_templates import get_emergency_response
+
+        query = state.get("query", "")
+        logger.info(
+            "Inline emergency: lang=%s, query=%s",
+            decision.language,
+            query[:80],
+        )
+        result = get_emergency_response(query, decision.language)
+        asyncio.create_task(self._notify_discord_emergency(query, result))
+        return Command(
+            goto="format_response",
+            update={
+                "language": decision.language,
+                "routing": self._build_routing_payload(
+                    decision,
+                    agent="orchestrator_inline",
+                    category="emergency",
+                ),
+                "answer": result["response"],
+                "emotion": result["emotion"],
+                "metadata": {
+                    **state.get("metadata", {}),
+                    "emergency": result["metadata"],
+                },
+            },
+        )
+
+    async def _handle_greeting(
+        self,
+        state: WorkflowStateDict,
+        decision: OrchestratorDecision,
+        session_id: str,
+    ) -> Optional[Command[RoutingTarget]]:
+        if decision.category != "greeting":
+            return None
+
+        from backend.config.routing_constants import TIME_GREETING_TEMPLATES
+        from backend.utils.time_utils import get_current_time_period, get_now_jst
+
+        query = state.get("query", "")
+        lang = decision.language or "ja"
+        if lang not in ("ja", "en"):
+            logger.warning("Greeting: unsupported language '%s', falling back to 'ja'", lang)
+            lang = "ja"
+        now = get_now_jst()
+        period = get_current_time_period(now.hour)
+        templates = TIME_GREETING_TEMPLATES.get(period, TIME_GREETING_TEMPLATES["afternoon"])
+        base_greeting = templates.get(lang, templates["ja"])
+
+        if lang == "en":
+            greeting_msg = (
+                f"{base_greeting} "
+                "This is a free coworking space for engineers. "
+                "Feel free to make yourself at home. "
+                "How can I help you?"
+            )
+        else:
+            greeting_msg = (
+                f"{base_greeting}"
+                "ここはエンジニアのための無料コワーキングスペースです。"
+                "お気軽にご利用ください。何かお手伝いできることはありますか？"
+            )
+
+        logger.info(
+            "Inline greeting: lang=%s, period=%s, query=%s",
+            lang,
+            period,
+            query[:80],
+        )
+        await self._store_reception_session(
+            session_id=session_id,
+            stage="greeting",
+            language=lang,
+            metadata={"reception_action": "start_reception"},
+        )
+
+        return Command(
+            goto="format_response",
+            update={
+                "language": lang,
+                "routing": self._build_routing_payload(
+                    decision,
+                    agent="orchestrator_inline",
+                    category="greeting",
+                ),
+                "answer": greeting_msg,
+                "emotion": "happy",
+                "metadata": {
+                    **state.get("metadata", {}),
+                    "agent": "reception",
+                    "reception_stage": "greeting",
+                    "reception_action": "start_reception",
+                },
+            },
+        )
+
+    async def _handle_clarification(
+        self,
+        state: WorkflowStateDict,
+        decision: OrchestratorDecision,
+    ) -> Optional[Command[RoutingTarget]]:
+        if decision.category not in self._CLARIFICATION_CATEGORIES:
+            return None
+
+        from backend.utils.clarification_templates import get_clarification_response
+
+        query = state.get("query", "")
+        logger.info(
+            "Inline clarification: category=%s, lang=%s, query=%s",
+            decision.category,
+            decision.language,
+            query[:80],
+        )
+        result = get_clarification_response(
+            category=decision.category,
+            language=decision.language,
+        )
+        return Command(
+            goto="format_response",
+            update={
+                "language": decision.language,
+                "routing": self._build_routing_payload(
+                    decision,
+                    agent="orchestrator_inline",
+                ),
+                "answer": result["response"],
+                "emotion": result["emotion"],
+                "metadata": {
+                    **state.get("metadata", {}),
+                    "clarification": {
+                        **result["metadata"],
+                        "clarification_type": decision.category,
+                    },
+                    "requires_followup": True,
+                },
+            },
+        )
+
+    async def _handle_reception_inline(
+        self,
+        state: WorkflowStateDict,
+        decision: OrchestratorDecision,
+    ) -> Optional[Command[RoutingTarget]]:
+        """Handle reception category inline (before topic_guard)."""
+        if decision.request_type != "reception":
+            return None
+
+        from backend.utils.reception_templates import get_reception_response
+
+        query = state.get("query", "")
+        logger.info(
+            "Inline reception: lang=%s, query=%s",
+            decision.language,
+            query[:80],
+        )
+        # first_time / returning / general の判定
+        long_term_memory = state.get("context", {}).get("long_term_memory")
+        lower_query = query.lower()
+        first_time_keywords = [
+            "初めて",
+            "はじめて",
+            "初回",
+            "first time",
+            "first visit",
+        ]
+        if any(kw in lower_query for kw in first_time_keywords):
+            reception_type = "first_time"
+        elif long_term_memory:
+            reception_type = "returning"
+        else:
+            reception_type = "general"
+
+        result = get_reception_response(
+            language=decision.language,
+            reception_type=reception_type,
+        )
+        return Command(
+            goto="format_response",
+            update={
+                "language": decision.language,
+                "routing": self._build_routing_payload(
+                    decision,
+                    agent="orchestrator_inline",
+                    category="reception",
+                ),
+                "answer": result["response"],
+                "emotion": result["emotion"],
+                "metadata": {
+                    **state.get("metadata", {}),
+                    "reception": {
+                        **result["metadata"],
+                        "reception_type": reception_type,
+                    },
+                },
+            },
+        )
+
+    async def _handle_topic_guard(
+        self,
+        state: WorkflowStateDict,
+        decision: OrchestratorDecision,
+    ) -> Optional[Command[RoutingTarget]]:
+        query = state.get("query", "")
+        try:
+            from backend.utils.topic_guard import check_topic_adherence
+
+            on_topic, off_topic_response = check_topic_adherence(
+                query=query,
+                routing_category=decision.category,
+                language=decision.language,
+            )
+        except Exception as guard_err:
+            logger.debug("Topic guard skipped: %s", guard_err)
+            return None
+
+        if on_topic:
+            return None
+
+        logger.info("Off-topic query filtered: %.50s", query)
+        return Command(
+            goto="format_response",
+            update={
+                "language": decision.language,
+                "routing": self._build_routing_payload(
+                    decision,
+                    agent="topic_guard",
+                    category="off_topic",
+                    request_type="redirect",
+                    confidence=1.0,
+                    reasoning="Query is outside Engineer Cafe scope",
+                ),
+                "answer": off_topic_response,
+                "emotion": "neutral",
+            },
+        )
+
     async def _orchestrator_node(self, state: WorkflowStateDict) -> Command[RoutingTarget]:
         """
         オーケストレーターノード（Supervisor）
@@ -572,7 +844,6 @@ class MainWorkflow:
         session has an active (incomplete) reception flow. If so, short-circuit
         with the appropriate reception stage response.
         """
-        from backend.utils.clarification_templates import get_clarification_response
         from backend.utils.reception_status import check_reception_status
 
         query = state.get("query", "")
@@ -593,242 +864,41 @@ class MainWorkflow:
             memory_context=memory_context,
         )
 
-        # emergency カテゴリをインライン処理（最優先）
-        if decision.category == "emergency":
-            from backend.utils.emergency_templates import get_emergency_response
-
-            logger.info(
-                "Inline emergency: lang=%s, query=%s",
-                decision.language,
-                query[:80],
-            )
-            result = get_emergency_response(query, decision.language)
-            # Discord 通知（fire-and-forget）
-            asyncio.create_task(self._notify_discord_emergency(query, result))
-            return Command(
-                goto="format_response",
-                update={
-                    "language": decision.language,
-                    "routing": {
-                        "agent": "orchestrator_inline",
-                        "category": "emergency",
-                        "request_type": decision.request_type,
-                        "confidence": decision.confidence,
-                        "reasoning": decision.reasoning,
-                        "debug_info": decision.debug_info,
-                    },
-                    "answer": result["response"],
-                    "emotion": result["emotion"],
-                    "metadata": {
-                        **state.get("metadata", {}),
-                        "emergency": result["metadata"],
-                    },
-                },
-            )
-
-        # greeting カテゴリをインライン処理
-        if decision.category == "greeting":
-            from backend.config.routing_constants import TIME_GREETING_TEMPLATES
-            from backend.utils.time_utils import get_current_time_period, get_now_jst
-
-            lang = decision.language or "ja"
-            if lang not in ("ja", "en"):
-                logger.warning("Greeting: unsupported language '%s', falling back to 'ja'", lang)
-                lang = "ja"
-            now = get_now_jst()
-            period = get_current_time_period(now.hour)
-            templates = TIME_GREETING_TEMPLATES.get(period, TIME_GREETING_TEMPLATES["afternoon"])
-            base_greeting = templates.get(lang, templates["ja"])
-
-            if lang == "en":
-                greeting_msg = (
-                    f"{base_greeting} "
-                    "This is a free coworking space for engineers. "
-                    "Feel free to make yourself at home. "
-                    "How can I help you?"
-                )
-            else:
-                greeting_msg = (
-                    f"{base_greeting}"
-                    "ここはエンジニアのための無料コワーキングスペースです。"
-                    "お気軽にご利用ください。何かお手伝いできることはありますか？"
-                )
-
-            logger.info(
-                "Inline greeting: lang=%s, period=%s, query=%s",
-                lang,
-                period,
-                query[:80],
-            )
-            await self._store_reception_session(
-                session_id=session_id,
-                stage="greeting",
-                language=lang,
-                metadata={"reception_action": "start_reception"},
-            )
-
-            return Command(
-                goto="format_response",
-                update={
-                    "language": lang,
-                    "routing": {
-                        "agent": "orchestrator_inline",
-                        "category": "greeting",
-                        "request_type": decision.request_type,
-                        "confidence": decision.confidence,
-                        "reasoning": decision.reasoning,
-                        "debug_info": decision.debug_info,
-                    },
-                    "answer": greeting_msg,
-                    "emotion": "happy",
-                    "metadata": {
-                        **state.get("metadata", {}),
-                        "agent": "reception",
-                        "reception_stage": "greeting",
-                        "reception_action": "start_reception",
-                    },
-                },
-            )
-
-        # clarification カテゴリをインライン処理
-        if decision.category in (
-            "cafe-clarification-needed",
-            "meeting-room-clarification-needed",
-            "event-clarification-needed",
-            "space-clarification-needed",
-            "general-clarification-needed",
+        for handler in (
+            lambda current_state, current_decision: self._handle_emergency(
+                current_state,
+                current_decision,
+            ),
+            lambda current_state, current_decision: self._handle_greeting(
+                current_state,
+                current_decision,
+                session_id,
+            ),
+            lambda current_state, current_decision: self._handle_clarification(
+                current_state,
+                current_decision,
+            ),
+            lambda current_state, current_decision: self._handle_reception_inline(
+                current_state,
+                current_decision,
+            ),
+            lambda current_state, current_decision: self._handle_topic_guard(
+                current_state,
+                current_decision,
+            ),
         ):
-            logger.info(
-                "Inline clarification: category=%s, lang=%s, query=%s",
-                decision.category,
-                decision.language,
-                query[:80],
-            )
-            result = get_clarification_response(
-                category=decision.category,
-                language=decision.language,
-            )
-            return Command(
-                goto="format_response",
-                update={
-                    "language": decision.language,
-                    "routing": {
-                        "agent": "orchestrator_inline",
-                        "category": decision.category,
-                        "request_type": decision.request_type,
-                        "confidence": decision.confidence,
-                        "reasoning": decision.reasoning,
-                        "debug_info": decision.debug_info,
-                    },
-                    "answer": result["response"],
-                    "emotion": result["emotion"],
-                    "metadata": {
-                        **state.get("metadata", {}),
-                        "clarification": {
-                            **result["metadata"],
-                            "clarification_type": decision.category,
-                        },
-                        "requires_followup": True,
-                    },
-                },
-            )
-
-        # reception カテゴリをインライン処理
-        if decision.request_type == "reception":
-            from backend.utils.reception_templates import get_reception_response
-
-            logger.info(
-                "Inline reception: lang=%s, query=%s",
-                decision.language,
-                query[:80],
-            )
-            # first_time / returning / general の判定
-            long_term_memory = state.get("context", {}).get("long_term_memory")
-            lower_query = query.lower()
-            first_time_keywords = [
-                "初めて",
-                "はじめて",
-                "初回",
-                "first time",
-                "first visit",
-            ]
-            if any(kw in lower_query for kw in first_time_keywords):
-                reception_type = "first_time"
-            elif long_term_memory:
-                reception_type = "returning"
-            else:
-                reception_type = "general"
-
-            result = get_reception_response(
-                language=decision.language,
-                reception_type=reception_type,
-            )
-            return Command(
-                goto="format_response",
-                update={
-                    "language": decision.language,
-                    "routing": {
-                        "agent": "orchestrator_inline",
-                        "category": "reception",
-                        "request_type": decision.request_type,
-                        "confidence": decision.confidence,
-                        "reasoning": decision.reasoning,
-                        "debug_info": decision.debug_info,
-                    },
-                    "answer": result["response"],
-                    "emotion": result["emotion"],
-                    "metadata": {
-                        **state.get("metadata", {}),
-                        "reception": {
-                            **result["metadata"],
-                            "reception_type": reception_type,
-                        },
-                    },
-                },
-            )
-
-        # Topic adherence ガードレール: 明確にoff-topicなクエリをフィルタ
-        try:
-            from backend.utils.topic_guard import check_topic_adherence
-
-            on_topic, off_topic_response = check_topic_adherence(
-                query=query,
-                routing_category=decision.category,
-                language=decision.language,
-            )
-            if not on_topic:
-                logger.info("Off-topic query filtered: %.50s", query)
-                return Command(
-                    goto="format_response",
-                    update={
-                        "language": decision.language,
-                        "routing": {
-                            "agent": "topic_guard",
-                            "category": "off_topic",
-                            "request_type": "redirect",
-                            "confidence": 1.0,
-                            "reasoning": "Query is outside Engineer Cafe scope",
-                            "debug_info": decision.debug_info,
-                        },
-                        "answer": off_topic_response,
-                        "emotion": "neutral",
-                    },
-                )
-        except Exception as guard_err:
-            logger.debug("Topic guard skipped: %s", guard_err)
+            cmd = await handler(state, decision)
+            if cmd is not None:
+                return cmd
 
         return Command(
             goto=decision.next_agent,
             update={
                 "language": decision.language,
-                "routing": {
-                    "agent": decision.next_agent,
-                    "category": decision.category,
-                    "request_type": decision.request_type,
-                    "confidence": decision.confidence,
-                    "reasoning": decision.reasoning,
-                    "debug_info": decision.debug_info,
-                },
+                "routing": self._build_routing_payload(
+                    decision,
+                    agent=decision.next_agent,
+                ),
             },
         )
 
