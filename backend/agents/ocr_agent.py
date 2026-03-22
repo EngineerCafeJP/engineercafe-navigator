@@ -1,7 +1,7 @@
 import base64
 import logging
 import time
-from typing import Annotated, Dict, Any, TypedDict, Optional
+from typing import Annotated, Dict, Any, TypedDict
 
 import cv2
 import numpy as np
@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 # Tools
 # =====================================================
 
+
 @tool
 def face_recognition(expression: str):
     return expression
@@ -37,6 +38,7 @@ TOOLS = [face_recognition, text_recognition]
 # State
 # =====================================================
 
+
 class VisionState(TypedDict):
     messages: Annotated[list[BaseMessage], add_messages]
 
@@ -44,6 +46,7 @@ class VisionState(TypedDict):
 # =====================================================
 # Agent
 # =====================================================
+
 
 class VisionAgent:
 
@@ -113,9 +116,7 @@ class VisionAgent:
                 {"type": "text", "text": instruction},
                 {
                     "type": "image_url",
-                    "image_url": {
-                        "url": f"data:image/jpeg;base64,{image_base64}"
-                    },
+                    "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"},
                 },
             ]
         )
@@ -161,7 +162,6 @@ class VisionAgent:
 
         # ⭐ 新仕様（後方互換あり）
         mode: str = input.get("mode", "member_card")
-        recognition_type = input.get("recognition_type", "text")
 
         # ---------- resize ----------
         MAX_WIDTH = 640
@@ -206,9 +206,7 @@ class VisionAgent:
                 face_result["success"] = True
                 if msg.content and msg.content.lower() != "none":
                     face_result["detected"] = True
-                    face_result["expression"] = {
-                        "emotion": msg.content
-                    }
+                    face_result["expression"] = {"emotion": msg.content}
 
         confidence = self._estimate_confidence(
             text_result,
