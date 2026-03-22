@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any, Literal, Optional
 
 import cv2
 import numpy as np
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from backend.utils.rate_limit import rate_limit
@@ -221,7 +221,7 @@ def _decode_image(image_data: str) -> np.ndarray:
 
 @ocr_router.post("", response_model=OcrResponse)
 @rate_limit("10/minute")
-async def recognize_image(request: OcrRequest) -> OcrResponse:
+async def recognize_image(request: Request, body: OcrRequest) -> OcrResponse:
     """Run OCR on an uploaded image.
 
     Supports two modes:
@@ -233,7 +233,7 @@ async def recognize_image(request: OcrRequest) -> OcrResponse:
     t0 = time.monotonic()
 
     # --- Decode image -------------------------------------------------------
-    image = _decode_image(request.image_data)
+    image = _decode_image(body.image_data)
 
     # --- Run VisionAgent ----------------------------------------------------
     agent = _get_vision_agent()
@@ -244,7 +244,7 @@ async def recognize_image(request: OcrRequest) -> OcrResponse:
         elapsed_ms = int((time.monotonic() - t0) * 1000)
         return OcrResponse(
             success=False,
-            mode=request.mode,
+            mode=body.mode,
             processing_time_ms=elapsed_ms,
             error="Vision processing failed",
         )
@@ -267,7 +267,7 @@ async def recognize_image(request: OcrRequest) -> OcrResponse:
     visitor_identity: Optional[dict[str, Any]] = None
     detected_language: Optional[str] = None
 
-    if request.mode == "member_card":
+    if body.mode == "member_card":
         if recognized_text:
             match = _MEMBER_NUMBER_RE.search(recognized_text)
             if match:
@@ -282,7 +282,7 @@ async def recognize_image(request: OcrRequest) -> OcrResponse:
                         exc,
                     )
 
-    elif request.mode == "handwriting":
+    elif body.mode == "handwriting":
         if recognized_text:
             detected_language = _detect_language(recognized_text)
 
@@ -297,16 +297,16 @@ async def recognize_image(request: OcrRequest) -> OcrResponse:
 
     logger.info(
         "OCR completed: mode=%s member=%s confidence=%.2f time=%dms session=%s",
-        request.mode,
+        body.mode,
         member_number,
         confidence,
         elapsed_ms,
-        request.session_id or "(none)",
+        body.session_id or "(none)",
     )
 
     return OcrResponse(
         success=text_result.get("success", False),
-        mode=request.mode,
+        mode=body.mode,
         member_number=member_number,
         recognized_text=recognized_text,
         confidence=confidence,

@@ -113,15 +113,12 @@ export function useOcrCamera(options: UseOcrCameraOptions): UseOcrCameraReturn {
     const video = videoRef.current;
     if (!video) return;
 
-    const now = Date.now();
-    if (now - lastSubmitTimeRef.current < submitIntervalMs) return;
-
     // Lazy-create reusable canvas
     if (!qualityCanvasRef.current) {
       qualityCanvasRef.current = document.createElement('canvas');
     }
 
-    // Quality check with reusable canvas
+    // Quality check runs every 200ms regardless of submit cooldown
     const quality = checkFrameQuality(video, qualityCanvasRef.current);
     setQualityInfo({
       laplacianVariance: quality.laplacianVariance,
@@ -129,6 +126,10 @@ export function useOcrCamera(options: UseOcrCameraOptions): UseOcrCameraReturn {
     });
 
     if (!quality.passed) return;
+
+    // Submit cooldown: only send API request every 2 seconds
+    const now = Date.now();
+    if (now - lastSubmitTimeRef.current < submitIntervalMs) return;
 
     // Capture frame
     const frameData = captureFrame(video);
