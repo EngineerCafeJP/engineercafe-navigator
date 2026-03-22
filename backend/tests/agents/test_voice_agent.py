@@ -79,8 +79,9 @@ def test_clean_text_for_tts_preserves_technical_symbols_and_single_pipes():
     assert "</p>" not in cleaned
     assert "vector<int>" in cleaned
     assert "1 < 2" in cleaned
-    assert "name" not in cleaned
-    assert "value" not in cleaned
+    # Table data rows are converted to plain text (pipes removed, content kept)
+    assert "name" in cleaned
+    assert "value" in cleaned
     assert "grep foo | sort" in cleaned
 
 
