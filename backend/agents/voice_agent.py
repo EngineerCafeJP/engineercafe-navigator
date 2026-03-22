@@ -217,17 +217,14 @@ def clean_text_for_tts(text: str) -> str:
     # Horizontal rules: ---, ***, ___ (3+ chars on their own line)
     t = re.sub(r"^[-\*_]{3,}\s*$", "", t, flags=re.M)
 
-    # HTML tags: only strip common HTML tags that LLMs may emit
-    # (preserves non-HTML angle brackets like vector<int>, 1 < 2)
+    # HTML tags: strip common HTML tags that LLMs may emit, replacing with
+    # space to prevent word concatenation (e.g. "</p><p>" won't merge text).
+    # Preserves non-HTML angle brackets like vector<int>, 1 < 2.
     _html_tags = (
         r"(?:br|p|div|span|strong|em|b|i|u|a|h[1-6]"
         r"|ul|ol|li|table|tr|td|th|hr|img|pre|code|blockquote)"
     )
-    # Remove closing tags entirely: </div> -> ""
-    t = re.sub(rf"</(?:{_html_tags})(?=[\s>])[^>]*>", "", t, flags=re.I)
-    # Opening/self-closing tags: keep tag name for readability
-    # <div class="x"> -> "div", <br/> -> "br"
-    t = re.sub(rf"<({_html_tags})(?=[\s>/])[^>]*/?>", r"\1", t, flags=re.I)
+    t = re.sub(rf"</?(?:{_html_tags})(?=[\s>/])[^>]*/?>", " ", t, flags=re.I)
 
     # Table syntax: remove separator rows, convert data rows to plain text
     # Separator rows: |---|---| or |:---:|:---:| etc.
