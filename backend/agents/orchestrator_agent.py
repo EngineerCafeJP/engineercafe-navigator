@@ -39,6 +39,7 @@ from backend.config.routing_constants import (
     EMERGENCY_KEYWORDS,
     EXCLUSIVE_RENTAL_KEYWORDS,
     EVENT_KEYWORDS,
+    GREETING_KEYWORDS,
     FACILITY_EQUIPMENT_KEYWORDS,
     FLOOR_KEYWORDS,
     FLOOR_LAYOUT_KEYWORDS,
@@ -374,6 +375,15 @@ class OrchestratorAgent:
                 "category": "emergency",
                 "request_type": "emergency",
                 "reasoning": "Emergency keyword detected",
+            }
+
+        # 挨拶キーワード → greeting（インライン処理）
+        if match_keywords(lower_query, GREETING_KEYWORDS):
+            return {
+                "agent": "business_info",
+                "category": "greeting",
+                "request_type": "greeting",
+                "reasoning": "Greeting keyword detected",
             }
 
         # カフェ曖昧性: "カフェ" + "どっち/どちら/which" → clarification

@@ -524,6 +524,55 @@ class MainWorkflow:
                 },
             )
 
+        # greeting カテゴリをインライン処理
+        if decision.category == "greeting":
+            from backend.config.routing_constants import TIME_GREETING_TEMPLATES
+            from backend.utils.time_utils import get_current_time_period, get_now_jst
+
+            lang = decision.language or "ja"
+            now = get_now_jst()
+            period = get_current_time_period(now.hour)
+            templates = TIME_GREETING_TEMPLATES.get(period, TIME_GREETING_TEMPLATES["afternoon"])
+            base_greeting = templates.get(lang, templates["ja"])
+
+            if lang == "en":
+                greeting_msg = (
+                    f"{base_greeting} "
+                    "This is a free coworking space for engineers. "
+                    "Feel free to make yourself at home. "
+                    "How can I help you?"
+                )
+            else:
+                greeting_msg = (
+                    f"{base_greeting}"
+                    "ここはエンジニアのための無料コワーキングスペースです。"
+                    "お気軽にご利用ください。何かお手伝いできることはありますか？"
+                )
+
+            logger.info(
+                "Inline greeting: lang=%s, period=%s, query=%s",
+                lang,
+                period,
+                query[:80],
+            )
+
+            return Command(
+                goto="format_response",
+                update={
+                    "language": decision.language,
+                    "routing": {
+                        "agent": "orchestrator_inline",
+                        "category": "greeting",
+                        "request_type": decision.request_type,
+                        "confidence": decision.confidence,
+                        "reasoning": decision.reasoning,
+                        "debug_info": decision.debug_info,
+                    },
+                    "answer": greeting_msg,
+                    "emotion": "happy",
+                },
+            )
+
         # clarification カテゴリをインライン処理
         if decision.category in (
             "cafe-clarification-needed",

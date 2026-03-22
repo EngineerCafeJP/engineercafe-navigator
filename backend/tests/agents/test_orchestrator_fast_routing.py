@@ -194,3 +194,45 @@ class TestOrchestratorFastRouting:
             result = orchestrator._try_fast_routing(query)
             assert result is not None, f"Query '{query}' should match fast-path"
             assert result["agent"] == "facility", f"Query '{query}' should route to facility"
+
+    def test_greeting_konnichiwa(self, orchestrator):
+        """こんにちは が greeting にルーティングされること"""
+        result = orchestrator._try_fast_routing("こんにちは")
+        assert result is not None
+        assert result["category"] == "greeting"
+        assert result["request_type"] == "greeting"
+
+    def test_greeting_hello(self, orchestrator):
+        """hello が greeting にルーティングされること"""
+        result = orchestrator._try_fast_routing("hello")
+        assert result is not None
+        assert result["category"] == "greeting"
+        assert result["request_type"] == "greeting"
+
+    def test_greeting_good_morning(self, orchestrator):
+        """good morning が greeting にルーティングされること"""
+        result = orchestrator._try_fast_routing("good morning")
+        assert result is not None
+        assert result["category"] == "greeting"
+        assert result["request_type"] == "greeting"
+
+    def test_greeting_ohayou(self, orchestrator):
+        """おはよう が greeting にルーティングされること"""
+        result = orchestrator._try_fast_routing("おはよう")
+        assert result is not None
+        assert result["category"] == "greeting"
+        assert result["request_type"] == "greeting"
+
+    def test_greeting_hi(self, orchestrator):
+        """hi が greeting にルーティングされること"""
+        result = orchestrator._try_fast_routing("hi")
+        assert result is not None
+        assert result["category"] == "greeting"
+        assert result["request_type"] == "greeting"
+
+    def test_greeting_konbanwa(self, orchestrator):
+        """こんばんは が greeting にルーティングされること"""
+        result = orchestrator._try_fast_routing("こんばんは")
+        assert result is not None
+        assert result["category"] == "greeting"
+        assert result["request_type"] == "greeting"
