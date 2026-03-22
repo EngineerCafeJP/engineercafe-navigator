@@ -257,3 +257,19 @@ class TestOrchestratorFastRouting:
         assert (
             result is None or result["category"] != "greeting"
         ), "Compound query with greeting should not be routed to greeting"
+
+    def test_no_false_positive_short_question_after_greeting_ja(self, orchestrator):
+        """こんにちは + 質問は greeting にルーティングされないこと"""
+        result = orchestrator._try_fast_routing("こんにちは 営業時間は？")
+        assert result is None or result["category"] != "greeting"
+
+    def test_no_false_positive_hello_wifi(self, orchestrator):
+        """hello + wifi は greeting にルーティングされないこと"""
+        result = orchestrator._try_fast_routing("hello wifi?")
+        assert result is None or result["category"] != "greeting"
+
+    def test_pure_greeting_with_exclamation(self, orchestrator):
+        """こんにちは！ は greeting にルーティングされること"""
+        result = orchestrator._try_fast_routing("こんにちは！")
+        assert result is not None
+        assert result["category"] == "greeting"

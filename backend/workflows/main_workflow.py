@@ -562,7 +562,7 @@ class MainWorkflow:
             return Command(
                 goto="format_response",
                 update={
-                    "language": decision.language,
+                    "language": lang,
                     "routing": {
                         "agent": "orchestrator_inline",
                         "category": "greeting",
