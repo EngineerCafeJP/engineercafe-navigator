@@ -574,13 +574,15 @@ class MainWorkflow:
         agent: str,
         category: Optional[str] = None,
         request_type: Optional[str] = None,
+        confidence: Optional[float] = None,
+        reasoning: Optional[str] = None,
     ) -> dict[str, Any]:
         return {
             "agent": agent,
             "category": category or decision.category,
             "request_type": request_type or decision.request_type,
-            "confidence": decision.confidence,
-            "reasoning": decision.reasoning,
+            "confidence": confidence if confidence is not None else decision.confidence,
+            "reasoning": reasoning or decision.reasoning,
             "debug_info": decision.debug_info,
         }
 
@@ -762,6 +764,8 @@ class MainWorkflow:
                     agent="topic_guard",
                     category="off_topic",
                     request_type="redirect",
+                    confidence=1.0,
+                    reasoning="Query is outside Engineer Cafe scope",
                 ),
                 "answer": off_topic_response,
                 "emotion": "neutral",
