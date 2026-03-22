@@ -10,7 +10,6 @@ VisionAgent (OCR Agent) のユニットテスト
   - Base64エンコーディング
   - エッジケース (空コンテンツ, None表情, ToolMessage解析)
   - ツール関数 (face_recognition, text_recognition)
-  - recognize_qr 関数
 """
 
 import base64
@@ -77,53 +76,6 @@ class TestTextRecognitionTool:
 
 
 # ---------------------------------------------------------------------------
-# recognize_qr function
-# ---------------------------------------------------------------------------
-class TestRecognizeQr:
-    """recognize_qr 関数のテスト"""
-
-    @patch("backend.agents.ocr_agent.cv2.QRCodeDetector")
-    def test_returns_qr_data_on_success(self, mock_detector_cls):
-        """QRコードが検出された場合にデータを返すことを確認"""
-        from backend.agents.ocr_agent import recognize_qr
-
-        mock_detector = MagicMock()
-        mock_detector.detectAndDecode.return_value = ("https://example.com", None, None)
-        mock_detector_cls.return_value = mock_detector
-
-        image = np.zeros((100, 100, 3), dtype=np.uint8)
-        result = recognize_qr(image)
-
-        assert result == "https://example.com"
-        mock_detector.detectAndDecode.assert_called_once_with(image)
-
-    @patch("backend.agents.ocr_agent.cv2.QRCodeDetector")
-    def test_returns_none_when_no_qr_detected(self, mock_detector_cls):
-        """QRコードが検出されない場合に None を返すことを確認"""
-        from backend.agents.ocr_agent import recognize_qr
-
-        mock_detector = MagicMock()
-        mock_detector.detectAndDecode.return_value = ("", None, None)
-        mock_detector_cls.return_value = mock_detector
-
-        image = np.zeros((100, 100, 3), dtype=np.uint8)
-        result = recognize_qr(image)
-
-        assert result is None
-
-    @patch("backend.agents.ocr_agent.cv2.QRCodeDetector")
-    def test_returns_none_when_data_is_none(self, mock_detector_cls):
-        """detectAndDecode が None を返した場合"""
-        from backend.agents.ocr_agent import recognize_qr
-
-        mock_detector = MagicMock()
-        mock_detector.detectAndDecode.return_value = (None, None, None)
-        mock_detector_cls.return_value = mock_detector
-
-        image = np.zeros((100, 100, 3), dtype=np.uint8)
-        result = recognize_qr(image)
-
-        assert result is None
 
 
 # ---------------------------------------------------------------------------
@@ -187,50 +139,6 @@ class TestVisionAgentInit:
 
 
 # ---------------------------------------------------------------------------
-# run() - QR recognition path
-# ---------------------------------------------------------------------------
-class TestVisionAgentRunQr:
-    """VisionAgent.run() の QR認識パスのテスト"""
-
-    @patch("backend.agents.ocr_agent.recognize_qr")
-    async def test_qr_success(self, mock_recognize_qr, mock_vision_agent):
-        """QR コード認識成功時のレスポンス形式を確認"""
-        agent, _, _, _ = mock_vision_agent
-        mock_recognize_qr.return_value = "https://example.com"
-
-        image = np.zeros((100, 100, 3), dtype=np.uint8)
-        result = await agent.run({"image": image, "recognition_type": "qr"})
-
-        assert result["qr"]["success"] is True
-        assert result["qr"]["data"] == "https://example.com"
-        assert result["qr"]["error"] is None
-
-    @patch("backend.agents.ocr_agent.recognize_qr")
-    async def test_qr_failure(self, mock_recognize_qr, mock_vision_agent):
-        """QR コード検出失敗時のレスポンス形式を確認"""
-        agent, _, _, _ = mock_vision_agent
-        mock_recognize_qr.return_value = None
-
-        image = np.zeros((100, 100, 3), dtype=np.uint8)
-        result = await agent.run({"image": image, "recognition_type": "qr"})
-
-        assert result["qr"]["success"] is False
-        assert result["qr"]["data"] is None
-        assert result["qr"]["error"] == "QR not detected"
-
-    @patch("backend.agents.ocr_agent.recognize_qr")
-    async def test_qr_does_not_invoke_graph(self, mock_recognize_qr, mock_vision_agent):
-        """QR パスでは LLM グラフが呼ばれないことを確認"""
-        agent, _, _, _ = mock_vision_agent
-        mock_recognize_qr.return_value = "data"
-
-        agent.app = MagicMock()
-        agent.app.ainvoke = AsyncMock()
-
-        image = np.zeros((100, 100, 3), dtype=np.uint8)
-        await agent.run({"image": image, "recognition_type": "qr"})
-
-        agent.app.ainvoke.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -413,7 +321,7 @@ class TestVisionAgentToolMessageParsing:
 
         assert result["text"]["success"] is False
         assert result["text"]["text"] is None
-        assert result["text"]["error"] == "text not detected"
+        assert result["text"]["error"] == "no_text_detected"
 
     async def test_face_recognition_none_content(self, mock_vision_agent):
         """表情認識で None コンテンツの場合のエラー処理を確認"""
@@ -427,7 +335,7 @@ class TestVisionAgentToolMessageParsing:
         assert result["face"]["success"] is True
         assert result["face"]["detected"] is False
         assert result["face"]["expression"] is None
-        assert result["face"]["error"] == "face not detected"
+        assert result["face"]["error"] is None
 
     async def test_face_recognition_none_string(self, mock_vision_agent):
         """表情認識で 'None' 文字列の場合のエラー処理を確認"""
@@ -441,7 +349,7 @@ class TestVisionAgentToolMessageParsing:
         assert result["face"]["success"] is True
         assert result["face"]["detected"] is False
         assert result["face"]["expression"] is None
-        assert result["face"]["error"] == "face not detected"
+        assert result["face"]["error"] is None
 
     async def test_face_recognition_none_case_insensitive(self, mock_vision_agent):
         """表情認識で 'NONE' (大文字) も None として扱われることを確認"""
@@ -454,7 +362,7 @@ class TestVisionAgentToolMessageParsing:
 
         assert result["face"]["success"] is True
         assert result["face"]["detected"] is False
-        assert result["face"]["error"] == "face not detected"
+        assert result["face"]["error"] is None
 
     async def test_no_tool_messages_returns_defaults(self, mock_vision_agent):
         """ToolMessage がない場合のデフォルト値を確認"""

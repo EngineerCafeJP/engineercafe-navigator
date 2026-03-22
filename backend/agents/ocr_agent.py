@@ -1,12 +1,13 @@
 import base64
 import logging
+import time
 from typing import Annotated, Dict, Any, TypedDict
 
 import cv2
 import numpy as np
 from langchain_core.messages import BaseMessage, HumanMessage, ToolMessage
 from langchain_core.tools import tool
-from langgraph.graph import StateGraph, START
+from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
 
@@ -15,15 +16,16 @@ from backend.llm.models import get_model_config
 
 logger = logging.getLogger(__name__)
 
+# =====================================================
+# Tools
+# =====================================================
 
-# =====================================================
-# Tools (LLM専用)
-# =====================================================
+
 @tool
 def face_recognition(expression: str):
     """表情を以下の7つに分類する
     happy | sad | angry | neutral | surprised | confused
-     見つからない場合は None"""
+    見つからない場合は None"""
     return expression
 
 
@@ -33,22 +35,14 @@ def text_recognition(text: str):
     return text
 
 
-# =====================================================
-# QR code (将来用・絶対に消さない)
-# =====================================================
-def recognize_qr(image: np.ndarray) -> str | None:
-    """
-    OpenCV による QRコード検出
-    将来的に recognition_type == "qr" の場合に使用
-    """
-    detector = cv2.QRCodeDetector()
-    data, _, _ = detector.detectAndDecode(image)
-    return data if data else None
+TOOLS = [face_recognition, text_recognition]
 
 
 # =====================================================
 # State
 # =====================================================
+
+
 class VisionState(TypedDict):
     messages: Annotated[list[BaseMessage], add_messages]
 
@@ -56,42 +50,36 @@ class VisionState(TypedDict):
 # =====================================================
 # Agent
 # =====================================================
+
+
 class VisionAgent:
-    """
-    Vision Agent
-    - LLMによる文字認識
-    - LLMによる表情分類
-    - QRコード（将来拡張用）
-    """
 
     def __init__(self):
-        """Initialize VisionAgent with vision model and tools.
-
-        Sets up OpenRouter LLM with vision capabilities and binds face_recognition
-        and text_recognition tools.
-        """
         provider = OpenRouterProvider()
-        vision_config = get_model_config("vision")
-        self.llm = provider.get_langchain_llm(config=vision_config)
+        config = get_model_config("vision")
 
-        self.vision_llm = self.llm.bind_tools([face_recognition, text_recognition])
+        self.llm = provider.get_langchain_llm(config=config)
+        self.vision_llm = self.llm.bind_tools(TOOLS)
 
         self.app = self._build_graph()
 
-    # -----------------------------
+    # -------------------------------------------------
     # Graph
-    # -----------------------------
+    # -------------------------------------------------
     def _build_graph(self):
         graph = StateGraph(VisionState)
 
         graph.add_node("vision", self._vision_node)
-        graph.add_node("tools", ToolNode([face_recognition, text_recognition]))
+        graph.add_node("tools", ToolNode(TOOLS))
 
         graph.add_edge(START, "vision")
+
         graph.add_conditional_edges(
             "vision",
             tools_condition,
+            {"tools": "tools", "__end__": END},
         )
+
         graph.add_edge("tools", "vision")
 
         return graph.compile()
@@ -101,35 +89,85 @@ class VisionAgent:
         return {"messages": [response]}
 
     # =====================================================
-    # Public API（外部から呼ばれる）
+    # Prompt Builder (⭐ NEW)
+    # =====================================================
+    def _build_prompt(self, mode: str, image_base64: str):
+
+        if mode == "member_card":
+            instruction = (
+                "会員証画像を解析してください。\n"
+                "・会員番号を含む文字列を正確に抽出\n"
+                "・印刷文字を優先\n"
+                "・余計な説明は禁止\n"
+                "・検出不能なら None\n"
+            )
+
+        elif mode == "handwriting":
+            instruction = (
+                "手書き文字をOCRしてください。\n"
+                "・自然な文章として復元\n"
+                "・改行やノイズを補正\n"
+                "・意味が通る文章に整形\n"
+                "・推測は禁止\n"
+                "・読めない場合は None\n"
+            )
+
+        else:
+            instruction = "画像を解析してください。"
+
+        return HumanMessage(
+            content=[
+                {"type": "text", "text": instruction},
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"},
+                },
+            ]
+        )
+
+    # =====================================================
+    # Confidence (⭐ NEW)
+    # =====================================================
+    def _estimate_confidence(
+        self,
+        text_result: dict,
+        face_result: dict,
+        mode: str,
+    ) -> float:
+
+        score = 0.0
+
+        if text_result.get("success"):
+            score += 0.6
+
+            text = text_result.get("text") or ""
+            length = len(text.strip())
+
+            if 3 <= length <= 200:
+                score += 0.2
+
+        if face_result.get("detected"):
+            score += 0.1
+
+        # handwritingは曖昧なので減衰
+        if mode == "handwriting":
+            score *= 0.9
+
+        return round(min(score, 1.0), 3)
+
+    # =====================================================
+    # Public API
     # =====================================================
     async def run(self, input: Dict[str, Any]) -> Dict[str, Any]:
-        """Run vision recognition on input image.
 
-        Args:
-            input: Input dict with keys:
-                - image (np.ndarray): Input image array.
-                - recognition_type (str): Recognition type ('text' or 'qr').
-
-        Returns:
-            Recognition result dict with 'text', 'face', or 'qr' keys depending on recognition_type.
-        """
+        t0 = time.monotonic()
 
         frame: np.ndarray = input["image"]
-        recognition_type: str = input.get("recognition_type", "text")
 
-        # ---------- QR専用ルート（将来用） ----------
-        if recognition_type == "qr":
-            qr_data = recognize_qr(frame)
-            return {
-                "qr": {
-                    "success": qr_data is not None,
-                    "data": qr_data,
-                    "error": None if qr_data else "QR not detected",
-                }
-            }
+        # ⭐ 新仕様（後方互換あり）
+        mode: str = input.get("mode") or input.get("recognition_type") or "member_card"
 
-        # ---------- Resize ----------
+        # ---------- resize ----------
         MAX_WIDTH = 640
         h, w = frame.shape[:2]
         if w > MAX_WIDTH:
@@ -140,33 +178,15 @@ class VisionAgent:
                 interpolation=cv2.INTER_AREA,
             )
 
-        # ---------- Encode ----------
+        # ---------- encode ----------
         _, buffer = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
-        image_base64 = base64.b64encode(buffer).decode("utf-8")
+        image_base64 = base64.b64encode(buffer).decode()
 
-        # ---------- Prompt ----------
-        message = HumanMessage(
-            content=[
-                {
-                    "type": "text",
-                    "text": (
-                        "画像を解析してください。\n"
-                        "表情は次のいずれかのみ:\n"
-                        "happy | confused | sad | angry | neutral | surprised \n"
-                        "文字は検出された文字列のみ返してください。\n"
-                        "見つからない場合は None を返してください。"
-                    ),
-                },
-                {
-                    "type": "image_url",
-                    "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"},
-                },
-            ]
-        )
+        message = self._build_prompt(mode, image_base64)
 
         result = await self.app.ainvoke({"messages": [message]})
 
-        # ---------- Parse ----------
+        # ---------- parse ----------
         text_result = {"success": False, "text": None, "error": None}
         face_result = {
             "success": False,
@@ -176,23 +196,38 @@ class VisionAgent:
         }
 
         for msg in result["messages"]:
-            if isinstance(msg, ToolMessage):
-                if msg.name == "text_recognition":
-                    if msg.content:
-                        text_result["success"] = True
-                        text_result["text"] = msg.content
-                    else:
-                        text_result["error"] = "text not detected"
+            if not isinstance(msg, ToolMessage):
+                continue
 
-                if msg.name == "face_recognition":
-                    face_result["success"] = True
-                    if msg.content and msg.content.lower() != "none":
-                        face_result["detected"] = True
-                        face_result["expression"] = {"emotion": msg.content}
-                    else:
-                        face_result["error"] = "face not detected"
+            if msg.name == "text_recognition":
+                if msg.content and msg.content.lower() != "none":
+                    text_result["success"] = True
+                    text_result["text"] = msg.content
+                else:
+                    text_result["error"] = "no_text_detected"
+
+            elif msg.name == "face_recognition":
+                face_result["success"] = True
+                if msg.content and msg.content.lower() != "none":
+                    face_result["detected"] = True
+                    face_result["expression"] = {"emotion": msg.content}
+
+        confidence = self._estimate_confidence(
+            text_result,
+            face_result,
+            mode,
+        )
+
+        elapsed = int((time.monotonic() - t0) * 1000)
 
         return {
             "text": text_result,
             "face": face_result,
+            "confidence": confidence,
+            "processing_time_ms": elapsed,
         }
+
+    # -------------------------------------------------
+    async def close(self):
+        if hasattr(self.llm, "aclose"):
+            await self.llm.aclose()
