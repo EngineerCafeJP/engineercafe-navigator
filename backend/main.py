@@ -17,7 +17,7 @@ from io import BytesIO
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any, cast
 
@@ -884,9 +884,9 @@ async def character_api(request: Request, body: CharacterRequest):
         )
     except asyncio.TimeoutError:
         logger.warning("CharacterControlAgent timed out after 10s")
-        return JSONResponse(
+        raise HTTPException(
             status_code=504,
-            content={"success": False, "error": "Character action timed out"},
+            detail="Character action timed out",
         )
     except Exception as e:
         logger.exception("Endpoint error: %s", e)
