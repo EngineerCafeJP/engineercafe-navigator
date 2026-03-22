@@ -223,16 +223,37 @@ class TestOrchestratorFastRouting:
         assert result["category"] == "greeting"
         assert result["request_type"] == "greeting"
 
-    def test_greeting_hi(self, orchestrator):
-        """hi が greeting にルーティングされること"""
-        result = orchestrator._try_fast_routing("hi")
-        assert result is not None
-        assert result["category"] == "greeting"
-        assert result["request_type"] == "greeting"
-
     def test_greeting_konbanwa(self, orchestrator):
         """こんばんは が greeting にルーティングされること"""
         result = orchestrator._try_fast_routing("こんばんは")
         assert result is not None
         assert result["category"] == "greeting"
         assert result["request_type"] == "greeting"
+
+    def test_greeting_uppercase_hello(self, orchestrator):
+        """HELLO (uppercase) should match greeting"""
+        result = orchestrator._try_fast_routing("HELLO")
+        assert result is not None
+        assert result["category"] == "greeting"
+        assert result["request_type"] == "greeting"
+
+    def test_greeting_with_punctuation(self, orchestrator):
+        """Hello! with punctuation should match greeting"""
+        result = orchestrator._try_fast_routing("Hello!")
+        assert result is not None
+        assert result["category"] == "greeting"
+        assert result["request_type"] == "greeting"
+
+    def test_no_false_positive_history(self, orchestrator):
+        """'history' should NOT match greeting (no 'hi'/'hey' substring match)"""
+        result = orchestrator._try_fast_routing("What is the history of this building?")
+        assert (
+            result is None or result["category"] != "greeting"
+        ), "Query containing 'history' should not be routed to greeting"
+
+    def test_no_false_positive_compound_greeting(self, orchestrator):
+        """'hello, what are the business hours?' should NOT match greeting (too long)"""
+        result = orchestrator._try_fast_routing("hello, what are the business hours?")
+        assert (
+            result is None or result["category"] != "greeting"
+        ), "Compound query with greeting should not be routed to greeting"

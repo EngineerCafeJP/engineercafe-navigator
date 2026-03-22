@@ -378,13 +378,17 @@ class OrchestratorAgent:
             }
 
         # 挨拶キーワード → greeting（インライン処理）
+        # Only treat as pure greeting if query is short (<=20 chars).
+        # Longer queries likely contain an actual question after the greeting.
         if match_keywords(lower_query, GREETING_KEYWORDS):
-            return {
-                "agent": "business_info",
-                "category": "greeting",
-                "request_type": "greeting",
-                "reasoning": "Greeting keyword detected",
-            }
+            stripped = lower_query.strip()
+            if len(stripped) <= 20:
+                return {
+                    "agent": "business_info",
+                    "category": "greeting",
+                    "request_type": "greeting",
+                    "reasoning": "Greeting keyword detected",
+                }
 
         # カフェ曖昧性: "カフェ" + "どっち/どちら/which" → clarification
         # (orchestrator_node がcategory基準でインライン処理する)

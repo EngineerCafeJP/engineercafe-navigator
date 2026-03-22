@@ -530,6 +530,9 @@ class MainWorkflow:
             from backend.utils.time_utils import get_current_time_period, get_now_jst
 
             lang = decision.language or "ja"
+            if lang not in ("ja", "en"):
+                logger.warning("Greeting: unsupported language '%s', falling back to 'ja'", lang)
+                lang = "ja"
             now = get_now_jst()
             period = get_current_time_period(now.hour)
             templates = TIME_GREETING_TEMPLATES.get(period, TIME_GREETING_TEMPLATES["afternoon"])
