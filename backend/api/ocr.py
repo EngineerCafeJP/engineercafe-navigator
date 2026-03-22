@@ -238,7 +238,7 @@ async def recognize_image(request: Request, body: OcrRequest) -> OcrResponse:
     # --- Run VisionAgent ----------------------------------------------------
     agent = _get_vision_agent()
     try:
-        vision_result = await agent.run({"image": image, "recognition_type": "text"})
+        vision_result = await agent.run({"image": image, "mode": body.mode})
     except Exception as exc:
         logger.exception("VisionAgent failed: %s", exc)
         elapsed_ms = int((time.monotonic() - t0) * 1000)

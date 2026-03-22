@@ -23,11 +23,15 @@ logger = logging.getLogger(__name__)
 
 @tool
 def face_recognition(expression: str):
+    """表情を以下の7つに分類する
+    happy | sad | angry | neutral | surprised | confused
+    見つからない場合は None"""
     return expression
 
 
 @tool
 def text_recognition(text: str):
+    """画像内の文字を返す。見つからない場合は None"""
     return text
 
 
@@ -175,7 +179,7 @@ class VisionAgent:
             )
 
         # ---------- encode ----------
-        _, buffer = cv2.imencode(".jpg", frame, [85])
+        _, buffer = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
         image_base64 = base64.b64encode(buffer).decode()
 
         message = self._build_prompt(mode, image_base64)
