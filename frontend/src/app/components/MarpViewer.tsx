@@ -1008,6 +1008,7 @@ export default function MarpViewer({
     if (typeof window === 'undefined') return '';
     return DOMPurify.sanitize(html, {
       WHOLE_DOCUMENT: true,
+      HTML_INTEGRATION_POINTS: { 'annotation-xml': true, foreignobject: true },
       ADD_TAGS: ['style', 'link', 'meta', 'svg', 'foreignObject', 'section'],
       ADD_ATTR: [
         'class', 'id', 'style', 'viewBox', 'xmlns', 'xmlns:xlink',
