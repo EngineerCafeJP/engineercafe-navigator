@@ -39,18 +39,14 @@ def test_preprocess_tts_mtg(lang, expected):
 
 
 def test_clean_text_for_tts_strips_markdown_links_code():
-    import textwrap
-
-    text = textwrap.dedent(
-        """\
-    # 見出し
-    **太字** と *斜体*
-    [リンク](https://example.com)
-    `inline_code`
-    ```python
-    print("hello")
-    ```
-    """
+    text = (
+        "# 見出し\n"
+        "**太字** と *斜体*\n"
+        "[リンク](https://example.com)\n"
+        "`inline_code`\n"
+        "```python\n"
+        'print("hello")\n'
+        "```\n"
     )
 
     cleaned = clean_text_for_tts(text)
@@ -59,7 +55,7 @@ def test_clean_text_for_tts_strips_markdown_links_code():
     assert "*" not in cleaned
     assert "# " not in cleaned
 
-    # Markdownリンクはテキストだけ残る（URLは残らない）[1](blob:https://m365.cloud.microsoft/8fc42655-5bae-4093-b670-913df7f7bb55)
+    # Markdown リンクは表示テキストのみ残し、URL は除去する
     assert "https://example.com" not in cleaned
     assert "リンク" in cleaned
 
