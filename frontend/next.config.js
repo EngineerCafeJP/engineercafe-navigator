@@ -69,7 +69,7 @@ const nextConfig = {
               "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.run.app",
               "media-src 'self' blob: data:",
               "worker-src 'self' blob:",
-              "frame-src 'none'",
+              "frame-src 'self' blob: data:",
               "object-src 'none'",
               "base-uri 'self'",
             ].join("; "),

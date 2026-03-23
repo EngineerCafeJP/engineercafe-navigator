@@ -528,6 +528,63 @@ export default function MarpViewer({
                 position: relative;
               }
 
+              /* Ensure section-based Marp slides always have measurable size */
+              .marpit > section[data-marpit-fragment] {
+                box-sizing: border-box;
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100vh;
+                overflow: hidden;
+              }
+
+              /* Marp background figure must fill the entire slide */
+              .marpit > section[data-marpit-fragment] > figure {
+                margin: 0;
+                position: absolute;
+                inset: 0;
+                width: 100%;
+                height: 100%;
+                background-position: center center;
+                background-repeat: no-repeat;
+              }
+
+              /* Marp advanced background layout (split/background directives) */
+              .marpit section[data-marpit-advanced-background="background"] {
+                width: 100%;
+                height: 100%;
+                min-height: 100%;
+                box-sizing: border-box;
+              }
+
+              .marpit [data-marpit-advanced-background-container="true"] {
+                width: 100%;
+                height: 100%;
+                min-height: 100%;
+                position: relative;
+              }
+
+              .marpit [data-marpit-advanced-background-container="true"] > figure {
+                margin: 0;
+                width: var(--marpit-advanced-background-split, 100%);
+                height: 100%;
+                min-height: 100%;
+                max-width: var(--marpit-advanced-background-split, 100%);
+                background-position: center center;
+                background-repeat: no-repeat;
+              }
+
+              .marpit section[data-marpit-advanced-background-split="right"]
+                [data-marpit-advanced-background-container="true"] > figure {
+                margin-left: auto;
+              }
+
+              .marpit section[data-marpit-advanced-background-split="left"]
+                [data-marpit-advanced-background-container="true"] > figure {
+                margin-right: auto;
+              }
+
               /* Handle both SVG and section-based slides */
               .marpit > svg,
               section[data-marpit-fragment],
@@ -1009,9 +1066,10 @@ export default function MarpViewer({
     return DOMPurify.sanitize(html, {
       WHOLE_DOCUMENT: true,
       HTML_INTEGRATION_POINTS: { 'annotation-xml': true, foreignobject: true },
-      ADD_TAGS: ['style', 'link', 'meta', 'svg', 'foreignObject', 'section'],
+      ADD_TAGS: ['style', 'link', 'meta', 'svg', 'image', 'foreignObject', 'section'],
       ADD_ATTR: [
         'class', 'id', 'style', 'viewBox', 'xmlns', 'xmlns:xlink',
+        'src', 'href', 'xlink:href',
         'data-marpit-svg', 'data-marpit-fragment', 'data-auto-scaling',
         'data-theme', 'data-size', 'data-paginate',
         'role', 'aria-hidden', 'aria-label', 'tabindex',
