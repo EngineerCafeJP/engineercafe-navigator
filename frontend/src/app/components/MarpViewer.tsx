@@ -24,6 +24,12 @@ interface SlidesApiResponse {
   audioResponse?: string | null;
 }
 
+interface VoiceApiResponse {
+  success?: boolean;
+  audioResponse?: string | null;
+  error?: string;
+}
+
 interface NarrationData {
   metadata: {
     title: string;
@@ -702,89 +708,75 @@ export default function MarpViewer({
     setIsNarrating(true);
     
     try {
-      let result: SlidesApiResponse | null = null;
-      
       // Create new AbortController for this narration
       narrationAbortControllerRef.current = new AbortController();
-      
-      // Determine the slide file path based on current language
-      const languageSlideFile = currentLanguage === 'en' ? `en/${slideFile}` : `ja/${slideFile}`;
-      
-      // Sending API request for slide
-      
-      const response = await fetch('/api/slides', {
+
+      const slideNarration =
+        narrationData?.slides[currentSlide - 1]?.narration?.auto?.trim() ?? '';
+
+      // If the current slide has no auto narration, proceed without audio.
+      if (!slideNarration) {
+        advancePresentation(500);
+        return;
+      }
+
+      const response = await fetch('/api/voice', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'narrate_current',
-          slideNumber: currentSlide,
-          slideFile: languageSlideFile, // Use language-specific slide file
-          language: currentLanguage, // Use current language state instead of prop
+          action: 'text_to_speech',
+          text: slideNarration,
+          language: currentLanguage,
         }),
         signal: narrationAbortControllerRef.current.signal,
       });
-      
-      // API response received
-      
-      // Check if response is ok
+
       if (!response.ok) {
-        throw new Error(`API request failed with status ${response.status}`);
+        throw new Error(`TTS request failed with status ${response.status}`);
       }
-      
-      // Check if response is JSON
+
       const contentType = response.headers.get('content-type');
       if (!contentType || !contentType.includes('application/json')) {
-        const textResponse = await response.text();
-        // Non-JSON response received
-        throw new Error('Invalid response format - expected JSON');
-      }
-      
-      result = await response.json() as SlidesApiResponse;
-
-      if (result?.characterAction) {
-        updateCharacterAction(result.characterAction);
+        throw new Error('Invalid TTS response format - expected JSON');
       }
 
-      if (result.audioResponse) {
-        try {
-          // Starting audio playback
-          
-          // Wait for audio playback to complete before advancing
-          await playAudioWithLipSync(result.audioResponse);
-          
-          // Audio playback completed
-          advancePresentation(500);
-        } catch (error: any) {
-          // Error during audio playback
-          
-          resetNarrationFlags();
-          
-          // Check if it's a user interaction required error
-          if (error?.type === 'user_interaction_required' || 
-              error?.requiresUserInteraction ||
-              error?.name === 'NotAllowedError' || 
-              error?.message?.includes('interaction')) {
-            // User interaction required
-            setShowAudioPermissionPrompt(true);
-            setIsPlaying(false); // Stop auto-play until user grants permission
-            return;
-          }
-          
-          // Continue to next slide even if audio fails (for other errors)
-          if (isPlayingRef.current) {
-            advancePresentation(1000);
-          }
-        }
-      } else {
+      const result = await response.json() as VoiceApiResponse;
+      if (!result.success || !result.audioResponse) {
+        throw new Error(result.error || 'TTS response missing audioResponse');
+      }
+
+      try {
+        // Wait for audio playback completion before advancing.
+        await playAudioWithLipSync(result.audioResponse);
         advancePresentation(500);
+      } catch (error: any) {
+        resetNarrationFlags();
+
+        // Browser autoplay policy requires explicit user interaction.
+        if (
+          error?.type === 'user_interaction_required' ||
+          error?.requiresUserInteraction ||
+          error?.name === 'NotAllowedError' ||
+          error?.message?.includes('interaction')
+        ) {
+          setShowAudioPermissionPrompt(true);
+          setIsPlaying(false);
+          return;
+        }
+
+        if (isPlayingRef.current) {
+          advancePresentation(1000);
+        }
       }
     } catch (error) {
       // Check if the error is due to abort
       if (error instanceof Error && error.name === 'AbortError') {
+        return;
       } else {
         console.error('[MarpViewer] Error narrating slide:', error);
       }
       resetNarrationFlags();
+      throw error;
     }
   };
 
