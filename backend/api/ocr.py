@@ -70,7 +70,7 @@ ocr_router = APIRouter(prefix="/api/ocr", tags=["ocr"])
 _DATA_URI_PREFIX = re.compile(r"^data:image/[a-z]+;base64,", re.IGNORECASE)
 # Anchor on membership card context; fall back to standalone 3-4 digit numbers
 _MEMBER_NUMBER_RE = re.compile(
-    r"(?:No\.?|Member|会員番号|会員No)\s*(\d{1,4})" r"|(?<!\d)(\d{3,4})(?!\d)",
+    r"(?:No\.?|Member|会員番号|会員No)\s*(\d{1,6})" r"|(?<!\d)(\d{3,4})(?!\d)",
     re.IGNORECASE,
 )
 
@@ -226,7 +226,7 @@ async def recognize_image(request: Request, body: OcrRequest) -> OcrResponse:
 
     Supports two modes:
 
-    - **member_card** -- Extract a 1-4 digit member number and look up the
+    - **member_card** -- Extract a 1-6 digit member number and look up the
       visitor profile via ``VisitorIdentificationService``.
     - **handwriting** -- Return the recognised text with a language hint.
     """
