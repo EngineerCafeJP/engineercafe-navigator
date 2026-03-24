@@ -50,11 +50,13 @@ def reset_ocr_state(monkeypatch: pytest.MonkeyPatch):
 
 
 def _extract_member_number(text: str) -> int | None:
-    """テスト用に正規表現マッチから会員番号を取り出す。"""
-    match = ocr_module._MEMBER_NUMBER_RE.search(text)
+    """テスト用に正規表現マッチから会員番号を取り出す（context優先）。"""
+    match = ocr_module._MEMBER_CONTEXT_RE.search(text)
+    if not match:
+        match = ocr_module._MEMBER_STANDALONE_RE.search(text)
     if match is None:
         return None
-    return int(match.group(1) or match.group(2))
+    return int(match.group(1))
 
 
 class TestDecodeImage:
@@ -152,7 +154,7 @@ class TestEstimateConfidence:
 
 
 class TestMemberNumberRegex:
-    """_MEMBER_NUMBER_RE のテスト。"""
+    """_MEMBER_CONTEXT_RE / _MEMBER_STANDALONE_RE のテスト。"""
 
     @pytest.mark.parametrize(
         ("text", "expected"),
@@ -161,6 +163,9 @@ class TestMemberNumberRegex:
             ("No.456", 456),
             ("Member 789", 789),
             ("1234", 1234),
+            ("12345", 12345),
+            ("005544", 5544),
+            ("会員番号123456", 123456),
         ],
     )
     def test_matches_supported_member_number_formats(self, text: str, expected: int):
@@ -170,6 +175,14 @@ class TestMemberNumberRegex:
     def test_does_not_match_two_digit_standalone_number(self):
         """単独の 2 桁数字はフォールバック対象外とする。"""
         assert _extract_member_number("12") is None
+
+    def test_does_not_match_seven_digit_standalone_number(self):
+        """単独の 7 桁数字はフォールバック対象外とする。"""
+        assert _extract_member_number("1234567") is None
+
+    def test_context_match_takes_priority_over_earlier_standalone(self):
+        """ラベル付き番号が standalone より後にあっても優先される。"""
+        assert _extract_member_number("202503 会員番号1234") == 1234
 
 
 class TestRecognizeImageEndpoint:
