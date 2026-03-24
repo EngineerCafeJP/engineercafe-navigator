@@ -68,11 +68,9 @@ ocr_router = APIRouter(prefix="/api/ocr", tags=["ocr"])
 # ---------------------------------------------------------------------------
 
 _DATA_URI_PREFIX = re.compile(r"^data:image/[a-z]+;base64,", re.IGNORECASE)
-# Anchor on membership card context; fall back to standalone 3-6 digit numbers
-_MEMBER_NUMBER_RE = re.compile(
-    r"(?:No\.?|Member|会員番号|会員No)\s*(\d{1,6})" r"|(?<!\d)(\d{3,6})(?!\d)",
-    re.IGNORECASE,
-)
+# Prefer labeled member numbers (with prefix); fall back to standalone 3-6 digit numbers
+_MEMBER_CONTEXT_RE = re.compile(r"(?:No\.?|Member|会員番号|会員No)\s*(\d{1,6})", re.IGNORECASE)
+_MEMBER_STANDALONE_RE = re.compile(r"(?<!\d)(\d{3,6})(?!\d)")
 
 # 10 MB base64 ≈ ~7.5 MB decoded (generous for 640px JPEG)
 _MAX_IMAGE_DATA_LENGTH = 10 * 1024 * 1024
@@ -269,9 +267,11 @@ async def recognize_image(request: Request, body: OcrRequest) -> OcrResponse:
 
     if body.mode == "member_card":
         if recognized_text:
-            match = _MEMBER_NUMBER_RE.search(recognized_text)
+            match = _MEMBER_CONTEXT_RE.search(recognized_text)
+            if not match:
+                match = _MEMBER_STANDALONE_RE.search(recognized_text)
             if match:
-                member_number = int(match.group(1) or match.group(2))
+                member_number = int(match.group(1))
                 try:
                     svc = _get_visitor_id_service()
                     visitor_identity = await svc.identify_by_member_number(member_number)
