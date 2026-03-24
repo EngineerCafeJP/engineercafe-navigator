@@ -68,9 +68,9 @@ ocr_router = APIRouter(prefix="/api/ocr", tags=["ocr"])
 # ---------------------------------------------------------------------------
 
 _DATA_URI_PREFIX = re.compile(r"^data:image/[a-z]+;base64,", re.IGNORECASE)
-# Anchor on membership card context; fall back to standalone 3-4 digit numbers
+# Anchor on membership card context; fall back to standalone 3-6 digit numbers
 _MEMBER_NUMBER_RE = re.compile(
-    r"(?:No\.?|Member|会員番号|会員No)\s*(\d{1,6})" r"|(?<!\d)(\d{3,4})(?!\d)",
+    r"(?:No\.?|Member|会員番号|会員No)\s*(\d{1,6})" r"|(?<!\d)(\d{3,6})(?!\d)",
     re.IGNORECASE,
 )
 
