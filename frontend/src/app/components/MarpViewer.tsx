@@ -24,6 +24,12 @@ interface SlidesApiResponse {
   audioResponse?: string | null;
 }
 
+interface VoiceApiResponse {
+  success?: boolean;
+  audioResponse?: string | null;
+  error?: string;
+}
+
 interface NarrationData {
   metadata: {
     title: string;
@@ -528,6 +534,63 @@ export default function MarpViewer({
                 position: relative;
               }
 
+              /* Ensure section-based Marp slides always have measurable size */
+              .marpit > section[data-marpit-fragment] {
+                box-sizing: border-box;
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100vh;
+                overflow: hidden;
+              }
+
+              /* Marp background figure must fill the entire slide */
+              .marpit > section[data-marpit-fragment] > figure {
+                margin: 0;
+                position: absolute;
+                inset: 0;
+                width: 100%;
+                height: 100%;
+                background-position: center center;
+                background-repeat: no-repeat;
+              }
+
+              /* Marp advanced background layout (split/background directives) */
+              .marpit section[data-marpit-advanced-background="background"] {
+                width: 100%;
+                height: 100%;
+                min-height: 100%;
+                box-sizing: border-box;
+              }
+
+              .marpit [data-marpit-advanced-background-container="true"] {
+                width: 100%;
+                height: 100%;
+                min-height: 100%;
+                position: relative;
+              }
+
+              .marpit [data-marpit-advanced-background-container="true"] > figure {
+                margin: 0;
+                width: var(--marpit-advanced-background-split, 100%);
+                height: 100%;
+                min-height: 100%;
+                max-width: var(--marpit-advanced-background-split, 100%);
+                background-position: center center;
+                background-repeat: no-repeat;
+              }
+
+              .marpit section[data-marpit-advanced-background-split="right"]
+                [data-marpit-advanced-background-container="true"] > figure {
+                margin-left: auto;
+              }
+
+              .marpit section[data-marpit-advanced-background-split="left"]
+                [data-marpit-advanced-background-container="true"] > figure {
+                margin-right: auto;
+              }
+
               /* Handle both SVG and section-based slides */
               .marpit > svg,
               section[data-marpit-fragment],
@@ -645,89 +708,75 @@ export default function MarpViewer({
     setIsNarrating(true);
     
     try {
-      let result: SlidesApiResponse | null = null;
-      
       // Create new AbortController for this narration
       narrationAbortControllerRef.current = new AbortController();
-      
-      // Determine the slide file path based on current language
-      const languageSlideFile = currentLanguage === 'en' ? `en/${slideFile}` : `ja/${slideFile}`;
-      
-      // Sending API request for slide
-      
-      const response = await fetch('/api/slides', {
+
+      const slideNarration =
+        narrationData?.slides[currentSlide - 1]?.narration?.auto?.trim() ?? '';
+
+      // If the current slide has no auto narration, proceed without audio.
+      if (!slideNarration) {
+        advancePresentation(500);
+        return;
+      }
+
+      const response = await fetch('/api/voice', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'narrate_current',
-          slideNumber: currentSlide,
-          slideFile: languageSlideFile, // Use language-specific slide file
-          language: currentLanguage, // Use current language state instead of prop
+          action: 'text_to_speech',
+          text: slideNarration,
+          language: currentLanguage,
         }),
         signal: narrationAbortControllerRef.current.signal,
       });
-      
-      // API response received
-      
-      // Check if response is ok
+
       if (!response.ok) {
-        throw new Error(`API request failed with status ${response.status}`);
+        throw new Error(`TTS request failed with status ${response.status}`);
       }
-      
-      // Check if response is JSON
+
       const contentType = response.headers.get('content-type');
       if (!contentType || !contentType.includes('application/json')) {
-        const textResponse = await response.text();
-        // Non-JSON response received
-        throw new Error('Invalid response format - expected JSON');
-      }
-      
-      result = await response.json() as SlidesApiResponse;
-
-      if (result?.characterAction) {
-        updateCharacterAction(result.characterAction);
+        throw new Error('Invalid TTS response format - expected JSON');
       }
 
-      if (result.audioResponse) {
-        try {
-          // Starting audio playback
-          
-          // Wait for audio playback to complete before advancing
-          await playAudioWithLipSync(result.audioResponse);
-          
-          // Audio playback completed
-          advancePresentation(500);
-        } catch (error: any) {
-          // Error during audio playback
-          
-          resetNarrationFlags();
-          
-          // Check if it's a user interaction required error
-          if (error?.type === 'user_interaction_required' || 
-              error?.requiresUserInteraction ||
-              error?.name === 'NotAllowedError' || 
-              error?.message?.includes('interaction')) {
-            // User interaction required
-            setShowAudioPermissionPrompt(true);
-            setIsPlaying(false); // Stop auto-play until user grants permission
-            return;
-          }
-          
-          // Continue to next slide even if audio fails (for other errors)
-          if (isPlayingRef.current) {
-            advancePresentation(1000);
-          }
-        }
-      } else {
+      const result = await response.json() as VoiceApiResponse;
+      if (!result.success || !result.audioResponse) {
+        throw new Error(result.error || 'TTS response missing audioResponse');
+      }
+
+      try {
+        // Wait for audio playback completion before advancing.
+        await playAudioWithLipSync(result.audioResponse);
         advancePresentation(500);
+      } catch (error: any) {
+        resetNarrationFlags();
+
+        // Browser autoplay policy requires explicit user interaction.
+        if (
+          error?.type === 'user_interaction_required' ||
+          error?.requiresUserInteraction ||
+          error?.name === 'NotAllowedError' ||
+          error?.message?.includes('interaction')
+        ) {
+          setShowAudioPermissionPrompt(true);
+          setIsPlaying(false);
+          return;
+        }
+
+        if (isPlayingRef.current) {
+          advancePresentation(1000);
+        }
       }
     } catch (error) {
       // Check if the error is due to abort
       if (error instanceof Error && error.name === 'AbortError') {
+        return;
       } else {
         console.error('[MarpViewer] Error narrating slide:', error);
       }
       resetNarrationFlags();
+      throw error;
     }
   };
 
@@ -1008,9 +1057,11 @@ export default function MarpViewer({
     if (typeof window === 'undefined') return '';
     return DOMPurify.sanitize(html, {
       WHOLE_DOCUMENT: true,
-      ADD_TAGS: ['style', 'link', 'meta', 'svg', 'foreignObject', 'section'],
+      HTML_INTEGRATION_POINTS: { 'annotation-xml': true, foreignobject: true },
+      ADD_TAGS: ['style', 'link', 'meta', 'svg', 'image', 'foreignObject', 'section'],
       ADD_ATTR: [
         'class', 'id', 'style', 'viewBox', 'xmlns', 'xmlns:xlink',
+        'src', 'href', 'xlink:href',
         'data-marpit-svg', 'data-marpit-fragment', 'data-auto-scaling',
         'data-theme', 'data-size', 'data-paginate',
         'role', 'aria-hidden', 'aria-label', 'tabindex',
