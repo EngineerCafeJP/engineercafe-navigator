@@ -7,6 +7,7 @@ Handles session lifecycle: start -> respond -> complete -> status.
 from __future__ import annotations
 
 import logging
+import time
 from collections import OrderedDict
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Literal, Optional
@@ -88,6 +89,7 @@ def _reset_session_storage() -> None:
     global _session_repository
     _session_repository = None
     _active_sessions.clear()
+    _sensor_trigger_cooldowns.clear()
 
 
 def _serialize_session(session: ReceptionSession, *, status: str = "active") -> dict[str, Any]:
@@ -315,9 +317,27 @@ class SensorTriggerResponse(BaseModel):
     message: Optional[str] = None
 
 
+# ---------------------------------------------------------------------------
+# Per-device rate limiting for sensor triggers
+# ---------------------------------------------------------------------------
+
+_sensor_trigger_cooldowns: dict[str, float] = {}
+SENSOR_TRIGGER_RATE_LIMIT_SECONDS = 5
+
+
 @reception_router.post("/sensor-trigger", response_model=SensorTriggerResponse)
 async def sensor_trigger(request: SensorTriggerRequest) -> SensorTriggerResponse:
     """Receive sensor trigger from M5Stack device."""
+    now = time.time()
+    last_trigger = _sensor_trigger_cooldowns.get(request.device_id, 0)
+    if now - last_trigger < SENSOR_TRIGGER_RATE_LIMIT_SECONDS:
+        return SensorTriggerResponse(
+            success=False,
+            action="rate_limited",
+            message=f"Device {request.device_id} is rate limited",
+        )
+    _sensor_trigger_cooldowns[request.device_id] = now
+
     logger.info(
         "Sensor trigger received: device=%s sensor=%s distance=%dmm",
         request.device_id,

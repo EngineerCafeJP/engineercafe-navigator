@@ -48,6 +48,8 @@ services:
       # Hot reload support
       - ./backend:/app
       - /app/__pycache__
+      # Persist Vosk models built into the image (bind mount overwrites them)
+      - backend-vosk-models:/app/models
     environment:
       - PYTHONUNBUFFERED=1
     env_file:
@@ -116,3 +118,4 @@ volumes:
   frontend-next:
   backend-pycache:
   voicevox-cache:
+  backend-vosk-models:

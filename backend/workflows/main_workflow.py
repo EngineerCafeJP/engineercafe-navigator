@@ -1290,6 +1290,7 @@ class MainWorkflow:
             logger.warning("Time period/closing warning processing failed: %s", time_err)
 
         return {
+            "answer": answer,
             "metadata": metadata,
             "messages": windowed
             + [
