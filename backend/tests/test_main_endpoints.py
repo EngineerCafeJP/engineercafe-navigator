@@ -133,6 +133,27 @@ class TestChatEndpoint:
                 session_id="s1",
             )
 
+    @pytest.mark.asyncio
+    async def test_chat_strips_emotion_tags_from_answer(self):
+        """Emotion tags in answer text should be stripped (#350)"""
+        with patch(
+            "backend.main._run_workflow_with_tracking",
+            new_callable=AsyncMock,
+            return_value={
+                "answer": "[relaxed]営業時間は9時からです[/relaxed]",
+                "emotion": "relaxed",
+                "metadata": {},
+            },
+        ):
+            from backend.main import chat, ChatRequest
+
+            body = ChatRequest(query="営業時間は？", session_id="s1")
+            response = await chat(_mock_request(), body)
+            assert "[relaxed]" not in response.answer
+            assert "[/relaxed]" not in response.answer
+            assert "営業時間は9時からです" in response.answer
+            assert response.emotion == "relaxed"
+
 
 class TestInvokeEndpoint:
     @pytest.mark.asyncio

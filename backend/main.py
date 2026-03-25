@@ -394,7 +394,12 @@ async def chat(request: Request, body: ChatRequest):
             session_id=session_id,
         )
 
-        answer = result.get("answer", "回答を生成できませんでした。")
+        raw_answer = result.get("answer", "回答を生成できませんでした。")
+
+        # Strip emotion tags (emotion is carried separately in the response)
+        from backend.utils.emotion_utils import strip_emotion_tags
+
+        answer = strip_emotion_tags(raw_answer)
 
         # Output PII scanning
         try:
