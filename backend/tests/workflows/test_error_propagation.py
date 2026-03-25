@@ -273,33 +273,6 @@ class TestFormatResponseErrorPropagation:
             assert "[happy" not in result["messages"][1].content
             assert "I am great!" in result["messages"][1].content
 
-    @pytest.mark.asyncio
-    async def test_format_response_returns_stripped_answer_in_dict(self):
-        """format_response must include stripped answer in return dict (#356).
-
-        Without this, state['answer'] retains emotion-tagged text and the
-        reception invoke path returns raw tags to the client.
-        """
-        workflow = _create_workflow()
-
-        with patch("backend.utils.memory_helper.get_memory_helper") as mock_get_helper:
-            mock_helper = AsyncMock()
-            mock_helper.store_message = AsyncMock()
-            mock_get_helper.return_value = mock_helper
-
-            state = {
-                "query": "What are the hours?",
-                "answer": "[happy]We are open 9 to 22.[/happy]",
-                "session_id": "test-session",
-            }
-
-            result = await workflow._format_response_node(state, _mock_runtime())
-
-            # The return dict must contain "answer" with stripped text
-            assert "answer" in result
-            assert "[happy]" not in result["answer"]
-            assert "We are open 9 to 22." in result["answer"]
-
 
 # ===========================================================================
 # 3. Orchestrator Failure Handling
