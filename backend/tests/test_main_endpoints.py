@@ -133,6 +133,27 @@ class TestChatEndpoint:
                 session_id="s1",
             )
 
+    @pytest.mark.asyncio
+    async def test_chat_strips_emotion_tags_from_answer(self):
+        """Emotion tags in answer text should be stripped (#350)"""
+        with patch(
+            "backend.main._run_workflow_with_tracking",
+            new_callable=AsyncMock,
+            return_value={
+                "answer": "[relaxed]営業時間は9時からです[/relaxed]",
+                "emotion": "relaxed",
+                "metadata": {},
+            },
+        ):
+            from backend.main import chat, ChatRequest
+
+            body = ChatRequest(query="営業時間は？", session_id="s1")
+            response = await chat(_mock_request(), body)
+            assert "[relaxed]" not in response.answer
+            assert "[/relaxed]" not in response.answer
+            assert "営業時間は9時からです" in response.answer
+            assert response.emotion == "relaxed"
+
 
 class TestInvokeEndpoint:
     @pytest.mark.asyncio
@@ -302,3 +323,95 @@ class TestCharacterEndpoint:
             with pytest.raises(HTTPException) as exc_info:
                 await character_api(_mock_request(), body)
             assert "Some internal error" not in exc_info.value.detail
+
+    @pytest.mark.asyncio
+    async def test_character_get_default_state(self):
+        """GET /api/character returns default state (#349)"""
+        from backend.main import character_get_api
+
+        response = await character_get_api(_mock_request())
+        assert response["success"] is True
+        assert response["current_emotion"] == "neutral"
+        assert response["current_expression"] == "neutral"
+
+    @pytest.mark.asyncio
+    async def test_character_get_supported_features(self):
+        """GET /api/character?action=supported_features returns expressions list (#349)"""
+        from backend.main import character_get_api
+
+        response = await character_get_api(_mock_request(), action="supported_features")
+        assert response["success"] is True
+        assert "neutral" in response["expressions"]
+        assert "happy" in response["expressions"]
+        assert isinstance(response["animations"], list)
+
+
+class TestBearerAuthSupport:
+    """Tests for Authorization: Bearer support in verify_api_key (#353)"""
+
+    @pytest.mark.asyncio
+    async def test_bearer_token_accepted(self):
+        """verify_api_key should accept Authorization: Bearer header"""
+
+        with patch("backend.main._API_SECRET_KEY", "test-secret-key"):
+            from backend.main import verify_api_key
+
+            scope = {
+                "type": "http",
+                "method": "GET",
+                "path": "/api/character",
+                "query_string": b"",
+                "headers": [
+                    (b"authorization", b"Bearer test-secret-key"),
+                ],
+                "server": ("127.0.0.1", 8000),
+                "client": ("127.0.0.1", 12345),
+            }
+            request = Request(scope)
+            # Should NOT raise
+            await verify_api_key(request)
+
+    @pytest.mark.asyncio
+    async def test_bearer_token_rejected_when_wrong(self):
+        """verify_api_key should reject incorrect Bearer token"""
+        from fastapi import HTTPException
+
+        with patch("backend.main._API_SECRET_KEY", "test-secret-key"):
+            from backend.main import verify_api_key
+
+            scope = {
+                "type": "http",
+                "method": "GET",
+                "path": "/api/character",
+                "query_string": b"",
+                "headers": [
+                    (b"authorization", b"Bearer wrong-key"),
+                ],
+                "server": ("127.0.0.1", 8000),
+                "client": ("127.0.0.1", 12345),
+            }
+            request = Request(scope)
+            with pytest.raises(HTTPException) as exc_info:
+                await verify_api_key(request)
+            assert exc_info.value.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_x_api_key_still_works(self):
+        """X-API-Key header should still be accepted"""
+        with patch("backend.main._API_SECRET_KEY", "test-secret-key"):
+            from backend.main import verify_api_key
+
+            scope = {
+                "type": "http",
+                "method": "GET",
+                "path": "/api/character",
+                "query_string": b"",
+                "headers": [
+                    (b"x-api-key", b"test-secret-key"),
+                ],
+                "server": ("127.0.0.1", 8000),
+                "client": ("127.0.0.1", 12345),
+            }
+            request = Request(scope)
+            # Should NOT raise
+            await verify_api_key(request)

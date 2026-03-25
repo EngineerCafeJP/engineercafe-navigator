@@ -225,6 +225,10 @@ async def verify_api_key(request: Request) -> None:
             raise HTTPException(status_code=503, detail="Server misconfigured")
         return
     api_key = request.headers.get("X-API-Key")
+    if not api_key:
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            api_key = auth_header[7:]
     if not api_key or not hmac.compare_digest(api_key, _API_SECRET_KEY):
         raise HTTPException(status_code=403, detail="Invalid or missing API key")
 
@@ -394,7 +398,12 @@ async def chat(request: Request, body: ChatRequest):
             session_id=session_id,
         )
 
-        answer = result.get("answer", "回答を生成できませんでした。")
+        raw_answer = result.get("answer", "回答を生成できませんでした。")
+
+        # Strip emotion tags (emotion is carried separately in the response)
+        from backend.utils.emotion_utils import strip_emotion_tags
+
+        answer = strip_emotion_tags(raw_answer)
 
         # Output PII scanning
         try:
@@ -853,6 +862,37 @@ class CharacterResponse(BaseModel):
     success: bool
     message: Optional[str] = None
     error: Optional[str] = None
+
+
+@app.get("/api/character", dependencies=[Depends(verify_api_key)])
+@_rate_limit("20/minute")
+async def character_get_api(request: Request, action: str = ""):
+    """GET handler for character state queries from frontend polling."""
+    if action == "supported_features":
+        from backend.agents.character_control_agent import CharacterControlAgent
+
+        agent = CharacterControlAgent()
+        animations = (
+            agent.get_supported_animations() if hasattr(agent, "get_supported_animations") else []
+        )
+        return {
+            "success": True,
+            "expressions": [
+                "neutral",
+                "happy",
+                "sad",
+                "angry",
+                "relaxed",
+                "surprised",
+            ],
+            "animations": animations,
+        }
+    # Default: return current state
+    return {
+        "success": True,
+        "current_emotion": "neutral",
+        "current_expression": "neutral",
+    }
 
 
 @app.post(
