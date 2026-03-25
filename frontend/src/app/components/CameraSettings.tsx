@@ -9,14 +9,31 @@ interface MediaDeviceInfo {
   kind: string;
 }
 
+type OcrMode = 'member_card' | 'handwriting';
+
+interface OcrResponse {
+  success: boolean;
+  mode: OcrMode;
+  member_number: number | null;
+  recognized_text: string | null;
+  confidence: number;
+  language: string | null;
+  expression: string | null;
+  processing_time_ms: number;
+  visitor_identity: Record<string, unknown> | null;
+  error: string | null;
+}
+
 export default function CameraSettings() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
+  const [ocrMode, setOcrMode] = useState<OcrMode>('member_card');
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [ocrResult, setOcrResult] = useState<string | null>(null);
+  const [ocrResult, setOcrResult] = useState<OcrResponse | null>(null);
+  const [ocrResultMessage, setOcrResultMessage] = useState<string | null>(null);
   const [ocrLoading, setOcrLoading] = useState(false);
 
   const stopStream = useCallback((s: MediaStream | null) => {
@@ -102,11 +119,13 @@ export default function CameraSettings() {
     const video = videoRef.current;
     const canvas = canvasRef.current;
     if (!video || !canvas || !stream || video.readyState < 2) {
-      setOcrResult('プレビューが準備できていません。');
+      setOcrResult(null);
+      setOcrResultMessage('プレビューが準備できていません。');
       return;
     }
     setOcrLoading(true);
     setOcrResult(null);
+    setOcrResultMessage(null);
     try {
       const w = video.videoWidth;
       const h = video.videoHeight;
@@ -123,17 +142,31 @@ export default function CameraSettings() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           image_data: base64,
-          query: 'この画像を分析してください',
+          mode: ocrMode,
+          session_id: '',
         }),
       });
-      const data = await res.json();
+      const data = (await res.json()) as Partial<OcrResponse>;
       if (!res.ok) {
-        setOcrResult(`エラー: ${data?.error ?? res.statusText}`);
+        setOcrResult(null);
+        setOcrResultMessage(`エラー: ${data?.error ?? res.statusText}`);
         return;
       }
-      setOcrResult(data?.answer ?? '（応答なし）');
+      setOcrResult({
+        success: data.success ?? false,
+        mode: data.mode ?? ocrMode,
+        member_number: data.member_number ?? null,
+        recognized_text: data.recognized_text ?? null,
+        confidence: data.confidence ?? 0,
+        language: data.language ?? null,
+        expression: data.expression ?? null,
+        processing_time_ms: data.processing_time_ms ?? 0,
+        visitor_identity: data.visitor_identity ?? null,
+        error: data.error ?? null,
+      });
     } catch (e) {
-      setOcrResult(e instanceof Error ? e.message : '送信に失敗しました。');
+      setOcrResult(null);
+      setOcrResultMessage(e instanceof Error ? e.message : '送信に失敗しました。');
     } finally {
       setOcrLoading(false);
     }
@@ -167,6 +200,18 @@ export default function CameraSettings() {
           </select>
         </div>
       )}
+      <div>
+        <label className="mb-1 block text-xs text-gray-600">OCRモード</label>
+        <select
+          value={ocrMode}
+          onChange={(e) => setOcrMode(e.target.value as OcrMode)}
+          className="w-full rounded border border-gray-200 bg-white px-2 py-1.5 text-sm"
+          aria-label="OCRモードを選択"
+        >
+          <option value="member_card">member_card</option>
+          <option value="handwriting">handwriting</option>
+        </select>
+      </div>
       <div className="overflow-hidden rounded-lg border border-gray-200 bg-black">
         <video
           ref={videoRef}
@@ -188,9 +233,25 @@ export default function CameraSettings() {
         <Send className="size-4" />
         {ocrLoading ? '送信中…' : '画像を送信'}
       </button>
-      {ocrResult && (
+      {ocrResultMessage && (
         <div className="rounded bg-gray-50 p-2 text-xs text-gray-700" role="status">
-          {ocrResult}
+          {ocrResultMessage}
+        </div>
+      )}
+      {ocrResult && (
+        <div className="space-y-1 rounded bg-gray-50 p-2 text-xs text-gray-700" role="status">
+          <p>success: {String(ocrResult.success)}</p>
+          <p>mode: {ocrResult.mode}</p>
+          <p>recognized_text: {ocrResult.recognized_text ?? 'null'}</p>
+          <p>member_number: {ocrResult.member_number ?? 'null'}</p>
+          <p>language: {ocrResult.language ?? 'null'}</p>
+          <p>expression: {ocrResult.expression ?? 'null'}</p>
+          <p>confidence: {ocrResult.confidence.toFixed(2)}</p>
+          <p>processing_time_ms: {ocrResult.processing_time_ms}</p>
+          {ocrResult.visitor_identity && (
+            <p>visitor_identity: {JSON.stringify(ocrResult.visitor_identity)}</p>
+          )}
+          {ocrResult.error && <p>error: {ocrResult.error}</p>}
         </div>
       )}
     </div>
