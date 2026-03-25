@@ -860,6 +860,37 @@ class CharacterResponse(BaseModel):
     error: Optional[str] = None
 
 
+@app.get("/api/character", dependencies=[Depends(verify_api_key)])
+@_rate_limit("20/minute")
+async def character_get_api(request: Request, action: str = ""):
+    """GET handler for character state queries from frontend polling."""
+    if action == "supported_features":
+        from backend.agents.character_control_agent import CharacterControlAgent
+
+        agent = CharacterControlAgent()
+        animations = (
+            agent.get_supported_animations() if hasattr(agent, "get_supported_animations") else []
+        )
+        return {
+            "success": True,
+            "expressions": [
+                "neutral",
+                "happy",
+                "sad",
+                "angry",
+                "relaxed",
+                "surprised",
+            ],
+            "animations": animations,
+        }
+    # Default: return current state
+    return {
+        "success": True,
+        "current_emotion": "neutral",
+        "current_expression": "neutral",
+    }
+
+
 @app.post(
     "/api/character", response_model=CharacterResponse, dependencies=[Depends(verify_api_key)]
 )

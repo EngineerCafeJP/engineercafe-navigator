@@ -323,3 +323,24 @@ class TestCharacterEndpoint:
             with pytest.raises(HTTPException) as exc_info:
                 await character_api(_mock_request(), body)
             assert "Some internal error" not in exc_info.value.detail
+
+    @pytest.mark.asyncio
+    async def test_character_get_default_state(self):
+        """GET /api/character returns default state (#349)"""
+        from backend.main import character_get_api
+
+        response = await character_get_api(_mock_request())
+        assert response["success"] is True
+        assert response["current_emotion"] == "neutral"
+        assert response["current_expression"] == "neutral"
+
+    @pytest.mark.asyncio
+    async def test_character_get_supported_features(self):
+        """GET /api/character?action=supported_features returns expressions list (#349)"""
+        from backend.main import character_get_api
+
+        response = await character_get_api(_mock_request(), action="supported_features")
+        assert response["success"] is True
+        assert "neutral" in response["expressions"]
+        assert "happy" in response["expressions"]
+        assert isinstance(response["animations"], list)
