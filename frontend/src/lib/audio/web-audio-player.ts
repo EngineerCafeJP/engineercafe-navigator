@@ -35,6 +35,18 @@ export class WebAudioPlayer {
   }
 
   /**
+   * Replace event callbacks and volume from the parent service.
+   * MobileAudioService replaces its options object on updateEventHandlers; the player
+   * must be synced before each play() or stale onPlay/onEnded handlers are used.
+   */
+  public setOptions(options: AudioPlayerOptions): void {
+    this.options = { ...this.options, ...options };
+    if (this.gainNode && options.volume !== undefined) {
+      this.gainNode.gain.value = Math.max(0, Math.min(1, options.volume));
+    }
+  }
+
+  /**
    * Initialize AudioContext (must be called after user interaction)
    */
   public async initializeContext(): Promise<void> {
