@@ -344,3 +344,74 @@ class TestCharacterEndpoint:
         assert "neutral" in response["expressions"]
         assert "happy" in response["expressions"]
         assert isinstance(response["animations"], list)
+
+
+class TestBearerAuthSupport:
+    """Tests for Authorization: Bearer support in verify_api_key (#353)"""
+
+    @pytest.mark.asyncio
+    async def test_bearer_token_accepted(self):
+        """verify_api_key should accept Authorization: Bearer header"""
+
+        with patch("backend.main._API_SECRET_KEY", "test-secret-key"):
+            from backend.main import verify_api_key
+
+            scope = {
+                "type": "http",
+                "method": "GET",
+                "path": "/api/character",
+                "query_string": b"",
+                "headers": [
+                    (b"authorization", b"Bearer test-secret-key"),
+                ],
+                "server": ("127.0.0.1", 8000),
+                "client": ("127.0.0.1", 12345),
+            }
+            request = Request(scope)
+            # Should NOT raise
+            await verify_api_key(request)
+
+    @pytest.mark.asyncio
+    async def test_bearer_token_rejected_when_wrong(self):
+        """verify_api_key should reject incorrect Bearer token"""
+        from fastapi import HTTPException
+
+        with patch("backend.main._API_SECRET_KEY", "test-secret-key"):
+            from backend.main import verify_api_key
+
+            scope = {
+                "type": "http",
+                "method": "GET",
+                "path": "/api/character",
+                "query_string": b"",
+                "headers": [
+                    (b"authorization", b"Bearer wrong-key"),
+                ],
+                "server": ("127.0.0.1", 8000),
+                "client": ("127.0.0.1", 12345),
+            }
+            request = Request(scope)
+            with pytest.raises(HTTPException) as exc_info:
+                await verify_api_key(request)
+            assert exc_info.value.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_x_api_key_still_works(self):
+        """X-API-Key header should still be accepted"""
+        with patch("backend.main._API_SECRET_KEY", "test-secret-key"):
+            from backend.main import verify_api_key
+
+            scope = {
+                "type": "http",
+                "method": "GET",
+                "path": "/api/character",
+                "query_string": b"",
+                "headers": [
+                    (b"x-api-key", b"test-secret-key"),
+                ],
+                "server": ("127.0.0.1", 8000),
+                "client": ("127.0.0.1", 12345),
+            }
+            request = Request(scope)
+            # Should NOT raise
+            await verify_api_key(request)

@@ -225,6 +225,10 @@ async def verify_api_key(request: Request) -> None:
             raise HTTPException(status_code=503, detail="Server misconfigured")
         return
     api_key = request.headers.get("X-API-Key")
+    if not api_key:
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            api_key = auth_header[7:]
     if not api_key or not hmac.compare_digest(api_key, _API_SECRET_KEY):
         raise HTTPException(status_code=403, detail="Invalid or missing API key")
 

@@ -483,3 +483,54 @@ class TestCompleteReception:
         assert data["purpose_category"] == "facility_use"
         # workflow_state must NOT be in the response (PII leak fix)
         assert "workflow_state" not in data
+
+
+class TestSensorTriggerEndpoint:
+    """Tests for POST /api/reception/sensor-trigger (#353)"""
+
+    def setup_method(self):
+        reception_module._reset_session_storage()
+
+    def test_sensor_trigger_success(self):
+        response = client.post(
+            "/api/reception/sensor-trigger",
+            json={
+                "sensor_type": "tof",
+                "distance_mm": 500,
+                "device_id": "m5stack-001",
+            },
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert data["action"] == "trigger_received"
+        assert "m5stack-001" in data["message"]
+
+    def test_sensor_trigger_validation_negative_distance(self):
+        response = client.post(
+            "/api/reception/sensor-trigger",
+            json={
+                "sensor_type": "tof",
+                "distance_mm": -1,
+                "device_id": "m5stack-001",
+            },
+        )
+        assert response.status_code == 422
+
+    def test_sensor_trigger_validation_missing_fields(self):
+        response = client.post(
+            "/api/reception/sensor-trigger",
+            json={},
+        )
+        assert response.status_code == 422
+
+    def test_sensor_trigger_validation_device_id_too_long(self):
+        response = client.post(
+            "/api/reception/sensor-trigger",
+            json={
+                "sensor_type": "tof",
+                "distance_mm": 300,
+                "device_id": "x" * 101,
+            },
+        )
+        assert response.status_code == 422

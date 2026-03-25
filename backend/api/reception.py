@@ -303,6 +303,34 @@ class ReceptionStatusResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+class SensorTriggerRequest(BaseModel):
+    sensor_type: str = Field(..., max_length=50)
+    distance_mm: int = Field(..., ge=0)
+    device_id: str = Field(..., max_length=100)
+
+
+class SensorTriggerResponse(BaseModel):
+    success: bool
+    action: str
+    message: Optional[str] = None
+
+
+@reception_router.post("/sensor-trigger", response_model=SensorTriggerResponse)
+async def sensor_trigger(request: SensorTriggerRequest) -> SensorTriggerResponse:
+    """Receive sensor trigger from M5Stack device."""
+    logger.info(
+        "Sensor trigger received: device=%s sensor=%s distance=%dmm",
+        request.device_id,
+        request.sensor_type,
+        request.distance_mm,
+    )
+    return SensorTriggerResponse(
+        success=True,
+        action="trigger_received",
+        message=f"Sensor trigger from {request.device_id} acknowledged",
+    )
+
+
 @reception_router.post("/start", response_model=ReceptionStartResponse)
 async def start_reception(request: ReceptionStartRequest) -> ReceptionStartResponse:
     """Initiate a new reception session.
