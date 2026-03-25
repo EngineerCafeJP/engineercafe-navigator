@@ -83,6 +83,10 @@ Thumbs.db
 backend/.claude/state/
 backend/.claude/logs/
 backend/.claude/sessions/
+# Frontend-specific Claude Code artifacts
+frontend/.claude/state/
+frontend/.claude/logs/
+frontend/.claude/sessions/
 
 # Claude Code harness (local)
 .claude-code-harness/
