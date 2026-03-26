@@ -5,6 +5,13 @@ export interface DeviceDetectionEvent {
   data?: Record<string, unknown>;
 }
 
+/**
+ * Future: server webhooks or edge hardware can call the same entry points as the kiosk
+ * screen buttons by dispatching `device-detection` or by exposing a thin adapter that
+ * invokes the same `setKioskPhase` / transition logic as `frontend/src/app/page.tsx`.
+ * Not wired in the current release (screen-first).
+ */
+
 /** Dispatch a custom event that ReceptionPanel listens to. */
 export function handleDeviceDetection(event: DeviceDetectionEvent): void {
   window.dispatchEvent(new CustomEvent('device-detection', { detail: event }));

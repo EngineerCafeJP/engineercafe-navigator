@@ -1,18 +1,26 @@
 'use client';
 
 import { markAudioUserInteraction } from '@/lib/audio/audio-user-interaction-gate';
+import {
+  KIOSK_IDLE_MS,
+  type KioskMicMode,
+  type KioskPhase,
+  readKioskMicMode,
+  readKioskTriggerMode,
+} from '@/lib/kiosk-constants';
 import ReactMarkdown from 'react-markdown';
 
 import { cn } from '@/lib/cn';
-import { ClarificationUtils } from '@/lib/clarification-utils';
 import {
-  ChevronDown,
+  Camera,
   Loader2,
   MessageSquare,
   Mic,
   MicOff,
+  Presentation,
   SendHorizontal,
   Settings,
+  Sparkles,
   Volume2,
   X,
   XCircle,
@@ -24,22 +32,24 @@ import {
   useState,
   type CSSProperties,
   type Dispatch,
-  type KeyboardEvent,
   type MutableRefObject,
+  type PointerEvent as ReactPointerEvent,
   type SetStateAction,
 } from 'react';
 import type { CharacterAnimationData } from './utils/character-animation-utils';
 import type { BackgroundOption } from './components/BackgroundSelector';
 import CharacterAvatar from './components/CharacterAvatar';
-import ClarificationButtons from './components/ClarificationButtons';
 import SettingsPanel, {
   type SettingsPanelPropsFromSource,
 } from './components/SettingsPanel';
 import MarpViewer from './components/MarpViewer';
+import InitialSettingsModal from './components/InitialSettingsModal';
 import VoiceInterface, {
   type VoiceInterfaceMetadata,
   type VoiceSessionState,
 } from './components/VoiceInterface';
+import { OcrCameraView } from '@/components/reception/OcrCameraView';
+import { ReceptionPanel } from '@/components/reception/ReceptionPanel';
 
 const overlayLabels = {
   ja: {
@@ -66,6 +76,13 @@ const overlayLabels = {
     languageJa: '日本語',
     languageEn: 'English',
     currentLocale: '現在: 日本語',
+    kioskWelcome: '受付（Welcome）',
+    kioskVoice: '音声応対',
+    kioskOcr: '会員証・筆談（OCR）',
+    kioskSlides: 'スライド案内',
+    kioskBackIdle: 'メニューに戻る',
+    ocrModeMember: '会員証',
+    ocrModeHandwriting: '筆談',
   },
   en: {
     guideLabel: 'Voice Guide',
@@ -91,6 +108,13 @@ const overlayLabels = {
     languageJa: '日本語',
     languageEn: 'English',
     currentLocale: 'Current: English',
+    kioskWelcome: 'Reception (Welcome)',
+    kioskVoice: 'Voice chat',
+    kioskOcr: 'Member card & OCR',
+    kioskSlides: 'Slide guide',
+    kioskBackIdle: 'Back to menu',
+    ocrModeMember: 'Member card',
+    ocrModeHandwriting: 'Handwriting',
   },
 } as const;
 
@@ -102,35 +126,6 @@ const buttonCopy: Record<
   listening: 'listeningAction',
   processing: 'processingAction',
   speaking: 'speakingAction',
-};
-
-const clarificationOptionMap = {
-  ja: {
-    'cafe-clarification-needed': ['エンジニアカフェ', 'サイノカフェ'],
-    'meeting-room-clarification-needed': ['2階の有料会議室', '地下1階の無料ミーティングスペース'],
-    'event-clarification-needed': ['イベント情報', 'コミュニティ情報'],
-    'space-clarification-needed': ['作業スペース', '会議スペース'],
-  },
-  en: {
-    'cafe-clarification-needed': ['Engineer Cafe', 'Saino Cafe'],
-    'meeting-room-clarification-needed': ['Paid meeting room on 2F', 'Free meeting space on B1'],
-    'event-clarification-needed': ['Event information', 'Community information'],
-    'space-clarification-needed': ['Workspace', 'Meeting space'],
-  },
-} as const;
-
-const responseClampStyle: CSSProperties = {
-  display: '-webkit-box',
-  WebkitBoxOrient: 'vertical',
-  WebkitLineClamp: 4,
-  overflow: 'hidden',
-};
-
-const transcriptClampStyle: CSSProperties = {
-  display: '-webkit-box',
-  WebkitBoxOrient: 'vertical',
-  WebkitLineClamp: 2,
-  overflow: 'hidden',
 };
 
 type ConversationHistoryItem = {
@@ -183,33 +178,6 @@ function ConversationHistoryEffects({
   return null;
 }
 
-const getClarificationOptions = (
-  currentLanguage: 'ja' | 'en',
-  response: string,
-  metadata: Record<string, unknown> | null,
-): string[] => {
-  const metadataOptions = Array.isArray(metadata?.clarification_options)
-    ? metadata.clarification_options.filter((value): value is string => typeof value === 'string')
-    : [];
-  if (metadataOptions.length > 0) {
-    return metadataOptions;
-  }
-
-  const clarification = metadata?.clarification;
-  const clarificationType =
-    clarification &&
-    typeof clarification === 'object' &&
-    typeof (clarification as { clarification_type?: unknown }).clarification_type === 'string'
-      ? (clarification as { clarification_type: keyof typeof clarificationOptionMap.ja }).clarification_type
-      : null;
-
-  if (clarificationType && clarificationType in clarificationOptionMap[currentLanguage]) {
-    return [...clarificationOptionMap[currentLanguage][clarificationType]];
-  }
-
-  return ClarificationUtils.extractClarificationOptions(response);
-};
-
 const getStageBackgroundStyle = (background: BackgroundOption): CSSProperties => {
   if (background.type === 'image') {
     return {
@@ -228,8 +196,11 @@ const getStageBackgroundStyle = (background: BackgroundOption): CSSProperties =>
 };
 
 export default function Home() {
+  const [kioskPhase, setKioskPhase] = useState<KioskPhase>('notice');
+  const kioskPhaseRef = useRef<KioskPhase>('notice');
   const [currentLanguage, setCurrentLanguage] = useState<'ja' | 'en'>('ja');
-  const [showSlideMode, setShowSlideMode] = useState(false);
+  const [micInputMode, setMicInputMode] = useState<KioskMicMode>(() => readKioskMicMode());
+  const [ocrMode, setOcrMode] = useState<'member_card' | 'handwriting'>('member_card');
   const [characterBackground, setCharacterBackground] = useState<BackgroundOption>({
     id: 'engineer-cafe-bg',
     name: 'Engineer Cafe',
@@ -253,8 +224,52 @@ export default function Home() {
   const pendingVrmPlaybackRef = useRef<CharacterAnimationData | null>(null);
   const lastTranscriptRef = useRef<string>('');
   const lastResponseRef = useRef<string>('');
+  const returnToIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const kioskVoiceCleanupRef = useRef<(() => void) | null>(null);
 
   const showAvatarControls = process.env.NEXT_PUBLIC_SHOW_AVATAR_SETTINGS === 'true';
+
+  useEffect(() => {
+    kioskPhaseRef.current = kioskPhase;
+  }, [kioskPhase]);
+
+  const clearReturnToIdleTimer = useCallback(() => {
+    if (returnToIdleTimerRef.current !== null) {
+      clearTimeout(returnToIdleTimerRef.current);
+      returnToIdleTimerRef.current = null;
+    }
+  }, []);
+
+  const scheduleReturnToIdle = useCallback(() => {
+    clearReturnToIdleTimer();
+    returnToIdleTimerRef.current = setTimeout(() => {
+      returnToIdleTimerRef.current = null;
+      const phase = kioskPhaseRef.current;
+      if (phase === 'voice' || phase === 'welcome') {
+        kioskVoiceCleanupRef.current?.();
+      }
+      setKioskPhase('idle');
+    }, KIOSK_IDLE_MS);
+  }, [clearReturnToIdleTimer]);
+
+  const bumpUserActivity = useCallback(() => {
+    if (kioskPhaseRef.current === 'notice' || kioskPhaseRef.current === 'idle') {
+      return;
+    }
+    clearReturnToIdleTimer();
+  }, [clearReturnToIdleTimer]);
+
+  useEffect(() => {
+    return () => {
+      clearReturnToIdleTimer();
+    };
+  }, [clearReturnToIdleTimer]);
+
+  useEffect(() => {
+    if (kioskPhase === 'ocr') {
+      scheduleReturnToIdle();
+    }
+  }, [kioskPhase, scheduleReturnToIdle]);
 
   const handleSettingsPanelPropsChange = useCallback(
     (props: SettingsPanelPropsFromSource) => {
@@ -277,7 +292,7 @@ export default function Home() {
 
   const startPresentation = useCallback((language: 'ja' | 'en') => {
     setCurrentLanguage(language);
-    setShowSlideMode(true);
+    setKioskPhase('slides');
 
     window.setTimeout(() => {
       window.dispatchEvent(
@@ -288,13 +303,33 @@ export default function Home() {
     }, 150);
   }, []);
 
+  const handleCloseSlides = useCallback(() => {
+    clearReturnToIdleTimer();
+    setKioskPhase('idle');
+  }, [clearReturnToIdleTimer]);
+
   return (
-    <VoiceInterface
+    <>
+      <InitialSettingsModal
+        language={currentLanguage}
+        open={kioskPhase === 'notice'}
+        onClose={() => setKioskPhase('idle')}
+        onPreferencesSaved={(prefs) => {
+          setCurrentLanguage(prefs.language);
+          setMicInputMode(prefs.micMode);
+        }}
+      />
+      <VoiceInterface
       language={currentLanguage}
       onLanguageChange={setCurrentLanguage}
       onVisemeControl={setVisemeFunction}
       showDefaultUI={false}
       onMetadataChange={setLatestMetadata}
+      onAssistantPlaybackEnd={() => {
+        if (kioskPhaseRef.current === 'voice') {
+          scheduleReturnToIdle();
+        }
+      }}
       onAssistantPlaybackStart={({ metadata: playbackMetadata }) => {
         const vc = playbackMetadata?.vrm_control;
         if (!vc) {
@@ -312,7 +347,14 @@ export default function Home() {
       }}
     >
       {(voice) => {
+        kioskVoiceCleanupRef.current = () => {
+          voice.cancelSession();
+          voice.clearConversation();
+        };
         const labels = overlayLabels[voice.currentLanguage];
+        const receptionTriggerType =
+          readKioskTriggerMode() === 'device' ? 'sensor_trigger' : 'button_press';
+        const showSlideMode = kioskPhase === 'slides';
         const stageBackgroundStyle = getStageBackgroundStyle(characterBackground);
         const isListening = voice.sessionState === 'listening';
         const isSpeaking = voice.sessionState === 'speaking';
@@ -331,17 +373,6 @@ export default function Home() {
         const waveformBars = (
           isListening || isSpeaking ? voice.waveformBars : [0.2, 0.28, 0.18, 0.26, 0.2]
         ).map((value) => Math.max(value, 0.16));
-        const clarificationOptions = getClarificationOptions(
-          voice.currentLanguage,
-          voice.response,
-          voice.metadata,
-        );
-        const bubbleHeading =
-          voice.response.length > 0
-            ? labels.responseLabel
-            : voice.isLoading
-              ? labels.loadingLabel
-              : labels.guideLabel;
         const bubbleBody =
           voice.response || (voice.isLoading && voice.loadingMessage) || labels.defaultPrompt;
         const micButtonLabel = labels[buttonCopy[visualState]];
@@ -375,6 +406,45 @@ export default function Home() {
           setTextDraft('');
         };
 
+        const pushToTalk = micInputMode === 'push_to_talk';
+
+        const handleMicPointerDown = (e: ReactPointerEvent<HTMLButtonElement>) => {
+          if (!pushToTalk || isProcessing || isSpeaking) {
+            return;
+          }
+          e.preventDefault();
+          e.currentTarget.setPointerCapture(e.pointerId);
+          markAudioUserInteraction();
+          if (!isListening) {
+            void voice.startListening();
+          }
+        };
+
+        const handleMicPointerUp = (e: ReactPointerEvent<HTMLButtonElement>) => {
+          if (!pushToTalk) {
+            return;
+          }
+          e.preventDefault();
+          if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+            e.currentTarget.releasePointerCapture(e.pointerId);
+          }
+          if (isListening) {
+            voice.stopListening();
+          }
+        };
+
+        const handleMicPointerCancel = (e: ReactPointerEvent<HTMLButtonElement>) => {
+          if (!pushToTalk) {
+            return;
+          }
+          if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+            e.currentTarget.releasePointerCapture(e.pointerId);
+          }
+          if (isListening) {
+            voice.stopListening();
+          }
+        };
+
         return (
           <>
             <ConversationHistoryEffects
@@ -395,7 +465,7 @@ export default function Home() {
                   modelPositionOffset={characterModelOffset}
                   modelRotationOffset={characterRotationOffset}
                   enableClickAnimation={!showSlideMode}
-                  showControls={showAvatarControls && !showSlideMode}
+                  showControls={showAvatarControls && !showSlideMode && kioskPhase === 'voice'}
                   volume={Math.round(voice.volume * 100)}
                   isMuted={voice.isMuted}
                   onVolumeChange={(value) => voice.setVolume(value / 100)}
@@ -422,11 +492,73 @@ export default function Home() {
                 />
               </div>
 
-              {!showSlideMode && (
+              {kioskPhase === 'idle' && (
+                <div
+                  className="pointer-events-auto absolute inset-x-0 bottom-0 z-[25] flex justify-center pb-[max(0.75rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] pt-2"
+                >
+                  <div className="flex w-full max-w-5xl flex-row flex-wrap items-stretch justify-center gap-2 sm:gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        markAudioUserInteraction();
+                        setKioskPhase('welcome');
+                      }}
+                      className="flex min-h-[72px] min-w-[min(100%,7rem)] flex-1 flex-col items-center justify-center gap-1 rounded-2xl border border-white/35 bg-white/15 px-3 py-3 text-white shadow-md backdrop-blur-sm transition-transform hover:scale-[1.02] sm:min-h-[80px] sm:flex-initial sm:px-5"
+                    >
+                      <Sparkles className="size-6 shrink-0 sm:size-7" aria-hidden />
+                      <span className="text-center text-xs font-semibold leading-tight sm:text-sm">
+                        {labels.kioskWelcome}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        markAudioUserInteraction();
+                        setKioskPhase('voice');
+                      }}
+                      className="flex min-h-[72px] min-w-[min(100%,7rem)] flex-1 flex-col items-center justify-center gap-1 rounded-2xl border border-white/35 bg-white/15 px-3 py-3 text-white shadow-md backdrop-blur-sm transition-transform hover:scale-[1.02] sm:min-h-[80px] sm:flex-initial sm:px-5"
+                    >
+                      <Mic className="size-6 shrink-0 sm:size-7" aria-hidden />
+                      <span className="text-center text-xs font-semibold leading-tight sm:text-sm">
+                        {labels.kioskVoice}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        markAudioUserInteraction();
+                        setKioskPhase('ocr');
+                      }}
+                      className="flex min-h-[72px] min-w-[min(100%,7rem)] flex-1 flex-col items-center justify-center gap-1 rounded-2xl border border-white/35 bg-white/15 px-3 py-3 text-white shadow-md backdrop-blur-sm transition-transform hover:scale-[1.02] sm:min-h-[80px] sm:flex-initial sm:px-5"
+                    >
+                      <Camera className="size-6 shrink-0 sm:size-7" aria-hidden />
+                      <span className="text-center text-xs font-semibold leading-tight sm:text-sm">
+                        {labels.kioskOcr}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        markAudioUserInteraction();
+                        startPresentation(voice.currentLanguage);
+                      }}
+                      className="flex min-h-[72px] min-w-[min(100%,7rem)] flex-1 flex-col items-center justify-center gap-1 rounded-2xl border border-white/35 bg-white/15 px-3 py-3 text-white shadow-md backdrop-blur-sm transition-transform hover:scale-[1.02] sm:min-h-[80px] sm:flex-initial sm:px-5"
+                    >
+                      <Presentation className="size-6 shrink-0 sm:size-7" aria-hidden />
+                      <span className="text-center text-xs font-semibold leading-tight sm:text-sm">
+                        {labels.kioskSlides}
+                      </span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {kioskPhase === 'voice' && (
                 <>
                   <div
                     className="pointer-events-none absolute inset-0 z-20"
                     style={screenPadding}
+                    onPointerDownCapture={bumpUserActivity}
                   >
                     <div
                       className={
@@ -548,12 +680,28 @@ export default function Home() {
                               <div className="flex h-full items-center justify-center">
                                 <button
                                   type="button"
-                                  onClick={isListening ? voice.stopListening : voice.startListening}
+                                  onPointerDown={handleMicPointerDown}
+                                  onPointerUp={handleMicPointerUp}
+                                  onPointerCancel={handleMicPointerCancel}
+                                  onClick={(e) => {
+                                    if (pushToTalk) {
+                                      e.preventDefault();
+                                      return;
+                                    }
+                                    markAudioUserInteraction();
+                                    if (isListening) {
+                                      voice.stopListening();
+                                    } else {
+                                      void voice.startListening();
+                                    }
+                                  }}
                                   disabled={isProcessing}
                                   aria-label={micButtonLabel}
+                                  aria-pressed={pushToTalk ? isListening : undefined}
                                   className={cn(
                                     'inline-flex size-16 items-center justify-center rounded-full shadow-xl transition-transform duration-200 ease-out md:size-20',
                                     'hover:scale-105 disabled:cursor-not-allowed disabled:hover:scale-100',
+                                    pushToTalk && 'touch-none select-none',
                                     visualState === 'idle' && 'bg-white text-slate-900',
                                     visualState === 'listening' && 'bg-rose-500 text-white motion-safe:animate-pulse',
                                     visualState === 'processing' && 'bg-amber-500 text-white',
@@ -676,7 +824,7 @@ export default function Home() {
                         }}
                         slide_mode_open={showSlideMode}
                         on_open_slides={() => startPresentation(voice.currentLanguage)}
-                        on_close_slides={() => setShowSlideMode(false)}
+                        on_close_slides={handleCloseSlides}
                         open_slides_label={labels.openSlides}
                         close_slides_label={labels.closeSlides}
                       />
@@ -685,16 +833,123 @@ export default function Home() {
                 ) : null}
                 </>
               )}
+
+              {kioskPhase === 'welcome' && (
+                <div
+                  className="absolute inset-0 z-40 overflow-y-auto bg-black/55 p-4"
+                  onPointerDownCapture={bumpUserActivity}
+                >
+                  <div className="mx-auto max-w-3xl pb-24 pt-8">
+                    <ReceptionPanel
+                      sessionId={voice.sessionId}
+                      language={voice.currentLanguage}
+                      triggerType={receptionTriggerType}
+                      autoEnterWelcome
+                      onAssistantMessageAdded={() => {
+                        if (kioskPhaseRef.current === 'welcome') {
+                          scheduleReturnToIdle();
+                        }
+                      }}
+                      onReceptionComplete={() => {
+                        clearReturnToIdleTimer();
+                        setKioskPhase('voice');
+                      }}
+                      className="border-white/20 bg-white/95 shadow-xl"
+                    />
+                    <div className="mt-6 flex justify-center">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          clearReturnToIdleTimer();
+                          setKioskPhase('idle');
+                        }}
+                        className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/30 bg-black/40 px-6 py-3 text-sm font-medium text-white backdrop-blur-md transition-colors hover:bg-black/55"
+                      >
+                        {labels.kioskBackIdle}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {kioskPhase === 'ocr' && (
+                <div
+                  className="absolute inset-0 z-40 overflow-y-auto bg-black/60 p-4"
+                  onPointerDownCapture={bumpUserActivity}
+                >
+                  <div className="mx-auto max-w-lg rounded-[28px] border border-white/15 bg-white/95 p-5 shadow-xl md:p-8">
+                    <div className="mb-4 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setOcrMode('member_card')}
+                        className={cn(
+                          'rounded-full px-4 py-2 text-sm font-medium transition-colors',
+                          ocrMode === 'member_card'
+                            ? 'bg-slate-900 text-white'
+                            : 'bg-slate-100 text-slate-700',
+                        )}
+                      >
+                        {labels.ocrModeMember}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setOcrMode('handwriting')}
+                        className={cn(
+                          'rounded-full px-4 py-2 text-sm font-medium transition-colors',
+                          ocrMode === 'handwriting'
+                            ? 'bg-slate-900 text-white'
+                            : 'bg-slate-100 text-slate-700',
+                        )}
+                      >
+                        {labels.ocrModeHandwriting}
+                      </button>
+                    </div>
+                    <OcrCameraView
+                      key={ocrMode}
+                      mode={ocrMode}
+                      sessionId={voice.sessionId}
+                      onSuccess={() => {
+                        clearReturnToIdleTimer();
+                        setKioskPhase('idle');
+                      }}
+                      onFallback={() => {
+                        clearReturnToIdleTimer();
+                        setKioskPhase('idle');
+                      }}
+                      onSkip={() => {
+                        clearReturnToIdleTimer();
+                        setKioskPhase('idle');
+                      }}
+                    />
+                    <div className="mt-6 flex justify-center">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          clearReturnToIdleTimer();
+                          setKioskPhase('idle');
+                        }}
+                        className="inline-flex min-h-11 items-center justify-center rounded-full bg-slate-900 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-slate-800"
+                      >
+                        {labels.kioskBackIdle}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {showSlideMode ? (
                 <div
                   className="pointer-events-none absolute inset-y-0 right-0 z-30 flex w-full justify-end"
                   style={screenPadding}
                 >
-                  <div className="pointer-events-auto flex h-full w-full max-w-6xl transform-gpu rounded-[32px] bg-white/95 shadow-2xl transition-all duration-300 ease-out">
+                  <div
+                    className="pointer-events-auto flex h-full w-full max-w-6xl transform-gpu rounded-[32px] bg-white/95 shadow-2xl transition-all duration-300 ease-out"
+                    onPointerDownCapture={bumpUserActivity}
+                  >
                     <div className="relative flex h-full w-full flex-col overflow-hidden rounded-[32px]">
                       <button
                         type="button"
-                        onClick={() => setShowSlideMode(false)}
+                        onClick={handleCloseSlides}
                         aria-label={labels.closeSlides}
                         className="absolute right-4 top-4 z-10 inline-flex size-11 items-center justify-center rounded-full bg-black/70 text-white shadow-lg transition-transform duration-200 ease-out hover:scale-105"
                       >
@@ -706,6 +961,11 @@ export default function Home() {
                           onVisemeControl={setVisemeFunction}
                           onExpressionControl={setExpressionFunction}
                           volume={Math.round(voice.volume * 100)}
+                          onPresentationComplete={() => {
+                            if (kioskPhaseRef.current === 'slides') {
+                              scheduleReturnToIdle();
+                            }
+                          }}
                         />
                       </div>
                     </div>
@@ -719,5 +979,6 @@ export default function Home() {
         );
       }}
     </VoiceInterface>
+    </>
   );
 }
