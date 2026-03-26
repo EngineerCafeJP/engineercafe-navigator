@@ -1,12 +1,16 @@
 'use client';
 
 import { markAudioUserInteraction } from '@/lib/audio/audio-user-interaction-gate';
+import { overlayLabels } from '@/lib/kiosk-labels';
 import {
   KIOSK_IDLE_MS,
   type KioskMicMode,
   type KioskPhase,
+  type KioskTriggerMode,
   readKioskMicMode,
   readKioskTriggerMode,
+  writeKioskMicMode,
+  writeKioskTriggerMode,
 } from '@/lib/kiosk-constants';
 import ReactMarkdown from 'react-markdown';
 
@@ -52,83 +56,6 @@ import VoiceInterface, {
 import { OcrCameraView } from '@/components/reception/OcrCameraView';
 import { ReceptionPanel } from '@/components/reception/ReceptionPanel';
 import type { OcrResponse } from '@/lib/api/ocr-api';
-
-const overlayLabels = {
-  ja: {
-    guideLabel: '音声ガイド',
-    responseLabel: '応答',
-    transcriptLabel: '聞き取り結果',
-    loadingLabel: '応答を準備しています',
-    wakeWordReady: 'ウェイクワード待機中',
-    wakeWordOff: 'マイクボタンで開始',
-    idleAction: '話しかける',
-    listeningAction: '録音を止める',
-    processingAction: '処理中',
-    speakingAction: '応答を再生中',
-    defaultPrompt: 'マイクを押して、エンジニアカフェについて聞いてください。',
-    helperPrompt: '音声が中心です。必要なときだけテキスト入力を開けます。',
-    switchTextInput: '文字入力',
-    switchVoiceInput: '音声入力',
-    textPlaceholder: 'ここに質問を入力します',
-    send: '送信',
-    openSlides: 'スライド案内',
-    closeSlides: 'スライドを閉じる',
-    clearConversation: '会話をクリア',
-    cancelSession: '応答を止める',
-    languageJa: '日本語',
-    languageEn: 'English',
-    currentLocale: '現在: 日本語',
-    kioskWelcome: '受付（Welcome）',
-    kioskVoice: '音声応対',
-    kioskOcr: '会員証・筆談（OCR）',
-    kioskSlides: 'スライド案内',
-    kioskBackIdle: 'メニューに戻る',
-    ocrModeMember: '会員証',
-    ocrModeHandwriting: '筆談',
-    sttReading: '音声読み取り中...',
-    ttsSynthesizing: '音声合成中...',
-    ocrMemberResult: '会員証読み取り結果',
-    ocrHandwritingResult: '筆談読み取り結果',
-    ocrReadFailed: '読み取りに失敗しました。再度お試しください。',
-  },
-  en: {
-    guideLabel: 'Voice Guide',
-    responseLabel: 'Answer',
-    transcriptLabel: 'Transcript',
-    loadingLabel: 'Preparing an answer',
-    wakeWordReady: 'Wake word is armed',
-    wakeWordOff: 'Use the mic button to start',
-    idleAction: 'Start talking',
-    listeningAction: 'Stop recording',
-    processingAction: 'Processing',
-    speakingAction: 'Speaking',
-    defaultPrompt: 'Tap the mic and ask anything about Engineer Cafe.',
-    helperPrompt: 'Voice comes first. Open text input only when you need a backup.',
-    switchTextInput: 'Text input',
-    switchVoiceInput: 'Voice input',
-    textPlaceholder: 'Type your question here',
-    send: 'Send',
-    openSlides: 'Open slides',
-    closeSlides: 'Close slides',
-    clearConversation: 'Clear conversation',
-    cancelSession: 'Cancel current turn',
-    languageJa: '日本語',
-    languageEn: 'English',
-    currentLocale: 'Current: English',
-    kioskWelcome: 'Reception (Welcome)',
-    kioskVoice: 'Voice chat',
-    kioskOcr: 'Member card & OCR',
-    kioskSlides: 'Slide guide',
-    kioskBackIdle: 'Back to menu',
-    ocrModeMember: 'Member card',
-    ocrModeHandwriting: 'Handwriting',
-    sttReading: 'Transcribing voice...',
-    ttsSynthesizing: 'Synthesizing voice...',
-    ocrMemberResult: 'Member card result',
-    ocrHandwritingResult: 'Handwriting result',
-    ocrReadFailed: 'OCR failed. Please try again.',
-  },
-} as const;
 
 const buttonCopy: Record<
   VoiceSessionState,
@@ -375,6 +302,7 @@ export default function Home() {
   const kioskPhaseRef = useRef<KioskPhase>('notice');
   const [kioskVoiceLocked, setKioskVoiceLocked] = useState(false);
   const [currentLanguage, setCurrentLanguage] = useState<'ja' | 'en'>('ja');
+  const [triggerMode, setTriggerMode] = useState<KioskTriggerMode>(() => readKioskTriggerMode());
   const [micInputMode, setMicInputMode] = useState<KioskMicMode>(() => readKioskMicMode());
   const [ocrMode, setOcrMode] = useState<'member_card' | 'handwriting'>('member_card');
   const [ocrStatus, setOcrStatus] = useState<{
@@ -503,6 +431,7 @@ export default function Home() {
         onClose={() => setKioskPhase('idle')}
         onPreferencesSaved={(prefs) => {
           setCurrentLanguage(prefs.language);
+          setTriggerMode(prefs.triggerMode);
           setMicInputMode(prefs.micMode);
         }}
       />
@@ -540,7 +469,7 @@ export default function Home() {
         };
         const labels = overlayLabels[voice.currentLanguage];
         const receptionTriggerType =
-          readKioskTriggerMode() === 'device' ? 'sensor_trigger' : 'button_press';
+          triggerMode === 'device' ? 'sensor_trigger' : 'button_press';
         const showSlideMode = kioskPhase === 'slides';
         const stageBackgroundStyle = getStageBackgroundStyle(characterBackground);
         const isListening = voice.sessionState === 'listening';
@@ -747,6 +676,20 @@ export default function Home() {
                   >
                     <SettingsPanel
                       {...settingsPanelProps}
+                      kiosk_language={voice.currentLanguage}
+                      kiosk_trigger_mode={triggerMode}
+                      kiosk_mic_mode={micInputMode}
+                      on_kiosk_language_change={(language) => {
+                        setCurrentLanguage(language);
+                      }}
+                      on_kiosk_trigger_mode_change={(mode) => {
+                        setTriggerMode(mode);
+                        writeKioskTriggerMode(mode);
+                      }}
+                      on_kiosk_mic_mode_change={(mode) => {
+                        setMicInputMode(mode);
+                        writeKioskMicMode(mode);
+                      }}
                       volume={Math.round(voice.volume * 100)}
                       is_muted={voice.isMuted}
                       on_volume_change={(value) => {
