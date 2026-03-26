@@ -19,7 +19,26 @@ async function timingSafeEqualStr(a: string, b: string): Promise<boolean> {
   return result === 0;
 }
 
+function isAdminRoute(pathname: string): boolean {
+  return pathname.startsWith('/api/admin/') || pathname === '/api/admin';
+}
+
+/**
+ * Detect same-origin browser requests via the Sec-Fetch-Site header.
+ * Modern browsers set this automatically; non-browser clients (curl, etc.)
+ * do not send it. This header cannot be spoofed by browser-side JavaScript.
+ */
+function isSameOriginBrowserRequest(request: NextRequest): boolean {
+  return request.headers.get('sec-fetch-site') === 'same-origin';
+}
+
 export async function middleware(request: NextRequest): Promise<NextResponse> {
+  // Allow same-origin browser requests to admin routes without Bearer token.
+  // The underlying API routes still enforce backend auth via X-API-Key.
+  if (isAdminRoute(request.nextUrl.pathname) && isSameOriginBrowserRequest(request)) {
+    return NextResponse.next();
+  }
+
   const adminApiSecret = process.env.ADMIN_API_SECRET?.trim();
 
   if (!adminApiSecret) {
