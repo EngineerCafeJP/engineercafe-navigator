@@ -272,12 +272,17 @@ export default function VoiceInterface({
 
   const setVolume = useCallback((nextVolume: number) => {
     setVolumeState(nextVolume);
-    mobileAudioServiceRef.current?.setVolume(nextVolume);
-  }, []);
+    const effectiveVolume = isMuted ? 0 : nextVolume;
+    mobileAudioServiceRef.current?.setVolume(effectiveVolume);
+    audioQueueRef.current?.setVolume(effectiveVolume);
+  }, [isMuted]);
 
   const setMuted = useCallback((nextMuted: boolean) => {
     setIsMuted(nextMuted);
-  }, []);
+    const effectiveVolume = nextMuted ? 0 : volume;
+    mobileAudioServiceRef.current?.setVolume(effectiveVolume);
+    audioQueueRef.current?.setVolume(effectiveVolume);
+  }, [volume]);
 
   const resetConversation = useCallback(() => {
     setTranscript('');

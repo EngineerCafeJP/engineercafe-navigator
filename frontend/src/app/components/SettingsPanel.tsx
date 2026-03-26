@@ -131,8 +131,6 @@ export default function SettingsPanel({
   const has_slides_tab = on_open_slides != null || on_close_slides != null;
   const tab_list: SettingsPanelTab[] = [
     ...(extra_tab ? (['conversation'] as const) : []),
-    ...(has_slides_tab ? (['slides'] as const) : []),
-    'camera',
     'controls',
     'keyframe',
     'background',

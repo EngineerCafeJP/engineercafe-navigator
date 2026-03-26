@@ -711,6 +711,93 @@ export default function Home() {
                 />
               </div>
 
+              <div
+                className="pointer-events-none absolute inset-0 z-30"
+                aria-hidden={!showSettingsPanel}
+              >
+                <div
+                  className="pointer-events-auto absolute"
+                  style={{
+                    top: screenPadding.paddingTop,
+                    right: screenPadding.paddingRight,
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setShowSettingsPanel(true)}
+                    aria-label={voice.currentLanguage === 'ja' ? '設定' : 'Settings'}
+                    className="inline-flex size-11 shrink-0 items-center justify-center rounded-full border border-white/15 bg-black/45 text-white shadow-lg backdrop-blur-md transition-transform duration-200 ease-out hover:scale-105"
+                  >
+                    <Settings className="size-5" />
+                  </button>
+                </div>
+              </div>
+
+              {showSettingsPanel && settingsPanelProps ? (
+                <div
+                  className="absolute inset-0 z-40 pointer-events-none"
+                  aria-hidden={!showSettingsPanel}
+                >
+                  <div
+                    className="pointer-events-auto absolute top-0 flex max-h-full justify-end"
+                    style={{
+                      top: screenPadding.paddingTop,
+                      right: screenPadding.paddingRight,
+                    }}
+                  >
+                    <SettingsPanel
+                      {...settingsPanelProps}
+                      volume={Math.round(voice.volume * 100)}
+                      is_muted={voice.isMuted}
+                      on_volume_change={(value) => {
+                        voice.setVolume(value / 100);
+                      }}
+                      on_mute_toggle={() => {
+                        voice.setMuted(!voice.isMuted);
+                      }}
+                      show_close_button
+                      on_close={() => setShowSettingsPanel(false)}
+                      extra_tab={{
+                        label: voice.currentLanguage === 'ja' ? '会話履歴' : 'Conversation',
+                        content: (
+                          <div className="space-y-2 overflow-y-auto pr-1">
+                            {conversationHistory.length === 0 ? (
+                              <p className="text-sm text-gray-600">{labels.helperPrompt}</p>
+                            ) : (
+                              conversationHistory.map((item) => (
+                                <div
+                                  key={item.id}
+                                  className={cn(
+                                    'rounded-2xl px-3 py-2 text-sm leading-6',
+                                    item.role === 'user'
+                                      ? 'bg-gray-100 text-gray-800'
+                                      : 'bg-blue-50 text-gray-800',
+                                  )}
+                                >
+                                  <p className="text-xs font-medium text-gray-500">
+                                    {item.role === 'user'
+                                      ? voice.currentLanguage === 'ja'
+                                        ? 'あなた'
+                                        : 'You'
+                                      : 'Navigator'}
+                                  </p>
+                                  <p className="mt-1 whitespace-pre-wrap">{item.text}</p>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        ),
+                      }}
+                      slide_mode_open={showSlideMode}
+                      on_open_slides={() => startPresentation(voice.currentLanguage)}
+                      on_close_slides={handleCloseSlides}
+                      open_slides_label={labels.openSlides}
+                      close_slides_label={labels.closeSlides}
+                    />
+                  </div>
+                </div>
+              ) : null}
+
               {(kioskPhase === 'idle' || kioskPhase === 'voice') && (
                 <div
                   className="pointer-events-auto absolute inset-x-0 bottom-0 z-[25] flex justify-center pb-[max(0.75rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] pt-2"
