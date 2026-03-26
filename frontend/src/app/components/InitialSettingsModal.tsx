@@ -2,6 +2,10 @@
 
 import { markAudioUserInteraction } from '@/lib/audio/audio-user-interaction-gate';
 import {
+  initialSettingsModalLabels,
+  kioskSettingsLabels,
+} from '@/lib/kiosk-labels';
+import {
   type KioskMicMode,
   type KioskTriggerMode,
   readKioskMicMode,
@@ -12,37 +16,6 @@ import {
 import { cn } from '@/lib/cn';
 import { X } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
-
-const copy = {
-  ja: {
-    title: '初期設定',
-    triggerTitle: '操作のしかた',
-    triggerScreen: '画面のボタンで操作する',
-    triggerDevice: '物理ボタン・センサーで操作する（準備中）',
-    displayLangTitle: '表示言語',
-    displayLangJa: '日本語',
-    displayLangEn: 'English',
-    micModeTitle: '音声応対のマイクボタン',
-    micPushToTalk: '押している間だけ聞き取る（プッシュトーク）',
-    micToggle: '押すたびに録音のON/OFFが切り替わる',
-    close: '閉じてはじめる',
-    noticeFooter: '閉じる操作で音声再生が有効になります。',
-  },
-  en: {
-    title: 'Before you start',
-    triggerTitle: 'How to operate',
-    triggerScreen: 'Use on-screen buttons',
-    triggerDevice: 'Use physical buttons / sensors (coming soon)',
-    displayLangTitle: 'Display language',
-    displayLangJa: '日本語',
-    displayLangEn: 'English',
-    micModeTitle: 'Mic button (voice mode)',
-    micPushToTalk: 'Push and hold to talk (push-to-talk)',
-    micToggle: 'Tap to toggle recording on and off',
-    close: 'Close and continue',
-    noticeFooter: 'Closing enables audio playback in the browser.',
-  },
-} as const;
 
 export interface InitialSettingsPreferences {
   language: 'ja' | 'en';
@@ -77,7 +50,10 @@ export default function InitialSettingsModal({
     }
   }, [open, language]);
 
-  const labels = copy[uiLanguage];
+  const labels = {
+    ...kioskSettingsLabels[uiLanguage],
+    ...initialSettingsModalLabels[uiLanguage],
+  };
 
   const handleClose = useCallback(async () => {
     writeKioskTriggerMode(triggerMode);

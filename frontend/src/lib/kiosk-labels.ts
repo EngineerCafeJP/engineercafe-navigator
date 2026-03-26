@@ -99,3 +99,16 @@ export const kioskSettingsLabels = {
     micPushToTalk: 'Push and hold to talk (push-to-talk)',
   },
 } as const;
+
+export const initialSettingsModalLabels = {
+  ja: {
+    title: '初期設定',
+    close: '閉じてはじめる',
+    noticeFooter: '閉じる操作で音声再生が有効になります。',
+  },
+  en: {
+    title: 'Before you start',
+    close: 'Close and continue',
+    noticeFooter: 'Closing enables audio playback in the browser.',
+  },
+} as const;
