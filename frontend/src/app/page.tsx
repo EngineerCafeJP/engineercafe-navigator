@@ -51,6 +51,7 @@ import VoiceInterface, {
 } from './components/VoiceInterface';
 import { OcrCameraView } from '@/components/reception/OcrCameraView';
 import { ReceptionPanel } from '@/components/reception/ReceptionPanel';
+import type { OcrResponse } from '@/lib/api/ocr-api';
 
 const overlayLabels = {
   ja: {
@@ -86,6 +87,9 @@ const overlayLabels = {
     ocrModeHandwriting: '筆談',
     sttReading: '音声読み取り中...',
     ttsSynthesizing: '音声合成中...',
+    ocrMemberResult: '会員証読み取り結果',
+    ocrHandwritingResult: '筆談読み取り結果',
+    ocrReadFailed: '読み取りに失敗しました。再度お試しください。',
   },
   en: {
     guideLabel: 'Voice Guide',
@@ -120,6 +124,9 @@ const overlayLabels = {
     ocrModeHandwriting: 'Handwriting',
     sttReading: 'Transcribing voice...',
     ttsSynthesizing: 'Synthesizing voice...',
+    ocrMemberResult: 'Member card result',
+    ocrHandwritingResult: 'Handwriting result',
+    ocrReadFailed: 'OCR failed. Please try again.',
   },
 } as const;
 
@@ -145,6 +152,7 @@ function KioskVoiceStatusStack({
   transcript,
   response,
   error,
+  ocrStatus,
   isLoading,
   loadingMessage,
   sessionState,
@@ -154,6 +162,11 @@ function KioskVoiceStatusStack({
   transcript: string;
   response: string;
   error: string | null;
+  ocrStatus: {
+    kind: 'member_card' | 'handwriting' | 'error';
+    text: string;
+    visibleUntil: number;
+  } | null;
   isLoading: boolean;
   loadingMessage: string;
   sessionState: VoiceSessionState;
@@ -214,10 +227,13 @@ function KioskVoiceStatusStack({
     if (errorVisibleUntil > now) {
       timers.push(window.setTimeout(() => setNow(Date.now()), errorVisibleUntil - now));
     }
+    if (ocrStatus && ocrStatus.visibleUntil > now) {
+      timers.push(window.setTimeout(() => setNow(Date.now()), ocrStatus.visibleUntil - now));
+    }
     return () => {
       timers.forEach((timerId) => window.clearTimeout(timerId));
     };
-  }, [enabled, errorVisibleUntil, now, responseVisibleUntil, transcriptVisibleUntil]);
+  }, [enabled, errorVisibleUntil, now, ocrStatus, responseVisibleUntil, transcriptVisibleUntil]);
 
   if (!enabled) {
     return null;
@@ -230,18 +246,31 @@ function KioskVoiceStatusStack({
   const isTtsSynthesizing =
     isLoading && response.length > 0 && sessionState !== 'speaking';
   const isErrorVisible = Boolean(error) && errorVisibleUntil > now;
+  const isOcrStatusVisible = Boolean(ocrStatus && ocrStatus.visibleUntil > now);
   const isResponseVisible =
     response.length > 0 &&
     (sessionState === 'speaking' || responseVisibleUntil > now);
   const isTranscriptVisible =
     transcript.length > 0 && !isSttLoading && transcriptVisibleUntil > now;
 
-  if (!isSttLoading && !isTtsSynthesizing && !isTranscriptVisible && !isResponseVisible && !isErrorVisible) {
+  if (!isSttLoading && !isTtsSynthesizing && !isTranscriptVisible && !isResponseVisible && !isErrorVisible && !isOcrStatusVisible) {
     return null;
   }
 
   return (
     <div className="w-full space-y-2">
+      {isOcrStatusVisible && ocrStatus ? (
+        <div className="flex w-full items-center gap-2 rounded-xl border border-white/30 bg-black/35 px-4 py-2 text-sm font-medium text-white/95 shadow-sm backdrop-blur-sm">
+          {ocrStatus.kind === 'error' ? (
+            <XCircle className="size-4 shrink-0 text-rose-300" />
+          ) : ocrStatus.kind === 'handwriting' ? (
+            <MessageSquare className="size-4 shrink-0" />
+          ) : (
+            <Camera className="size-4 shrink-0" />
+          )}
+          <span>{ocrStatus.text}</span>
+        </div>
+      ) : null}
       {isErrorVisible ? (
         <div className="flex w-full items-center gap-2 rounded-xl border border-rose-300/45 bg-rose-700/35 px-4 py-2 text-sm font-medium text-rose-50 shadow-sm backdrop-blur-sm">
           <XCircle className="size-4 shrink-0" />
@@ -348,6 +377,11 @@ export default function Home() {
   const [currentLanguage, setCurrentLanguage] = useState<'ja' | 'en'>('ja');
   const [micInputMode, setMicInputMode] = useState<KioskMicMode>(() => readKioskMicMode());
   const [ocrMode, setOcrMode] = useState<'member_card' | 'handwriting'>('member_card');
+  const [ocrStatus, setOcrStatus] = useState<{
+    kind: 'member_card' | 'handwriting' | 'error';
+    text: string;
+    visibleUntil: number;
+  } | null>(null);
   const [characterBackground, setCharacterBackground] = useState<BackgroundOption>({
     id: 'engineer-cafe-bg',
     name: 'Engineer Cafe',
@@ -560,6 +594,38 @@ export default function Home() {
         };
 
         const pushToTalk = micInputMode === 'push_to_talk';
+        const setOcrStatusMessage = (
+          kind: 'member_card' | 'handwriting' | 'error',
+          text: string,
+        ) => {
+          setOcrStatus({
+            kind,
+            text,
+            visibleUntil: Date.now() + 5000,
+          });
+        };
+        const handleOcrSuccess = (result: OcrResponse) => {
+          clearReturnToIdleTimer();
+          setKioskPhase('idle');
+
+          if (result.mode === 'member_card') {
+            const memberText =
+              result.member_number !== null
+                ? `${labels.ocrMemberResult}: ${result.member_number}`
+                : labels.ocrReadFailed;
+            setOcrStatusMessage('member_card', memberText);
+            return;
+          }
+
+          const recognized = (result.recognized_text ?? '').trim();
+          if (!recognized) {
+            setOcrStatusMessage('error', labels.ocrReadFailed);
+            return;
+          }
+
+          setOcrStatusMessage('handwriting', `${labels.ocrHandwritingResult}: ${recognized}`);
+          void voice.sendMessage(recognized);
+        };
 
         const handleMicPointerDown = (e: ReactPointerEvent<HTMLButtonElement>) => {
           if (!pushToTalk || isProcessing || isSpeaking) {
@@ -668,11 +734,12 @@ export default function Home() {
                       return (
                         <>
                     <KioskVoiceStatusStack
-                      enabled={kioskPhase === 'voice'}
+                      enabled={kioskPhase === 'voice' || kioskPhase === 'idle'}
                       labels={labels}
                       transcript={voice.transcript}
                       response={voice.response}
                       error={voice.error}
+                      ocrStatus={ocrStatus}
                       isLoading={voice.isLoading}
                       loadingMessage={voice.loadingMessage}
                       sessionState={voice.sessionState}
@@ -874,13 +941,11 @@ export default function Home() {
                       key={ocrMode}
                       mode={ocrMode}
                       sessionId={voice.sessionId}
-                      onSuccess={() => {
-                        clearReturnToIdleTimer();
-                        setKioskPhase('idle');
-                      }}
+                      onSuccess={handleOcrSuccess}
                       onFallback={() => {
                         clearReturnToIdleTimer();
                         setKioskPhase('idle');
+                        setOcrStatusMessage('error', labels.ocrReadFailed);
                       }}
                       onSkip={() => {
                         clearReturnToIdleTimer();
