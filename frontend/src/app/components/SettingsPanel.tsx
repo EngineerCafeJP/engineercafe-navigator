@@ -2,15 +2,12 @@
 
 import {
   Camera,
-  Film,
   Languages,
-  Lightbulb,
   MessageSquare,
-  Palette,
   Presentation,
+  Shield,
   SlidersHorizontal,
   User,
-  Volume2,
   X,
 } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
@@ -27,32 +24,29 @@ import CharacterSettings, {
   type VRMAnimationOption,
 } from './CharacterSettings';
 import EnvironmentSettings from './EnvironmentSettings';
-import KeyframeSettings from './KeyframeSettings';
 
 const SETTINGS_TAB_LABELS: Record<
-  'camera' | 'controls' | 'keyframe' | 'background' | 'lighting' | 'audio' | 'slides' | 'kiosk',
+  | 'camera'
+  | 'controls'
+  | 'slides'
+  | 'kiosk'
+  | 'admin',
   string
 > = {
   camera: 'Camera',
   controls: 'Character',
-  keyframe: 'Keyframe',
-  background: 'Background',
-  lighting: 'Lighting',
-  audio: 'Audio',
   slides: 'Slides',
   kiosk: 'Kiosk',
+  admin: 'Admin',
 };
 
 export type SettingsPanelTab =
   | 'conversation'
   | 'camera'
   | 'controls'
-  | 'keyframe'
-  | 'background'
-  | 'lighting'
-  | 'audio'
   | 'slides'
-  | 'kiosk';
+  | 'kiosk'
+  | 'admin';
 
 export interface SettingsPanelProps {
   show_close_button?: boolean;
@@ -158,11 +152,8 @@ export default function SettingsPanel({
   const tab_list: SettingsPanelTab[] = [
     ...(extra_tab ? (['conversation'] as const) : []),
     ...(has_kiosk_tab ? (['kiosk'] as const) : []),
+    'admin',
     'controls',
-    'keyframe',
-    'background',
-    'lighting',
-    'audio',
   ];
 
   return (
@@ -202,11 +193,8 @@ export default function SettingsPanel({
             {tab === 'slides' && <Presentation className="size-4" />}
             {tab === 'camera' && <Camera className="size-4" />}
             {tab === 'kiosk' && <SlidersHorizontal className="size-4" />}
+            {tab === 'admin' && <Shield className="size-4" />}
             {tab === 'controls' && <User className="size-4" />}
-            {tab === 'keyframe' && <Film className="size-4" />}
-            {tab === 'background' && <Palette className="size-4" />}
-            {tab === 'lighting' && <Lightbulb className="size-4" />}
-            {tab === 'audio' && <Volume2 className="size-4" />}
           </button>
         ))}
       </div>
@@ -326,6 +314,45 @@ export default function SettingsPanel({
               </label>
             </div>
           </div>
+
+          <AudioSettings
+            volume={volume}
+            isMuted={is_muted}
+            onVolumeChange={(value) => on_volume_change?.(value)}
+            onMuteToggle={() => on_mute_toggle?.()}
+          />
+        </div>
+      ) : null}
+
+      {active_tab === 'admin' ? (
+        <div className="mb-4 flex flex-col gap-3">
+          <a
+            href="./admin/knowledge"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50"
+            aria-label="知識ベース管理"
+          >
+            知識ベース管理
+          </a>
+          <a
+            href="./admin/vosk-settings"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50"
+            aria-label="音声認識語彙管理"
+          >
+            音声認識語彙管理
+          </a>
+          <a
+            href="./admin/avatar-lab"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50"
+            aria-label="Avatar Lab"
+          >
+            Avatar Lab
+          </a>
         </div>
       ) : null}
 
@@ -340,36 +367,22 @@ export default function SettingsPanel({
             onPlayVRMAnimation={on_play_vrm_animation}
             onPositionChange={on_position_change}
             onRotationChange={on_rotation_change}
+            keyframe_json_input={keyframe_json_input}
+            on_keyframe_json_input_change={set_keyframe_json_input}
+            keyframe_json_error={keyframe_json_error}
+            on_keyframe_json_error={set_keyframe_json_error}
+            on_run_keyframe={on_run_keyframe}
           />
-        </div>
-      ) : null}
-
-      {active_tab === 'background' ? (
-        <div className="mb-4">
-          <BackgroundSelector
-            currentBackground={current_background}
-            onBackgroundChange={on_background_change}
-          />
-        </div>
-      ) : null}
-
-      {active_tab === 'lighting' ? (
-        <div className="mb-4">
-          <EnvironmentSettings
-            lightingIntensity={lighting_intensity}
-            onLightingChange={on_lighting_change}
-          />
-        </div>
-      ) : null}
-
-      {active_tab === 'audio' ? (
-        <div className="mb-4">
-          <AudioSettings
-            volume={volume}
-            isMuted={is_muted}
-            onVolumeChange={(value) => on_volume_change?.(value)}
-            onMuteToggle={() => on_mute_toggle?.()}
-          />
+          <div className="mt-3 space-y-3">
+            <EnvironmentSettings
+              lightingIntensity={lighting_intensity}
+              onLightingChange={on_lighting_change}
+            />
+            <BackgroundSelector
+              currentBackground={current_background}
+              onBackgroundChange={on_background_change}
+            />
+          </div>
         </div>
       ) : null}
 
@@ -379,18 +392,6 @@ export default function SettingsPanel({
         </div>
       ) : null}
 
-      {active_tab === 'keyframe' ? (
-        <div className="mb-4">
-          <KeyframeSettings
-            jsonInput={keyframe_json_input}
-            onJsonInputChange={set_keyframe_json_input}
-            error={keyframe_json_error}
-            onError={set_keyframe_json_error}
-            onRunKeyframe={on_run_keyframe}
-            onRunKeyframeClick={() => set_active_tab('controls')}
-          />
-        </div>
-      ) : null}
     </div>
   );
 }

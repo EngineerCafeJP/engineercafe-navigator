@@ -2,6 +2,8 @@
 
 import React, { useEffect, useState } from 'react';
 import { Play, User } from 'lucide-react';
+import type { CharacterAnimationData } from '../utils/character-animation-utils';
+import KeyframeSettings from './KeyframeSettings';
 
 export interface ControlsState {
   expression: string;
@@ -36,6 +38,11 @@ interface CharacterSettingsProps {
   onPlayVRMAnimation?: (url: string, loop: boolean) => void;
   onPositionChange: (position: ControlsState['position']) => void;
   onRotationChange: (rotation: ControlsState['rotation']) => void;
+  keyframe_json_input: string;
+  on_keyframe_json_input_change: (value: string) => void;
+  keyframe_json_error: string;
+  on_keyframe_json_error: (message: string) => void;
+  on_run_keyframe: (animation: CharacterAnimationData) => void;
 }
 
 export default function CharacterSettings({
@@ -47,6 +54,11 @@ export default function CharacterSettings({
   onPlayVRMAnimation,
   onPositionChange,
   onRotationChange,
+  keyframe_json_input,
+  on_keyframe_json_input_change,
+  keyframe_json_error,
+  on_keyframe_json_error,
+  on_run_keyframe,
 }: CharacterSettingsProps) {
   const [selected_vrm_animation, set_selected_vrm_animation] = useState<string>(DEFAULT_VRM_ANIMATION);
   const [vrm_animation_loop, set_vrm_animation_loop] = useState(true);
@@ -240,6 +252,17 @@ export default function CharacterSettings({
             <span className="text-xs w-12">{state.rotation.y.toFixed(1)}</span>
           </div>
         </div>
+      </div>
+
+      <div className="border-t border-gray-200">
+        <KeyframeSettings
+          jsonInput={keyframe_json_input}
+          onJsonInputChange={on_keyframe_json_input_change}
+          error={keyframe_json_error}
+          onError={on_keyframe_json_error}
+          onRunKeyframe={on_run_keyframe}
+          embedded
+        />
       </div>
     </div>
   );
