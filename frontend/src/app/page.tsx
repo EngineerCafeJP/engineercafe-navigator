@@ -135,10 +135,13 @@ function KioskVoiceStatusStack({
     if (error) {
       setErrorVisibleUntil(Date.now() + 5000);
     }
+    if (error && transcript.length > 0) {
+      setTranscriptVisibleUntil(Date.now() + 5000);
+    }
     if (error && response.length > 0) {
       setResponseVisibleUntil(Date.now() + 5000);
     }
-  }, [enabled, error, response.length]);
+  }, [enabled, error, response.length, transcript.length]);
 
   useEffect(() => {
     if (!enabled) {
@@ -198,12 +201,6 @@ function KioskVoiceStatusStack({
           <span>{ocrStatus.text}</span>
         </div>
       ) : null}
-      {isErrorVisible ? (
-        <div className="flex w-full items-center gap-2 rounded-xl border border-rose-300/45 bg-rose-700/35 px-4 py-2 text-sm font-medium text-rose-50 shadow-sm backdrop-blur-sm">
-          <XCircle className="size-4 shrink-0" />
-          <span>{error}</span>
-        </div>
-      ) : null}
       {isSttLoading ? (
         <div className="flex w-full items-center gap-2 rounded-xl border border-white/30 bg-black/35 px-4 py-2 text-sm font-medium text-white/95 shadow-sm backdrop-blur-sm">
           <Loader2 className="size-4 shrink-0 animate-spin" />
@@ -216,6 +213,12 @@ function KioskVoiceStatusStack({
           <span>
             {labels.transcriptLabel}: {transcript}
           </span>
+        </div>
+      ) : null}
+      {isErrorVisible ? (
+        <div className="flex w-full items-center gap-2 rounded-xl border border-rose-300/45 bg-rose-700/35 px-4 py-2 text-sm font-medium text-rose-50 shadow-sm backdrop-blur-sm">
+          <XCircle className="size-4 shrink-0" />
+          <span>{error}</span>
         </div>
       ) : null}
       {isTtsSynthesizing ? (
