@@ -438,6 +438,10 @@ export default function Home() {
       <VoiceInterface
       language={currentLanguage}
       onLanguageChange={setCurrentLanguage}
+      wakeWordEnabled={false}
+      autoResumeListeningAfterAssistant={
+        micInputMode === 'push_to_talk' ? false : kioskVoiceLocked
+      }
       onVisemeControl={setVisemeFunction}
       showDefaultUI={false}
       onMetadataChange={setLatestMetadata}
@@ -758,7 +762,16 @@ export default function Home() {
                       };
                       const handleKioskVoiceStop = () => {
                         setKioskVoiceLocked(false);
-                        voice.stopListening();
+                        if (isPushToTalk) {
+                          voice.stopListening();
+                          return;
+                        }
+                        // Toggle: end utterance and run STT/QA if still listening; otherwise drop session.
+                        if (voice.sessionState === 'listening') {
+                          voice.stopListening();
+                          return;
+                        }
+                        voice.cancelSession();
                       };
 
                       return (

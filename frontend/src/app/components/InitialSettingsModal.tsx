@@ -15,7 +15,7 @@ import {
 } from '@/lib/kiosk-constants';
 import { cn } from '@/lib/cn';
 import { X } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 export interface InitialSettingsPreferences {
   language: 'ja' | 'en';
@@ -41,6 +41,7 @@ export default function InitialSettingsModal({
   const [uiLanguage, setUiLanguage] = useState<'ja' | 'en'>(language);
   const [triggerMode, setTriggerMode] = useState<KioskTriggerMode>('screen');
   const [micMode, setMicMode] = useState<KioskMicMode>('toggle');
+  const micPermissionProbeDoneRef = useRef(false);
 
   useEffect(() => {
     if (open) {
@@ -49,6 +50,46 @@ export default function InitialSettingsModal({
       setMicMode(readKioskMicMode());
     }
   }, [open, language]);
+
+  /** One-time mic permission probe while this modal is first shown (tracks stopped immediately after grant). */
+  useEffect(() => {
+    if (!open || micPermissionProbeDoneRef.current) {
+      return;
+    }
+    micPermissionProbeDoneRef.current = true;
+
+    if (typeof window === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+      return;
+    }
+    if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
+      return;
+    }
+
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+        });
+        if (cancelled) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+        stream.getTracks().forEach((track) => track.stop());
+      } catch {
+        // Denied or unavailable; VoiceInterface will surface errors when the user speaks.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
 
   const labels = {
     ...kioskSettingsLabels[uiLanguage],

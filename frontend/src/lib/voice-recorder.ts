@@ -6,7 +6,8 @@ export class VoiceRecorder {
 
   constructor(
     private onDataAvailable: (audioBlob: Blob) => void,
-    private onError: (error: Error) => void
+    private onError: (error: Error) => void,
+    private onHardwareReleased?: () => void,
   ) {}
 
   async initialize(): Promise<void> {
@@ -48,19 +49,19 @@ export class VoiceRecorder {
       // iOS-specific audio constraints
       const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
       
-      const audioConstraints = isIOS ? {
-        // Simplified constraints for iOS
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-      } : {
-        // Full constraints for other platforms
-        channelCount: 1,
-        sampleRate: 16000,
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-      };
+      const audioConstraints = isIOS
+        ? {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          }
+        : {
+            // Avoid exact sampleRate/channelCount: some Chrome builds keep the capture
+            // pipeline (and tab mic indicator) active longer than necessary.
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          };
 
       try {
         this.stream = await getUserMediaFunc({ audio: audioConstraints });
@@ -106,11 +107,17 @@ export class VoiceRecorder {
       };
 
       this.mediaRecorder.onstop = () => {
+        const mimeType = this.mediaRecorder?.mimeType || 'audio/webm';
         const audioBlob = new Blob(this.audioChunks, {
-          type: this.mediaRecorder?.mimeType || 'audio/webm',
+          type: mimeType,
         });
         this.onDataAvailable(audioBlob);
         this.audioChunks = [];
+
+        // Always stop tracks after each segment so the browser mic indicator turns off.
+        // (A boolean "release after stop" flag races with shouldListen flipping true before onstop.)
+        this.teardownMicrophonePipeline();
+        this.onHardwareReleased?.();
       };
 
       this.mediaRecorder.onerror = (event) => {
@@ -161,6 +168,15 @@ export class VoiceRecorder {
     }
   }
 
+  private teardownMicrophonePipeline(): void {
+    if (this.stream) {
+      this.stream.getTracks().forEach((track) => track.stop());
+      this.stream = null;
+    }
+    this.mediaRecorder = null;
+    this.isRecording = false;
+  }
+
   pause(): void {
     if (!this.mediaRecorder || !this.isRecording) {
       return;
@@ -194,7 +210,7 @@ export class VoiceRecorder {
     }
 
     if (this.stream) {
-      this.stream.getTracks().forEach(track => track.stop());
+      this.stream.getTracks().forEach((track) => track.stop());
       this.stream = null;
     }
 

@@ -131,7 +131,9 @@ export function useVoiceWaveform({
 
       source.disconnect();
       analyser.disconnect();
-      void audioContext.close();
+      void audioContext.close().catch(() => {
+        // close() rejects if already closed; ignore
+      });
     };
   }, [barCount, enabled, fftSize, smoothingTimeConstant, stream]);
 
