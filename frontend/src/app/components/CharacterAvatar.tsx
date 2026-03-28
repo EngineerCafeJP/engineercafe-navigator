@@ -1514,7 +1514,11 @@ export default function CharacterAvatar({
             const EMIT_INTERVAL_MS = 100;
             if (now - lastSettingsPanelEmitMsRef.current >= EMIT_INTERVAL_MS) {
               lastSettingsPanelEmitMsRef.current = now;
-              onSettingsPanelPropsChange(next_props);
+              // Defer parent setState: calling onSettingsPanelPropsChange during render
+              // updates Home and violates React's "no setState while rendering another component".
+              queueMicrotask(() => {
+                onSettingsPanelPropsChange(next_props);
+              });
             }
           }
           return null;

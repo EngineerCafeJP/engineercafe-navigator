@@ -304,6 +304,8 @@ export default function Home() {
   const [triggerMode, setTriggerMode] = useState<KioskTriggerMode>(() => readKioskTriggerMode());
   const [micInputMode, setMicInputMode] = useState<KioskMicMode>(() => readKioskMicMode());
   const [ocrMode, setOcrMode] = useState<'member_card' | 'handwriting'>('member_card');
+  const [welcomeMemberOcrOpen, setWelcomeMemberOcrOpen] = useState(false);
+  const [welcomeMemberOcrSessionKey, setWelcomeMemberOcrSessionKey] = useState(0);
   const [ocrStatus, setOcrStatus] = useState<{
     kind: 'member_card' | 'handwriting' | 'error';
     text: string;
@@ -358,6 +360,7 @@ export default function Home() {
       if (phase === 'voice') {
         kioskVoiceCleanupRef.current?.();
       }
+      setWelcomeMemberOcrOpen(false);
       setKioskPhase('idle');
     }, KIOSK_IDLE_MS);
   }, [clearReturnToIdleTimer]);
@@ -395,6 +398,12 @@ export default function Home() {
   }, [kioskPhase, scheduleReturnToIdle]);
 
   useEffect(() => {
+    if (kioskPhase === 'slides') {
+      setWelcomeMemberOcrOpen(false);
+    }
+  }, [kioskPhase]);
+
+  useEffect(() => {
     if (kioskPhase !== 'voice' && kioskVoiceLocked) {
       setKioskVoiceLocked(false);
     }
@@ -418,6 +427,7 @@ export default function Home() {
       kioskVoiceCleanupRef.current?.();
     }
     setKioskVoiceLocked(false);
+    setWelcomeMemberOcrOpen(false);
     setKioskPhase('idle');
   }, [clearReturnToIdleTimer, kioskPhase, triggerMode]);
 
@@ -508,6 +518,8 @@ export default function Home() {
         kioskPlayWelcomeRef.current = async () => {
           markAudioUserInteraction();
           clearReturnToIdleTimer();
+          setWelcomeMemberOcrSessionKey((n) => n + 1);
+          setWelcomeMemberOcrOpen(true);
           try {
             const result = await startReception({
               session_id: voice.sessionId,
@@ -609,6 +621,21 @@ export default function Home() {
 
           setOcrStatusMessage('handwriting', `${labels.ocrHandwritingResult}: ${recognized}`);
           void voice.sendMessage(recognized);
+        };
+
+        const handleWelcomeMemberOcrSuccess = (result: OcrResponse) => {
+          setWelcomeMemberOcrOpen(false);
+          clearReturnToIdleTimer();
+          setKioskPhase('idle');
+          const memberText =
+            result.member_number !== null
+              ? `${labels.ocrMemberResult}: ${result.member_number}`
+              : labels.ocrReadFailed;
+          setOcrStatusMessage('member_card', memberText);
+        };
+
+        const handleWelcomeMemberOcrEndSilent = () => {
+          setWelcomeMemberOcrOpen(false);
         };
 
         const handleMicPointerDown = (e: ReactPointerEvent<HTMLButtonElement>) => {
@@ -717,6 +744,33 @@ export default function Home() {
                 </div>
               </div>
 
+              {welcomeMemberOcrOpen && kioskPhase !== 'ocr' && !showSlideMode ? (
+                <div
+                  className="pointer-events-auto absolute z-[38] w-[min(92vw,13.5rem)] rounded-xl border border-white/25 bg-white/95 p-3 shadow-2xl backdrop-blur-md"
+                  style={{
+                    top: 'calc(max(1.5rem, env(safe-area-inset-top)) + 3.25rem)',
+                    right: 'max(1rem, env(safe-area-inset-right))',
+                  }}
+                  onPointerDownCapture={bumpUserActivity}
+                >
+                  <p className="mb-2 text-center text-xs font-semibold text-slate-800">
+                    {labels.kioskOcrMember}
+                  </p>
+                  <OcrCameraView
+                    key={welcomeMemberOcrSessionKey}
+                    mode="member_card"
+                    autoStart
+                    compact
+                    hideSkip
+                    sessionId={voice.sessionId}
+                    onSuccess={handleWelcomeMemberOcrSuccess}
+                    onFallback={handleWelcomeMemberOcrEndSilent}
+                    onSkip={handleWelcomeMemberOcrEndSilent}
+                    onCameraInitFailed={handleWelcomeMemberOcrEndSilent}
+                  />
+                </div>
+              ) : null}
+
               {showSettingsPanel && settingsPanelProps ? (
                 <div
                   className="absolute inset-0 z-40 pointer-events-none"
@@ -807,6 +861,7 @@ export default function Home() {
                       const handleKioskVoiceStart = () => {
                         markAudioUserInteraction();
                         clearReturnToIdleTimer();
+                        setWelcomeMemberOcrOpen(false);
                         setKioskPhase('voice');
                         setKioskVoiceLocked(true);
                         void voice.startListening();
@@ -910,6 +965,7 @@ export default function Home() {
                       type="button"
                       onClick={() => {
                         markAudioUserInteraction();
+                        setWelcomeMemberOcrOpen(false);
                         setOcrMode('member_card');
                         setKioskPhase('ocr');
                       }}
@@ -930,6 +986,7 @@ export default function Home() {
                       type="button"
                       onClick={() => {
                         markAudioUserInteraction();
+                        setWelcomeMemberOcrOpen(false);
                         setOcrMode('handwriting');
                         setKioskPhase('ocr');
                       }}
@@ -950,6 +1007,7 @@ export default function Home() {
                       type="button"
                       onClick={() => {
                         markAudioUserInteraction();
+                        setWelcomeMemberOcrOpen(false);
                         startPresentation(voice.currentLanguage);
                       }}
                       disabled={isVoiceCaptureActive}
