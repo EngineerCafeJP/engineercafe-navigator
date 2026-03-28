@@ -335,6 +335,7 @@ export default function Home() {
   const returnToIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const kioskVoiceCleanupRef = useRef<(() => void) | null>(null);
   const kioskPlayWelcomeRef = useRef<(() => Promise<void>) | null>(null);
+  const prevTriggerModeRef = useRef<KioskTriggerMode>(triggerMode);
 
   const showAvatarControls = process.env.NEXT_PUBLIC_SHOW_AVATAR_SETTINGS === 'true';
 
@@ -398,6 +399,27 @@ export default function Home() {
       setKioskVoiceLocked(false);
     }
   }, [kioskPhase, kioskVoiceLocked]);
+
+  /** Physical/sensor mode: hide main kiosk buttons; settings gear still opens SettingsPanel. */
+  const showKioskScreenChrome = triggerMode !== 'device';
+
+  useEffect(() => {
+    const previous = prevTriggerModeRef.current;
+    prevTriggerModeRef.current = triggerMode;
+
+    if (triggerMode !== 'device' || previous === 'device') {
+      return;
+    }
+    if (kioskPhase === 'idle' || kioskPhase === 'notice') {
+      return;
+    }
+    clearReturnToIdleTimer();
+    if (kioskPhase === 'voice') {
+      kioskVoiceCleanupRef.current?.();
+    }
+    setKioskVoiceLocked(false);
+    setKioskPhase('idle');
+  }, [clearReturnToIdleTimer, kioskPhase, triggerMode]);
 
   const handleSettingsPanelPropsChange = useCallback(
     (props: SettingsPanelPropsFromSource) => {
@@ -807,6 +829,7 @@ export default function Home() {
                       loadingMessage={voice.loadingMessage}
                       sessionState={voice.sessionState}
                     />
+                    {showKioskScreenChrome ? (
                     <div className="flex w-full flex-row flex-wrap items-stretch justify-center gap-2 sm:gap-3">
                     <button
                       type="button"
@@ -943,6 +966,7 @@ export default function Home() {
                       </span>
                     </button>
                     </div>
+                    ) : null}
                         </>
                       );
                     })()}
@@ -950,7 +974,7 @@ export default function Home() {
                 </div>
               )}
 
-              {kioskPhase === 'ocr' && (
+              {kioskPhase === 'ocr' && showKioskScreenChrome ? (
                 <div
                   className="absolute inset-0 z-40 overflow-y-auto bg-black/60 p-4"
                   onPointerDownCapture={bumpUserActivity}
@@ -991,7 +1015,7 @@ export default function Home() {
                     </div>
                   </div>
                 </div>
-              )}
+              ) : null}
 
               {showSlideMode ? (
                 <div
