@@ -20,9 +20,8 @@ import {
   Loader2,
   MessageSquare,
   Mic,
-  MicOff,
+  PenLine,
   Presentation,
-  SendHorizontal,
   Settings,
   Sparkles,
   TextQuote,
@@ -54,8 +53,8 @@ import VoiceInterface, {
   type VoiceSessionState,
 } from './components/VoiceInterface';
 import { OcrCameraView } from '@/components/reception/OcrCameraView';
-import { ReceptionPanel } from '@/components/reception/ReceptionPanel';
 import type { OcrResponse } from '@/lib/api/ocr-api';
+import { startReception } from '@/lib/reception-api';
 
 const buttonCopy: Record<
   VoiceSessionState,
@@ -335,6 +334,7 @@ export default function Home() {
   const lastResponseRef = useRef<string>('');
   const returnToIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const kioskVoiceCleanupRef = useRef<(() => void) | null>(null);
+  const kioskPlayWelcomeRef = useRef<(() => Promise<void>) | null>(null);
 
   const showAvatarControls = process.env.NEXT_PUBLIC_SHOW_AVATAR_SETTINGS === 'true';
 
@@ -354,7 +354,7 @@ export default function Home() {
     returnToIdleTimerRef.current = setTimeout(() => {
       returnToIdleTimerRef.current = null;
       const phase = kioskPhaseRef.current;
-      if (phase === 'voice' || phase === 'welcome') {
+      if (phase === 'voice') {
         kioskVoiceCleanupRef.current?.();
       }
       setKioskPhase('idle');
@@ -373,6 +373,19 @@ export default function Home() {
       clearReturnToIdleTimer();
     };
   }, [clearReturnToIdleTimer]);
+
+  useEffect(() => {
+    const onDeviceDetection = () => {
+      if (kioskPhaseRef.current !== 'idle') {
+        return;
+      }
+      void kioskPlayWelcomeRef.current?.();
+    };
+    window.addEventListener('device-detection', onDeviceDetection);
+    return () => {
+      window.removeEventListener('device-detection', onDeviceDetection);
+    };
+  }, []);
 
   useEffect(() => {
     if (kioskPhase === 'ocr') {
@@ -470,6 +483,26 @@ export default function Home() {
         const labels = overlayLabels[voice.currentLanguage];
         const receptionTriggerType =
           triggerMode === 'device' ? 'sensor_trigger' : 'button_press';
+        kioskPlayWelcomeRef.current = async () => {
+          markAudioUserInteraction();
+          clearReturnToIdleTimer();
+          try {
+            const result = await startReception({
+              session_id: voice.sessionId,
+              language: voice.currentLanguage,
+              trigger_type: receptionTriggerType,
+            });
+            await voice.speakPreparedText(result.greeting, null);
+          } catch {
+            const fallback =
+              voice.currentLanguage === 'ja'
+                ? 'エンジニアカフェへようこそ。ご用件をお聞かせください。'
+                : 'Welcome to Engineer Cafe. How can I help you today?';
+            await voice.speakPreparedText(fallback, null);
+          } finally {
+            scheduleReturnToIdle();
+          }
+        };
         const showSlideMode = kioskPhase === 'slides';
         const stageBackgroundStyle = getStageBackgroundStyle(characterBackground);
         const isListening = voice.sessionState === 'listening';
@@ -778,10 +811,9 @@ export default function Home() {
                     <button
                       type="button"
                       onClick={() => {
-                        markAudioUserInteraction();
-                        setKioskPhase('welcome');
+                        void kioskPlayWelcomeRef.current?.();
                       }}
-                      disabled={isVoiceCaptureActive}
+                      disabled={isVoiceCaptureActive || voice.isLoading}
                       className={cn(
                         'flex min-h-[72px] min-w-[min(100%,7rem)] flex-1 flex-col items-center justify-center gap-1 rounded-2xl px-3 py-3 shadow-md backdrop-blur-sm transition-transform sm:min-h-[80px] sm:flex-initial sm:px-5',
                         isVoiceCaptureActive
@@ -855,6 +887,7 @@ export default function Home() {
                       type="button"
                       onClick={() => {
                         markAudioUserInteraction();
+                        setOcrMode('member_card');
                         setKioskPhase('ocr');
                       }}
                       disabled={isVoiceCaptureActive}
@@ -867,7 +900,27 @@ export default function Home() {
                     >
                       <Camera className="size-6 shrink-0 sm:size-7" aria-hidden />
                       <span className="text-center text-xs font-semibold leading-tight sm:text-sm">
-                        {labels.kioskOcr}
+                        {labels.kioskOcrMember}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        markAudioUserInteraction();
+                        setOcrMode('handwriting');
+                        setKioskPhase('ocr');
+                      }}
+                      disabled={isVoiceCaptureActive}
+                      className={cn(
+                        'flex min-h-[72px] min-w-[min(100%,7rem)] flex-1 flex-col items-center justify-center gap-1 rounded-2xl px-3 py-3 shadow-md backdrop-blur-sm transition-transform sm:min-h-[80px] sm:flex-initial sm:px-5',
+                        isVoiceCaptureActive
+                          ? 'cursor-not-allowed border border-slate-500/40 bg-slate-600/40 text-slate-300'
+                          : 'border border-white/35 bg-white/15 text-white hover:scale-[1.02]',
+                      )}
+                    >
+                      <PenLine className="size-6 shrink-0 sm:size-7" aria-hidden />
+                      <span className="text-center text-xs font-semibold leading-tight sm:text-sm">
+                        {labels.kioskOcrHandwriting}
                       </span>
                     </button>
                     <button
@@ -897,79 +950,21 @@ export default function Home() {
                 </div>
               )}
 
-              {kioskPhase === 'welcome' && (
-                <div
-                  className="absolute inset-0 z-40 overflow-y-auto bg-black/55 p-4"
-                  onPointerDownCapture={bumpUserActivity}
-                >
-                  <div className="mx-auto max-w-3xl pb-24 pt-8">
-                    <ReceptionPanel
-                      sessionId={voice.sessionId}
-                      language={voice.currentLanguage}
-                      triggerType={receptionTriggerType}
-                      autoEnterWelcome
-                      onAssistantMessageAdded={() => {
-                        if (kioskPhaseRef.current === 'welcome') {
-                          scheduleReturnToIdle();
-                        }
-                      }}
-                      onReceptionComplete={() => {
-                        clearReturnToIdleTimer();
-                        setKioskPhase('voice');
-                      }}
-                      className="border-white/20 bg-white/95 shadow-xl"
-                    />
-                    <div className="mt-6 flex justify-center">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          clearReturnToIdleTimer();
-                          setKioskPhase('idle');
-                        }}
-                        className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/30 bg-black/40 px-6 py-3 text-sm font-medium text-white backdrop-blur-md transition-colors hover:bg-black/55"
-                      >
-                        {labels.kioskBackIdle}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-
               {kioskPhase === 'ocr' && (
                 <div
                   className="absolute inset-0 z-40 overflow-y-auto bg-black/60 p-4"
                   onPointerDownCapture={bumpUserActivity}
                 >
                   <div className="mx-auto max-w-lg rounded-[28px] border border-white/15 bg-white/95 p-5 shadow-xl md:p-8">
-                    <div className="mb-4 flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setOcrMode('member_card')}
-                        className={cn(
-                          'rounded-full px-4 py-2 text-sm font-medium transition-colors',
-                          ocrMode === 'member_card'
-                            ? 'bg-slate-900 text-white'
-                            : 'bg-slate-100 text-slate-700',
-                        )}
-                      >
-                        {labels.ocrModeMember}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setOcrMode('handwriting')}
-                        className={cn(
-                          'rounded-full px-4 py-2 text-sm font-medium transition-colors',
-                          ocrMode === 'handwriting'
-                            ? 'bg-slate-900 text-white'
-                            : 'bg-slate-100 text-slate-700',
-                        )}
-                      >
-                        {labels.ocrModeHandwriting}
-                      </button>
-                    </div>
+                    <h3 className="mb-4 text-center text-lg font-semibold text-slate-900">
+                      {ocrMode === 'member_card'
+                        ? labels.kioskOcrMember
+                        : labels.kioskOcrHandwriting}
+                    </h3>
                     <OcrCameraView
                       key={ocrMode}
                       mode={ocrMode}
+                      autoStart
                       sessionId={voice.sessionId}
                       onSuccess={handleOcrSuccess}
                       onFallback={() => {

@@ -1,4 +1,4 @@
-export type KioskPhase = 'notice' | 'idle' | 'welcome' | 'voice' | 'ocr' | 'slides';
+export type KioskPhase = 'notice' | 'idle' | 'voice' | 'ocr' | 'slides';
 
 /**
  * Kiosk / signage idle timeout (ms). After assistant speech ends (or equivalent),

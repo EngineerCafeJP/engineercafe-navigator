@@ -7,7 +7,7 @@
 
 'use client';
 
-import { useCallback } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 
 import {
   type OcrMode,
@@ -21,6 +21,8 @@ import {
 interface OcrCameraViewProps {
   mode: OcrMode;
   sessionId?: string;
+  /** When true, start the camera and scanning as soon as the view mounts (no idle / start button). */
+  autoStart?: boolean;
   onSuccess: (result: OcrResponse) => void;
   onFallback: () => void;
   onSkip: () => void;
@@ -44,6 +46,7 @@ const MODE_LABELS: Record<OcrMode, string> = {
 export function OcrCameraView({
   mode,
   sessionId,
+  autoStart = false,
   onSuccess,
   onFallback,
   onSkip,
@@ -72,6 +75,15 @@ export function OcrCameraView({
     skip();
     onSkip();
   }, [skip, onSkip]);
+
+  const autoStartedRef = useRef(false);
+  useEffect(() => {
+    if (!autoStart || autoStartedRef.current) {
+      return;
+    }
+    autoStartedRef.current = true;
+    void startCamera();
+  }, [autoStart, startCamera]);
 
   return (
     <div className="flex flex-col items-center gap-4">
@@ -141,7 +153,7 @@ export function OcrCameraView({
 
       {/* Action buttons */}
       <div className="flex gap-3">
-        {state === 'idle' && (
+        {state === 'idle' && !autoStart && (
           <button
             onClick={() => void startCamera()}
             className="rounded-lg bg-blue-600 px-6 py-3 text-white hover:bg-blue-700"
