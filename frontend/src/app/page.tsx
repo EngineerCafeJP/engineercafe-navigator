@@ -362,11 +362,16 @@ export default function Home() {
   }, [clearReturnToIdleTimer]);
 
   const bumpUserActivity = useCallback(() => {
-    if (kioskPhaseRef.current === 'notice' || kioskPhaseRef.current === 'idle') {
+    const phase = kioskPhaseRef.current;
+    if (phase === 'notice' || phase === 'idle') {
       return;
     }
-    clearReturnToIdleTimer();
-  }, [clearReturnToIdleTimer]);
+    if (phase === 'slides') {
+      clearReturnToIdleTimer();
+      return;
+    }
+    scheduleReturnToIdle();
+  }, [clearReturnToIdleTimer, scheduleReturnToIdle]);
 
   useEffect(() => {
     return () => {
@@ -375,7 +380,7 @@ export default function Home() {
   }, [clearReturnToIdleTimer]);
 
   useEffect(() => {
-    if (kioskPhase === 'ocr') {
+    if (kioskPhase === 'ocr' || kioskPhase === 'voice') {
       scheduleReturnToIdle();
     }
   }, [kioskPhase, scheduleReturnToIdle]);
@@ -406,6 +411,7 @@ export default function Home() {
   }, [showSettingsPanel]);
 
   const startPresentation = useCallback((language: 'ja' | 'en') => {
+    clearReturnToIdleTimer();
     setCurrentLanguage(language);
     setKioskPhase('slides');
 
@@ -416,7 +422,7 @@ export default function Home() {
         }),
       );
     }, 150);
-  }, []);
+  }, [clearReturnToIdleTimer]);
 
   const handleCloseSlides = useCallback(() => {
     clearReturnToIdleTimer();
