@@ -4,6 +4,7 @@ import { markAudioUserInteraction } from '@/lib/audio/audio-user-interaction-gat
 import { overlayLabels } from '@/lib/kiosk-labels';
 import {
   KIOSK_IDLE_MS,
+  KIOSK_WELCOME_COOLDOWN_MS,
   type KioskMicMode,
   type KioskPhase,
   type KioskTriggerMode,
@@ -338,8 +339,36 @@ export default function Home() {
   const kioskVoiceCleanupRef = useRef<(() => void) | null>(null);
   const kioskPlayWelcomeRef = useRef<(() => Promise<void>) | null>(null);
   const prevTriggerModeRef = useRef<KioskTriggerMode>(triggerMode);
+  const welcomeCooldownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const welcomeCooldownActiveRef = useRef(false);
+  const [welcomeCooldown, setWelcomeCooldown] = useState(false);
 
   const showAvatarControls = process.env.NEXT_PUBLIC_SHOW_AVATAR_SETTINGS === 'true';
+
+  const armWelcomeCooldown = useCallback((): boolean => {
+    if (welcomeCooldownActiveRef.current) {
+      return false;
+    }
+    welcomeCooldownActiveRef.current = true;
+    setWelcomeCooldown(true);
+    if (welcomeCooldownTimerRef.current !== null) {
+      clearTimeout(welcomeCooldownTimerRef.current);
+    }
+    welcomeCooldownTimerRef.current = setTimeout(() => {
+      welcomeCooldownTimerRef.current = null;
+      welcomeCooldownActiveRef.current = false;
+      setWelcomeCooldown(false);
+    }, KIOSK_WELCOME_COOLDOWN_MS);
+    return true;
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (welcomeCooldownTimerRef.current !== null) {
+        clearTimeout(welcomeCooldownTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     kioskPhaseRef.current = kioskPhase;
@@ -516,6 +545,9 @@ export default function Home() {
         const receptionTriggerType =
           triggerMode === 'device' ? 'sensor_trigger' : 'button_press';
         kioskPlayWelcomeRef.current = async () => {
+          if (!armWelcomeCooldown()) {
+            return;
+          }
           markAudioUserInteraction();
           clearReturnToIdleTimer();
           setWelcomeMemberOcrSessionKey((n) => n + 1);
@@ -891,10 +923,12 @@ export default function Home() {
                       onClick={() => {
                         void kioskPlayWelcomeRef.current?.();
                       }}
-                      disabled={isVoiceCaptureActive || voice.isLoading}
+                      disabled={
+                        isVoiceCaptureActive || voice.isLoading || welcomeCooldown
+                      }
                       className={cn(
                         'flex min-h-[72px] min-w-[min(100%,7rem)] flex-1 flex-col items-center justify-center gap-1 rounded-2xl px-3 py-3 shadow-md backdrop-blur-sm transition-transform sm:min-h-[80px] sm:flex-initial sm:px-5',
-                        isVoiceCaptureActive
+                        isVoiceCaptureActive || voice.isLoading || welcomeCooldown
                           ? 'cursor-not-allowed border border-slate-500/40 bg-slate-600/40 text-slate-300'
                           : 'border border-white/35 bg-white/15 text-white hover:scale-[1.02]',
                       )}

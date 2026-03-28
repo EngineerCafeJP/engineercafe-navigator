@@ -13,6 +13,19 @@ export const KIOSK_IDLE_MS: number = (() => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 90_000;
 })();
 
+/**
+ * After Welcome runs (button or device-detection), ignore further Welcome triggers for this long (ms).
+ * Override with `NEXT_PUBLIC_KIOSK_WELCOME_COOLDOWN_MS`.
+ */
+export const KIOSK_WELCOME_COOLDOWN_MS: number = (() => {
+  const raw = process.env.NEXT_PUBLIC_KIOSK_WELCOME_COOLDOWN_MS;
+  if (raw === undefined || raw === '') {
+    return 12_000;
+  }
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 12_000;
+})();
+
 export const KIOSK_TRIGGER_MODE_STORAGE_KEY = 'engineer_cafe_kiosk_trigger_mode';
 
 export type KioskTriggerMode = 'screen' | 'device';
