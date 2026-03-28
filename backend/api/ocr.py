@@ -203,6 +203,11 @@ def _decode_image(image_data: str) -> np.ndarray:
         ) from exc
 
     arr = np.frombuffer(image_bytes, dtype=np.uint8)
+    if arr.size == 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Empty image data",
+        )
     image = cv2.imdecode(arr, cv2.IMREAD_COLOR)
     if image is None:
         raise HTTPException(

@@ -95,6 +95,16 @@ class TestDecodeImage:
         assert exc_info.value.status_code == 400
         assert "Could not decode image" in exc_info.value.detail
 
+    def test_raises_400_for_empty_image_payload(self):
+        """base64 デコード結果が空バイトの場合は 400 を返す。"""
+        import base64 as _base64
+
+        empty_payload = _base64.b64encode(b"").decode("utf-8")
+        with pytest.raises(HTTPException) as exc_info:
+            ocr_module._decode_image(empty_payload)
+        assert exc_info.value.status_code == 400
+        assert "Empty image data" in exc_info.value.detail
+
 
 class TestDetectLanguage:
     """_detect_language のテスト。"""
