@@ -16,7 +16,8 @@ from backend.llm.models import get_model_config
 
 logger = logging.getLogger(__name__)
 
-# When the vision model misuses text_recognition, it sometimes passes the user prompt back as "text".
+# When the vision model misuses text_recognition,
+# it sometimes passes the user prompt back as "text".
 _HANDWRITING_PROMPT_MARKERS = (
     "手書き文字をOCRしてください",
     "・自然な文章として復元",
