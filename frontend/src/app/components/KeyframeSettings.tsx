@@ -15,6 +15,7 @@ interface KeyframeSettingsProps {
   onError: (message: string) => void;
   onRunKeyframe: (animation: CharacterAnimationData) => void;
   onRunKeyframeClick?: () => void;
+  embedded?: boolean;
 }
 
 export default function KeyframeSettings({
@@ -24,6 +25,7 @@ export default function KeyframeSettings({
   onError,
   onRunKeyframe,
   onRunKeyframeClick,
+  embedded = false,
 }: KeyframeSettingsProps) {
   const handle_run = () => {
     onError('');
@@ -44,7 +46,7 @@ export default function KeyframeSettings({
   };
 
   return (
-    <div className="bg-white rounded-lg p-4 shadow-sm">
+    <div className={embedded ? 'pt-4' : 'bg-white rounded-lg p-4 shadow-sm'}>
       <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
         <Film className="w-4 h-4" />
         Keyframe
@@ -73,9 +75,11 @@ export default function KeyframeSettings({
       >
         Run keyframe
       </button>
-      <p className="text-xs text-gray-500 mt-1.5">
-        実行成功時はControlsタブに遷移します。
-      </p>
+      {!embedded ? (
+        <p className="text-xs text-gray-500 mt-1.5">
+          実行成功時はControlsタブに遷移します。
+        </p>
+      ) : null}
     </div>
   );
 }

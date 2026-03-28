@@ -16,6 +16,8 @@ export default function AudioSettings({
   onVolumeChange,
   onMuteToggle,
 }: AudioSettingsProps) {
+  const effectiveVolume = isMuted ? 0 : volume;
+
   return (
     <div className="bg-white rounded-lg p-4 shadow-sm">
       <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
@@ -39,10 +41,20 @@ export default function AudioSettings({
           type="range"
           min="0"
           max="100"
-          value={volume}
-          onChange={(e) => onVolumeChange(Number(e.target.value))}
-          className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-          title="音量調整"
+          value={effectiveVolume}
+          onChange={(e) => {
+            if (isMuted) {
+              return;
+            }
+            onVolumeChange(Number(e.target.value));
+          }}
+          disabled={isMuted}
+          className={`flex-1 h-2 rounded-lg appearance-none ${
+            isMuted
+              ? 'cursor-not-allowed bg-gray-100 opacity-60'
+              : 'cursor-pointer bg-gray-200'
+          }`}
+          title={isMuted ? 'ミュート中は音量を変更できません' : '音量調整'}
         />
       </div>
     </div>

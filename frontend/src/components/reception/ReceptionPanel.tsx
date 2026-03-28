@@ -21,6 +21,10 @@ interface ReceptionPanelProps {
   className?: string;
   /** Called when reception is completed and the system should switch to chat mode. */
   onReceptionComplete?: () => void;
+  /** Skip the front-desk idle screen and go straight to welcome (kiosk home entry). */
+  autoEnterWelcome?: boolean;
+  /** Fired when a new assistant message is appended (for kiosk idle timeout). */
+  onAssistantMessageAdded?: () => void;
 }
 
 export function ReceptionPanel({
@@ -29,10 +33,14 @@ export function ReceptionPanel({
   triggerType = 'button_press',
   className,
   onReceptionComplete,
+  autoEnterWelcome = false,
+  onAssistantMessageAdded,
 }: ReceptionPanelProps) {
   const [draft, setDraft] = useState('');
   const hasAutoCompletedRef = useRef(false);
   const welcomeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevMessageCountRef = useRef(0);
+  const autoWelcomeStartedRef = useRef(false);
 
   const {
     stage,
@@ -104,6 +112,25 @@ export function ReceptionPanel({
       onReceptionComplete();
     }
   }, [onReceptionComplete, stage]);
+
+  useEffect(() => {
+    if (!autoEnterWelcome || autoWelcomeStartedRef.current) {
+      return;
+    }
+    autoWelcomeStartedRef.current = true;
+    enterWelcome();
+  }, [autoEnterWelcome, enterWelcome]);
+
+  useEffect(() => {
+    const last = messages[messages.length - 1];
+    if (
+      messages.length > prevMessageCountRef.current &&
+      last?.role === 'assistant'
+    ) {
+      onAssistantMessageAdded?.();
+    }
+    prevMessageCountRef.current = messages.length;
+  }, [messages, onAssistantMessageAdded]);
 
   // --- Device detection listener (#128) ---
   useEffect(() => {

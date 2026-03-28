@@ -83,6 +83,8 @@ interface VoiceInterfaceProps {
   className?: string;
   onMetadataChange?: (metadata: VoiceInterfaceMetadata | null) => void;
   onAssistantPlaybackStart?: (payload: { metadata: VoiceInterfaceMetadata | null }) => void;
+  /** Fired when assistant TTS finishes (session goes from speaking to idle). */
+  onAssistantPlaybackEnd?: () => void;
 }
 
 const DEFAULT_WAKE_WORDS = ['すみません', 'hello'];
@@ -184,6 +186,7 @@ export default function VoiceInterface({
   className,
   onMetadataChange,
   onAssistantPlaybackStart,
+  onAssistantPlaybackEnd,
 }: VoiceInterfaceProps) {
   const [currentLanguage, setCurrentLanguage] = useState<'ja' | 'en'>(language);
   const [volume, setVolumeState] = useState(0.8);
@@ -269,12 +272,17 @@ export default function VoiceInterface({
 
   const setVolume = useCallback((nextVolume: number) => {
     setVolumeState(nextVolume);
-    mobileAudioServiceRef.current?.setVolume(nextVolume);
-  }, []);
+    const effectiveVolume = isMuted ? 0 : nextVolume;
+    mobileAudioServiceRef.current?.setVolume(effectiveVolume);
+    audioQueueRef.current?.setVolume(effectiveVolume);
+  }, [isMuted]);
 
   const setMuted = useCallback((nextMuted: boolean) => {
     setIsMuted(nextMuted);
-  }, []);
+    const effectiveVolume = nextMuted ? 0 : volume;
+    mobileAudioServiceRef.current?.setVolume(effectiveVolume);
+    audioQueueRef.current?.setVolume(effectiveVolume);
+  }, [volume]);
 
   const resetConversation = useCallback(() => {
     setTranscript('');
@@ -675,6 +683,14 @@ export default function VoiceInterface({
 
     setResponse(greeting);
   }, [autoGreeting, currentLanguage]);
+
+  const prevSessionStateRef = useRef<VoiceSessionState>(sessionState);
+  useEffect(() => {
+    if (prevSessionStateRef.current === 'speaking' && sessionState === 'idle') {
+      onAssistantPlaybackEnd?.();
+    }
+    prevSessionStateRef.current = sessionState;
+  }, [sessionState, onAssistantPlaybackEnd]);
 
   useEffect(() => {
     return () => {

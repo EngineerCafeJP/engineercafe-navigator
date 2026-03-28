@@ -59,6 +59,8 @@ interface PresentationSettings {
   enableLipSync: boolean;
 }
 
+export type PresentationCompleteReason = 'completed' | 'stopped';
+
 interface MarpViewerProps {
   slideFile?: string;
   language?: 'ja' | 'en';
@@ -69,6 +71,8 @@ interface MarpViewerProps {
   onVisemeControl?: ((viseme: string, intensity: number) => void) | null;
   onExpressionControl?: ((expression: string, weight: number) => void) | null;
   volume?: number;
+  /** Auto-play finished last slide, or user stopped / errored while playing. */
+  onPresentationComplete?: (reason: PresentationCompleteReason) => void;
 }
 
 const SLIDE_TRANSITION_DELAY_MS = 500;
@@ -83,7 +87,8 @@ export default function MarpViewer({
   onQuestionAsked,
   onVisemeControl,
   onExpressionControl,
-  volume = 80
+  volume = 80,
+  onPresentationComplete,
 }: MarpViewerProps) {
   const [slides, setSlides] = useState<SlideData[]>([]);
   const [narrationData, setNarrationData] = useState<NarrationData | null>(null);
@@ -202,6 +207,7 @@ export default function MarpViewer({
       trackPresentationEvent('presentation_completed', {
         totalDuration: presentationStartTimeRef.current ? Date.now() - presentationStartTimeRef.current : 0
       });
+      onPresentationComplete?.('completed');
     };
 
     if (delayMs <= 0) {
@@ -761,6 +767,7 @@ export default function MarpViewer({
         ) {
           setShowAudioPermissionPrompt(true);
           setIsPlaying(false);
+          onPresentationComplete?.('stopped');
           return;
         }
 
@@ -937,6 +944,7 @@ export default function MarpViewer({
       if (isPlaying) {
         setIsPlaying(false); // Set this first to prevent new narrations
         stopAutoPlay();
+        onPresentationComplete?.('stopped');
       }
       
       const newSlide = currentSlide - 1;
@@ -953,6 +961,7 @@ export default function MarpViewer({
       if (isPlaying) {
         stopAutoPlay();
         setIsPlaying(false);
+        onPresentationComplete?.('stopped');
       }
       
       setCurrentSlide(slideNumber);
@@ -976,6 +985,7 @@ export default function MarpViewer({
     if (isPlaying) {
       stopAutoPlay();
       setIsPlaying(false);
+      onPresentationComplete?.('stopped');
       return;
     }
     
