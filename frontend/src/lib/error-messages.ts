@@ -71,6 +71,22 @@ export const ERROR_MESSAGES: Record<string, ErrorMessage> = {
   },
   
   // API Errors
+  STT_ERROR: {
+    ja: '音声認識処理でエラーが発生しました。',
+    en: 'Speech recognition processing failed.',
+  },
+  QA_ERROR: {
+    ja: '質問の送信に失敗しました。もう一度お試しください。',
+    en: 'Failed to send question. Please try again.',
+  },
+  TTS_ERROR: {
+    ja: '音声の生成に失敗しました。',
+    en: 'Voice generation failed.',
+  },
+  VALIDATION_ERROR: {
+    ja: 'リクエストの形式が正しくありません。',
+    en: 'Invalid request format.',
+  },
   API_KEY_INVALID: {
     ja: 'APIキーが無効です。設定を確認してください。',
     en: 'Invalid API key. Please check your configuration.',
@@ -117,6 +133,35 @@ export function formatError(
     return getErrorMessage(error.code, language);
   }
   
+  // Check for API-specific error patterns
+  if (error.message) {
+    if (
+      error.message.includes('音声認識に失敗') ||
+      error.message.includes('speech recognition')
+    ) {
+      return getErrorMessage('STT_ERROR', language);
+    }
+    if (
+      error.message.includes('質問の送信に失敗') ||
+      error.message.includes('send question') ||
+      error.message.includes('chat')
+    ) {
+      return getErrorMessage('QA_ERROR', language);
+    }
+    if (
+      error.message.includes('音声の生成に失敗') ||
+      error.message.includes('voice generation') ||
+      error.message.includes('text_to_speech')
+    ) {
+      return getErrorMessage('TTS_ERROR', language);
+    }
+  }
+
+  // Check for 422 validation error
+  if (error.status === 422) {
+    return getErrorMessage('VALIDATION_ERROR', language);
+  }
+
   // Check for specific error messages
   if (error.message) {
     if (error.message.includes('microphone')) {

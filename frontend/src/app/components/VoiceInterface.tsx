@@ -442,7 +442,11 @@ export default function VoiceInterface({
 
         const qaResult = await qaResponse.json();
         if (!qaResponse.ok || !qaResult.success) {
-          throw new Error(qaResult.error || '質問の送信に失敗しました');
+          const qaError: Error & { status?: number } = new Error(
+            qaResult.error || '質問の送信に失敗しました',
+          );
+          qaError.status = qaResponse.status;
+          throw qaError;
         }
 
         const parsedAnswer = EmotionTagParser.parseEmotionTags(
@@ -469,7 +473,11 @@ export default function VoiceInterface({
 
         const ttsResult = await ttsResponse.json();
         if (!ttsResponse.ok || !ttsResult.success) {
-          throw new Error(ttsResult.error || '音声の生成に失敗しました');
+          const ttsError: Error & { status?: number } = new Error(
+            ttsResult.error || '音声の生成に失敗しました',
+          );
+          ttsError.status = ttsResponse.status;
+          throw ttsError;
         }
 
         if (typeof ttsResult.audioResponse === 'string' && ttsResult.audioResponse.length > 0) {
@@ -529,7 +537,11 @@ export default function VoiceInterface({
 
         const sttResult = await sttResponse.json();
         if (!sttResponse.ok || !sttResult.success || typeof sttResult.transcript !== 'string') {
-          throw new Error(sttResult.error || '音声認識に失敗しました');
+          const sttError: Error & { status?: number } = new Error(
+            sttResult.error || '音声認識に失敗しました',
+          );
+          sttError.status = sttResponse.status;
+          throw sttError;
         }
 
         setTranscript(sttResult.transcript);
