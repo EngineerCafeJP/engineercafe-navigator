@@ -246,6 +246,18 @@ RECEPTION_KEYWORDS = [
     "チェックイン",
     "初めて",
     "はじめて",
+    "来場",
+    "来訪",
+    "visit",
+    "arrive",
+    "arrived",
+    "visitor",
+    "登记",
+    "来访",
+    "访客",
+    "접수",
+    "방문",
+    "방문자",
 ]
 
 EMERGENCY_KEYWORDS = [
@@ -575,6 +587,13 @@ GREETING_KEYWORDS: list[str] = [
     "good morning",
     "good afternoon",
     "good evening",
+    "你好",
+    "早上好",
+    "下午好",
+    "晚上好",
+    "안녕하세요",
+    "안녕",
+    "좋은 아침",
 ]
 
 # 時間帯別挨拶テンプレート

@@ -345,8 +345,12 @@ class MainWorkflow:
                 )
 
                 rag = EnhancedRAGSearch()
+                rag_language = "ja" if rag_query != query else language
                 rag_result = await rag.search(
-                    query=rag_query, category=category, language=language, max_results=10
+                    query=rag_query,
+                    category=category,
+                    language=rag_language,
+                    max_results=10,
                 )
 
                 knowledge_results = {
