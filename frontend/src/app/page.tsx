@@ -177,9 +177,10 @@ function KioskVoiceStatusStack({
     isLoading && response.length > 0 && sessionState !== 'speaking';
   const isErrorVisible = Boolean(error) && errorVisibleUntil > now;
   const isOcrStatusVisible = Boolean(ocrStatus && ocrStatus.visibleUntil > now);
+  const displayResponse = response || (sessionState === 'idle' && !response ? labels.defaultPrompt : '');
   const isResponseVisible =
-    response.length > 0 &&
-    (sessionState === 'speaking' || responseVisibleUntil > now);
+    displayResponse.length > 0 &&
+    (sessionState === 'speaking' || responseVisibleUntil > now || !response);
   const isTranscriptVisible =
     transcript.length > 0 && !isSttLoading && transcriptVisibleUntil > now;
 
@@ -228,10 +229,15 @@ function KioskVoiceStatusStack({
         </div>
       ) : null}
       {isResponseVisible ? (
-        <div className="flex w-full items-center gap-2 rounded-xl border border-white/30 bg-black/35 px-4 py-2 text-sm font-medium text-white/95 shadow-sm backdrop-blur-sm">
+        <div
+          className="flex w-full items-center gap-2 rounded-xl border border-white/30 bg-black/35 px-4 py-2 text-sm font-medium text-white/95 shadow-sm backdrop-blur-sm"
+          data-testid="response-bubble"
+        >
           <Volume2 className="size-4 shrink-0" />
-          <span>
-            {labels.responseLabel}: {response}
+          <span data-testid="response-text">
+            {response
+              ? `${labels.responseLabel}: ${response}`
+              : displayResponse}
           </span>
         </div>
       ) : null}
