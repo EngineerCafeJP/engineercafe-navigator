@@ -246,8 +246,6 @@ RECEPTION_KEYWORDS = [
     "チェックイン",
     "初めて",
     "はじめて",
-    "登记",
-    "접수",
 ]
 
 EMERGENCY_KEYWORDS = [

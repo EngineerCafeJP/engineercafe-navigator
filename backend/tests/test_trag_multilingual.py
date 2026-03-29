@@ -28,11 +28,13 @@ class TestMultilingualGreetingKeywords:
 class TestMultilingualReceptionKeywords:
     """Verify RECEPTION_KEYWORDS contains multilingual entries."""
 
-    def test_reception_keywords_include_chinese(self):
-        assert "登记" in RECEPTION_KEYWORDS
+    def test_reception_keywords_exclude_chinese(self):
+        """Chinese reception keywords removed to prevent substring false positives."""
+        assert "登记" not in RECEPTION_KEYWORDS
 
-    def test_reception_keywords_include_korean(self):
-        assert "접수" in RECEPTION_KEYWORDS
+    def test_reception_keywords_exclude_korean(self):
+        """Korean reception keywords removed to prevent substring false positives."""
+        assert "접수" not in RECEPTION_KEYWORDS
 
     def test_reception_keywords_include_english(self):
         assert "registration" in RECEPTION_KEYWORDS
@@ -51,8 +53,10 @@ class TestMultilingualReceptionKeywords:
         assert "来訪" not in RECEPTION_KEYWORDS
         assert "来访" not in RECEPTION_KEYWORDS
         assert "访客" not in RECEPTION_KEYWORDS
+        assert "登记" not in RECEPTION_KEYWORDS
         assert "방문" not in RECEPTION_KEYWORDS
         assert "방문자" not in RECEPTION_KEYWORDS
+        assert "접수" not in RECEPTION_KEYWORDS
 
     def test_reception_keywords_include_japanese(self):
         assert "初回利用" in RECEPTION_KEYWORDS
