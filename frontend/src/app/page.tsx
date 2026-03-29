@@ -4,6 +4,7 @@ import { markAudioUserInteraction } from '@/lib/audio/audio-user-interaction-gat
 import { overlayLabels } from '@/lib/kiosk-labels';
 import {
   KIOSK_IDLE_MS,
+  KIOSK_WELCOME_COOLDOWN_MS,
   type KioskMicMode,
   type KioskPhase,
   type KioskTriggerMode,
@@ -20,9 +21,8 @@ import {
   Loader2,
   MessageSquare,
   Mic,
-  MicOff,
+  PenLine,
   Presentation,
-  SendHorizontal,
   Settings,
   Sparkles,
   TextQuote,
@@ -54,8 +54,8 @@ import VoiceInterface, {
   type VoiceSessionState,
 } from './components/VoiceInterface';
 import { OcrCameraView } from '@/components/reception/OcrCameraView';
-import { ReceptionPanel } from '@/components/reception/ReceptionPanel';
 import type { OcrResponse } from '@/lib/api/ocr-api';
+import { startReception } from '@/lib/reception-api';
 
 const buttonCopy: Record<
   VoiceSessionState,
@@ -308,6 +308,8 @@ export default function Home() {
   const [triggerMode, setTriggerMode] = useState<KioskTriggerMode>(() => readKioskTriggerMode());
   const [micInputMode, setMicInputMode] = useState<KioskMicMode>(() => readKioskMicMode());
   const [ocrMode, setOcrMode] = useState<'member_card' | 'handwriting'>('member_card');
+  const [welcomeMemberOcrOpen, setWelcomeMemberOcrOpen] = useState(false);
+  const [welcomeMemberOcrSessionKey, setWelcomeMemberOcrSessionKey] = useState(0);
   const [ocrStatus, setOcrStatus] = useState<{
     kind: 'member_card' | 'handwriting' | 'error';
     text: string;
@@ -338,8 +340,38 @@ export default function Home() {
   const lastResponseRef = useRef<string>('');
   const returnToIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const kioskVoiceCleanupRef = useRef<(() => void) | null>(null);
+  const kioskPlayWelcomeRef = useRef<(() => Promise<void>) | null>(null);
+  const prevTriggerModeRef = useRef<KioskTriggerMode>(triggerMode);
+  const welcomeCooldownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const welcomeCooldownActiveRef = useRef(false);
+  const [welcomeCooldown, setWelcomeCooldown] = useState(false);
 
   const showAvatarControls = process.env.NEXT_PUBLIC_SHOW_AVATAR_SETTINGS === 'true';
+
+  const armWelcomeCooldown = useCallback((): boolean => {
+    if (welcomeCooldownActiveRef.current) {
+      return false;
+    }
+    welcomeCooldownActiveRef.current = true;
+    setWelcomeCooldown(true);
+    if (welcomeCooldownTimerRef.current !== null) {
+      clearTimeout(welcomeCooldownTimerRef.current);
+    }
+    welcomeCooldownTimerRef.current = setTimeout(() => {
+      welcomeCooldownTimerRef.current = null;
+      welcomeCooldownActiveRef.current = false;
+      setWelcomeCooldown(false);
+    }, KIOSK_WELCOME_COOLDOWN_MS);
+    return true;
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (welcomeCooldownTimerRef.current !== null) {
+        clearTimeout(welcomeCooldownTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     kioskPhaseRef.current = kioskPhase;
@@ -357,9 +389,10 @@ export default function Home() {
     returnToIdleTimerRef.current = setTimeout(() => {
       returnToIdleTimerRef.current = null;
       const phase = kioskPhaseRef.current;
-      if (phase === 'voice' || phase === 'welcome') {
+      if (phase === 'voice') {
         kioskVoiceCleanupRef.current?.();
       }
+      setWelcomeMemberOcrOpen(false);
       setKioskPhase('idle');
     }, KIOSK_IDLE_MS);
   }, [clearReturnToIdleTimer]);
@@ -383,16 +416,57 @@ export default function Home() {
   }, [clearReturnToIdleTimer]);
 
   useEffect(() => {
+    const onDeviceDetection = () => {
+      if (kioskPhaseRef.current !== 'idle') {
+        return;
+      }
+      void kioskPlayWelcomeRef.current?.();
+    };
+    window.addEventListener('device-detection', onDeviceDetection);
+    return () => {
+      window.removeEventListener('device-detection', onDeviceDetection);
+    };
+  }, []);
+
+  useEffect(() => {
     if (kioskPhase === 'ocr' || kioskPhase === 'voice') {
       scheduleReturnToIdle();
     }
   }, [kioskPhase, scheduleReturnToIdle]);
 
   useEffect(() => {
+    if (kioskPhase === 'slides') {
+      setWelcomeMemberOcrOpen(false);
+    }
+  }, [kioskPhase]);
+
+  useEffect(() => {
     if (kioskPhase !== 'voice' && kioskVoiceLocked) {
       setKioskVoiceLocked(false);
     }
   }, [kioskPhase, kioskVoiceLocked]);
+
+  /** Physical/sensor mode: hide main kiosk buttons; settings gear still opens SettingsPanel. */
+  const showKioskScreenChrome = triggerMode !== 'device';
+
+  useEffect(() => {
+    const previous = prevTriggerModeRef.current;
+    prevTriggerModeRef.current = triggerMode;
+
+    if (triggerMode !== 'device' || previous === 'device') {
+      return;
+    }
+    if (kioskPhase === 'idle' || kioskPhase === 'notice') {
+      return;
+    }
+    clearReturnToIdleTimer();
+    if (kioskPhase === 'voice') {
+      kioskVoiceCleanupRef.current?.();
+    }
+    setKioskVoiceLocked(false);
+    setWelcomeMemberOcrOpen(false);
+    setKioskPhase('idle');
+  }, [clearReturnToIdleTimer, kioskPhase, triggerMode]);
 
   const handleSettingsPanelPropsChange = useCallback(
     (props: SettingsPanelPropsFromSource) => {
@@ -483,6 +557,31 @@ export default function Home() {
         const labels = overlayLabels[voice.currentLanguage];
         const receptionTriggerType =
           triggerMode === 'device' ? 'sensor_trigger' : 'button_press';
+        kioskPlayWelcomeRef.current = async () => {
+          if (!armWelcomeCooldown()) {
+            return;
+          }
+          markAudioUserInteraction();
+          clearReturnToIdleTimer();
+          setWelcomeMemberOcrSessionKey((n) => n + 1);
+          setWelcomeMemberOcrOpen(true);
+          try {
+            const result = await startReception({
+              session_id: voice.sessionId,
+              language: voice.currentLanguage,
+              trigger_type: receptionTriggerType,
+            });
+            await voice.speakPreparedText(result.greeting, null);
+          } catch {
+            const fallback =
+              voice.currentLanguage === 'ja'
+                ? 'エンジニアカフェへようこそ。ご用件をお聞かせください。'
+                : 'Welcome to Engineer Cafe. How can I help you today?';
+            await voice.speakPreparedText(fallback, null);
+          } finally {
+            scheduleReturnToIdle();
+          }
+        };
         const showSlideMode = kioskPhase === 'slides';
         const stageBackgroundStyle = getStageBackgroundStyle(characterBackground);
         const isListening = voice.sessionState === 'listening';
@@ -567,6 +666,21 @@ export default function Home() {
 
           setOcrStatusMessage('handwriting', `${labels.ocrHandwritingResult}: ${recognized}`);
           void voice.sendMessage(recognized);
+        };
+
+        const handleWelcomeMemberOcrSuccess = (result: OcrResponse) => {
+          setWelcomeMemberOcrOpen(false);
+          clearReturnToIdleTimer();
+          setKioskPhase('idle');
+          const memberText =
+            result.member_number !== null
+              ? `${labels.ocrMemberResult}: ${result.member_number}`
+              : labels.ocrReadFailed;
+          setOcrStatusMessage('member_card', memberText);
+        };
+
+        const handleWelcomeMemberOcrEndSilent = () => {
+          setWelcomeMemberOcrOpen(false);
         };
 
         const handleMicPointerDown = (e: ReactPointerEvent<HTMLButtonElement>) => {
@@ -675,6 +789,33 @@ export default function Home() {
                 </div>
               </div>
 
+              {welcomeMemberOcrOpen && kioskPhase !== 'ocr' && !showSlideMode ? (
+                <div
+                  className="pointer-events-auto absolute z-[38] w-[min(92vw,13.5rem)] rounded-xl border border-white/25 bg-white/95 p-3 shadow-2xl backdrop-blur-md"
+                  style={{
+                    top: 'calc(max(1.5rem, env(safe-area-inset-top)) + 3.25rem)',
+                    right: 'max(1rem, env(safe-area-inset-right))',
+                  }}
+                  onPointerDownCapture={bumpUserActivity}
+                >
+                  <p className="mb-2 text-center text-xs font-semibold text-slate-800">
+                    {labels.kioskOcrMember}
+                  </p>
+                  <OcrCameraView
+                    key={welcomeMemberOcrSessionKey}
+                    mode="member_card"
+                    autoStart
+                    compact
+                    hideSkip
+                    sessionId={voice.sessionId}
+                    onSuccess={handleWelcomeMemberOcrSuccess}
+                    onFallback={handleWelcomeMemberOcrEndSilent}
+                    onSkip={handleWelcomeMemberOcrEndSilent}
+                    onCameraInitFailed={handleWelcomeMemberOcrEndSilent}
+                  />
+                </div>
+              ) : null}
+
               {showSettingsPanel && settingsPanelProps ? (
                 <div
                   className="absolute inset-0 z-40 pointer-events-none"
@@ -765,6 +906,7 @@ export default function Home() {
                       const handleKioskVoiceStart = () => {
                         markAudioUserInteraction();
                         clearReturnToIdleTimer();
+                        setWelcomeMemberOcrOpen(false);
                         setKioskPhase('voice');
                         setKioskVoiceLocked(true);
                         void voice.startListening();
@@ -796,17 +938,19 @@ export default function Home() {
                       loadingMessage={voice.loadingMessage}
                       sessionState={voice.sessionState}
                     />
+                    {showKioskScreenChrome ? (
                     <div className="flex w-full flex-row flex-wrap items-stretch justify-center gap-2 sm:gap-3">
                     <button
                       type="button"
                       onClick={() => {
-                        markAudioUserInteraction();
-                        setKioskPhase('welcome');
+                        void kioskPlayWelcomeRef.current?.();
                       }}
-                      disabled={isVoiceCaptureActive}
+                      disabled={
+                        isVoiceCaptureActive || voice.isLoading || welcomeCooldown
+                      }
                       className={cn(
                         'flex min-h-[72px] min-w-[min(100%,7rem)] flex-1 flex-col items-center justify-center gap-1 rounded-2xl px-3 py-3 shadow-md backdrop-blur-sm transition-transform sm:min-h-[80px] sm:flex-initial sm:px-5',
-                        isVoiceCaptureActive
+                        isVoiceCaptureActive || voice.isLoading || welcomeCooldown
                           ? 'cursor-not-allowed border border-slate-500/40 bg-slate-600/40 text-slate-300'
                           : 'border border-white/35 bg-white/15 text-white hover:scale-[1.02]',
                       )}
@@ -877,6 +1021,8 @@ export default function Home() {
                       type="button"
                       onClick={() => {
                         markAudioUserInteraction();
+                        setWelcomeMemberOcrOpen(false);
+                        setOcrMode('member_card');
                         setKioskPhase('ocr');
                       }}
                       disabled={isVoiceCaptureActive}
@@ -889,13 +1035,35 @@ export default function Home() {
                     >
                       <Camera className="size-6 shrink-0 sm:size-7" aria-hidden />
                       <span className="text-center text-xs font-semibold leading-tight sm:text-sm">
-                        {labels.kioskOcr}
+                        {labels.kioskOcrMember}
                       </span>
                     </button>
                     <button
                       type="button"
                       onClick={() => {
                         markAudioUserInteraction();
+                        setWelcomeMemberOcrOpen(false);
+                        setOcrMode('handwriting');
+                        setKioskPhase('ocr');
+                      }}
+                      disabled={isVoiceCaptureActive}
+                      className={cn(
+                        'flex min-h-[72px] min-w-[min(100%,7rem)] flex-1 flex-col items-center justify-center gap-1 rounded-2xl px-3 py-3 shadow-md backdrop-blur-sm transition-transform sm:min-h-[80px] sm:flex-initial sm:px-5',
+                        isVoiceCaptureActive
+                          ? 'cursor-not-allowed border border-slate-500/40 bg-slate-600/40 text-slate-300'
+                          : 'border border-white/35 bg-white/15 text-white hover:scale-[1.02]',
+                      )}
+                    >
+                      <PenLine className="size-6 shrink-0 sm:size-7" aria-hidden />
+                      <span className="text-center text-xs font-semibold leading-tight sm:text-sm">
+                        {labels.kioskOcrHandwriting}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        markAudioUserInteraction();
+                        setWelcomeMemberOcrOpen(false);
                         startPresentation(voice.currentLanguage);
                       }}
                       disabled={isVoiceCaptureActive}
@@ -912,6 +1080,7 @@ export default function Home() {
                       </span>
                     </button>
                     </div>
+                    ) : null}
                         </>
                       );
                     })()}
@@ -919,79 +1088,21 @@ export default function Home() {
                 </div>
               )}
 
-              {kioskPhase === 'welcome' && (
-                <div
-                  className="absolute inset-0 z-40 overflow-y-auto bg-black/55 p-4"
-                  onPointerDownCapture={bumpUserActivity}
-                >
-                  <div className="mx-auto max-w-3xl pb-24 pt-8">
-                    <ReceptionPanel
-                      sessionId={voice.sessionId}
-                      language={voice.currentLanguage}
-                      triggerType={receptionTriggerType}
-                      autoEnterWelcome
-                      onAssistantMessageAdded={() => {
-                        if (kioskPhaseRef.current === 'welcome') {
-                          scheduleReturnToIdle();
-                        }
-                      }}
-                      onReceptionComplete={() => {
-                        clearReturnToIdleTimer();
-                        setKioskPhase('voice');
-                      }}
-                      className="border-white/20 bg-white/95 shadow-xl"
-                    />
-                    <div className="mt-6 flex justify-center">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          clearReturnToIdleTimer();
-                          setKioskPhase('idle');
-                        }}
-                        className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/30 bg-black/40 px-6 py-3 text-sm font-medium text-white backdrop-blur-md transition-colors hover:bg-black/55"
-                      >
-                        {labels.kioskBackIdle}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {kioskPhase === 'ocr' && (
+              {kioskPhase === 'ocr' && showKioskScreenChrome ? (
                 <div
                   className="absolute inset-0 z-40 overflow-y-auto bg-black/60 p-4"
                   onPointerDownCapture={bumpUserActivity}
                 >
                   <div className="mx-auto max-w-lg rounded-[28px] border border-white/15 bg-white/95 p-5 shadow-xl md:p-8">
-                    <div className="mb-4 flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setOcrMode('member_card')}
-                        className={cn(
-                          'rounded-full px-4 py-2 text-sm font-medium transition-colors',
-                          ocrMode === 'member_card'
-                            ? 'bg-slate-900 text-white'
-                            : 'bg-slate-100 text-slate-700',
-                        )}
-                      >
-                        {labels.ocrModeMember}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setOcrMode('handwriting')}
-                        className={cn(
-                          'rounded-full px-4 py-2 text-sm font-medium transition-colors',
-                          ocrMode === 'handwriting'
-                            ? 'bg-slate-900 text-white'
-                            : 'bg-slate-100 text-slate-700',
-                        )}
-                      >
-                        {labels.ocrModeHandwriting}
-                      </button>
-                    </div>
+                    <h3 className="mb-4 text-center text-lg font-semibold text-slate-900">
+                      {ocrMode === 'member_card'
+                        ? labels.kioskOcrMember
+                        : labels.kioskOcrHandwriting}
+                    </h3>
                     <OcrCameraView
                       key={ocrMode}
                       mode={ocrMode}
+                      autoStart
                       sessionId={voice.sessionId}
                       onSuccess={handleOcrSuccess}
                       onFallback={() => {
@@ -1018,7 +1129,7 @@ export default function Home() {
                     </div>
                   </div>
                 </div>
-              )}
+              ) : null}
 
               {showSlideMode ? (
                 <div

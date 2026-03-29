@@ -7,8 +7,9 @@
 
 'use client';
 
-import { useCallback } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 
+import { cn } from '@/lib/cn';
 import {
   type OcrMode,
   type OcrResponse,
@@ -21,6 +22,14 @@ import {
 interface OcrCameraViewProps {
   mode: OcrMode;
   sessionId?: string;
+  /** When true, start the camera and scanning as soon as the view mounts (no idle / start button). */
+  autoStart?: boolean;
+  /** Smaller typography and preview (e.g. welcome sidecar). */
+  compact?: boolean;
+  /** Hide the in-progress skip button (e.g. welcome flow runs until max attempts). */
+  hideSkip?: boolean;
+  /** Called when getUserMedia fails (e.g. permission denied). */
+  onCameraInitFailed?: () => void;
   onSuccess: (result: OcrResponse) => void;
   onFallback: () => void;
   onSkip: () => void;
@@ -44,6 +53,10 @@ const MODE_LABELS: Record<OcrMode, string> = {
 export function OcrCameraView({
   mode,
   sessionId,
+  autoStart = false,
+  compact = false,
+  hideSkip = false,
+  onCameraInitFailed,
   onSuccess,
   onFallback,
   onSkip,
@@ -73,16 +86,44 @@ export function OcrCameraView({
     onSkip();
   }, [skip, onSkip]);
 
+  const autoStartedRef = useRef(false);
+  useEffect(() => {
+    if (!autoStart || autoStartedRef.current) {
+      return;
+    }
+    autoStartedRef.current = true;
+    void startCamera();
+  }, [autoStart, startCamera]);
+
+  const cameraErrorNotifiedRef = useRef(false);
+  useEffect(() => {
+    if (state !== 'error' || !onCameraInitFailed || cameraErrorNotifiedRef.current) {
+      return;
+    }
+    cameraErrorNotifiedRef.current = true;
+    onCameraInitFailed();
+  }, [onCameraInitFailed, state]);
+
+  const statusTitleClass = compact ? 'text-sm font-semibold' : 'text-lg font-medium';
+  const modeHintClass = compact ? 'text-xs text-gray-500' : 'text-sm text-gray-500';
+  const videoWrapClass = compact
+    ? 'relative w-full max-w-[200px] overflow-hidden rounded-md bg-black'
+    : 'relative w-full max-w-md overflow-hidden rounded-lg bg-black';
+  const scanBoxClass = compact
+    ? 'h-24 w-36 rounded-md border-2 border-white/60'
+    : 'h-48 w-64 rounded-lg border-2 border-white/60';
+  const spinnerClass = compact ? 'size-6 border-2' : 'size-8 border-4';
+
   return (
-    <div className="flex flex-col items-center gap-4">
+    <div className={cn('flex flex-col items-center', compact ? 'gap-2' : 'gap-4')}>
       {/* Status */}
       <div className="text-center">
-        <p className="text-lg font-medium">{STATE_LABELS[state]}</p>
-        <p className="text-sm text-gray-500">{MODE_LABELS[mode]}</p>
+        <p className={statusTitleClass}>{STATE_LABELS[state]}</p>
+        <p className={modeHintClass}>{MODE_LABELS[mode]}</p>
       </div>
 
       {/* Camera preview */}
-      <div className="relative w-full max-w-md overflow-hidden rounded-lg bg-black">
+      <div className={videoWrapClass}>
         <video
           ref={videoRef}
           autoPlay
@@ -94,41 +135,65 @@ export function OcrCameraView({
         {/* Scanning overlay */}
         {state === 'scanning' && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-            <div className="h-48 w-64 rounded-lg border-2 border-white/60" />
+            <div className={scanBoxClass} />
           </div>
         )}
 
         {/* Submitting indicator */}
         {state === 'submitting' && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/30">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-white/30 border-t-white" />
+            <div
+              className={cn(
+                'animate-spin rounded-full border-solid border-white/30 border-t-white',
+                spinnerClass,
+              )}
+            />
           </div>
         )}
       </div>
 
       {/* Attempt counter */}
       {(state === 'scanning' || state === 'submitting') && (
-        <div className="flex items-center gap-4 text-sm text-gray-500">
-          <span>試行 {attempts} / {maxAttempts}</span>
-          {qualityInfo && (
+        <div
+          className={cn(
+            'flex items-center text-gray-500',
+            compact ? 'flex-col gap-0.5 text-xs' : 'gap-4 text-sm',
+          )}
+        >
+          <span>
+            試行 {attempts} / {maxAttempts}
+          </span>
+          {!compact && qualityInfo ? (
             <span>
               鮮明度: {Math.round(qualityInfo.laplacianVariance)} |
               明るさ: {Math.round(qualityInfo.brightness)}
             </span>
-          )}
+          ) : null}
         </div>
       )}
 
       {/* Success result */}
       {state === 'success' && lastResult && (
-        <div className="w-full max-w-md rounded-lg bg-green-50 p-4">
+        <div
+          className={cn(
+            'w-full rounded-lg bg-green-50',
+            compact ? 'max-w-[200px] p-2' : 'max-w-md p-4',
+          )}
+        >
           {mode === 'member_card' && lastResult.member_number && (
-            <p className="text-center text-lg font-bold text-green-800">
+            <p
+              className={cn(
+                'text-center font-bold text-green-800',
+                compact ? 'text-sm' : 'text-lg',
+              )}
+            >
               会員番号: {lastResult.member_number}
             </p>
           )}
           {mode === 'handwriting' && lastResult.recognized_text && (
-            <p className="text-center text-lg text-green-800">
+            <p
+              className={cn('text-center text-green-800', compact ? 'text-sm' : 'text-lg')}
+            >
               {lastResult.recognized_text}
             </p>
           )}
@@ -140,20 +205,28 @@ export function OcrCameraView({
       )}
 
       {/* Action buttons */}
-      <div className="flex gap-3">
-        {state === 'idle' && (
+      <div className="flex flex-wrap justify-center gap-2">
+        {state === 'idle' && !autoStart && (
           <button
+            type="button"
             onClick={() => void startCamera()}
-            className="rounded-lg bg-blue-600 px-6 py-3 text-white hover:bg-blue-700"
+            className={cn(
+              'rounded-lg bg-blue-600 text-white hover:bg-blue-700',
+              compact ? 'px-3 py-2 text-xs' : 'px-6 py-3',
+            )}
           >
             {mode === 'member_card' ? '会員証読み取り開始' : '筆談読み取り開始'}
           </button>
         )}
 
-        {(state === 'scanning' || state === 'submitting') && (
+        {(state === 'scanning' || state === 'submitting') && !hideSkip && (
           <button
+            type="button"
             onClick={handleSkip}
-            className="rounded-lg border border-gray-300 px-6 py-3 text-gray-600 hover:bg-gray-50"
+            className={cn(
+              'rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50',
+              compact ? 'px-3 py-2 text-xs' : 'px-6 py-3',
+            )}
           >
             スキップ
           </button>
@@ -162,14 +235,22 @@ export function OcrCameraView({
         {state === 'fallback' && (
           <>
             <button
+              type="button"
               onClick={() => void startCamera()}
-              className="rounded-lg bg-blue-600 px-6 py-3 text-white hover:bg-blue-700"
+              className={cn(
+                'rounded-lg bg-blue-600 text-white hover:bg-blue-700',
+                compact ? 'px-3 py-2 text-xs' : 'px-6 py-3',
+              )}
             >
               再試行
             </button>
             <button
+              type="button"
               onClick={handleSkip}
-              className="rounded-lg border border-gray-300 px-6 py-3 text-gray-600 hover:bg-gray-50"
+              className={cn(
+                'rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50',
+                compact ? 'px-3 py-2 text-xs' : 'px-6 py-3',
+              )}
             >
               手動入力へ
             </button>
@@ -178,8 +259,12 @@ export function OcrCameraView({
 
         {state === 'error' && (
           <button
+            type="button"
             onClick={() => void startCamera()}
-            className="rounded-lg bg-blue-600 px-6 py-3 text-white hover:bg-blue-700"
+            className={cn(
+              'rounded-lg bg-blue-600 text-white hover:bg-blue-700',
+              compact ? 'px-3 py-2 text-xs' : 'px-6 py-3',
+            )}
           >
             再試行
           </button>

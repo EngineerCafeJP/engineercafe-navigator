@@ -16,6 +16,39 @@ from backend.llm.models import get_model_config
 
 logger = logging.getLogger(__name__)
 
+# When the vision model misuses text_recognition,
+# it sometimes passes the user prompt back as "text".
+_HANDWRITING_PROMPT_MARKERS = (
+    "手書き文字をOCRしてください",
+    "・自然な文章として復元",
+    "・読めない場合は None",
+    "・推測は禁止",
+)
+_MEMBER_CARD_PROMPT_MARKERS = (
+    "会員証画像を解析してください",
+    "・会員番号を含む文字列を正確に抽出",
+    "・検出不能なら None",
+)
+
+
+def _ocr_text_looks_like_prompt_echo(text: str, mode: str) -> bool:
+    """True if the model echoed our instruction instead of OCR output."""
+    stripped = (text or "").strip()
+    if len(stripped) < 12:
+        return False
+    if mode == "handwriting":
+        if "手書き文字をOCRしてください" in stripped:
+            return True
+        hits = sum(1 for m in _HANDWRITING_PROMPT_MARKERS if m in stripped)
+        return hits >= 2
+    if mode == "member_card":
+        if "会員証画像を解析してください" in stripped:
+            return True
+        hits = sum(1 for m in _MEMBER_CARD_PROMPT_MARKERS if m in stripped)
+        return hits >= 2
+    return False
+
+
 # =====================================================
 # Tools
 # =====================================================
@@ -110,6 +143,8 @@ class VisionAgent:
                 "・意味が通る文章に整形\n"
                 "・推測は禁止\n"
                 "・読めない場合は None\n"
+                "text_recognition ツールには、上記の指示文を書き写さず、"
+                "画像から読み取った本文だけを渡すこと。\n"
             )
 
         else:
@@ -200,11 +235,18 @@ class VisionAgent:
                 continue
 
             if msg.name == "text_recognition":
-                if msg.content and msg.content.lower() != "none":
-                    text_result["success"] = True
-                    text_result["text"] = msg.content
-                else:
+                raw = (msg.content or "").strip()
+                if not raw or raw.lower() == "none":
                     text_result["error"] = "no_text_detected"
+                elif _ocr_text_looks_like_prompt_echo(raw, mode):
+                    logger.warning(
+                        "OCR text_recognition returned prompt echo; treating as no text (mode=%s)",
+                        mode,
+                    )
+                    text_result["error"] = "no_text_detected"
+                else:
+                    text_result["success"] = True
+                    text_result["text"] = raw
 
             elif msg.name == "face_recognition":
                 face_result["success"] = True

@@ -67,6 +67,11 @@ export interface VoiceInterfaceRenderProps {
   cancelSession: () => void;
   clearConversation: () => void;
   sendMessage: (message: string) => Promise<void>;
+  /** Speak fixed text (e.g. reception greeting) without running QA. */
+  speakPreparedText: (
+    text: string,
+    metadataForPlayback?: VoiceInterfaceMetadata | null,
+  ) => Promise<void>;
   setVolume: (value: number) => void;
   setMuted: (value: boolean) => void;
   toggleLanguage: () => void;
@@ -525,6 +530,83 @@ export default function VoiceInterface({
     ],
   );
 
+  const speakPreparedText = useCallback(
+    async (rawText: string, metadataForPlayback?: VoiceInterfaceMetadata | null) => {
+      const trimmed = rawText.trim();
+      if (!trimmed) {
+        return;
+      }
+
+      cancelPendingRequest();
+      stopPlayback(false);
+      setError(null);
+      setTranscript('');
+
+      const parsedAnswer = EmotionTagParser.parseEmotionTags(trimmed);
+      const cleanAnswer = parsedAnswer.cleanText;
+
+      setResponse(cleanAnswer);
+      setMetadata(metadataForPlayback ?? null);
+
+      setIsLoading(true);
+      setLoadingMessage(LOADING_LABELS[currentLanguage].speaking);
+      voiceController.notifyProcessing();
+
+      const abortController = new AbortController();
+      requestAbortRef.current = abortController;
+
+      try {
+        const ttsResponse = await fetch('/api/voice', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            action: 'text_to_speech',
+            text: preprocessTTS(cleanAnswer, currentLanguage),
+            language: currentLanguage,
+            sessionId: sessionIdRef.current,
+          }),
+          signal: abortController.signal,
+        });
+
+        const ttsResult = await ttsResponse.json();
+        if (!ttsResponse.ok || !ttsResult.success) {
+          throw new Error(ttsResult.error || '音声の生成に失敗しました');
+        }
+
+        if (typeof ttsResult.audioResponse === 'string' && ttsResult.audioResponse.length > 0) {
+          await playAssistantAudio(ttsResult.audioResponse, metadataForPlayback ?? null);
+        } else {
+          voiceController.notifySpeaking();
+          window.setTimeout(() => {
+            voiceController.notifySpeakingComplete();
+          }, 240);
+        }
+      } catch (speakError) {
+        if (speakError instanceof DOMException && speakError.name === 'AbortError') {
+          return;
+        }
+
+        setError(formatError(speakError, currentLanguage));
+        voiceController.notifySpeakingComplete(true);
+      } finally {
+        if (requestAbortRef.current === abortController) {
+          requestAbortRef.current = null;
+        }
+        setIsLoading(false);
+        setLoadingMessage('');
+      }
+    },
+    [
+      cancelPendingRequest,
+      currentLanguage,
+      playAssistantAudio,
+      stopPlayback,
+      voiceController,
+    ],
+  );
+
   const handleRecordedAudio = useCallback(
     async (audioBlob: Blob) => {
       if (shouldDiscardNextAudioRef.current) {
@@ -768,6 +850,7 @@ export default function VoiceInterface({
       cancelSession,
       clearConversation,
       sendMessage,
+      speakPreparedText,
       setVolume,
       setMuted,
       toggleLanguage,
@@ -783,6 +866,7 @@ export default function VoiceInterface({
       metadata,
       response,
       sendMessage,
+      speakPreparedText,
       sessionState,
       setMuted,
       setVolume,

@@ -12,7 +12,7 @@ export interface DeviceDetectionEvent {
  * Not wired in the current release (screen-first).
  */
 
-/** Dispatch a custom event that ReceptionPanel listens to. */
+/** Dispatch a custom event; kiosk home (`page.tsx`) plays the welcome greeting when phase is idle. */
 export function handleDeviceDetection(event: DeviceDetectionEvent): void {
   window.dispatchEvent(new CustomEvent('device-detection', { detail: event }));
 }
