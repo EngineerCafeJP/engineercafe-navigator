@@ -785,6 +785,7 @@ export default function Home() {
                   }}
                 >
                   <button
+                    data-testid="kiosk-settings-button"
                     type="button"
                     onClick={() => setShowSettingsPanel(true)}
                     aria-label={voice.currentLanguage === 'ja' ? '設定' : 'Settings'}
@@ -901,7 +902,7 @@ export default function Home() {
                 </div>
               ) : null}
 
-              {(kioskPhase === 'idle' || kioskPhase === 'voice') && (
+              {(kioskPhase === 'idle' || kioskPhase === 'voice' || kioskPhase === 'notice') && (
                 <div
                   className="pointer-events-auto absolute inset-x-0 bottom-0 z-[25] flex justify-center pb-[max(0.75rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] pt-2"
                 >
@@ -934,7 +935,7 @@ export default function Home() {
                       return (
                         <>
                     <KioskVoiceStatusStack
-                      enabled={kioskPhase === 'voice' || kioskPhase === 'idle'}
+                      enabled={kioskPhase === 'voice' || kioskPhase === 'idle' || kioskPhase === 'notice'}
                       labels={labels}
                       transcript={voice.transcript}
                       response={voice.response}
@@ -967,6 +968,7 @@ export default function Home() {
                       </span>
                     </button>
                     <button
+                      data-testid="kiosk-voice-button"
                       type="button"
                       onPointerDown={(event) => {
                         if (!isPushToTalk) {
@@ -1066,6 +1068,7 @@ export default function Home() {
                       </span>
                     </button>
                     <button
+                      data-testid="kiosk-slides-button"
                       type="button"
                       onClick={() => {
                         markAudioUserInteraction();

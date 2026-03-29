@@ -292,8 +292,9 @@ export function KnowledgeEditor({ entry, onSave, onCancel }: KnowledgeEditorProp
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">タイトル *</label>
+        <label htmlFor="title" className="block text-sm font-medium text-gray-700 mb-2">タイトル *</label>
         <input
+          id="title"
           type="text"
           value={formData.title}
           onChange={(e) =>
@@ -308,9 +309,10 @@ export function KnowledgeEditor({ entry, onSave, onCancel }: KnowledgeEditorProp
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">カテゴリ</label>
+          <label htmlFor="category" className="block text-sm font-medium text-gray-700 mb-2">カテゴリ</label>
           <div className="space-y-2">
             <select
+              id="category"
               value={showCustomCategory ? '__custom__' : formData.category}
               onChange={(e) => {
                 if (e.target.value === '__custom__') {
@@ -353,9 +355,10 @@ export function KnowledgeEditor({ entry, onSave, onCancel }: KnowledgeEditorProp
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">サブカテゴリ</label>
+          <label htmlFor="subcategory" className="block text-sm font-medium text-gray-700 mb-2">サブカテゴリ</label>
           <div className="space-y-2">
             <select
+              id="subcategory"
               value={showCustomSubcategory ? '__custom__' : formData.subcategory}
               onChange={(e) => {
                 if (e.target.value === '__custom__') {
@@ -400,8 +403,9 @@ export function KnowledgeEditor({ entry, onSave, onCancel }: KnowledgeEditorProp
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">言語</label>
+          <label htmlFor="language" className="block text-sm font-medium text-gray-700 mb-2">言語</label>
           <select
+            id="language"
             value={formData.language}
             onChange={(e) =>
               setFormData((prev) => ({

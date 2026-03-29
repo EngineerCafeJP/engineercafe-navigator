@@ -1,7 +1,7 @@
 'use client';
 
-import { useCallback, useState } from 'react';
 import Link from 'next/link';
+import { type MouseEvent, useCallback, useState } from 'react';
 import useSWR from 'swr';
 import { Toaster, toast } from 'react-hot-toast';
 import { deleteKnowledge, getKnowledgeList } from '@/lib/api/knowledge';
@@ -34,6 +34,22 @@ export default function KnowledgeAdminPage() {
     }
   }, [mutate]);
 
+  const handleHardNavigation = useCallback((event: MouseEvent<HTMLAnchorElement>, href: string) => {
+    if (
+      event.defaultPrevented ||
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+    window.location.assign(href);
+  }, []);
+
   if (error) {
     return (
       <div className="min-h-screen bg-gray-50 p-8">
@@ -58,12 +74,16 @@ export default function KnowledgeAdminPage() {
               <div className="flex gap-3">
                 <Link
                   href="/admin/knowledge/upload"
+                  prefetch={false}
+                  onClick={(event) => handleHardNavigation(event, '/admin/knowledge/upload')}
                   className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
                 >
                   ファイルアップロード
                 </Link>
                 <Link
                   href="/admin/knowledge/new"
+                  prefetch={false}
+                  onClick={(event) => handleHardNavigation(event, '/admin/knowledge/new')}
                   className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
                 >
                   新規作成

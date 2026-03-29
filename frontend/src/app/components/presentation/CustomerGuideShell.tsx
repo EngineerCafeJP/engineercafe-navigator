@@ -1,8 +1,8 @@
 'use client';
 
+import Link from 'next/link';
 import { ArrowLeft, Languages } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { type MouseEvent, useCallback, useState } from 'react';
 
 import CharacterAvatar from '@/app/components/CharacterAvatar';
 import MarpViewer from '@/app/components/MarpViewer';
@@ -30,28 +30,41 @@ const guideCopy = {
   },
 } as const;
 
-export default function CustomerGuideShell() {
-  const router = useRouter();
-  const [language, setLanguage] = useState<'ja' | 'en'>('ja');
-  const [autoPlay, setAutoPlay] = useState(false);
+interface CustomerGuideShellProps {
+  autoPlay?: boolean;
+  language?: 'ja' | 'en';
+}
+
+export default function CustomerGuideShell({
+  autoPlay = false,
+  language = 'ja',
+}: CustomerGuideShellProps) {
   const [setViseme, setSetViseme] = useState<((viseme: string, intensity: number) => void) | null>(null);
   const [setExpression, setSetExpression] = useState<((expression: string, weight: number) => void) | null>(null);
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const nextLanguage = params.get('lang') === 'en' ? 'en' : 'ja';
-    setLanguage(nextLanguage);
-    setAutoPlay(params.get('autoplay') === '1');
-  }, []);
-
   const copy = guideCopy[language];
+  const nextLanguage = language === 'ja' ? 'en' : 'ja';
+  const nextParams = new URLSearchParams();
+  nextParams.set('lang', nextLanguage);
+  if (autoPlay) {
+    nextParams.set('autoplay', '1');
+  }
+  const languageHref = `/onboarding?${nextParams.toString()}`;
+  const handleHardNavigation = useCallback((event: MouseEvent<HTMLAnchorElement>, href: string) => {
+    if (
+      event.defaultPrevented ||
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey
+    ) {
+      return;
+    }
 
-  const handleLanguageChange = (nextLanguage: 'ja' | 'en') => {
-    setLanguage(nextLanguage);
-    const params = new URLSearchParams(window.location.search);
-    params.set('lang', nextLanguage);
-    router.replace(`/onboarding?${params.toString()}`);
-  };
+    event.preventDefault();
+    window.location.assign(href);
+  }, []);
 
   return (
     <main
@@ -66,22 +79,26 @@ export default function CustomerGuideShell() {
             <p className="mt-3 text-pretty text-sm leading-6 text-slate-600">{copy.subtitle}</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => router.push('/')}
+            <Link
+              href="/"
+              prefetch={false}
+              onClick={(event) => handleHardNavigation(event, '/')}
+              data-testid="guide-back-button"
               className="inline-flex min-h-11 items-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-900 transition-colors hover:bg-slate-50"
             >
               <ArrowLeft className="size-4" aria-hidden="true" />
               {copy.back}
-            </button>
-            <button
-              type="button"
-              onClick={() => handleLanguageChange(language === 'ja' ? 'en' : 'ja')}
+            </Link>
+            <Link
+              href={languageHref}
+              prefetch={false}
+              onClick={(event) => handleHardNavigation(event, languageHref)}
+              data-testid="guide-language-toggle"
               className="inline-flex min-h-11 items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-800"
             >
               <Languages className="size-4" aria-hidden="true" />
               {copy.toggle}
-            </button>
+            </Link>
           </div>
         </header>
 

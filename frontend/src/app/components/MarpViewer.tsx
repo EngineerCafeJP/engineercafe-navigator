@@ -140,6 +140,20 @@ export default function MarpViewer({
   const [slideViewTimes, setSlideViewTimes] = useState<Map<number, number>>(new Map());
   const [lipSyncCacheStats, setLipSyncCacheStats] = useState<any>(null);
 
+  useEffect(() => {
+    setCurrentLanguage(language);
+  }, [language]);
+
+  useEffect(() => {
+    if (!autoPlay) {
+      return;
+    }
+
+    setSlideState(1, false);
+    startPlaybackSession();
+    setIsPlaying(true);
+  }, [autoPlay]);
+
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const autoPlayTimerRef = useRef<NodeJS.Timeout | null>(null);
   const narrationScheduleTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -147,9 +161,10 @@ export default function MarpViewer({
   const narrationAbortControllerRef = useRef<AbortController | null>(null);
   const currentRequestIdRef = useRef<string>('');
   const currentAudioServiceRef = useRef<any>(null);
-  const loadSlideDataRef = useRef<(requestedLang?: string) => Promise<void>>(async () => {});
+  const loadSlideDataRef = useRef<(requestedLang?: string) => Promise<boolean>>(async () => false);
   const narrateWithRetryRef = useRef<(retries?: number) => Promise<void>>(async () => {});
   const stopAutoPlayRef = useRef<() => void>(() => {});
+  const clearPlaybackWorkRef = useRef<() => void>(() => {});
   const previousSlideRef = useRef<() => Promise<void>>(async () => {});
   const updateIframeSlideRef = useRef<(slideNumber: number, retryCount?: number) => void>(() => {});
   const lastRenderedSlideRef = useRef<number>(0);
@@ -158,12 +173,19 @@ export default function MarpViewer({
   const isPlayingRef = useRef(isPlaying);
   const presentationStartTimeRef = useRef<number | null>(presentationStartTime);
   const currentLanguageRef = useRef(currentLanguage);
+  const currentSlideRef = useRef(currentSlide);
+  const totalSlidesRef = useRef(totalSlides);
+  const playbackSessionRef = useRef(0);
+  const loadSessionRef = useRef(0);
+  const loadInitializationTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   isNarratingRef.current = isNarrating;
   isNarrationInProgressRef.current = isNarrationInProgress;
   isPlayingRef.current = isPlaying;
   presentationStartTimeRef.current = presentationStartTime;
   currentLanguageRef.current = currentLanguage;
+  currentSlideRef.current = currentSlide;
+  totalSlidesRef.current = totalSlides;
 
   // Analytics tracking
   const trackPresentationEvent = (event: string, data: any) => {
@@ -177,32 +199,97 @@ export default function MarpViewer({
     setIsNarrationInProgress(false);
   };
 
+  const setSlideState = (slideNumber: number, notify = true) => {
+    currentSlideRef.current = slideNumber;
+    setCurrentSlide(slideNumber);
+    if (notify) {
+      onSlideChange?.(slideNumber);
+    }
+  };
+
+  const startPlaybackSession = () => {
+    playbackSessionRef.current += 1;
+    isPlayingRef.current = true;
+    return playbackSessionRef.current;
+  };
+
+  const invalidatePlaybackSession = () => {
+    playbackSessionRef.current += 1;
+    isPlayingRef.current = false;
+    return playbackSessionRef.current;
+  };
+
+  const isActivePlaybackSession = (sessionId: number) =>
+    playbackSessionRef.current === sessionId && isPlayingRef.current;
+
+  const clearLoadInitializationTimer = () => {
+    if (loadInitializationTimerRef.current) {
+      clearTimeout(loadInitializationTimerRef.current);
+      loadInitializationTimerRef.current = null;
+    }
+  };
+
+  const clearPlaybackWork = useCallback(() => {
+    if (narrationAbortControllerRef.current) {
+      narrationAbortControllerRef.current.abort();
+      narrationAbortControllerRef.current = null;
+    }
+
+    if (autoPlayTimerRef.current) {
+      clearTimeout(autoPlayTimerRef.current);
+      autoPlayTimerRef.current = null;
+    }
+
+    if (narrationScheduleTimerRef.current) {
+      clearTimeout(narrationScheduleTimerRef.current);
+      narrationScheduleTimerRef.current = null;
+    }
+
+    resetNarrationFlags();
+    audioStateManager.stopAll();
+
+    if (onVisemeControl) {
+      onVisemeControl('Closed', 0);
+    }
+
+    if (onExpressionControl) {
+      onExpressionControl('neutral', 1.0);
+    }
+
+    audioCache.forEach((audioUrl) => {
+      URL.revokeObjectURL(audioUrl);
+    });
+    setAudioCache(new Map());
+  }, [audioCache, onExpressionControl, onVisemeControl]);
+
   const advancePresentation = (delayMs = SLIDE_TRANSITION_DELAY_MS) => {
+    const playbackSession = playbackSessionRef.current;
+
     const advance = () => {
       autoPlayTimerRef.current = null;
       resetNarrationFlags();
 
-      if (!isPlayingRef.current) {
+      if (!isActivePlaybackSession(playbackSession)) {
         return;
       }
 
-      if (currentSlide < totalSlides) {
-        setCurrentSlide(prev => {
-          const nextSlide = prev + 1;
-          onSlideChange?.(nextSlide);
-          return nextSlide;
-        });
+      const currentSlideNumber = currentSlideRef.current;
+      const totalSlideCount = totalSlidesRef.current;
+
+      if (currentSlideNumber < totalSlideCount) {
+        setSlideState(currentSlideNumber + 1);
         // Explicitly schedule next narration after slide transition
         // Instead of relying on useEffect re-trigger via currentSlide dependency
         narrationScheduleTimerRef.current = setTimeout(() => {
           narrationScheduleTimerRef.current = null;
-          if (isPlayingRef.current) {
+          if (isActivePlaybackSession(playbackSession)) {
             void narrateWithRetryRef.current();
           }
         }, NARRATION_SCHEDULE_DELAY_MS);
         return;
       }
 
+      invalidatePlaybackSession();
       setIsPlaying(false);
       trackPresentationEvent('presentation_completed', {
         totalDuration: presentationStartTimeRef.current ? Date.now() - presentationStartTimeRef.current : 0
@@ -219,17 +306,37 @@ export default function MarpViewer({
       clearTimeout(autoPlayTimerRef.current);
     }
 
-    autoPlayTimerRef.current = setTimeout(advance, delayMs);
+    autoPlayTimerRef.current = setTimeout(() => {
+      if (!isActivePlaybackSession(playbackSession)) {
+        autoPlayTimerRef.current = null;
+        return;
+      }
+
+      advance();
+    }, delayMs);
   };
 
   // Error recovery with retry logic
   const narrateWithRetry = async (retries = 3) => {
+    const playbackSession = playbackSessionRef.current;
+
     for (let i = 0; i < retries; i++) {
+      if (!isActivePlaybackSession(playbackSession)) {
+        return;
+      }
+
       try {
         await narrateCurrentSlide();
+        if (!isActivePlaybackSession(playbackSession)) {
+          return;
+        }
         setRetryCount(0);
         break;
       } catch (error) {
+        if (!isActivePlaybackSession(playbackSession)) {
+          return;
+        }
+
         // Narration attempt failed, retrying
         setRetryCount(i + 1);
         
@@ -246,17 +353,21 @@ export default function MarpViewer({
               : 'Narration unavailable. Continue without audio?'
           );
           
-          if (shouldContinue && isPlayingRef.current && currentSlide < totalSlides) {
+          if (
+            shouldContinue &&
+            isActivePlaybackSession(playbackSession) &&
+            currentSlideRef.current < totalSlidesRef.current
+          ) {
             setTimeout(() => {
+              if (!isActivePlaybackSession(playbackSession)) {
+                return;
+              }
+
               resetNarrationFlags();
-              setCurrentSlide(prev => {
-                const nextSlide = prev + 1;
-                onSlideChange?.(nextSlide);
-                return nextSlide;
-              });
+              setSlideState(currentSlideRef.current + 1);
               // Schedule follow-up narration for the next slide
               setTimeout(() => {
-                if (isPlayingRef.current) {
+                if (isActivePlaybackSession(playbackSession)) {
                   void narrateWithRetryRef.current();
                 }
               }, NARRATION_SCHEDULE_DELAY_MS);
@@ -319,7 +430,7 @@ export default function MarpViewer({
       // Auto-play skipped - already playing
     }
 
-    return () => stopAutoPlayRef.current();
+    return () => clearPlaybackWorkRef.current();
   }, [isPlaying, totalSlides]);
 
   // Save settings to localStorage whenever they change
@@ -345,9 +456,10 @@ export default function MarpViewer({
         }
         
         // Always reset to slide 1 before starting a new presentation
-        setCurrentSlide(1);
+        setSlideState(1, false);
         // Stop any currently playing presentation first
-        if (isPlaying) {
+        if (isPlayingRef.current) {
+          stopAutoPlayRef.current();
           setIsPlaying(false);
           setRenderedHtml('');
         }
@@ -359,8 +471,13 @@ export default function MarpViewer({
         // Force update the current language state immediately
         setCurrentLanguage(eventLanguage as 'ja' | 'en');
         
-        loadSlideDataRef.current(eventLanguage).then(() => {
+        loadSlideDataRef.current(eventLanguage).then((didLoadCurrent) => {
+          if (!didLoadCurrent) {
+            return;
+          }
+
           // Slide data loaded, starting auto-play
+          startPlaybackSession();
           setIsPlaying(true);
         }).catch((error) => {
           // Failed to load slide data
@@ -433,11 +550,17 @@ export default function MarpViewer({
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
+
+    clearLoadInitializationTimer();
     
     // Create new abort controller for this request
     abortControllerRef.current = new AbortController();
+    const loadSession = loadSessionRef.current + 1;
+    loadSessionRef.current = loadSession;
     const currentRequestId = `${requestedLang}-${Date.now()}-${Math.random()}`;
     currentRequestIdRef.current = currentRequestId;
+    const isCurrentLoad = () =>
+      loadSessionRef.current === loadSession && currentRequestIdRef.current === currentRequestId;
     
     try {
       
@@ -494,11 +617,11 @@ export default function MarpViewer({
       }
 
       // Check if this is still the current request
-      if (currentRequestIdRef.current !== currentRequestId) {
+      if (!isCurrentLoad()) {
         if (process.env.NODE_ENV !== 'production') {
           // Ignoring outdated response
         }
-        return;
+        return false;
       }
 
       // Ignore response if a newer loadSlideData was triggered in the meantime
@@ -506,9 +629,11 @@ export default function MarpViewer({
         if (result.slideData && result.slideData.slides) {
           setSlides(result.slideData.slides);
           setTotalSlides(result.slideData.slides.length);
+          totalSlidesRef.current = result.slideData.slides.length;
         } else if (result.slideCount) {
           // Fallback to slideCount if slideData is not available
           setTotalSlides(result.slideCount);
+          totalSlidesRef.current = result.slideCount;
         }
 
         if (result.narrationData) {
@@ -667,10 +792,17 @@ export default function MarpViewer({
         }
 
         // Give iframe time to render, then show first slide
-        setTimeout(() => {
-          setCurrentSlide(1);
+        loadInitializationTimerRef.current = setTimeout(() => {
+          loadInitializationTimerRef.current = null;
+          if (!isCurrentLoad()) {
+            return;
+          }
+
+          setSlideState(1, false);
           updateIframeSlideRef.current(1);
         }, 1000);
+
+        return true;
       } else {
         setError(result.error || 'Failed to load slides');
       }
@@ -680,25 +812,27 @@ export default function MarpViewer({
         if (process.env.NODE_ENV !== 'production') {
           // Request was aborted
         }
-        return;
+        return false;
       }
       
       // Check if this is still the current request before showing error
-      if (currentRequestIdRef.current !== currentRequestId) {
+      if (!isCurrentLoad()) {
         if (process.env.NODE_ENV !== 'production') {
           // Ignoring error from outdated request
         }
-        return;
+        return false;
       }
       
       // Error loading slides
       setError('Error loading slides');
     } finally {
       // Only clear loading if this is still the current request
-      if (currentRequestIdRef.current === currentRequestId) {
+      if (isCurrentLoad()) {
         setIsLoading(false);
       }
     }
+
+    return false;
   }, [slideFile]);
 
 
@@ -714,15 +848,20 @@ export default function MarpViewer({
     setIsNarrating(true);
     
     try {
+      const playbackSession = playbackSessionRef.current;
+      const slideNumberAtStart = currentSlideRef.current;
+
       // Create new AbortController for this narration
       narrationAbortControllerRef.current = new AbortController();
 
       const slideNarration =
-        narrationData?.slides[currentSlide - 1]?.narration?.auto?.trim() ?? '';
+        narrationData?.slides[slideNumberAtStart - 1]?.narration?.auto?.trim() ?? '';
 
       // If the current slide has no auto narration, proceed without audio.
       if (!slideNarration) {
-        advancePresentation(500);
+        if (isActivePlaybackSession(playbackSession)) {
+          advancePresentation(500);
+        }
         return;
       }
 
@@ -751,9 +890,27 @@ export default function MarpViewer({
         throw new Error(result.error || 'TTS response missing audioResponse');
       }
 
+      // Manual navigation may have already moved the viewer to a different slide.
+      if (
+        !isActivePlaybackSession(playbackSession) ||
+        currentSlideRef.current !== slideNumberAtStart
+      ) {
+        resetNarrationFlags();
+        return;
+      }
+
       try {
         // Wait for audio playback completion before advancing.
         await playAudioWithLipSync(result.audioResponse);
+
+        if (
+          !isActivePlaybackSession(playbackSession) ||
+          currentSlideRef.current !== slideNumberAtStart
+        ) {
+          resetNarrationFlags();
+          return;
+        }
+
         advancePresentation(500);
       } catch (error: any) {
         resetNarrationFlags();
@@ -771,7 +928,7 @@ export default function MarpViewer({
           return;
         }
 
-        if (isPlayingRef.current) {
+        if (isActivePlaybackSession(playbackSession)) {
           advancePresentation(1000);
         }
       }
@@ -851,38 +1008,8 @@ export default function MarpViewer({
 
 
   const stopAutoPlay = () => {
-    
-    // Abort any pending narration API calls
-    if (narrationAbortControllerRef.current) {
-      narrationAbortControllerRef.current.abort();
-      narrationAbortControllerRef.current = null;
-    }
-    
-    if (autoPlayTimerRef.current) {
-      clearTimeout(autoPlayTimerRef.current);
-      autoPlayTimerRef.current = null;
-    }
-    if (narrationScheduleTimerRef.current) {
-      clearTimeout(narrationScheduleTimerRef.current);
-      narrationScheduleTimerRef.current = null;
-    }
-    resetNarrationFlags();
-    audioStateManager.stopAll();
-    
-    // Reset viseme to closed mouth when stopping
-    if (onVisemeControl) {
-      onVisemeControl('Closed', 0);
-    }
-    
-    // Reset to neutral expression when stopping presentation
-    if (onExpressionControl) {
-      onExpressionControl('neutral', 1.0);
-    }
-    
-    audioCache.forEach((audioUrl) => {
-      URL.revokeObjectURL(audioUrl);
-    });
-    setAudioCache(new Map());
+    invalidatePlaybackSession();
+    clearPlaybackWork();
   };
 
   const handleSlideNavigation = async (action: string, targetSlide?: number) => {
@@ -918,9 +1045,8 @@ export default function MarpViewer({
 
       if (result.success && result.slideNumber) {
         // Only update if we got a valid slide number
-        if (result.slideNumber !== currentSlide) {
-          setCurrentSlide(result.slideNumber);
-          onSlideChange?.(result.slideNumber);
+        if (result.slideNumber !== currentSlideRef.current) {
+          setSlideState(result.slideNumber);
         }
 
         // Play narration audio if available
@@ -940,16 +1066,19 @@ export default function MarpViewer({
 
   const previousSlide = async () => {
     if (currentSlide > 1) {
+      const newSlide = currentSlide - 1;
+      const wasPlaying = isPlayingRef.current;
+
+      // Manual navigation should always cancel any pending auto-advance first.
+      stopAutoPlay();
+
       // Stop current narration when manually navigating
-      if (isPlaying) {
+      if (wasPlaying) {
         setIsPlaying(false); // Set this first to prevent new narrations
-        stopAutoPlay();
         onPresentationComplete?.('stopped');
       }
-      
-      const newSlide = currentSlide - 1;
-      setCurrentSlide(newSlide);
-      onSlideChange?.(newSlide);
+
+      setSlideState(newSlide);
       // Don't await to avoid blocking UI
       handleSlideNavigation('previous', newSlide);
     }
@@ -957,15 +1086,16 @@ export default function MarpViewer({
 
   const gotoSlide = async (slideNumber: number) => {
     if (slideNumber >= 1 && slideNumber <= totalSlides) {
+      const wasPlaying = isPlayingRef.current;
+
       // Stop current narration when manually jumping to a slide
-      if (isPlaying) {
+      if (wasPlaying) {
         stopAutoPlay();
         setIsPlaying(false);
         onPresentationComplete?.('stopped');
       }
-      
-      setCurrentSlide(slideNumber);
-      onSlideChange?.(slideNumber);
+
+      setSlideState(slideNumber);
       // Don't await to avoid blocking UI
       handleSlideNavigation('goto', slideNumber);
     }
@@ -1004,6 +1134,7 @@ export default function MarpViewer({
       // Force initialize to mark this as a user interaction (button click)
       await manager.forceInitialize();
       
+      startPlaybackSession();
       setIsPlaying(true);
     } catch (error: any) {
       console.error('Audio initialization failed:', error);
@@ -1025,11 +1156,13 @@ export default function MarpViewer({
       }
       
       setShowAudioPermissionPrompt(false);
+      startPlaybackSession();
       setIsPlaying(true);
     } catch (error) {
       console.error('[MarpViewer] Failed to initialize audio context:', error);
       // Continue anyway - some audio might still work
       setShowAudioPermissionPrompt(false);
+      startPlaybackSession();
       setIsPlaying(true);
     }
   };
@@ -1174,6 +1307,7 @@ export default function MarpViewer({
   loadSlideDataRef.current = loadSlideData;
   narrateWithRetryRef.current = narrateWithRetry;
   stopAutoPlayRef.current = stopAutoPlay;
+  clearPlaybackWorkRef.current = clearPlaybackWork;
   previousSlideRef.current = previousSlide;
   updateIframeSlideRef.current = updateIframeSlide;
 
@@ -1235,8 +1369,8 @@ export default function MarpViewer({
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-center">
+      <div data-testid="marp-viewer" className="flex h-full items-center justify-center">
+        <div data-testid="marp-viewer-loading" className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
           <p className="text-gray-600">
             {currentLanguage === 'ja' ? 'スライドを読み込んでいます...' : 'Loading slides...'}
@@ -1248,8 +1382,8 @@ export default function MarpViewer({
 
   if (error) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-center">
+      <div data-testid="marp-viewer" className="flex h-full items-center justify-center">
+        <div data-testid="marp-viewer-error" className="text-center">
           <p className="text-red-600 mb-4">{error}</p>
           <button
             onClick={() => loadSlideData(currentLanguage)}
@@ -1318,6 +1452,7 @@ export default function MarpViewer({
 
           {/* Reset */}
           <button
+            data-testid="marp-reset-button"
             onClick={() => gotoSlide(1)}
             className="p-2 rounded bg-gray-500 text-white hover:bg-gray-600 transition-colors"
             title={currentLanguage === 'ja' ? '最初から' : 'Start Over'}
@@ -1433,7 +1568,8 @@ export default function MarpViewer({
                     
                     
                     // Only update if count is reasonable (between 1 and 100)
-                    if (slideCount > 0 && slideCount <= 100 && slideCount !== totalSlides) {
+                    if (slideCount > 0 && slideCount <= 100 && slideCount !== totalSlidesRef.current) {
+                      totalSlidesRef.current = slideCount;
                       setTotalSlides(slideCount);
                     }
                     
