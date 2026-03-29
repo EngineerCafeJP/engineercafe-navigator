@@ -7,6 +7,7 @@ node while also remaining directly testable in isolation.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from typing import TYPE_CHECKING, Annotated, Any, Awaitable, Callable, Optional
@@ -30,6 +31,7 @@ from backend.utils.reception_templates import (
 logger = logging.getLogger(__name__)
 _DOMAIN_SERVICE = ReceptionDomainService()
 _RECEPTION_GRAPH = None
+_RECEPTION_LOCK = asyncio.Lock()
 
 if TYPE_CHECKING:
     from backend.workflows.main_workflow import WorkflowStateDict
@@ -329,28 +331,32 @@ async def get_reception_workflow() -> StateGraph:
     if _RECEPTION_GRAPH is not None:
         return _RECEPTION_GRAPH
 
-    workflow = StateGraph(ReceptionState)
-    workflow.add_node("greet_visitor", greet_visitor)
-    workflow.add_node("hear_purpose", hear_purpose)
-    workflow.add_node("classify_purpose", classify_purpose)
-    workflow.add_node("route_to_agent", route_to_agent)
-    workflow.add_conditional_edges(
-        START,
-        _entry_node_for_stage,
-        {
-            "greet_visitor": "greet_visitor",
-            "hear_purpose": "hear_purpose",
-            "classify_purpose": "classify_purpose",
-            "route_to_agent": "route_to_agent",
-            "__end__": END,
-        },
-    )
-    workflow.add_edge("greet_visitor", END)
-    workflow.add_edge("hear_purpose", END)
-    workflow.add_edge("classify_purpose", END)
-    workflow.add_edge("route_to_agent", END)
-    _RECEPTION_GRAPH = workflow.compile()
-    return _RECEPTION_GRAPH
+    async with _RECEPTION_LOCK:
+        if _RECEPTION_GRAPH is not None:
+            return _RECEPTION_GRAPH
+
+        workflow = StateGraph(ReceptionState)
+        workflow.add_node("greet_visitor", greet_visitor)
+        workflow.add_node("hear_purpose", hear_purpose)
+        workflow.add_node("classify_purpose", classify_purpose)
+        workflow.add_node("route_to_agent", route_to_agent)
+        workflow.add_conditional_edges(
+            START,
+            _entry_node_for_stage,
+            {
+                "greet_visitor": "greet_visitor",
+                "hear_purpose": "hear_purpose",
+                "classify_purpose": "classify_purpose",
+                "route_to_agent": "route_to_agent",
+                "__end__": END,
+            },
+        )
+        workflow.add_edge("greet_visitor", END)
+        workflow.add_edge("hear_purpose", END)
+        workflow.add_edge("classify_purpose", END)
+        workflow.add_edge("route_to_agent", END)
+        _RECEPTION_GRAPH = workflow.compile()
+        return _RECEPTION_GRAPH
 
 
 # =============================================================================
@@ -438,8 +444,6 @@ def reception_state_to_workflow_result(
         metadata["purpose"] = purpose
     if target_agent:
         metadata["reception_target_agent"] = target_agent
-
-    if target_agent:
         category = purpose.get("category", "other")
         request_type = _PURPOSE_REQUEST_TYPE_MAP.get(category, "general")
         return ReceptionSubgraphResult(
