@@ -1,6 +1,6 @@
 {
-  "version": "1.0.0",
-  "description": "RAGAS評価用Ground Truthデータセット - seed_knowledge.pyの60エントリから生成",
+  "version": "1.1.0",
+  "description": "RAGAS評価用Ground Truthデータセット（多言語対応） - seed_knowledge.pyの60エントリ + 多言語拡張 (en/zh/ko)",
   "created_at": "2026-02-15",
   "source": "backend/scripts/seed_knowledge.py + answer_quality.json",
   "test_cases": [
@@ -1015,6 +1015,336 @@
       "ground_truth": "Earthquake: take cover under desk. Evacuate via 1F main entrance once shaking stops. Follow staff.",
       "language": "en",
       "category": "emergency"
+    },
+    {
+      "id": "gt-088",
+      "question": "What are the opening hours of Engineer Cafe?",
+      "answer": "Engineer Cafe is open from 9:00 to 22:00. The consultation desk operates from 13:00 to 21:00.",
+      "contexts": [
+        "エンジニアカフェの利用時間は9:00〜22:00です。コミュニティマネージャーによる相談受付は13:00〜21:00です。"
+      ],
+      "ground_truth": "Opening hours: 9:00-22:00. Consultation desk: 13:00-21:00.",
+      "language": "en",
+      "category": "hours"
+    },
+    {
+      "id": "gt-089",
+      "question": "How much does it cost to use the coworking space?",
+      "answer": "Engineer Cafe is completely free to use. There is no membership fee or usage charge.",
+      "contexts": [
+        "エンジニアカフェの利用は完全無料です。会員費や利用料はかかりません。"
+      ],
+      "ground_truth": "Engineer Cafe is free. No membership fees or usage charges.",
+      "language": "en",
+      "category": "pricing"
+    },
+    {
+      "id": "gt-090",
+      "question": "Is there free WiFi available?",
+      "answer": "Yes, free WiFi is available throughout Engineer Cafe. The SSID is Fukuoka_City_Wi-Fi.",
+      "contexts": [
+        "エンジニアカフェでは無料Wi-Fiを提供しています。SSID: Fukuoka_City_Wi-Fi。各フロアに電源コンセントも設置されています。"
+      ],
+      "ground_truth": "Free WiFi available. SSID: Fukuoka_City_Wi-Fi.",
+      "language": "en",
+      "category": "facility-info"
+    },
+    {
+      "id": "gt-091",
+      "question": "How do I book a meeting room?",
+      "answer": "Meeting rooms can be booked at the 1F reception desk. Advance reservations are recommended for busy periods.",
+      "contexts": [
+        "会議室の利用は1F受付で予約できます。混雑時は事前予約をお勧めします。イベントスペースは公式サイトから申し込み可能です。"
+      ],
+      "ground_truth": "Book at 1F reception desk. Advance reservation recommended for busy times.",
+      "language": "en",
+      "category": "facility-info"
+    },
+    {
+      "id": "gt-092",
+      "question": "What events are happening this week?",
+      "answer": "Please check the Engineer Cafe event calendar at https://engineercafe.jp/ja/events for the latest schedule.",
+      "contexts": [
+        "エンジニアカフェでは定期的に勉強会・もくもく会・ハッカソンなどが開催されています。最新のイベント情報は公式サイト https://engineercafe.jp/ja/events をご確認ください。"
+      ],
+      "ground_truth": "Check https://engineercafe.jp/ja/events for the latest event schedule.",
+      "language": "en",
+      "category": "event"
+    },
+    {
+      "id": "gt-093",
+      "question": "Where is Engineer Cafe located?",
+      "answer": "Engineer Cafe is located in the Red Brick Culture Building (Akarenga Bunka Kan) at 1-28 Tenjin, Chuo-ku, Fukuoka City.",
+      "contexts": [
+        "エンジニアカフェは福岡市中央区天神1-28の赤煉瓦文化館内にあります。天神駅から徒歩5分です。"
+      ],
+      "ground_truth": "Red Brick Culture Building, 1-28 Tenjin, Chuo-ku, Fukuoka. 5 min walk from Tenjin Station.",
+      "language": "en",
+      "category": "access"
+    },
+    {
+      "id": "gt-094",
+      "question": "Can I use the space for a team meeting?",
+      "answer": "Yes, Engineer Cafe has meeting rooms on the 1st floor and event spaces that can be used for team meetings.",
+      "contexts": [
+        "エンジニアカフェには1階に会議室があり、チームミーティングにも利用できます。また、イベントスペースも予約可能です。"
+      ],
+      "ground_truth": "Yes, 1F meeting rooms and event spaces are available for team meetings.",
+      "language": "en",
+      "category": "facility-info"
+    },
+    {
+      "id": "gt-095",
+      "question": "What floor is the cafe on?",
+      "answer": "Engineer Cafe occupies the 1st floor and basement (B1F) of the Red Brick Culture Building.",
+      "contexts": [
+        "エンジニアカフェは赤煉瓦文化館の1階と地下1階にあります。1階はメインの作業スペースと受付、B1Fにはイベントスペースがあります。"
+      ],
+      "ground_truth": "1st floor (main workspace + reception) and B1F (event space).",
+      "language": "en",
+      "category": "facility-info"
+    },
+    {
+      "id": "gt-096",
+      "question": "Is there a printer available?",
+      "answer": "Yes, a printer is available at Engineer Cafe. You can use it at the 1F workspace area.",
+      "contexts": [
+        "エンジニアカフェにはプリンターが設置されており、1F作業スペースで利用可能です。"
+      ],
+      "ground_truth": "Printer available at the 1F workspace area.",
+      "language": "en",
+      "category": "facility-info"
+    },
+    {
+      "id": "gt-097",
+      "question": "How do I become a member?",
+      "answer": "No membership is required. Engineer Cafe is open to everyone free of charge. Just visit and sign in at reception.",
+      "contexts": [
+        "エンジニアカフェは会員制ではありません。どなたでも無料でご利用いただけます。来館時に受付でサインインしてください。"
+      ],
+      "ground_truth": "No membership needed. Free and open to all. Sign in at reception on arrival.",
+      "language": "en",
+      "category": "general"
+    },
+    {
+      "id": "gt-100",
+      "question": "工程师咖啡的营业时间是什么？",
+      "answer": "工程师咖啡的营业时间为9:00至22:00。咨询台服务时间为13:00至21:00。",
+      "contexts": [
+        "エンジニアカフェの利用時間は9:00〜22:00です。コミュニティマネージャーによる相談受付は13:00〜21:00です。"
+      ],
+      "ground_truth": "营业时间：9:00-22:00。咨询台：13:00-21:00。",
+      "language": "zh",
+      "category": "hours"
+    },
+    {
+      "id": "gt-101",
+      "question": "使用共享办公空间需要多少钱？",
+      "answer": "工程师咖啡完全免费使用。没有会员费或使用费。",
+      "contexts": [
+        "エンジニアカフェの利用は完全無料です。会員費や利用料はかかりません。"
+      ],
+      "ground_truth": "完全免费。无会员费和使用费。",
+      "language": "zh",
+      "category": "pricing"
+    },
+    {
+      "id": "gt-102",
+      "question": "有免费WiFi吗？",
+      "answer": "有的，工程师咖啡全场提供免费WiFi。SSID是Fukuoka_City_Wi-Fi。",
+      "contexts": [
+        "エンジニアカフェでは無料Wi-Fiを提供しています。SSID: Fukuoka_City_Wi-Fi。各フロアに電源コンセントも設置されています。"
+      ],
+      "ground_truth": "提供免费WiFi。SSID: Fukuoka_City_Wi-Fi。",
+      "language": "zh",
+      "category": "facility-info"
+    },
+    {
+      "id": "gt-103",
+      "question": "怎么预约会议室？",
+      "answer": "会议室可以在1楼接待处预约。繁忙时段建议提前预约。",
+      "contexts": [
+        "会議室の利用は1F受付で予約できます。混雑時は事前予約をお勧めします。イベントスペースは公式サイトから申し込み可能です。"
+      ],
+      "ground_truth": "在1楼接待处预约。繁忙时段建议提前预约。",
+      "language": "zh",
+      "category": "facility-info"
+    },
+    {
+      "id": "gt-104",
+      "question": "这周有什么活动？",
+      "answer": "请查看工程师咖啡的活动日历 https://engineercafe.jp/ja/events 获取最新日程。",
+      "contexts": [
+        "エンジニアカフェでは定期的に勉強会・もくもく会・ハッカソンなどが開催されています。最新のイベント情報は公式サイト https://engineercafe.jp/ja/events をご確認ください。"
+      ],
+      "ground_truth": "请查看 https://engineercafe.jp/ja/events 获取最新活动日程。",
+      "language": "zh",
+      "category": "event"
+    },
+    {
+      "id": "gt-105",
+      "question": "工程师咖啡在哪里？",
+      "answer": "工程师咖啡位于福冈市中央区天神1-28的红砖文化馆内。从天神站步行5分钟。",
+      "contexts": [
+        "エンジニアカフェは福岡市中央区天神1-28の赤煉瓦文化館内にあります。天神駅から徒歩5分です。"
+      ],
+      "ground_truth": "红砖文化馆，福冈市中央区天神1-28。天神站步行5分钟。",
+      "language": "zh",
+      "category": "access"
+    },
+    {
+      "id": "gt-106",
+      "question": "可以自己带食物吗？",
+      "answer": "可以带不含酒精的饮品。馆内禁止饮食（饮品除外）。",
+      "contexts": [
+        "エンジニアカフェ内での飲食は禁止です（アルコールを含まない飲料の持ち込みは可）。"
+      ],
+      "ground_truth": "可以带不含酒精的饮品。禁止其他饮食。",
+      "language": "zh",
+      "category": "policy"
+    },
+    {
+      "id": "gt-107",
+      "question": "有没有打印机可以用？",
+      "answer": "有的，1楼工作区域有打印机可供使用。",
+      "contexts": [
+        "エンジニアカフェにはプリンターが設置されており、1F作業スペースで利用可能です。"
+      ],
+      "ground_truth": "1楼工作区有打印机可用。",
+      "language": "zh",
+      "category": "facility-info"
+    },
+    {
+      "id": "gt-108",
+      "question": "工程师咖啡是什么？",
+      "answer": "工程师咖啡是福冈市「工程师友好城市福冈」项目的核心设施，是一个免费的共享办公和交流空间。",
+      "contexts": [
+        "エンジニアカフェ（Engineer Cafe – Hacker Space Fukuoka –）は、福岡市の事業「エンジニアフレンドリーシティ福岡」の中核施設として2019年8月に開設されたエンジニアのための無料コワーキング・交流スペースです。"
+      ],
+      "ground_truth": "福冈市「工程师友好城市福冈」核心设施。2019年8月开设的免费共享办公·交流空间。",
+      "language": "zh",
+      "category": "general"
+    },
+    {
+      "id": "gt-109",
+      "question": "可以在里面吸烟吗？",
+      "answer": "工程师咖啡内及赤煉瓦文化馆内全面禁烟。",
+      "contexts": [
+        "エンジニアカフェ内および赤煉瓦文化館内は全面禁煙です。"
+      ],
+      "ground_truth": "全面禁烟。赤煉瓦文化馆内禁止吸烟。",
+      "language": "zh",
+      "category": "smoking"
+    },
+    {
+      "id": "gt-110",
+      "question": "엔지니어 카페의 영업시간은 어떻게 되나요?",
+      "answer": "엔지니어 카페의 이용 시간은 9:00부터 22:00까지입니다. 상담 접수는 13:00부터 21:00까지입니다.",
+      "contexts": [
+        "エンジニアカフェの利用時間は9:00〜22:00です。コミュニティマネージャーによる相談受付は13:00〜21:00です。"
+      ],
+      "ground_truth": "이용 시간: 9:00-22:00. 상담 접수: 13:00-21:00.",
+      "language": "ko",
+      "category": "hours"
+    },
+    {
+      "id": "gt-111",
+      "question": "코워킹 스페이스 이용 요금은 얼마인가요?",
+      "answer": "엔지니어 카페는 완전 무료로 이용할 수 있습니다. 회원비나 이용료는 없습니다.",
+      "contexts": [
+        "エンジニアカフェの利用は完全無料です。会員費や利用料はかかりません。"
+      ],
+      "ground_truth": "완전 무료. 회원비·이용료 없음.",
+      "language": "ko",
+      "category": "pricing"
+    },
+    {
+      "id": "gt-112",
+      "question": "무료 와이파이가 있나요?",
+      "answer": "네, 엔지니어 카페 전체에서 무료 WiFi를 사용할 수 있습니다. SSID는 Fukuoka_City_Wi-Fi입니다.",
+      "contexts": [
+        "エンジニアカフェでは無料Wi-Fiを提供しています。SSID: Fukuoka_City_Wi-Fi。各フロアに電源コンセントも設置されています。"
+      ],
+      "ground_truth": "무료 WiFi 제공. SSID: Fukuoka_City_Wi-Fi.",
+      "language": "ko",
+      "category": "facility-info"
+    },
+    {
+      "id": "gt-113",
+      "question": "회의실 예약은 어떻게 하나요?",
+      "answer": "회의실은 1층 안내 데스크에서 예약할 수 있습니다. 혼잡 시에는 사전 예약을 권장합니다.",
+      "contexts": [
+        "会議室の利用は1F受付で予約できます。混雑時は事前予約をお勧めします。イベントスペースは公式サイトから申し込み可能です。"
+      ],
+      "ground_truth": "1층 안내 데스크에서 예약. 혼잡 시 사전 예약 권장.",
+      "language": "ko",
+      "category": "facility-info"
+    },
+    {
+      "id": "gt-114",
+      "question": "이번 주에 어떤 이벤트가 있나요?",
+      "answer": "엔지니어 카페 이벤트 캘린더 https://engineercafe.jp/ja/events 에서 최신 일정을 확인하세요.",
+      "contexts": [
+        "エンジニアカフェでは定期的に勉強会・もくもく会・ハッカソンなどが開催されています。最新のイベント情報は公式サイト https://engineercafe.jp/ja/events をご確認ください。"
+      ],
+      "ground_truth": "https://engineercafe.jp/ja/events 에서 최신 이벤트 일정 확인.",
+      "language": "ko",
+      "category": "event"
+    },
+    {
+      "id": "gt-115",
+      "question": "엔지니어 카페는 어디에 있나요?",
+      "answer": "엔지니어 카페는 후쿠오카시 주오구 텐진 1-28 아카렌가 문화관 내에 있습니다. 텐진역에서 도보 5분입니다.",
+      "contexts": [
+        "エンジニアカフェは福岡市中央区天神1-28の赤煉瓦文化館内にあります。天神駅から徒歩5分です。"
+      ],
+      "ground_truth": "아카렌가 문화관, 후쿠오카시 주오구 텐진 1-28. 텐진역 도보 5분.",
+      "language": "ko",
+      "category": "access"
+    },
+    {
+      "id": "gt-116",
+      "question": "엔지니어 카페란 무엇인가요?",
+      "answer": "엔지니어 카페는 후쿠오카시의 '엔지니어 프렌들리 시티 후쿠오카' 사업의 핵심 시설로, 무료 코워킹·교류 공간입니다.",
+      "contexts": [
+        "エンジニアカフェ（Engineer Cafe – Hacker Space Fukuoka –）は、福岡市の事業「エンジニアフレンドリーシティ福岡」の中核施設として2019年8月に開設されたエンジニアのための無料コワーキング・交流スペースです。"
+      ],
+      "ground_truth": "후쿠오카시 '엔지니어 프렌들리 시티 후쿠오카' 핵심 시설. 2019년 8월 개설 무료 코워킹·교류 공간.",
+      "language": "ko",
+      "category": "general"
+    },
+    {
+      "id": "gt-117",
+      "question": "음식을 가져갈 수 있나요?",
+      "answer": "알코올이 포함되지 않은 음료는 반입 가능합니다. 관내 음식 섭취는 금지되어 있습니다.",
+      "contexts": [
+        "エンジニアカフェ内での飲食は禁止です（アルコールを含まない飲料の持ち込みは可）。"
+      ],
+      "ground_truth": "비알코올 음료 반입 가능. 음식 섭취 금지.",
+      "language": "ko",
+      "category": "policy"
+    },
+    {
+      "id": "gt-118",
+      "question": "프린터를 사용할 수 있나요?",
+      "answer": "네, 1층 작업 공간에 프린터가 있습니다.",
+      "contexts": [
+        "エンジニアカフェにはプリンターが設置されており、1F作業スペースで利用可能です。"
+      ],
+      "ground_truth": "1층 작업 공간에 프린터 사용 가능.",
+      "language": "ko",
+      "category": "facility-info"
+    },
+    {
+      "id": "gt-119",
+      "question": "흡연이 가능한가요?",
+      "answer": "엔지니어 카페 및 아카렌가 문화관 내에서는 전면 금연입니다.",
+      "contexts": [
+        "エンジニアカフェ内および赤煉瓦文化館内は全面禁煙です。"
+      ],
+      "ground_truth": "전면 금연. 아카렌가 문화관 내 흡연 금지.",
+      "language": "ko",
+      "category": "smoking"
     }
   ]
 }

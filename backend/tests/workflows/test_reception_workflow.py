@@ -305,7 +305,7 @@ class TestClassifyPurposeNode:
 
     @pytest.mark.asyncio
     async def test_classify_purpose_no_human_message_defaults_other(self):
-        """When no human message is present, defaults to 'other' category."""
+        """When no human message is present, stay in purpose_hearing and re-prompt."""
         from backend.workflows.reception_workflow import classify_purpose
 
         state = _make_initial_state(language="ja")
@@ -314,12 +314,13 @@ class TestClassifyPurposeNode:
 
         result = await classify_purpose(state)
 
-        assert result["stage"] == "routing"
+        assert result["stage"] == "purpose_hearing"
         assert result["purpose"]["category"] == "other"
+        assert result["response"]
 
     @pytest.mark.asyncio
     async def test_classify_purpose_classification_error_handled(self):
-        """Classification errors fall back to 'other' category gracefully."""
+        """Classification errors fall back to 'other' and re-prompt gracefully."""
         from backend.workflows.reception_workflow import classify_purpose
 
         state = _make_initial_state(language="ja")
@@ -332,15 +333,9 @@ class TestClassifyPurposeNode:
         ):
             result = await classify_purpose(state)
 
-        assert result["stage"] == "routing"
-        # Should gracefully fall back to some category
-        assert result["purpose"]["category"] in {
-            "facility_use",
-            "event_participation",
-            "tour",
-            "consultation",
-            "other",
-        }
+        assert result["stage"] == "purpose_hearing"
+        assert result["purpose"]["category"] == "other"
+        assert result["response"]
 
 
 # =============================================================================
@@ -422,7 +417,7 @@ class TestRouteToAgentNode:
 
     @pytest.mark.asyncio
     async def test_route_generates_followup_response(self):
-        """route_to_agent emits a follow-up response message."""
+        """route_to_agent emits the downstream target agent."""
         from backend.workflows.reception_workflow import route_to_agent
 
         state = _make_initial_state(language="ja")
@@ -430,9 +425,8 @@ class TestRouteToAgentNode:
 
         result = await route_to_agent(state)
 
-        assert result["response"]
-        assert len(result["messages"]) == 1
-        assert isinstance(result["messages"][0], AIMessage)
+        assert result["stage"] == "completed"
+        assert result["target_agent"] == "facility"
 
     @pytest.mark.asyncio
     async def test_route_preserves_existing_purpose_fields(self):
@@ -460,16 +454,14 @@ class TestRouteToAgentNode:
 
 
 class TestReceptionWorkflowEndToEnd:
-    """Full end-to-end tests running the compiled graph."""
+    """Turn-by-turn tests running the compiled reception subgraph."""
 
     @pytest.mark.asyncio
-    async def test_full_flow_new_visitor(self):
-        """New visitor completes the full reception flow from greeting to routing."""
+    async def test_initiated_stage_advances_to_greeting(self):
+        """An initiated session returns a greeting and remains in greeting stage."""
         from backend.workflows.reception_workflow import get_reception_workflow, make_initial_state
 
         state = make_initial_state(session_id=_make_session_id(), language="ja")
-        # Add a human message simulating the visitor's purpose response
-        state["messages"] = [HumanMessage(content="作業したいです。コーディングしたい")]
 
         with patch(
             "backend.workflows.reception_workflow.VisitorIdentificationService",
@@ -478,21 +470,17 @@ class TestReceptionWorkflowEndToEnd:
             graph = await get_reception_workflow()
             result = await graph.ainvoke(state)
 
-        assert result["stage"] == "completed"
+        assert result["stage"] == "greeting"
         assert result["greeting"] is not None
-        assert result["purpose"] is not None
-        assert result["purpose"]["category"] == "facility_use"
-        assert result["purpose"]["target_agent"] == "facility"
+        assert result["response"] == result["greeting"]
+        assert result["target_agent"] is None
 
     @pytest.mark.asyncio
-    async def test_full_flow_returning_visitor_personalized(self):
+    async def test_initiated_stage_returning_visitor_personalized(self):
         """Returning visitor with a name receives personalized greeting."""
         from backend.workflows.reception_workflow import get_reception_workflow, make_initial_state
 
         state = make_initial_state(session_id=_make_session_id(), language="ja")
-        state["messages"] = [
-            HumanMessage(content="イベントに参加したい。勉強会の申し込みをしました"),
-        ]
 
         with patch(
             "backend.workflows.reception_workflow.VisitorIdentificationService",
@@ -503,42 +491,67 @@ class TestReceptionWorkflowEndToEnd:
             graph = await get_reception_workflow()
             result = await graph.ainvoke(state)
 
-        assert result["stage"] == "completed"
+        assert result["stage"] == "greeting"
         assert "鈴木花子" in result["greeting"]
-        assert result["purpose"]["category"] == "event_participation"
-        assert result["purpose"]["target_agent"] == "event"
 
     @pytest.mark.asyncio
-    async def test_full_flow_with_mocked_llm_classification(self):
-        """End-to-end flow uses mocked LLM for purpose classification."""
+    async def test_greeting_stage_advances_to_purpose_hearing(self):
+        """A greeting-stage session asks for the visitor's purpose."""
         from backend.workflows.reception_workflow import get_reception_workflow, make_initial_state
 
         state = make_initial_state(session_id=_make_session_id(), language="ja")
+        state["stage"] = "greeting"
+
+        graph = await get_reception_workflow()
+        result = await graph.ainvoke(state)
+
+        assert result["stage"] == "purpose_hearing"
+        assert result["response"]
+        assert result["visitor_identity"] == {"visitor_type": "new"}
+
+    @pytest.mark.asyncio
+    async def test_purpose_hearing_stage_advances_to_routing(self):
+        """Purpose hearing classifies the user message and moves to routing."""
+        from backend.workflows.reception_workflow import get_reception_workflow, make_initial_state
+
+        state = make_initial_state(session_id=_make_session_id(), language="ja")
+        state["stage"] = "purpose_hearing"
         state["messages"] = [HumanMessage(content="ちょっと施設を見学させてください")]
 
         with patch(
-            "backend.workflows.reception_workflow.VisitorIdentificationService",
-            return_value=_mock_identification_service_new_visitor(),
+            "backend.utils.purpose_classifier.classify_purpose",
+            new_callable=AsyncMock,
+            return_value=("tour", "施設見学希望", 0.88),
         ):
-            with patch(
-                "backend.utils.purpose_classifier.classify_purpose",
-                new_callable=AsyncMock,
-                return_value=("tour", "施設見学希望", 0.88),
-            ):
-                graph = await get_reception_workflow()
-                result = await graph.ainvoke(state)
+            graph = await get_reception_workflow()
+            result = await graph.ainvoke(state)
 
-        assert result["stage"] == "completed"
+        assert result["stage"] == "routing"
         assert result["purpose"]["category"] == "tour"
-        assert result["purpose"]["target_agent"] == "slide"
+        assert result["target_agent"] is None
 
     @pytest.mark.asyncio
-    async def test_full_flow_english(self):
-        """Full flow works correctly for English language session."""
+    async def test_routing_stage_completes_and_returns_target_agent(self):
+        """Routing stage completes reception and returns a downstream agent."""
+        from backend.workflows.reception_workflow import get_reception_workflow, make_initial_state
+
+        state = make_initial_state(session_id=_make_session_id(), language="ja")
+        state["stage"] = "routing"
+        state["purpose"] = {"category": "consultation", "detail": None, "confidence": 0.75}
+
+        graph = await get_reception_workflow()
+        result = await graph.ainvoke(state)
+
+        assert result["stage"] == "completed"
+        assert result["target_agent"] == "general_knowledge"
+        assert result["purpose"]["target_agent"] == "general_knowledge"
+
+    @pytest.mark.asyncio
+    async def test_initiated_stage_english(self):
+        """Initiated stage works correctly for English language sessions."""
         from backend.workflows.reception_workflow import get_reception_workflow, make_initial_state
 
         state = make_initial_state(session_id=_make_session_id(), language="en")
-        state["messages"] = [HumanMessage(content="I want to work here. I need wifi and a seat")]
 
         with patch(
             "backend.workflows.reception_workflow.VisitorIdentificationService",
@@ -547,20 +560,17 @@ class TestReceptionWorkflowEndToEnd:
             graph = await get_reception_workflow()
             result = await graph.ainvoke(state)
 
-        assert result["stage"] == "completed"
+        assert result["stage"] == "greeting"
         assert result["greeting"] is not None
         assert result["language"] == "en"
-        assert result["purpose"]["category"] == "facility_use"
 
     @pytest.mark.asyncio
-    async def test_full_flow_supabase_unavailable(self):
-        """Full flow completes even when Supabase is unavailable."""
+    async def test_initiated_stage_supabase_unavailable(self):
+        """Greeting still works even when visitor lookup is unavailable."""
         from backend.workflows.reception_workflow import get_reception_workflow, make_initial_state
 
         state = make_initial_state(session_id=_make_session_id(), language="ja")
-        state["messages"] = [HumanMessage(content="相談したいことがあります。アドバイスをください")]
 
-        # Simulate unavailable Supabase
         svc = MagicMock()
         svc.identify_by_visitor_id = AsyncMock(return_value=None)
 
@@ -571,7 +581,6 @@ class TestReceptionWorkflowEndToEnd:
             graph = await get_reception_workflow()
             result = await graph.ainvoke(state)
 
-        assert result["stage"] == "completed"
-        assert result["visitor_identity"] is None  # Could not identify
-        assert result["purpose"] is not None
-        assert result["purpose"]["category"] == "consultation"
+        assert result["stage"] == "greeting"
+        assert result["visitor_identity"] is None
+        assert result["greeting"]
