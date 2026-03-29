@@ -1263,11 +1263,12 @@ export default function MarpViewer({
   }
 
   return (
-    <div className="h-full flex flex-col">
+    <div data-testid="marp-viewer" className="h-full flex flex-col">
       {/* Controls */}
       <div className="flex items-center justify-between p-4 border-b bg-gray-50">
         <div className="flex items-center space-x-2">
           <button
+            data-testid="marp-prev-button"
             onClick={previousSlide}
             disabled={currentSlide === 1}
             className="p-2 rounded bg-blue-500 text-white disabled:bg-gray-300 hover:bg-blue-600 transition-colors"
@@ -1275,7 +1276,7 @@ export default function MarpViewer({
             <ChevronLeft className="w-4 h-4" />
           </button>
           
-          <span className="text-sm font-medium text-gray-700">
+          <span data-testid="marp-slide-counter" className="text-sm font-medium text-gray-700">
             {currentSlide} / {totalSlides}
           </span>
           
@@ -1284,6 +1285,7 @@ export default function MarpViewer({
         <div className="flex items-center space-x-2">
           {/* Auto-play controls */}
           <button
+            data-testid="marp-play-pause-button"
             onClick={toggleAutoPlay}
             className={`p-2 rounded transition-colors ${
               isPlaying ? 'bg-red-500 hover:bg-red-600' : 'bg-green-500 hover:bg-green-600'
@@ -1400,6 +1402,7 @@ export default function MarpViewer({
           {renderedHtml ? (
             /* allow-scripts + allow-same-origin: required for Marp rendering + postMessage. Content is DOMPurify-sanitized. */
             <iframe
+              data-testid="marp-slide-iframe"
               ref={iframeRef}
               srcDoc={renderedHtml}
               className="w-full h-full border-0"
