@@ -30,11 +30,9 @@ class TestMultilingualReceptionKeywords:
 
     def test_reception_keywords_include_chinese(self):
         assert "登记" in RECEPTION_KEYWORDS
-        assert "来访" in RECEPTION_KEYWORDS
 
     def test_reception_keywords_include_korean(self):
         assert "접수" in RECEPTION_KEYWORDS
-        assert "방문" in RECEPTION_KEYWORDS
 
     def test_reception_keywords_include_english(self):
         assert "registration" in RECEPTION_KEYWORDS
@@ -47,9 +45,18 @@ class TestMultilingualReceptionKeywords:
         assert "arrive" not in RECEPTION_KEYWORDS
         assert "arrived" not in RECEPTION_KEYWORDS
 
+    def test_reception_keywords_exclude_generic_cjk(self):
+        """Generic CJK terms that cause mis-routing should be excluded."""
+        assert "来場" not in RECEPTION_KEYWORDS
+        assert "来訪" not in RECEPTION_KEYWORDS
+        assert "来访" not in RECEPTION_KEYWORDS
+        assert "访客" not in RECEPTION_KEYWORDS
+        assert "방문" not in RECEPTION_KEYWORDS
+        assert "방문자" not in RECEPTION_KEYWORDS
+
     def test_reception_keywords_include_japanese(self):
-        assert "来場" in RECEPTION_KEYWORDS
-        assert "来訪" in RECEPTION_KEYWORDS
+        assert "初回利用" in RECEPTION_KEYWORDS
+        assert "利用方法" in RECEPTION_KEYWORDS
 
 
 class TestEntityLabels:
