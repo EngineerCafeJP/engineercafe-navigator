@@ -37,8 +37,15 @@ class TestMultilingualReceptionKeywords:
         assert "방문" in RECEPTION_KEYWORDS
 
     def test_reception_keywords_include_english(self):
-        assert "visit" in RECEPTION_KEYWORDS
-        assert "visitor" in RECEPTION_KEYWORDS
+        assert "registration" in RECEPTION_KEYWORDS
+        assert "check-in" in RECEPTION_KEYWORDS
+
+    def test_reception_keywords_exclude_generic_english(self):
+        """Generic English terms that cause mis-routing should be excluded."""
+        assert "visit" not in RECEPTION_KEYWORDS
+        assert "visitor" not in RECEPTION_KEYWORDS
+        assert "arrive" not in RECEPTION_KEYWORDS
+        assert "arrived" not in RECEPTION_KEYWORDS
 
     def test_reception_keywords_include_japanese(self):
         assert "来場" in RECEPTION_KEYWORDS

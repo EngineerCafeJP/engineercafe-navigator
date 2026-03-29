@@ -483,8 +483,9 @@ class EnhancedRAGSearch:
             if category and category != "general":
                 query_builder = query_builder.eq("category", category)
 
-            # 言語フィルタ: KB is Japanese-only, always filter by "ja"
-            query_builder = query_builder.eq("language", "ja")
+            # Always include "ja" (primary KB language) plus user's language
+            search_languages = list(set(["ja", language])) if language else ["ja"]
+            query_builder = query_builder.in_("language", search_languages)
 
             result = query_builder.limit(max_results).execute()
 
@@ -493,7 +494,7 @@ class EnhancedRAGSearch:
                 result = (
                     self.supabase.table("knowledge_base")
                     .select("id, content, category, subcategory, language, source, metadata")
-                    .eq("language", "ja")  # KB is Japanese-only
+                    .in_("language", search_languages)  # ja + user's language
                     .limit(max_results)
                     .execute()
                 )

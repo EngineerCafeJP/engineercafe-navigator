@@ -561,10 +561,10 @@ class TestTextFallbackSearch:
 
         mock_query = MagicMock()
         mock_query.limit.return_value = mock_result
-        mock_eq_lang = MagicMock()
-        mock_eq_lang.limit.return_value = mock_result
+        mock_in_lang = MagicMock()
+        mock_in_lang.limit.return_value = mock_result
         mock_eq_cat = MagicMock()
-        mock_eq_cat.eq.return_value = mock_eq_lang
+        mock_eq_cat.in_.return_value = mock_in_lang
         mock_select = MagicMock()
         mock_select.eq.return_value = mock_eq_cat
         mock_table = MagicMock()
@@ -572,7 +572,7 @@ class TestTextFallbackSearch:
 
         mock_supabase.table.return_value = mock_table
         mock_result.execute = MagicMock(return_value=mock_result)
-        mock_eq_lang.execute = MagicMock(return_value=mock_result)
+        mock_in_lang.execute = MagicMock(return_value=mock_result)
 
         results = await rag_search._text_fallback_search(
             query="営業時間を教えて", category="hours", language="ja", max_results=5
