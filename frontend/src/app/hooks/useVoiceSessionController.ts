@@ -15,6 +15,8 @@ export type VoiceCharacterState = 'idle' | 'listening' | 'thinking' | 'speaking'
 
 export interface UseVoiceSessionControllerOptions {
   enabled?: boolean;
+  /** When false, wake-word listening is disabled (no Web Speech mic while idle). */
+  wakeWordEnabled?: boolean;
   stream?: MediaStream | null;
   wakeWords?: string[];
   language?: string;
@@ -56,6 +58,7 @@ const DEFAULT_WAKE_WORDS = ['すみません', 'hello'];
 
 export function useVoiceSessionController({
   enabled = true,
+  wakeWordEnabled = true,
   stream = null,
   wakeWords = DEFAULT_WAKE_WORDS,
   language = 'ja-JP',
@@ -121,7 +124,7 @@ export function useVoiceSessionController({
     detectedWakeWord: lastWakeWordMatch,
   } = useWakeWord({
     wakeWords,
-    enabled: enabled && shouldArmWakeWord,
+    enabled: enabled && shouldArmWakeWord && wakeWordEnabled,
     language,
     continuous: wakeWordContinuous,
     interimResults: wakeWordInterimResults,
@@ -130,9 +133,13 @@ export function useVoiceSessionController({
     onWakeWord: handleWakeWord,
   });
 
+  // Only wire the mic stream into Web Audio while actively listening; keeping a stale
+  // MediaStream here can leave Chrome's mic indicator on after tracks should have stopped.
+  const waveformStream = enabled && shouldListen && stream ? stream : null;
+
   const { levels: waveformBars, averageLevel } = useVoiceWaveform({
-    stream,
-    enabled: enabled && shouldListen,
+    stream: waveformStream,
+    enabled: Boolean(waveformStream),
     barCount: waveformBarCount,
     fftSize: waveformFftSize,
     smoothingTimeConstant: waveformSmoothingTimeConstant,

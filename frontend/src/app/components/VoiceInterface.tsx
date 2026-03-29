@@ -76,6 +76,13 @@ interface VoiceInterfaceProps {
   onLanguageChange?: (language: 'ja' | 'en') => void;
   layout?: 'vertical' | 'horizontal';
   language?: 'ja' | 'en';
+  /** When false, idle wake-word listening is off (no mic via Web Speech API). Default true. */
+  wakeWordEnabled?: boolean;
+  /**
+   * When false, after assistant TTS the session does not auto-return to listening (mic stays off until the user starts again).
+   * Use for kiosk push-to-talk. Default true (continuous toggle conversations).
+   */
+  autoResumeListeningAfterAssistant?: boolean;
   autoGreeting?: boolean;
   onVisemeControl?: ((viseme: string, intensity: number) => void) | null;
   children?: (props: VoiceInterfaceRenderProps) => ReactNode;
@@ -179,6 +186,8 @@ export default function VoiceInterface({
   onLanguageChange,
   layout = 'vertical',
   language = 'ja',
+  wakeWordEnabled = true,
+  autoResumeListeningAfterAssistant = true,
   autoGreeting = false,
   onVisemeControl,
   children,
@@ -188,6 +197,7 @@ export default function VoiceInterface({
   onAssistantPlaybackStart,
   onAssistantPlaybackEnd,
 }: VoiceInterfaceProps) {
+  const skipAssistantTurnAutoResume = !autoResumeListeningAfterAssistant;
   const [currentLanguage, setCurrentLanguage] = useState<'ja' | 'en'>(language);
   const [volume, setVolumeState] = useState(0.8);
   const [isMuted, setIsMuted] = useState(false);
@@ -259,6 +269,7 @@ export default function VoiceInterface({
 
   const voiceController = useVoiceSessionController({
     enabled: true,
+    wakeWordEnabled,
     stream: mediaStream,
     wakeWords: DEFAULT_WAKE_WORDS,
     language: toLocale(currentLanguage),
@@ -316,10 +327,10 @@ export default function VoiceInterface({
       cleanupAudioPlayback();
 
       if (completeTurn) {
-        voiceController.notifySpeakingComplete();
+        voiceController.notifySpeakingComplete(skipAssistantTurnAutoResume);
       }
     },
-    [cleanupAudioPlayback, onVisemeControl, voiceController],
+    [cleanupAudioPlayback, onVisemeControl, skipAssistantTurnAutoResume, voiceController],
   );
 
   const playAssistantAudio = useCallback(
@@ -328,7 +339,7 @@ export default function VoiceInterface({
         voiceController.notifySpeaking();
         onAssistantPlaybackStart?.({ metadata: metadataForPlayback ?? null });
         window.setTimeout(() => {
-          voiceController.notifySpeakingComplete();
+          voiceController.notifySpeakingComplete(skipAssistantTurnAutoResume);
         }, 240);
         return;
       }
@@ -375,7 +386,7 @@ export default function VoiceInterface({
         },
         onEnded: () => {
           cleanupAudioPlayback();
-          voiceController.notifySpeakingComplete();
+          voiceController.notifySpeakingComplete(skipAssistantTurnAutoResume);
         },
         onError: (playbackError) => {
           cleanupAudioPlayback();
@@ -401,6 +412,7 @@ export default function VoiceInterface({
       onVisemeControl,
       revokeAudioUrl,
       scheduleLipSyncFrames,
+      skipAssistantTurnAutoResume,
       voiceController,
     ],
   );
@@ -485,7 +497,7 @@ export default function VoiceInterface({
         } else {
           voiceController.notifySpeaking();
           window.setTimeout(() => {
-            voiceController.notifySpeakingComplete();
+            voiceController.notifySpeakingComplete(skipAssistantTurnAutoResume);
           }, 240);
         }
       } catch (sendError) {
@@ -503,7 +515,14 @@ export default function VoiceInterface({
         setLoadingMessage('');
       }
     },
-    [cancelPendingRequest, currentLanguage, playAssistantAudio, stopPlayback, voiceController],
+    [
+      cancelPendingRequest,
+      currentLanguage,
+      playAssistantAudio,
+      skipAssistantTurnAutoResume,
+      stopPlayback,
+      voiceController,
+    ],
   );
 
   const handleRecordedAudio = useCallback(
@@ -582,6 +601,14 @@ export default function VoiceInterface({
         setLoadingMessage('');
         isRecordingRef.current = false;
       },
+      () => {
+        if (recorderRef.current !== recorder) {
+          return;
+        }
+        recorderRef.current = null;
+        setMediaStream(null);
+        isRecordingRef.current = false;
+      },
     );
 
     setIsLoading(true);
@@ -609,6 +636,9 @@ export default function VoiceInterface({
 
     try {
       const recorder = await ensureRecorder();
+      await new Promise<void>((resolve) => {
+        queueMicrotask(() => resolve());
+      });
       if (recorder.getState() === 'recording') {
         return;
       }
@@ -639,11 +669,9 @@ export default function VoiceInterface({
       return;
     }
 
-    if (!isRecordingRef.current) {
-      return;
+    if (isRecordingRef.current) {
+      stopRecorderCapture(sessionState === 'idle');
     }
-
-    stopRecorderCapture(sessionState === 'idle');
   }, [sessionState, startRecorderCapture, stopRecorderCapture, voiceController.shouldListen]);
 
   const startListening = useCallback(() => {
