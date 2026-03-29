@@ -317,9 +317,11 @@ class MainWorkflow:
                 from backend.tools.enhanced_rag import EnhancedRAGSearch
                 from backend.utils.query_classifier import QueryClassifier
 
-                # Translate non-Japanese queries for Japanese knowledge base search
+                # Translate English queries to Japanese for knowledge base search.
+                # Chinese/Korean queries skip translation — the cross-lingual
+                # embedding model handles CJK similarity directly.
                 rag_query = query
-                if language != "ja":
+                if language == "en":
                     try:
                         from backend.services.translation_service import (
                             get_translation_service,
@@ -346,7 +348,10 @@ class MainWorkflow:
 
                 rag = EnhancedRAGSearch()
                 rag_result = await rag.search(
-                    query=rag_query, category=category, language=language, max_results=10
+                    query=rag_query,
+                    category=category,
+                    language=language,  # User's language for presentation (labels/advice)
+                    max_results=10,
                 )
 
                 knowledge_results = {

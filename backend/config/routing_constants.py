@@ -575,6 +575,13 @@ GREETING_KEYWORDS: list[str] = [
     "good morning",
     "good afternoon",
     "good evening",
+    "你好",
+    "早上好",
+    "下午好",
+    "晚上好",
+    "안녕하세요",
+    "안녕",
+    "좋은 아침",
 ]
 
 # 時間帯別挨拶テンプレート

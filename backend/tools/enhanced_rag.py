@@ -483,9 +483,8 @@ class EnhancedRAGSearch:
             if category and category != "general":
                 query_builder = query_builder.eq("category", category)
 
-            # 言語フィルタ
-            if language:
-                query_builder = query_builder.eq("language", language)
+            # KB is Japanese-only; filter to ja for reliable results
+            query_builder = query_builder.eq("language", "ja")
 
             result = query_builder.limit(max_results).execute()
 
@@ -494,7 +493,7 @@ class EnhancedRAGSearch:
                 result = (
                     self.supabase.table("knowledge_base")
                     .select("id, content, category, subcategory, language, source, metadata")
-                    .eq("language", language)
+                    .eq("language", "ja")
                     .limit(max_results)
                     .execute()
                 )
@@ -836,12 +835,30 @@ class EnhancedRAGSearch:
                 if context:
                     context += "\n\n"
 
-                if entity == "engineer-cafe" and language == "ja":
-                    context += "【エンジニアカフェ】\n"
-                elif entity == "saino" and language == "ja":
-                    context += "【sainoカフェ】\n"
-                elif entity == "meeting-room" and language == "ja":
-                    context += "【会議室】\n"
+                entity_labels = {
+                    "engineer-cafe": {
+                        "ja": "【エンジニアカフェ】",
+                        "en": "[Engineer Cafe]",
+                        "zh": "【工程师咖啡】",
+                        "ko": "【엔지니어 카페】",
+                    },
+                    "saino": {
+                        "ja": "【sainoカフェ】",
+                        "en": "[Saino Cafe]",
+                        "zh": "【saino咖啡】",
+                        "ko": "【saino 카페】",
+                    },
+                    "meeting-room": {
+                        "ja": "【会議室】",
+                        "en": "[Meeting Room]",
+                        "zh": "【会议室】",
+                        "ko": "【회의실】",
+                    },
+                }
+                if entity in entity_labels:
+                    labels = entity_labels[entity]
+                    label = labels.get(language, labels["ja"])
+                    context += f"{label}\n"
 
                 # コンテンツを追加
                 context += "\n".join(r.get("content", "") for r in entity_results)
@@ -916,6 +933,11 @@ class EnhancedRAGSearch:
                     "💡 Operating hours may vary by day."
                     " We recommend checking before your visit."
                 ),
+                "zh": ("💡 营业时间可能因日期而异。" "建议您在来访前确认。"),
+                "ko": (
+                    "💡 영업시간은 날에 따라 다를 수 있습니다."
+                    " 방문 전에 확인하시는 것을 권장합니다."
+                ),
             },
             "pricing": {
                 "ja": (
@@ -926,10 +948,18 @@ class EnhancedRAGSearch:
                     "💡 Pricing plans may change."
                     " Please contact staff for the latest information."
                 ),
+                "zh": ("💡 价格方案可能会有变动。" "请联系工作人员获取最新信息。"),
+                "ko": ("💡 요금제는 변경될 수 있습니다." " 최신 정보는 직원에게 문의해 주세요."),
             },
             "facility-info": {
-                "ja": "💡 設備の利用方法がわからない場合は、スタッフにお気軽にお声がけください。",
-                "en": "💡 If you're unsure how to use the facilities, feel free to ask our staff.",
+                "ja": (
+                    "💡 設備の利用方法がわからない場合は、" "スタッフにお気軽にお声がけください。"
+                ),
+                "en": (
+                    "💡 If you're unsure how to use the facilities," " feel free to ask our staff."
+                ),
+                "zh": ("💡 如果您不确定如何使用设施，" "请随时向工作人员咨询。"),
+                "ko": ("💡 시설 이용 방법을 모르시면" " 직원에게 편하게 문의해 주세요."),
             },
         }
 
