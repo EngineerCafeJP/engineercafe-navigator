@@ -1,0 +1,294 @@
+{
+  "version": "1.0.0",
+  "description": "Multilingual RAGAS query manifest for Engineer Cafe Navigator (#382).",
+  "created_at": "2026-03-30",
+  "baseline": {
+    "date": "2026-03-21",
+    "metrics": {
+      "context_precision": 1.0,
+      "answer_correctness": 0.77,
+      "answer_relevancy": 0.895,
+      "faithfulness": 0.871
+    }
+  },
+  "targets": {
+    "ja": {
+      "answer_correctness": 0.85
+    },
+    "en": {
+      "answer_correctness": 0.75
+    },
+    "zh": {
+      "answer_correctness": 0.65
+    },
+    "ko": {
+      "answer_correctness": 0.65
+    }
+  },
+  "queries": [
+    {
+      "id": "ml-ja-001",
+      "language": "ja",
+      "question": "エンジニアカフェって何ですか？",
+      "category": "general",
+      "ground_truth_id": "gt-001",
+      "metadata": {
+        "difficulty": "easy",
+        "intent": "definition"
+      }
+    },
+    {
+      "id": "ml-ja-002",
+      "language": "ja",
+      "question": "エンジニアカフェの営業時間は何時から何時までですか？",
+      "category": "hours",
+      "ground_truth_id": "gt-003",
+      "metadata": {
+        "difficulty": "easy",
+        "intent": "hours"
+      }
+    },
+    {
+      "id": "ml-ja-003",
+      "language": "ja",
+      "question": "エンジニアカフェへのアクセス方法は？",
+      "category": "access",
+      "ground_truth_id": "gt-007",
+      "metadata": {
+        "difficulty": "easy",
+        "intent": "directions"
+      }
+    },
+    {
+      "id": "ml-ja-004",
+      "language": "ja",
+      "question": "Connpassでイベントを確認できますか？",
+      "category": "event",
+      "ground_truth_id": "gt-031",
+      "metadata": {
+        "difficulty": "medium",
+        "intent": "event-discovery"
+      }
+    },
+    {
+      "id": "ml-en-001",
+      "language": "en",
+      "question": "What are the opening hours of Engineer Cafe?",
+      "category": "hours",
+      "ground_truth_id": "gt-088",
+      "metadata": {
+        "difficulty": "easy",
+        "intent": "hours"
+      }
+    },
+    {
+      "id": "ml-en-002",
+      "language": "en",
+      "question": "How much does it cost to use Engineer Cafe?",
+      "category": "pricing",
+      "ground_truth_id": "gt-089",
+      "metadata": {
+        "difficulty": "easy",
+        "intent": "pricing"
+      }
+    },
+    {
+      "id": "ml-en-003",
+      "language": "en",
+      "question": "How do I register for my first visit?",
+      "category": "pricing",
+      "ground_truth_id": "gt-090",
+      "metadata": {
+        "difficulty": "medium",
+        "intent": "registration"
+      }
+    },
+    {
+      "id": "ml-en-004",
+      "language": "en",
+      "question": "Where is Engineer Cafe located?",
+      "category": "access",
+      "ground_truth_id": "gt-091",
+      "metadata": {
+        "difficulty": "easy",
+        "intent": "directions"
+      }
+    },
+    {
+      "id": "ml-en-005",
+      "language": "en",
+      "question": "Can I check Engineer Cafe events on Connpass?",
+      "category": "event",
+      "ground_truth_id": "gt-092",
+      "metadata": {
+        "difficulty": "medium",
+        "intent": "event-discovery"
+      }
+    },
+    {
+      "id": "ml-en-006",
+      "language": "en",
+      "question": "Can I bring my own food to Engineer Cafe?",
+      "category": "food_drink",
+      "ground_truth_id": "gt-093",
+      "metadata": {
+        "difficulty": "medium",
+        "intent": "food-policy"
+      }
+    },
+    {
+      "id": "ml-en-007",
+      "language": "en",
+      "question": "Is there a printer or copier in the building?",
+      "category": "facility-info",
+      "ground_truth_id": "gt-094",
+      "metadata": {
+        "difficulty": "medium",
+        "intent": "equipment"
+      }
+    },
+    {
+      "id": "ml-en-008",
+      "language": "en",
+      "question": "Is smoking allowed at Engineer Cafe?",
+      "category": "smoking",
+      "ground_truth_id": "gt-095",
+      "metadata": {
+        "difficulty": "easy",
+        "intent": "policy"
+      }
+    },
+    {
+      "id": "ml-en-009",
+      "language": "en",
+      "question": "How can I contact Engineer Cafe?",
+      "category": "contact",
+      "ground_truth_id": "gt-096",
+      "metadata": {
+        "difficulty": "easy",
+        "intent": "contact"
+      }
+    },
+    {
+      "id": "ml-en-010",
+      "language": "en",
+      "question": "What is Engineer Cafe?",
+      "category": "general",
+      "ground_truth_id": "gt-097",
+      "metadata": {
+        "difficulty": "easy",
+        "intent": "definition"
+      }
+    },
+    {
+      "id": "ml-zh-001",
+      "language": "zh",
+      "question": "工程师咖啡的营业时间是什么？",
+      "category": "hours",
+      "ground_truth_id": "gt-098",
+      "metadata": {
+        "difficulty": "easy",
+        "intent": "hours"
+      }
+    },
+    {
+      "id": "ml-zh-002",
+      "language": "zh",
+      "question": "使用工程师咖啡需要收费吗？",
+      "category": "pricing",
+      "ground_truth_id": "gt-099",
+      "metadata": {
+        "difficulty": "easy",
+        "intent": "pricing"
+      }
+    },
+    {
+      "id": "ml-zh-003",
+      "language": "zh",
+      "question": "第一次来访时怎么登记？",
+      "category": "pricing",
+      "ground_truth_id": "gt-100",
+      "metadata": {
+        "difficulty": "medium",
+        "intent": "registration"
+      }
+    },
+    {
+      "id": "ml-zh-004",
+      "language": "zh",
+      "question": "工程师咖啡在哪里？",
+      "category": "access",
+      "ground_truth_id": "gt-101",
+      "metadata": {
+        "difficulty": "easy",
+        "intent": "directions"
+      }
+    },
+    {
+      "id": "ml-zh-005",
+      "language": "zh",
+      "question": "可以在Connpass查看活动信息吗？",
+      "category": "event",
+      "ground_truth_id": "gt-102",
+      "metadata": {
+        "difficulty": "medium",
+        "intent": "event-discovery"
+      }
+    },
+    {
+      "id": "ml-ko-001",
+      "language": "ko",
+      "question": "엔지니어 카페의 운영 시간은 어떻게 되나요?",
+      "category": "hours",
+      "ground_truth_id": "gt-108",
+      "metadata": {
+        "difficulty": "easy",
+        "intent": "hours"
+      }
+    },
+    {
+      "id": "ml-ko-002",
+      "language": "ko",
+      "question": "엔지니어 카페 이용 요금은 얼마인가요?",
+      "category": "pricing",
+      "ground_truth_id": "gt-109",
+      "metadata": {
+        "difficulty": "easy",
+        "intent": "pricing"
+      }
+    },
+    {
+      "id": "ml-ko-003",
+      "language": "ko",
+      "question": "처음 방문할 때는 어떻게 등록하나요?",
+      "category": "pricing",
+      "ground_truth_id": "gt-110",
+      "metadata": {
+        "difficulty": "medium",
+        "intent": "registration"
+      }
+    },
+    {
+      "id": "ml-ko-004",
+      "language": "ko",
+      "question": "엔지니어 카페는 어디에 있나요?",
+      "category": "access",
+      "ground_truth_id": "gt-111",
+      "metadata": {
+        "difficulty": "easy",
+        "intent": "directions"
+      }
+    },
+    {
+      "id": "ml-ko-005",
+      "language": "ko",
+      "question": "Connpass에서 이벤트 정보를 확인할 수 있나요?",
+      "category": "event",
+      "ground_truth_id": "gt-112",
+      "metadata": {
+        "difficulty": "medium",
+        "intent": "event-discovery"
+      }
+    }
+  ]
+}

@@ -114,6 +114,28 @@ class TestGroundTruthDatasetCoverage:
         en_count = sum(1 for c in raw_data["test_cases"] if c["language"] == "en")
         assert en_count > 0, "No English entries found"
 
+    def test_has_chinese_entries(self, raw_data):
+        """中国語エントリが存在すること"""
+        zh_count = sum(1 for c in raw_data["test_cases"] if c["language"] == "zh")
+        assert zh_count >= 10, f"Expected >= 10 Chinese entries, got {zh_count}"
+
+    def test_has_korean_entries(self, raw_data):
+        """韓国語エントリが存在すること"""
+        ko_count = sum(1 for c in raw_data["test_cases"] if c["language"] == "ko")
+        assert ko_count >= 10, f"Expected >= 10 Korean entries, got {ko_count}"
+
+    def test_multilingual_extension_ids_exist(self, raw_data):
+        """#382 の多言語拡張エントリが存在すること"""
+        ids = {case["id"] for case in raw_data["test_cases"]}
+
+        expected_en = {f"gt-{idx:03d}" for idx in range(88, 98)}
+        expected_zh = {f"gt-{idx:03d}" for idx in range(98, 108)}
+        expected_ko = {f"gt-{idx:03d}" for idx in range(108, 118)}
+
+        assert expected_en <= ids
+        assert expected_zh <= ids
+        assert expected_ko <= ids
+
 
 class TestDatasetLoaderGroundTruth:
     """DatasetLoader.load_ground_truth_cases()のテスト"""
@@ -138,6 +160,18 @@ class TestDatasetLoaderGroundTruth:
         en_cases = DatasetLoader.load_ground_truth_cases(language="en")
         assert all(c.language == "en" for c in en_cases)
         assert len(en_cases) > 0
+
+    def test_language_filter_zh(self):
+        """中国語フィルタが動作すること"""
+        zh_cases = DatasetLoader.load_ground_truth_cases(language="zh")
+        assert all(c.language == "zh" for c in zh_cases)
+        assert len(zh_cases) >= 10
+
+    def test_language_filter_ko(self):
+        """韓国語フィルタが動作すること"""
+        ko_cases = DatasetLoader.load_ground_truth_cases(language="ko")
+        assert all(c.language == "ko" for c in ko_cases)
+        assert len(ko_cases) >= 10
 
     def test_category_filter(self):
         """カテゴリフィルタが動作すること"""
