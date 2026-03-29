@@ -172,3 +172,86 @@ class TestAdviceTemplates:
         """Unknown language should fall back to Japanese."""
         result = advice_templates[category].get("fr", advice_templates[category].get("ja"))
         assert result == advice_templates[category]["ja"]
+
+
+class TestEnhancedRagLanguageHandling:
+    """Verify enhanced_rag uses language param for presentation, not DB filtering."""
+
+    @pytest.fixture()
+    def rag(self):
+        """Create EnhancedRAGSearch with a mock Supabase client."""
+        from unittest.mock import MagicMock
+
+        from tools.enhanced_rag import EnhancedRAGSearch
+
+        mock_client = MagicMock()
+        return EnhancedRAGSearch(supabase_client=mock_client)
+
+    def test_build_context_uses_display_language_zh(self, rag):
+        """Chinese language should produce Chinese entity labels."""
+        results = [
+            {"entity": "engineer-cafe", "content": "テスト内容", "priority_score": 0.9},
+        ]
+        context = rag._build_context_from_results(results, "general", "zh")
+        assert "工程师咖啡" in context
+
+    def test_build_context_uses_display_language_ko(self, rag):
+        """Korean language should produce Korean entity labels."""
+        results = [
+            {"entity": "engineer-cafe", "content": "テスト内容", "priority_score": 0.9},
+        ]
+        context = rag._build_context_from_results(results, "general", "ko")
+        assert "엔지니어 카페" in context
+
+    def test_build_context_uses_display_language_en(self, rag):
+        """English language should produce English entity labels."""
+        results = [
+            {"entity": "engineer-cafe", "content": "テスト内容", "priority_score": 0.9},
+        ]
+        context = rag._build_context_from_results(results, "general", "en")
+        assert "Engineer Cafe" in context
+
+    def test_build_context_uses_display_language_ja(self, rag):
+        """Japanese language should produce Japanese entity labels."""
+        results = [
+            {"entity": "engineer-cafe", "content": "テスト内容", "priority_score": 0.9},
+        ]
+        context = rag._build_context_from_results(results, "general", "ja")
+        assert "エンジニアカフェ" in context
+
+    def test_generate_advice_uses_display_language_zh(self, rag):
+        """Chinese language should produce Chinese advice."""
+        results = [{"content": "test"}]
+        advice = rag._generate_practical_advice(results, "営業時間", "hours", "zh")
+        assert advice is not None
+        assert "营业时间" in advice
+
+    def test_generate_advice_uses_display_language_ko(self, rag):
+        """Korean language should produce Korean advice."""
+        results = [{"content": "test"}]
+        advice = rag._generate_practical_advice(results, "영업시간", "hours", "ko")
+        assert advice is not None
+        assert "영업시간" in advice
+
+    def test_generate_advice_fallback_to_ja_for_unknown(self, rag):
+        """Unknown language should fall back to Japanese advice."""
+        results = [{"content": "test"}]
+        advice = rag._generate_practical_advice(results, "query", "hours", "fr")
+        assert advice is not None
+        assert "営業時間" in advice
+
+    def test_build_context_saino_zh(self, rag):
+        """Chinese labels for saino entity."""
+        results = [
+            {"entity": "saino", "content": "saino情報", "priority_score": 0.8},
+        ]
+        context = rag._build_context_from_results(results, "general", "zh")
+        assert "saino咖啡" in context
+
+    def test_build_context_meeting_room_ko(self, rag):
+        """Korean labels for meeting-room entity."""
+        results = [
+            {"entity": "meeting-room", "content": "会議室情報", "priority_score": 0.8},
+        ]
+        context = rag._build_context_from_results(results, "general", "ko")
+        assert "회의실" in context

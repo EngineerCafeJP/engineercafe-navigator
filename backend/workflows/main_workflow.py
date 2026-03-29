@@ -347,11 +347,10 @@ class MainWorkflow:
                 )
 
                 rag = EnhancedRAGSearch()
-                rag_language = "ja"  # KB is Japanese-only; always search in ja
                 rag_result = await rag.search(
                     query=rag_query,
                     category=category,
-                    language=rag_language,
+                    language=language,  # User's language for presentation (labels/advice)
                     max_results=10,
                 )
 
