@@ -10,6 +10,7 @@ from langchain_core.messages import HumanMessage
 
 from backend.llm import get_llm_provider, get_model_config
 from backend.tools.enhanced_rag import EnhancedRAGSearch
+from backend.utils.language_types import DEFAULT_NOT_FOUND_RESPONSE, LANGUAGE_INSTRUCTION
 
 logger = logging.getLogger(__name__)
 
@@ -278,6 +279,9 @@ class BusinessInfoAgent:
             "Write as if speaking aloud to someone."
         )
 
+        # Multilingual: append language instruction for zh/ko
+        lang_suffix = LANGUAGE_INSTRUCTION.get(language, "")
+
         if request_type:
             request_type_prompt = self._get_request_type_prompt(request_type, language)
 
@@ -296,14 +300,17 @@ class BusinessInfoAgent:
                     " or [happy] for positive news.\n"
                     f"{oral_instruction_en}"
                 )
-                return f"""{header}
+                prompt = f"""{header}
 
 Question: {query}
 Information: {context}
 
 {footer}"""
+                if lang_suffix:
+                    prompt += f"\n{lang_suffix}"
+                return prompt
             else:
-                return f"""次の情報から{request_type_prompt}のみを抽出して質問に答えてください。
+                prompt = f"""次の情報から{request_type_prompt}のみを抽出して質問に答えてください。
 
 質問: {query}
 情報: {context}
@@ -311,6 +318,9 @@ Information: {context}
 {request_type_prompt}のみを答えてください。最大1-2文。他の情報は含めないでください。
 重要: 情報提供の場合は[relaxed]、良いニュースの場合は[happy]で回答を始めてください。
 {oral_instruction_ja}"""
+                if lang_suffix:
+                    prompt += f"\n{lang_suffix}"
+                return prompt
 
         else:
             if language == "en":
@@ -328,12 +338,15 @@ Information: {context}
                     " news, [sad] for unavailable services.\n"
                     f"{oral_instruction_en}"
                 )
-                return f"""{header}
+                prompt = f"""{header}
 
 Question: {query}
 Information: {context}
 
 {footer}"""
+                if lang_suffix:
+                    prompt += f"\n{lang_suffix}"
+                return prompt
             else:
                 header = (
                     "提供された情報を使って質問に答えてください。" "簡潔で直接的に答えてください。"
@@ -345,12 +358,15 @@ Information: {context}
                     "利用できないサービスは[sad]。\n"
                     f"{oral_instruction_ja}"
                 )
-                return f"""{header}
+                prompt = f"""{header}
 
 質問: {query}
 情報: {context}
 
 {footer}"""
+                if lang_suffix:
+                    prompt += f"\n{lang_suffix}"
+                return prompt
 
     def _get_request_type_prompt(self, request_type: str, language: str) -> str:
         """requestTypeに応じたプロンプト文言を取得"""
@@ -439,20 +455,7 @@ Information: {context}
             - confidence は 0.3 に設定（低信頼度）
             - sources は ["fallback"] を記録
         """
-        if language == "en":
-            text = (
-                "[sad]I'm sorry, I couldn't find the specific"
-                " information you're looking for."
-                " Please try rephrasing your question"
-                " or contact the staff for assistance."
-            )
-        else:
-            text = (
-                "[sad]申し訳ございません。"
-                "お探しの情報が見つかりませんでした。"
-                "質問を言い換えていただくか、"
-                "スタッフにお問い合わせください。"
-            )
+        text = DEFAULT_NOT_FOUND_RESPONSE.get(language, DEFAULT_NOT_FOUND_RESPONSE["ja"])
 
         return {
             "answer": text,

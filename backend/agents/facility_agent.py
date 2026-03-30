@@ -14,6 +14,7 @@ from backend.config.prompts.facility_prompts import (
 )
 from backend.llm import get_llm_provider, get_model_config
 from backend.tools.enhanced_rag import EnhancedRAGSearch
+from backend.utils.language_types import DEFAULT_NOT_FOUND_RESPONSE
 
 logger = logging.getLogger(__name__)
 
@@ -467,21 +468,7 @@ class FacilityAgent:
             - confidence は 0.3 に設定（低信頼度）
             - sources は ["fallback"] を記録
         """
-        if language == "en":
-            text = (
-                "[sad]I'm sorry, I couldn't find the"
-                " specific facility information"
-                " you're looking for."
-                " Please try rephrasing your question"
-                " or contact the staff for assistance."
-            )
-        else:
-            text = (
-                "[sad]申し訳ございません。"
-                "お探しの施設情報が見つかりませんでした。"
-                "質問を言い換えていただくか、"
-                "スタッフにお問い合わせください。"
-            )
+        text = DEFAULT_NOT_FOUND_RESPONSE.get(language, DEFAULT_NOT_FOUND_RESPONSE["ja"])
 
         return {
             "answer": text,

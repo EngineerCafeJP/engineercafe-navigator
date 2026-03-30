@@ -6,6 +6,8 @@ FacilityAgent用プロンプトテンプレート
 
 from typing import Dict, Optional
 
+from backend.utils.language_types import LANGUAGE_INSTRUCTION
+
 # クエリ拡張キーワード（requestType別）
 FACILITY_ENHANCEMENT_KEYWORDS: Dict[str, Dict[str, str]] = {
     "wifi": {
@@ -125,6 +127,9 @@ def build_facility_prompt(
         "Write as if speaking aloud to someone."
     )
 
+    # Multilingual: append language instruction for zh/ko
+    lang_suffix = LANGUAGE_INSTRUCTION.get(language, "")
+
     if request_type:
         prompt_info = FACILITY_REQUEST_TYPE_PROMPTS.get(
             request_type, {"en": "requested information", "ja": "要求された情報"}
@@ -132,7 +137,7 @@ def build_facility_prompt(
         request_type_prompt = prompt_info.get(language, prompt_info.get("ja", ""))
 
         if language == "en":
-            return (
+            prompt = (
                 f"Answer the question directly using the "
                 f"{request_type_prompt} from the following "
                 f"information.\n"
@@ -147,8 +152,11 @@ def build_facility_prompt(
                 f"for information or [happy] for positive news.\n"
                 f"{oral_instruction_en}"
             )
+            if lang_suffix:
+                prompt += f"\n{lang_suffix}"
+            return prompt
         else:
-            return (
+            prompt = (
                 f"質問に対して、以下の情報から"
                 f"{request_type_prompt}を使って直接回答してください。\n"
                 f"ユーザーが具体的に聞いていることに焦点を当て、"
@@ -160,12 +168,14 @@ def build_facility_prompt(
                 f"質問と無関係な情報は含めないでください。\n"
                 f"重要: 情報提供の場合は[relaxed]、"
                 f"良いニュースの場合は[happy]で回答を始めてください。\n"
-                f"必ず日本語で回答してください。\n"
                 f"{oral_instruction_ja}"
             )
+            if lang_suffix:
+                prompt += f"\n{lang_suffix}"
+            return prompt
     else:
         if language == "en":
-            return (
+            prompt = (
                 f"Answer the question using the provided "
                 f"information. Be concise and direct.\n\n"
                 f"Question: {query}\n"
@@ -177,8 +187,11 @@ def build_facility_prompt(
                 f"positive news, [sad] for unavailable services.\n"
                 f"{oral_instruction_en}"
             )
+            if lang_suffix:
+                prompt += f"\n{lang_suffix}"
+            return prompt
         else:
-            return (
+            prompt = (
                 f"提供された情報を使って質問に答えてください。"
                 f"簡潔で直接的に答えてください。\n\n"
                 f"質問: {query}\n"
@@ -188,6 +201,8 @@ def build_facility_prompt(
                 f"重要: 感情タグで回答を始めてください: "
                 f"情報提供は[relaxed]、良いニュースは[happy]、"
                 f"利用できないサービスは[sad]。\n"
-                f"必ず日本語で回答してください。\n"
                 f"{oral_instruction_ja}"
             )
+            if lang_suffix:
+                prompt += f"\n{lang_suffix}"
+            return prompt
