@@ -97,7 +97,7 @@ class TestGeneralKnowledgeAgent:
         response = self.agent._handle_error("ja")
 
         assert "申し訳ございません" in response["answer"]
-        assert "見つかりませんでした" in response["answer"]
+        assert "エラーが発生しました" in response["answer"]
         assert response["emotion"] == "apologetic"
         assert response["metadata"]["agent"] == "GeneralKnowledgeAgent"
         assert response["metadata"]["status"] == "error"
@@ -108,7 +108,7 @@ class TestGeneralKnowledgeAgent:
         response = self.agent._handle_error("en")
 
         assert "sorry" in response["answer"].lower()
-        assert "find" in response["answer"].lower()
+        assert "wrong" in response["answer"].lower()
         assert response["emotion"] == "apologetic"
         assert response["metadata"]["agent"] == "GeneralKnowledgeAgent"
         assert response["metadata"]["status"] == "error"

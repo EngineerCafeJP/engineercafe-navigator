@@ -6,6 +6,8 @@ EventAgent用プロンプトテンプレート
 
 from typing import Dict
 
+from backend.utils.language_types import LANGUAGE_INSTRUCTION
+
 # 時間範囲ラベル
 TIME_RANGE_LABELS: Dict[str, Dict[str, str]] = {
     "today": {"ja": "本日", "en": "today"},
@@ -47,8 +49,11 @@ def build_event_prompt(query: str, events_text: str, time_range: str, language: 
         "Write as if speaking aloud to someone."
     )
 
+    # Multilingual: append language instruction for zh/ko
+    lang_suffix = LANGUAGE_INSTRUCTION.get(language, "")
+
     if language == "en":
-        return f"""Based on the following event information \
+        prompt = f"""Based on the following event information \
 for {time_range_text}, answer the question.
 
 Question: {query}
@@ -59,8 +64,11 @@ Events {time_range_text}:
 Provide a brief and friendly summary of the events. Start your response with [happy] emotion tag.
 Maximum 2-3 sentences.
 {oral_instruction_en}"""
+        if lang_suffix:
+            prompt += f"\n{lang_suffix}"
+        return prompt
     else:
-        return f"""{time_range_text}のイベント情報に基づいて、質問に答えてください。
+        prompt = f"""{time_range_text}のイベント情報に基づいて、質問に答えてください。
 
 質問: {query}
 
@@ -70,3 +78,6 @@ Maximum 2-3 sentences.
 イベントについて簡潔でフレンドリーな説明を提供してください。[happy]の感情タグで回答を始めてください。
 最大2-3文。
 {oral_instruction_ja}"""
+        if lang_suffix:
+            prompt += f"\n{lang_suffix}"
+        return prompt

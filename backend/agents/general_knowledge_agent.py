@@ -28,7 +28,7 @@ from backend.llm.openrouter import OpenRouterProvider
 from backend.llm.models import get_model_config
 from backend.tools.enhanced_rag import EnhancedRAGSearch
 from backend.tools.tavily_search import TavilySearchTool
-from backend.utils.language_types import DEFAULT_NOT_FOUND_RESPONSE, LANGUAGE_INSTRUCTION
+from backend.utils.language_types import DEFAULT_ERROR_RESPONSE, LANGUAGE_INSTRUCTION
 from backend.utils.memory_interface import MemorySystemInterface
 
 logger = logging.getLogger(__name__)
@@ -473,7 +473,7 @@ Be helpful and informative.
 
     def _handle_error(self, language: SupportedLanguage) -> Dict[str, Any]:
         """エラー時の処理"""
-        message = DEFAULT_NOT_FOUND_RESPONSE.get(language, DEFAULT_NOT_FOUND_RESPONSE["ja"])
+        message = DEFAULT_ERROR_RESPONSE.get(language, DEFAULT_ERROR_RESPONSE["ja"])
 
         logger.warning("GeneralKnowledgeAgent エラー")
 

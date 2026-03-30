@@ -16,6 +16,17 @@ LANGUAGE_INSTRUCTION: dict[str, str] = {
     "ko": "한국어로 답변해 주세요.",
 }
 
+DEFAULT_ERROR_RESPONSE: dict[str, str] = {
+    "ja": (
+        "[sad]申し訳ございません。"
+        "エラーが発生しました。"
+        "しばらくしてからもう一度お試しください。"
+    ),
+    "en": ("[sad]I'm sorry, something went wrong." " Please try again later."),
+    "zh": "[sad]抱歉，出现了错误。请稍后再试。",
+    "ko": "[sad]죄송합니다. 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
+}
+
 DEFAULT_NOT_FOUND_RESPONSE: dict[str, str] = {
     "ja": (
         "[sad]申し訳ございません。"

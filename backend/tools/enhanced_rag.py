@@ -425,7 +425,8 @@ class EnhancedRAGSearch:
         expansions: list[str] = []
 
         # Entity anchoring: short queries get "エンジニアカフェ" prepended
-        if len(query) < 15 and "エンジニアカフェ" not in query:
+        # Skip for "general" category to avoid biasing non-cafe queries (e.g. "Rust", "LLM")
+        if category != "general" and len(query) < 15 and "エンジニアカフェ" not in query:
             query = f"エンジニアカフェ {query}"
 
         # カテゴリベースの拡張キーワード

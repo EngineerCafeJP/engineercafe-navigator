@@ -138,12 +138,11 @@ class TestQueryExpansion:
         assert "Where is the location?" in result
 
     def test_expand_query_no_expansion_needed(self, rag_search):
-        """拡張が不要なクエリ（ただし短いクエリはエンティティアンカリングされる）"""
+        """拡張が不要なクエリ（generalカテゴリではアンカリングしない）"""
         result = rag_search._expand_query("こんにちは", "general", "ja")
 
-        # 短いクエリ(<15文字)にはエンジニアカフェがプリペンドされる
-        assert "エンジニアカフェ" in result
-        assert "こんにちは" in result
+        # generalカテゴリはアンカリング対象外
+        assert result == "こんにちは"
 
     def test_expand_query_deduplication(self, rag_search):
         """拡張キーワードの重複が除去される（完全一致キーワード単位）"""
