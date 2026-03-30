@@ -131,6 +131,7 @@ class MainWorkflow:
         status: str = "active",
         metadata: Optional[dict[str, Any]] = None,
         purpose: Optional[dict[str, Any]] = None,
+        visitor_identity: Optional[dict[str, Any]] = None,
     ) -> None:
         """Persist reception state for /api/chat-driven multi-turn flows."""
         if not session_id:
@@ -152,6 +153,8 @@ class MainWorkflow:
             payload["metadata"] = metadata
         if purpose is not None:
             payload["purpose"] = purpose
+        if visitor_identity is not None:
+            payload["visitor_identity"] = visitor_identity
 
         try:
             await self._reception_repo.store_session(session_id, payload)
@@ -429,149 +432,6 @@ class MainWorkflow:
             logger.warning("Memory loading failed: %s", e)
             return {"context": {**state.get("context", {}), "memory": {}, "long_term_memory": []}}
 
-    async def _handle_reception_gate(
-        self,
-        state: WorkflowStateDict,
-        session_id: str,
-        reception_status: dict,
-    ) -> Optional[Command]:
-        """Handle multi-turn reception flow. Returns Command or None to fall through."""
-        from backend.utils.reception_templates import (
-            get_purpose_followup,
-            get_purpose_hearing_prompt,
-            get_reception_response,
-        )
-
-        if reception_status.get("completed") or reception_status.get("stage") in (
-            "none",
-            "error",
-        ):
-            return None
-
-        stage = reception_status.get("stage", "none")
-        language = state.get("language", "ja")
-        query = state.get("query", "")
-
-        if stage == "initiated":
-            # New session -- greet visitor
-            await self._store_reception_session(
-                session_id=session_id,
-                stage="greeting",
-                language=language,
-                metadata={"reception_action": "start_reception"},
-            )
-            greeting = get_reception_response(language, is_returning=False)
-            return Command(
-                goto="format_response",
-                update={
-                    "answer": greeting.text,
-                    "emotion": "happy",
-                    "metadata": {
-                        **state.get("metadata", {}),
-                        "agent": "reception",
-                        "reception_stage": "greeting",
-                        "reception_action": "start_reception",
-                    },
-                },
-            )
-
-        if stage == "greeting":
-            # Waiting for purpose -- ask
-            await self._store_reception_session(
-                session_id=session_id,
-                stage="purpose_hearing",
-                language=language,
-                metadata={"reception_action": "hear_purpose"},
-            )
-            prompt = get_purpose_hearing_prompt(language)
-            return Command(
-                goto="format_response",
-                update={
-                    "answer": prompt.text,
-                    "emotion": "neutral",
-                    "metadata": {
-                        **state.get("metadata", {}),
-                        "agent": "reception",
-                        "reception_stage": "purpose_hearing",
-                        "reception_action": "hear_purpose",
-                    },
-                },
-            )
-
-        if stage == "purpose_hearing":
-            # Classify the purpose from the user's message
-            from backend.utils import purpose_classifier as pc
-
-            try:
-                category, detail, confidence = await pc.classify_purpose(
-                    query=query, language=language
-                )
-            except Exception as classify_exc:
-                logger.warning("Purpose classification failed: %s", classify_exc)
-                category, detail, confidence = "other", None, 0.3
-
-            # "other" means ambiguous -- stay in purpose_hearing and re-ask
-            if category == "other":
-                prompt = get_purpose_hearing_prompt(language)
-                return Command(
-                    goto="format_response",
-                    update={
-                        **state,
-                        "answer": prompt.text,
-                        "emotion": "neutral",
-                        "metadata": {
-                            **state.get("metadata", {}),
-                            "agent": "reception",
-                            "reception_stage": "purpose_hearing",
-                            "reception_action": "clarify_purpose",
-                        },
-                    },
-                )
-
-            # Only proceed to routing for non-"other" categories
-            purpose = {
-                "category": category,
-                "detail": detail,
-                "confidence": confidence,
-            }
-            await self._store_reception_session(
-                session_id=session_id,
-                stage="routing",
-                language=language,
-                metadata={"reception_action": "classify_purpose"},
-                purpose=purpose,
-            )
-            followup = get_purpose_followup(language, category)
-
-            return Command(
-                goto="format_response",
-                update={
-                    "answer": followup.text,
-                    "emotion": "neutral",
-                    "metadata": {
-                        **state.get("metadata", {}),
-                        "agent": "reception",
-                        "reception_stage": "routing",
-                        "reception_action": "classify_purpose",
-                        "purpose": purpose,
-                    },
-                },
-            )
-
-        if stage == "routing":
-            await self._store_reception_session(
-                session_id=session_id,
-                stage="completed",
-                language=language,
-                status="completed",
-                metadata={"reception_action": "complete_reception"},
-                purpose=reception_status.get("purpose"),
-            )
-
-        # For "routing" or other intermediate stages, fall through to
-        # normal orchestrator LLM routing.
-        return None
-
     @staticmethod
     def _build_routing_payload(
         decision: OrchestratorDecision,
@@ -738,65 +598,6 @@ class MainWorkflow:
             },
         )
 
-    async def _handle_reception_inline(
-        self,
-        state: WorkflowStateDict,
-        decision: OrchestratorDecision,
-    ) -> Optional[Command[RoutingTarget]]:
-        """Handle reception category inline (before topic_guard)."""
-        if decision.request_type != "reception":
-            return None
-
-        from backend.utils.reception_templates import get_reception_response
-
-        query = state.get("query", "")
-        logger.info(
-            "Inline reception: lang=%s, query=%s",
-            decision.language,
-            query[:80],
-        )
-        # first_time / returning / general の判定
-        long_term_memory = state.get("context", {}).get("long_term_memory")
-        lower_query = query.lower()
-        first_time_keywords = [
-            "初めて",
-            "はじめて",
-            "初回",
-            "first time",
-            "first visit",
-        ]
-        if any(kw in lower_query for kw in first_time_keywords):
-            reception_type = "first_time"
-        elif long_term_memory:
-            reception_type = "returning"
-        else:
-            reception_type = "general"
-
-        result = get_reception_response(
-            language=decision.language,
-            reception_type=reception_type,
-        )
-        return Command(
-            goto="format_response",
-            update={
-                "language": decision.language,
-                "routing": self._build_routing_payload(
-                    decision,
-                    agent="orchestrator_inline",
-                    category="reception",
-                ),
-                "answer": result["response"],
-                "emotion": result["emotion"],
-                "metadata": {
-                    **state.get("metadata", {}),
-                    "reception": {
-                        **result["metadata"],
-                        "reception_type": reception_type,
-                    },
-                },
-            },
-        )
-
     async def _handle_topic_guard(
         self,
         state: WorkflowStateDict,
@@ -849,6 +650,7 @@ class MainWorkflow:
         session has an active (incomplete) reception flow. If so, short-circuit
         with the appropriate reception stage response.
         """
+        from backend.workflows.reception_workflow import invoke_reception_subgraph
         from backend.utils.reception_status import check_reception_status
 
         query = state.get("query", "")
@@ -856,9 +658,33 @@ class MainWorkflow:
 
         # --- Reception status gate (before LLM call) ---
         reception_status = await check_reception_status(session_id)
-        reception_cmd = await self._handle_reception_gate(state, session_id, reception_status)
-        if reception_cmd is not None:
-            return reception_cmd
+        if not reception_status.get("completed") and reception_status.get("stage") not in (
+            "none",
+            "error",
+        ):
+            reception_result = await invoke_reception_subgraph(
+                state,
+                reception_status,
+                self._store_reception_session,
+            )
+            if reception_result.get("target_agent"):
+                return Command(
+                    goto=cast(RoutingTarget, reception_result["target_agent"]),
+                    update={
+                        "language": state.get("language", "ja"),
+                        "routing": reception_result["routing"],
+                        "metadata": reception_result["metadata"],
+                    },
+                )
+
+            return Command(
+                goto="format_response",
+                update={
+                    "answer": reception_result["answer"],
+                    "emotion": reception_result["emotion"],
+                    "metadata": reception_result["metadata"],
+                },
+            )
 
         # --- Normal orchestrator LLM routing ---
         memory_context = state.get("context", {}).get("memory")
@@ -880,10 +706,6 @@ class MainWorkflow:
                 session_id,
             ),
             lambda current_state, current_decision: self._handle_clarification(
-                current_state,
-                current_decision,
-            ),
-            lambda current_state, current_decision: self._handle_reception_inline(
                 current_state,
                 current_decision,
             ),

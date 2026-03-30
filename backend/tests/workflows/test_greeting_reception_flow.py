@@ -76,12 +76,6 @@ async def test_greeting_fast_path_drives_multi_turn_reception_flow() -> None:
         next_agent="format_response",
         request_type="greeting",
     )
-    routed_decision = _make_decision(
-        category="business-hours",
-        next_agent="business_info",
-        request_type="hours",
-    )
-
     with (
         patch.object(MainWorkflow, "__init__", lambda self, **kwargs: None),
         patch(
@@ -99,9 +93,7 @@ async def test_greeting_fast_path_drives_multi_turn_reception_flow() -> None:
     ):
         workflow = MainWorkflow()
         workflow.orchestrator = AsyncMock()
-        workflow.orchestrator.decide_next_agent = AsyncMock(
-            side_effect=[greeting_decision, routed_decision]
-        )
+        workflow.orchestrator.decide_next_agent = AsyncMock(return_value=greeting_decision)
 
         turn_1 = await workflow._orchestrator_node(_make_state("こんにちは"))
         assert turn_1.goto == "format_response"
@@ -120,10 +112,11 @@ async def test_greeting_fast_path_drives_multi_turn_reception_flow() -> None:
         assert persisted_sessions["chat-session-123"]["session_data"]["stage"] == "routing"
 
         turn_4 = await workflow._orchestrator_node(_make_state("営業時間は？"))
-        assert turn_4.goto == "business_info"
+        assert turn_4.goto == "facility"
         assert persisted_sessions["chat-session-123"]["session_data"]["stage"] == "completed"
         assert persisted_sessions["chat-session-123"]["session_data"]["status"] == "completed"
-        assert workflow.orchestrator.decide_next_agent.await_count == 2
+        assert turn_4.update["routing"]["category"] == "facility_use"
+        assert workflow.orchestrator.decide_next_agent.await_count == 1
 
 
 @pytest.mark.asyncio

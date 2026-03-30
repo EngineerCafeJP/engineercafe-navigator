@@ -540,9 +540,9 @@ async def complete_reception(
     # Invoke MainWorkflow with the handoff to get an agent response
     agent_response: Optional[str] = None
     try:
-        from backend.workflows.main_workflow import MainWorkflow
+        from backend.workflows.main_workflow import get_workflow
 
-        workflow = MainWorkflow()
+        workflow = await get_workflow()
         agent_result = await workflow.ainvoke_from_reception(result)
         agent_response = agent_result.get("answer")
     except Exception as exc:

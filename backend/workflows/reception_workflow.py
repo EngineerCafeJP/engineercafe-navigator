@@ -1,20 +1,24 @@
-"""Reception Workflow - Autonomous LangGraph StateGraph for visitor reception.
+"""Reception workflow subgraph for multi-turn visitor reception.
 
-Separate from MainWorkflow, this graph handles the end-to-end reception flow:
-visitor identification -> greeting -> purpose hearing -> routing.
+This module provides a LangGraph subgraph that advances the reception state by
+one stage per invocation so it can be called from MainWorkflow's orchestrator
+node while also remaining directly testable in isolation.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
-from typing import Annotated, Optional
+from typing import TYPE_CHECKING, Annotated, Any, Awaitable, Callable, Optional
 
-from langchain_core.messages import AIMessage, BaseMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from typing_extensions import TypedDict
 
+from backend.domain.reception.models import VisitPurpose
+from backend.domain.reception.service import ReceptionDomainService
 from backend.services.visitor_identification_service import VisitorIdentificationService
 from backend.utils import purpose_classifier as purpose_classifier_module
 from backend.utils.reception_templates import (
@@ -25,14 +29,20 @@ from backend.utils.reception_templates import (
 )
 
 logger = logging.getLogger(__name__)
+_DOMAIN_SERVICE = ReceptionDomainService()
+_RECEPTION_GRAPH = None
+_RECEPTION_LOCK = asyncio.Lock()
 
-# Purpose category to target agent mapping
-_PURPOSE_AGENT_MAPPING: dict[str, str] = {
+if TYPE_CHECKING:
+    from backend.workflows.main_workflow import WorkflowStateDict
+
+
+_PURPOSE_REQUEST_TYPE_MAP: dict[str, str] = {
     "facility_use": "facility",
     "event_participation": "event",
-    "tour": "slide",
-    "consultation": "general_knowledge",
-    "other": "general_knowledge",
+    "tour": "narrate",
+    "consultation": "consultation",
+    "other": "general",
 }
 
 
@@ -55,6 +65,8 @@ class ReceptionState(TypedDict):
         trigger_type: How this reception was initiated.
         greeting: The greeting text sent to the visitor, or None.
         response: The most recent response text, or None.
+        target_agent: Downstream agent to hand off to after reception completes.
+        reception_action: Action label for persistence/metadata.
     """
 
     session_id: str
@@ -67,6 +79,21 @@ class ReceptionState(TypedDict):
     trigger_type: str
     greeting: Optional[str]
     response: Optional[str]
+    target_agent: Optional[str]
+    reception_action: Optional[str]
+
+
+class ReceptionSubgraphResult(TypedDict):
+    """Parent-compatible result returned to MainWorkflow."""
+
+    answer: Optional[str]
+    emotion: Optional[str]
+    metadata: dict[str, Any]
+    routing: Optional[dict[str, Any]]
+    target_agent: Optional[str]
+
+
+PersistReceptionSession = Callable[..., Awaitable[None]]
 
 
 # =============================================================================
@@ -129,6 +156,7 @@ async def greet_visitor(state: ReceptionState) -> dict:
         "stage": "greeting",
         "greeting": greeting_text,
         "response": greeting_text,
+        "reception_action": "start_reception",
         "messages": [greeting_message],
     }
 
@@ -150,8 +178,10 @@ async def hear_purpose(state: ReceptionState) -> dict:
     prompt_message = AIMessage(content=result.text)
 
     return {
+        "visitor_identity": state.get("visitor_identity") or {"visitor_type": "new"},
         "stage": "purpose_hearing",
         "response": result.text,
+        "reception_action": "hear_purpose",
         "messages": [prompt_message],
     }
 
@@ -184,7 +214,14 @@ async def classify_purpose(state: ReceptionState) -> dict:
     if not user_response:
         logger.warning("No human message found for purpose classification; defaulting to 'other'")
         purpose_dict = {"category": "other", "detail": None, "confidence": 0.3}
-        return {"purpose": purpose_dict, "stage": "routing"}
+        prompt = get_purpose_hearing_prompt(language=language)
+        return {
+            "purpose": purpose_dict,
+            "stage": "purpose_hearing",
+            "response": prompt.text,
+            "reception_action": "clarify_purpose",
+            "messages": [AIMessage(content=prompt.text)],
+        }
 
     try:
         category, detail, confidence = await purpose_classifier_module.classify_purpose(
@@ -201,9 +238,24 @@ async def classify_purpose(state: ReceptionState) -> dict:
         "confidence": confidence,
     }
 
+    if category == "other":
+        prompt = get_purpose_hearing_prompt(language=language)
+        return {
+            "purpose": purpose_dict,
+            "stage": "purpose_hearing",
+            "response": prompt.text,
+            "reception_action": "clarify_purpose",
+            "messages": [AIMessage(content=prompt.text)],
+        }
+
+    followup_result = get_purpose_followup(language=language, purpose=category)
+
     return {
         "purpose": purpose_dict,
         "stage": "routing",
+        "response": followup_result.text,
+        "reception_action": "classify_purpose",
+        "messages": [AIMessage(content=followup_result.text)],
     }
 
 
@@ -220,13 +272,10 @@ async def route_to_agent(state: ReceptionState) -> dict:
     Returns:
         State update dict with response, stage, and messages updated.
     """
-    language = state.get("language", "ja")
     purpose_dict = state.get("purpose") or {}
     category = purpose_dict.get("category", "other")
 
-    target_agent = _PURPOSE_AGENT_MAPPING.get(category, "general_knowledge")
-    followup_result = get_purpose_followup(language=language, purpose=category)
-    followup_message = AIMessage(content=followup_result.text)
+    target_agent = _DOMAIN_SERVICE.map_purpose_to_agent(VisitPurpose(category=category))
 
     logger.info(
         "Routing visitor to agent '%s' for purpose '%s'",
@@ -240,8 +289,8 @@ async def route_to_agent(state: ReceptionState) -> dict:
     return {
         "purpose": updated_purpose,
         "stage": "completed",
-        "response": followup_result.text,
-        "messages": [followup_message],
+        "target_agent": target_agent,
+        "reception_action": "complete_reception",
     }
 
 
@@ -250,22 +299,18 @@ async def route_to_agent(state: ReceptionState) -> dict:
 # =============================================================================
 
 
-def _should_hear_purpose(state: ReceptionState) -> str:
-    """Determine if we need to ask the visitor about their purpose.
-
-    Returns "hear_purpose" when the purpose has not yet been identified,
-    "classify_purpose" when the visitor has already provided their purpose
-    (e.g. if routed back after a human message).
-
-    Args:
-        state: Current reception state.
-
-    Returns:
-        Node name to transition to.
-    """
-    if state.get("purpose") is None:
+def _entry_node_for_stage(state: ReceptionState) -> str:
+    """Select the next node based on the persisted reception stage."""
+    stage = state.get("stage", "initiated")
+    if stage == "initiated":
+        return "greet_visitor"
+    if stage == "greeting":
         return "hear_purpose"
-    return "classify_purpose"
+    if stage == "purpose_hearing":
+        return "classify_purpose"
+    if stage == "routing":
+        return "route_to_agent"
+    return "__end__"
 
 
 # =============================================================================
@@ -282,40 +327,36 @@ async def get_reception_workflow() -> StateGraph:
     Returns:
         A compiled LangGraph StateGraph for the reception flow.
     """
-    workflow = StateGraph(ReceptionState)
+    global _RECEPTION_GRAPH
+    if _RECEPTION_GRAPH is not None:
+        return _RECEPTION_GRAPH
 
-    # Register nodes
-    workflow.add_node("greet_visitor", greet_visitor)
-    workflow.add_node("hear_purpose", hear_purpose)
-    workflow.add_node("classify_purpose", classify_purpose)
-    workflow.add_node("route_to_agent", route_to_agent)
+    async with _RECEPTION_LOCK:
+        if _RECEPTION_GRAPH is not None:
+            return _RECEPTION_GRAPH
 
-    # Entry point
-    workflow.add_edge(START, "greet_visitor")
-
-    # After greeting: ask for purpose if not yet known
-    workflow.add_conditional_edges(
-        "greet_visitor",
-        _should_hear_purpose,
-        {
-            "hear_purpose": "hear_purpose",
-            "classify_purpose": "classify_purpose",
-        },
-    )
-
-    # After purpose prompt: wait for user response (ends turn)
-    # In a real multi-turn setup the human response triggers classify_purpose.
-    # In this single-graph representation we wire hear_purpose -> classify_purpose
-    # so tests can drive the full flow end-to-end.
-    workflow.add_edge("hear_purpose", "classify_purpose")
-
-    # Classification -> routing
-    workflow.add_edge("classify_purpose", "route_to_agent")
-
-    # Routing -> end
-    workflow.add_edge("route_to_agent", END)
-
-    return workflow.compile()
+        workflow = StateGraph(ReceptionState)
+        workflow.add_node("greet_visitor", greet_visitor)
+        workflow.add_node("hear_purpose", hear_purpose)
+        workflow.add_node("classify_purpose", classify_purpose)
+        workflow.add_node("route_to_agent", route_to_agent)
+        workflow.add_conditional_edges(
+            START,
+            _entry_node_for_stage,
+            {
+                "greet_visitor": "greet_visitor",
+                "hear_purpose": "hear_purpose",
+                "classify_purpose": "classify_purpose",
+                "route_to_agent": "route_to_agent",
+                "__end__": END,
+            },
+        )
+        workflow.add_edge("greet_visitor", END)
+        workflow.add_edge("hear_purpose", END)
+        workflow.add_edge("classify_purpose", END)
+        workflow.add_edge("route_to_agent", END)
+        _RECEPTION_GRAPH = workflow.compile()
+        return _RECEPTION_GRAPH
 
 
 # =============================================================================
@@ -351,4 +392,103 @@ def make_initial_state(
         trigger_type=trigger_type,
         greeting=None,
         response=None,
+        target_agent=None,
+        reception_action=None,
     )
+
+
+def workflow_state_to_reception_state(
+    state: "WorkflowStateDict",
+    reception_status: dict[str, Any],
+) -> ReceptionState:
+    """Convert MainWorkflow state + persisted reception status into ReceptionState."""
+    messages = list(state.get("messages", []))
+    query = state.get("query", "")
+    if query:
+        messages.append(HumanMessage(content=query))
+
+    return ReceptionState(
+        session_id=state.get("session_id", ""),
+        reception_session_id=reception_status.get("reception_session_id")
+        or state.get("session_id", ""),
+        messages=messages,
+        visitor_identity=reception_status.get("visitor_identity"),
+        purpose=reception_status.get("purpose"),
+        stage=reception_status.get("stage", "initiated"),
+        language=state.get("language", "ja"),
+        trigger_type=reception_status.get("trigger_type", "voice"),
+        greeting=reception_status.get("greeting"),
+        response=None,
+        target_agent=None,
+        reception_action=None,
+    )
+
+
+def reception_state_to_workflow_result(
+    original_state: "WorkflowStateDict",
+    reception_state: ReceptionState,
+) -> ReceptionSubgraphResult:
+    """Convert ReceptionState back into a MainWorkflow-compatible partial update."""
+    stage = reception_state.get("stage", "initiated")
+    purpose = reception_state.get("purpose") or {}
+    target_agent = reception_state.get("target_agent")
+    reception_action = reception_state.get("reception_action")
+    metadata = {
+        **original_state.get("metadata", {}),
+        "agent": "reception",
+        "reception_stage": stage,
+    }
+    if reception_action:
+        metadata["reception_action"] = reception_action
+    if purpose:
+        metadata["purpose"] = purpose
+    if target_agent:
+        metadata["reception_target_agent"] = target_agent
+        category = purpose.get("category", "other")
+        request_type = _PURPOSE_REQUEST_TYPE_MAP.get(category, "general")
+        return ReceptionSubgraphResult(
+            answer=None,
+            emotion=None,
+            metadata=metadata,
+            routing={
+                "agent": target_agent,
+                "category": category,
+                "request_type": request_type,
+                "confidence": purpose.get("confidence", 1.0),
+                "reasoning": "Routed from reception subgraph",
+                "debug_info": {},
+            },
+            target_agent=target_agent,
+        )
+
+    return ReceptionSubgraphResult(
+        answer=reception_state.get("response"),
+        emotion="happy" if stage == "greeting" else "neutral",
+        metadata=metadata,
+        routing=None,
+        target_agent=None,
+    )
+
+
+async def invoke_reception_subgraph(
+    state: "WorkflowStateDict",
+    reception_status: dict[str, Any],
+    persist_session: PersistReceptionSession,
+) -> ReceptionSubgraphResult:
+    """Advance the reception subgraph by one turn and persist the new stage."""
+    graph = await get_reception_workflow()
+    reception_state = workflow_state_to_reception_state(state, reception_status)
+    updated_state = await graph.ainvoke(reception_state)
+
+    await persist_session(
+        session_id=state.get("session_id", ""),
+        stage=updated_state.get("stage", reception_state.get("stage", "initiated")),
+        language=updated_state.get("language", state.get("language", "ja")),
+        trigger_type=updated_state.get("trigger_type", "voice"),
+        status="completed" if updated_state.get("stage") == "completed" else "active",
+        metadata={"reception_action": updated_state.get("reception_action")},
+        purpose=updated_state.get("purpose"),
+        visitor_identity=updated_state.get("visitor_identity"),
+    )
+
+    return reception_state_to_workflow_result(state, updated_state)

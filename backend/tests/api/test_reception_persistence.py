@@ -280,8 +280,16 @@ def test_reception_api_session_survives_restart() -> None:
     fake_result = _FakeHandoffResult()
     mock_service = AsyncMock()
     mock_service.prepare_handoff.return_value = fake_result
+    mock_workflow = AsyncMock()
+    mock_workflow.ainvoke_from_reception = AsyncMock(return_value={"answer": "Welcome"})
 
-    with patch("backend.api.reception._get_handoff_service", return_value=mock_service):
+    with (
+        patch("backend.api.reception._get_handoff_service", return_value=mock_service),
+        patch(
+            "backend.workflows.main_workflow.get_workflow",
+            new=AsyncMock(return_value=mock_workflow),
+        ),
+    ):
         complete = client.post(
             "/api/reception/complete",
             json={

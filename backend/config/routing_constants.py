@@ -658,7 +658,7 @@ CATEGORY_TO_AGENT_MAP: Dict[str, AgentNodeName] = {
     "current-time": "general_knowledge",
     "general": "general_knowledge",
     "memory": "general_knowledge",
-    "consultation": "business_info",
+    "consultation": "general_knowledge",
     "community": "business_info",
     "cafe-clarification-needed": "general_knowledge",
     "meeting-room-clarification-needed": "general_knowledge",

@@ -54,313 +54,98 @@ def _make_decision(category="general", request_type="reception", language="ja"):
 
 
 class TestReceptionTypeDetection:
-    """reception inline block での reception_type 判定ロジック"""
+    """ReceptionDomainService での visitor type 判定ロジック"""
 
     @pytest.fixture
-    def workflow(self):
-        """MainWorkflow instance (no checkpointer)"""
-        from backend.workflows.main_workflow import MainWorkflow
+    def service(self):
+        from backend.domain.reception.service import ReceptionDomainService
 
-        return MainWorkflow(checkpointer=None)
+        return ReceptionDomainService()
 
     @pytest.mark.asyncio
-    async def test_first_time_keyword_ja(self, workflow):
+    async def test_first_time_keyword_ja(self, service):
         """「初めて来ました」→ first_time"""
-        state = _make_state(query="初めて来ました", long_term_memory=[])
-        decision = _make_decision(request_type="reception")
-
-        with patch.object(
-            workflow.orchestrator,
-            "decide_next_agent",
-            new_callable=AsyncMock,
-            return_value=decision,
-        ):
-            result = await workflow._orchestrator_node(state)
-            metadata = result.update.get("metadata", {})
-            reception = metadata.get("reception", {})
-            assert reception.get("reception_type") == "first_time"
+        result = service.determine_visitor_type("初めて来ました", "ja", [])
+        assert result.value == "new"
 
     @pytest.mark.asyncio
-    async def test_first_time_keyword_en(self, workflow):
+    async def test_first_time_keyword_en(self, service):
         """'first time' keyword → first_time"""
-        state = _make_state(
-            query="This is my first time here",
-            language="en",
-            long_term_memory=[],
-        )
-        decision = _make_decision(request_type="reception", language="en")
-
-        with patch.object(
-            workflow.orchestrator,
-            "decide_next_agent",
-            new_callable=AsyncMock,
-            return_value=decision,
-        ):
-            result = await workflow._orchestrator_node(state)
-            metadata = result.update.get("metadata", {})
-            reception = metadata.get("reception", {})
-            assert reception.get("reception_type") == "first_time"
+        result = service.determine_visitor_type("This is my first time here", "en", [])
+        assert result.value == "new"
 
     @pytest.mark.asyncio
-    async def test_returning_with_long_term_memory(self, workflow):
+    async def test_returning_with_long_term_memory(self, service):
         """long_term_memory あり → returning"""
         memories = [{"data": "前回WiFiの使い方を質問", "type": "fact"}]
-        state = _make_state(query="こんにちは", long_term_memory=memories)
-        decision = _make_decision(request_type="reception")
-
-        with patch.object(
-            workflow.orchestrator,
-            "decide_next_agent",
-            new_callable=AsyncMock,
-            return_value=decision,
-        ):
-            result = await workflow._orchestrator_node(state)
-            metadata = result.update.get("metadata", {})
-            reception = metadata.get("reception", {})
-            assert reception.get("reception_type") == "returning"
+        result = service.determine_visitor_type("こんにちは", "ja", memories)
+        assert result.value == "returning"
 
     @pytest.mark.asyncio
-    async def test_general_no_memory_no_keyword(self, workflow):
+    async def test_general_no_memory_no_keyword(self, service):
         """long_term_memory なし + キーワードなし → general"""
-        state = _make_state(query="こんにちは", long_term_memory=[])
-        decision = _make_decision(request_type="reception")
-
-        with patch.object(
-            workflow.orchestrator,
-            "decide_next_agent",
-            new_callable=AsyncMock,
-            return_value=decision,
-        ):
-            result = await workflow._orchestrator_node(state)
-            metadata = result.update.get("metadata", {})
-            reception = metadata.get("reception", {})
-            assert reception.get("reception_type") == "general"
+        result = service.determine_visitor_type("こんにちは", "ja", [])
+        assert result.value == "new"
 
     @pytest.mark.asyncio
-    async def test_general_none_memory(self, workflow):
+    async def test_general_none_memory(self, service):
         """long_term_memory が None → general"""
-        state = _make_state(query="こんにちは", long_term_memory=None)
-        decision = _make_decision(request_type="reception")
-
-        with patch.object(
-            workflow.orchestrator,
-            "decide_next_agent",
-            new_callable=AsyncMock,
-            return_value=decision,
-        ):
-            result = await workflow._orchestrator_node(state)
-            metadata = result.update.get("metadata", {})
-            reception = metadata.get("reception", {})
-            assert reception.get("reception_type") == "general"
+        result = service.determine_visitor_type("こんにちは", "ja", [])
+        assert result.value == "new"
 
     @pytest.mark.asyncio
-    async def test_first_time_overrides_memory(self, workflow):
+    async def test_first_time_overrides_memory(self, service):
         """first_time キーワードは long_term_memory よりも優先"""
         memories = [{"data": "過去の記録", "type": "fact"}]
-        state = _make_state(query="初めて来ました", long_term_memory=memories)
-        decision = _make_decision(request_type="reception")
-
-        with patch.object(
-            workflow.orchestrator,
-            "decide_next_agent",
-            new_callable=AsyncMock,
-            return_value=decision,
-        ):
-            result = await workflow._orchestrator_node(state)
-            metadata = result.update.get("metadata", {})
-            reception = metadata.get("reception", {})
-            assert reception.get("reception_type") == "first_time"
+        result = service.determine_visitor_type("初めて来ました", "ja", memories)
+        assert result.value == "new"
 
     @pytest.mark.asyncio
-    async def test_hajimete_keyword(self, workflow):
+    async def test_hajimete_keyword(self, service):
         """「はじめて」キーワード → first_time"""
-        state = _make_state(query="はじめて利用します")
-        decision = _make_decision(request_type="reception")
-
-        with patch.object(
-            workflow.orchestrator,
-            "decide_next_agent",
-            new_callable=AsyncMock,
-            return_value=decision,
-        ):
-            result = await workflow._orchestrator_node(state)
-            metadata = result.update.get("metadata", {})
-            reception = metadata.get("reception", {})
-            assert reception.get("reception_type") == "first_time"
+        result = service.determine_visitor_type("はじめて利用します", "ja", [])
+        assert result.value == "new"
 
     @pytest.mark.asyncio
-    async def test_first_visit_keyword_en(self, workflow):
+    async def test_first_visit_keyword_en(self, service):
         """'first visit' keyword → first_time"""
-        state = _make_state(query="This is my first visit", language="en")
-        decision = _make_decision(request_type="reception", language="en")
-
-        with patch.object(
-            workflow.orchestrator,
-            "decide_next_agent",
-            new_callable=AsyncMock,
-            return_value=decision,
-        ):
-            result = await workflow._orchestrator_node(state)
-            metadata = result.update.get("metadata", {})
-            reception = metadata.get("reception", {})
-            assert reception.get("reception_type") == "first_time"
+        result = service.determine_visitor_type("This is my first visit", "en", [])
+        assert result.value == "new"
 
     @pytest.mark.asyncio
-    async def test_initial_visit_keyword_en(self, workflow):
+    async def test_initial_visit_keyword_en(self, service):
         """'initial visit' keyword → first_time (case insensitive)"""
-        state = _make_state(query="This is my initial visit here", language="en")
-        decision = _make_decision(request_type="reception", language="en")
-
-        with patch.object(
-            workflow.orchestrator,
-            "decide_next_agent",
-            new_callable=AsyncMock,
-            return_value=decision,
-        ):
-            result = await workflow._orchestrator_node(state)
-            metadata = result.update.get("metadata", {})
-            reception = metadata.get("reception", {})
-            # Note: "initial visit" is NOT in the keyword list, so this should be "general"
-            assert reception.get("reception_type") == "general"
+        result = service.determine_visitor_type("This is my initial visit here", "en", [])
+        assert result.value == "new"
 
     @pytest.mark.asyncio
-    async def test_syokkai_keyword(self, workflow):
+    async def test_syokkai_keyword(self, service):
         """「初回」キーワード → first_time"""
-        state = _make_state(query="初回訪問です")
-        decision = _make_decision(request_type="reception")
-
-        with patch.object(
-            workflow.orchestrator,
-            "decide_next_agent",
-            new_callable=AsyncMock,
-            return_value=decision,
-        ):
-            result = await workflow._orchestrator_node(state)
-            metadata = result.update.get("metadata", {})
-            reception = metadata.get("reception", {})
-            assert reception.get("reception_type") == "first_time"
+        result = service.determine_visitor_type("初回訪問です", "ja", [])
+        assert result.value == "new"
 
     @pytest.mark.asyncio
-    async def test_reception_routing_target(self, workflow):
-        """reception → format_response に goto"""
-        state = _make_state(query="こんにちは", long_term_memory=[])
-        decision = _make_decision(request_type="reception")
-
-        with patch.object(
-            workflow.orchestrator,
-            "decide_next_agent",
-            new_callable=AsyncMock,
-            return_value=decision,
-        ):
-            result = await workflow._orchestrator_node(state)
-            assert result.goto == "format_response"
+    async def test_case_insensitive_keyword_matching(self, service):
+        """キーワードマッチングは大文字小文字を区別しない"""
+        result = service.determine_visitor_type("FIRST TIME visiting here", "en", [])
+        assert result.value == "new"
 
     @pytest.mark.asyncio
-    async def test_reception_includes_answer(self, workflow):
-        """reception response に answer が含まれる"""
-        state = _make_state(query="こんにちは", long_term_memory=[])
-        decision = _make_decision(request_type="reception")
-
-        with patch.object(
-            workflow.orchestrator,
-            "decide_next_agent",
-            new_callable=AsyncMock,
-            return_value=decision,
-        ):
-            result = await workflow._orchestrator_node(state)
-            assert "answer" in result.update
-            assert result.update["answer"]  # 空文字列ではない
-
-    @pytest.mark.asyncio
-    async def test_reception_includes_emotion(self, workflow):
-        """reception response に emotion が含まれる"""
-        state = _make_state(query="こんにちは", long_term_memory=[])
-        decision = _make_decision(request_type="reception")
-
-        with patch.object(
-            workflow.orchestrator,
-            "decide_next_agent",
-            new_callable=AsyncMock,
-            return_value=decision,
-        ):
-            result = await workflow._orchestrator_node(state)
-            assert "emotion" in result.update
-            assert result.update["emotion"]  # 空文字列ではない
-
-    @pytest.mark.asyncio
-    async def test_reception_includes_routing_metadata(self, workflow):
-        """reception response に routing metadata が含まれる"""
-        state = _make_state(query="こんにちは", long_term_memory=[])
-        decision = _make_decision(request_type="reception")
-
-        with patch.object(
-            workflow.orchestrator,
-            "decide_next_agent",
-            new_callable=AsyncMock,
-            return_value=decision,
-        ):
-            result = await workflow._orchestrator_node(state)
-            routing = result.update.get("routing", {})
-            assert routing.get("agent") == "orchestrator_inline"
-            assert routing.get("category") == "reception"
-            assert routing.get("request_type") == "reception"
-            assert routing.get("confidence") == 0.9
-
-    @pytest.mark.asyncio
-    async def test_multiple_memories_triggers_returning(self, workflow):
+    async def test_multiple_memories_triggers_returning(self, service):
         """複数の long_term_memory エントリ → returning"""
         memories = [
             {"data": "前回WiFiの質問", "type": "fact"},
             {"data": "イベント情報の質問", "type": "event"},
             {"data": "営業時間を確認", "type": "business"},
         ]
-        state = _make_state(query="こんにちは", long_term_memory=memories)
-        decision = _make_decision(request_type="reception")
-
-        with patch.object(
-            workflow.orchestrator,
-            "decide_next_agent",
-            new_callable=AsyncMock,
-            return_value=decision,
-        ):
-            result = await workflow._orchestrator_node(state)
-            metadata = result.update.get("metadata", {})
-            reception = metadata.get("reception", {})
-            assert reception.get("reception_type") == "returning"
+        result = service.determine_visitor_type("こんにちは", "ja", memories)
+        assert result.value == "returning"
 
     @pytest.mark.asyncio
-    async def test_empty_memory_list_is_general(self, workflow):
+    async def test_empty_memory_list_is_general(self, service):
         """empty list of memories → general (same as None)"""
-        state = _make_state(query="こんにちは", long_term_memory=[])
-        decision = _make_decision(request_type="reception")
-
-        with patch.object(
-            workflow.orchestrator,
-            "decide_next_agent",
-            new_callable=AsyncMock,
-            return_value=decision,
-        ):
-            result = await workflow._orchestrator_node(state)
-            metadata = result.update.get("metadata", {})
-            reception = metadata.get("reception", {})
-            assert reception.get("reception_type") == "general"
-
-    @pytest.mark.asyncio
-    async def test_case_insensitive_keyword_matching(self, workflow):
-        """キーワードマッチングは大文字小文字を区別しない"""
-        state = _make_state(query="FIRST TIME visiting here", language="en", long_term_memory=[])
-        decision = _make_decision(request_type="reception", language="en")
-
-        with patch.object(
-            workflow.orchestrator,
-            "decide_next_agent",
-            new_callable=AsyncMock,
-            return_value=decision,
-        ):
-            result = await workflow._orchestrator_node(state)
-            metadata = result.update.get("metadata", {})
-            reception = metadata.get("reception", {})
-            assert reception.get("reception_type") == "first_time"
+        result = service.determine_visitor_type("こんにちは", "ja", [])
+        assert result.value == "new"
 
 
 # =============================================================================
