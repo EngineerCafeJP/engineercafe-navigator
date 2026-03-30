@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { type MouseEvent, useCallback, useState } from 'react';
+import { useCallback, useState } from 'react';
 import useSWR from 'swr';
 import { Toaster, toast } from 'react-hot-toast';
 import { deleteKnowledge, getKnowledgeList } from '@/lib/api/knowledge';
@@ -34,22 +34,6 @@ export default function KnowledgeAdminPage() {
     }
   }, [mutate]);
 
-  const handleHardNavigation = useCallback((event: MouseEvent<HTMLAnchorElement>, href: string) => {
-    if (
-      event.defaultPrevented ||
-      event.button !== 0 ||
-      event.metaKey ||
-      event.ctrlKey ||
-      event.shiftKey ||
-      event.altKey
-    ) {
-      return;
-    }
-
-    event.preventDefault();
-    window.location.assign(href);
-  }, []);
-
   if (error) {
     return (
       <div className="min-h-screen bg-gray-50 p-8">
@@ -74,16 +58,12 @@ export default function KnowledgeAdminPage() {
               <div className="flex gap-3">
                 <Link
                   href="/admin/knowledge/upload"
-                  prefetch={false}
-                  onClick={(event) => handleHardNavigation(event, '/admin/knowledge/upload')}
                   className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
                 >
                   ファイルアップロード
                 </Link>
                 <Link
                   href="/admin/knowledge/new"
-                  prefetch={false}
-                  onClick={(event) => handleHardNavigation(event, '/admin/knowledge/new')}
                   className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
                 >
                   新規作成
@@ -96,8 +76,11 @@ export default function KnowledgeAdminPage() {
             <form onSubmit={handleSearch} className="mb-6">
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">検索</label>
+                  <label htmlFor="knowledge-search-filter" className="block text-sm font-medium text-gray-700 mb-2">
+                    検索
+                  </label>
                   <input
+                    id="knowledge-search-filter"
                     type="text"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
@@ -107,8 +90,11 @@ export default function KnowledgeAdminPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">言語</label>
+                  <label htmlFor="knowledge-language-filter" className="block text-sm font-medium text-gray-700 mb-2">
+                    言語
+                  </label>
                   <select
+                    id="knowledge-language-filter"
                     value={language}
                     onChange={(e) => setLanguage(e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
@@ -120,8 +106,11 @@ export default function KnowledgeAdminPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">カテゴリ</label>
+                  <label htmlFor="knowledge-category-filter" className="block text-sm font-medium text-gray-700 mb-2">
+                    カテゴリ
+                  </label>
                   <input
+                    id="knowledge-category-filter"
                     type="text"
                     value={category}
                     onChange={(e) => setCategory(e.target.value)}

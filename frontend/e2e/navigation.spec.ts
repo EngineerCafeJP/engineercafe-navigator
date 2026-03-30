@@ -18,7 +18,10 @@ test.describe('Navigation', () => {
     await page.goto('/onboarding?lang=en');
     await expect(page.getByRole('heading', { name: 'First Visit Registration Guide' })).toBeVisible();
 
-    await page.getByTestId('guide-language-toggle').click();
+    await Promise.all([
+      page.waitForURL(/\/onboarding\?lang=ja$/, { timeout: 30_000 }),
+      page.getByTestId('guide-language-toggle').click(),
+    ]);
 
     await expect(page).toHaveURL(/\/onboarding\?lang=ja$/);
     await expect(page.getByTestId('customer-guide-shell')).toBeVisible();

@@ -1367,6 +1367,14 @@ export default function MarpViewer({
     }
   };
 
+  const playPauseLabel = isPlaying
+    ? currentLanguage === 'ja'
+      ? '自動再生を一時停止'
+      : 'Pause autoplay'
+    : currentLanguage === 'ja'
+      ? '自動再生を開始'
+      : 'Start autoplay';
+
   if (isLoading) {
     return (
       <div data-testid="marp-viewer" className="flex h-full items-center justify-center">
@@ -1421,6 +1429,10 @@ export default function MarpViewer({
           <button
             data-testid="marp-play-pause-button"
             onClick={toggleAutoPlay}
+            aria-label={playPauseLabel}
+            aria-pressed={isPlaying}
+            data-state={isPlaying ? 'playing' : 'paused'}
+            title={playPauseLabel}
             className={`p-2 rounded transition-colors ${
               isPlaying ? 'bg-red-500 hover:bg-red-600' : 'bg-green-500 hover:bg-green-600'
             } text-white`}

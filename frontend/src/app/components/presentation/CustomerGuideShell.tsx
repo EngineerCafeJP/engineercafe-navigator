@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { ArrowLeft, Languages } from 'lucide-react';
-import { type MouseEvent, useCallback, useState } from 'react';
+import { useState } from 'react';
 
 import CharacterAvatar from '@/app/components/CharacterAvatar';
 import MarpViewer from '@/app/components/MarpViewer';
@@ -50,21 +50,6 @@ export default function CustomerGuideShell({
     nextParams.set('autoplay', '1');
   }
   const languageHref = `/onboarding?${nextParams.toString()}`;
-  const handleHardNavigation = useCallback((event: MouseEvent<HTMLAnchorElement>, href: string) => {
-    if (
-      event.defaultPrevented ||
-      event.button !== 0 ||
-      event.metaKey ||
-      event.ctrlKey ||
-      event.shiftKey ||
-      event.altKey
-    ) {
-      return;
-    }
-
-    event.preventDefault();
-    window.location.assign(href);
-  }, []);
 
   return (
     <main
@@ -81,8 +66,6 @@ export default function CustomerGuideShell({
           <div className="flex flex-wrap gap-2">
             <Link
               href="/"
-              prefetch={false}
-              onClick={(event) => handleHardNavigation(event, '/')}
               data-testid="guide-back-button"
               className="inline-flex min-h-11 items-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-900 transition-colors hover:bg-slate-50"
             >
@@ -91,8 +74,6 @@ export default function CustomerGuideShell({
             </Link>
             <Link
               href={languageHref}
-              prefetch={false}
-              onClick={(event) => handleHardNavigation(event, languageHref)}
               data-testid="guide-language-toggle"
               className="inline-flex min-h-11 items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-800"
             >

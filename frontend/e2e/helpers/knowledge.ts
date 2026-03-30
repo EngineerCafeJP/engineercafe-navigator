@@ -53,9 +53,8 @@ export async function fillKnowledgeForm(
 
   if (data.content) {
     const mdEditorTextarea = page.locator('.w-md-editor-text-input');
-    if (await mdEditorTextarea.isVisible({ timeout: 2_000 }).catch(() => false)) {
-      await mdEditorTextarea.fill(data.content);
-    }
+    await expect(mdEditorTextarea).toBeVisible({ timeout: 5_000 });
+    await mdEditorTextarea.fill(data.content);
   }
 
   if (data.language) {

@@ -52,13 +52,11 @@ test.describe('Knowledge 一覧ページ', () => {
   test('言語フィルタで絞り込める', async ({ page }) => {
     await gotoKnowledgeList(page);
 
-    const languageSelect = page.locator('select').filter({ hasText: /言語/ }).first();
-    const selectExists = await languageSelect.isVisible({ timeout: 2_000 }).catch(() => false);
-    if (selectExists) {
-      await languageSelect.selectOption('ja');
-      await page.getByRole('button', { name: /検索|適用|更新/ }).click();
-      await expect(page.getByRole('table')).toBeVisible();
-    }
+    const languageSelect = page.getByLabel('言語');
+    await expect(languageSelect).toBeVisible();
+    await languageSelect.selectOption('ja');
+    await page.getByRole('button', { name: /検索|適用|更新/ }).click();
+    await expect(page.getByRole('table')).toBeVisible();
   });
 
   test('削除ダイアログを承認すると削除される', async ({ page }) => {
@@ -127,9 +125,8 @@ test.describe('Knowledge 新規作成ページ', () => {
     });
 
     const mdEditorTextarea = page.locator('.w-md-editor-text-input');
-    if (await mdEditorTextarea.isVisible({ timeout: 2_000 }).catch(() => false)) {
-      await mdEditorTextarea.fill('テストコンテンツ');
-    }
+    await expect(mdEditorTextarea).toBeVisible({ timeout: 5_000 });
+    await mdEditorTextarea.fill('テストコンテンツ');
 
     await page.getByRole('button', { name: /作成|保存/ }).click();
     await expect(page).toHaveURL(/\/admin\/knowledge\/new$/);

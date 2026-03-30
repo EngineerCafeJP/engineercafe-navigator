@@ -41,14 +41,3 @@ export async function clickReset(page: Page) {
 export async function clickSwitchToEnglish(page: Page) {
   await page.getByTestId('guide-language-toggle').click();
 }
-
-export async function waitForVoiceRequest(page: Page, expectedCount = 1, timeout = 5_000) {
-  const voiceRequests: string[] = [];
-
-  await page.route('/api/voice', (route) => {
-    voiceRequests.push(route.request().url());
-    return route.continue();
-  });
-
-  await expect.poll(() => voiceRequests.length, { timeout }).toBe(expectedCount);
-}

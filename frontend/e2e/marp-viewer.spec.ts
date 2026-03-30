@@ -95,14 +95,14 @@ test.describe('MarpViewer — 再生制御', () => {
     await gotoGuide(page, 'ja', { autoplay: true });
     await waitForSlide(page, 1, 3);
 
-    const counterBefore = await page.getByTestId('marp-slide-counter').textContent();
+    const playPauseButton = page.getByTestId('marp-play-pause-button');
+    await expect(playPauseButton).toHaveAttribute('data-state', 'playing');
 
     await clickPlayPause(page);
 
-    await page.waitForTimeout(500);
-    const counterAfter = await page.getByTestId('marp-slide-counter').textContent();
-
-    expect(counterBefore).toBe(counterAfter);
+    await expect(playPauseButton).toHaveAttribute('data-state', 'paused');
+    await expect(playPauseButton).toHaveAttribute('aria-label', /自動再生を開始|Start autoplay/);
+    await expect(page.getByTestId('marp-slide-counter')).toHaveText('1 / 3');
   });
 });
 
@@ -122,9 +122,11 @@ test.describe('MarpViewer — CustomerGuideShell 言語切り替え', () => {
 
   test('英語切り替えボタンで /onboarding?lang=en に遷移する', async ({ page }) => {
     await gotoGuide(page, 'ja');
-    await page.request.get('/onboarding?lang=en');
 
-    await clickSwitchToEnglish(page);
+    await Promise.all([
+      page.waitForURL(/\/onboarding\?lang=en$/, { timeout: 30_000 }),
+      clickSwitchToEnglish(page),
+    ]);
 
     await expect(page).toHaveURL(/\/onboarding\?lang=en$/, { timeout: 30_000 });
     await expect(page.getByRole('heading', { name: 'First Visit Registration Guide' })).toBeVisible({
