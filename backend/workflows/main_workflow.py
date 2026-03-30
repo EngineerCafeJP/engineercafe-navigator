@@ -1126,9 +1126,11 @@ class MainWorkflow:
         except Exception:
             pass  # Non-critical — API層でもスキャンするため
 
-        # Response translation: translate JA response to EN for non-Japanese users
+        # Response translation: translate JA response to EN for English users
+        # zh/ko: rely on LLM's native multilingual output (LANGUAGE_INSTRUCTION)
+        # CTranslate2 only supports en<->ja, so no translation for zh/ko
         language = state.get("language", "ja")
-        if language != "ja":
+        if language == "en":
             try:
                 from backend.services.translation_service import (
                     get_translation_service,

@@ -31,7 +31,7 @@ TRACKED_METRICS = (
     "answer_relevancy",
     "faithfulness",
 )
-REQUIRED_QUERY_COUNTS = {"ja": 4, "en": 10, "zh": 5, "ko": 5}
+REQUIRED_QUERY_COUNTS = {"ja": 5, "en": 10, "zh": 7, "ko": 7}
 
 LANG_INSTRUCTIONS: Dict[str, str] = {
     "ja": "日本語で回答してください。",

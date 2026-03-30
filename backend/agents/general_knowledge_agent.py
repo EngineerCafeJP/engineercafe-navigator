@@ -28,6 +28,7 @@ from backend.llm.openrouter import OpenRouterProvider
 from backend.llm.models import get_model_config
 from backend.tools.enhanced_rag import EnhancedRAGSearch
 from backend.tools.tavily_search import TavilySearchTool
+from backend.utils.language_types import DEFAULT_ERROR_RESPONSE, LANGUAGE_INSTRUCTION
 from backend.utils.memory_interface import MemorySystemInterface
 
 logger = logging.getLogger(__name__)
@@ -387,12 +388,15 @@ class GeneralKnowledgeAgent:
             "Write as if speaking aloud to someone."
         )
 
+        # Multilingual: append language instruction for zh/ko
+        lang_suffix = LANGUAGE_INSTRUCTION.get(language, "")
+
         if language == "en":
             header = (
                 "Answer the following question using"
                 f" the provided information from {source_info}."
             )
-            return f"""{header}
+            prompt = f"""{header}
 
 IMPORTANT: Start your response with an emotion tag.
 Available emotions: [happy], [sad], [relaxed], [surprised], [helpful], [apologetic]
@@ -412,8 +416,11 @@ Provide a comprehensive but concise answer.
 If the information is from web search, mention that it's current information.
 Be helpful and informative.
 {oral_instruction_en}"""
+            if lang_suffix:
+                prompt += f"\n{lang_suffix}"
+            return prompt
         else:
-            return f"""{source_info}から提供された情報を使用して、次の質問に答えてください。
+            prompt = f"""{source_info}から提供された情報を使用して、次の質問に答えてください。
 
 重要: 回答の最初に感情タグを付けてください。
 利用可能な感情: [happy], [sad], [relaxed], [surprised], [helpful], [apologetic]
@@ -431,6 +438,9 @@ Be helpful and informative.
 
 包括的だが簡潔な回答を提供してください。情報がウェブ検索からのものである場合は、それが最新の情報であることを述べてください。役立つ情報を提供してください。
 {oral_instruction_ja}"""
+            if lang_suffix:
+                prompt += f"\n{lang_suffix}"
+            return prompt
 
     def _calculate_confidence(self, sources: List[str]) -> float:
         """信頼度を計算"""
@@ -463,12 +473,7 @@ Be helpful and informative.
 
     def _handle_error(self, language: SupportedLanguage) -> Dict[str, Any]:
         """エラー時の処理"""
-        if language == "en":
-            message = "I'm sorry, something went wrong. Please try again later."
-        else:
-            message = (
-                "申し訳ございません。エラーが発生しました。しばらくしてからもう一度お試しください。"
-            )
+        message = DEFAULT_ERROR_RESPONSE.get(language, DEFAULT_ERROR_RESPONSE["ja"])
 
         logger.warning("GeneralKnowledgeAgent エラー")
 

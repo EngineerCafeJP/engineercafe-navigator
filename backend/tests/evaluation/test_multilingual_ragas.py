@@ -27,12 +27,12 @@ class TestMultilingualQueryManifest:
 
         counts = validate_multilingual_config(config)
 
-        assert counts == {"ja": 4, "en": 10, "zh": 5, "ko": 5}
+        assert counts == {"ja": 5, "en": 10, "zh": 7, "ko": 7}
 
     def test_manifest_references_existing_ground_truth_entries(self):
         config = load_multilingual_config()
 
-        for language, expected_count in (("ja", 4), ("en", 10), ("zh", 5), ("ko", 5)):
+        for language, expected_count in (("ja", 5), ("en", 10), ("zh", 7), ("ko", 7)):
             cases = load_query_cases(config, language=language)
             assert len(cases) == expected_count
             assert all(case["language"] == language for case in cases)
@@ -134,7 +134,7 @@ class TestRunMultilingualEvaluation:
             )
 
         assert result["comparison"]["all_targets_met"] is True
-        assert result["query_counts"] == {"ja": 4, "en": 10, "zh": 5, "ko": 5}
+        assert result["query_counts"] == {"ja": 5, "en": 10, "zh": 7, "ko": 7}
         assert set(result["per_language"]) == {"ja", "en", "zh", "ko"}
 
         json_reports = sorted(tmp_path.glob("multilingual_eval_*.json"))
@@ -144,7 +144,7 @@ class TestRunMultilingualEvaluation:
 
         payload = json.loads(json_reports[0].read_text(encoding="utf-8"))
         assert payload["comparison"]["all_targets_met"] is True
-        assert payload["per_language"]["zh"]["requested_case_count"] == 5
+        assert payload["per_language"]["zh"]["requested_case_count"] == 7
         assert "RAGAS Multilingual Evaluation Report" in text_reports[0].read_text(encoding="utf-8")
 
 

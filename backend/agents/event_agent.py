@@ -288,21 +288,30 @@ class EventAgent:
         """イベントなし時の応答を返す"""
         time_range_text = get_time_range_label(time_range, language)
 
-        if language == "en":
-            text = (
-                f"[sad]I'm sorry, there are no scheduled"
-                f" events for {time_range_text}."
-                " Please check back later or contact"
-                " our staff for the latest information."
-            )
-        else:
-            text = (
+        no_events_responses = {
+            "ja": (
                 f"[sad]申し訳ございません。"
                 f"{time_range_text}の"
                 "予定されているイベントはございません。"
                 "後ほどご確認いただくか、"
                 "スタッフまでお問い合わせください。"
-            )
+            ),
+            "en": (
+                f"[sad]I'm sorry, there are no scheduled"
+                f" events for {time_range_text}."
+                " Please check back later or contact"
+                " our staff for the latest information."
+            ),
+            "zh": f"[sad]抱歉，{time_range_text}没有预定的活动。请稍后再查看或联系工作人员。",
+            "ko": (
+                f"[sad]죄송합니다. "
+                f"{time_range_text}에 "
+                "예정된 이벤트가 없습니다. "
+                "나중에 다시 확인하시거나 "
+                "직원에게 문의해 주세요."
+            ),
+        }
+        text = no_events_responses.get(language, no_events_responses["ja"])
 
         return {
             "answer": text,

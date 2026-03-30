@@ -289,6 +289,61 @@
         "difficulty": "medium",
         "intent": "event-discovery"
       }
+    },
+    {
+      "id": "ml-zh-006",
+      "language": "zh",
+      "question": "营业时间是几点？",
+      "category": "hours",
+      "ground_truth_id": "gt-118",
+      "metadata": {
+        "difficulty": "easy",
+        "intent": "hours"
+      }
+    },
+    {
+      "id": "ml-zh-007",
+      "language": "zh",
+      "question": "WiFi密码是什么？",
+      "category": "facility-info",
+      "ground_truth_id": "gt-119",
+      "metadata": {
+        "difficulty": "easy",
+        "intent": "wifi"
+      }
+    },
+    {
+      "id": "ml-ko-006",
+      "language": "ko",
+      "question": "이용 시간이 어떻게 되나요?",
+      "category": "hours",
+      "ground_truth_id": "gt-120",
+      "metadata": {
+        "difficulty": "easy",
+        "intent": "hours"
+      }
+    },
+    {
+      "id": "ml-ko-007",
+      "language": "ko",
+      "question": "와이파이 비밀번호가 뭐예요?",
+      "category": "facility-info",
+      "ground_truth_id": "gt-121",
+      "metadata": {
+        "difficulty": "easy",
+        "intent": "wifi"
+      }
+    },
+    {
+      "id": "ml-ja-005",
+      "language": "ja",
+      "question": "料金はいくらですか？",
+      "category": "pricing",
+      "ground_truth_id": "gt-122",
+      "metadata": {
+        "difficulty": "easy",
+        "intent": "pricing"
+      }
     }
   ]
 }

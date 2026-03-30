@@ -138,10 +138,10 @@ class TestQueryExpansion:
         assert "Where is the location?" in result
 
     def test_expand_query_no_expansion_needed(self, rag_search):
-        """拡張が不要なクエリはそのまま返す"""
+        """拡張が不要なクエリ（generalカテゴリではアンカリングしない）"""
         result = rag_search._expand_query("こんにちは", "general", "ja")
 
-        # generalカテゴリはマッピングがないので拡張なし
+        # generalカテゴリはアンカリング対象外
         assert result == "こんにちは"
 
     def test_expand_query_deduplication(self, rag_search):

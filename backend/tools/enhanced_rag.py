@@ -103,6 +103,9 @@ QUERY_EXPANSION_MAP: Dict[str, List[str]] = {
     "opening hours": ["営業時間", "business hours", "operating hours"],
     "price": ["料金", "pricing", "cost", "fee"],
     "location": ["アクセス", "場所", "address", "directions"],
+    "いくら": ["料金", "pricing", "price", "cost", "fee", "値段", "無料", "有料"],
+    "何時": ["営業時間", "opening hours", "business hours", "開館", "閉館"],
+    "どこ": ["場所", "アクセス", "location", "access", "住所", "所在地"],
 }
 
 
@@ -420,6 +423,11 @@ class EnhancedRAGSearch:
             拡張されたクエリ文字列
         """
         expansions: list[str] = []
+
+        # Entity anchoring: short queries get "エンジニアカフェ" prepended
+        # Skip for "general" category to avoid biasing non-cafe queries (e.g. "Rust", "LLM")
+        if category != "general" and len(query) < 15 and "エンジニアカフェ" not in query:
+            query = f"エンジニアカフェ {query}"
 
         # カテゴリベースの拡張キーワード
         category_keywords: Dict[str, List[str]] = {
