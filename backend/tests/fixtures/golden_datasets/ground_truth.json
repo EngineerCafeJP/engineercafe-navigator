@@ -1,7 +1,7 @@
 {
-  "version": "1.0.0",
-  "description": "RAGAS評価用Ground Truthデータセット - seed_knowledge.pyの60エントリから生成",
-  "created_at": "2026-02-15",
+  "version": "1.2.0",
+  "description": "RAGAS評価用Ground Truthデータセット。seed_knowledge.py由来の日本語データに加え、#382で英語・中国語・韓国語の評価用ゴールデンケースを30件追加。",
+  "created_at": "2026-03-30",
   "source": "backend/scripts/seed_knowledge.py + answer_quality.json",
   "test_cases": [
     {
@@ -1015,6 +1015,336 @@
       "ground_truth": "Earthquake: take cover under desk. Evacuate via 1F main entrance once shaking stops. Follow staff.",
       "language": "en",
       "category": "emergency"
+    },
+    {
+      "id": "gt-088",
+      "question": "What are the opening hours of Engineer Cafe?",
+      "answer": "Engineer Cafe is open from 9:00 to 22:00. Community manager consultations are available from 13:00 to 21:00.",
+      "contexts": [
+        "Engineer Cafe is open from 9:00 to 22:00. Community manager consultations are available from 13:00 to 21:00."
+      ],
+      "ground_truth": "Opening hours are 9:00-22:00. Community manager consultations are 13:00-21:00.",
+      "language": "en",
+      "category": "hours"
+    },
+    {
+      "id": "gt-089",
+      "question": "How much does it cost to use Engineer Cafe?",
+      "answer": "Use of the facility and equipment is free. Only food and drinks from cafe&bar saino and 3D printer filament are charged.",
+      "contexts": [
+        "Use of Engineer Cafe facilities and equipment is free. Charges only apply to cafe&bar saino purchases and 3D printer filament."
+      ],
+      "ground_truth": "Facility use is free. Paid items are saino food and drinks plus 3D printer filament.",
+      "language": "en",
+      "category": "pricing"
+    },
+    {
+      "id": "gt-090",
+      "question": "How do I register for my first visit?",
+      "answer": "Please register at reception when you arrive. It takes about 5 to 10 minutes and is completed with a web form. Online pre-registration is not available.",
+      "contexts": [
+        "First-time visitors register at reception when they arrive. The process takes about 5 to 10 minutes and is completed with a web form. Online pre-registration is not supported."
+      ],
+      "ground_truth": "Register at reception on arrival. It takes about 5-10 minutes, uses a web form, and cannot be completed online in advance.",
+      "language": "en",
+      "category": "pricing"
+    },
+    {
+      "id": "gt-091",
+      "question": "Where is Engineer Cafe located?",
+      "answer": "Engineer Cafe is inside the Fukuoka Red Brick Culture Hall at 1-15-30 Tenjin, Chuo-ku, Fukuoka. It is about a five-minute walk from Tenjin Station.",
+      "contexts": [
+        "Engineer Cafe is located inside the Fukuoka Red Brick Culture Hall at 1-15-30 Tenjin, Chuo-ku, Fukuoka. It is about a five-minute walk from Tenjin Station, and the Nishitetsu Bus Tenjin 4-chome stop is right nearby."
+      ],
+      "ground_truth": "Address: 1-15-30 Tenjin, Chuo-ku, Fukuoka, inside the Red Brick Culture Hall. About five minutes on foot from Tenjin Station.",
+      "language": "en",
+      "category": "access"
+    },
+    {
+      "id": "gt-092",
+      "question": "Can I check Engineer Cafe events on Connpass?",
+      "answer": "Yes. Event listings and sign-up information are available on Connpass at https://engineercafe.connpass.com/.",
+      "contexts": [
+        "Engineer Cafe event listings and registration are available on Connpass: https://engineercafe.connpass.com/. Most events are free, and many are first-come, first-served."
+      ],
+      "ground_truth": "Yes. Use Connpass at https://engineercafe.connpass.com/ to browse events and register.",
+      "language": "en",
+      "category": "event"
+    },
+    {
+      "id": "gt-093",
+      "question": "Can I bring my own food to Engineer Cafe?",
+      "answer": "Outside food is generally not allowed. Only food and drinks purchased at cafe&bar saino can be consumed in the designated areas.",
+      "contexts": [
+        "Outside food is generally prohibited. Only items purchased at cafe&bar saino may be consumed in the designated eating areas such as the saino seating area, lounge, and terrace."
+      ],
+      "ground_truth": "Outside food is not allowed. Only saino purchases may be eaten in the designated areas.",
+      "language": "en",
+      "category": "food_drink"
+    },
+    {
+      "id": "gt-094",
+      "question": "Is there a printer or copier in the building?",
+      "answer": "No. Engineer Cafe does not have a printer, copier, or scanner. Please use a nearby convenience store's net-print service if you need printing.",
+      "contexts": [
+        "Engineer Cafe does not provide a printer, copier, or scanner. If you need printing, please use a nearby convenience store's net-print service."
+      ],
+      "ground_truth": "There is no printer, copier, or scanner on site. Use a nearby convenience store for printing.",
+      "language": "en",
+      "category": "facility-info"
+    },
+    {
+      "id": "gt-095",
+      "question": "Is smoking allowed at Engineer Cafe?",
+      "answer": "No. Engineer Cafe is completely non-smoking. Please use a nearby designated smoking area if needed.",
+      "contexts": [
+        "Engineer Cafe is entirely non-smoking. Smoking is not permitted anywhere in the facility. Please use nearby designated smoking areas."
+      ],
+      "ground_truth": "No. The whole facility is non-smoking. Use nearby designated smoking areas.",
+      "language": "en",
+      "category": "smoking"
+    },
+    {
+      "id": "gt-096",
+      "question": "How can I contact Engineer Cafe?",
+      "answer": "Phone: 080-6742-7231 during consultation hours from 13:00 to 21:00. Website: https://engineercafe.jp/ and contact form: https://engineercafe.jp/ja/contact.",
+      "contexts": [
+        "Engineer Cafe can be contacted by phone at 080-6742-7231 during consultation hours from 13:00 to 21:00. Website: https://engineercafe.jp/ Contact form: https://engineercafe.jp/ja/contact"
+      ],
+      "ground_truth": "Phone: 080-6742-7231 (13:00-21:00). Website: https://engineercafe.jp/. Contact form: https://engineercafe.jp/ja/contact.",
+      "language": "en",
+      "category": "contact"
+    },
+    {
+      "id": "gt-097",
+      "question": "What is Engineer Cafe?",
+      "answer": "Engineer Cafe is a free coworking and community space for engineers that opened in August 2019 as a core facility of Engineer Friendly City Fukuoka. It is located inside the Red Brick Culture Hall.",
+      "contexts": [
+        "Engineer Cafe is a free coworking and community space for engineers. It opened in August 2019 as a core facility of Engineer Friendly City Fukuoka and is located inside the Red Brick Culture Hall in Tenjin, Fukuoka."
+      ],
+      "ground_truth": "Engineer Cafe is a free coworking and community space for engineers, opened in August 2019 as a core facility of Engineer Friendly City Fukuoka, inside the Red Brick Culture Hall.",
+      "language": "en",
+      "category": "general"
+    },
+    {
+      "id": "gt-098",
+      "question": "工程师咖啡的营业时间是什么？",
+      "answer": "工程师咖啡的开放时间是9:00到22:00。社区经理咨询时间是13:00到21:00。",
+      "contexts": [
+        "工程师咖啡的开放时间是9:00到22:00。社区经理咨询时间是13:00到21:00。"
+      ],
+      "ground_truth": "开放时间为9:00-22:00。社区经理咨询时间为13:00-21:00。",
+      "language": "zh",
+      "category": "hours"
+    },
+    {
+      "id": "gt-099",
+      "question": "使用工程师咖啡需要收费吗？",
+      "answer": "设施和设备的使用是免费的。只有saino咖啡吧的餐饮以及3D打印机耗材需要付费。",
+      "contexts": [
+        "工程师咖啡的设施和设备可以免费使用。收费项目只有cafe&bar saino的餐饮以及3D打印机的耗材。"
+      ],
+      "ground_truth": "设施使用免费。只有saino的餐饮和3D打印耗材需要付费。",
+      "language": "zh",
+      "category": "pricing"
+    },
+    {
+      "id": "gt-100",
+      "question": "第一次来访时怎么登记？",
+      "answer": "首次来访时请在前台登记。手续大约需要5到10分钟，通过网页表单填写信息完成，不能提前在线登记。",
+      "contexts": [
+        "第一次使用时需要在到馆后于前台登记。手续约5到10分钟，通过网页表单填写姓名和联系方式等信息完成，暂不支持在线提前登记。"
+      ],
+      "ground_truth": "到馆后在前台登记，约5-10分钟，通过网页表单完成，不能提前在线登记。",
+      "language": "zh",
+      "category": "pricing"
+    },
+    {
+      "id": "gt-101",
+      "question": "工程师咖啡在哪里？",
+      "answer": "工程师咖啡位于福冈市中央区天神1-15-30的赤砖文化馆内，从天神站步行约5分钟可达。",
+      "contexts": [
+        "工程师咖啡位于福冈市中央区天神1-15-30的赤砖文化馆内。距离地铁天神站步行约5分钟，西铁巴士天神四丁目站下车后也很近。"
+      ],
+      "ground_truth": "地址是福冈市中央区天神1-15-30赤砖文化馆内。距离天神站步行约5分钟。",
+      "language": "zh",
+      "category": "access"
+    },
+    {
+      "id": "gt-102",
+      "question": "可以在Connpass查看活动信息吗？",
+      "answer": "可以。工程师咖啡的活动列表和报名信息可以在Connpass上查看：https://engineercafe.connpass.com/。",
+      "contexts": [
+        "工程师咖啡的活动信息和报名入口发布在Connpass：https://engineercafe.connpass.com/。大多数活动免费，很多活动为先到先得。"
+      ],
+      "ground_truth": "可以。请通过Connpass（https://engineercafe.connpass.com/）查看活动列表并报名。",
+      "language": "zh",
+      "category": "event"
+    },
+    {
+      "id": "gt-103",
+      "question": "可以自己带食物进去吗？",
+      "answer": "原则上不能携带外带食物。只有在saino购买的餐饮才能在指定区域食用。",
+      "contexts": [
+        "原则上禁止携带外部食物。只有在cafe&bar saino购买的食物和饮料才能在指定饮食区域内食用。"
+      ],
+      "ground_truth": "外带食物原则上不允许。只有saino购买的餐饮可以在指定区域食用。",
+      "language": "zh",
+      "category": "food_drink"
+    },
+    {
+      "id": "gt-104",
+      "question": "馆内有打印机或复印机吗？",
+      "answer": "没有。馆内没有打印机、复印机或扫描仪。如需打印，请使用附近便利店的网络打印服务。",
+      "contexts": [
+        "工程师咖啡馆内没有打印机、复印机或扫描仪。如需打印，请使用附近便利店提供的网络打印服务。"
+      ],
+      "ground_truth": "馆内没有打印机、复印机和扫描仪。需要打印时请使用附近便利店。",
+      "language": "zh",
+      "category": "facility-info"
+    },
+    {
+      "id": "gt-105",
+      "question": "馆内可以吸烟吗？",
+      "answer": "不可以。工程师咖啡全馆禁烟，如有需要请使用附近指定吸烟区。",
+      "contexts": [
+        "工程师咖啡全馆禁烟，设施内任何地方都不能吸烟。如需吸烟，请前往附近指定吸烟区。"
+      ],
+      "ground_truth": "不可以。全馆禁烟，请使用附近指定吸烟区。",
+      "language": "zh",
+      "category": "smoking"
+    },
+    {
+      "id": "gt-106",
+      "question": "如何联系工程师咖啡？",
+      "answer": "可以在13:00到21:00之间拨打080-6742-7231，也可以通过官网 https://engineercafe.jp/ 和联系表单 https://engineercafe.jp/ja/contact 联系。",
+      "contexts": [
+        "电话咨询时间为13:00到21:00，电话号码是080-6742-7231。官网：https://engineercafe.jp/。联系表单：https://engineercafe.jp/ja/contact"
+      ],
+      "ground_truth": "电话：080-6742-7231（13:00-21:00）。官网：https://engineercafe.jp/。联系表单：https://engineercafe.jp/ja/contact。",
+      "language": "zh",
+      "category": "contact"
+    },
+    {
+      "id": "gt-107",
+      "question": "工程师咖啡是什么？",
+      "answer": "工程师咖啡是面向工程师的免费共享办公与交流空间，于2019年8月作为“工程师友好城市福冈”的核心设施开设，位于赤砖文化馆内。",
+      "contexts": [
+        "工程师咖啡是面向工程师的免费共享办公与交流空间，于2019年8月开设，是福冈市“工程师友好城市福冈”项目的核心设施，位于天神的赤砖文化馆内。"
+      ],
+      "ground_truth": "工程师咖啡是2019年8月开设的免费共享办公与交流空间，也是“工程师友好城市福冈”的核心设施，位于赤砖文化馆内。",
+      "language": "zh",
+      "category": "general"
+    },
+    {
+      "id": "gt-108",
+      "question": "엔지니어 카페의 운영 시간은 어떻게 되나요?",
+      "answer": "엔지니어 카페 운영 시간은 9:00부터 22:00까지입니다. 커뮤니티 매니저 상담 시간은 13:00부터 21:00까지입니다.",
+      "contexts": [
+        "엔지니어 카페의 운영 시간은 9:00부터 22:00까지입니다. 커뮤니티 매니저 상담은 13:00부터 21:00까지 가능합니다."
+      ],
+      "ground_truth": "운영 시간은 9:00-22:00이며 커뮤니티 매니저 상담은 13:00-21:00입니다.",
+      "language": "ko",
+      "category": "hours"
+    },
+    {
+      "id": "gt-109",
+      "question": "엔지니어 카페 이용 요금은 얼마인가요?",
+      "answer": "시설과 장비 이용은 무료입니다. 다만 saino의 음식과 음료, 그리고 3D 프린터 필라멘트만 유료입니다.",
+      "contexts": [
+        "엔지니어 카페의 시설과 장비는 무료로 이용할 수 있습니다. 유료 항목은 cafe&bar saino의 음식과 음료, 그리고 3D 프린터 필라멘트뿐입니다."
+      ],
+      "ground_truth": "시설 이용은 무료입니다. 유료 항목은 saino 음식·음료와 3D 프린터 필라멘트입니다.",
+      "language": "ko",
+      "category": "pricing"
+    },
+    {
+      "id": "gt-110",
+      "question": "처음 방문할 때는 어떻게 등록하나요?",
+      "answer": "처음 방문하면 도착 후 안내 데스크에서 등록해야 합니다. 약 5분에서 10분 정도 걸리며 웹 폼을 작성하면 됩니다. 온라인 사전 등록은 지원하지 않습니다.",
+      "contexts": [
+        "처음 이용하는 방문자는 도착 후 안내 데스크에서 등록합니다. 절차는 약 5분에서 10분 정도 걸리며 웹 폼으로 정보를 입력합니다. 온라인 사전 등록은 불가능합니다."
+      ],
+      "ground_truth": "도착 후 안내 데스크에서 등록하며 약 5-10분 걸립니다. 웹 폼으로 진행되고 온라인 사전 등록은 불가능합니다.",
+      "language": "ko",
+      "category": "pricing"
+    },
+    {
+      "id": "gt-111",
+      "question": "엔지니어 카페는 어디에 있나요?",
+      "answer": "엔지니어 카페는 후쿠오카시 주오구 텐진 1-15-30의 아카렌가 문화관 안에 있습니다. 텐진역에서 걸어서 약 5분입니다.",
+      "contexts": [
+        "엔지니어 카페는 후쿠오카시 주오구 텐진 1-15-30 아카렌가 문화관 안에 있습니다. 지하철 텐진역에서 도보 약 5분이며 니시테츠 버스 텐진 4초메 정류장에서도 가깝습니다."
+      ],
+      "ground_truth": "주소는 후쿠오카시 주오구 텐진 1-15-30 아카렌가 문화관 내입니다. 텐진역에서 도보 약 5분입니다.",
+      "language": "ko",
+      "category": "access"
+    },
+    {
+      "id": "gt-112",
+      "question": "Connpass에서 이벤트 정보를 확인할 수 있나요?",
+      "answer": "네. 엔지니어 카페의 이벤트 목록과 신청 정보는 Connpass에서 확인할 수 있습니다: https://engineercafe.connpass.com/.",
+      "contexts": [
+        "엔지니어 카페의 이벤트 정보와 신청 페이지는 Connpass에 게시됩니다: https://engineercafe.connpass.com/. 대부분 무료이며 선착순인 경우가 많습니다."
+      ],
+      "ground_truth": "네. Connpass(https://engineercafe.connpass.com/)에서 이벤트 목록과 신청 정보를 확인할 수 있습니다.",
+      "language": "ko",
+      "category": "event"
+    },
+    {
+      "id": "gt-113",
+      "question": "외부 음식을 가져와도 되나요?",
+      "answer": "원칙적으로 외부 음식 반입은 금지입니다. saino에서 구매한 음식과 음료만 지정된 구역에서 드실 수 있습니다.",
+      "contexts": [
+        "외부 음식 반입은 원칙적으로 금지입니다. cafe&bar saino에서 구매한 음식과 음료만 지정된 식사 가능 구역에서 섭취할 수 있습니다."
+      ],
+      "ground_truth": "외부 음식은 원칙적으로 불가합니다. saino에서 구매한 음식과 음료만 지정 구역에서 가능합니다.",
+      "language": "ko",
+      "category": "food_drink"
+    },
+    {
+      "id": "gt-114",
+      "question": "건물 안에 프린터나 복사기가 있나요?",
+      "answer": "없습니다. 엔지니어 카페에는 프린터, 복사기, 스캐너가 없습니다. 인쇄가 필요하면 근처 편의점의 네트프린트 서비스를 이용해 주세요.",
+      "contexts": [
+        "엔지니어 카페에는 프린터, 복사기, 스캐너가 설치되어 있지 않습니다. 인쇄가 필요하면 근처 편의점의 네트프린트 서비스를 이용해 주세요."
+      ],
+      "ground_truth": "프린터, 복사기, 스캐너는 없습니다. 인쇄가 필요하면 근처 편의점을 이용해야 합니다.",
+      "language": "ko",
+      "category": "facility-info"
+    },
+    {
+      "id": "gt-115",
+      "question": "실내에서 흡연할 수 있나요?",
+      "answer": "아니요. 엔지니어 카페는 전 구역 금연입니다. 흡연이 필요하면 근처 지정 흡연 구역을 이용해 주세요.",
+      "contexts": [
+        "엔지니어 카페는 전 구역 금연입니다. 시설 내 어디에서도 흡연할 수 없으며, 필요한 경우 근처 지정 흡연 구역을 이용해야 합니다."
+      ],
+      "ground_truth": "아니요. 전 구역 금연이며 근처 지정 흡연 구역을 이용해야 합니다.",
+      "language": "ko",
+      "category": "smoking"
+    },
+    {
+      "id": "gt-116",
+      "question": "엔지니어 카페에 어떻게 연락할 수 있나요?",
+      "answer": "13:00부터 21:00 사이에 080-6742-7231로 전화할 수 있고, 공식 사이트 https://engineercafe.jp/ 와 문의 폼 https://engineercafe.jp/ja/contact 도 이용할 수 있습니다.",
+      "contexts": [
+        "상담 가능 시간은 13:00부터 21:00까지이며 전화번호는 080-6742-7231입니다. 공식 사이트는 https://engineercafe.jp/ 이고 문의 폼은 https://engineercafe.jp/ja/contact 입니다."
+      ],
+      "ground_truth": "전화는 080-6742-7231(13:00-21:00)입니다. 공식 사이트는 https://engineercafe.jp/ 이고 문의 폼은 https://engineercafe.jp/ja/contact 입니다.",
+      "language": "ko",
+      "category": "contact"
+    },
+    {
+      "id": "gt-117",
+      "question": "엔지니어 카페란 무엇인가요?",
+      "answer": "엔지니어 카페는 엔지니어를 위한 무료 코워킹 및 교류 공간으로, 2019년 8월 후쿠오카시의 Engineer Friendly City Fukuoka 핵심 시설로 개설되었으며 아카렌가 문화관 안에 있습니다.",
+      "contexts": [
+        "엔지니어 카페는 엔지니어를 위한 무료 코워킹 및 커뮤니티 공간입니다. 2019년 8월 Engineer Friendly City Fukuoka의 핵심 시설로 개설되었고 텐진의 아카렌가 문화관 안에 있습니다."
+      ],
+      "ground_truth": "엔지니어 카페는 2019년 8월 개설된 무료 코워킹 및 교류 공간이며 Engineer Friendly City Fukuoka의 핵심 시설로 아카렌가 문화관 안에 있습니다.",
+      "language": "ko",
+      "category": "general"
     }
   ]
 }
