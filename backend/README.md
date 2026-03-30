@@ -34,11 +34,14 @@ Notable implementation details:
 
 - API-key protection exists, but becomes optional only in local/dev environments without `API_SECRET_KEY`; `staging`, `preview`, and `production` fail closed.
 - Rate limiting depends on `slowapi`; without it, the decorators become no-ops.
-- Reception session state is currently stored in process memory, not durable storage.
+- Reception session state is currently stored in process memory, not durable storage. The singleton workflow instance is protected by `asyncio.Lock` for thread safety.
 - Agent prompts include oral/conversational style instructions for natural TTS output.
 - `clean_text_for_tts` in `utils/text_utils.py` strips Markdown artifacts (headers, bold, lists, links, code blocks) before speech synthesis.
 - Recent STT fixes added WebM-to-WAV conversion, which means ffmpeg/runtime availability matters for some environments.
 - OrchestratorAgent gates on reception status before LLM routing — sessions with an active reception are handled by the reception workflow first.
+- Reception is implemented as a single LangGraph subgraph (`invoke_reception_subgraph()`). The previously separate inline handlers in `main_workflow.py` were removed in PR #390. `api/reception.py` uses a singleton workflow instance.
+- Multilingual RAG uses the tRAG pattern: English queries are translated to Japanese before the embedding lookup (`language="ja"`); Chinese and Korean queries use cross-lingual embeddings without translation. The knowledge base is Japanese-only.
+- `consultation` intent routes to `general_knowledge` (not `business_info`).
 - `POST /api/reception/complete` invokes `ainvoke_from_reception()` in the main workflow to generate an agent response using the full visitor context.
 - `POST /api/reception/start` accepts an optional `visitor_identity` field for OCR-pre-identified visitors.
 - `backend/utils/reception_status.py` provides the reception status checker used by the orchestrator gate.

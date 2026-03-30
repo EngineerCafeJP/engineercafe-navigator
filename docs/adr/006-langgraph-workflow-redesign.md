@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed (2026-03-28)
+Accepted (2026-03-29)
 
 ## Context
 
@@ -117,6 +117,40 @@ LangGraph ワークフローを再設計し、キーワード fast-path 導入�
 - 多言語 retrieval テストが全パス（en/zh/ko クエリで正しい結果を返す）
 - レイテンシ: FAQ クエリ < 500ms、通常クエリ < 3s
 - RAGAS answer_correctness >= 0.85（日本語）、>= 0.75（英語）
+
+## Implementation Notes
+
+What was actually implemented versus the original plan, as of 2026-03-29:
+
+### D1: キーワード Fast-Path — In Progress (#377)
+
+実装未着手。グラフ構造変更（reception_check → keyword_router 分岐）は Wave 7 後半で対応予定。
+
+### D2: Reception ワークフロー一本化 — DONE (PR #390)
+
+- `main_workflow.py` 内の `_handle_reception_gate()` と `_handle_reception_inline()` を削除（約200行削減）
+- `reception_workflow.py` を callable subgraph として昇格
+- 新関数 `workflow_state_to_reception_state()`、`reception_state_to_workflow_result()`、`invoke_reception_subgraph()` を追加
+- `api/reception.py` はシングルトンワークフローを使用（`asyncio.Lock` で保護）
+- `consultation` のルーティング先を `general_knowledge` に統一（plan 通り）
+
+### D3: 多言語RAG修正（tRAG） — DONE (PR #389)
+
+- 翻訳ガード変更: 英語クエリのみ日本語に翻訳してRAGを呼び出す（zh/ko はクロスリンガル埋め込みを直接使用し翻訳をスキップ）
+- `text_fallback_search` は常に `"ja"` でフィルタ（KB は日本語のみのため）
+- エンティティラベルとアドバイステンプレートを en/zh/ko に対応
+- 中国語・韓国語のグリーティングキーワードを追加
+- 新規テスト30件追加
+
+### D4: CRAG 強化 + bilingual FAQ — Partial (PR #391)
+
+- 多言語 RAGAS ベンチマークを追加: `ground_truth.json` に30件（en×10、zh×10、ko×10）
+- 新評価ランナー `run_multilingual_eval.py`（言語別スコア分解）
+- bilingual FAQ エントリの knowledge_base への追加は未実施
+
+### D5: D-RAG — Deferred (Phase 2, post 4/11)
+
+計画通り延期。日英クロスバリデーションは Phase 2 で対応。
 
 ## References
 

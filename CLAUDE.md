@@ -82,12 +82,17 @@ The backend uses **LangGraph** with a Supervisor Pattern:
 - RAG: EnhancedRAGSearch with Supabase RPC `search_knowledge_base()` + Tavily web search fallback
 - Embeddings: OpenRouter API (`openai/text-embedding-3-small`, 1536 dimensions)
 
+**Reception subgraph (Wave 7, PR #390)**: Reception handling is a first-class LangGraph subgraph. The three previously separate implementations (main_workflow.py inline handlers, reception_workflow.py standalone, api/reception.py) are unified. `reception_workflow.py` is invoked via `invoke_reception_subgraph()` with explicit state conversion functions. `api/reception.py` uses a singleton workflow instance (protected by `asyncio.Lock`). `consultation` routes to `general_knowledge` (not `business_info`).
+
+**Multilingual RAG — tRAG pattern (Wave 7, PR #389)**: The knowledge base is Japanese-only. For English queries, tRAG translates to Japanese before embedding lookup and sets `language="ja"` on the RAG call. Chinese and Korean queries skip translation and use cross-lingual embeddings directly. `text_fallback_search` always filters by `"ja"`. Entity labels and advice templates support en/zh/ko. RAGAS targets: ja >= 0.85, en >= 0.75, zh/ko >= 0.65 (answer_correctness).
+
 The frontend is a **pure UI layer** — all AI processing is proxied to the backend via `backendFetch()`.
 
 ### Key Data Flow
 
 - Voice: Browser → `/api/voice` (FE proxy) → Backend STT/TTS → Browser
 - Q&A: Browser → `/api/qa` (FE proxy) → Backend `/api/chat` → LangGraph → RAG/Web search → Response
+- Reception: Browser → `/api/reception/*` (FE proxy) → Backend → `invoke_reception_subgraph()` → LangGraph reception subgraph → Response
 - Calendar: Browser → `/api/calendar` (FE proxy) → Backend `/api/calendar` → Google Calendar ICS
 - Slides: Marp markdown in `frontend/src/slides/` → `/api/marp` renders HTML → MarpViewer component
 
