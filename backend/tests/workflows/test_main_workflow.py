@@ -9,6 +9,7 @@ import os
 from types import SimpleNamespace
 
 import pytest
+from backend.agents.orchestrator_agent import OrchestratorAgent
 from unittest.mock import MagicMock, Mock, AsyncMock, patch
 
 
@@ -19,6 +20,27 @@ def _mock_runtime():
     rt.context.user_id = "anonymous"
     rt.store = None
     return rt
+
+
+class _StubLanguageProcessor:
+    def detect_language(self, query: str) -> dict[str, object]:
+        detected = "ja" if any(ord(ch) > 127 for ch in query) else "en"
+        return {"detected": detected, "confidence": 1.0}
+
+    def determine_response_language(self, language_result: dict[str, object]) -> str:
+        return str(language_result["detected"])
+
+
+class _StubOrchestrator:
+    def __init__(self) -> None:
+        self.language_processor = _StubLanguageProcessor()
+        self.decide_next_agent = AsyncMock()
+
+    def _try_fast_routing(self, query: str):
+        return OrchestratorAgent._try_fast_routing(self, query)
+
+    def _is_memory_related_question(self, query: str) -> bool:
+        return OrchestratorAgent._is_memory_related_question(self, query)
 
 
 class TestMainWorkflowMemoryIntegration:
@@ -734,6 +756,95 @@ class TestOrchestratorIntegration:
             assert result["metadata"]["vrm_control"] is None
             assert result["metadata"]["lipsync_data"] == []
             assert result["messages"][-1].content == "9時から22時です。"
+
+    @pytest.mark.asyncio
+    @patch("backend.workflows.main_workflow.OrchestratorAgent")
+    async def test_reception_check_node_marks_active_session(self, mock_orchestrator_class):
+        from backend.workflows.main_workflow import MainWorkflow
+
+        mock_orchestrator_class.return_value = _StubOrchestrator()
+        workflow = MainWorkflow()
+
+        with patch(
+            "backend.utils.reception_status.check_reception_status",
+            new=AsyncMock(return_value={"completed": False, "stage": "greeting"}),
+        ):
+            result = await workflow._reception_check_node({"session_id": "reception-session"})
+
+        assert result["reception_status"]["stage"] == "greeting"
+        assert workflow._reception_check_decision(result) == "active_reception"
+
+    @pytest.mark.asyncio
+    @patch("backend.workflows.main_workflow.OrchestratorAgent")
+    async def test_keyword_router_fast_routes_wifi_query(self, mock_orchestrator_class):
+        from backend.workflows.main_workflow import MainWorkflow
+
+        mock_orchestrator_class.return_value = _StubOrchestrator()
+
+        with patch("backend.utils.memory_helper.get_memory_helper") as mock_get_helper:
+            mock_helper = AsyncMock()
+            mock_helper.store_message = AsyncMock()
+            mock_get_helper.return_value = mock_helper
+
+            workflow = MainWorkflow()
+            result = await workflow._keyword_router_node(
+                {
+                    "query": "WiFiのパスワードは？",
+                    "session_id": "fast-router-session",
+                    "language": "ja",
+                    "routing": {},
+                }
+            )
+
+        assert result["routing"]["pre_memory_fast_path_agent"] == "facility"
+        assert result["routing"]["request_type"] == "wifi"
+        mock_helper.store_message.assert_awaited_once_with(
+            session_id="fast-router-session",
+            role="user",
+            content="WiFiのパスワードは？",
+        )
+
+    @pytest.mark.asyncio
+    @patch("backend.workflows.main_workflow.OrchestratorAgent")
+    async def test_keyword_router_keeps_anaphora_on_normal_path(self, mock_orchestrator_class):
+        from backend.workflows.main_workflow import MainWorkflow
+
+        mock_orchestrator_class.return_value = _StubOrchestrator()
+        workflow = MainWorkflow()
+
+        result = await workflow._keyword_router_node(
+            {
+                "query": "それについてもう少し教えて",
+                "session_id": "anaphora-session",
+                "language": "ja",
+                "routing": {},
+            }
+        )
+
+        assert result["routing"]["pre_memory_fast_path_agent"] is None
+        assert workflow._keyword_router_decision({"routing": result["routing"]}) == "normal"
+
+    @pytest.mark.asyncio
+    @patch("backend.workflows.main_workflow.OrchestratorAgent")
+    async def test_keyword_router_keeps_mixed_intent_greeting_on_normal_path(
+        self, mock_orchestrator_class
+    ):
+        from backend.workflows.main_workflow import MainWorkflow
+
+        mock_orchestrator_class.return_value = _StubOrchestrator()
+        workflow = MainWorkflow()
+
+        result = await workflow._keyword_router_node(
+            {
+                "query": "hello wifi?",
+                "session_id": "mixed-intent-session",
+                "language": "en",
+                "routing": {},
+            }
+        )
+
+        assert result["routing"]["pre_memory_fast_path_agent"] is None
+        assert workflow._keyword_router_decision({"routing": result["routing"]}) == "normal"
 
 
 class TestAsyncWorkflowMethods:

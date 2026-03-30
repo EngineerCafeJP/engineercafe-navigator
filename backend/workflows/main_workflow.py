@@ -33,6 +33,8 @@ from backend.agents.orchestrator_agent import (
     OrchestratorDecision,
     RoutingTarget,
 )
+from backend.agents.orchestrator_agent import OrchestratorAgent as RoutingLogicAgent
+from backend.config.routing_constants import GREETING_KEYWORDS, match_keywords
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +54,7 @@ class WorkflowStateDict(TypedDict):
     emotion: Optional[str]
     metadata: dict
     context: dict
+    reception_status: dict
     image_data: Optional[Any]  # np.ndarray (optional vision input)
     ocr_result: Optional[dict]  # OCR result from VisionAgent
 
@@ -175,6 +178,22 @@ class MainWorkflow:
         "space-clarification-needed",
         "general-clarification-needed",
     )
+    _PRE_MEMORY_DIRECT_AGENTS = {"facility"}
+    _PRE_MEMORY_INLINE_CATEGORIES = {"emergency", "greeting", *_CLARIFICATION_CATEGORIES}
+    _ANAPHORA_MARKERS = (
+        "それについて",
+        "それって",
+        "それのこと",
+        "あれについて",
+        "これについて",
+        "that one",
+        "about that",
+        "about it",
+        "more about that",
+        "more about it",
+        "tell me more about that",
+        "tell me more about it",
+    )
 
     def _build_graph(self) -> StateGraph:
         """Supervisor Patternに基づくグラフ構造を構築"""
@@ -185,6 +204,8 @@ class MainWorkflow:
 
         # ノードの追加
         # memory_loader, format_response: LLM非依存のためリトライ不要
+        workflow.add_node("reception_check", self._reception_check_node)
+        workflow.add_node("keyword_router", self._keyword_router_node)
         workflow.add_node("memory_loader", self._memory_loader_node)
         workflow.add_node("vision", self._vision_node, retry_policy=llm_retry)
         workflow.add_node("format_response", self._format_response_node)
@@ -199,13 +220,29 @@ class MainWorkflow:
         workflow.add_node("farewell", self._farewell_node, retry_policy=llm_retry)
 
         # エッジの定義（Supervisor Pattern）
-        # START → (text: memory_loader, image: vision) → memory_loader → orchestrator
+        # START → (text: reception_check, image: vision)
         workflow.add_conditional_edges(
             START,
             self._input_type_decision,
             {
-                "text": "memory_loader",
+                "text": "reception_check",
                 "image": "vision",
+            },
+        )
+        workflow.add_conditional_edges(
+            "reception_check",
+            self._reception_check_decision,
+            {
+                "active_reception": "memory_loader",
+                "no_reception": "keyword_router",
+            },
+        )
+        workflow.add_conditional_edges(
+            "keyword_router",
+            self._keyword_router_decision,
+            {
+                "normal": "memory_loader",
+                "facility": "facility",
             },
         )
         workflow.add_edge("vision", "memory_loader")
@@ -238,6 +275,145 @@ class MainWorkflow:
         if state.get("image_data") is not None:
             return "image"
         return "text"
+
+    @staticmethod
+    def _reception_is_active(reception_status: Optional[dict[str, Any]]) -> bool:
+        if not reception_status:
+            return False
+        return not reception_status.get("completed") and reception_status.get("stage") not in (
+            "none",
+            "error",
+        )
+
+    def _has_mixed_intent_greeting(self, query: str) -> bool:
+        lower_query = query.lower().strip()
+        if not match_keywords(lower_query, GREETING_KEYWORDS):
+            return False
+
+        remaining = lower_query
+        for keyword in sorted(GREETING_KEYWORDS, key=len, reverse=True):
+            remaining = remaining.replace(keyword.lower(), " ").strip()
+
+        remaining = remaining.strip("!！?？。、.,  ")
+        return len(remaining) > 3
+
+    def _requires_memory_loader_before_fast_path(self, query: str) -> bool:
+        stripped_query = query.strip()
+        lower_query = stripped_query.lower()
+
+        if len(stripped_query) < 5:
+            return True
+
+        if any(marker in lower_query for marker in self._ANAPHORA_MARKERS):
+            return True
+
+        if self._has_mixed_intent_greeting(stripped_query):
+            return True
+
+        return RoutingLogicAgent._is_memory_related_question(self, stripped_query)
+
+    def _get_response_language(self, query: str, fallback_language: str) -> str:
+        from backend.utils.language_processor import LanguageProcessor
+
+        language_processor = LanguageProcessor()
+        language_result = language_processor.detect_language(query)
+        response_language = language_processor.determine_response_language(language_result)
+        return response_language or fallback_language
+
+    async def _store_fast_path_user_message(self, session_id: str, query: str) -> None:
+        if not session_id or not query:
+            return
+
+        try:
+            from backend.utils.memory_helper import get_memory_helper
+
+            memory_helper = get_memory_helper()
+            await memory_helper.store_message(
+                session_id=session_id,
+                role="user",
+                content=query,
+            )
+        except Exception as exc:
+            logger.warning("Failed to store fast-path user message: %s", exc)
+
+    async def _reception_check_node(self, state: WorkflowStateDict) -> dict[str, Any]:
+        from backend.utils.reception_status import check_reception_status
+
+        session_id = state.get("session_id", "")
+        reception_status = await check_reception_status(session_id)
+        return {"reception_status": reception_status}
+
+    def _reception_check_decision(self, state: WorkflowStateDict) -> str:
+        if self._reception_is_active(state.get("reception_status")):
+            return "active_reception"
+        return "no_reception"
+
+    async def _keyword_router_node(self, state: WorkflowStateDict) -> dict[str, Any]:
+        query = state.get("query", "")
+        fallback_language = state.get("language", "ja")
+
+        if self._requires_memory_loader_before_fast_path(query):
+            return {"routing": {**state.get("routing", {}), "pre_memory_fast_path_agent": None}}
+
+        response_language = self._get_response_language(query, fallback_language)
+        fast_route = RoutingLogicAgent._try_fast_routing(self, query)
+        if fast_route is None:
+            return {
+                "language": response_language,
+                "routing": {**state.get("routing", {}), "pre_memory_fast_path_agent": None},
+            }
+
+        if fast_route["category"] in self._PRE_MEMORY_INLINE_CATEGORIES:
+            return {
+                "language": response_language,
+                "routing": {**state.get("routing", {}), "pre_memory_fast_path_agent": None},
+            }
+
+        try:
+            from backend.utils.topic_guard import check_topic_adherence
+
+            on_topic, _ = check_topic_adherence(
+                query=query,
+                routing_category=fast_route["category"],
+                language=response_language,
+            )
+            if not on_topic:
+                return {
+                    "language": response_language,
+                    "routing": {**state.get("routing", {}), "pre_memory_fast_path_agent": None},
+                }
+        except Exception as guard_err:
+            logger.debug("Pre-memory topic guard skipped: %s", guard_err)
+
+        fast_path_agent = fast_route["agent"]
+        if fast_path_agent not in self._PRE_MEMORY_DIRECT_AGENTS:
+            return {
+                "language": response_language,
+                "routing": {**state.get("routing", {}), "pre_memory_fast_path_agent": None},
+            }
+
+        await self._store_fast_path_user_message(state.get("session_id", ""), query)
+
+        return {
+            "language": response_language,
+            "routing": {
+                **state.get("routing", {}),
+                **fast_route,
+                "pre_memory_fast_path_agent": fast_path_agent,
+                "confidence": 0.9,
+                "debug_info": {
+                    "fast_path": True,
+                    "path": "keyword_router",
+                },
+            },
+        }
+
+    def _keyword_router_decision(self, state: WorkflowStateDict) -> str:
+        routing = state.get("routing", {})
+        fast_path_agent = routing.get("pre_memory_fast_path_agent")
+        if fast_path_agent in self._PRE_MEMORY_DIRECT_AGENTS:
+            return cast(str, fast_path_agent)
+        return "normal"
 
     async def _vision_node(self, state: WorkflowStateDict) -> dict:
         """ビジョンノード: 画像からOCR/表情認識を実行し、queryに変換"""
@@ -657,11 +833,11 @@ class MainWorkflow:
         session_id = state.get("session_id", "")
 
         # --- Reception status gate (before LLM call) ---
-        reception_status = await check_reception_status(session_id)
-        if not reception_status.get("completed") and reception_status.get("stage") not in (
-            "none",
-            "error",
-        ):
+        reception_status = state.get("reception_status")
+        if reception_status is None or not reception_status:
+            reception_status = await check_reception_status(session_id)
+
+        if self._reception_is_active(reception_status):
             reception_result = await invoke_reception_subgraph(
                 state,
                 reception_status,
@@ -1155,6 +1331,7 @@ class MainWorkflow:
             "emotion": None,
             "metadata": {},
             "context": input_data.get("context", {}),
+            "reception_status": {},
             "image_data": self._decode_image_data(raw_image) if raw_image is not None else None,
             "ocr_result": None,
         }

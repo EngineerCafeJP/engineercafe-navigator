@@ -15,7 +15,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from langgraph.checkpoint.memory import MemorySaver
 
-from backend.agents.orchestrator_agent import OrchestratorDecision
+from backend.agents.orchestrator_agent import OrchestratorAgent, OrchestratorDecision
 
 # ---------------------------------------------------------------------------
 # Shared fixtures
@@ -83,6 +83,27 @@ def _make_context_priority_mock():
     return mock_engine
 
 
+class _StubLanguageProcessor:
+    def detect_language(self, query: str) -> dict[str, object]:
+        detected = "ja" if any(ord(ch) > 127 for ch in query) else "en"
+        return {"detected": detected, "confidence": 1.0}
+
+    def determine_response_language(self, language_result: dict[str, object]) -> str:
+        return str(language_result["detected"])
+
+
+class _StubOrchestrator:
+    def __init__(self) -> None:
+        self.language_processor = _StubLanguageProcessor()
+        self.decide_next_agent = AsyncMock()
+
+    def _try_fast_routing(self, query: str):
+        return OrchestratorAgent._try_fast_routing(self, query)
+
+    def _is_memory_related_question(self, query: str) -> bool:
+        return OrchestratorAgent._is_memory_related_question(self, query)
+
+
 @contextmanager
 def _patch_memory_loader_deps():
     """memory_loader_node 内でインポートされる依存のパッチ一式
@@ -125,6 +146,116 @@ def _patch_memory_loader_deps_with_category(category):
         ),
     ):
         yield
+
+
+# ===========================================================================
+# Scenario 0: Pre-memory graph split
+# ===========================================================================
+
+
+class TestPreMemoryRoutingScenario:
+    @patch("backend.utils.memory_helper.get_memory_helper")
+    @patch("backend.workflows.main_workflow.OrchestratorAgent")
+    async def test_fast_path_wifi_skips_memory_loader(
+        self,
+        mock_orchestrator_class,
+        mock_get_helper,
+    ):
+        from backend.workflows.main_workflow import MainWorkflow
+
+        stub_orchestrator = _StubOrchestrator()
+        stub_orchestrator.decide_next_agent.side_effect = AssertionError(
+            "orchestrator should not run on pre-memory fast path"
+        )
+        mock_orchestrator_class.return_value = stub_orchestrator
+
+        mock_helper = _make_memory_helper_mock()
+        mock_get_helper.return_value = mock_helper
+
+        checkpointer = MemorySaver()
+
+        with patch(
+            "backend.utils.reception_status.check_reception_status",
+            new=AsyncMock(return_value={"completed": True, "stage": "none"}),
+        ):
+            workflow = MainWorkflow(checkpointer=checkpointer)
+            workflow._facility_agent.answer_facility_query = AsyncMock(
+                return_value={
+                    "answer": "WiFi is available. Please ask reception for the password.",
+                    "emotion": "happy",
+                    "metadata": {"agent": "FacilityAgent", "status": "success"},
+                }
+            )
+
+            result = await workflow.ainvoke(
+                {
+                    "query": "WiFiのパスワードは？",
+                    "session_id": "fast-path-1",
+                    "language": "ja",
+                }
+            )
+
+        assert result["answer"] == "WiFi is available. Please ask reception for the password."
+        workflow._facility_agent.answer_facility_query.assert_awaited_once()
+        mock_helper.get_context.assert_not_awaited()
+
+        store_calls = mock_helper.store_message.await_args_list
+        assert len(store_calls) == 2
+        assert store_calls[0].kwargs["role"] == "user"
+        assert store_calls[0].kwargs["content"] == "WiFiのパスワードは？"
+        assert store_calls[1].kwargs["role"] == "assistant"
+        stub_orchestrator.decide_next_agent.assert_not_awaited()
+
+    @patch("backend.utils.memory_helper.get_memory_helper")
+    @patch("backend.workflows.main_workflow.OrchestratorAgent")
+    async def test_active_reception_always_uses_normal_path(
+        self,
+        mock_orchestrator_class,
+        mock_get_helper,
+    ):
+        from backend.workflows.main_workflow import MainWorkflow
+
+        stub_orchestrator = _StubOrchestrator()
+        stub_orchestrator.decide_next_agent.side_effect = AssertionError(
+            "active reception should short-circuit before LLM routing"
+        )
+        mock_orchestrator_class.return_value = stub_orchestrator
+
+        mock_helper = _make_memory_helper_mock()
+        mock_get_helper.return_value = mock_helper
+
+        checkpointer = MemorySaver()
+
+        with (
+            _patch_memory_loader_deps(),
+            patch(
+                "backend.utils.reception_status.check_reception_status",
+                new=AsyncMock(return_value={"completed": False, "stage": "purpose_hearing"}),
+            ),
+            patch(
+                "backend.workflows.reception_workflow.invoke_reception_subgraph",
+                new=AsyncMock(
+                    return_value={
+                        "answer": "受付フローを続けます。ご用件を教えてください。",
+                        "emotion": "neutral",
+                        "metadata": {"reception_stage": "purpose_hearing"},
+                    }
+                ),
+            ),
+        ):
+            workflow = MainWorkflow(checkpointer=checkpointer)
+
+            result = await workflow.ainvoke(
+                {
+                    "query": "WiFiのパスワードは？",
+                    "session_id": "active-reception-1",
+                    "language": "ja",
+                }
+            )
+
+        assert result["answer"] == "受付フローを続けます。ご用件を教えてください。"
+        mock_helper.get_context.assert_awaited_once()
+        stub_orchestrator.decide_next_agent.assert_not_awaited()
 
 
 # ===========================================================================
