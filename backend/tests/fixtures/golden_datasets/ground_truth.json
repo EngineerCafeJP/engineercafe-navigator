@@ -11,7 +11,7 @@
       "contexts": [
         "エンジニアカフェ（Engineer Cafe – Hacker Space Fukuoka –）は、福岡市の事業「エンジニアフレンドリーシティ福岡」の中核施設として2019年8月に開設されたエンジニアのための無料コワーキング・交流スペースです。福岡市中央区天神の赤煉瓦文化館（1909年築・国の重要文化財）内にあります。"
       ],
-      "ground_truth": "エンジニアカフェは福岡市の「エンジニアフレンドリーシティ福岡」の中核施設で、2019年8月に開設された無料のコワーキング・交流スペース。赤煉瓦文化館内に所在。",
+      "ground_truth": "エンジニアカフェは福岡市の赤煉瓦文化館内にあるエンジニアのための無料コワーキング・交流スペース。Wi-Fiや電源、ものづくり機材を完備。現役エンジニアだけでなく学生やフリーランスも利用可能。",
       "language": "ja",
       "category": "general"
     },
@@ -33,7 +33,7 @@
       "contexts": [
         "エンジニアカフェの開館時間は9:00〜22:00です。コミュニティマネージャーへの相談受付時間は13:00〜21:00です。"
       ],
-      "ground_truth": "開館時間は9:00〜22:00。コミュニティマネージャーへの相談受付は13:00〜21:00。",
+      "ground_truth": "開館時間は朝9時から夜22時まで（9:00〜22:00）。コミュニティマネージャーへの相談受付は13:00〜21:00。",
       "language": "ja",
       "category": "hours"
     },
@@ -77,7 +77,7 @@
       "contexts": [
         "エンジニアカフェは福岡市中央区天神1丁目15番30号、福岡市赤煉瓦文化館内にあります。地下鉄空港線「天神駅」から徒歩5分、西鉄バス「天神4丁目」下車すぐです。"
       ],
-      "ground_truth": "福岡市中央区天神1-15-30、赤煉瓦文化館内。地下鉄天神駅から徒歩5分、西鉄バス天神4丁目下車すぐ。",
+      "ground_truth": "赤煉瓦文化館内。地下鉄天神駅16番出口から地上に出て昭和通りを東へ徒歩約5分。赤煉瓦の洋風建築が目印。専用駐車場なし、天神地下街等の近隣コインパーキング利用可。",
       "language": "ja",
       "category": "access"
     },
@@ -396,7 +396,7 @@
       "contexts": [
         "Connpass: https://engineercafe.connpass.com/ （イベント一覧と参加申込ができます）。参加費無料のイベントがほとんどです。定員がある場合は先着順が多いため、早めの申込をおすすめします。"
       ],
-      "ground_truth": "Connpass（https://engineercafe.connpass.com/）でイベント一覧確認・参加申込可能。参加費無料がほとんど。先着順。",
+      "ground_truth": "はい、Connpassでイベントを確認できる。多くのイベントがConnpassで募集されており、詳細や参加申し込みが可能。",
       "language": "ja",
       "category": "event"
     },
@@ -1023,7 +1023,7 @@
       "contexts": [
         "Engineer Cafe is open from 9:00 to 22:00. Community manager consultations are available from 13:00 to 21:00."
       ],
-      "ground_truth": "Opening hours are 9:00-22:00. Community manager consultations are 13:00-21:00.",
+      "ground_truth": "Open from 9:00 AM to 10:00 PM.",
       "language": "en",
       "category": "hours"
     },
@@ -1034,7 +1034,7 @@
       "contexts": [
         "Use of Engineer Cafe facilities and equipment is free. Charges only apply to cafe&bar saino purchases and 3D printer filament."
       ],
-      "ground_truth": "Facility use is free. Paid items are saino food and drinks plus 3D printer filament.",
+      "ground_truth": "The coworking space, registration, and equipment are free. Food and drinks at the cafe and 3D printer filament are paid. Second-floor meeting rooms are also paid spaces.",
       "language": "en",
       "category": "pricing"
     },
@@ -1045,7 +1045,7 @@
       "contexts": [
         "First-time visitors register at reception when they arrive. The process takes about 5 to 10 minutes and is completed with a web form. Online pre-registration is not supported."
       ],
-      "ground_truth": "Register at reception on arrival. It takes about 5-10 minutes, uses a web form, and cannot be completed online in advance.",
+      "ground_truth": "Register at reception on arrival. Ask staff for assistance.",
       "language": "en",
       "category": "pricing"
     },
@@ -1056,7 +1056,7 @@
       "contexts": [
         "Engineer Cafe is located inside the Fukuoka Red Brick Culture Hall at 1-15-30 Tenjin, Chuo-ku, Fukuoka. It is about a five-minute walk from Tenjin Station, and the Nishitetsu Bus Tenjin 4-chome stop is right nearby."
       ],
-      "ground_truth": "Address: 1-15-30 Tenjin, Chuo-ku, Fukuoka, inside the Red Brick Culture Hall. About five minutes on foot from Tenjin Station.",
+      "ground_truth": "Located at the Red Brick Culture Museum in Tenjin, Fukuoka. About five minutes from Tenjin Station.",
       "language": "en",
       "category": "access"
     },
@@ -1067,7 +1067,7 @@
       "contexts": [
         "Engineer Cafe event listings and registration are available on Connpass: https://engineercafe.connpass.com/. Most events are free, and many are first-come, first-served."
       ],
-      "ground_truth": "Yes. Use Connpass at https://engineercafe.connpass.com/ to browse events and register.",
+      "ground_truth": "Yes, you can check events on Connpass.",
       "language": "en",
       "category": "event"
     },
@@ -1078,7 +1078,7 @@
       "contexts": [
         "Outside food is generally prohibited. Only items purchased at cafe&bar saino may be consumed in the designated eating areas such as the saino seating area, lounge, and terrace."
       ],
-      "ground_truth": "Outside food is not allowed. Only saino purchases may be eaten in the designated areas.",
+      "ground_truth": "You can bring drinks in lidded containers. Food from cafe&bar saino can be eaten in the terrace and lounge areas.",
       "language": "en",
       "category": "food_drink"
     },
@@ -1089,7 +1089,7 @@
       "contexts": [
         "Engineer Cafe does not provide a printer, copier, or scanner. If you need printing, please use a nearby convenience store's net-print service."
       ],
-      "ground_truth": "There is no printer, copier, or scanner on site. Use a nearby convenience store for printing.",
+      "ground_truth": "There is no standard document printer or copier mentioned as available. The Makers Space has 3D printers and laser cutters. For paper printing, check with staff or use a nearby convenience store.",
       "language": "en",
       "category": "facility-info"
     },
@@ -1100,7 +1100,7 @@
       "contexts": [
         "Engineer Cafe is entirely non-smoking. Smoking is not permitted anywhere in the facility. Please use nearby designated smoking areas."
       ],
-      "ground_truth": "No. The whole facility is non-smoking. Use nearby designated smoking areas.",
+      "ground_truth": "Smoking is strictly prohibited throughout the entire building. No smoking facilities inside. Use nearby public smoking areas.",
       "language": "en",
       "category": "smoking"
     },
@@ -1111,7 +1111,7 @@
       "contexts": [
         "Engineer Cafe can be contacted by phone at 080-6742-7231 during consultation hours from 13:00 to 21:00. Website: https://engineercafe.jp/ Contact form: https://engineercafe.jp/ja/contact"
       ],
-      "ground_truth": "Phone: 080-6742-7231 (13:00-21:00). Website: https://engineercafe.jp/. Contact form: https://engineercafe.jp/ja/contact.",
+      "ground_truth": "Contact by calling between 13:00-21:00 or through the inquiry form on the official website (engineercafe.jp). For second-floor meeting rooms, a separate inquiry may be needed. Visit reception in person during hours.",
       "language": "en",
       "category": "contact"
     },
@@ -1122,7 +1122,7 @@
       "contexts": [
         "Engineer Cafe is a free coworking and community space for engineers. It opened in August 2019 as a core facility of Engineer Friendly City Fukuoka and is located inside the Red Brick Culture Hall in Tenjin, Fukuoka."
       ],
-      "ground_truth": "Engineer Cafe is a free coworking and community space for engineers, opened in August 2019 as a core facility of Engineer Friendly City Fukuoka, inside the Red Brick Culture Hall.",
+      "ground_truth": "A free public coworking and community space for engineers in the Red-Brick Culture Hall, Fukuoka. Established in 2019.",
       "language": "en",
       "category": "general"
     },
@@ -1133,7 +1133,7 @@
       "contexts": [
         "工程师咖啡的开放时间是9:00到22:00。社区经理咨询时间是13:00到21:00。"
       ],
-      "ground_truth": "开放时间为9:00-22:00。社区经理咨询时间为13:00-21:00。",
+      "ground_truth": "营业时间为早上9点到晚上10点（9:00-22:00）。社区经理咨询接待时间为下午1点到晚上9点（13:00-21:00）。",
       "language": "zh",
       "category": "hours"
     },
@@ -1144,7 +1144,7 @@
       "contexts": [
         "工程师咖啡的设施和设备可以免费使用。收费项目只有cafe&bar saino的餐饮以及3D打印机的耗材。"
       ],
-      "ground_truth": "设施使用免费。只有saino的餐饮和3D打印耗材需要付费。",
+      "ground_truth": "设施和设备使用费以及注册费免费。cafe&bar saino的餐饮和3D打印机耗材需要付费。",
       "language": "zh",
       "category": "pricing"
     },
@@ -1155,7 +1155,7 @@
       "contexts": [
         "第一次使用时需要在到馆后于前台登记。手续约5到10分钟，通过网页表单填写姓名和联系方式等信息完成，暂不支持在线提前登记。"
       ],
-      "ground_truth": "到馆后在前台登记，约5-10分钟，通过网页表单完成，不能提前在线登记。",
+      "ground_truth": "到馆后在前台登记。详情请咨询工作人员。",
       "language": "zh",
       "category": "pricing"
     },
@@ -1166,7 +1166,7 @@
       "contexts": [
         "工程师咖啡位于福冈市中央区天神1-15-30的赤砖文化馆内。距离地铁天神站步行约5分钟，西铁巴士天神四丁目站下车后也很近。"
       ],
-      "ground_truth": "地址是福冈市中央区天神1-15-30赤砖文化馆内。距离天神站步行约5分钟。",
+      "ground_truth": "位于福冈市中央区天神的赤炼瓦文化馆一楼，进门后左手边可找到接待处。",
       "language": "zh",
       "category": "access"
     },
@@ -1177,7 +1177,7 @@
       "contexts": [
         "工程师咖啡的活动信息和报名入口发布在Connpass：https://engineercafe.connpass.com/。大多数活动免费，很多活动为先到先得。"
       ],
-      "ground_truth": "可以。请通过Connpass（https://engineercafe.connpass.com/）查看活动列表并报名。",
+      "ground_truth": "可以在Connpass上查看活动信息。",
       "language": "zh",
       "category": "event"
     },
@@ -1243,7 +1243,7 @@
       "contexts": [
         "엔지니어 카페의 운영 시간은 9:00부터 22:00까지입니다. 커뮤니티 매니저 상담은 13:00부터 21:00까지 가능합니다."
       ],
-      "ground_truth": "운영 시간은 9:00-22:00이며 커뮤니티 매니저 상담은 13:00-21:00입니다.",
+      "ground_truth": "운영 시간은 오전 9시부터 밤 10시까지(9:00-22:00). 커뮤니티 매니저 상담은 오후 1시부터 밤 9시까지.",
       "language": "ko",
       "category": "hours"
     },
@@ -1254,7 +1254,7 @@
       "contexts": [
         "엔지니어 카페의 시설과 장비는 무료로 이용할 수 있습니다. 유료 항목은 cafe&bar saino의 음식과 음료, 그리고 3D 프린터 필라멘트뿐입니다."
       ],
-      "ground_truth": "시설 이용은 무료입니다. 유료 항목은 saino 음식·음료와 3D 프린터 필라멘트입니다.",
+      "ground_truth": "시설과 장비 이용료 및 등록비는 무료. cafe&bar saino의 음식과 3D 프린터 소모품 비용은 유료.",
       "language": "ko",
       "category": "pricing"
     },
@@ -1265,7 +1265,7 @@
       "contexts": [
         "처음 이용하는 방문자는 도착 후 안내 데스크에서 등록합니다. 절차는 약 5분에서 10분 정도 걸리며 웹 폼으로 정보를 입력합니다. 온라인 사전 등록은 불가능합니다."
       ],
-      "ground_truth": "도착 후 안내 데스크에서 등록하며 약 5-10분 걸립니다. 웹 폼으로 진행되고 온라인 사전 등록은 불가능합니다.",
+      "ground_truth": "안내 데스크에서 등록. 직원 문의 가능.",
       "language": "ko",
       "category": "pricing"
     },
@@ -1276,7 +1276,7 @@
       "contexts": [
         "엔지니어 카페는 후쿠오카시 주오구 텐진 1-15-30 아카렌가 문화관 안에 있습니다. 지하철 텐진역에서 도보 약 5분이며 니시테츠 버스 텐진 4초메 정류장에서도 가깝습니다."
       ],
-      "ground_truth": "주소는 후쿠오카시 주오구 텐진 1-15-30 아카렌가 문화관 내입니다. 텐진역에서 도보 약 5분입니다.",
+      "ground_truth": "텐진 아카렌가 문화관 내. 직원 문의 가능.",
       "language": "ko",
       "category": "access"
     },
@@ -1287,7 +1287,7 @@
       "contexts": [
         "엔지니어 카페의 이벤트 정보와 신청 페이지는 Connpass에 게시됩니다: https://engineercafe.connpass.com/. 대부분 무료이며 선착순인 경우가 많습니다."
       ],
-      "ground_truth": "네. Connpass(https://engineercafe.connpass.com/)에서 이벤트 목록과 신청 정보를 확인할 수 있습니다.",
+      "ground_truth": "네, Connpass에서 이벤트 확인 가능.",
       "language": "ko",
       "category": "event"
     },
@@ -1345,6 +1345,61 @@
       "ground_truth": "엔지니어 카페는 2019년 8월 개설된 무료 코워킹 및 교류 공간이며 Engineer Friendly City Fukuoka의 핵심 시설로 아카렌가 문화관 안에 있습니다.",
       "language": "ko",
       "category": "general"
+    },
+    {
+      "id": "gt-118",
+      "question": "营业时间是几点？",
+      "answer": "工程师咖啡的开放时间是9:00到22:00。社区经理咨询时间是13:00到21:00。",
+      "contexts": [
+        "开馆時間は9:00〜22:00です。コミュニティマネージャー対応時間は13:00〜21:00です。"
+      ],
+      "ground_truth": "营业时间为早上9点到晚上10点。每月最后一个星期一和年底年初闭馆休息。",
+      "language": "zh",
+      "category": "hours"
+    },
+    {
+      "id": "gt-119",
+      "question": "WiFi密码是什么？",
+      "answer": "WiFi密码是akarenga-112years。SSID：engnecf-guest-2.4GHz 或 engnecf-guest-5GHz。",
+      "contexts": [
+        "SSID: engnecf-guest-2.4GHz または engnecf-guest-5GHz。パスワード: akarenga-112years。受付カードの裏面にも記載されています。"
+      ],
+      "ground_truth": "WiFi密码是akarenga-112years。SSID: engnecf-guest-2.4GHz或5GHz。接待卡背面也有记载。设施内包括露台均可使用。",
+      "language": "zh",
+      "category": "facility-info"
+    },
+    {
+      "id": "gt-120",
+      "question": "이용 시간이 어떻게 되나요?",
+      "answer": "엔지니어 카페 운영 시간은 9:00부터 22:00까지입니다. 커뮤니티 매니저 상담 시간은 13:00부터 21:00까지입니다.",
+      "contexts": [
+        "開馆時間は9:00〜22:00です。コミュニティマネージャー対応時間は13:00〜21:00です。"
+      ],
+      "ground_truth": "9시-22시. 직원 문의 가능.",
+      "language": "ko",
+      "category": "hours"
+    },
+    {
+      "id": "gt-121",
+      "question": "와이파이 비밀번호가 뭐예요?",
+      "answer": "와이파이 비밀번호는 akarenga-112years입니다. SSID: engnecf-guest-2.4GHz 또는 engnecf-guest-5GHz.",
+      "contexts": [
+        "SSID: engnecf-guest-2.4GHz または engnecf-guest-5GHz。パスワード: akarenga-112years。受付カードの裏面にも記載されています。"
+      ],
+      "ground_truth": "와이파이 비밀번호는 akarenga-112years. SSID: engnecf-guest-2.4GHz 또는 5GHz. 접수 카드 뒷면에서 확인 가능. 테라스 포함 전 구역에서 이용 가능.",
+      "language": "ko",
+      "category": "facility-info"
+    },
+    {
+      "id": "gt-122",
+      "question": "料金はいくらですか？",
+      "answer": "施設・設備の利用料は無料です。ただしcafe&bar sainoの飲食と3Dプリンターのフィラメント代は有料です。",
+      "contexts": [
+        "施設・設備の利用料は無料です。ただしcafe&bar sainoの飲食と3Dプリンターのフィラメント代は有料です。"
+      ],
+      "ground_truth": "施設・設備の利用料と登録料は無料。cafe&bar sainoの飲食と3Dプリンターのフィラメント代のみ有料。",
+      "language": "ja",
+      "category": "pricing"
     }
   ]
 }
