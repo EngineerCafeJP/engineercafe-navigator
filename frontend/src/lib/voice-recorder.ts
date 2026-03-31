@@ -3,7 +3,7 @@ export class VoiceRecorder {
   private audioChunks: Blob[] = [];
   protected stream: MediaStream | null = null;
   private isRecording = false;
-  private static readonly SELECTED_MIC_DEVICE_ID_STORAGE_KEY = 'selected_mic_device_id';
+  private static readonly SELECTED_MIC_DEVICE_ID_STORAGE_KEY = 'kiosk-mic-device-id';
 
   constructor(
     private onDataAvailable: (audioBlob: Blob) => void,
