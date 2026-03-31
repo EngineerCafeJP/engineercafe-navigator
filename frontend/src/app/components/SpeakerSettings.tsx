@@ -2,8 +2,10 @@
 
 import React from 'react';
 import { Volume2, VolumeX } from 'lucide-react';
+import { kioskSettingsLabels } from '@/lib/kiosk-labels';
 
 export interface SpeakerSettingsProps {
+  kiosk_language?: 'ja' | 'en';
   volume: number;
   isMuted: boolean;
   onVolumeChange: (value: number) => void;
@@ -11,6 +13,7 @@ export interface SpeakerSettingsProps {
 }
 
 export default function SpeakerSettings({
+  kiosk_language = 'ja',
   volume,
   isMuted,
   onVolumeChange,
@@ -22,7 +25,7 @@ export default function SpeakerSettings({
     <div className="bg-white rounded-lg p-4 shadow-sm">
       <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
         <Volume2 className="w-4 h-4" />
-        再生音量
+        {kioskSettingsLabels[kiosk_language].speakerVolumeTitle}
       </h3>
       <div className="flex items-center gap-2">
         <button

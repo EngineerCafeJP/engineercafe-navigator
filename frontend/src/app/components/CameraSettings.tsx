@@ -2,6 +2,7 @@
 
 import { Camera } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
+import { kioskSettingsLabels } from '@/lib/kiosk-labels';
 
 interface MediaDeviceInfo {
   deviceId: string;
@@ -9,7 +10,11 @@ interface MediaDeviceInfo {
   kind: string;
 }
 
-export default function CameraSettings() {
+export interface CameraSettingsProps {
+  kiosk_language?: 'ja' | 'en';
+}
+
+export default function CameraSettings({ kiosk_language = 'ja' }: CameraSettingsProps) {
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
@@ -83,7 +88,7 @@ export default function CameraSettings() {
     <div className="bg-white rounded-lg p-4 shadow-sm">
       <h3 className="flex items-center gap-2 text-sm font-semibold">
         <Camera className="size-4" />
-        使用するカメラ
+        {kioskSettingsLabels[kiosk_language].cameraDeviceTitle}
       </h3>
       {error && (
         <p className="rounded bg-red-50 p-2 text-xs text-red-700" role="alert">

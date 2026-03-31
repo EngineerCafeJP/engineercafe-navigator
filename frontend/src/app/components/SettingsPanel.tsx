@@ -206,6 +206,7 @@ export default function SettingsPanel({
       {active_tab === 'multimedia' && (
         <div className="mb-4 space-y-3">
           <SpeakerSettings
+            kiosk_language={kiosk_language}
             volume={volume}
             isMuted={is_muted}
             onVolumeChange={(value) => on_volume_change?.(value)}
@@ -213,10 +214,11 @@ export default function SettingsPanel({
           />
 
           <MicrophoneSettings
+            kiosk_language={kiosk_language}
             storageKey="kiosk-mic-device-id"
           />
 
-          <CameraSettings />
+          <CameraSettings kiosk_language={kiosk_language} />
         </div>
       )}
 
@@ -272,6 +274,7 @@ export default function SettingsPanel({
             <EnvironmentSettings
               lightingIntensity={lighting_intensity}
               onLightingChange={on_lighting_change}
+            kiosk_language={kiosk_language}
             />
             <BackgroundSelector
               currentBackground={current_background}

@@ -2,48 +2,26 @@
 
 import React from 'react';
 import { Sun, Lightbulb, Zap } from 'lucide-react';
+import { kioskSettingsLabels } from '@/lib/kiosk-labels';
 
 interface EnvironmentSettingsProps {
   lightingIntensity: number;
   onLightingChange: (intensity: number) => void;
-  language?: 'ja' | 'en';
+  kiosk_language?: 'ja' | 'en';
 }
 
 export default function EnvironmentSettings({
   lightingIntensity,
   onLightingChange,
-  language = 'ja'
+  kiosk_language = 'ja',
 }: EnvironmentSettingsProps) {
-  const text = {
-    ja: {
-      title: 'ライティング設定',
-      intensity: 'ライティング強度',
-      presets: {
-        dim: '暗い',
-        normal: '標準',
-        bright: '明るい',
-        studio: 'スタジオ'
-      }
-    },
-    en: {
-      title: 'Lighting Settings',
-      intensity: 'Lighting Intensity',
-      presets: {
-        dim: 'Dim',
-        normal: 'Normal',
-        bright: 'Bright',
-        studio: 'Studio'
-      }
-    }
-  };
-
-  const t = text[language];
+  const t = kioskSettingsLabels[kiosk_language];
 
   const lightingPresets = [
-    { label: t.presets.dim, value: 0.5, icon: <Sun className="w-3 h-3" /> },
-    { label: t.presets.normal, value: 1.0, icon: <Lightbulb className="w-3 h-3" /> },
-    { label: t.presets.bright, value: 1.5, icon: <Zap className="w-3 h-3" /> },
-    { label: t.presets.studio, value: 2.0, icon: <Sun className="w-3 h-3" /> },
+    { label: t.lightingPresetDim, value: 0.5, icon: <Sun className="w-3 h-3" /> },
+    { label: t.lightingPresetNormal, value: 1.0, icon: <Lightbulb className="w-3 h-3" /> },
+    { label: t.lightingPresetBright, value: 1.5, icon: <Zap className="w-3 h-3" /> },
+    { label: t.lightingPresetStudio, value: 2.0, icon: <Sun className="w-3 h-3" /> },
   ];
 
   const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -57,13 +35,13 @@ export default function EnvironmentSettings({
     <div className="bg-white rounded-lg p-4 shadow-sm">
       <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
         <Lightbulb className="w-4 h-4" />
-        {t.title}
+        {t.lightingTitle}
       </h3>
 
       {/* Intensity Slider */}
       <div className="mb-4">
         <label className="block text-xs font-medium text-gray-700 mb-2">
-          {t.intensity}: {Math.round(lightingIntensity * 100)}%
+          {t.lightingIntensityLabel}: {Math.round(lightingIntensity * 100)}%
         </label>
         <input
           type="range"
@@ -106,12 +84,12 @@ export default function EnvironmentSettings({
 
       {/* Current Settings Display */}
       <div className="mt-3 p-2 bg-gray-50 rounded text-xs">
-        <div className="font-medium text-gray-700 mb-1">Current Settings:</div>
+        <div className="font-medium text-gray-700 mb-1">{t.lightingCurrentSettingsTitle}:</div>
         <div className="text-gray-600">
-          Intensity: {Math.round(lightingIntensity * 100)}%
-          {lightingIntensity <= 0.7 && ' (Soft)'}
-          {lightingIntensity > 0.7 && lightingIntensity <= 1.3 && ' (Balanced)'}
-          {lightingIntensity > 1.3 && ' (Intense)'}
+          {t.lightingIntensityValueLabel}: {Math.round(lightingIntensity * 100)}%
+          {lightingIntensity <= 0.7 && ` (${t.lightingToneSoft})`}
+          {lightingIntensity > 0.7 && lightingIntensity <= 1.3 && ` (${t.lightingToneBalanced})`}
+          {lightingIntensity > 1.3 && ` (${t.lightingToneIntense})`}
         </div>
       </div>
     </div>

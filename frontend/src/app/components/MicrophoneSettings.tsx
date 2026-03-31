@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import { Mic } from 'lucide-react';
+import { kioskSettingsLabels } from '@/lib/kiosk-labels';
 interface AudioDeviceInfo {
   deviceId: string;
   label: string;
@@ -9,12 +10,16 @@ interface AudioDeviceInfo {
 }
 
 export interface MicrophoneSettingsProps {
+  kiosk_language?: 'ja' | 'en';
   storageKey?: string;
 }
 
 const DEFAULT_STORAGE_KEY = 'selected_mic_device_id';
 
-export default function MicrophoneSettings({ storageKey = DEFAULT_STORAGE_KEY }: MicrophoneSettingsProps) {
+export default function MicrophoneSettings({
+  kiosk_language = 'ja',
+  storageKey = DEFAULT_STORAGE_KEY,
+}: MicrophoneSettingsProps) {
   const [micDevices, setMicDevices] = useState<AudioDeviceInfo[]>([]);
   const [selectedMicDeviceId, setSelectedMicDeviceId] = useState<string>('');
   const [micError, setMicError] = useState<string | null>(null);
@@ -89,7 +94,7 @@ export default function MicrophoneSettings({ storageKey = DEFAULT_STORAGE_KEY }:
     <div className="bg-white rounded-lg p-4 shadow-sm">
       <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
         <Mic className="w-4 h-4" />
-        使用するマイク
+        {kioskSettingsLabels[kiosk_language].microphoneDeviceTitle}
       </h3>
       {micError && (
         <p className="mt-3 rounded bg-red-50 p-2 text-xs text-red-700" role="alert">
