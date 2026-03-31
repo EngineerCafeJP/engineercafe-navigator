@@ -3,6 +3,7 @@ export class VoiceRecorder {
   private audioChunks: Blob[] = [];
   protected stream: MediaStream | null = null;
   private isRecording = false;
+  private static readonly SELECTED_MIC_DEVICE_ID_STORAGE_KEY = 'selected_mic_device_id';
 
   constructor(
     private onDataAvailable: (audioBlob: Blob) => void,
@@ -64,7 +65,15 @@ export class VoiceRecorder {
           };
 
       try {
-        this.stream = await getUserMediaFunc({ audio: audioConstraints });
+        const selectedDeviceId =
+          typeof window !== 'undefined'
+            ? window.localStorage.getItem(VoiceRecorder.SELECTED_MIC_DEVICE_ID_STORAGE_KEY)
+            : null;
+        const audio =
+          selectedDeviceId && selectedDeviceId !== 'default'
+            ? { ...audioConstraints, deviceId: { exact: selectedDeviceId } }
+            : audioConstraints;
+        this.stream = await getUserMediaFunc({ audio });
       } catch (error: any) {
         // Handle specific error cases
         if (error.name === 'NotAllowedError') {
@@ -73,6 +82,8 @@ export class VoiceRecorder {
           this.onError(new Error('No microphone found. Please connect a microphone and try again.'));
         } else if (error.name === 'NotReadableError') {
           this.onError(new Error('Microphone is in use by another application. Please close other apps using the microphone.'));
+        } else if (error.name === 'OverconstrainedError') {
+          this.onError(new Error('Selected microphone is unavailable. Please choose another microphone.'));
         } else {
           this.onError(new Error(`Failed to access microphone: ${error.message || error.name}`));
         }

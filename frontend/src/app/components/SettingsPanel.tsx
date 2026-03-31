@@ -1,20 +1,18 @@
 'use client';
 
 import {
-  Camera,
-  Languages,
   MessageSquare,
-  Presentation,
   Shield,
   SlidersHorizontal,
+  Video,
   User,
   X,
 } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import type { KioskMicMode, KioskTriggerMode } from '@/lib/kiosk-constants';
-import { kioskSettingsLabels } from '@/lib/kiosk-labels';
 import type { CharacterAnimationData } from '../utils/character-animation-utils';
-import AudioSettings from './AudioSettings';
+import SpeakerSettings from './SpeakerSettings';
+import MicrophoneSettings from './MicrophoneSettings';
 import BackgroundSelector, {
   type BackgroundOption as BackgroundSelectorOption,
 } from './BackgroundSelector';
@@ -24,29 +22,27 @@ import CharacterSettings, {
   type VRMAnimationOption,
 } from './CharacterSettings';
 import EnvironmentSettings from './EnvironmentSettings';
+import KioskSettings from './KioskSettings';
 
 const SETTINGS_TAB_LABELS: Record<
-  | 'camera'
-  | 'controls'
-  | 'slides'
+  | 'multimedia'
   | 'kiosk'
-  | 'admin',
+  | 'admin'
+  | 'controls',
   string
 > = {
-  camera: 'Camera',
-  controls: 'Character',
-  slides: 'Slides',
+  multimedia: 'Multimedia',
   kiosk: 'Kiosk',
   admin: 'Admin',
+  controls: 'Character',
 };
 
 export type SettingsPanelTab =
   | 'conversation'
-  | 'camera'
-  | 'controls'
-  | 'slides'
+  | 'multimedia'
   | 'kiosk'
-  | 'admin';
+  | 'admin'
+  | 'controls';
 
 export interface SettingsPanelProps {
   show_close_button?: boolean;
@@ -123,11 +119,6 @@ export default function SettingsPanel({
   on_volume_change,
   on_mute_toggle,
   on_run_keyframe,
-  slide_mode_open = false,
-  on_open_slides,
-  on_close_slides,
-  open_slides_label = 'Open slides',
-  close_slides_label = 'Close slides',
   kiosk_language = 'ja',
   kiosk_trigger_mode,
   kiosk_mic_mode,
@@ -141,17 +132,16 @@ export default function SettingsPanel({
   const [keyframe_json_input, set_keyframe_json_input] = useState('');
   const [keyframe_json_error, set_keyframe_json_error] = useState('');
 
-  const has_slides_tab = on_open_slides != null || on_close_slides != null;
   const has_kiosk_tab =
     kiosk_trigger_mode != null &&
     kiosk_mic_mode != null &&
     on_kiosk_language_change != null &&
     on_kiosk_trigger_mode_change != null &&
     on_kiosk_mic_mode_change != null;
-  const kiosk_labels = kioskSettingsLabels[kiosk_language];
   const tab_list: SettingsPanelTab[] = [
     ...(extra_tab ? (['conversation'] as const) : []),
     ...(has_kiosk_tab ? (['kiosk'] as const) : []),
+    'multimedia',
     'admin',
     'controls',
   ];
@@ -190,8 +180,7 @@ export default function SettingsPanel({
             }`}
           >
             {tab === 'conversation' && <MessageSquare className="size-4" />}
-            {tab === 'slides' && <Presentation className="size-4" />}
-            {tab === 'camera' && <Camera className="size-4" />}
+            {tab === 'multimedia' && <Video className="size-4" />}
             {tab === 'kiosk' && <SlidersHorizontal className="size-4" />}
             {tab === 'admin' && <Shield className="size-4" />}
             {tab === 'controls' && <User className="size-4" />}
@@ -203,126 +192,33 @@ export default function SettingsPanel({
         <div className="mb-4">{extra_tab.content}</div>
       ) : null}
 
-      {active_tab === 'slides' && has_slides_tab ? (
-        <div className="mb-4 flex flex-col gap-3">
-          {slide_mode_open && on_close_slides ? (
-            <button
-              type="button"
-              onClick={on_close_slides}
-              className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50"
-              aria-label={close_slides_label}
-            >
-              <X className="size-4" />
-              {close_slides_label}
-            </button>
-          ) : null}
-          {!slide_mode_open && on_open_slides ? (
-            <button
-              type="button"
-              onClick={on_open_slides}
-              className="inline-flex items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-medium text-blue-700 shadow-sm transition-colors hover:bg-blue-100"
-              aria-label={open_slides_label}
-            >
-              <Presentation className="size-4" />
-              {open_slides_label}
-            </button>
-          ) : null}
-        </div>
+      {active_tab === 'kiosk' && has_kiosk_tab ? (
+        <KioskSettings
+          kiosk_language={kiosk_language}
+          kiosk_trigger_mode={kiosk_trigger_mode}
+          kiosk_mic_mode={kiosk_mic_mode}
+          on_kiosk_language_change={on_kiosk_language_change}
+          on_kiosk_trigger_mode_change={on_kiosk_trigger_mode_change}
+          on_kiosk_mic_mode_change={on_kiosk_mic_mode_change}
+        />
       ) : null}
 
-      {active_tab === 'kiosk' && has_kiosk_tab ? (
-        <div className="mb-4 space-y-4">
-          <div className="rounded-lg border border-gray-200 p-3">
-            <h4 className="mb-2 flex items-center gap-2 text-sm font-semibold">
-              <Languages className="size-4" />
-              {kiosk_labels.displayLangTitle}
-            </h4>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => on_kiosk_language_change?.('ja')}
-                className={`rounded-full px-3 py-1.5 text-sm transition-colors ${
-                  kiosk_language === 'ja'
-                    ? 'bg-blue-100 text-blue-700'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                {kiosk_labels.displayLangJa}
-              </button>
-              <button
-                type="button"
-                onClick={() => on_kiosk_language_change?.('en')}
-                className={`rounded-full px-3 py-1.5 text-sm transition-colors ${
-                  kiosk_language === 'en'
-                    ? 'bg-blue-100 text-blue-700'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                {kiosk_labels.displayLangEn}
-              </button>
-            </div>
-          </div>
-
-          <div className="rounded-lg border border-gray-200 p-3">
-            <h4 className="mb-2 text-sm font-semibold">{kiosk_labels.triggerTitle}</h4>
-            <div className="space-y-2 text-sm">
-              <label className="flex cursor-pointer items-start gap-2 rounded border border-gray-200 p-2 has-[:checked]:border-blue-400">
-                <input
-                  type="radio"
-                  name="settings-kiosk-trigger-mode"
-                  className="mt-1"
-                  checked={kiosk_trigger_mode === 'screen'}
-                  onChange={() => on_kiosk_trigger_mode_change?.('screen')}
-                />
-                <span>{kiosk_labels.triggerScreen}</span>
-              </label>
-              <label className="flex cursor-pointer items-start gap-2 rounded border border-gray-200 p-2 has-[:checked]:border-blue-400">
-                <input
-                  type="radio"
-                  name="settings-kiosk-trigger-mode"
-                  className="mt-1"
-                  checked={kiosk_trigger_mode === 'device'}
-                  onChange={() => on_kiosk_trigger_mode_change?.('device')}
-                />
-                <span>{kiosk_labels.triggerDevice}</span>
-              </label>
-            </div>
-          </div>
-
-          <div className="rounded-lg border border-gray-200 p-3">
-            <h4 className="mb-2 text-sm font-semibold">{kiosk_labels.micModeTitle}</h4>
-            <div className="space-y-2 text-sm">
-              <label className="flex cursor-pointer items-start gap-2 rounded border border-gray-200 p-2 has-[:checked]:border-blue-400">
-                <input
-                  type="radio"
-                  name="settings-kiosk-mic-mode"
-                  className="mt-1"
-                  checked={kiosk_mic_mode === 'toggle'}
-                  onChange={() => on_kiosk_mic_mode_change?.('toggle')}
-                />
-                <span>{kiosk_labels.micToggle}</span>
-              </label>
-              <label className="flex cursor-pointer items-start gap-2 rounded border border-gray-200 p-2 has-[:checked]:border-blue-400">
-                <input
-                  type="radio"
-                  name="settings-kiosk-mic-mode"
-                  className="mt-1"
-                  checked={kiosk_mic_mode === 'push_to_talk'}
-                  onChange={() => on_kiosk_mic_mode_change?.('push_to_talk')}
-                />
-                <span>{kiosk_labels.micPushToTalk}</span>
-              </label>
-            </div>
-          </div>
-
-          <AudioSettings
+      {active_tab === 'multimedia' && (
+        <div className="mb-4 space-y-3">
+          <SpeakerSettings
             volume={volume}
             isMuted={is_muted}
             onVolumeChange={(value) => on_volume_change?.(value)}
             onMuteToggle={() => on_mute_toggle?.()}
           />
+
+          <MicrophoneSettings
+            storageKey="kiosk-mic-device-id"
+          />
+
+          <CameraSettings />
         </div>
-      ) : null}
+      )}
 
       {active_tab === 'admin' ? (
         <div className="mb-4 flex flex-col gap-3">
@@ -357,7 +253,7 @@ export default function SettingsPanel({
       ) : null}
 
       {active_tab === 'controls' ? (
-        <div className="mb-4">
+        <div className="mb-4 space-y-3">
           <CharacterSettings
             state={controls_state}
             vrmExpressionNames={vrm_expression_names}
@@ -373,7 +269,6 @@ export default function SettingsPanel({
             on_keyframe_json_error={set_keyframe_json_error}
             on_run_keyframe={on_run_keyframe}
           />
-          <div className="mt-3 space-y-3">
             <EnvironmentSettings
               lightingIntensity={lighting_intensity}
               onLightingChange={on_lighting_change}
@@ -383,13 +278,6 @@ export default function SettingsPanel({
               onBackgroundChange={on_background_change}
             />
           </div>
-        </div>
-      ) : null}
-
-      {active_tab === 'camera' ? (
-        <div className="mb-4">
-          <CameraSettings />
-        </div>
       ) : null}
 
     </div>
