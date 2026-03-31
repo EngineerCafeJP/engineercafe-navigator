@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Mic } from 'lucide-react';
 import { kioskSettingsLabels } from '@/lib/kiosk-labels';
 interface AudioDeviceInfo {
@@ -24,6 +24,13 @@ export default function MicrophoneSettings({
   const [selectedMicDeviceId, setSelectedMicDeviceId] = useState<string>('');
   const [micError, setMicError] = useState<string | null>(null);
 
+  const isIOS = useMemo(() => {
+    if (typeof navigator === 'undefined') return false;
+    return /iPad|iPhone|iPod/.test(navigator.userAgent);
+  }, []);
+
+  const didTryPermissionRef = useRef(false);
+
   const refresh_mic_devices = useCallback(async () => {
     if (typeof window === 'undefined') {
       return;
@@ -35,8 +42,12 @@ export default function MicrophoneSettings({
 
     setMicError(null);
 
-    // NOTE: label を取るために一度だけ権限を取り、すぐ停止する（録音は開始しない）
-    if (navigator.mediaDevices.getUserMedia) {
+    // NOTE:
+    // - iOS Safari は getUserMedia→stop を繰り返すと権限アイコンが点滅し続けることがあるため、
+    //   ここでは自動で権限取得を行わない（label が空の場合はフォールバック表示にする）
+    // - iOS 以外は label を取るために一度だけ権限を取り、すぐ停止する（録音は開始しない）
+    if (!isIOS && !didTryPermissionRef.current && navigator.mediaDevices.getUserMedia) {
+      didTryPermissionRef.current = true;
       try {
         const tempStream = await navigator.mediaDevices.getUserMedia({ audio: true });
         tempStream.getTracks().forEach((t) => t.stop());
@@ -69,16 +80,11 @@ export default function MicrophoneSettings({
     } catch {
       setMicError('マイク一覧の取得に失敗しました。');
     }
-  }, [storageKey]);
+  }, [isIOS, storageKey]);
 
   useEffect(() => {
     void refresh_mic_devices();
-    const handle_device_change = () => {
-      void refresh_mic_devices();
-    };
-    navigator.mediaDevices?.addEventListener?.('devicechange', handle_device_change);
     return () => {
-      navigator.mediaDevices?.removeEventListener?.('devicechange', handle_device_change);
     };
   }, [refresh_mic_devices]);
 

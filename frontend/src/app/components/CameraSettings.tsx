@@ -1,7 +1,7 @@
 'use client';
 
 import { Camera } from 'lucide-react';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { kioskSettingsLabels } from '@/lib/kiosk-labels';
 
 interface MediaDeviceInfo {
@@ -14,10 +14,19 @@ export interface CameraSettingsProps {
   kiosk_language?: 'ja' | 'en';
 }
 
+const SELECTED_CAMERA_DEVICE_ID_STORAGE_KEY = 'kiosk-camera-device-id';
+
 export default function CameraSettings({ kiosk_language = 'ja' }: CameraSettingsProps) {
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
+
+  const isIOS = useMemo(() => {
+    if (typeof navigator === 'undefined') return false;
+    return /iPad|iPhone|iPod/.test(navigator.userAgent);
+  }, []);
+
+  const didTryPermissionRef = useRef(false);
 
   const refresh_camera_devices = useCallback(async () => {
     if (!navigator.mediaDevices?.enumerateDevices) {
@@ -27,9 +36,12 @@ export default function CameraSettings({ kiosk_language = 'ja' }: CameraSettings
 
     setError(null);
     try {
-      // NOTE: device label を取得するために一度だけ権限を取り、すぐ停止する
-      // (プレビューは表示しない)
-      if (navigator.mediaDevices.getUserMedia) {
+      // NOTE:
+      // - iOS Safari は getUserMedia→stop を繰り返すとアドレスバーの権限アイコンが点滅し続けることがあるため
+      //   ここでは自動で権限取得を行わない（label が空の場合はフォールバック表示にする）
+      // - iOS 以外は label 取得のために一度だけ権限を取り、すぐ停止する（プレビューは表示しない）
+      if (!isIOS && !didTryPermissionRef.current && navigator.mediaDevices.getUserMedia) {
+        didTryPermissionRef.current = true;
         try {
           const tempStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
           tempStream.getTracks().forEach((t) => t.stop());
@@ -50,12 +62,21 @@ export default function CameraSettings({ kiosk_language = 'ja' }: CameraSettings
 
       setDevices(videoInputs);
       if (videoInputs.length > 0) {
-        setSelectedDeviceId((prev) => (prev ? prev : videoInputs[0].deviceId));
+        const saved =
+          typeof window !== 'undefined'
+            ? window.localStorage.getItem(SELECTED_CAMERA_DEVICE_ID_STORAGE_KEY) ?? ''
+            : '';
+        const savedExists = saved && videoInputs.some((d) => d.deviceId === saved);
+        const next = savedExists ? saved : videoInputs[0].deviceId;
+        setSelectedDeviceId((prev) => prev || next);
+        if (typeof window !== 'undefined' && next) {
+          window.localStorage.setItem(SELECTED_CAMERA_DEVICE_ID_STORAGE_KEY, next);
+        }
       }
     } catch {
       setError('カメラ一覧の取得に失敗しました。');
     }
-  }, []);
+  }, [isIOS]);
 
   useEffect(() => {
     let mounted = true;
@@ -69,19 +90,17 @@ export default function CameraSettings({ kiosk_language = 'ja' }: CameraSettings
     }
 
     init();
-    const handle_device_change = () => {
-      refresh_camera_devices();
-    };
-    navigator.mediaDevices?.addEventListener?.('devicechange', handle_device_change);
     return () => {
       mounted = false;
-      navigator.mediaDevices?.removeEventListener?.('devicechange', handle_device_change);
     };
   }, [refresh_camera_devices]);
 
   const handleDeviceChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const id = e.target.value;
     setSelectedDeviceId(id);
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(SELECTED_CAMERA_DEVICE_ID_STORAGE_KEY, id);
+    }
   };
 
   return (
