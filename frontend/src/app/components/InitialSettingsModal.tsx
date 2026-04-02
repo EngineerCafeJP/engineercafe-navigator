@@ -231,6 +231,7 @@ export default function InitialSettingsModal({
             <button
               type="button"
               onClick={() => void handleClose()}
+              data-testid="initial-settings-close"
               className="inline-flex min-h-11 min-w-[140px] items-center justify-center rounded-full bg-white px-6 py-3 text-sm font-semibold text-slate-900 shadow-lg transition-transform hover:scale-[1.02]"
             >
               {labels.close}
