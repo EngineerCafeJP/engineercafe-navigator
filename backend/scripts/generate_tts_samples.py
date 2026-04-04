@@ -42,13 +42,15 @@ JA_SAMPLES = [
     "本日のイベントは午後2時から始まります。参加ご希望の方は、エントランスにてスタッフにお声がけください。お飲み物は自由にご利用いただけます。",
     "プログラミングの学習や技術書の閲覧、勉強会の開催など、エンジニアの皆さんの活動を幅広くサポートしております。",
     "Wi-Fiのパスワードは EngineerCafe2024 です。ゲストネットワークもご利用いただけます。",
-    "Pythonや JavaScript、Go言語など様々な技術スタックの勉強会を毎週開催しています。ぜひご参加ください！",
+    "Pythonや JavaScript、Go言語など様々な技術スタックの勉強会を毎週開催しています。"
+    "ぜひご参加ください！",
 ]
 
 EN_SAMPLES = [
     "Welcome to Engineer Cafe! How can I help you today?",
     "The coworking space is open from 10 AM to 10 PM on weekdays.",
-    "We host weekly tech meetups covering Python, JavaScript, and cloud technologies. Feel free to join us!",
+    "We host weekly tech meetups covering Python, JavaScript, and cloud technologies. "
+    "Feel free to join us!",
 ]
 
 

@@ -73,14 +73,16 @@ JA_SAMPLES = [
     "プログラミングの学習や技術書の閲覧、勉強会の開催など、エンジニアの皆さんの活動を幅広くサポートしております。",
     # 複雑な文（数字・英語混じり）
     "Wi-Fiのパスワードは EngineerCafe2024 です。ゲストネットワークもご利用いただけます。",
-    "Pythonや JavaScript、Go言語など様々な技術スタックの勉強会を毎週開催しています。ぜひご参加ください！",
+    "Pythonや JavaScript、Go言語など様々な技術スタックの勉強会を毎週開催しています。"
+    "ぜひご参加ください！",
 ]
 
 # 英語サンプル（3件）
 EN_SAMPLES = [
     "Welcome to Engineer Cafe! How can I help you today?",
     "The coworking space is open from 10 AM to 10 PM on weekdays.",
-    "We host weekly tech meetups covering Python, JavaScript, and cloud technologies. Feel free to join us!",
+    "We host weekly tech meetups covering Python, JavaScript, and cloud technologies. "
+    "Feel free to join us!",
 ]
 
 # レイテンシ測定用テキスト（文字数別）
@@ -173,9 +175,13 @@ async def voicevox_synthesize(
     try:
         start = time.perf_counter()
         async with httpx.AsyncClient(timeout=30) as client:
-            q = await client.post(f"{api_url}/audio_query", params={"text": text, "speaker": speaker_id})
+            q = await client.post(
+                f"{api_url}/audio_query", params={"text": text, "speaker": speaker_id}
+            )
             q.raise_for_status()
-            s = await client.post(f"{api_url}/synthesis", params={"speaker": speaker_id}, json=q.json())
+            s = await client.post(
+                f"{api_url}/synthesis", params={"speaker": speaker_id}, json=q.json()
+            )
             s.raise_for_status()
         elapsed = time.perf_counter() - start
         return s.content, elapsed
@@ -281,7 +287,9 @@ async def generate_samples(output_dir: Path, include_voicevox: bool, include_kok
     print("\n[日本語サンプル - piper-plus css10]")
     for i, text in enumerate(JA_SAMPLES, 1):
         try:
-            wav, elapsed = await piper_synthesize(text, str(MODELS_DIR / "css10-ja-6lang-fp16.onnx"), language="ja")
+            wav, elapsed = await piper_synthesize(
+                text, str(MODELS_DIR / "css10-ja-6lang-fp16.onnx"), language="ja"
+            )
             path = output_dir / f"ja_{i:02d}_piper_css10.wav"
             path.write_bytes(wav)
             print(f"  [{i:02d}] {text[:30]}... → {path.name} ({elapsed:.3f}s)")
@@ -326,15 +334,15 @@ def generate_report(latency_results: dict, output_path: Path):
         "# piper-plus Phase 1 ベンチマーク結果",
         "",
         f"日時: {__import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-        f"環境: macOS ARM64 (Apple Silicon)",
+        "環境: macOS ARM64 (Apple Silicon)",
         f"piper バイナリ: {PIPER_BIN}",
         f"日本語モデル: {Path(PIPER_JA_MODEL).name}",
         f"英語モデル: {Path(PIPER_EN_MODEL).name}",
         "",
         "## レイテンシ測定結果",
         "",
-        "| 文字数 | piper-plus (avg) | piper-plus (min) | VOICEVOX (avg) | VOICEVOX (min) | 改善率 (avg) |",
-        "|--------|-----------------|-----------------|---------------|---------------|-------------|",
+        "| 文字数 | piper (avg) | piper (min) | VOICEVOX (avg) | VOICEVOX (min) | 改善率 |",
+        "|--------|------------|------------|---------------|---------------|--------|",
     ]
 
     for char_count, data in sorted(latency_results.items()):
@@ -374,9 +382,11 @@ def generate_report(latency_results: dict, output_path: Path):
     if vv50 > 0:
         improvement_50 = (vv50 - p50) / vv50 * 100
         latency_ok = improvement_50 >= 50
+        result_label = "✅ PASS" if latency_ok else "❌ FAIL"
         lines.append(
-            f"| レイテンシ 50%以上改善 | piper {p50:.3f}s / VOICEVOX {vv50:.3f}s ({improvement_50:+.1f}%) "
-            f"| {'✅ PASS' if latency_ok else '❌ FAIL'} |"
+            f"| レイテンシ 50%以上改善 "
+            f"| piper {p50:.3f}s / VOICEVOX {vv50:.3f}s ({improvement_50:+.1f}%) "
+            f"| {result_label} |"
         )
     else:
         lines.append("| レイテンシ 50%以上改善 | VOICEVOX 未計測（Docker起動が必要） | ⚠️ 未確認 |")
@@ -406,7 +416,8 @@ def generate_report(latency_results: dict, output_path: Path):
         "",
         "## 備考",
         "",
-        "- VOICEVOX / Kokoro の計測には Docker 起動が必要 (`docker-compose up voicevox kokoro-tts`)",
+        "- VOICEVOX / Kokoro の計測には Docker 起動が必要 "
+        "(`docker-compose up voicevox kokoro-tts`)",
         "- `--all` フラグで全サービスを含む比較が可能",
         "- Cloud Run コールドスタートは Phase 2 で別途計測",
     ]
@@ -469,7 +480,10 @@ async def main(include_all: bool):
         vv_avg = data.get("voicevox", {}).get("avg", 0)
         if vv_avg > 0:
             imp = (vv_avg - piper_avg) / vv_avg * 100
-            print(f"  {char_count}文字: piper {piper_avg:.3f}s / VOICEVOX {vv_avg:.3f}s → {imp:+.1f}%")
+            print(
+                f"  {char_count}文字: piper {piper_avg:.3f}s"
+                f" / VOICEVOX {vv_avg:.3f}s → {imp:+.1f}%"
+            )
         else:
             print(f"  {char_count}文字: piper {piper_avg:.3f}s (VOICEVOX 未計測)")
 
