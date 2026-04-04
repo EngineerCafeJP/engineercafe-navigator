@@ -1,7 +1,7 @@
 'use client';
 
-import { useCallback, useState } from 'react';
 import Link from 'next/link';
+import { useCallback, useState } from 'react';
 import useSWR from 'swr';
 import { Toaster, toast } from 'react-hot-toast';
 import { deleteKnowledge, getKnowledgeList } from '@/lib/api/knowledge';
@@ -76,8 +76,11 @@ export default function KnowledgeAdminPage() {
             <form onSubmit={handleSearch} className="mb-6">
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">検索</label>
+                  <label htmlFor="knowledge-search-filter" className="block text-sm font-medium text-gray-700 mb-2">
+                    検索
+                  </label>
                   <input
+                    id="knowledge-search-filter"
                     type="text"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
@@ -87,8 +90,11 @@ export default function KnowledgeAdminPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">言語</label>
+                  <label htmlFor="knowledge-language-filter" className="block text-sm font-medium text-gray-700 mb-2">
+                    言語
+                  </label>
                   <select
+                    id="knowledge-language-filter"
                     value={language}
                     onChange={(e) => setLanguage(e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
@@ -100,8 +106,11 @@ export default function KnowledgeAdminPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">カテゴリ</label>
+                  <label htmlFor="knowledge-category-filter" className="block text-sm font-medium text-gray-700 mb-2">
+                    カテゴリ
+                  </label>
                   <input
+                    id="knowledge-category-filter"
                     type="text"
                     value={category}
                     onChange={(e) => setCategory(e.target.value)}

@@ -75,6 +75,7 @@ type ConversationHistoryItem = {
 
 function KioskVoiceStatusStack({
   enabled,
+  phase,
   labels,
   transcript,
   response,
@@ -85,6 +86,7 @@ function KioskVoiceStatusStack({
   sessionState,
 }: {
   enabled: boolean;
+  phase: KioskPhase;
   labels: (typeof overlayLabels)['ja'] | (typeof overlayLabels)['en'];
   transcript: string;
   response: string;
@@ -100,21 +102,38 @@ function KioskVoiceStatusStack({
 }) {
   const [transcriptVisibleUntil, setTranscriptVisibleUntil] = useState<number>(0);
   const [responseVisibleUntil, setResponseVisibleUntil] = useState<number>(0);
+  const [defaultPromptVisibleUntil, setDefaultPromptVisibleUntil] = useState<number>(0);
   const [errorVisibleUntil, setErrorVisibleUntil] = useState<number>(0);
   const [now, setNow] = useState<number>(Date.now());
   const previousSessionStateRef = useRef<VoiceSessionState>(sessionState);
+  const previousPhaseRef = useRef<KioskPhase>(phase);
 
   useEffect(() => {
     if (!enabled) {
       setTranscriptVisibleUntil(0);
       setResponseVisibleUntil(0);
+      setDefaultPromptVisibleUntil(0);
       setErrorVisibleUntil(0);
+      previousPhaseRef.current = phase;
       return;
     }
     if (transcript.length > 0) {
       setTranscriptVisibleUntil(Date.now() + 5000);
     }
   }, [enabled, transcript]);
+
+  useEffect(() => {
+    if (!enabled) {
+      previousPhaseRef.current = phase;
+      return;
+    }
+
+    const previousPhase = previousPhaseRef.current;
+    if (phase === 'notice' || (previousPhase !== phase && phase === 'idle')) {
+      setDefaultPromptVisibleUntil(Date.now() + 5000);
+    }
+    previousPhaseRef.current = phase;
+  }, [enabled, phase]);
 
   useEffect(() => {
     if (!enabled) {
@@ -154,6 +173,9 @@ function KioskVoiceStatusStack({
     if (responseVisibleUntil > now) {
       timers.push(window.setTimeout(() => setNow(Date.now()), responseVisibleUntil - now));
     }
+    if (defaultPromptVisibleUntil > now) {
+      timers.push(window.setTimeout(() => setNow(Date.now()), defaultPromptVisibleUntil - now));
+    }
     if (errorVisibleUntil > now) {
       timers.push(window.setTimeout(() => setNow(Date.now()), errorVisibleUntil - now));
     }
@@ -163,7 +185,15 @@ function KioskVoiceStatusStack({
     return () => {
       timers.forEach((timerId) => window.clearTimeout(timerId));
     };
-  }, [enabled, errorVisibleUntil, now, ocrStatus, responseVisibleUntil, transcriptVisibleUntil]);
+  }, [
+    defaultPromptVisibleUntil,
+    enabled,
+    errorVisibleUntil,
+    now,
+    ocrStatus,
+    responseVisibleUntil,
+    transcriptVisibleUntil,
+  ]);
 
   if (!enabled) {
     return null;
@@ -177,9 +207,14 @@ function KioskVoiceStatusStack({
     isLoading && response.length > 0 && sessionState !== 'speaking';
   const isErrorVisible = Boolean(error) && errorVisibleUntil > now;
   const isOcrStatusVisible = Boolean(ocrStatus && ocrStatus.visibleUntil > now);
+  const isDefaultPromptVisible =
+    response.length === 0 &&
+    sessionState === 'idle' &&
+    defaultPromptVisibleUntil > now;
+  const displayResponse = response || (isDefaultPromptVisible ? labels.defaultPrompt : '');
   const isResponseVisible =
-    response.length > 0 &&
-    (sessionState === 'speaking' || responseVisibleUntil > now);
+    displayResponse.length > 0 &&
+    (sessionState === 'speaking' || responseVisibleUntil > now || isDefaultPromptVisible);
   const isTranscriptVisible =
     transcript.length > 0 && !isSttLoading && transcriptVisibleUntil > now;
 
@@ -228,10 +263,15 @@ function KioskVoiceStatusStack({
         </div>
       ) : null}
       {isResponseVisible ? (
-        <div className="flex w-full items-center gap-2 rounded-xl border border-white/30 bg-black/35 px-4 py-2 text-sm font-medium text-white/95 shadow-sm backdrop-blur-sm">
+        <div
+          className="flex w-full items-center gap-2 rounded-xl border border-white/30 bg-black/35 px-4 py-2 text-sm font-medium text-white/95 shadow-sm backdrop-blur-sm"
+          data-testid="response-bubble"
+        >
           <Volume2 className="size-4 shrink-0" />
-          <span>
-            {labels.responseLabel}: {response}
+          <span data-testid="response-text">
+            {response
+              ? `${labels.responseLabel}: ${response}`
+              : displayResponse}
           </span>
         </div>
       ) : null}
@@ -779,6 +819,7 @@ export default function Home() {
                   }}
                 >
                   <button
+                    data-testid="kiosk-settings-button"
                     type="button"
                     onClick={() => setShowSettingsPanel(true)}
                     aria-label={voice.currentLanguage === 'ja' ? '設定' : 'Settings'}
@@ -895,7 +936,7 @@ export default function Home() {
                 </div>
               ) : null}
 
-              {(kioskPhase === 'idle' || kioskPhase === 'voice') && (
+              {(kioskPhase === 'idle' || kioskPhase === 'voice' || kioskPhase === 'notice') && (
                 <div
                   className="pointer-events-auto absolute inset-x-0 bottom-0 z-[25] flex justify-center pb-[max(0.75rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] pt-2"
                 >
@@ -928,7 +969,8 @@ export default function Home() {
                       return (
                         <>
                     <KioskVoiceStatusStack
-                      enabled={kioskPhase === 'voice' || kioskPhase === 'idle'}
+                      enabled={kioskPhase === 'voice' || kioskPhase === 'idle' || kioskPhase === 'notice'}
+                      phase={kioskPhase}
                       labels={labels}
                       transcript={voice.transcript}
                       response={voice.response}
@@ -961,6 +1003,7 @@ export default function Home() {
                       </span>
                     </button>
                     <button
+                      data-testid="kiosk-voice-button"
                       type="button"
                       onPointerDown={(event) => {
                         if (!isPushToTalk) {
@@ -1060,6 +1103,7 @@ export default function Home() {
                       </span>
                     </button>
                     <button
+                      data-testid="kiosk-slides-button"
                       type="button"
                       onClick={() => {
                         markAudioUserInteraction();
