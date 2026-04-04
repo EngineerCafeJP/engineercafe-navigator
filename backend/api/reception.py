@@ -354,6 +354,12 @@ async def sensor_trigger(request: SensorTriggerRequest) -> SensorTriggerResponse
         "distance_mm": request.distance_mm,
         "timestamp": now,
     }
+    try:
+        await _get_session_repository().store_sensor_event(
+            request.device_id, request.sensor_type, request.distance_mm
+        )
+    except Exception as exc:
+        logger.warning("Sensor event persistence failed; in-memory only: %s", exc)
 
     logger.info(
         "Sensor trigger received: device=%s sensor=%s distance=%dmm",
@@ -379,9 +385,34 @@ async def get_sensor_status(
 ) -> SensorStatusResponse:
     """Return whether a new sensor trigger exists for polling clients.
 
-    Note: this uses in-memory storage and only reflects events seen by the
-    current Cloud Run instance.
+    Reads from Supabase first (shared across Cloud Run instances),
+    falling back to in-memory storage when the database is unavailable.
     """
+    # Try Supabase first (shared across Cloud Run instances)
+    try:
+        record = await _get_session_repository().get_latest_sensor_event(
+            device_id, since_epoch=since
+        )
+        if record is not None:
+            triggered_at = record["triggered_at"]
+            if isinstance(triggered_at, str):
+                from datetime import datetime as _dt, timezone as _tz
+
+                triggered_at = _dt.fromisoformat(triggered_at).replace(tzinfo=_tz.utc)
+            event_epoch = triggered_at.timestamp()
+            if event_epoch <= since:
+                return SensorStatusResponse(triggered=False)
+            return SensorStatusResponse(
+                triggered=True,
+                device_id=device_id,
+                sensor_type=record["sensor_type"],
+                distance_mm=record["distance_mm"],
+                timestamp=event_epoch,
+            )
+    except Exception as exc:
+        logger.warning("Sensor status DB read failed; falling back to in-memory: %s", exc)
+
+    # Fallback: in-memory
     event = _latest_sensor_events.get(device_id)
     if event is None:
         return SensorStatusResponse(triggered=False)

@@ -143,3 +143,51 @@ class ReceptionRepository:
             .execute()
         )
         return len(result.data) if result.data else 0
+
+    # ------------------------------------------------------------------
+    # Sensor events
+    # ------------------------------------------------------------------
+
+    async def store_sensor_event(self, device_id: str, sensor_type: str, distance_mm: int) -> None:
+        """Insert a new sensor trigger event into ``sensor_events``."""
+        client = await self._get_client()
+        client.table("sensor_events").insert(
+            {
+                "device_id": device_id,
+                "sensor_type": sensor_type,
+                "distance_mm": distance_mm,
+            }
+        ).execute()
+
+    async def get_latest_sensor_event(
+        self, device_id: str, since_epoch: float = 0
+    ) -> Optional[dict[str, Any]]:
+        """Return the most recent sensor event for *device_id*.
+
+        If *since_epoch* is provided (UNIX seconds), only events after that
+        timestamp are considered.  Returns ``None`` when no matching row
+        exists or the event is older than 30 seconds.
+        """
+        client = await self._get_client()
+        query = (
+            client.table("sensor_events")
+            .select("device_id, sensor_type, distance_mm, triggered_at")
+            .eq("device_id", device_id)
+            .order("triggered_at", desc=True)
+            .limit(1)
+        )
+
+        if since_epoch > 0:
+            since_dt = datetime.fromtimestamp(since_epoch, tz=timezone.utc).isoformat()
+            query = query.gt("triggered_at", since_dt)
+
+        result = query.execute()
+        if not result.data:
+            return None
+
+        row = result.data[0]
+        triggered_at = row["triggered_at"]
+        if isinstance(triggered_at, str):
+            triggered_at = datetime.fromisoformat(triggered_at).replace(tzinfo=timezone.utc)
+        row["triggered_at"] = triggered_at
+        return row
