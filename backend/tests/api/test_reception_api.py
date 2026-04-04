@@ -586,3 +586,46 @@ class TestSensorTriggerEndpoint:
         resp_b = client.post("/api/reception/sensor-trigger", json=payload_b)
         assert resp_b.status_code == 200
         assert resp_b.json()["success"] is True
+
+    def test_sensor_status_returns_new_event(self):
+        payload = {
+            "sensor_type": "tof",
+            "distance_mm": 500,
+            "device_id": "m5stack-status-test",
+        }
+
+        trigger_response = client.post("/api/reception/sensor-trigger", json=payload)
+        assert trigger_response.status_code == 200
+
+        status_response = client.get(
+            "/api/reception/sensor-status",
+            params={"device_id": payload["device_id"]},
+        )
+        assert status_response.status_code == 200
+        data = status_response.json()
+        assert data["triggered"] is True
+        assert data["device_id"] == payload["device_id"]
+        assert data["sensor_type"] == payload["sensor_type"]
+        assert data["distance_mm"] == payload["distance_mm"]
+        assert isinstance(data["timestamp"], float)
+
+    def test_sensor_status_ignores_already_seen_event(self):
+        payload = {
+            "sensor_type": "tof",
+            "distance_mm": 500,
+            "device_id": "m5stack-seen-test",
+        }
+
+        client.post("/api/reception/sensor-trigger", json=payload)
+        status_response = client.get(
+            "/api/reception/sensor-status",
+            params={"device_id": payload["device_id"]},
+        )
+        timestamp = status_response.json()["timestamp"]
+
+        seen_response = client.get(
+            "/api/reception/sensor-status",
+            params={"device_id": payload["device_id"], "since": timestamp},
+        )
+        assert seen_response.status_code == 200
+        assert seen_response.json() == {"triggered": False}

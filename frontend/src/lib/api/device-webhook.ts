@@ -1,9 +1,18 @@
+import { getSensorStatus } from '@/lib/reception-api';
+
 export interface DeviceDetectionEvent {
   type: 'sensor_triggered' | 'nfc_detected' | 'button_pressed';
   device_id?: string;
   timestamp: string;
   data?: Record<string, unknown>;
 }
+
+const DEFAULT_DEVICE_ID = 'm5stack-001';
+const DEFAULT_SENSOR_POLL_INTERVAL_MS = 1000;
+
+let sensorPollingIntervalId: number | null = null;
+let lastSeenSensorTimestampByDevice = new Map<string, number>();
+let pollingRequestInFlight = false;
 
 /**
  * Future: server webhooks or edge hardware can call the same entry points as the kiosk
@@ -15,6 +24,62 @@ export interface DeviceDetectionEvent {
 /** Dispatch a custom event; kiosk home (`page.tsx`) plays the welcome greeting when phase is idle. */
 export function handleDeviceDetection(event: DeviceDetectionEvent): void {
   window.dispatchEvent(new CustomEvent('device-detection', { detail: event }));
+}
+
+async function pollSensorStatus(deviceId: string): Promise<void> {
+  if (pollingRequestInFlight) {
+    return;
+  }
+
+  pollingRequestInFlight = true;
+
+  try {
+    const data = await getSensorStatus(
+      deviceId,
+      lastSeenSensorTimestampByDevice.get(deviceId) ?? 0
+    );
+
+    if (!data.triggered || typeof data.timestamp !== 'number') {
+      return;
+    }
+
+    lastSeenSensorTimestampByDevice.set(deviceId, data.timestamp);
+    handleDeviceDetection({
+      type: 'sensor_triggered',
+      device_id: data.device_id ?? deviceId,
+      timestamp: new Date(data.timestamp * 1000).toISOString(),
+      data: {
+        sensor_type: data.sensor_type,
+        distance_mm: data.distance_mm,
+      },
+    });
+  } catch {
+    // Best-effort polling; transient network errors should not break kiosk idle mode.
+  } finally {
+    pollingRequestInFlight = false;
+  }
+}
+
+export function startSensorPolling(
+  deviceId = DEFAULT_DEVICE_ID,
+  intervalMs = DEFAULT_SENSOR_POLL_INTERVAL_MS
+): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  stopSensorPolling();
+  void pollSensorStatus(deviceId);
+  sensorPollingIntervalId = window.setInterval(() => {
+    void pollSensorStatus(deviceId);
+  }, intervalMs);
+}
+
+export function stopSensorPolling(): void {
+  if (sensorPollingIntervalId !== null) {
+    clearInterval(sensorPollingIntervalId);
+    sensorPollingIntervalId = null;
+  }
 }
 
 // Expose globally for external device integration (M5Stack, NFC readers, etc.)
