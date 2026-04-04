@@ -97,6 +97,29 @@ test(
 );
 
 test(
+  'reception sensor-status GET forwards query params and backend payloads',
+  { concurrency: false },
+  async () => {
+    process.env.BACKEND_API_URL = 'https://backend.example.com';
+    (process.env as Record<string, string | undefined>).NODE_ENV = 'test';
+    mockBackendJsonResponse({ triggered: true, device_id: 'm5stack-001' }, 200);
+
+    const { GET } = await import('../app/api/reception/sensor-status/route');
+    const response = await GET(
+      new NextRequest(
+        'https://example.com/api/reception/sensor-status?device_id=m5stack-001&since=123'
+      )
+    );
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      triggered: true,
+      device_id: 'm5stack-001',
+    });
+  }
+);
+
+test(
   'slides route no longer exports a GET handler',
   { concurrency: false },
   async () => {
