@@ -50,6 +50,7 @@ const DEFAULT_SUBMIT_INTERVAL_MS = 2000;
 const DEFAULT_CONFIDENCE_THRESHOLD_MEMBER = 0.8;
 const DEFAULT_CONFIDENCE_THRESHOLD_HANDWRITING = 0.7;
 const SCAN_LOOP_INTERVAL_MS = 200;
+const SELECTED_CAMERA_DEVICE_ID_STORAGE_KEY = 'kiosk-camera-device-id';
 
 export function useOcrCamera(options: UseOcrCameraOptions): UseOcrCameraReturn {
   const {
@@ -184,8 +185,20 @@ export function useOcrCamera(options: UseOcrCameraOptions): UseOcrCameraReturn {
     setLastResult(null);
 
     try {
+      const selectedDeviceId =
+        typeof window !== 'undefined'
+          ? window.localStorage.getItem(SELECTED_CAMERA_DEVICE_ID_STORAGE_KEY)
+          : null;
+      const video =
+        selectedDeviceId && selectedDeviceId !== 'default'
+          ? {
+              deviceId: { exact: selectedDeviceId },
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
+            }
+          : { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } };
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+        video,
         audio: false,
       });
       streamRef.current = stream;
