@@ -64,6 +64,14 @@ export interface ReceptionStatusResponse {
   purpose: string | null;
 }
 
+export interface SensorStatusResponse {
+  triggered: boolean;
+  device_id?: string;
+  sensor_type?: string;
+  distance_mm?: number;
+  timestamp?: number;
+}
+
 interface ApiErrorPayload {
   error?: string;
   details?: string;
@@ -131,4 +139,19 @@ export async function getReceptionStatus(
     `/api/reception/status/${receptionSessionId}?${search}`,
     { method: 'GET' }
   );
+}
+
+export async function getSensorStatus(
+  deviceId: string,
+  since = 0
+): Promise<SensorStatusResponse> {
+  const search = new URLSearchParams({
+    device_id: deviceId,
+    since: String(since),
+  }).toString();
+
+  return requestReceptionApi<SensorStatusResponse>(`/api/reception/sensor-status?${search}`, {
+    method: 'GET',
+    cache: 'no-store',
+  });
 }

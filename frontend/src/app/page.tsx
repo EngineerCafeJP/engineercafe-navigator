@@ -1,6 +1,7 @@
 'use client';
 
 import { markAudioUserInteraction } from '@/lib/audio/audio-user-interaction-gate';
+import { startSensorPolling, stopSensorPolling } from '@/lib/api/device-webhook';
 import { getStageBackgroundStyle } from '@/lib/get-stage-background-style';
 import { overlayLabels } from '@/lib/kiosk-labels';
 import {
@@ -166,6 +167,18 @@ export default function Home() {
       window.removeEventListener('device-detection', onDeviceDetection);
     };
   }, []);
+
+  useEffect(() => {
+    if (triggerMode === 'device' && kioskPhase === 'idle') {
+      startSensorPolling();
+    } else {
+      stopSensorPolling();
+    }
+
+    return () => {
+      stopSensorPolling();
+    };
+  }, [kioskPhase, triggerMode]);
 
   useEffect(() => {
     if (kioskPhase === 'ocr' || kioskPhase === 'voice') {

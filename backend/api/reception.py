@@ -90,6 +90,7 @@ def _reset_session_storage() -> None:
     _session_repository = None
     _active_sessions.clear()
     _sensor_trigger_cooldowns.clear()
+    _latest_sensor_events.clear()
 
 
 def _serialize_session(session: ReceptionSession, *, status: str = "active") -> dict[str, Any]:
@@ -317,12 +318,22 @@ class SensorTriggerResponse(BaseModel):
     message: Optional[str] = None
 
 
+class SensorStatusResponse(BaseModel):
+    triggered: bool
+    device_id: Optional[str] = None
+    sensor_type: Optional[str] = None
+    distance_mm: Optional[int] = None
+    timestamp: Optional[float] = None
+
+
 # ---------------------------------------------------------------------------
 # Per-device rate limiting for sensor triggers
 # ---------------------------------------------------------------------------
 
 _sensor_trigger_cooldowns: dict[str, float] = {}
+_latest_sensor_events: dict[str, dict[str, Any]] = {}
 SENSOR_TRIGGER_RATE_LIMIT_SECONDS = 5
+SENSOR_TRIGGER_EVENT_TTL_SECONDS = 30
 
 
 @reception_router.post("/sensor-trigger", response_model=SensorTriggerResponse)
@@ -337,6 +348,18 @@ async def sensor_trigger(request: SensorTriggerRequest) -> SensorTriggerResponse
             message=f"Device {request.device_id} is rate limited",
         )
     _sensor_trigger_cooldowns[request.device_id] = now
+    _latest_sensor_events[request.device_id] = {
+        "device_id": request.device_id,
+        "sensor_type": request.sensor_type,
+        "distance_mm": request.distance_mm,
+        "timestamp": now,
+    }
+    try:
+        await _get_session_repository().store_sensor_event(
+            request.device_id, request.sensor_type, request.distance_mm
+        )
+    except Exception as exc:
+        logger.warning("Sensor event persistence failed; in-memory only: %s", exc)
 
     logger.info(
         "Sensor trigger received: device=%s sensor=%s distance=%dmm",
@@ -349,6 +372,59 @@ async def sensor_trigger(request: SensorTriggerRequest) -> SensorTriggerResponse
         action="trigger_received",
         message=f"Sensor trigger from {request.device_id} acknowledged",
     )
+
+
+@reception_router.get(
+    "/sensor-status",
+    response_model=SensorStatusResponse,
+    response_model_exclude_none=True,
+)
+async def get_sensor_status(
+    device_id: str = Query(default="m5stack-001", max_length=100),
+    since: float = Query(default=0),
+) -> SensorStatusResponse:
+    """Return whether a new sensor trigger exists for polling clients.
+
+    Reads from Supabase first (shared across Cloud Run instances),
+    falling back to in-memory storage when the database is unavailable.
+    """
+    # Try Supabase first (shared across Cloud Run instances)
+    try:
+        record = await _get_session_repository().get_latest_sensor_event(
+            device_id, since_epoch=since
+        )
+        if record is not None:
+            triggered_at = record["triggered_at"]
+            if isinstance(triggered_at, str):
+                from datetime import datetime as _dt, timezone as _tz
+
+                triggered_at = _dt.fromisoformat(triggered_at).replace(tzinfo=_tz.utc)
+            event_epoch = triggered_at.timestamp()
+            if event_epoch <= since:
+                return SensorStatusResponse(triggered=False)
+            return SensorStatusResponse(
+                triggered=True,
+                device_id=device_id,
+                sensor_type=record["sensor_type"],
+                distance_mm=record["distance_mm"],
+                timestamp=event_epoch,
+            )
+    except Exception as exc:
+        logger.warning("Sensor status DB read failed; falling back to in-memory: %s", exc)
+
+    # Fallback: in-memory
+    event = _latest_sensor_events.get(device_id)
+    if event is None:
+        return SensorStatusResponse(triggered=False)
+
+    if time.time() - float(event["timestamp"]) > SENSOR_TRIGGER_EVENT_TTL_SECONDS:
+        _latest_sensor_events.pop(device_id, None)
+        return SensorStatusResponse(triggered=False)
+
+    if float(event["timestamp"]) <= since:
+        return SensorStatusResponse(triggered=False)
+
+    return SensorStatusResponse(triggered=True, **event)
 
 
 @reception_router.post("/start", response_model=ReceptionStartResponse)
