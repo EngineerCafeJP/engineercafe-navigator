@@ -27,8 +27,9 @@ import concurrent.futures
 import io
 import json
 import logging
+import numpy as np
 import os
-import tempfile
+import wave
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
@@ -45,6 +46,36 @@ AUDIO_CONVERSION_ERROR_PREFIX = "Failed to convert WebM audio to WAV for STT tra
 PYDUB_IMPORT_ERROR = (
     "WebM audio conversion requires pydub. Install backend dependencies with pydub included."
 )
+
+
+def convert_audio_to_wav_bytes(audio_data: bytes) -> bytes:
+    """Convert WebM/Opus audio bytes to 16kHz/16-bit/mono WAV PCM."""
+    if len(audio_data) > MAX_AUDIO_UPLOAD_BYTES:
+        raise ValueError(
+            f"Audio payload too large ({len(audio_data)} bytes). "
+            f"Maximum: {MAX_AUDIO_UPLOAD_BYTES} bytes."
+        )
+
+    try:
+        from pydub import AudioSegment
+    except ImportError as exc:
+        raise ValueError(PYDUB_IMPORT_ERROR) from exc
+
+    try:
+        segment = AudioSegment.from_file(io.BytesIO(audio_data), format=None)
+        normalized = segment.set_frame_rate(16000).set_sample_width(2).set_channels(1)
+        wav_buffer = io.BytesIO()
+        normalized.export(wav_buffer, format="wav")
+        wav_bytes = wav_buffer.getvalue()
+    except Exception as exc:
+        raise ValueError(f"{AUDIO_CONVERSION_ERROR_PREFIX}: {exc}") from exc
+
+    if not wav_bytes.startswith(WAV_RIFF_HEADER) or len(wav_bytes) < MIN_WAV_HEADER_BYTES:
+        raise ValueError(
+            f"{AUDIO_CONVERSION_ERROR_PREFIX}: converted output is not a valid WAV file"
+        )
+
+    return wav_bytes
 
 
 # -----------------------------------------------------------------------------
@@ -242,31 +273,7 @@ class LocalSTTClient:
 
     def _convert_audio_to_wav(self, audio_data: bytes) -> bytes:
         """Convert WebM/Opus audio bytes to WAV PCM for Vosk."""
-        if len(audio_data) > MAX_AUDIO_UPLOAD_BYTES:
-            raise ValueError(
-                f"Audio payload too large ({len(audio_data)} bytes). "
-                f"Maximum: {MAX_AUDIO_UPLOAD_BYTES} bytes."
-            )
-
-        try:
-            from pydub import AudioSegment
-        except ImportError as exc:
-            raise ValueError(PYDUB_IMPORT_ERROR) from exc
-
-        try:
-            segment = AudioSegment.from_file(io.BytesIO(audio_data), format=None)
-            normalized = segment.set_frame_rate(16000).set_sample_width(2).set_channels(1)
-            wav_buffer = io.BytesIO()
-            normalized.export(wav_buffer, format="wav")
-            wav_bytes = wav_buffer.getvalue()
-        except Exception as exc:
-            raise ValueError(f"{AUDIO_CONVERSION_ERROR_PREFIX}: {exc}") from exc
-
-        if not wav_bytes.startswith(WAV_RIFF_HEADER) or len(wav_bytes) < MIN_WAV_HEADER_BYTES:
-            raise ValueError(
-                f"{AUDIO_CONVERSION_ERROR_PREFIX}: converted output is not a valid WAV file"
-            )
-
+        wav_bytes = convert_audio_to_wav_bytes(audio_data)
         logger.info("Converted non-WAV audio payload to 16kHz/16-bit/mono WAV for Vosk")
         return wav_bytes
 
@@ -576,14 +583,15 @@ class QwenSTTClient:
         if resolved_device == "auto":
             resolved_device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
-        dtype = torch.bfloat16 if str(resolved_device).startswith("cuda") else torch.float32
+        torch_dtype = torch.bfloat16 if str(resolved_device).startswith("cuda") else torch.float32
         self.device = resolved_device
 
         logger.info("Loading Qwen3-ASR model %s on %s", self.model_name, self.device)
         self._model = Qwen3ASRModel.from_pretrained(
             self.model_name,
-            dtype=dtype,
+            torch_dtype=torch_dtype,
             device_map=self.device,
+            low_cpu_mem_usage=True,
             max_new_tokens=256,
         )
 
@@ -594,15 +602,23 @@ class QwenSTTClient:
     ) -> TranscriptionResult:
         self._load_model()
 
+        if audio_data[:4] == WAV_RIFF_HEADER:
+            if len(audio_data) < MIN_WAV_HEADER_BYTES:
+                raise ValueError(TRUNCATED_WAV_AUDIO_ERROR)
+        else:
+            audio_data = convert_audio_to_wav_bytes(audio_data)
+
         lang_code = language or self.default_language
         qwen_language = self.LANGUAGE_NAMES.get(lang_code, lang_code) if lang_code else None
 
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-            tmp.write(audio_data)
-            tmp_path = tmp.name
-
         try:
-            kwargs: Dict[str, Any] = {"audio": tmp_path}
+            with wave.open(io.BytesIO(audio_data), "rb") as wav_file:
+                sample_rate = wav_file.getframerate()
+                frames = wav_file.readframes(wav_file.getnframes())
+
+            pcm = np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
+
+            kwargs: Dict[str, Any] = {"audio": (pcm, sample_rate)}
             if qwen_language:
                 kwargs["language"] = qwen_language
 
@@ -610,11 +626,8 @@ class QwenSTTClient:
             result = results[0] if results else None
             text = (getattr(result, "text", "") or "").strip() if result else ""
             detected_language = getattr(result, "language", None) if result else None
-        finally:
-            try:
-                os.unlink(tmp_path)
-            except OSError:
-                logger.debug("Failed to remove temporary Qwen audio file: %s", tmp_path)
+        except wave.Error as exc:
+            raise ValueError(f"Invalid WAV audio for Qwen STT transcription: {exc}") from exc
 
         if not text:
             raise RuntimeError("Qwen3-ASR returned empty recognition result")

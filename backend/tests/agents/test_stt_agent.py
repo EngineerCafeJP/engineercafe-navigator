@@ -553,6 +553,46 @@ class TestGoogleSTTClient:
 
 
 # ==============================================================================
+# QwenSTTClient Tests
+# ==============================================================================
+
+
+class TestQwenSTTClient:
+    """Tests for Qwen-based local STT"""
+
+    @pytest.mark.asyncio
+    async def test_transcribe_non_wav_data_converts_to_wav(self, test_wav_16khz):
+        """QwenSTTClient converts non-WAV payloads before transcription."""
+        client = QwenSTTClient(model_variant="0.6b", device="cpu")
+        client._model = MagicMock()
+        client._model.transcribe.return_value = [SimpleNamespace(text="こんにちは", language="ja")]
+        non_wav_audio = b"\x1a\x45\xdf\xa3" + (b"webm-opus-data" * 4)
+
+        with patch("backend.agents.stt_agent.convert_audio_to_wav_bytes", return_value=test_wav_16khz) as mock_convert:
+            with patch.object(client, "_load_model"):
+                result = await client.transcribe(non_wav_audio, language="ja")
+
+        mock_convert.assert_called_once_with(non_wav_audio)
+        assert result.text == "こんにちは"
+        assert result.language == "ja"
+
+    @pytest.mark.asyncio
+    async def test_transcribe_wav_audio_skips_conversion(self, test_wav_16khz):
+        """QwenSTTClient uses WAV payloads directly without conversion."""
+        client = QwenSTTClient(model_variant="0.6b", device="cpu")
+        client._model = MagicMock()
+        client._model.transcribe.return_value = [SimpleNamespace(text="hello", language="en")]
+
+        with patch("backend.agents.stt_agent.convert_audio_to_wav_bytes") as mock_convert:
+            with patch.object(client, "_load_model"):
+                result = await client.transcribe(test_wav_16khz, language="en")
+
+        mock_convert.assert_not_called()
+        assert result.text == "hello"
+        assert result.language == "en"
+
+
+# ==============================================================================
 # STTAgent Tests (Provider Switching + Auto-Detection)
 # ==============================================================================
 
