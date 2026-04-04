@@ -8,7 +8,7 @@ import {
   User,
   X,
 } from 'lucide-react';
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import type { KioskMicMode, KioskTriggerMode } from '@/lib/kiosk-constants';
 import type { CharacterAnimationData } from '../utils/character-animation-utils';
 import SpeakerSettings from './SpeakerSettings';
@@ -138,13 +138,21 @@ export default function SettingsPanel({
     on_kiosk_language_change != null &&
     on_kiosk_trigger_mode_change != null &&
     on_kiosk_mic_mode_change != null;
+  /** Public kiosk: hide admin links; same flag as avatar dev controls (see page / .env.example). */
+  const show_admin_tab = process.env.NEXT_PUBLIC_SHOW_AVATAR_SETTINGS === 'true';
   const tab_list: SettingsPanelTab[] = [
     ...(extra_tab ? (['conversation'] as const) : []),
     ...(has_kiosk_tab ? (['kiosk'] as const) : []),
     'multimedia',
-    'admin',
+    ...(show_admin_tab ? (['admin'] as const) : []),
     'controls',
   ];
+
+  useEffect(() => {
+    if (!show_admin_tab && active_tab === 'admin') {
+      set_active_tab('controls');
+    }
+  }, [active_tab, show_admin_tab]);
 
   return (
     <div className="flex w-80 max-h-[85vh] flex-col overflow-y-auto rounded-lg bg-white bg-opacity-95 p-4 shadow-lg">
@@ -222,7 +230,7 @@ export default function SettingsPanel({
         </div>
       )}
 
-      {active_tab === 'admin' ? (
+      {show_admin_tab && active_tab === 'admin' ? (
         <div className="mb-4 flex flex-col gap-3">
           <a
             href="./admin/knowledge"
