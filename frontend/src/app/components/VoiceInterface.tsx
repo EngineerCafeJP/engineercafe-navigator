@@ -30,6 +30,9 @@ import type { CharacterAnimationData } from '../utils/character-animation-utils'
 
 export type VoiceSessionState = 'idle' | 'listening' | 'processing' | 'speaking';
 
+/** Semantic loading stage for kiosk UI; avoids coupling to localized loadingMessage strings. */
+export type VoiceLoadingPhase = 'mic' | 'stt' | 'llm' | 'tts' | null;
+
 export interface VoiceInterfaceMetadata {
   clarification?: {
     clarification_type?: string;
@@ -52,6 +55,7 @@ export interface VoiceInterfaceRenderProps {
   error: string | null;
   isLoading: boolean;
   loadingMessage: string;
+  loadingPhase: VoiceLoadingPhase;
   currentLanguage: 'ja' | 'en';
   volume: number;
   isMuted: boolean;
@@ -212,6 +216,7 @@ export default function VoiceInterface({
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState('');
+  const [loadingPhase, setLoadingPhase] = useState<VoiceLoadingPhase>(null);
   const [mediaStream, setMediaStream] = useState<MediaStream | null>(null);
 
   const sessionIdRef = useRef(createSessionId());
@@ -307,6 +312,7 @@ export default function VoiceInterface({
     setError(null);
     setIsLoading(false);
     setLoadingMessage('');
+    setLoadingPhase(null);
     sessionIdRef.current = createSessionId();
   }, []);
 
@@ -380,6 +386,7 @@ export default function VoiceInterface({
       }
 
       setLoadingMessage(LOADING_LABELS[currentLanguage].speaking);
+      setLoadingPhase('tts');
       voiceController.notifySpeaking();
 
       audioService.updateEventHandlers({
@@ -435,6 +442,7 @@ export default function VoiceInterface({
       setTranscript(trimmed);
       setIsLoading(true);
       setLoadingMessage(LOADING_LABELS[currentLanguage].answer);
+      setLoadingPhase('llm');
       voiceController.notifyProcessing();
 
       const abortController = new AbortController();
@@ -518,6 +526,7 @@ export default function VoiceInterface({
         }
         setIsLoading(false);
         setLoadingMessage('');
+        setLoadingPhase(null);
       }
     },
     [
@@ -550,6 +559,7 @@ export default function VoiceInterface({
 
       setIsLoading(true);
       setLoadingMessage(LOADING_LABELS[currentLanguage].speaking);
+      setLoadingPhase('tts');
       voiceController.notifyProcessing();
 
       const abortController = new AbortController();
@@ -596,6 +606,7 @@ export default function VoiceInterface({
         }
         setIsLoading(false);
         setLoadingMessage('');
+        setLoadingPhase(null);
       }
     },
     [
@@ -618,6 +629,7 @@ export default function VoiceInterface({
       setError(null);
       setIsLoading(true);
       setLoadingMessage(LOADING_LABELS[currentLanguage].recognize);
+      setLoadingPhase('stt');
 
       const abortController = new AbortController();
       requestAbortRef.current = abortController;
@@ -648,6 +660,7 @@ export default function VoiceInterface({
         setTranscript(sttResult.transcript);
         setIsLoading(false);
         setLoadingMessage('');
+        setLoadingPhase(null);
         await sendMessage(sttResult.transcript);
       } catch (recordingError) {
         if (recordingError instanceof DOMException && recordingError.name === 'AbortError') {
@@ -662,6 +675,7 @@ export default function VoiceInterface({
         }
         setIsLoading(false);
         setLoadingMessage('');
+        setLoadingPhase(null);
       }
     },
     [cancelPendingRequest, currentLanguage, sendMessage, voiceController],
@@ -681,6 +695,7 @@ export default function VoiceInterface({
         setError(formatError(recorderError, currentLanguage));
         setIsLoading(false);
         setLoadingMessage('');
+        setLoadingPhase(null);
         isRecordingRef.current = false;
       },
       () => {
@@ -695,11 +710,13 @@ export default function VoiceInterface({
 
     setIsLoading(true);
     setLoadingMessage(LOADING_LABELS[currentLanguage].microphone);
+    setLoadingPhase('mic');
     await recorder.initialize();
 
     if (!recorder.isInitialized()) {
       setIsLoading(false);
       setLoadingMessage('');
+      setLoadingPhase(null);
       throw new Error(currentLanguage === 'ja' ? 'マイクを初期化できませんでした' : 'Unable to initialize the microphone');
     }
 
@@ -707,6 +724,7 @@ export default function VoiceInterface({
     setMediaStream(recorder.getStream());
     setIsLoading(false);
     setLoadingMessage('');
+    setLoadingPhase(null);
 
     return recorder;
   }, [currentLanguage, handleRecordedAudio]);
@@ -779,6 +797,7 @@ export default function VoiceInterface({
     stopRecorderCapture(true);
     setIsLoading(false);
     setLoadingMessage('');
+    setLoadingPhase(null);
     voiceController.endManualSession();
   }, [cancelPendingRequest, stopPlayback, stopRecorderCapture, voiceController]);
 
@@ -835,6 +854,7 @@ export default function VoiceInterface({
       error,
       isLoading,
       loadingMessage,
+      loadingPhase,
       currentLanguage,
       volume,
       isMuted,
@@ -863,6 +883,7 @@ export default function VoiceInterface({
       isLoading,
       isMuted,
       loadingMessage,
+      loadingPhase,
       metadata,
       response,
       sendMessage,
