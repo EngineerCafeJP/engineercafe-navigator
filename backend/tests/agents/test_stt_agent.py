@@ -560,11 +560,11 @@ class TestGoogleSTTClient:
 class TestSTTAgent:
     """Tests for STTAgent provider switching"""
 
-    def test_init_default_provider_vosk(self):
-        """STTAgent defaults to Vosk provider"""
-        with patch("backend.agents.stt_agent.LocalSTTClient"):
+    def test_init_default_provider_qwen_06b_cpu(self):
+        """STTAgent defaults to qwen0.6b-cpu provider"""
+        with patch("backend.agents.stt_agent.Qwen06BCpuSTTClient"):
             agent = STTAgent()
-            assert agent.stt_provider == "vosk"
+            assert agent.stt_provider == "qwen0.6b-cpu"
 
     def test_init_env_var_provider(self, monkeypatch):
         """STTAgent reads STT_PROVIDER from environment"""

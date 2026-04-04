@@ -667,7 +667,7 @@ class STTAgent:
         Args:
             stt_provider: STT provider name
                 ('vosk', 'google', 'qwen', or 'qwen0.6b-cpu').
-                If None, uses STT_PROVIDER env var or 'vosk'.
+                If None, uses STT_PROVIDER env var or 'qwen0.6b-cpu'.
             stt_client: Custom STT client instance.
                 If None, creates default based on provider.
             use_grammar: Whether to use domain-specific grammar.
@@ -679,7 +679,7 @@ class STTAgent:
             fallback_client: Google STT client for fallback.
                 If None and provider is 'vosk', creates one.
         """
-        self.stt_provider = stt_provider or os.getenv("STT_PROVIDER", "vosk")
+        self.stt_provider = stt_provider or os.getenv("STT_PROVIDER", "qwen0.6b-cpu")
         self.use_grammar = use_grammar
         self.confidence_threshold = confidence_threshold
         if stt_client:
