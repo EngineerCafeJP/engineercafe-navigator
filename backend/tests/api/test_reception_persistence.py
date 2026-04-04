@@ -57,6 +57,10 @@ class _FakeTableQuery:
         self._filters.append(("lt", column, value))
         return self
 
+    def gt(self, column: str, value: Any) -> _FakeTableQuery:
+        self._filters.append(("gt", column, value))
+        return self
+
     def order(self, column: str, desc: bool = False) -> _FakeTableQuery:
         self._order_by = (column, desc)
         return self
@@ -113,6 +117,9 @@ class _FakeTableQuery:
                 return False
             if operation == "lt":
                 if _parse_timestamp(actual) >= _parse_timestamp(expected):
+                    return False
+            if operation == "gt":
+                if _parse_timestamp(actual) <= _parse_timestamp(expected):
                     return False
         return True
 
@@ -237,6 +244,72 @@ async def test_repository_cleanup_expired_sessions() -> None:
     assert expired_count == 1
     assert fake_client.storage["reception_sessions"]["expired-session"]["status"] == "expired"
     assert [row["id"] for row in active_sessions] == ["active-session"]
+
+
+@pytest.mark.asyncio
+async def test_repository_get_latest_sensor_event_returns_fresh_event_only() -> None:
+    fake_client = _FakeSupabaseClient()
+    repo = ReceptionRepository(fake_client)  # type: ignore[arg-type]
+
+    fake_client.storage["sensor_events"] = {
+        "1": {
+            "id": 1,
+            "device_id": "m5stack-001",
+            "sensor_type": "pir_sr04",
+            "distance_mm": 65,
+            "triggered_at": datetime.now(timezone.utc).isoformat(),
+        }
+    }
+
+    event = await repo.get_latest_sensor_event("m5stack-001")
+
+    assert event is not None
+    assert event["device_id"] == "m5stack-001"
+    assert event["distance_mm"] == 65
+
+
+@pytest.mark.asyncio
+async def test_repository_get_latest_sensor_event_ignores_stale_event() -> None:
+    fake_client = _FakeSupabaseClient()
+    repo = ReceptionRepository(fake_client)  # type: ignore[arg-type]
+
+    fake_client.storage["sensor_events"] = {
+        "1": {
+            "id": 1,
+            "device_id": "m5stack-001",
+            "sensor_type": "pir_sr04",
+            "distance_mm": 65,
+            "triggered_at": (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat(),
+        }
+    }
+
+    event = await repo.get_latest_sensor_event("m5stack-001")
+
+    assert event is None
+
+
+@pytest.mark.asyncio
+async def test_repository_get_latest_sensor_event_respects_since_epoch() -> None:
+    fake_client = _FakeSupabaseClient()
+    repo = ReceptionRepository(fake_client)  # type: ignore[arg-type]
+    triggered_at = datetime.now(timezone.utc) - timedelta(seconds=5)
+
+    fake_client.storage["sensor_events"] = {
+        "1": {
+            "id": 1,
+            "device_id": "m5stack-001",
+            "sensor_type": "pir_sr04",
+            "distance_mm": 65,
+            "triggered_at": triggered_at.isoformat(),
+        }
+    }
+
+    event = await repo.get_latest_sensor_event(
+        "m5stack-001",
+        since_epoch=(triggered_at + timedelta(seconds=1)).timestamp(),
+    )
+
+    assert event is None
 
 
 def test_reception_api_session_survives_restart() -> None:

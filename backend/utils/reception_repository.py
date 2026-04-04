@@ -188,6 +188,10 @@ class ReceptionRepository:
         row = result.data[0]
         triggered_at = row["triggered_at"]
         if isinstance(triggered_at, str):
-            triggered_at = datetime.fromisoformat(triggered_at).replace(tzinfo=timezone.utc)
+            triggered_at = datetime.fromisoformat(triggered_at.replace("Z", "+00:00"))
+
+        if triggered_at < datetime.now(timezone.utc) - timedelta(seconds=30):
+            return None
+
         row["triggered_at"] = triggered_at
         return row

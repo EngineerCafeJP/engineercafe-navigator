@@ -83,3 +83,120 @@ test('startSensorPolling dispatches device-detection when backend reports a new 
     distance_mm: 65,
   });
 });
+
+test('stopSensorPolling suppresses a stale in-flight sensor response', async () => {
+  const windowMock = createWindow();
+  (global as unknown as { window: Window & typeof globalThis }).window =
+    windowMock as unknown as Window & typeof globalThis;
+
+  const events: Array<Record<string, unknown>> = [];
+  windowMock.addEventListener('device-detection', (event) => {
+    events.push((event as CustomEvent<Record<string, unknown>>).detail);
+  });
+
+  let resolveFetch: ((value: Response) => void) | null = null;
+  global.fetch =
+    ((async () =>
+      await new Promise<Response>((resolve) => {
+        resolveFetch = resolve;
+      })) as unknown as typeof fetch);
+
+  const { startSensorPolling, stopSensorPolling } = await import('../lib/api/device-webhook');
+  startSensorPolling('m5stack-stop-test', 60_000);
+  stopSensorPolling();
+
+  const stopTestResolver = resolveFetch as ((value: Response) => void) | null;
+  if (stopTestResolver) {
+    stopTestResolver(
+      new Response(
+        JSON.stringify({
+          triggered: true,
+          device_id: 'm5stack-stop-test',
+          sensor_type: 'pir_sr04',
+          distance_mm: 70,
+          timestamp: 1712221539.085,
+        }),
+        {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }
+      )
+    );
+  }
+
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(events.length, 0);
+});
+
+test('restartSensorPolling immediately polls new session even if old request is in flight', async () => {
+  const windowMock = createWindow();
+  (global as unknown as { window: Window & typeof globalThis }).window =
+    windowMock as unknown as Window & typeof globalThis;
+
+  const events: Array<Record<string, unknown>> = [];
+  windowMock.addEventListener('device-detection', (event) => {
+    events.push((event as CustomEvent<Record<string, unknown>>).detail);
+  });
+
+  let resolveFirstFetch: ((value: Response) => void) | null = null;
+  let fetchCount = 0;
+  global.fetch = (async () => {
+    fetchCount += 1;
+    if (fetchCount === 1) {
+      return await new Promise<Response>((resolve) => {
+        resolveFirstFetch = resolve;
+      });
+    }
+
+    return new Response(
+      JSON.stringify({
+        triggered: true,
+        device_id: 'm5stack-restart-test',
+        sensor_type: 'pir_sr04',
+        distance_mm: 80,
+        timestamp: 1712221540.085,
+      }),
+      {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }
+    );
+  }) as typeof fetch;
+
+  const { startSensorPolling, stopSensorPolling } = await import('../lib/api/device-webhook');
+  startSensorPolling('m5stack-restart-test', 60_000);
+  stopSensorPolling();
+  startSensorPolling('m5stack-restart-test', 60_000);
+
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(fetchCount, 2);
+  assert.equal(events.length, 1);
+
+  const restartTestResolver = resolveFirstFetch as ((value: Response) => void) | null;
+  if (restartTestResolver) {
+    restartTestResolver(
+      new Response(
+        JSON.stringify({
+          triggered: true,
+          device_id: 'm5stack-restart-test',
+          sensor_type: 'pir_sr04',
+          distance_mm: 90,
+          timestamp: 1712221541.085,
+        }),
+        {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }
+      )
+    );
+  }
+
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(events.length, 1);
+});
