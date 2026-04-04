@@ -46,6 +46,7 @@ audio = [
     "vosk>=0.3.45",
     "soundfile>=0.12.1",
     "pydub>=0.25.1",
+    "qwen-asr>=0.0.6",
 ]
 dev = [
     "pytest>=8.0.0",
@@ -96,6 +97,7 @@ slowapi = ">=0.1.9"
 vosk = "^0.3.45"
 soundfile = "^0.12.1"
 pydub = "^0.25.1"
+qwen-asr = ">=0.0.6"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"
