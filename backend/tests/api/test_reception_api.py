@@ -95,6 +95,37 @@ def mock_canonical_classifier():
         yield
 
 
+@pytest.fixture(autouse=True)
+def mock_sensor_event_db():
+    """Stub Supabase sensor-event calls so tests run without a real DB."""
+    from backend.utils.reception_repository import ReceptionRepository
+
+    fake_repo = ReceptionRepository.__new__(ReceptionRepository)
+    fake_repo._supabase = None
+
+    async def _store_sensor_event(device_id, sensor_type, distance_mm):
+        pass  # no-op; in-memory path is what tests assert against
+
+    async def _get_latest_sensor_event(device_id, since_epoch=0):
+        return None  # forces in-memory fallback
+
+    fake_repo.store_sensor_event = _store_sensor_event
+    fake_repo.get_latest_sensor_event = _get_latest_sensor_event
+
+    # Delegate other calls to a real repository (mocked at method level elsewhere)
+    real_repo = ReceptionRepository()
+    fake_repo.store_session = real_repo.store_session
+    fake_repo.get_session_record = real_repo.get_session_record
+    fake_repo.get_session_by_conversation_id = real_repo.get_session_by_conversation_id
+    fake_repo.complete_session = real_repo.complete_session
+    fake_repo.list_active_sessions = real_repo.list_active_sessions
+    fake_repo.cleanup_expired = real_repo.cleanup_expired
+
+    reception_module._session_repository = fake_repo
+    yield
+    reception_module._session_repository = None
+
+
 def _start_session(session_id: str = "sess-001", language: str = "ja") -> dict:
     response = client.post(
         "/api/reception/start",
