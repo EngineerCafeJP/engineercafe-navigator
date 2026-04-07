@@ -44,8 +44,14 @@ export default function Home() {
   const kioskPhaseRef = useRef<KioskPhase>('notice');
   const [kioskVoiceLocked, setKioskVoiceLocked] = useState(false);
   const [currentLanguage, setCurrentLanguage] = useState<'ja' | 'en'>('ja');
-  const [triggerMode, setTriggerMode] = useState<KioskTriggerMode>(() => readKioskTriggerMode());
-  const [micInputMode, setMicInputMode] = useState<KioskMicMode>(() => readKioskMicMode());
+  const [triggerMode, setTriggerMode] = useState<KioskTriggerMode>('screen');
+  const [micInputMode, setMicInputMode] = useState<KioskMicMode>('toggle');
+
+  // Hydration-safe: read localStorage only on client after mount
+  useEffect(() => {
+    setTriggerMode(readKioskTriggerMode());
+    setMicInputMode(readKioskMicMode());
+  }, []);
   const [ocrMode, setOcrMode] = useState<'member_card' | 'handwriting'>('member_card');
   const [welcomeMemberOcrOpen, setWelcomeMemberOcrOpen] = useState(false);
   const [welcomeMemberOcrSessionKey, setWelcomeMemberOcrSessionKey] = useState(0);
