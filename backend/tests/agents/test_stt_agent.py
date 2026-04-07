@@ -633,6 +633,11 @@ class TestQwenSTTClient:
 
         assert result.text == "hello"
         assert result.language == "en"
+        # Verify language kwarg was NOT passed to Qwen (auto-detect)
+        call_kwargs = client._model.transcribe.call_args
+        assert (
+            "language" not in call_kwargs.kwargs
+        ), "language should not be passed to Qwen when auto-detect is intended"
 
 
 # ==============================================================================

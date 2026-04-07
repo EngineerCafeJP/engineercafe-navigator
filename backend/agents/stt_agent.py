@@ -618,7 +618,7 @@ class QwenSTTClient:
         else:
             audio_data = convert_audio_to_wav_bytes(audio_data)
 
-        lang_code = language or self.default_language
+        lang_code = language  # preserve None for auto-detect
         qwen_language = self.LANGUAGE_NAMES.get(lang_code, lang_code) if lang_code else None
 
         try:
