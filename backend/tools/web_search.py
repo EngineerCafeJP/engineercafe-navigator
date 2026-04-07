@@ -4,10 +4,6 @@ Determines whether a user query requires web search based on keyword matching.
 The actual web search is performed by TavilySearchTool.
 """
 
-from typing import Literal
-
-SupportedLanguage = Literal["ja", "en"]
-
 _WEB_SEARCH_KEYWORDS: list[str] = [
     # 最新情報・ニュース関連（日本語）
     "最新",

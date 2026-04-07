@@ -28,12 +28,15 @@ from backend.llm.openrouter import OpenRouterProvider
 from backend.llm.models import get_model_config
 from backend.tools.enhanced_rag import EnhancedRAGSearch
 from backend.tools.tavily_search import TavilySearchTool
-from backend.utils.language_types import DEFAULT_ERROR_RESPONSE, LANGUAGE_INSTRUCTION
+from backend.utils.language_types import (
+    DEFAULT_ERROR_RESPONSE,
+    LANGUAGE_INSTRUCTION,
+    SupportedLanguage,
+)
 from backend.utils.memory_interface import MemorySystemInterface
 
 logger = logging.getLogger(__name__)
 
-SupportedLanguage = Literal["ja", "en"]
 EmotionType = Literal["helpful", "apologetic", "neutral", "happy", "sad", "relaxed", "surprised"]
 
 

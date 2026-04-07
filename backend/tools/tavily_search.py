@@ -6,11 +6,11 @@ Tavily APIを使用したWeb検索ツール。
 
 import logging
 import os
-from typing import Dict, Any, List, Literal
+from typing import Dict, Any, List
+
+from backend.utils.language_types import SupportedLanguage
 
 logger = logging.getLogger(__name__)
-
-SupportedLanguage = Literal["ja", "en"]
 
 
 class TavilySearchTool:

@@ -637,3 +637,24 @@ class TestQueryExpansionMap:
         assert "営業時間" in QUERY_EXPANSION_MAP["opening hours"]
         assert "料金" in QUERY_EXPANSION_MAP["price"]
         assert "アクセス" in QUERY_EXPANSION_MAP["location"]
+
+
+# ==============================================================================
+# Entity Anchoring Tests
+# ==============================================================================
+
+
+class TestEntityAnchoring:
+    """エンティティアンカリングのテスト"""
+
+    def test_anchoring_applied_for_short_non_general_query(self, rag_search):
+        """短い非generalクエリにアンカリングが適用される"""
+        result = rag_search._expand_query("営業時間", "hours", "ja")
+        assert result.startswith("エンジニアカフェ ")
+
+    def test_anchoring_skipped_when_already_contains_anchor(self, rag_search):
+        """クエリに既にエンジニアカフェが含まれている場合スキップ"""
+        query = "エンジニアカフェの料金"
+        result = rag_search._expand_query(query, "pricing", "ja")
+        # 二重にアンカリングされていないことを確認
+        assert result.count("エンジニアカフェ") == 1
