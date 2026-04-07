@@ -568,7 +568,9 @@ class TestQwenSTTClient:
         client._model.transcribe.return_value = [SimpleNamespace(text="こんにちは", language="ja")]
         non_wav_audio = b"\x1a\x45\xdf\xa3" + (b"webm-opus-data" * 4)
 
-        with patch("backend.agents.stt_agent.convert_audio_to_wav_bytes", return_value=test_wav_16khz) as mock_convert:
+        with patch(
+            "backend.agents.stt_agent.convert_audio_to_wav_bytes", return_value=test_wav_16khz
+        ) as mock_convert:
             with patch.object(client, "_load_model"):
                 result = await client.transcribe(non_wav_audio, language="ja")
 
