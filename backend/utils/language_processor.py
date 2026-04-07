@@ -15,7 +15,9 @@ TODO (専門エンジニア - Chie):
 import logging
 import re
 from dataclasses import dataclass
-from typing import Optional, Literal, TypedDict
+from typing import Literal, Optional, TypedDict
+
+from backend.utils.language_types import SupportedLanguage
 
 # TODO: 実装時に必要なインポート
 # from llm.openrouter import OpenRouterProvider
@@ -28,7 +30,6 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 LanguageCode = Literal["ja", "en", "zh", "ko", "unknown"]
-SupportedLanguage = Literal["ja", "en", "zh", "ko"]
 
 
 class LanguageDetectionResult(TypedDict):

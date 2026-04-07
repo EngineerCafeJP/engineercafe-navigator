@@ -11,10 +11,9 @@ import logging
 from typing import Literal, TypedDict
 
 from backend.utils.emotion_tagger import add_emotion_tag
+from backend.utils.language_types import SupportedLanguage
 
 logger = logging.getLogger(__name__)
-
-SupportedLanguage = Literal["ja", "en"]
 
 EmergencySubtype = Literal[
     "earthquake",
