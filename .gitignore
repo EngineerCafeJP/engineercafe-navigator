@@ -123,6 +123,11 @@ htmlcov/
 # Temporary directories
 langgraph-repo/
 
+# TTS benchmark artifacts (generated audio samples and reports)
+backend/scripts/tts_samples/
+backend/scripts/tts_samples_piper/
+backend/scripts/tts_benchmark_result.md
+
 # Docker
 docker-compose.override.yml
 

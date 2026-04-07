@@ -251,3 +251,114 @@ async def test_text_to_speech_auto_detects_language_and_routes(monkeypatch):
     assert voicevox_called["called"] is True
     assert result_ja["success"] is True
     assert result_ja["language"] == "ja"
+
+
+# ---------------------------------------------------------------------------
+# piper-plus プロバイダーのルーティング・フォールバックテスト
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_text_to_speech_piper_routes_japanese(monkeypatch):
+    """TTS_PROVIDER=piper のとき、日本語テキストが piper-plus にルーティングされること"""
+    agent = VoiceAgent(tts_provider="piper")
+    piper_called = {"called": False}
+
+    async def fake_piper_synth(text, lang):
+        piper_called["called"] = True
+        return "PIPER_BASE64_JA"
+
+    monkeypatch.setattr(agent.tts_client, "synthesize_wav_base64", fake_piper_synth)
+
+    result = await agent.text_to_speech(
+        text="こんにちは、エンジニアカフェへようこそ！",
+        language="ja",
+    )
+
+    assert piper_called["called"] is True
+    assert result["success"] is True
+    assert result["audioResponse"] == "PIPER_BASE64_JA"
+    assert result["format"] == "audio/wav"
+    assert result["language"] == "ja"
+
+
+@pytest.mark.asyncio
+async def test_text_to_speech_piper_routes_english(monkeypatch):
+    """TTS_PROVIDER=piper のとき、英語テキストが piper-plus にルーティングされること"""
+    agent = VoiceAgent(tts_provider="piper")
+    piper_called = {"called": False}
+
+    async def fake_piper_synth(text, lang):
+        piper_called["called"] = True
+        return "PIPER_BASE64_EN"
+
+    monkeypatch.setattr(agent.tts_client, "synthesize_wav_base64", fake_piper_synth)
+
+    result = await agent.text_to_speech(
+        text="Welcome to Engineer Cafe!",
+        language="en",
+    )
+
+    assert piper_called["called"] is True
+    assert result["success"] is True
+    assert result["audioResponse"] == "PIPER_BASE64_EN"
+    assert result["format"] == "audio/wav"
+    assert result["language"] == "en"
+
+
+@pytest.mark.asyncio
+async def test_text_to_speech_piper_fallback_japanese_to_voicevox(monkeypatch):
+    """piper が日本語合成に失敗したとき、VoiceVox にフォールバックすること"""
+    agent = VoiceAgent(tts_provider="piper")
+
+    async def fake_piper_fail(text, lang):
+        raise RuntimeError("piper connection error")
+
+    voicevox_called = {"called": False}
+
+    async def fake_voicevox_synth(text, lang, speaker_id=None):
+        voicevox_called["called"] = True
+        return "VOICEVOX_FALLBACK_BASE64"
+
+    monkeypatch.setattr(agent.tts_client, "synthesize_wav_base64", fake_piper_fail)
+    monkeypatch.setattr(
+        agent.voicevox_fallback_client, "synthesize_wav_base64", fake_voicevox_synth
+    )
+
+    result = await agent.text_to_speech(
+        text="こんにちは",
+        language="ja",
+    )
+
+    assert voicevox_called["called"] is True
+    assert result["success"] is True
+    assert result["audioResponse"] == "VOICEVOX_FALLBACK_BASE64"
+    assert result["format"] == "audio/wav"
+
+
+@pytest.mark.asyncio
+async def test_text_to_speech_piper_fallback_english_to_kokoro(monkeypatch):
+    """piper が英語合成に失敗したとき、Kokoro にフォールバックすること"""
+    agent = VoiceAgent(tts_provider="piper")
+
+    async def fake_piper_fail(text, lang):
+        raise RuntimeError("piper connection error")
+
+    kokoro_called = {"called": False}
+
+    async def fake_kokoro_synth(text, lang, voice=None):
+        kokoro_called["called"] = True
+        return "KOKORO_FALLBACK_BASE64"
+
+    monkeypatch.setattr(agent.tts_client, "synthesize_wav_base64", fake_piper_fail)
+    monkeypatch.setattr(agent.kokoro_client, "synthesize_wav_base64", fake_kokoro_synth)
+
+    result = await agent.text_to_speech(
+        text="Hello, how can I help you?",
+        language="en",
+    )
+
+    assert kokoro_called["called"] is True
+    assert result["success"] is True
+    assert result["audioResponse"] == "KOKORO_FALLBACK_BASE64"
+    assert result["format"] == "audio/wav"

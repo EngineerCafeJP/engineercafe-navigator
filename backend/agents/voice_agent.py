@@ -588,6 +588,68 @@ class KokoroTTSClient:
 
 
 # =============================================================================
+# PiperPlus TTS Client (Local, WAV format, bilingual ja/en)
+# =============================================================================
+
+
+class PiperPlusTTSClient:
+    """
+    軽量・高速TTS: piper-plus エンジン (Python SDK ベース)
+
+    piper-tts-plus Python SDK を使用した高速多言語TTSエンジン。
+    tsukuyomi-chan-6lang モデルで日本語・英語等に対応。
+    Docker で起動した piper-plus HTTP API (POST /synthesize) を使用します。
+
+    話速は PIPER_SPEED 環境変数でサーバー側に設定済み (default: 0.87 ≒ やや遅め)。
+    """
+
+    def __init__(self, api_url: str = "http://localhost:8090"):
+        self.api_url = api_url.rstrip("/")
+        logger.info("PiperPlusTTSClient initialized: %s", self.api_url)
+
+    async def synthesize_wav_base64(
+        self, text: str, lang: str, speaker_id: Optional[int] = None
+    ) -> str:
+        """
+        テキストを音声に合成し、base64エンコードされたWAVを返す
+
+        Args:
+            text: 合成するテキスト
+            lang: 言語コード ("ja" / "en" 等、tsukuyomi 6言語対応)
+            speaker_id: 話者ID（None でモデルデフォルト）
+
+        Returns:
+            base64エンコードされたWAVデータ
+        """
+        payload: dict = {"text": text, "language": lang}
+        if speaker_id is not None:
+            payload["speaker_id"] = speaker_id
+
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                response = await client.post(
+                    f"{self.api_url}/synthesize",
+                    json=payload,
+                )
+
+                if response.status_code >= 400:
+                    raise RuntimeError(
+                        f"PiperPlus TTS API Error {response.status_code}: {response.text}"
+                    )
+
+                wav_b64 = base64.b64encode(response.content).decode("utf-8")
+                logger.info("PiperPlus TTS synthesis success: text_len=%d", len(text))
+                return wav_b64
+
+        except httpx.TimeoutException as e:
+            logger.error("PiperPlus TTS timeout: %s", e)
+            raise RuntimeError(f"PiperPlus TTS connection timeout: {e}")
+        except Exception as e:
+            logger.exception("PiperPlus TTS synthesis error: %s", e)
+            raise RuntimeError(f"PiperPlus TTS synthesis error: {e}")
+
+
+# =============================================================================
 # VoiceAgent class (modified for provider switching + language detection + clarification)
 # =============================================================================
 
@@ -620,6 +682,10 @@ class VoiceAgent:
             voicevox_api_url = os.getenv("VOICEVOX_API_URL", "http://localhost:50021")
             self.tts_client = VoiceVoxClient(api_url=voicevox_api_url)
             logger.info("Using VoiceVox TTS: %s", voicevox_api_url)
+        elif tts_provider == "piper":
+            piper_api_url = os.getenv("PIPER_PLUS_API_URL", "http://localhost:8090")
+            self.tts_client = PiperPlusTTSClient(api_url=piper_api_url)
+            logger.info("Using PiperPlus TTS: %s", piper_api_url)
         elif tts_provider == "google":
             self.tts_client = GoogleTTSClient()
             logger.info("Using Google Cloud TTS")
@@ -632,10 +698,20 @@ class VoiceAgent:
         self.clarification_agent = clarification_agent
         logger.info("Clarification handler initialized for voice_agent")
 
-        # Kokoro TTSクライアントを追加（英語TTS用）
+        # Kokoro TTSクライアントを追加（英語TTS用 / piper障害時の英語フォールバック）
         kokoro_api_url = os.getenv("KOKORO_API_URL", "http://localhost:8880")
         self.kokoro_client = KokoroTTSClient(api_url=kokoro_api_url)
         logger.info("Kokoro TTS client initialized: %s", kokoro_api_url)
+
+        # piper障害時の日本語フォールバック用 VoiceVox クライアント
+        if tts_provider == "piper":
+            voicevox_fallback_url = os.getenv("VOICEVOX_API_URL", "http://localhost:50021")
+            self.voicevox_fallback_client: Optional[VoiceVoxClient] = VoiceVoxClient(
+                api_url=voicevox_fallback_url
+            )
+            logger.info("VoiceVox fallback client initialized for piper: %s", voicevox_fallback_url)
+        else:
+            self.voicevox_fallback_client = None
 
     def _detect_category(self, text: str, language: str) -> Optional[ClarificationCategory]:
         """
@@ -746,8 +822,12 @@ class VoiceAgent:
 
         try:
             # ステップ5: 言語に基づいてTTSエンジンを選択
-            if language == "en":
-                # 英語 → Kokoro TTS
+            if self.tts_provider == "piper":
+                # piper-plus: 日本語・英語両対応（単一エンジン）
+                audio_b64 = await self.tts_client.synthesize_wav_base64(processed, language)
+                audio_format = "audio/wav"
+            elif language == "en":
+                # 英語 → Kokoro TTS (voicevox/google の場合)
                 audio_b64 = await self.kokoro_client.synthesize_wav_base64(processed, language)
                 audio_format = "audio/wav"
             elif self.tts_provider == "voicevox":
@@ -775,7 +855,20 @@ class VoiceAgent:
             logger.exception("TTS failed, trying fallback: %s", e)
             fb_text = fallback_error_message(language)
             try:
-                if language == "en":
+                if self.tts_provider == "piper":
+                    # piper障害時: 日本語 → VoiceVox、英語 → Kokoro にフォールバック
+                    if language == "en":
+                        logger.warning("piper failed, falling back to Kokoro for en")
+                        audio_b64 = await self.kokoro_client.synthesize_wav_base64(
+                            fb_text, language
+                        )
+                    else:
+                        logger.warning("piper failed, falling back to VoiceVox for %s", language)
+                        audio_b64 = await self.voicevox_fallback_client.synthesize_wav_base64(
+                            fb_text, language
+                        )
+                    audio_format = "audio/wav"
+                elif language == "en":
                     # 英語フォールバック → Kokoro TTS
                     audio_b64 = await self.kokoro_client.synthesize_wav_base64(fb_text, language)
                     audio_format = "audio/wav"
