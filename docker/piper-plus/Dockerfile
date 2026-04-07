@@ -36,8 +36,12 @@ EXPOSE 8090
 ENV PIPER_MODEL_REPO=ayousanz/piper-plus-tsukuyomi-chan \
     PIPER_MODEL_DIR=/models/piper \
     HF_HOME=/models/hf \
-    PIPER_SPEED=0.87 \
+    PIPER_SPEED=0.65 \
     PIPER_USE_CUDA=false
+
+RUN useradd --create-home --shell /bin/bash piper && \
+    chown -R piper:piper /models
+USER piper
 
 HEALTHCHECK --interval=15s --timeout=10s --retries=5 --start-period=60s \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8090/health')"

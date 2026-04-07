@@ -7,7 +7,7 @@ tsukuyomi-chan-6lang モデル（全言語共通）で日本語・英語等を�
 環境変数:
     PIPER_MODEL_REPO  : HuggingFace モデルリポジトリ ID
     PIPER_MODEL_DIR   : モデルキャッシュディレクトリ (default: /models/piper)
-    PIPER_SPEED       : 話速 (default: 0.87 ≒ やや遅め・自然な発話感)
+    PIPER_SPEED       : 話速 (default: 0.65 ≒ ゆっくり・聞き取りやすい発話)
                         1.0=標準, <1.0=遅い, >1.0=速い
     PIPER_USE_CUDA    : GPU 使用 (default: false)
 """
@@ -38,9 +38,9 @@ MODEL_REPO = os.getenv("PIPER_MODEL_REPO", "ayousanz/piper-plus-tsukuyomi-chan")
 MODEL_DIR = Path(os.getenv("PIPER_MODEL_DIR", "/models/piper"))
 USE_CUDA = os.getenv("PIPER_USE_CUDA", "false").lower() == "true"
 
-# 話速デフォルト: 0.87 ≒ length_scale=1.15（やや遅め・自然な発話感）
+# 話速デフォルト: 0.65 ≒ length_scale=1.54（ゆっくり・聞き取りやすい発話）
 # 1.0=標準, <1.0=遅い, >1.0=速い
-DEFAULT_SPEED = float(os.getenv("PIPER_SPEED", "0.87"))
+DEFAULT_SPEED = float(os.getenv("PIPER_SPEED", "0.65"))
 
 _voice: Optional[PiperVoice] = None
 _voice_lock = threading.Lock()

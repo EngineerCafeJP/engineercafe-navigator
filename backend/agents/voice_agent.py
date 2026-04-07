@@ -600,7 +600,7 @@ class PiperPlusTTSClient:
     tsukuyomi-chan-6lang モデルで日本語・英語等に対応。
     Docker で起動した piper-plus HTTP API (POST /synthesize) を使用します。
 
-    話速は PIPER_SPEED 環境変数でサーバー側に設定済み (default: 0.87 ≒ やや遅め)。
+    話速は PIPER_SPEED 環境変数でサーバー側に設定済み (default: 0.65 ≒ ゆっくり)。
     """
 
     def __init__(self, api_url: str = "http://localhost:8090"):
@@ -863,10 +863,20 @@ class VoiceAgent:
                             fb_text, language
                         )
                     else:
+                        if language not in ("ja",):
+                            logger.warning(
+                                "piper fallback to VoiceVox for unsupported language: %s",
+                                language,
+                            )
                         logger.warning("piper failed, falling back to VoiceVox for %s", language)
-                        audio_b64 = await self.voicevox_fallback_client.synthesize_wav_base64(
-                            fb_text, language
-                        )
+                        if self.voicevox_fallback_client:
+                            audio_b64 = await self.voicevox_fallback_client.synthesize_wav_base64(
+                                fb_text, language
+                            )
+                        else:
+                            raise RuntimeError(
+                                "No VoiceVox fallback client available for piper TTS fallback"
+                            )
                     audio_format = "audio/wav"
                 elif language == "en":
                     # 英語フォールバック → Kokoro TTS
