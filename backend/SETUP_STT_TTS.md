@@ -102,7 +102,15 @@ curl http://localhost:8880/v1/audio/voices
 ```env
 # STT/TTS Provider settings
 TTS_PROVIDER=voicevox          # ローカル優先（言語判定により自動切り替え）
-STT_PROVIDER=vosk             # ローカル優先
+STT_PROVIDER=vosk             # STT: vosk / google / qwen
+# Qwen3-ASR を使う場合（任意）
+# STT_PROVIDER=qwen
+# QWEN_STT_MODEL_VARIANT=1.7b  # 1.7b or 0.6b
+# QWEN_STT_DEVICE=auto         # auto / cpu / cuda:0
+# QWEN_STT_LANGUAGE=ja         # デフォルト言語
+# Qwen 0.6B CPU固定で使う場合（任意）
+# STT_PROVIDER=qwen0.6b-cpu
+# QWEN_STT_LANGUAGE=ja
 VOICEVOX_API_URL=http://localhost:50021
 KOKORO_API_URL=http://localhost:8880  # Kokoro TTS API URL（英語TTS用）
 
@@ -113,6 +121,10 @@ KOKORO_API_URL=http://localhost:8880  # Kokoro TTS API URL（英語TTS用）
 
 **環境変数の説明**:
 - `TTS_PROVIDER`: TTSプロバイダ（`voicevox` または `google`）
+- `STT_PROVIDER`: STTプロバイダ（`vosk` / `google` / `qwen` / `qwen0.6b-cpu`）
+- `QWEN_STT_MODEL_VARIANT`: `qwen`選択時のモデルサイズ（`1.7b` or `0.6b`）
+- `QWEN_STT_DEVICE`: `qwen`選択時の推論デバイス（`auto` / `cpu` / `cuda:0`）
+- `QWEN_STT_LANGUAGE`: `qwen`/`qwen0.6b-cpu`選択時のデフォルト言語（例: `ja`, `en`）
 - `VOICEVOX_API_URL`: VoiceVoxエンジンのAPI URL（デフォルト: `http://localhost:50021`）
 - `KOKORO_API_URL`: Kokoro TTSエンジンのAPI URL（デフォルト: `http://localhost:8880`）
 - システムは自動的に言語を判定し、英語テキストにはKokoro TTS、日本語テキストにはVoiceVoxを使用します

@@ -28,6 +28,7 @@ psycopg[binary]>=3.1.0
 vosk>=0.3.45
 soundfile>=0.12.1
 pydub>=0.25.1
+qwen-asr>=0.0.6
 
 # Translation (CTranslate2 + Helsinki-NLP/opus-mt)
 ctranslate2>=4.0.0

@@ -1,7 +1,8 @@
 """
 STTAgent - Speech-to-Text エージェント
 
-ローカルSTT（Vosk）をデフォルトに、Google Cloud STT をフォールバックとして実装します。
+ローカルSTT（Vosk / Qwen3-ASR）をデフォルト候補に、Google Cloud STT を
+フォールバックとして実装します。
 
 仕様:
 - 入力: WAV バイナリ（16kHz, 16bit, mono 推奨）
@@ -14,6 +15,7 @@ STTAgent - Speech-to-Text エージェント
 
 注意:
 - Vosk モデルが存在しない場合は RuntimeError を投げ、ダウンロード案内を出します。
+- Qwen3-ASR は qwen-asr パッケージを追加インストールした場合のみ利用できます。
 - 本実装は軽量で依存を抑えています。必要なら音声のリサンプリング機能を追加できます。
 
 """
@@ -25,7 +27,9 @@ import concurrent.futures
 import io
 import json
 import logging
+import numpy as np
 import os
+import wave
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
@@ -42,6 +46,36 @@ AUDIO_CONVERSION_ERROR_PREFIX = "Failed to convert WebM audio to WAV for STT tra
 PYDUB_IMPORT_ERROR = (
     "WebM audio conversion requires pydub. Install backend dependencies with pydub included."
 )
+
+
+def convert_audio_to_wav_bytes(audio_data: bytes) -> bytes:
+    """Convert WebM/Opus audio bytes to 16kHz/16-bit/mono WAV PCM."""
+    if len(audio_data) > MAX_AUDIO_UPLOAD_BYTES:
+        raise ValueError(
+            f"Audio payload too large ({len(audio_data)} bytes). "
+            f"Maximum: {MAX_AUDIO_UPLOAD_BYTES} bytes."
+        )
+
+    try:
+        from pydub import AudioSegment
+    except ImportError as exc:
+        raise ValueError(PYDUB_IMPORT_ERROR) from exc
+
+    try:
+        segment = AudioSegment.from_file(io.BytesIO(audio_data), format=None)
+        normalized = segment.set_frame_rate(16000).set_sample_width(2).set_channels(1)
+        wav_buffer = io.BytesIO()
+        normalized.export(wav_buffer, format="wav")
+        wav_bytes = wav_buffer.getvalue()
+    except Exception as exc:
+        raise ValueError(f"{AUDIO_CONVERSION_ERROR_PREFIX}: {exc}") from exc
+
+    if not wav_bytes.startswith(WAV_RIFF_HEADER) or len(wav_bytes) < MIN_WAV_HEADER_BYTES:
+        raise ValueError(
+            f"{AUDIO_CONVERSION_ERROR_PREFIX}: converted output is not a valid WAV file"
+        )
+
+    return wav_bytes
 
 
 # -----------------------------------------------------------------------------
@@ -239,31 +273,7 @@ class LocalSTTClient:
 
     def _convert_audio_to_wav(self, audio_data: bytes) -> bytes:
         """Convert WebM/Opus audio bytes to WAV PCM for Vosk."""
-        if len(audio_data) > MAX_AUDIO_UPLOAD_BYTES:
-            raise ValueError(
-                f"Audio payload too large ({len(audio_data)} bytes). "
-                f"Maximum: {MAX_AUDIO_UPLOAD_BYTES} bytes."
-            )
-
-        try:
-            from pydub import AudioSegment
-        except ImportError as exc:
-            raise ValueError(PYDUB_IMPORT_ERROR) from exc
-
-        try:
-            segment = AudioSegment.from_file(io.BytesIO(audio_data), format=None)
-            normalized = segment.set_frame_rate(16000).set_sample_width(2).set_channels(1)
-            wav_buffer = io.BytesIO()
-            normalized.export(wav_buffer, format="wav")
-            wav_bytes = wav_buffer.getvalue()
-        except Exception as exc:
-            raise ValueError(f"{AUDIO_CONVERSION_ERROR_PREFIX}: {exc}") from exc
-
-        if not wav_bytes.startswith(WAV_RIFF_HEADER) or len(wav_bytes) < MIN_WAV_HEADER_BYTES:
-            raise ValueError(
-                f"{AUDIO_CONVERSION_ERROR_PREFIX}: converted output is not a valid WAV file"
-            )
-
+        wav_bytes = convert_audio_to_wav_bytes(audio_data)
         logger.info("Converted non-WAV audio payload to 16kHz/16-bit/mono WAV for Vosk")
         return wav_bytes
 
@@ -506,6 +516,151 @@ class GoogleSTTClient:
 
 
 # -----------------------------------------------------------------------------
+# Qwen3-ASR Client (optional local provider)
+# -----------------------------------------------------------------------------
+
+
+class QwenSTTClient:
+    MODEL_VARIANTS: Dict[str, str] = {
+        "1.7b": "Qwen/Qwen3-ASR-1.7B",
+        "0.6b": "Qwen/Qwen3-ASR-0.6B",
+    }
+
+    LANGUAGE_NAMES: Dict[str, str] = {
+        "ja": "Japanese",
+        "en": "English",
+        "zh": "Chinese",
+        "ko": "Korean",
+        "de": "German",
+        "fr": "French",
+        "es": "Spanish",
+        "pt": "Portuguese",
+        "it": "Italian",
+        "ru": "Russian",
+        "ar": "Arabic",
+        "th": "Thai",
+        "vi": "Vietnamese",
+    }
+
+    def __init__(
+        self,
+        model_variant: str = "1.7b",
+        device: str = "auto",
+        default_language: str = "ja",
+    ):
+        if model_variant not in self.MODEL_VARIANTS:
+            raise ValueError(
+                f"Invalid Qwen model variant: {model_variant}. "
+                f"Supported: {list(self.MODEL_VARIANTS.keys())}"
+            )
+
+        self.model_variant = model_variant
+        self.model_name = self.MODEL_VARIANTS[model_variant]
+        self.device = device
+        self.default_language = default_language
+        self._model: Optional[Any] = None
+        logger.info(
+            "QwenSTTClient initialized: model=%s, device=%s, default_language=%s",
+            self.model_name,
+            device,
+            default_language,
+        )
+
+    def _load_model(self) -> None:
+        if self._model is not None:
+            return
+
+        try:
+            import torch
+            from qwen_asr import Qwen3ASRModel
+        except ImportError as exc:
+            raise RuntimeError(
+                "Qwen3-ASR requires the optional qwen-asr package. "
+                "Install with: pip install qwen-asr"
+            ) from exc
+
+        resolved_device = self.device
+        if resolved_device == "auto":
+            resolved_device = "cuda:0" if torch.cuda.is_available() else "cpu"
+
+        torch_dtype = torch.bfloat16 if str(resolved_device).startswith("cuda") else torch.float32
+        self.device = resolved_device
+
+        logger.info("Loading Qwen3-ASR model %s on %s", self.model_name, self.device)
+        self._model = Qwen3ASRModel.from_pretrained(
+            self.model_name,
+            torch_dtype=torch_dtype,
+            device_map=self.device,
+            low_cpu_mem_usage=True,
+            max_new_tokens=256,
+        )
+
+    def _sync_transcribe(
+        self,
+        audio_data: bytes,
+        language: Optional[str] = None,
+    ) -> TranscriptionResult:
+        self._load_model()
+
+        if audio_data[:4] == WAV_RIFF_HEADER:
+            if len(audio_data) < MIN_WAV_HEADER_BYTES:
+                raise ValueError(TRUNCATED_WAV_AUDIO_ERROR)
+        else:
+            audio_data = convert_audio_to_wav_bytes(audio_data)
+
+        lang_code = language or self.default_language
+        qwen_language = self.LANGUAGE_NAMES.get(lang_code, lang_code) if lang_code else None
+
+        try:
+            with wave.open(io.BytesIO(audio_data), "rb") as wav_file:
+                sample_rate = wav_file.getframerate()
+                frames = wav_file.readframes(wav_file.getnframes())
+
+            pcm = np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
+
+            kwargs: Dict[str, Any] = {"audio": (pcm, sample_rate)}
+            if qwen_language:
+                kwargs["language"] = qwen_language
+
+            results = self._model.transcribe(**kwargs)
+            result = results[0] if results else None
+            text = (getattr(result, "text", "") or "").strip() if result else ""
+            detected_language = getattr(result, "language", None) if result else None
+        except wave.Error as exc:
+            raise ValueError(f"Invalid WAV audio for Qwen STT transcription: {exc}") from exc
+
+        if not text:
+            raise RuntimeError("Qwen3-ASR returned empty recognition result")
+
+        logger.info("Qwen transcription success (%s): %s", self.model_variant, text[:100])
+        return TranscriptionResult(
+            text=text,
+            confidence=None,
+            language=detected_language or lang_code or self.default_language,
+            word_confidences=[],
+        )
+
+    async def transcribe(
+        self,
+        audio_data: bytes,
+        language: Optional[str] = None,
+    ) -> TranscriptionResult:
+        loop = asyncio.get_running_loop()
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            return await loop.run_in_executor(
+                pool,
+                lambda: self._sync_transcribe(audio_data, language),
+            )
+
+
+class Qwen06BCpuSTTClient(QwenSTTClient):
+    """Qwen3-ASR 0.6B CPU固定の軽量クライアント。"""
+
+    def __init__(self, default_language: str = "ja"):
+        super().__init__(model_variant="0.6b", device="cpu", default_language=default_language)
+
+
+# -----------------------------------------------------------------------------
 # STTAgent - provider switching with auto-detection
 # -----------------------------------------------------------------------------
 
@@ -523,8 +678,9 @@ class STTAgent:
         """Initialize STTAgent with provider selection and fallback.
 
         Args:
-            stt_provider: STT provider name ('vosk' or 'google').
-                If None, uses STT_PROVIDER env var or 'vosk'.
+            stt_provider: STT provider name
+                ('vosk', 'google', 'qwen', or 'qwen0.6b-cpu').
+                If None, uses STT_PROVIDER env var or 'qwen0.6b-cpu'.
             stt_client: Custom STT client instance.
                 If None, creates default based on provider.
             use_grammar: Whether to use domain-specific grammar.
@@ -536,7 +692,7 @@ class STTAgent:
             fallback_client: Google STT client for fallback.
                 If None and provider is 'vosk', creates one.
         """
-        self.stt_provider = stt_provider or os.getenv("STT_PROVIDER", "vosk")
+        self.stt_provider = stt_provider or os.getenv("STT_PROVIDER", "qwen0.6b-cpu")
         self.use_grammar = use_grammar
         self.confidence_threshold = confidence_threshold
         if stt_client:
@@ -545,6 +701,16 @@ class STTAgent:
             self.stt_client = LocalSTTClient()
         elif self.stt_provider == "google":
             self.stt_client = GoogleSTTClient()
+        elif self.stt_provider == "qwen":
+            self.stt_client = QwenSTTClient(
+                model_variant=os.getenv("QWEN_STT_MODEL_VARIANT", "1.7b"),
+                device=os.getenv("QWEN_STT_DEVICE", "auto"),
+                default_language=os.getenv("QWEN_STT_LANGUAGE", "ja"),
+            )
+        elif self.stt_provider in ("qwen0.6b-cpu", "qwen-0.6b-cpu"):
+            self.stt_client = Qwen06BCpuSTTClient(
+                default_language=os.getenv("QWEN_STT_LANGUAGE", "ja"),
+            )
         else:
             raise ValueError(f"Unknown STT provider: {self.stt_provider}")
 
@@ -732,7 +898,7 @@ class STTAgent:
                 - transcript (str): Recognized text.
                 - confidence (float): Recognition confidence (0.0-1.0). None for Google STT.
                 - language (str): Detected language code.
-                - provider (str): STT provider used ('vosk' or 'google').
+                - provider (str): STT provider used ('vosk', 'google', or 'qwen').
                 - error (str): Error message if failed. Optional.
                 - fallback_used (bool): Whether Google fallback was used. Optional.
         """
@@ -742,7 +908,7 @@ class STTAgent:
             if language is None and isinstance(self.stt_client, LocalSTTClient):
                 result = await self.stt_client.transcribe_auto_detect(audio_data, grammar=grammar)
             else:
-                lang = language or "ja"
+                lang = language or getattr(self.stt_client, "default_language", "ja")
                 if isinstance(self.stt_client, LocalSTTClient):
                     grammar_list = (grammar or {}).get(lang) if grammar else None
                     result = await self.stt_client.transcribe(
@@ -779,7 +945,7 @@ class STTAgent:
                 "success": False,
                 "transcript": "",
                 "confidence": 0.0,
-                "language": language or "unknown",
+                "language": language or getattr(self.stt_client, "default_language", "unknown"),
                 "provider": provider,
                 "error": str(e),
             }

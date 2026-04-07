@@ -12,6 +12,8 @@ from backend.agents.stt_agent import (
     MAX_AUDIO_UPLOAD_BYTES,
     LocalSTTClient,
     GoogleSTTClient,
+    Qwen06BCpuSTTClient,
+    QwenSTTClient,
     STTAgent,
     TranscriptionResult,
     ENGINEER_CAFE_GRAMMAR,
@@ -551,6 +553,48 @@ class TestGoogleSTTClient:
 
 
 # ==============================================================================
+# QwenSTTClient Tests
+# ==============================================================================
+
+
+class TestQwenSTTClient:
+    """Tests for Qwen-based local STT"""
+
+    @pytest.mark.asyncio
+    async def test_transcribe_non_wav_data_converts_to_wav(self, test_wav_16khz):
+        """QwenSTTClient converts non-WAV payloads before transcription."""
+        client = QwenSTTClient(model_variant="0.6b", device="cpu")
+        client._model = MagicMock()
+        client._model.transcribe.return_value = [SimpleNamespace(text="こんにちは", language="ja")]
+        non_wav_audio = b"\x1a\x45\xdf\xa3" + (b"webm-opus-data" * 4)
+
+        with patch(
+            "backend.agents.stt_agent.convert_audio_to_wav_bytes", return_value=test_wav_16khz
+        ) as mock_convert:
+            with patch.object(client, "_load_model"):
+                result = await client.transcribe(non_wav_audio, language="ja")
+
+        mock_convert.assert_called_once_with(non_wav_audio)
+        assert result.text == "こんにちは"
+        assert result.language == "ja"
+
+    @pytest.mark.asyncio
+    async def test_transcribe_wav_audio_skips_conversion(self, test_wav_16khz):
+        """QwenSTTClient uses WAV payloads directly without conversion."""
+        client = QwenSTTClient(model_variant="0.6b", device="cpu")
+        client._model = MagicMock()
+        client._model.transcribe.return_value = [SimpleNamespace(text="hello", language="en")]
+
+        with patch("backend.agents.stt_agent.convert_audio_to_wav_bytes") as mock_convert:
+            with patch.object(client, "_load_model"):
+                result = await client.transcribe(test_wav_16khz, language="en")
+
+        mock_convert.assert_not_called()
+        assert result.text == "hello"
+        assert result.language == "en"
+
+
+# ==============================================================================
 # STTAgent Tests (Provider Switching + Auto-Detection)
 # ==============================================================================
 
@@ -558,11 +602,11 @@ class TestGoogleSTTClient:
 class TestSTTAgent:
     """Tests for STTAgent provider switching"""
 
-    def test_init_default_provider_vosk(self):
-        """STTAgent defaults to Vosk provider"""
-        with patch("backend.agents.stt_agent.LocalSTTClient"):
+    def test_init_default_provider_qwen_06b_cpu(self):
+        """STTAgent defaults to qwen0.6b-cpu provider"""
+        with patch("backend.agents.stt_agent.Qwen06BCpuSTTClient"):
             agent = STTAgent()
-            assert agent.stt_provider == "vosk"
+            assert agent.stt_provider == "qwen0.6b-cpu"
 
     def test_init_env_var_provider(self, monkeypatch):
         """STTAgent reads STT_PROVIDER from environment"""
@@ -577,6 +621,32 @@ class TestSTTAgent:
         with patch("backend.agents.stt_agent.LocalSTTClient"):
             agent = STTAgent(stt_provider="vosk")
             assert agent.stt_provider == "vosk"
+
+    def test_init_qwen_provider(self, monkeypatch):
+        """STTAgent accepts qwen provider and builds QwenSTTClient"""
+        monkeypatch.setenv("QWEN_STT_MODEL_VARIANT", "0.6b")
+        monkeypatch.setenv("QWEN_STT_DEVICE", "cpu")
+        monkeypatch.setenv("QWEN_STT_LANGUAGE", "ja")
+
+        with patch("backend.agents.stt_agent.QwenSTTClient") as mock_qwen_client:
+            agent = STTAgent(stt_provider="qwen")
+
+        assert agent.stt_provider == "qwen"
+        mock_qwen_client.assert_called_once_with(
+            model_variant="0.6b",
+            device="cpu",
+            default_language="ja",
+        )
+
+    def test_init_qwen_06b_cpu_provider(self, monkeypatch):
+        """STTAgent accepts qwen0.6b-cpu provider and builds fixed CPU client"""
+        monkeypatch.setenv("QWEN_STT_LANGUAGE", "ja")
+
+        with patch("backend.agents.stt_agent.Qwen06BCpuSTTClient") as mock_qwen_client:
+            agent = STTAgent(stt_provider="qwen0.6b-cpu")
+
+        assert agent.stt_provider == "qwen0.6b-cpu"
+        mock_qwen_client.assert_called_once_with(default_language="ja")
 
     def test_init_invalid_provider_raises_error(self):
         """STTAgent raises ValueError for unknown provider"""
@@ -652,6 +722,48 @@ class TestSTTAgent:
         assert result["transcript"] == "Hello world"
         assert result["confidence"] is None
         assert result["language"] == "en"
+
+    @pytest.mark.asyncio
+    async def test_speech_to_text_qwen_returns_transcription_result(self):
+        """STTAgent handles QwenSTTClient TranscriptionResult return type"""
+        mock_client = AsyncMock(spec=QwenSTTClient)
+        mock_client.default_language = "ja"
+        mock_client.transcribe.return_value = TranscriptionResult(
+            text="エンジニアカフェです",
+            confidence=None,
+            language="ja",
+            word_confidences=[],
+        )
+
+        agent = STTAgent(stt_provider="qwen", stt_client=mock_client)
+        result = await agent.speech_to_text(b"test_audio", language="ja")
+
+        assert result["success"] is True
+        assert result["transcript"] == "エンジニアカフェです"
+        assert result["confidence"] is None
+        assert result["language"] == "ja"
+        assert result["provider"] == "qwen"
+
+    @pytest.mark.asyncio
+    async def test_speech_to_text_qwen_06b_cpu_returns_transcription_result(self):
+        """STTAgent handles Qwen06BCpuSTTClient TranscriptionResult return type"""
+        mock_client = AsyncMock(spec=Qwen06BCpuSTTClient)
+        mock_client.default_language = "ja"
+        mock_client.transcribe.return_value = TranscriptionResult(
+            text="コワーキングスペースをご案内します",
+            confidence=None,
+            language="ja",
+            word_confidences=[],
+        )
+
+        agent = STTAgent(stt_provider="qwen0.6b-cpu", stt_client=mock_client)
+        result = await agent.speech_to_text(b"test_audio", language="ja")
+
+        assert result["success"] is True
+        assert result["transcript"] == "コワーキングスペースをご案内します"
+        assert result["confidence"] is None
+        assert result["language"] == "ja"
+        assert result["provider"] == "qwen0.6b-cpu"
 
 
 # ==============================================================================
