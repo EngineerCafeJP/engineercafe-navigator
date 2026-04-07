@@ -542,6 +542,16 @@ class QwenSTTClient:
         "vi": "Vietnamese",
     }
 
+    # Reverse map: Qwen display names → ISO 639-1 codes
+    LANGUAGE_CODES: Dict[str, str] = {v.lower(): k for k, v in LANGUAGE_NAMES.items()}
+
+    def _normalize_language_code(self, qwen_language: Optional[str]) -> Optional[str]:
+        """Convert Qwen display name (e.g. 'Japanese') to ISO code ('ja')."""
+        if qwen_language is None:
+            return None
+        lower = qwen_language.lower()
+        return self.LANGUAGE_CODES.get(lower, qwen_language)
+
     def __init__(
         self,
         model_variant: str = "1.7b",
@@ -632,11 +642,12 @@ class QwenSTTClient:
         if not text:
             raise RuntimeError("Qwen3-ASR returned empty recognition result")
 
+        normalized_lang = self._normalize_language_code(detected_language)
         logger.info("Qwen transcription success (%s): %s", self.model_variant, text[:100])
         return TranscriptionResult(
             text=text,
             confidence=None,
-            language=detected_language or lang_code or self.default_language,
+            language=normalized_lang or lang_code or self.default_language,
             word_confidences=[],
         )
 
@@ -907,6 +918,9 @@ class STTAgent:
         try:
             if language is None and isinstance(self.stt_client, LocalSTTClient):
                 result = await self.stt_client.transcribe_auto_detect(audio_data, grammar=grammar)
+            elif language is None and isinstance(self.stt_client, QwenSTTClient):
+                # Qwen supports auto-detect: pass language=None
+                result = await self.stt_client.transcribe(audio_data, language=None)
             else:
                 lang = language or getattr(self.stt_client, "default_language", "ja")
                 if isinstance(self.stt_client, LocalSTTClient):

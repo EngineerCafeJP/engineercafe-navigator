@@ -593,6 +593,47 @@ class TestQwenSTTClient:
         assert result.text == "hello"
         assert result.language == "en"
 
+    @pytest.mark.asyncio
+    async def test_language_name_normalized_to_code(self, test_wav_16khz):
+        """Qwen returns display names ('Japanese'); verify they map to codes ('ja')."""
+        client = QwenSTTClient(model_variant="0.6b", device="cpu")
+        client._model = MagicMock()
+        client._model.transcribe.return_value = [
+            SimpleNamespace(text="こんにちは", language="Japanese")
+        ]
+
+        with patch.object(client, "_load_model"):
+            result = await client.transcribe(test_wav_16khz, language="ja")
+
+        assert result.language == "ja"
+
+    @pytest.mark.asyncio
+    async def test_language_name_english_normalized(self, test_wav_16khz):
+        """Qwen 'English' display name maps to 'en' code."""
+        client = QwenSTTClient(model_variant="0.6b", device="cpu")
+        client._model = MagicMock()
+        client._model.transcribe.return_value = [
+            SimpleNamespace(text="hello world", language="English")
+        ]
+
+        with patch.object(client, "_load_model"):
+            result = await client.transcribe(test_wav_16khz, language="en")
+
+        assert result.language == "en"
+
+    @pytest.mark.asyncio
+    async def test_auto_detect_passes_none_to_qwen(self, test_wav_16khz):
+        """When language=None, Qwen auto-detect is used (no forced default)."""
+        client = QwenSTTClient(model_variant="0.6b", device="cpu")
+        client._model = MagicMock()
+        client._model.transcribe.return_value = [SimpleNamespace(text="hello", language="English")]
+
+        with patch.object(client, "_load_model"):
+            result = await client.transcribe(test_wav_16khz, language=None)
+
+        assert result.text == "hello"
+        assert result.language == "en"
+
 
 # ==============================================================================
 # STTAgent Tests (Provider Switching + Auto-Detection)
