@@ -6,6 +6,9 @@ import DOMPurify from 'dompurify';
 import { ChevronLeft, Keyboard, MessageCircle, Pause, Play, RotateCcw, Settings } from 'lucide-react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import SlideDebugPanel from './SlideDebugPanel';
+import type { PresentationCompleteReason } from './presentation-types';
+
+export type { PresentationCompleteReason };
 
 interface SlideData {
   slideNumber: number;
@@ -58,8 +61,6 @@ interface PresentationSettings {
   preloadCount: number;
   enableLipSync: boolean;
 }
-
-export type PresentationCompleteReason = 'completed' | 'stopped';
 
 interface MarpViewerProps {
   slideFile?: string;

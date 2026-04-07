@@ -30,6 +30,7 @@ import { KioskOcrOverlay } from './components/KioskOcrOverlay';
 import { KioskWelcomeOverlay } from './components/KioskWelcomeOverlay';
 import InitialSettingsModal from './components/InitialSettingsModal';
 import MarpViewer from './components/MarpViewer';
+import ReceptionPdfGuide from './components/ReceptionPdfGuide';
 import SettingsPanel, {
   type SettingsPanelPropsFromSource,
 } from './components/SettingsPanel';
@@ -38,6 +39,12 @@ import VoiceInterface, {
 } from './components/VoiceInterface';
 import type { OcrResponse } from '@/lib/api/ocr-api';
 import { startReception } from '@/lib/reception-api';
+
+const kioskReceptionSlidesUsePdf =
+  process.env.NEXT_PUBLIC_RECEPTION_SLIDE_RENDERER !== 'marp';
+
+/** 閉じるボタン用上部余白 + ツールバー（ReceptionPdfGuide の pt-11 + 操作条）— 16:9 算出から除く */
+const RECEPTION_PDF_PANEL_CHROME_HEIGHT = '7rem';
 
 export default function Home() {
   const [kioskPhase, setKioskPhase] = useState<KioskPhase>('notice');
@@ -345,15 +352,19 @@ export default function Home() {
             paddingRight: 'max(1.5rem, env(safe-area-inset-right))',
           } satisfies CSSProperties;
 
-          const characterCameraOffset = showSlideMode
-            ? { x: 0.2, y: 0, z: 0.0 }
-            : { x: 0, y: 0, z: 0 };
-          const characterModelOffset = showSlideMode
-            ? { x: -0.7, y: 0, z: 0 }
-            : { x: 0, y: 0, z: 0 };
-          const characterRotationOffset = showSlideMode
-            ? { x: 0, y: 0.35, z: 0 }
-            : { x: 0, y: -0.2, z: 0 };
+          /**
+           * PDF 案内: パディング内で「16:9 の表示域」が収まる最大サイズを取り、
+           * パネル幅 = その幅、高さ = 表示域高さ + ツールバー（画面内に全体が収まる）。
+           * cqw/cqh はコンテナのコンテンツボックス（＝セーフエリア内の利用可能矩形）。
+           */
+          const receptionPdfPanelStyle = {
+            width: `min(100cqw, max(0px, 100cqh - ${RECEPTION_PDF_PANEL_CHROME_HEIGHT}) * 16 / 9)`,
+            height: `calc(min(100cqw, max(0px, 100cqh - ${RECEPTION_PDF_PANEL_CHROME_HEIGHT}) * 16 / 9) * 9 / 16 + ${RECEPTION_PDF_PANEL_CHROME_HEIGHT})`,
+          } satisfies CSSProperties;
+
+          const characterCameraOffset = { x: 0, y: 0, z: 0 };
+          const characterModelOffset = { x: 0, y: 0, z: 0 };
+          const characterRotationOffset = { x: 0, y: -0.2, z: 0 };
 
           const setOcrStatusMessage = (
             kind: 'member_card' | 'handwriting' | 'error',
@@ -608,39 +619,72 @@ export default function Home() {
                 />
 
                 {showSlideMode ? (
-                  <div
-                    className="pointer-events-none absolute inset-y-0 right-0 z-30 flex w-full justify-end"
-                    style={screenPadding}
-                  >
+                  kioskReceptionSlidesUsePdf ? (
                     <div
-                      className="pointer-events-auto flex h-full w-full max-w-6xl transform-gpu rounded-[32px] bg-white/95 shadow-2xl transition-all duration-300 ease-out"
-                      onPointerDownCapture={bumpUserActivity}
+                      className="pointer-events-none absolute inset-0 z-30 flex w-full flex-col items-center justify-end"
+                      style={{ ...screenPadding, containerType: 'size' }}
                     >
-                      <div className="relative flex h-full w-full flex-col overflow-hidden rounded-[32px]">
+                      <div
+                        className="pointer-events-auto relative flex max-w-full shrink-0 flex-col overflow-hidden rounded-[32px] bg-white/95 shadow-2xl transition-all duration-300 ease-out"
+                        style={receptionPdfPanelStyle}
+                        onPointerDownCapture={bumpUserActivity}
+                      >
                         <button
                           type="button"
                           onClick={handleCloseSlides}
                           aria-label={labels.closeSlides}
-                          className="absolute right-4 top-4 z-10 inline-flex size-11 items-center justify-center rounded-full bg-black/70 text-white shadow-lg transition-transform duration-200 ease-out hover:scale-105"
+                          className="absolute right-3 top-3 z-20 inline-flex size-11 items-center justify-center rounded-full bg-black/70 text-white shadow-lg transition-transform duration-200 ease-out hover:scale-105"
                         >
                           <X className="size-5" />
                         </button>
-                        <div className="h-full w-full pt-4">
-                          <MarpViewer
-                            language={voice.currentLanguage}
-                            onVisemeControl={setVisemeFunction}
-                            onExpressionControl={setExpressionFunction}
-                            volume={Math.round(voice.volume * 100)}
-                            onPresentationComplete={() => {
-                              if (kioskPhaseRef.current === 'slides') {
-                                scheduleReturnToIdle();
-                              }
-                            }}
-                          />
+                        <ReceptionPdfGuide
+                          className="min-h-0 flex-1 pt-11"
+                          onVisemeControl={setVisemeFunction}
+                          onExpressionControl={setExpressionFunction}
+                          volume={Math.round(voice.volume * 100)}
+                          onPresentationComplete={() => {
+                            if (kioskPhaseRef.current === 'slides') {
+                              scheduleReturnToIdle();
+                            }
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div
+                      className="pointer-events-none absolute inset-y-0 right-0 z-30 flex w-full justify-end"
+                      style={screenPadding}
+                    >
+                      <div
+                        className="pointer-events-auto flex h-full w-full max-w-6xl transform-gpu rounded-[32px] bg-white/95 shadow-2xl transition-all duration-300 ease-out"
+                        onPointerDownCapture={bumpUserActivity}
+                      >
+                        <div className="relative flex h-full w-full flex-col overflow-hidden rounded-[32px]">
+                          <button
+                            type="button"
+                            onClick={handleCloseSlides}
+                            aria-label={labels.closeSlides}
+                            className="absolute right-4 top-4 z-10 inline-flex size-11 items-center justify-center rounded-full bg-black/70 text-white shadow-lg transition-transform duration-200 ease-out hover:scale-105"
+                          >
+                            <X className="size-5" />
+                          </button>
+                          <div className="h-full w-full pt-4">
+                            <MarpViewer
+                              language={voice.currentLanguage}
+                              onVisemeControl={setVisemeFunction}
+                              onExpressionControl={setExpressionFunction}
+                              volume={Math.round(voice.volume * 100)}
+                              onPresentationComplete={() => {
+                                if (kioskPhaseRef.current === 'slides') {
+                                  scheduleReturnToIdle();
+                                }
+                              }}
+                            />
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
+                  )
                 ) : null}
               </main>
             </>

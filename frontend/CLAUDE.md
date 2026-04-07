@@ -20,6 +20,7 @@ pnpm deploy:dev       # Deploy to Vercel dev environment
 
 - **Tailwind CSS v3.4.17** — DO NOT upgrade to v4. PostCSS: `tailwindcss: {}` not `@tailwindcss/postcss: {}`.
 - **Marp**: `@marp-team/marp-core` is already installed. MarpProcessor at `src/lib/marp-processor.ts`.
+- **Kiosk slides (PDF)**: Bundled `public/reception/engineer-cafe-ja.pdf` via `ReceptionPdfGuide` + pdfjs (`pnpm build` copies `pdf.worker.min.mjs` to `public/`, gitignored). Override: `NEXT_PUBLIC_RECEPTION_SLIDE_RENDERER=marp`.
 - **Audio**: All playback via Web Audio API (`src/lib/audio/`). No HTMLAudioElement.
 - **Vercel**: Deployed to the Vercel dev environment with the Node.js runtime configured in `vercel.json`.
 
@@ -38,7 +39,7 @@ src/app/api/       Route handlers: voice, slides, marp, qa, character, calendar,
 src/lib/           Shared libs: audio, memory, STT correction, lip-sync
 src/lib/audio/     AudioPlaybackService, MobileAudioService, WebAudioPlayer
 src/lib/api/       Backend proxy (backendFetch)
-src/slides/        Marp markdown slides + narration JSON
 e2e/               Playwright E2E tests
+public/reception/  Kiosk PDF deck + optional audio/lipsync per page
 public/characters/ VRM models and character assets
 ```

@@ -1,6 +1,9 @@
 # Node modules
 node_modules/
 
+# pdfjs worker (copied by Next.js webpack)
+public/assets/js/pdf.worker.min.mjs
+
 # dotenv files
 .env
 .env.local

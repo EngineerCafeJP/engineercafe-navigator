@@ -17,14 +17,6 @@ import {
 } from './audio-interfaces';
 import { MobileAudioService } from './mobile-audio-service';
 
-export interface AudioPlaybackOptions {
-  volume?: number;
-  enableLipSync?: boolean;
-  onVisemeUpdate?: (viseme: string, intensity: number) => void;
-  onPlaybackEnd?: () => void;
-  onError?: (error: AudioError) => void;
-}
-
 export interface LipSyncData {
   frames: Array<{
     time: number;
@@ -33,6 +25,47 @@ export interface LipSyncData {
     volume: number;
   }>;
   duration: number;
+}
+
+export interface AudioPlaybackOptions {
+  volume?: number;
+  enableLipSync?: boolean;
+  onVisemeUpdate?: (viseme: string, intensity: number) => void;
+  onPlaybackEnd?: () => void;
+  onError?: (error: AudioError) => void;
+  /** Skip analyzer when frames are pre-baked (e.g. public/reception/lipsync). */
+  precomputedLipSync?: LipSyncData | null;
+}
+
+async function analyzeLipSyncFromAudioData(
+  audioData: AudioDataInput
+): Promise<LipSyncData | null> {
+  try {
+    let blob: Blob | null = null;
+    if (typeof audioData === 'string') {
+      const blobResult = await AudioDataProcessor.base64ToBlob(audioData);
+      if (blobResult.success && blobResult.data) {
+        blob = blobResult.data;
+      }
+    } else if (audioData instanceof Blob) {
+      blob = audioData;
+    } else if (audioData instanceof ArrayBuffer) {
+      blob = new Blob([audioData]);
+    }
+    if (!blob) {
+      return null;
+    }
+    const { LipSyncAnalyzer } = await import('@/lib/lip-sync-analyzer');
+    const analyzer = new LipSyncAnalyzer();
+    try {
+      const data = await analyzer.analyzeLipSync(blob);
+      return { frames: data.frames, duration: data.duration };
+    } finally {
+      analyzer.dispose();
+    }
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -75,23 +108,20 @@ export class AudioPlaybackService {
       let playbackStartTime = 0;
       let isPlaying = false;
 
-      // Perform lip-sync analysis if enabled
       let lipSyncData: LipSyncData | null = null;
-      
-      if (options.enableLipSync && options.onVisemeUpdate && typeof audioData === 'string') {
+      const pre = options.precomputedLipSync;
+      if (
+        pre &&
+        Array.isArray(pre.frames) &&
+        pre.frames.length > 0 &&
+        typeof pre.duration === 'number'
+      ) {
+        lipSyncData = pre;
+      } else if (options.enableLipSync && options.onVisemeUpdate) {
         try {
-          // Convert base64 to blob for lip-sync analysis
-          const blobResult = await AudioDataProcessor.base64ToBlob(audioData);
-          if (blobResult.success && blobResult.data) {
-            const { LipSyncAnalyzer } = await import('@/lib/lip-sync-analyzer');
-            const analyzer = new LipSyncAnalyzer();
-            
-            lipSyncData = await analyzer.analyzeLipSync(blobResult.data);
-            analyzer.dispose();
-          }
+          lipSyncData = await analyzeLipSyncFromAudioData(audioData);
         } catch (lipSyncError) {
           console.warn('[AudioPlaybackService] Lip-sync analysis failed:', lipSyncError);
-          // Continue without lip-sync
         }
       }
 
