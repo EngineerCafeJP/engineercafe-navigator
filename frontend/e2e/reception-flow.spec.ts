@@ -24,10 +24,11 @@ const QA_CHAT_URL = '/api/qa';
 
 /** Dismiss the initial-settings modal so the kiosk reaches the idle phase. */
 async function dismissInitialModal(page: import('@playwright/test').Page) {
-  // The modal renders with a "閉じてはじめる" / "Close and continue" button.
-  const closeButton = page.getByRole('button', { name: /閉じてはじめる|Close and continue/ });
+  const modal = page.getByRole('dialog');
+  const closeButton = page.getByTestId('initial-settings-close');
   if (await closeButton.isVisible({ timeout: 3_000 }).catch(() => false)) {
     await closeButton.click();
+    await expect(modal).toBeHidden({ timeout: 5_000 });
   }
   // Wait for the idle phase — the Welcome button should be visible.
   await expect(page.getByRole('button', { name: 'Welcome' })).toBeVisible({ timeout: 5_000 });
@@ -203,6 +204,28 @@ test.describe('Reception flow — member card OCR', () => {
 
     // Should return to idle — Welcome button visible again.
     await expect(page.getByRole('button', { name: 'Welcome' })).toBeVisible({ timeout: 5_000 });
+  });
+  test('back-to-menu clears the anonymous visitor id', async ({ page }) => {
+    await dismissInitialModal(page);
+    await page.waitForFunction(
+      () => window.localStorage.getItem('engineer_cafe_visitor_id') !== null,
+    );
+    const initialVisitorId = await page.evaluate(() =>
+      window.localStorage.getItem('engineer_cafe_visitor_id'),
+    );
+    expect(initialVisitorId).toBeTruthy();
+
+    await page.getByRole('button', { name: /会員証|Member card/ }).click();
+    await page.getByRole('button', { name: /メニューに戻る|Back to menu/ }).click();
+
+    await page.waitForFunction(
+      () => window.localStorage.getItem('engineer_cafe_visitor_id') === null,
+    );
+    const visitorIdAfterReturn = await page.evaluate(() =>
+      window.localStorage.getItem('engineer_cafe_visitor_id'),
+    );
+
+    expect(visitorIdAfterReturn).toBeNull();
   });
 });
 
