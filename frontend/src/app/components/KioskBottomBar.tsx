@@ -88,8 +88,8 @@ export function KioskBottomBar({
           loadingPhase={voice.loadingPhase}
           sessionState={voice.sessionState}
         />
-        {showKioskScreenChrome ? (
-          <div className="flex w-full flex-row flex-wrap items-stretch justify-center gap-2 sm:gap-3">
+        <div className="flex w-full flex-row flex-wrap items-stretch justify-center gap-2 sm:gap-3">
+            {showKioskScreenChrome && (
             <button
               type="button"
               onClick={() => {
@@ -108,6 +108,7 @@ export function KioskBottomBar({
                 {labels.kioskWelcome}
               </span>
             </button>
+            )}
             <button
               data-testid="kiosk-voice-button"
               type="button"
@@ -230,7 +231,6 @@ export function KioskBottomBar({
               </span>
             </button>
           </div>
-        ) : null}
       </div>
     </div>
   );
