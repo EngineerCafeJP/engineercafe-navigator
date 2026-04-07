@@ -82,6 +82,10 @@ export function startSensorPolling(
   stopSensorPolling();
   activePollingSessionToken += 1;
   const sessionToken = activePollingSessionToken;
+  // Initialize since to now so pre-existing (stale) events are ignored
+  if (!lastSeenSensorTimestampByDevice.has(deviceId)) {
+    lastSeenSensorTimestampByDevice.set(deviceId, Date.now() / 1000);
+  }
   void pollSensorStatus(deviceId, sessionToken);
   sensorPollingIntervalId = window.setInterval(() => {
     void pollSensorStatus(deviceId, sessionToken);
