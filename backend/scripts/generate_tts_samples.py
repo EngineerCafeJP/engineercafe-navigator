@@ -24,7 +24,7 @@ from piper import PiperVoice
 
 MODEL_REPO = os.getenv("PIPER_MODEL_REPO", "ayousanz/piper-plus-tsukuyomi-chan")
 MODEL_DIR = Path(os.getenv("PIPER_MODEL_DIR", str(Path.home() / ".cache/piper")))
-SPEED = float(os.getenv("PIPER_SPEED", "0.87"))  # 1.0=標準, <1.0=遅い
+SPEED = float(os.getenv("PIPER_SPEED", "0.65"))  # 1.0=標準, <1.0=遅い
 
 OUT_DIR = Path(__file__).parent / "tts_samples_piper"
 
@@ -109,7 +109,7 @@ def main() -> None:
     print()
 
     # --- 日本語サンプル ---
-    print("=== 日本語サンプル (tsukuyomi, speed=0.87) ===")
+    print("=== 日本語サンプル (tsukuyomi, speed=0.65) ===")
     for i, text in enumerate(JA_SAMPLES, 1):
         out_path = OUT_DIR / f"ja_{i:02d}_piper_tsukuyomi.wav"
         print(f"  [{i:02d}/10] {text[:30]}...")
@@ -120,7 +120,7 @@ def main() -> None:
     print()
 
     # --- 英語サンプル ---
-    print("=== 英語サンプル (tsukuyomi, speed=0.87) ===")
+    print("=== 英語サンプル (tsukuyomi, speed=0.65) ===")
     for i, text in enumerate(EN_SAMPLES, 1):
         out_path = OUT_DIR / f"en_{i:02d}_piper_tsukuyomi.wav"
         print(f"  [{i:02d}/03] {text[:50]}...")
