@@ -31,6 +31,7 @@ import { KioskWelcomeOverlay } from './components/KioskWelcomeOverlay';
 import InitialSettingsModal from './components/InitialSettingsModal';
 import MarpViewer from './components/MarpViewer';
 import ReceptionPdfGuide from './components/ReceptionPdfGuide';
+import ClockBadge from './components/ClockBadge';
 import SettingsPanel, {
   type SettingsPanelPropsFromSource,
 } from './components/SettingsPanel';
@@ -473,6 +474,15 @@ export default function Home() {
                   aria-hidden={!showSettingsPanel}
                 >
                   <div
+                  className="pointer-events-none absolute"
+                  style={{
+                    top: screenPadding.paddingTop,
+                    left: screenPadding.paddingLeft,
+                  }}
+                >
+                  <ClockBadge language={voice.currentLanguage} />
+                </div>
+                <div
                     className="pointer-events-auto absolute"
                     style={{
                       top: screenPadding.paddingTop,
