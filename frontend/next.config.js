@@ -1,3 +1,6 @@
+const path = require("path");
+const CopyWebpackPlugin = require("copy-webpack-plugin");
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   experimental: {
@@ -48,6 +51,22 @@ const nextConfig = {
     // Externalize problematic modules for server-side
     if (isServer) {
       config.externals.push("libsql", "@libsql/client");
+    }
+
+    if (!isServer) {
+      config.plugins.push(
+        new CopyWebpackPlugin({
+          patterns: [
+            {
+              from: path.join(
+                __dirname,
+                "node_modules/pdfjs-dist/build/pdf.worker.min.mjs"
+              ),
+              to: path.join(__dirname, "public/assets/js/pdf.worker.min.mjs"),
+            },
+          ],
+        })
+      );
     }
 
     return config;

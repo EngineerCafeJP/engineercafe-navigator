@@ -1,0 +1,16 @@
+/* @theme engineer-cafe-pdf */
+/*!
+ * Landscape PDF export for engineer-cafe.md (16:9).
+ * Use: marp engineer-cafe.md -t marp-themes/engineer-cafe-pdf.css --pdf ...
+ */
+@import 'default';
+
+section {
+  width: 1920px;
+  height: 1080px;
+  font-size: 36px;
+}
+
+h2 {
+  font-size: 1.35em;
+}
