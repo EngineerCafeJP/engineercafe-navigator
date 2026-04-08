@@ -465,14 +465,17 @@ class LocalSTTClient:
 
 class GoogleSTTClient:
     def __init__(self):
-        self.project_id = os.getenv("GOOGLE_CLOUD_PROJECT_ID")
+        self.project_id = os.getenv("GOOGLE_CLOUD_PROJECT_ID") or os.getenv("GOOGLE_CLOUD_PROJECT")
         self.credentials_source = os.getenv("GOOGLE_CLOUD_CREDENTIALS") or os.getenv(
             "GOOGLE_APPLICATION_CREDENTIALS"
         )
-        logger.info("GoogleSTTClient initialized (credentials must be configured for use)")
+        logger.info("GoogleSTTClient initialized (project=%s)", self.project_id)
 
     def is_available(self) -> bool:
         """Google Cloud STT の認証情報が設定されているか確認"""
+        # On Cloud Run, the service account is attached via Workload Identity
+        if os.getenv("ENVIRONMENT") == "production":
+            return bool(self.project_id or os.getenv("GOOGLE_CLOUD_PROJECT"))
         return bool(self.credentials_source)
 
     def _sync_transcribe(self, audio_data: bytes, language: str = "ja") -> str:
@@ -703,7 +706,10 @@ class STTAgent:
             fallback_client: Google STT client for fallback.
                 If None and provider is 'vosk', creates one.
         """
-        self.stt_provider = stt_provider or os.getenv("STT_PROVIDER", "qwen0.6b-cpu")
+        self.stt_provider = stt_provider or os.getenv(
+            "STT_PROVIDER",
+            "google" if os.getenv("ENVIRONMENT") == "production" else "qwen0.6b-cpu",
+        )
         self.use_grammar = use_grammar
         self.confidence_threshold = confidence_threshold
         if stt_client:

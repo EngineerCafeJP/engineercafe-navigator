@@ -698,10 +698,15 @@ class VoiceAgent:
         self.clarification_agent = clarification_agent
         logger.info("Clarification handler initialized for voice_agent")
 
-        # Kokoro TTSクライアントを追加（英語TTS用 / piper障害時の英語フォールバック）
-        kokoro_api_url = os.getenv("KOKORO_API_URL", "http://localhost:8880")
-        self.kokoro_client = KokoroTTSClient(api_url=kokoro_api_url)
-        logger.info("Kokoro TTS client initialized: %s", kokoro_api_url)
+        # Kokoro TTSクライアント（英語TTS用 / piper障害時の英語フォールバック）
+        # Cloud Run環境でKOKORO_API_URL未設定の場合は初期化しない
+        kokoro_api_url = os.getenv("KOKORO_API_URL")
+        if kokoro_api_url:
+            self.kokoro_client = KokoroTTSClient(api_url=kokoro_api_url)
+            logger.info("Kokoro TTS client initialized: %s", kokoro_api_url)
+        else:
+            self.kokoro_client = None
+            logger.info("Kokoro TTS client not configured (KOKORO_API_URL not set)")
 
         # piper障害時の日本語フォールバック用 VoiceVox クライアント
         if tts_provider == "piper":
@@ -828,7 +833,11 @@ class VoiceAgent:
                 audio_format = "audio/wav"
             elif language == "en":
                 # 英語 → Kokoro TTS (voicevox/google の場合)
-                audio_b64 = await self.kokoro_client.synthesize_wav_base64(processed, language)
+                if self.kokoro_client:
+                    audio_b64 = await self.kokoro_client.synthesize_wav_base64(processed, language)
+                else:
+                    # Kokoro unavailable, fall through to main client (limited English support)
+                    audio_b64 = await self.tts_client.synthesize_wav_base64(processed, language)
                 audio_format = "audio/wav"
             elif self.tts_provider == "voicevox":
                 # 日本語 → VoiceVox
@@ -859,9 +868,14 @@ class VoiceAgent:
                     # piper障害時: 日本語 → VoiceVox、英語 → Kokoro にフォールバック
                     if language == "en":
                         logger.warning("piper failed, falling back to Kokoro for en")
-                        audio_b64 = await self.kokoro_client.synthesize_wav_base64(
-                            fb_text, language
-                        )
+                        if self.kokoro_client:
+                            audio_b64 = await self.kokoro_client.synthesize_wav_base64(
+                                fb_text, language
+                            )
+                        else:
+                            raise RuntimeError(
+                                "Piper unavailable and Kokoro not configured for English TTS"
+                            )
                     else:
                         if language not in ("ja",):
                             logger.warning(
@@ -880,7 +894,14 @@ class VoiceAgent:
                     audio_format = "audio/wav"
                 elif language == "en":
                     # 英語フォールバック → Kokoro TTS
-                    audio_b64 = await self.kokoro_client.synthesize_wav_base64(fb_text, language)
+                    if self.kokoro_client:
+                        audio_b64 = await self.kokoro_client.synthesize_wav_base64(
+                            fb_text, language
+                        )
+                    else:
+                        raise RuntimeError(
+                            "English TTS failed and Kokoro not configured for fallback"
+                        )
                     audio_format = "audio/wav"
                 elif self.tts_provider == "voicevox":
                     # 日本語フォールバック → VoiceVox
