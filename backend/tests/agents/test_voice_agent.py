@@ -166,6 +166,7 @@ async def test_text_to_speech_fallback_on_error(monkeypatch):
 @pytest.mark.asyncio
 async def test_text_to_speech_routes_english_to_kokoro(monkeypatch):
     """英語テキストがKokoro TTSにルーティングされることを確認"""
+    monkeypatch.setenv("KOKORO_API_URL", "http://localhost:8880")
     agent = VoiceAgent(tts_provider="voicevox")
     kokoro_called = {"called": False}
 
@@ -214,6 +215,7 @@ async def test_text_to_speech_routes_japanese_to_voicevox(monkeypatch):
 @pytest.mark.asyncio
 async def test_text_to_speech_auto_detects_language_and_routes(monkeypatch):
     """言語自動検出が正しく動作し、適切なTTSエンジンにルーティングされることを確認"""
+    monkeypatch.setenv("KOKORO_API_URL", "http://localhost:8880")
     agent = VoiceAgent(tts_provider="voicevox")
     kokoro_called = {"called": False}
     voicevox_called = {"called": False}
@@ -339,6 +341,7 @@ async def test_text_to_speech_piper_fallback_japanese_to_voicevox(monkeypatch):
 @pytest.mark.asyncio
 async def test_text_to_speech_piper_fallback_english_to_kokoro(monkeypatch):
     """piper が英語合成に失敗したとき、Kokoro にフォールバックすること"""
+    monkeypatch.setenv("KOKORO_API_URL", "http://localhost:8880")
     agent = VoiceAgent(tts_provider="piper")
 
     async def fake_piper_fail(text, lang):
