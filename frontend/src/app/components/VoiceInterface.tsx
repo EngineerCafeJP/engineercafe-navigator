@@ -70,6 +70,7 @@ export interface VoiceInterfaceRenderProps {
   stopListening: () => void;
   cancelSession: () => void;
   clearConversation: () => void;
+  clearVisitState: () => void;
   sendMessage: (message: string) => Promise<void>;
   /** Speak fixed text (e.g. reception greeting) without running QA. */
   speakPreparedText: (
@@ -104,6 +105,7 @@ interface VoiceInterfaceProps {
 }
 
 const DEFAULT_WAKE_WORDS = ['すみません', 'hello'];
+const VISITOR_ID_STORAGE_KEY = 'engineer_cafe_visitor_id';
 
 const STATUS_LABELS: Record<'ja' | 'en', Record<VoiceSessionState, string>> = {
   ja: {
@@ -156,15 +158,22 @@ const getOrCreateVisitorId = (): string => {
     return 'anonymous';
   }
 
-  const key = 'engineer_cafe_visitor_id';
-  const existing = window.localStorage.getItem(key);
+  const existing = window.localStorage.getItem(VISITOR_ID_STORAGE_KEY);
   if (existing) {
     return existing;
   }
 
   const created = generateUuid();
-  window.localStorage.setItem(key, created);
+  window.localStorage.setItem(VISITOR_ID_STORAGE_KEY, created);
   return created;
+};
+
+const clearVisitorId = (): void => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.localStorage.removeItem(VISITOR_ID_STORAGE_KEY);
 };
 
 const createSessionId = (): string =>
@@ -316,6 +325,16 @@ export default function VoiceInterface({
     sessionIdRef.current = createSessionId();
   }, []);
 
+  const ensureVisitorId = useCallback((): string => {
+    if (visitorIdRef.current !== 'anonymous') {
+      return visitorIdRef.current;
+    }
+
+    const nextVisitorId = getOrCreateVisitorId();
+    visitorIdRef.current = nextVisitorId;
+    return nextVisitorId;
+  }, []);
+
   const scheduleLipSyncFrames = useCallback(
     (frames: LipSyncFrame[]) => {
       if (!onVisemeControl) {
@@ -447,6 +466,7 @@ export default function VoiceInterface({
 
       const abortController = new AbortController();
       requestAbortRef.current = abortController;
+      const visitorId = ensureVisitorId();
 
       try {
         const qaResponse = await fetch('/api/qa', {
@@ -460,7 +480,7 @@ export default function VoiceInterface({
             text: trimmed,
             sessionId: sessionIdRef.current,
             language: currentLanguage,
-            visitorId: visitorIdRef.current,
+            visitorId,
           }),
           signal: abortController.signal,
         });
@@ -532,6 +552,7 @@ export default function VoiceInterface({
     [
       cancelPendingRequest,
       currentLanguage,
+      ensureVisitorId,
       playAssistantAudio,
       skipAssistantTurnAutoResume,
       stopPlayback,
@@ -806,6 +827,13 @@ export default function VoiceInterface({
     resetConversation();
   }, [cancelSession, resetConversation]);
 
+  const clearVisitState = useCallback(() => {
+    cancelSession();
+    resetConversation();
+    clearVisitorId();
+    visitorIdRef.current = 'anonymous';
+  }, [cancelSession, resetConversation]);
+
   const toggleLanguage = useCallback(() => {
     const nextLanguage = currentLanguage === 'ja' ? 'en' : 'ja';
     setCurrentLanguage(nextLanguage);
@@ -869,6 +897,7 @@ export default function VoiceInterface({
       stopListening,
       cancelSession,
       clearConversation,
+      clearVisitState,
       sendMessage,
       speakPreparedText,
       setVolume,
@@ -878,6 +907,7 @@ export default function VoiceInterface({
     [
       cancelSession,
       clearConversation,
+      clearVisitState,
       currentLanguage,
       error,
       isLoading,

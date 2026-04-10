@@ -93,7 +93,7 @@ export default function Home() {
   const lastTranscriptRef = useRef<string>('');
   const lastResponseRef = useRef<string>('');
   const returnToIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const kioskVoiceCleanupRef = useRef<(() => void) | null>(null);
+  const kioskVisitCleanupRef = useRef<(() => void) | null>(null);
   const kioskPlayWelcomeRef = useRef<(() => Promise<void>) | null>(null);
   const prevTriggerModeRef = useRef<KioskTriggerMode>(triggerMode);
   const welcomeCooldownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -138,18 +138,25 @@ export default function Home() {
     }
   }, []);
 
+  const resetConversationHistory = useCallback(() => {
+    lastTranscriptRef.current = '';
+    lastResponseRef.current = '';
+    setConversationHistory([]);
+  }, []);
+
+  const returnToIdle = useCallback(() => {
+    clearReturnToIdleTimer();
+    kioskVisitCleanupRef.current?.();
+    setKioskPhase('idle');
+  }, [clearReturnToIdleTimer]);
+
   const scheduleReturnToIdle = useCallback(() => {
     clearReturnToIdleTimer();
     returnToIdleTimerRef.current = setTimeout(() => {
       returnToIdleTimerRef.current = null;
-      const phase = kioskPhaseRef.current;
-      if (phase === 'voice') {
-        kioskVoiceCleanupRef.current?.();
-      }
-      setWelcomeMemberOcrOpen(false);
-      setKioskPhase('idle');
+      returnToIdle();
     }, KIOSK_IDLE_MS);
-  }, [clearReturnToIdleTimer]);
+  }, [clearReturnToIdleTimer, returnToIdle]);
 
   const bumpUserActivity = useCallback(() => {
     const phase = kioskPhaseRef.current;
@@ -224,14 +231,8 @@ export default function Home() {
     if (kioskPhase === 'idle' || kioskPhase === 'notice') {
       return;
     }
-    clearReturnToIdleTimer();
-    if (kioskPhase === 'voice') {
-      kioskVoiceCleanupRef.current?.();
-    }
-    setKioskVoiceLocked(false);
-    setWelcomeMemberOcrOpen(false);
-    setKioskPhase('idle');
-  }, [clearReturnToIdleTimer, kioskPhase, triggerMode]);
+    returnToIdle();
+  }, [kioskPhase, returnToIdle, triggerMode]);
 
   const handleSettingsPanelPropsChange = useCallback(
     (props: SettingsPanelPropsFromSource) => {
@@ -269,9 +270,8 @@ export default function Home() {
   );
 
   const handleCloseSlides = useCallback(() => {
-    clearReturnToIdleTimer();
-    setKioskPhase('idle');
-  }, [clearReturnToIdleTimer]);
+    returnToIdle();
+  }, [returnToIdle]);
 
   return (
     <>
@@ -317,9 +317,12 @@ export default function Home() {
         }}
       >
         {(voice) => {
-          kioskVoiceCleanupRef.current = () => {
-            voice.cancelSession();
-            voice.clearConversation();
+          kioskVisitCleanupRef.current = () => {
+            voice.clearVisitState();
+            setKioskVoiceLocked(false);
+            setWelcomeMemberOcrOpen(false);
+            setOcrStatus(null);
+            resetConversationHistory();
           };
           const labels = overlayLabels[voice.currentLanguage];
           const receptionTriggerType =
@@ -386,36 +389,34 @@ export default function Home() {
 
           const handleOcrSuccess = (result: OcrResponse) => {
             clearReturnToIdleTimer();
-            setKioskPhase('idle');
 
             if (result.mode === 'member_card') {
-              const memberText =
-                result.member_number !== null
-                  ? `${labels.ocrMemberResult}: ${result.member_number}`
-                  : labels.ocrReadFailed;
-              setOcrStatusMessage('member_card', memberText);
+              returnToIdle();
+              if (result.member_number === null) {
+                setOcrStatusMessage('error', labels.ocrReadFailed);
+              }
               return;
             }
 
             const recognized = (result.recognized_text ?? '').trim();
             if (!recognized) {
+              returnToIdle();
               setOcrStatusMessage('error', labels.ocrReadFailed);
               return;
             }
 
-            setOcrStatusMessage('handwriting', `${labels.ocrHandwritingResult}: ${recognized}`);
+            setOcrStatus(null);
+            setKioskVoiceLocked(false);
+            setKioskPhase('voice');
             void voice.sendMessage(recognized);
           };
 
           const handleWelcomeMemberOcrSuccess = (result: OcrResponse) => {
-            setWelcomeMemberOcrOpen(false);
             clearReturnToIdleTimer();
-            setKioskPhase('idle');
-            const memberText =
-              result.member_number !== null
-                ? `${labels.ocrMemberResult}: ${result.member_number}`
-                : labels.ocrReadFailed;
-            setOcrStatusMessage('member_card', memberText);
+            returnToIdle();
+            if (result.member_number === null) {
+              setOcrStatusMessage('error', labels.ocrReadFailed);
+            }
           };
 
           const handleWelcomeMemberOcrEndSilent = () => {
@@ -620,17 +621,14 @@ export default function Home() {
                   bumpUserActivity={bumpUserActivity}
                   onSuccess={handleOcrSuccess}
                   onFallback={() => {
-                    clearReturnToIdleTimer();
-                    setKioskPhase('idle');
+                    returnToIdle();
                     setOcrStatusMessage('error', labels.ocrReadFailed);
                   }}
                   onSkip={() => {
-                    clearReturnToIdleTimer();
-                    setKioskPhase('idle');
+                    returnToIdle();
                   }}
                   onBackToIdle={() => {
-                    clearReturnToIdleTimer();
-                    setKioskPhase('idle');
+                    returnToIdle();
                   }}
                 />
 
