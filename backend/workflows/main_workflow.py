@@ -522,9 +522,20 @@ class MainWorkflow:
                     try:
                         import httpx
 
+                        import re
+
+                        _JA_RE = re.compile(r"[\u3040-\u309f\u30a0-\u30ff\u4e00-\u9faf]")
+                        _TRAG_MODEL = os.getenv(
+                            "TRAG_TRANSLATION_MODEL",
+                            "google/gemini-2.0-flash-001",
+                        )
                         api_key = os.getenv("OPENROUTER_API_KEY", "")
-                        if api_key:
-                            lang_name = {"ko": "Korean", "zh": "Chinese"}[language]
+                        if not api_key:
+                            logger.warning(
+                                "OPENROUTER_API_KEY not set, skipping %s->ja",
+                                language,
+                            )
+                        else:
                             async with httpx.AsyncClient(timeout=10.0) as client:
                                 resp = await client.post(
                                     "https://openrouter.ai/api/v1/chat/completions",
@@ -533,16 +544,20 @@ class MainWorkflow:
                                         "Content-Type": "application/json",
                                     },
                                     json={
-                                        "model": "google/gemini-2.0-flash-001",
+                                        "model": _TRAG_MODEL,
                                         "messages": [
                                             {
-                                                "role": "user",
+                                                "role": "system",
                                                 "content": (
-                                                    f"Translate the following {lang_name}"
-                                                    " text to Japanese. Return ONLY the"
-                                                    f" translation:\n{query}"
+                                                    "You are a translation engine. "
+                                                    "Translate the user's text to Japanese. "
+                                                    "Return ONLY the Japanese translation."
                                                 ),
-                                            }
+                                            },
+                                            {
+                                                "role": "user",
+                                                "content": query,
+                                            },
                                         ],
                                         "max_tokens": 200,
                                     },
@@ -555,7 +570,7 @@ class MainWorkflow:
                                         .get("content", "")
                                         .strip()
                                     )
-                                    if translated:
+                                    if translated and _JA_RE.search(translated):
                                         rag_query = translated
                                         logger.info(
                                             "tRAG %s->ja: '%s' -> '%s'",
@@ -563,6 +578,17 @@ class MainWorkflow:
                                             query[:40],
                                             rag_query[:40],
                                         )
+                                    elif translated:
+                                        logger.warning(
+                                            "tRAG output not Japanese: '%s'",
+                                            translated[:60],
+                                        )
+                                else:
+                                    logger.warning(
+                                        "OpenRouter %d: %s",
+                                        resp.status_code,
+                                        resp.text[:200],
+                                    )
                     except Exception as trans_err:
                         logger.warning(
                             "LLM translation (%s->ja) failed: %s",
