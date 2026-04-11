@@ -33,7 +33,23 @@ import wave
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
+import httpx as _stt_httpx
+
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Shared httpx client for STT LLM post-processing (connection pooling)
+# ---------------------------------------------------------------------------
+
+_stt_postprocess_client: Optional["_stt_httpx.AsyncClient"] = None
+
+
+def _get_stt_postprocess_client() -> "_stt_httpx.AsyncClient":
+    global _stt_postprocess_client
+    if _stt_postprocess_client is None or _stt_postprocess_client.is_closed:
+        _stt_postprocess_client = _stt_httpx.AsyncClient(timeout=3.0)
+    return _stt_postprocess_client
+
 
 WAV_RIFF_HEADER = b"RIFF"
 MIN_WAV_HEADER_BYTES = 44
@@ -867,6 +883,81 @@ class STTAgent:
             logger.warning("Failed to load custom vocabulary from JSON: %s", e)
             return []
 
+    async def _llm_post_process(
+        self,
+        transcript: str,
+        language: str,
+    ) -> str:
+        """Post-process Vosk transcript with LLM for formatting.
+
+        Uses Gemini Flash via OpenRouter for:
+        - Punctuation insertion
+        - Domain-specific term correction
+        - Proper noun normalization
+
+        Returns original transcript if LLM call fails or times out.
+        """
+        api_key = os.getenv("OPENROUTER_API_KEY", "")
+        if not api_key or not transcript.strip():
+            return transcript
+
+        model = os.getenv(
+            "STT_POSTPROCESS_MODEL",
+            "google/gemini-2.0-flash-001",
+        )
+
+        try:
+            client = _get_stt_postprocess_client()
+            resp = await client.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": model,
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": (
+                                "You are a speech recognition "
+                                "post-processor for Engineer Cafe "
+                                "(エンジニアカフェ) in Fukuoka. "
+                                "Fix punctuation, correct proper nouns "
+                                "(エンジニアカフェ, Wi-Fi, etc.), "
+                                "and normalize formatting. "
+                                "Return ONLY the corrected text, "
+                                "nothing else."
+                            ),
+                        },
+                        {"role": "user", "content": transcript},
+                    ],
+                    "max_tokens": 200,
+                },
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                corrected = (
+                    data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+                )
+                if corrected and len(corrected) > 0:
+                    logger.info(
+                        "STT post-process: '%s' -> '%s'",
+                        transcript[:40],
+                        corrected[:40],
+                    )
+                    return corrected
+            else:
+                logger.warning(
+                    "STT post-process %d: %s",
+                    resp.status_code,
+                    resp.text[:100],
+                )
+        except Exception as e:
+            logger.warning("STT LLM post-process failed: %s", e)
+
+        return transcript
+
     def _resolve_grammar(self, conversation_stage: Optional[str]) -> Optional[Dict[str, List[str]]]:
         """会話ステージに応じた Grammar 辞書を解決する。
 
@@ -953,7 +1044,23 @@ class STTAgent:
                     "language_validated": validated is not result,
                 }
                 # #9: Low-confidence fallback to Google STT
-                return await self._try_fallback(audio_data, validated.language, response)
+                response = await self._try_fallback(audio_data, validated.language, response)
+
+                # Vosk-only: LLM post-processing for accuracy
+                if (
+                    response.get("success")
+                    and provider == "vosk"
+                    and os.getenv("STT_LLM_POSTPROCESS", "true").lower() == "true"
+                ):
+                    original = response["transcript"]
+                    response["transcript"] = await self._llm_post_process(
+                        original, validated.language
+                    )
+                    if response["transcript"] != original:
+                        response["original_transcript"] = original
+                        response["postprocessed"] = True
+
+                return response
             else:
                 return {
                     "success": True,
