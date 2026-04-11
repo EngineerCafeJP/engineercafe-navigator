@@ -522,7 +522,7 @@ RUN if [ "$STT_PROVIDER" = "qwen3" ]; then \
 #### 5.3 モデルダウンロードスクリプト
 
 ```bash
-# backend/scripts/download_qwen3_model.sh
+# backend/scripts/download_qwen_model.sh
 #!/bin/bash
 set -e
 
@@ -868,7 +868,7 @@ qwen3-asr-service (新規)
 | `backend/agents/stt_providers/google_provider.py` | Google STT 実装 (既存ロジック移動) |
 | `backend/agents/stt_providers/qwen3_provider.py` | qwen3-asr 実装 (新規) |
 | `backend/tests/agents/test_stt_providers.py` | Provider テスト |
-| `backend/scripts/download_qwen3_model.sh` | モデルダウンロードスクリプト |
+| `backend/scripts/download_qwen_model.sh` | モデルダウンロードスクリプト |
 
 ### 修正
 
@@ -900,7 +900,7 @@ cd backend
 pip install transformers torch torchaudio sentencepiece
 
 # 3. モデルダウンロード (テスト用、0.6B 推奨)
-QWEN3_ASR_MODEL_PATH=Qwen/Qwen3-ASR-0.6B bash scripts/download_qwen3_model.sh
+QWEN3_ASR_MODEL_PATH=Qwen/Qwen3-ASR-0.6B bash scripts/download_qwen_model.sh
 
 # 4. テスト実行
 pytest tests/agents/test_stt_providers.py -v

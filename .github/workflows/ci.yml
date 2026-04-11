@@ -314,11 +314,11 @@ jobs:
             --platform managed \
             --allow-unauthenticated \
             --port 8000 \
-            --memory 2Gi \
+            --memory 4Gi \
             --cpu 2 \
             --min-instances 1 \
             --max-instances 3 \
-            --update-env-vars "ENVIRONMENT=production,TTS_PROVIDER=piper,STT_PROVIDER=vosk,ALLOWED_ORIGINS=https://frontend-delta-six-20.vercel.app" \
+            --update-env-vars "ENVIRONMENT=production,TTS_PROVIDER=piper,STT_PROVIDER=qwen-primary,QWEN_STT_TIMEOUT=10,HF_HOME=/app/.hf_cache,ALLOWED_ORIGINS=https://frontend-delta-six-20.vercel.app" \
             --update-secrets "OPENROUTER_API_KEY=OPENROUTER_API_KEY:latest,SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_KEY=SUPABASE_KEY:latest,SUPABASE_DB_URI=SUPABASE_DB_URI:latest,API_SECRET_KEY=API_SECRET_KEY:latest,TAVILY_API_KEY=TAVILY_API_KEY:latest"
 
       - name: Smoke test deployed service
@@ -327,8 +327,8 @@ jobs:
           echo "Testing $SERVICE_URL/health ..."
           for i in 1 2 3; do
             HEALTH=$(curl -sf --max-time 30 "$SERVICE_URL/health") && break
-            echo "Attempt $i failed (cold start?), retrying in 10s..."
-            sleep 10
+            echo "Attempt $i failed (cold start / Qwen model loading?), retrying in 15s..."
+            sleep 15
           done
           echo "$HEALTH"
           echo "$HEALTH" | python3 -c "import sys,json; d=json.load(sys.stdin); assert d['status']=='ok', f'Health check failed: {d}'"
