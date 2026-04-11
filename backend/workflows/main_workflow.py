@@ -524,7 +524,7 @@ class MainWorkflow:
 
                         import re
 
-                        _JA_RE = re.compile(r"[\u3040-\u309f\u30a0-\u30ff\u4e00-\u9faf]")
+                        _JA_RE = re.compile(r"[\u3040-\u309f\u30a0-\u30ff]")
                         _TRAG_MODEL = os.getenv(
                             "TRAG_TRANSLATION_MODEL",
                             "google/gemini-2.0-flash-001",
