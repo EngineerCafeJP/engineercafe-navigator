@@ -68,11 +68,11 @@ Engineer Cafe Navigator のアルファテストに向けて、STT (Speech-to-Te
 
 | 項目 | 変更前 | 変更後 | 理由 |
 |---|---|---|---|
-| メモリ | 2GiB | **4GiB** | Qwen 0.6B: 最低 3GB / 推奨 4GB |
+| メモリ | 2GiB | **8GiB** | Qwen 0.6B (~2.5GB) + Vosk (~900MB) + Python (~500MB)。4GiB では OOM 発生 (4270 MiB) |
 | CPU | 2 | 2 | 変更なし |
 | min-instances | 1 | 1 | コールドスタート回避 (Qwen ロード 15-30s) |
 | max-instances | 3 | 3 | 変更なし |
-| Docker イメージ | ~1.2GB | **~2.5GB** | +1.2GB (Qwen モデル重み) |
+| Docker イメージ | ~1.2GB | **~3GB** | +1.8GB (Qwen モデル重み + 依存) |
 | HF_HOME | 未設定 | `/app/.hf_cache` | 書き込み可能パス (`/nonexistent` 回避) |
 
 ## 実装ファイル
@@ -82,7 +82,7 @@ Engineer Cafe Navigator のアルファテストに向けて、STT (Speech-to-Te
 | `backend/agents/stt_agent.py` | `_transcribe_qwen_primary()` 追加、`speech_to_text()` に分岐追加 |
 | `backend/Dockerfile` | `ENV HF_HOME` + `RUN download_qwen_model.sh` |
 | `backend/scripts/download_qwen_model.sh` | 新規: HuggingFace モデル DL スクリプト |
-| `.github/workflows/ci.yml` | `--memory 4Gi` + `STT_PROVIDER` 設定 |
+| `.github/workflows/ci.yml` | `--memory 8Gi` + `STT_PROVIDER` 設定 |
 | `backend/tests/agents/test_stt_agent.py` | 並列 STT テスト 6 件追加 |
 
 ## Consequences
@@ -96,8 +96,8 @@ Engineer Cafe Navigator のアルファテストに向けて、STT (Speech-to-Te
 
 ### Negative
 
-- Docker イメージ +1.2GB — ビルド・プッシュ時間増加
-- Cloud Run コスト増 — 2GiB → 4GiB (約 2 倍)
+- Docker イメージ +1.8GB — ビルド・プッシュ時間増加
+- Cloud Run コスト増 — 2GiB → 8GiB (約 4 倍)
 - Qwen コールドスタート 15-30s — min-instances=1 で回避するがスケールアウト時に遅延
 - 並列実行でメモリピーク — Qwen + Vosk (ja/en) が同時にメモリに展開
 
@@ -105,10 +105,35 @@ Engineer Cafe Navigator のアルファテストに向けて、STT (Speech-to-Te
 
 | リスク | 深刻度 | 軽減策 |
 |---|---|---|
-| Qwen モデルロードで OOM | HIGH | 4GiB 確保 + Cloud Run メモリモニタリング |
+| Qwen モデルロードで OOM | HIGH | 8GiB 確保 + Cloud Run メモリモニタリング (4GiB では OOM 確認済み) |
 | コールドスタート 15-30s | HIGH | min-instances=1、Vosk が即座にフォールバック |
 | Qwen が confidence を返さない | MEDIUM | 優先度ベース選択 (Qwen > Vosk) |
 | 並列実行でメモリピーク | MEDIUM | Vosk small モデル維持 (48MB + 40MB) |
+
+## 本番検証結果 (2026-04-12)
+
+Cloud Run revision 00077-rjb にデプロイし、本番環境で検証を実施。
+
+### メモリ
+- 4GiB: OOM 発生 (4270 MiB 使用、signal 9 で kill)
+- **8GiB: 安定稼働** — Qwen (~2.5GB) + Vosk JA/EN (~900MB) + Python (~500MB)
+
+### STT 精度 (TTS合成音声 roundtrip)
+
+| 言語 | 入力 | 認識結果 | confidence | 判定 |
+|------|------|----------|-----------|------|
+| en | "Tell me about Engineer Cafe" | "tell me about engineer cafe" | 1.0 | ✅ |
+| ja | "エンジニアカフェについて教えて" | "現地にカフェについてはせて" | 0.83 | ❌ |
+
+### レスポンス時間
+- 初回リクエスト: ~40s (モデルロード) → 500 エラー
+- 2回目以降: 2-5s (モデル常駐)
+- min-instances=1 でコールドスタート回避
+
+### 未解決課題
+1. **日本語 STT 精度**: カタカナ語 ("エンジニア") の認識が弱い
+2. **process_voice パイプライン**: STT transcript は返るが LangGraph 応答が接続されていない
+3. **初回リクエスト失敗**: モデルロード中のタイムアウト対策が必要
 
 ## References
 
