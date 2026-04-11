@@ -63,9 +63,16 @@ FROM base AS production
 # Copy application code
 COPY . .
 
+# Set HuggingFace cache to writable path (avoids /nonexistent home dir issue)
+ENV HF_HOME=/app/.hf_cache
+RUN mkdir -p $HF_HOME
+
 # Download Vosk STT models (~88MB) — required for Cloud Run where
 # volume mounts are not available.
 RUN bash scripts/download_vosk_models.sh models
+
+# Download Qwen3-ASR 0.6B model (~1.2GB) — primary STT provider (ADR-007)
+RUN bash scripts/download_qwen_model.sh
 
 # Set ownership and switch to non-root user
 RUN chown -R appuser:appuser /app
@@ -74,8 +81,8 @@ USER appuser
 # Expose port
 EXPOSE 8000
 
-# Healthcheck for production
-HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+# Healthcheck for production (start-period=45s for Qwen model loading)
+HEALTHCHECK --interval=30s --timeout=10s --start-period=45s --retries=3 \
     CMD python scripts/healthcheck.py || exit 1
 
 # Run with production settings
