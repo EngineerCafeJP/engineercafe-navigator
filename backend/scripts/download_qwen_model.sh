@@ -8,22 +8,25 @@
 
 set -e
 
-MODEL_ID="${QWEN_ASR_MODEL_ID:-Qwen/Qwen3-ASR-0.6B}"
-HF_HOME="${HF_HOME:-/app/.hf_cache}"
-export HF_HOME
+export QWEN_ASR_MODEL_ID="${QWEN_ASR_MODEL_ID:-Qwen/Qwen3-ASR-0.6B}"
+export HF_HOME="${HF_HOME:-/app/.hf_cache}"
 
-echo "[download] Qwen3-ASR model: $MODEL_ID -> $HF_HOME ..."
+echo "[download] Qwen3-ASR model: $QWEN_ASR_MODEL_ID -> $HF_HOME ..."
 
 python -c "
+import os
 from qwen_asr import Qwen3ASRModel
 import torch
 
+model_id = os.environ['QWEN_ASR_MODEL_ID']
+hf_home = os.environ.get('HF_HOME', '/app/.hf_cache')
+
 model = Qwen3ASRModel.from_pretrained(
-    '${MODEL_ID}',
+    model_id,
     torch_dtype=torch.float32,
     device_map='cpu',
     low_cpu_mem_usage=True,
     max_new_tokens=256,
 )
-print('[done] Qwen model cached at ${HF_HOME}')
+print(f'[done] Qwen model cached at {hf_home}')
 "

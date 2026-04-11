@@ -1640,6 +1640,7 @@ class TestQwenPrimaryParallel:
         )
         agent.stt_provider = "qwen-primary"
         agent._vosk_fallback_client = mock_vosk
+        agent._qwen_timeout = 10.0
         return agent
 
     @pytest.mark.asyncio
@@ -1670,11 +1671,9 @@ class TestQwenPrimaryParallel:
         assert result["transcript"] == "こんにちは"
 
     @pytest.mark.asyncio
-    async def test_qwen_timeout_vosk_fallback(self, monkeypatch):
+    async def test_qwen_timeout_vosk_fallback(self):
         """Qwen times out -> Vosk fallback with provider='vosk-fallback'"""
         import asyncio
-
-        monkeypatch.setenv("QWEN_STT_TIMEOUT", "0.1")
 
         async def slow_qwen(*args, **kwargs):
             await asyncio.sleep(20)
@@ -1692,6 +1691,7 @@ class TestQwenPrimaryParallel:
         )
 
         agent = self._make_agent(mock_qwen, mock_vosk)
+        agent._qwen_timeout = 0.1
         result = await agent.speech_to_text(b"audio", language="ja")
 
         assert result["success"] is True
@@ -1788,6 +1788,38 @@ class TestQwenPrimaryParallel:
         assert result["language"] == "en"
         mock_qwen.transcribe.assert_called_once_with(b"audio", language=None)
         mock_vosk.transcribe_auto_detect.assert_called_once_with(b"audio")
+
+    @pytest.mark.asyncio
+    async def test_vosk_fallback_with_llm_postprocess(self, monkeypatch):
+        """Qwen fails, Vosk falls back, LLM post-processing runs"""
+        monkeypatch.setenv("STT_LLM_POSTPROCESS", "true")
+        monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+
+        mock_qwen = MagicMock()
+        mock_qwen.transcribe = AsyncMock(side_effect=RuntimeError("Qwen OOM"))
+        mock_vosk = MagicMock(spec=LocalSTTClient)
+        mock_vosk.transcribe = AsyncMock(
+            return_value=TranscriptionResult(
+                text="えんじにあかふぇ",
+                confidence=0.7,
+                language="ja",
+            )
+        )
+
+        agent = self._make_agent(mock_qwen, mock_vosk)
+        with patch.object(
+            agent,
+            "_llm_post_process",
+            new_callable=AsyncMock,
+            return_value="エンジニアカフェ",
+        ) as mock_llm:
+            result = await agent.speech_to_text(b"audio", language="ja")
+
+        assert result["success"] is True
+        assert result["provider"] == "vosk-fallback"
+        assert result["transcript"] == "エンジニアカフェ"
+        assert result["postprocessed"] is True
+        mock_llm.assert_called_once_with("えんじにあかふぇ", "ja")
 
 
 if __name__ == "__main__":

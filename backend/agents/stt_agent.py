@@ -732,6 +732,8 @@ class STTAgent:
         )
         self.use_grammar = use_grammar
         self.confidence_threshold = confidence_threshold
+        self._vosk_fallback_client = None
+        self._qwen_timeout = None
         if stt_client:
             self.stt_client = stt_client
         elif self.stt_provider == "vosk":
@@ -753,6 +755,7 @@ class STTAgent:
                 default_language=os.getenv("QWEN_STT_LANGUAGE", "ja"),
             )
             self._vosk_fallback_client = LocalSTTClient()
+            self._qwen_timeout = float(os.getenv("QWEN_STT_TIMEOUT", "10"))
         else:
             raise ValueError(f"Unknown STT provider: {self.stt_provider}")
 
@@ -984,12 +987,11 @@ class STTAgent:
         ``QWEN_STT_TIMEOUT`` 秒以内に成功すればその結果を返す。
         タイムアウトまたはエラー時は Vosk の結果にフォールバックする。
         """
-        timeout = float(os.getenv("QWEN_STT_TIMEOUT", "10"))
 
         async def _run_qwen():
             return await asyncio.wait_for(
                 self.stt_client.transcribe(audio_data, language=language),
-                timeout=timeout,
+                timeout=self._qwen_timeout,
             )
 
         async def _run_vosk():
