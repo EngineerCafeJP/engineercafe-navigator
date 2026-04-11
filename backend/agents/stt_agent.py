@@ -709,7 +709,8 @@ class STTAgent:
 
         Args:
             stt_provider: STT provider name
-                ('vosk', 'google', 'qwen', or 'qwen0.6b-cpu').
+                ('vosk', 'google', 'qwen', 'qwen0.6b-cpu',
+                or 'qwen-primary').
                 If None, uses ``STT_PROVIDER`` env var; if that is also unset,
                 defaults to ``google`` when ``ENVIRONMENT=production``, else
                 ``qwen0.6b-cpu``. Cloud Run でイメージ同梱の Vosk を使う場合は
@@ -747,6 +748,11 @@ class STTAgent:
             self.stt_client = Qwen06BCpuSTTClient(
                 default_language=os.getenv("QWEN_STT_LANGUAGE", "ja"),
             )
+        elif self.stt_provider == "qwen-primary":
+            self.stt_client = Qwen06BCpuSTTClient(
+                default_language=os.getenv("QWEN_STT_LANGUAGE", "ja"),
+            )
+            self._vosk_fallback_client = LocalSTTClient()
         else:
             raise ValueError(f"Unknown STT provider: {self.stt_provider}")
 
@@ -967,6 +973,69 @@ class STTAgent:
 
         return transcript
 
+    async def _transcribe_qwen_primary(
+        self,
+        audio_data: bytes,
+        language: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Qwen primary + Vosk parallel fallback (ADR-007).
+
+        ``asyncio.gather`` で Qwen と Vosk を同時実行し、Qwen が
+        ``QWEN_STT_TIMEOUT`` 秒以内に成功すればその結果を返す。
+        タイムアウトまたはエラー時は Vosk の結果にフォールバックする。
+        """
+        timeout = float(os.getenv("QWEN_STT_TIMEOUT", "10"))
+
+        async def _run_qwen():
+            return await asyncio.wait_for(
+                self.stt_client.transcribe(audio_data, language=language),
+                timeout=timeout,
+            )
+
+        async def _run_vosk():
+            if language is None:
+                return await self._vosk_fallback_client.transcribe_auto_detect(audio_data)
+            return await self._vosk_fallback_client.transcribe(audio_data, language)
+
+        qwen_result, vosk_result = await asyncio.gather(
+            _run_qwen(), _run_vosk(), return_exceptions=True
+        )
+
+        # Qwen success
+        if isinstance(qwen_result, TranscriptionResult):
+            return {
+                "success": True,
+                "transcript": qwen_result.text,
+                "confidence": qwen_result.confidence,
+                "language": qwen_result.language,
+                "provider": "qwen-primary",
+            }
+
+        # Qwen failed -> Vosk fallback
+        logger.warning(
+            "Qwen STT failed, using Vosk fallback: %s",
+            qwen_result,
+        )
+        if isinstance(vosk_result, TranscriptionResult):
+            transcript = vosk_result.text
+            postprocessed = False
+            if os.getenv("STT_LLM_POSTPROCESS", "false").lower() == "true":
+                corrected = await self._llm_post_process(transcript, vosk_result.language)
+                if corrected != transcript:
+                    postprocessed = True
+                    transcript = corrected
+            return {
+                "success": True,
+                "transcript": transcript,
+                "confidence": vosk_result.confidence,
+                "language": vosk_result.language,
+                "provider": "vosk-fallback",
+                "postprocessed": postprocessed,
+            }
+
+        # Both failed
+        raise RuntimeError(f"Both Qwen and Vosk STT failed: qwen={qwen_result}, vosk={vosk_result}")
+
     def _resolve_grammar(self, conversation_stage: Optional[str]) -> Optional[Dict[str, List[str]]]:
         """会話ステージに応じた Grammar 辞書を解決する。
 
@@ -1023,6 +1092,8 @@ class STTAgent:
                 - fallback_used (bool): Whether Google fallback was used. Optional.
         """
         provider = self.stt_provider
+        if provider == "qwen-primary":
+            return await self._transcribe_qwen_primary(audio_data, language)
         grammar = self._resolve_grammar(conversation_stage)
         try:
             if language is None and isinstance(self.stt_client, LocalSTTClient):
