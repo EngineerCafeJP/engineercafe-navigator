@@ -344,14 +344,18 @@ export default function VoiceInterface({
       const startTime = performance.now();
       const lastFrameTime = frames[frames.length - 1].time;
 
+      let frameIndex = 0;
+
       const update = () => {
         const elapsed = (performance.now() - startTime) / 1000;
-        const frame = frames.find((f, i) => {
-          const next = frames[i + 1];
-          return f.time <= elapsed && (!next || next.time > elapsed);
-        });
-        if (frame) {
-          onVisemeControl(frame.mouthShape, frame.mouthOpen);
+        while (
+          frameIndex < frames.length - 1 &&
+          frames[frameIndex + 1].time <= elapsed
+        ) {
+          frameIndex++;
+        }
+        if (frameIndex < frames.length && frames[frameIndex].time <= elapsed) {
+          onVisemeControl(frames[frameIndex].mouthShape, frames[frameIndex].mouthOpen);
         }
         if (elapsed < lastFrameTime + 0.5) {
           const rafId = requestAnimationFrame(update);

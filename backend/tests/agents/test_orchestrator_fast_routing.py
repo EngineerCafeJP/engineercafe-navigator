@@ -273,3 +273,45 @@ class TestOrchestratorFastRouting:
         result = orchestrator._try_fast_routing("こんにちは！")
         assert result is not None
         assert result["category"] == "greeting"
+
+    def test_greeting_chinese_nihao(self, orchestrator):
+        """你好 should match greeting fast-path"""
+        result = orchestrator._try_fast_routing("你好")
+        assert result is not None
+        assert result["category"] == "greeting"
+
+    def test_greeting_chinese_zaoshanghao(self, orchestrator):
+        """早上好 should match greeting fast-path"""
+        result = orchestrator._try_fast_routing("早上好")
+        assert result is not None
+        assert result["category"] == "greeting"
+
+    def test_greeting_korean_annyeonghaseyo(self, orchestrator):
+        """안녕하세요 should match greeting fast-path"""
+        result = orchestrator._try_fast_routing("안녕하세요")
+        assert result is not None
+        assert result["category"] == "greeting"
+
+    def test_greeting_korean_annyeong(self, orchestrator):
+        """안녕 should match greeting fast-path"""
+        result = orchestrator._try_fast_routing("안녕")
+        assert result is not None
+        assert result["category"] == "greeting"
+
+
+def test_zh_greeting_template_content():
+    """Chinese greeting templates should exist for all time periods"""
+    from backend.config.routing_constants import TIME_GREETING_TEMPLATES
+
+    for period in TIME_GREETING_TEMPLATES:
+        assert "zh" in TIME_GREETING_TEMPLATES[period], f"Missing zh for {period}"
+        assert len(TIME_GREETING_TEMPLATES[period]["zh"]) > 0
+
+
+def test_ko_greeting_template_content():
+    """Korean greeting templates should exist for all time periods"""
+    from backend.config.routing_constants import TIME_GREETING_TEMPLATES
+
+    for period in TIME_GREETING_TEMPLATES:
+        assert "ko" in TIME_GREETING_TEMPLATES[period], f"Missing ko for {period}"
+        assert len(TIME_GREETING_TEMPLATES[period]["ko"]) > 0
