@@ -1466,5 +1466,161 @@ class TestLowConfidenceFallback:
         assert result["transcript"] == "あ"
 
 
+class TestSTTLLMPostProcess:
+    """STT LLM 後処理テスト"""
+
+    @pytest.fixture
+    def stt_agent(self):
+        """Create STTAgent with vosk provider for testing"""
+        with patch("backend.agents.stt_agent.LocalSTTClient"):
+            agent = STTAgent(stt_provider="vosk")
+        return agent
+
+    @pytest.mark.asyncio
+    async def test_postprocess_corrects_text(self, stt_agent):
+        """LLM post-processing corrects domain terms"""
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "choices": [{"message": {"content": "エンジニアカフェの営業時間は？"}}]
+        }
+
+        with (
+            patch.dict("os.environ", {"OPENROUTER_API_KEY": "test-key"}),
+            patch("backend.agents.stt_agent._get_stt_postprocess_client") as mock_client_fn,
+        ):
+            mock_client = AsyncMock()
+            mock_client.post = AsyncMock(return_value=mock_resp)
+            mock_client_fn.return_value = mock_client
+
+            result = await stt_agent._llm_post_process(
+                "えんじにあかふぇ の えいぎょうじかん は", "ja"
+            )
+            assert result == "エンジニアカフェの営業時間は？"
+
+    @pytest.mark.asyncio
+    async def test_postprocess_timeout_returns_original(self, stt_agent):
+        """Timeout returns original transcript"""
+        import httpx
+
+        with (
+            patch.dict("os.environ", {"OPENROUTER_API_KEY": "test-key"}),
+            patch("backend.agents.stt_agent._get_stt_postprocess_client") as mock_client_fn,
+        ):
+            mock_client = AsyncMock()
+            mock_client.post = AsyncMock(side_effect=httpx.TimeoutException("timeout"))
+            mock_client_fn.return_value = mock_client
+
+            result = await stt_agent._llm_post_process("テスト", "ja")
+            assert result == "テスト"
+
+    @pytest.mark.asyncio
+    async def test_postprocess_disabled_via_env(self, stt_agent):
+        """STT_LLM_POSTPROCESS=false skips LLM call at speech_to_text level"""
+        with (
+            patch.dict(
+                "os.environ",
+                {
+                    "STT_LLM_POSTPROCESS": "false",
+                    "OPENROUTER_API_KEY": "test-key",
+                },
+            ),
+            patch.object(stt_agent, "_llm_post_process", new_callable=AsyncMock) as mock_pp,
+            patch.object(
+                stt_agent,
+                "_try_fallback",
+                new_callable=AsyncMock,
+                return_value={
+                    "success": True,
+                    "transcript": "test",
+                    "provider": "vosk",
+                },
+            ),
+            patch.object(
+                stt_agent.stt_client,
+                "transcribe",
+                new_callable=AsyncMock,
+                return_value=TranscriptionResult(text="test", confidence=0.9, language="ja"),
+            ),
+        ):
+            result = await stt_agent.speech_to_text(b"RIFF" + b"\x00" * 40, "ja")
+            mock_pp.assert_not_called()
+            assert result["transcript"] == "test"
+
+    @pytest.mark.asyncio
+    async def test_postprocess_no_api_key_returns_original(self, stt_agent):
+        """No API key returns original transcript"""
+        with patch.dict("os.environ", {"OPENROUTER_API_KEY": ""}):
+            result = await stt_agent._llm_post_process("テスト", "ja")
+            assert result == "テスト"
+
+    @pytest.mark.asyncio
+    async def test_postprocess_empty_transcript_returns_original(self, stt_agent):
+        """Empty transcript is returned as-is"""
+        with patch.dict("os.environ", {"OPENROUTER_API_KEY": "test-key"}):
+            result = await stt_agent._llm_post_process("", "ja")
+            assert result == ""
+
+    @pytest.mark.asyncio
+    async def test_postprocess_rejects_divergent_output(self, stt_agent):
+        """Output >3x input length is rejected as hallucination"""
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"choices": [{"message": {"content": "A" * 300}}]}
+
+        with (
+            patch.dict("os.environ", {"OPENROUTER_API_KEY": "test-key"}),
+            patch("backend.agents.stt_agent._get_stt_postprocess_client") as mock_fn,
+        ):
+            mock_client = AsyncMock()
+            mock_client.post = AsyncMock(return_value=mock_resp)
+            mock_fn.return_value = mock_client
+
+            result = await stt_agent._llm_post_process("短い", "ja")
+            assert result == "短い"
+
+    @pytest.mark.asyncio
+    async def test_postprocess_integration_vosk_enabled(self, stt_agent):
+        """Integration: Vosk + enabled → post-process runs"""
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"choices": [{"message": {"content": "修正済み"}}]}
+
+        with (
+            patch.dict(
+                "os.environ",
+                {
+                    "STT_LLM_POSTPROCESS": "true",
+                    "OPENROUTER_API_KEY": "test-key",
+                },
+            ),
+            patch("backend.agents.stt_agent._get_stt_postprocess_client") as mock_fn,
+            patch.object(
+                stt_agent,
+                "_try_fallback",
+                new_callable=AsyncMock,
+                return_value={
+                    "success": True,
+                    "transcript": "元テキスト",
+                    "provider": "vosk",
+                },
+            ),
+            patch.object(
+                stt_agent.stt_client,
+                "transcribe",
+                new_callable=AsyncMock,
+                return_value=TranscriptionResult(text="元テキスト", confidence=0.9, language="ja"),
+            ),
+        ):
+            mock_client = AsyncMock()
+            mock_client.post = AsyncMock(return_value=mock_resp)
+            mock_fn.return_value = mock_client
+
+            result = await stt_agent.speech_to_text(b"RIFF" + b"\x00" * 40, "ja")
+            assert result["transcript"] == "修正済み"
+            assert result["original_transcript"] == "元テキスト"
+            assert result["postprocessed"] is True
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
