@@ -923,9 +923,10 @@ class STTAgent:
                                 "You are a speech recognition "
                                 "post-processor for Engineer Cafe "
                                 "(エンジニアカフェ) in Fukuoka. "
-                                "Fix punctuation, correct proper nouns "
-                                "(エンジニアカフェ, Wi-Fi, etc.), "
-                                "and normalize formatting. "
+                                f"Input language: {language}. "
+                                "Fix punctuation, correct proper "
+                                "nouns (エンジニアカフェ, Wi-Fi, "
+                                "etc.), and normalize formatting. "
                                 "Return ONLY the corrected text, "
                                 "nothing else."
                             ),
@@ -940,7 +941,15 @@ class STTAgent:
                 corrected = (
                     data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
                 )
-                if corrected and len(corrected) > 0:
+                # Guard: reject hallucinated/injected output
+                if corrected and len(corrected) > len(transcript) * 3:
+                    logger.warning(
+                        "STT post-process too divergent: %d vs %d chars",
+                        len(corrected),
+                        len(transcript),
+                    )
+                    return transcript
+                if corrected:
                     logger.info(
                         "STT post-process: '%s' -> '%s'",
                         transcript[:40],
@@ -1050,7 +1059,7 @@ class STTAgent:
                 if (
                     response.get("success")
                     and provider == "vosk"
-                    and os.getenv("STT_LLM_POSTPROCESS", "true").lower() == "true"
+                    and os.getenv("STT_LLM_POSTPROCESS", "false").lower() == "true"
                 ):
                     original = response["transcript"]
                     response["transcript"] = await self._llm_post_process(
