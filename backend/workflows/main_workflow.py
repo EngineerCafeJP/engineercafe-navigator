@@ -13,10 +13,12 @@ import asyncio
 import base64
 import logging
 import os
+import re
 import time
 import uuid
 
 import cv2
+import httpx as _httpx
 import numpy as np
 from dataclasses import dataclass
 from typing import Annotated, Any, Optional, TypedDict, cast
@@ -40,6 +42,33 @@ logger = logging.getLogger(__name__)
 
 # 非同期シングルトン用ロック
 _workflow_lock = asyncio.Lock()
+
+# tRAG: Reusable httpx client for KO/ZH translation
+_trag_http_client: Optional["_httpx.AsyncClient"] = None
+
+# tRAG: Japanese kana detection for translation validation
+# NOTE: Intentionally kana-only (no CJK U+4E00-9FFF). Kanji-only
+# translations like "営業時間" are false-negatives, but including
+# CJK would also accept untranslated Chinese input. This trade-off
+# is documented in commit 72e42c974. Most natural Japanese sentences
+# contain at least one kana character.
+_JA_RE = re.compile(r"[\u3040-\u309f\u30a0-\u30ff]")
+
+# tRAG: Preamble pattern to strip from LLM translation output
+# Require delimiter (colon/space) after keyword to avoid stripping
+# valid Japanese like "以下の情報をお伝えします"
+_TRAG_PREAMBLE_RE = re.compile(
+    r"^(Translation:\s*|翻訳[：:]\s*|Here is[^:]*:\s*|以下[はがの]翻訳[：:]?\s*)",
+    re.IGNORECASE,
+)
+
+
+def _get_trag_client() -> "_httpx.AsyncClient":
+    """Return a shared httpx client for tRAG translation."""
+    global _trag_http_client
+    if _trag_http_client is None or _trag_http_client.is_closed:
+        _trag_http_client = _httpx.AsyncClient(timeout=10.0)
+    return _trag_http_client
 
 
 class WorkflowStateDict(TypedDict):
@@ -496,9 +525,9 @@ class MainWorkflow:
                 from backend.tools.enhanced_rag import EnhancedRAGSearch
                 from backend.utils.query_classifier import QueryClassifier
 
-                # Translate English queries to Japanese for knowledge base search.
-                # Chinese/Korean queries skip translation — the cross-lingual
-                # embedding model handles CJK similarity directly.
+                # tRAG: Translate non-Japanese queries to Japanese for
+                # knowledge base search. EN uses CTranslate2; KO/ZH use
+                # LLM-based translation via OpenRouter.
                 rag_query = query
                 if language == "en":
                     try:
@@ -509,13 +538,95 @@ class MainWorkflow:
                         ts = get_translation_service()
                         rag_query = await ts.translate(query, "en_to_ja")
                         logger.info(
-                            "Translated query for RAG: '%s' -> '%s'",
+                            "tRAG en->ja: '%s' -> '%s'",
                             query[:40],
                             rag_query[:40],
                         )
                     except Exception as trans_err:
                         logger.warning(
                             "Query translation failed, using original: %s",
+                            trans_err,
+                        )
+                elif language in ("ko", "zh"):
+                    try:
+                        _TRAG_MODEL = os.getenv(
+                            "TRAG_TRANSLATION_MODEL",
+                            "google/gemini-2.0-flash-001",
+                        )
+                        api_key = os.getenv("OPENROUTER_API_KEY", "")
+                        if not api_key:
+                            logger.warning(
+                                "OPENROUTER_API_KEY not set, skipping %s->ja",
+                                language,
+                            )
+                        else:
+                            client = _get_trag_client()
+                            resp = await client.post(
+                                "https://openrouter.ai/api/v1/chat/completions",
+                                headers={
+                                    "Authorization": f"Bearer {api_key}",
+                                    "Content-Type": "application/json",
+                                },
+                                json={
+                                    "model": _TRAG_MODEL,
+                                    "messages": [
+                                        {
+                                            "role": "system",
+                                            "content": (
+                                                "You are a translation "
+                                                "engine. Translate the "
+                                                "user's text to Japanese."
+                                                " Return ONLY the "
+                                                "Japanese translation."
+                                            ),
+                                        },
+                                        {
+                                            "role": "user",
+                                            "content": query,
+                                        },
+                                    ],
+                                    "max_tokens": 200,
+                                },
+                            )
+                            if resp.status_code == 200:
+                                data = resp.json()
+                                translated = (
+                                    data.get("choices", [{}])[0]
+                                    .get("message", {})
+                                    .get("content", "")
+                                    .strip()
+                                )
+                                # Sanitize LLM preamble
+                                translated = _TRAG_PREAMBLE_RE.sub("", translated).strip()
+                                if re.search(r"^[A-Za-z]{5,}", translated):
+                                    logger.warning(
+                                        "tRAG preamble: '%s'",
+                                        translated[:60],
+                                    )
+                                    translated = ""
+                                if translated and _JA_RE.search(translated):
+                                    rag_query = translated
+                                    logger.info(
+                                        "tRAG %s->ja: '%s' -> '%s'",
+                                        language,
+                                        query[:40],
+                                        rag_query[:40],
+                                    )
+                                elif translated:
+                                    logger.warning(
+                                        "tRAG not Japanese: '%s'",
+                                        translated[:60],
+                                    )
+                            else:
+                                logger.warning(
+                                    "OpenRouter %d: %s",
+                                    resp.status_code,
+                                    resp.text[:200],
+                                )
+                    except Exception as trans_err:
+                        logger.warning(
+                            "LLM translation (%s->ja) failed: %s",
+                            language,
                             trans_err,
                         )
 
@@ -677,7 +788,7 @@ class MainWorkflow:
 
         query = state.get("query", "")
         lang = decision.language or "ja"
-        if lang not in ("ja", "en"):
+        if lang not in ("ja", "en", "zh", "ko"):
             logger.warning("Greeting: unsupported language '%s', falling back to 'ja'", lang)
             lang = "ja"
         now = get_now_jst()
@@ -685,19 +796,25 @@ class MainWorkflow:
         templates = TIME_GREETING_TEMPLATES.get(period, TIME_GREETING_TEMPLATES["afternoon"])
         base_greeting = templates.get(lang, templates["ja"])
 
-        if lang == "en":
-            greeting_msg = (
-                f"{base_greeting} "
+        greeting_bodies = {
+            "ja": (
+                "ここはエンジニアのための無料コワーキングスペースです。"
+                "お気軽にご利用ください。何かお手伝いできることはありますか？"
+            ),
+            "en": (
                 "This is a free coworking space for engineers. "
                 "Feel free to make yourself at home. "
                 "How can I help you?"
-            )
-        else:
-            greeting_msg = (
-                f"{base_greeting}"
-                "ここはエンジニアのための無料コワーキングスペースです。"
-                "お気軽にご利用ください。何かお手伝いできることはありますか？"
-            )
+            ),
+            "zh": ("这里是面向工程师的免费共享工作空间。请随意使用。有什么可以帮助您的吗？"),
+            "ko": (
+                "이곳은 엔지니어를 위한 무료 코워킹 스페이스입니다. "
+                "편하게 이용해 주세요. 무엇을 도와드릴까요?"
+            ),
+        }
+        body = greeting_bodies.get(lang, greeting_bodies["ja"])
+        sep = " " if lang == "en" else ""
+        greeting_msg = f"{base_greeting}{sep}{body}"
 
         logger.info(
             "Inline greeting: lang=%s, period=%s, query=%s",
@@ -1385,7 +1502,7 @@ class MainWorkflow:
         node_attr = self._AGENT_NODE_MAP.get(target)
         if node_attr is None:
             raise ValueError(
-                f"Unknown target agent '{target}'. " f"Valid agents: {sorted(self._AGENT_NODE_MAP)}"
+                f"Unknown target agent '{target}'. Valid agents: {sorted(self._AGENT_NODE_MAP)}"
             )
 
         state = handoff.workflow_state

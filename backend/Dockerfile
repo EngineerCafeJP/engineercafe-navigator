@@ -63,9 +63,9 @@ FROM base AS production
 # Copy application code
 COPY . .
 
-# Note: In production, mount models (Vosk STT + Helsinki-NLP translation) via volume:
-#   volumes:
-#     - ./models:/app/models
+# Download Vosk STT models (~88MB) — required for Cloud Run where
+# volume mounts are not available.
+RUN bash scripts/download_vosk_models.sh models
 
 # Set ownership and switch to non-root user
 RUN chown -R appuser:appuser /app

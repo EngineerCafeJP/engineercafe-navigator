@@ -459,7 +459,7 @@ async def chat_stream(request: Request, body: ChatRequest):
             # Use astream for streaming
             async for event in workflow.astream(_build_workflow_payload(body, session_id)):
                 if interrupt_mgr.is_interrupted(body.session_id):
-                    yield f'data: {json.dumps({"type": "interrupted"})}\n\n'
+                    yield f"data: {json.dumps({'type': 'interrupted'})}\n\n"
                     break
                 if isinstance(event, dict):
                     yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
@@ -467,7 +467,7 @@ async def chat_stream(request: Request, body: ChatRequest):
             yield "data: [DONE]\n\n"
         except Exception as e:
             logger.exception("SSE stream error: %s", e)
-            yield f'data: {json.dumps({"error": "An internal error occurred"})}\n\n'
+            yield f"data: {json.dumps({'error': 'An internal error occurred'})}\n\n"
 
     return StreamingResponse(
         event_generator(),
@@ -524,6 +524,7 @@ class VoiceResponse(BaseModel):
     transcript: Optional[str] = None
     response: Optional[str] = None
     audioResponse: Optional[str] = None
+    audioFormat: Optional[str] = None  # "audio/wav" or "audio/mpeg"
     emotion: Optional[str] = None
     sessionId: Optional[str] = None
     error: Optional[str] = None
@@ -560,7 +561,8 @@ def _get_stt_agent():
     if _stt_agent is None:
         from backend.agents.stt_agent import STTAgent
 
-        _stt_agent = STTAgent()
+        # None のとき STTAgent 側で STT_PROVIDER / ENVIRONMENT に基づく既定を解決
+        _stt_agent = STTAgent(stt_provider=os.getenv("STT_PROVIDER"))
     return _stt_agent
 
 
@@ -670,12 +672,14 @@ async def voice_api(request: Request, body: VoiceRequest):
                     success=False,
                     error=result.get("error", "TTS failed"),
                     emotion=result.get("emotion"),
+                    audioFormat=result.get("format"),
                     sessionId=body.sessionId,
                 )
 
             return VoiceResponse(
                 success=True,
                 audioResponse=result.get("audioResponse"),
+                audioFormat=result.get("format"),
                 emotion=result.get("emotion"),
                 sessionId=body.sessionId,
             )

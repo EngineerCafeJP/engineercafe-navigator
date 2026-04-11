@@ -694,7 +694,10 @@ class STTAgent:
         Args:
             stt_provider: STT provider name
                 ('vosk', 'google', 'qwen', or 'qwen0.6b-cpu').
-                If None, uses STT_PROVIDER env var or 'qwen0.6b-cpu'.
+                If None, uses ``STT_PROVIDER`` env var; if that is also unset,
+                defaults to ``google`` when ``ENVIRONMENT=production``, else
+                ``qwen0.6b-cpu``. Cloud Run でイメージ同梱の Vosk を使う場合は
+                必ず ``STT_PROVIDER=vosk`` を設定すること。
             stt_client: Custom STT client instance.
                 If None, creates default based on provider.
             use_grammar: Whether to use domain-specific grammar.

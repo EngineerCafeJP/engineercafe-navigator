@@ -816,6 +816,16 @@ export default function CharacterAvatar({
 
         const available_expressions = blendShapeControllerRef.current.getAvailableExpressions();
         setVrmExpressionNames(available_expressions);
+
+        const requiredVisemes = ['aa', 'ih', 'ou', 'ee', 'oh'];
+        const missingVisemes = requiredVisemes.filter(v => !available_expressions.includes(v));
+        if (missingVisemes.length > 0) {
+          console.warn(
+            `[CharacterAvatar] VRM model missing lip sync expressions: ${missingVisemes.join(', ')}. ` +
+            `Available: ${available_expressions.join(', ')}`
+          );
+        }
+
         const initial_weights: Record<string, number> = {};
         available_expressions.forEach((name) => {
           initial_weights[name] = name === 'neutral' ? 1 : 0;

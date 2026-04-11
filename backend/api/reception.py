@@ -257,7 +257,9 @@ class VisitorIdentityInput(BaseModel):
 class ReceptionStartRequest(BaseModel):
     session_id: str = Field(min_length=1, max_length=128)
     language: Literal["ja", "en", "zh", "ko"] = "ja"
-    trigger_type: Literal["face_detection", "button_press", "wake_word", "nfc"] = "button_press"
+    trigger_type: Literal[
+        "face_detection", "button_press", "wake_word", "nfc", "sensor_trigger"
+    ] = "button_press"
     visitor_identity: Optional[VisitorIdentityInput] = None  # From OCR identification
 
 
@@ -597,8 +599,7 @@ async def complete_reception(
         raise HTTPException(
             status_code=409,
             detail=(
-                f"Session must be in 'routing' stage to complete, "
-                f"current stage: {session.stage}"
+                f"Session must be in 'routing' stage to complete, current stage: {session.stage}"
             ),
         )
 
