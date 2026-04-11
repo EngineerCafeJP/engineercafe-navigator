@@ -11,6 +11,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { getKioskResponseDisplayState } from '@/lib/kiosk-response-display';
 import type { VoiceLoadingPhase, VoiceSessionState } from './VoiceInterface';
 
 export function KioskVoiceStatusStack({
@@ -144,14 +145,15 @@ export function KioskVoiceStatusStack({
     isLoading && response.length > 0 && sessionState !== 'speaking';
   const isErrorVisible = Boolean(error) && errorVisibleUntil > now;
   const isOcrStatusVisible = Boolean(ocrStatus && ocrStatus.visibleUntil > now);
-  const isDefaultPromptVisible =
-    response.length === 0 &&
-    sessionState === 'idle' &&
-    defaultPromptVisibleUntil > now;
-  const displayResponse = response || (isDefaultPromptVisible ? labels.defaultPrompt : '');
-  const isResponseVisible =
-    displayResponse.length > 0 &&
-    (sessionState === 'speaking' || responseVisibleUntil > now || isDefaultPromptVisible);
+  const responseDisplay = getKioskResponseDisplayState({
+    response,
+    sessionState,
+    responseVisibleUntil,
+    defaultPromptVisibleUntil,
+    now,
+    defaultPrompt: labels.defaultPrompt,
+  });
+  const isResponseVisible = responseDisplay.showBubble;
   const isTranscriptVisible =
     transcript.length > 0 && !isSttLoading && transcriptVisibleUntil > now;
 
@@ -206,7 +208,9 @@ export function KioskVoiceStatusStack({
         >
           <Volume2 className="size-4 shrink-0" />
           <span data-testid="response-text">
-            {response ? `${labels.responseLabel}: ${response}` : displayResponse}
+            {responseDisplay.isLiveResponse
+              ? `${labels.responseLabel}: ${responseDisplay.text}`
+              : responseDisplay.text}
           </span>
         </div>
       ) : null}
