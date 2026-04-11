@@ -1622,5 +1622,173 @@ class TestSTTLLMPostProcess:
             assert result["postprocessed"] is True
 
 
+# ==============================================================================
+# Qwen Primary + Vosk Parallel Fallback (ADR-007)
+# ==============================================================================
+
+
+class TestQwenPrimaryParallel:
+    """Tests for qwen-primary provider with Vosk parallel fallback."""
+
+    def _make_agent(self, mock_qwen, mock_vosk):
+        """Create STTAgent wired for qwen-primary with mock clients."""
+        agent = STTAgent(
+            stt_provider="vosk",
+            stt_client=mock_qwen,
+            fallback_client=None,
+            language_processor=None,
+        )
+        agent.stt_provider = "qwen-primary"
+        agent._vosk_fallback_client = mock_vosk
+        return agent
+
+    @pytest.mark.asyncio
+    async def test_qwen_primary_success(self):
+        """Qwen succeeds -> provider='qwen-primary'"""
+        mock_qwen = MagicMock()
+        mock_qwen.transcribe = AsyncMock(
+            return_value=TranscriptionResult(
+                text="こんにちは",
+                confidence=0.95,
+                language="ja",
+            )
+        )
+        mock_vosk = MagicMock(spec=LocalSTTClient)
+        mock_vosk.transcribe = AsyncMock(
+            return_value=TranscriptionResult(
+                text="こんにちわ",
+                confidence=0.7,
+                language="ja",
+            )
+        )
+
+        agent = self._make_agent(mock_qwen, mock_vosk)
+        result = await agent.speech_to_text(b"audio", language="ja")
+
+        assert result["success"] is True
+        assert result["provider"] == "qwen-primary"
+        assert result["transcript"] == "こんにちは"
+
+    @pytest.mark.asyncio
+    async def test_qwen_timeout_vosk_fallback(self, monkeypatch):
+        """Qwen times out -> Vosk fallback with provider='vosk-fallback'"""
+        import asyncio
+
+        monkeypatch.setenv("QWEN_STT_TIMEOUT", "0.1")
+
+        async def slow_qwen(*args, **kwargs):
+            await asyncio.sleep(20)
+            return TranscriptionResult(text="late", confidence=0.9, language="ja")
+
+        mock_qwen = MagicMock()
+        mock_qwen.transcribe = slow_qwen
+        mock_vosk = MagicMock(spec=LocalSTTClient)
+        mock_vosk.transcribe = AsyncMock(
+            return_value=TranscriptionResult(
+                text="vosk result",
+                confidence=0.8,
+                language="ja",
+            )
+        )
+
+        agent = self._make_agent(mock_qwen, mock_vosk)
+        result = await agent.speech_to_text(b"audio", language="ja")
+
+        assert result["success"] is True
+        assert result["provider"] == "vosk-fallback"
+        assert result["transcript"] == "vosk result"
+
+    @pytest.mark.asyncio
+    async def test_qwen_error_vosk_fallback(self):
+        """Qwen raises exception -> Vosk fallback"""
+        mock_qwen = MagicMock()
+        mock_qwen.transcribe = AsyncMock(side_effect=RuntimeError("Model OOM"))
+        mock_vosk = MagicMock(spec=LocalSTTClient)
+        mock_vosk.transcribe = AsyncMock(
+            return_value=TranscriptionResult(
+                text="fallback ok",
+                confidence=0.75,
+                language="en",
+            )
+        )
+
+        agent = self._make_agent(mock_qwen, mock_vosk)
+        result = await agent.speech_to_text(b"audio", language="en")
+
+        assert result["success"] is True
+        assert result["provider"] == "vosk-fallback"
+        assert result["transcript"] == "fallback ok"
+
+    @pytest.mark.asyncio
+    async def test_both_fail_raises(self):
+        """Both Qwen and Vosk fail -> RuntimeError"""
+        mock_qwen = MagicMock()
+        mock_qwen.transcribe = AsyncMock(side_effect=RuntimeError("Qwen OOM"))
+        mock_vosk = MagicMock(spec=LocalSTTClient)
+        mock_vosk.transcribe = AsyncMock(side_effect=RuntimeError("Vosk model missing"))
+
+        agent = self._make_agent(mock_qwen, mock_vosk)
+        with pytest.raises(RuntimeError, match="Both"):
+            await agent.speech_to_text(b"audio", language="ja")
+
+    @pytest.mark.asyncio
+    async def test_vosk_ready_before_qwen(self):
+        """Vosk completes first but Qwen still wins when it succeeds"""
+        import asyncio
+
+        async def slow_qwen(*args, **kwargs):
+            await asyncio.sleep(0.05)
+            return TranscriptionResult(
+                text="qwen wins",
+                confidence=0.95,
+                language="ja",
+            )
+
+        mock_qwen = MagicMock()
+        mock_qwen.transcribe = slow_qwen
+        mock_vosk = MagicMock(spec=LocalSTTClient)
+        mock_vosk.transcribe = AsyncMock(
+            return_value=TranscriptionResult(
+                text="vosk fast",
+                confidence=0.8,
+                language="ja",
+            )
+        )
+
+        agent = self._make_agent(mock_qwen, mock_vosk)
+        result = await agent.speech_to_text(b"audio", language="ja")
+
+        assert result["provider"] == "qwen-primary"
+        assert result["transcript"] == "qwen wins"
+
+    @pytest.mark.asyncio
+    async def test_language_auto_detect(self):
+        """language=None -> Qwen called with language=None, Vosk uses auto_detect"""
+        mock_qwen = MagicMock()
+        mock_qwen.transcribe = AsyncMock(
+            return_value=TranscriptionResult(
+                text="hello world",
+                confidence=0.9,
+                language="en",
+            )
+        )
+        mock_vosk = MagicMock(spec=LocalSTTClient)
+        mock_vosk.transcribe_auto_detect = AsyncMock(
+            return_value=TranscriptionResult(
+                text="hello",
+                confidence=0.7,
+                language="en",
+            )
+        )
+
+        agent = self._make_agent(mock_qwen, mock_vosk)
+        result = await agent.speech_to_text(b"audio", language=None)
+
+        assert result["provider"] == "qwen-primary"
+        assert result["language"] == "en"
+        mock_qwen.transcribe.assert_called_once_with(b"audio", language=None)
+        mock_vosk.transcribe_auto_detect.assert_called_once_with(b"audio")
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
