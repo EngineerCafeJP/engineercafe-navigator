@@ -229,11 +229,12 @@ class STTAgent:
 
 ```
 # .env
-STT_PROVIDER=vosk    # デフォルト（既存動作）
+STT_PROVIDER=vosk    # 明示推奨（Cloud Run イメージ同梱 Vosk を使う場合）
 # STT_PROVIDER=qwen3  # qwen3-asr に切り替え
 ```
 
-`main.py:548-575` の `_get_stt_agent()` は変更不要（既に `os.getenv("STT_PROVIDER", "vosk")` を使用）。
+`main.py` の `_get_stt_agent()` は `STTAgent(stt_provider=os.getenv("STT_PROVIDER"))` で環境変数を渡す。
+`STT_PROVIDER` 未設定時の既定は `STTAgent` 内で解決される（本番かつ未設定なら `google`、それ以外は `qwen0.6b-cpu`）。Vosk を既定にしたい場合は必ず `STT_PROVIDER=vosk` を設定すること。
 
 ---
 

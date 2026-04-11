@@ -1,5 +1,12 @@
 # Cloud Run Service with Sidecar Containers (VoiceVox + Kokoro TTS)
 #
+# NOTE: 2026-04 時点の本番は gcloud で単一コンテナ + Artifact Registry イメージ運用が
+# 主流の場合があります。音声まわりの実体は必ず次で確認してから replace してください:
+#   gcloud run services describe engineer-cafe-backend --region asia-northeast1
+# Vosk STT を使う場合、backend コンテナに STT_PROVIDER=vosk を明示。TTS が piper の場合は
+# TTS_PROVIDER=piper と PIPER_PLUS_API_URL 等が別途必要（本 manifest の sidecar 構成とは
+# 一致しないことがあります）。
+#
 # Prerequisites before deploying:
 #   1. Copy the Kokoro TTS image from ghcr.io to Artifact Registry (Cloud Run
 #      does not allow ghcr.io images directly):

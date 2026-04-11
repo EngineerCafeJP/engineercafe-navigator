@@ -561,7 +561,8 @@ def _get_stt_agent():
     if _stt_agent is None:
         from backend.agents.stt_agent import STTAgent
 
-        _stt_agent = STTAgent()
+        # None のとき STTAgent 側で STT_PROVIDER / ENVIRONMENT に基づく既定を解決
+        _stt_agent = STTAgent(stt_provider=os.getenv("STT_PROVIDER"))
     return _stt_agent
 
 
