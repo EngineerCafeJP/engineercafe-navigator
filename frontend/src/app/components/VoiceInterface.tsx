@@ -253,7 +253,7 @@ export default function VoiceInterface({
   }, [metadata, onMetadataChange]);
 
   const clearLipSyncTimers = useCallback(() => {
-    lipSyncTimersRef.current.forEach((timerId) => window.clearTimeout(timerId));
+    lipSyncTimersRef.current.forEach((id) => cancelAnimationFrame(id));
     lipSyncTimersRef.current = [];
     onVisemeControl?.('Closed', 0);
   }, [onVisemeControl]);
@@ -337,16 +337,32 @@ export default function VoiceInterface({
 
   const scheduleLipSyncFrames = useCallback(
     (frames: LipSyncFrame[]) => {
-      if (!onVisemeControl) {
+      if (!onVisemeControl || frames.length === 0) {
         return;
       }
       clearLipSyncTimers();
-      frames.forEach((frame) => {
-        const timerId = window.setTimeout(() => {
+      const startTime = performance.now();
+      const lastFrameTime = frames[frames.length - 1].time;
+
+      const update = () => {
+        const elapsed = (performance.now() - startTime) / 1000;
+        const frame = frames.find((f, i) => {
+          const next = frames[i + 1];
+          return f.time <= elapsed && (!next || next.time > elapsed);
+        });
+        if (frame) {
           onVisemeControl(frame.mouthShape, frame.mouthOpen);
-        }, frame.time * 1000);
-        lipSyncTimersRef.current.push(timerId);
-      });
+        }
+        if (elapsed < lastFrameTime + 0.5) {
+          const rafId = requestAnimationFrame(update);
+          lipSyncTimersRef.current = [rafId];
+        } else {
+          onVisemeControl('Closed', 0);
+        }
+      };
+
+      const rafId = requestAnimationFrame(update);
+      lipSyncTimersRef.current = [rafId];
     },
     [clearLipSyncTimers, onVisemeControl],
   );

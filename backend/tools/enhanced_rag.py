@@ -106,6 +106,25 @@ QUERY_EXPANSION_MAP: Dict[str, List[str]] = {
     "いくら": ["料金", "pricing", "price", "cost", "fee", "値段", "無料", "有料"],
     "何時": ["営業時間", "opening hours", "business hours", "開館", "閉館"],
     "どこ": ["場所", "アクセス", "location", "access", "住所", "所在地"],
+    # Korean → Japanese keyword expansion (tRAG Phase 2)
+    "이용 시간": ["営業時間", "開館時間", "利用時間"],
+    "운영 시간": ["営業時間", "開館時間"],
+    "어디": ["場所", "アクセス", "住所", "所在地"],
+    "위치": ["場所", "アクセス", "住所", "所在地"],
+    "시설": ["設備", "施設", "facility"],
+    "요금": ["料金", "値段", "無料"],
+    "무료": ["無料", "料金", "pricing"],
+    "등록": ["利用方法", "登録", "初回", "初めて"],
+    "방문": ["来訪", "初めて", "利用方法"],
+    "와이파이": ["Wi-Fi", "WiFi", "ネットワーク"],
+    "이벤트": ["イベント", "セミナー", "勉強会"],
+    "회의실": ["会議室", "meeting room", "予約"],
+    # Chinese → Japanese keyword expansion
+    "营业时间": ["営業時間", "開館時間"],
+    "费用": ["料金", "値段", "無料"],
+    "位置": ["場所", "アクセス", "住所"],
+    "设施": ["設備", "施設", "facility"],
+    "登记": ["利用方法", "登録", "初回"],
 }
 
 
@@ -938,10 +957,9 @@ class EnhancedRAGSearch:
                     "訪問前に確認することをお勧めします。"
                 ),
                 "en": (
-                    "💡 Operating hours may vary by day."
-                    " We recommend checking before your visit."
+                    "💡 Operating hours may vary by day. We recommend checking before your visit."
                 ),
-                "zh": ("💡 营业时间可能因日期而异。" "建议您在来访前确认。"),
+                "zh": ("💡 营业时间可能因日期而异。建议您在来访前确认。"),
                 "ko": (
                     "💡 영업시간은 날에 따라 다를 수 있습니다."
                     " 방문 전에 확인하시는 것을 권장합니다."
@@ -953,21 +971,18 @@ class EnhancedRAGSearch:
                     "最新情報はスタッフにお問い合わせください。"
                 ),
                 "en": (
-                    "💡 Pricing plans may change."
-                    " Please contact staff for the latest information."
+                    "💡 Pricing plans may change. Please contact staff for the latest information."
                 ),
-                "zh": ("💡 价格方案可能会有变动。" "请联系工作人员获取最新信息。"),
-                "ko": ("💡 요금제는 변경될 수 있습니다." " 최신 정보는 직원에게 문의해 주세요."),
+                "zh": ("💡 价格方案可能会有变动。请联系工作人员获取最新信息。"),
+                "ko": ("💡 요금제는 변경될 수 있습니다. 최신 정보는 직원에게 문의해 주세요."),
             },
             "facility-info": {
-                "ja": (
-                    "💡 設備の利用方法がわからない場合は、" "スタッフにお気軽にお声がけください。"
-                ),
+                "ja": ("💡 設備の利用方法がわからない場合は、スタッフにお気軽にお声がけください。"),
                 "en": (
-                    "💡 If you're unsure how to use the facilities," " feel free to ask our staff."
+                    "💡 If you're unsure how to use the facilities, feel free to ask our staff."
                 ),
-                "zh": ("💡 如果您不确定如何使用设施，" "请随时向工作人员咨询。"),
-                "ko": ("💡 시설 이용 방법을 모르시면" " 직원에게 편하게 문의해 주세요."),
+                "zh": ("💡 如果您不确定如何使用设施，请随时向工作人员咨询。"),
+                "ko": ("💡 시설 이용 방법을 모르시면 직원에게 편하게 문의해 주세요."),
             },
         }
 

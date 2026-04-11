@@ -496,9 +496,9 @@ class MainWorkflow:
                 from backend.tools.enhanced_rag import EnhancedRAGSearch
                 from backend.utils.query_classifier import QueryClassifier
 
-                # Translate English queries to Japanese for knowledge base search.
-                # Chinese/Korean queries skip translation — the cross-lingual
-                # embedding model handles CJK similarity directly.
+                # tRAG: Translate non-Japanese queries to Japanese for
+                # knowledge base search. EN uses CTranslate2; KO/ZH use
+                # LLM-based translation via OpenRouter.
                 rag_query = query
                 if language == "en":
                     try:
@@ -509,13 +509,64 @@ class MainWorkflow:
                         ts = get_translation_service()
                         rag_query = await ts.translate(query, "en_to_ja")
                         logger.info(
-                            "Translated query for RAG: '%s' -> '%s'",
+                            "tRAG en->ja: '%s' -> '%s'",
                             query[:40],
                             rag_query[:40],
                         )
                     except Exception as trans_err:
                         logger.warning(
                             "Query translation failed, using original: %s",
+                            trans_err,
+                        )
+                elif language in ("ko", "zh"):
+                    try:
+                        import httpx
+
+                        api_key = os.getenv("OPENROUTER_API_KEY", "")
+                        if api_key:
+                            lang_name = {"ko": "Korean", "zh": "Chinese"}[language]
+                            async with httpx.AsyncClient(timeout=10.0) as client:
+                                resp = await client.post(
+                                    "https://openrouter.ai/api/v1/chat/completions",
+                                    headers={
+                                        "Authorization": f"Bearer {api_key}",
+                                        "Content-Type": "application/json",
+                                    },
+                                    json={
+                                        "model": "google/gemini-2.0-flash-001",
+                                        "messages": [
+                                            {
+                                                "role": "user",
+                                                "content": (
+                                                    f"Translate the following {lang_name}"
+                                                    " text to Japanese. Return ONLY the"
+                                                    f" translation:\n{query}"
+                                                ),
+                                            }
+                                        ],
+                                        "max_tokens": 200,
+                                    },
+                                )
+                                if resp.status_code == 200:
+                                    data = resp.json()
+                                    translated = (
+                                        data.get("choices", [{}])[0]
+                                        .get("message", {})
+                                        .get("content", "")
+                                        .strip()
+                                    )
+                                    if translated:
+                                        rag_query = translated
+                                        logger.info(
+                                            "tRAG %s->ja: '%s' -> '%s'",
+                                            language,
+                                            query[:40],
+                                            rag_query[:40],
+                                        )
+                    except Exception as trans_err:
+                        logger.warning(
+                            "LLM translation (%s->ja) failed: %s",
+                            language,
                             trans_err,
                         )
 
@@ -677,7 +728,7 @@ class MainWorkflow:
 
         query = state.get("query", "")
         lang = decision.language or "ja"
-        if lang not in ("ja", "en"):
+        if lang not in ("ja", "en", "zh", "ko"):
             logger.warning("Greeting: unsupported language '%s', falling back to 'ja'", lang)
             lang = "ja"
         now = get_now_jst()
@@ -685,19 +736,25 @@ class MainWorkflow:
         templates = TIME_GREETING_TEMPLATES.get(period, TIME_GREETING_TEMPLATES["afternoon"])
         base_greeting = templates.get(lang, templates["ja"])
 
-        if lang == "en":
-            greeting_msg = (
-                f"{base_greeting} "
+        greeting_bodies = {
+            "ja": (
+                "ここはエンジニアのための無料コワーキングスペースです。"
+                "お気軽にご利用ください。何かお手伝いできることはありますか？"
+            ),
+            "en": (
                 "This is a free coworking space for engineers. "
                 "Feel free to make yourself at home. "
                 "How can I help you?"
-            )
-        else:
-            greeting_msg = (
-                f"{base_greeting}"
-                "ここはエンジニアのための無料コワーキングスペースです。"
-                "お気軽にご利用ください。何かお手伝いできることはありますか？"
-            )
+            ),
+            "zh": ("这里是面向工程师的免费共享工作空间。请随意使用。有什么可以帮助您的吗？"),
+            "ko": (
+                "이곳은 엔지니어를 위한 무료 코워킹 스페이스입니다. "
+                "편하게 이용해 주세요. 무엇을 도와드릴까요?"
+            ),
+        }
+        body = greeting_bodies.get(lang, greeting_bodies["ja"])
+        sep = " " if lang == "en" else ""
+        greeting_msg = f"{base_greeting}{sep}{body}"
 
         logger.info(
             "Inline greeting: lang=%s, period=%s, query=%s",
@@ -1385,7 +1442,7 @@ class MainWorkflow:
         node_attr = self._AGENT_NODE_MAP.get(target)
         if node_attr is None:
             raise ValueError(
-                f"Unknown target agent '{target}'. " f"Valid agents: {sorted(self._AGENT_NODE_MAP)}"
+                f"Unknown target agent '{target}'. Valid agents: {sorted(self._AGENT_NODE_MAP)}"
             )
 
         state = handoff.workflow_state

@@ -25,6 +25,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# g2p-en (English phonemizer) requires NLTK data for POS tagging.
+# Download to a shared path so the non-root piper user can access it.
+ENV NLTK_DATA=/usr/local/share/nltk_data
+RUN python -c "import nltk; nltk.download('averaged_perceptron_tagger_eng', download_dir='/usr/local/share/nltk_data', quiet=True); nltk.download('cmudict', download_dir='/usr/local/share/nltk_data', quiet=True)"
+
 # アプリケーションファイル
 COPY server.py .
 

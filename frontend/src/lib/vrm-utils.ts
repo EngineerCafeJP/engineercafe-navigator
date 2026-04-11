@@ -653,7 +653,7 @@ export function getLipSyncFactorFromEmotions(
     const v = weights[name] ?? 0;
     return v > acc ? v : acc;
   }, 0);
-  return Math.max(0, 1 - max_emotion);
+  return Math.max(0.3, 1 - max_emotion * 0.5);
 }
 
 // VRM BlendShape Controller for Lip-sync and Expressions
