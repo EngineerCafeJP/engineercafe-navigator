@@ -134,13 +134,15 @@ What was actually implemented versus the original plan, as of 2026-03-29:
 - `api/reception.py` はシングルトンワークフローを使用（`asyncio.Lock` で保護）
 - `consultation` のルーティング先を `general_knowledge` に統一（plan 通り）
 
-### D3: 多言語RAG修正（tRAG） — DONE (PR #389)
+### D3: 多言語RAG修正（tRAG） — DONE (PR #389) + 暫定拡張 (PR #424)
 
 - 翻訳ガード変更: 英語クエリのみ日本語に翻訳してRAGを呼び出す（zh/ko はクロスリンガル埋め込みを直接使用し翻訳をスキップ）
 - `text_fallback_search` は常に `"ja"` でフィルタ（KB は日本語のみのため）
 - エンティティラベルとアドバイステンプレートを en/zh/ko に対応
 - 中国語・韓国語のグリーティングキーワードを追加
 - 新規テスト30件追加
+
+**暫定拡張 (PR #424, 2026-04-11)**: 韓国語RAGのほぼ全滅（38/38失敗）を受け、ko/zh クエリにもLLM翻訳（OpenRouter Gemini Flash）を暫定追加。クロスリンガル埋め込みのみでは精度不足と判明。正式方針はSTT provider比較（Issue #425）と合わせて再検討。
 
 ### D4: CRAG 強化 + bilingual FAQ — Partial (PR #391)
 
