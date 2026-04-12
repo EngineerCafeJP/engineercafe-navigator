@@ -119,15 +119,6 @@ def _load_qwen_vocab() -> List[str]:
     return _QWEN_VOCAB_CACHE
 
 
-def _edit_distance_ratio(a: str, b: str) -> float:
-    """Return 1 - SequenceMatcher ratio; 0.0 means identical."""
-    if not a:
-        return 1.0
-    import difflib
-
-    return 1.0 - difflib.SequenceMatcher(None, a, b).ratio()
-
-
 async def _qwen_llm_post_process(transcript: str, language: str) -> str:
     """LLM post-process for Qwen Japanese output with domain vocabulary hints.
 
@@ -182,12 +173,18 @@ async def _qwen_llm_post_process(transcript: str, language: str) -> str:
         corrected = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
         if not corrected:
             return transcript
-        # Edit-distance guard: reject paraphrases that changed > 55% of chars.
-        ratio = _edit_distance_ratio(transcript, corrected)
-        if ratio > 0.55:
+        # Length-divergence guard: reject only when the corrected text is
+        # wildly longer or shorter than the original. This permits legitimate
+        # script conversions (hiragana → katakana / kanji) which look totally
+        # "different" at the character level but preserve content length.
+        # Hallucinations and paraphrases tend to balloon or truncate length.
+        orig_len = len(transcript)
+        corr_len = len(corrected)
+        if orig_len == 0 or corr_len > orig_len * 2 or corr_len < orig_len * 0.5:
             logger.warning(
-                "Qwen post-process rejected (edit ratio %.2f): '%s' -> '%s'",
-                ratio,
+                "Qwen post-process rejected (length %d->%d): '%s' -> '%s'",
+                orig_len,
+                corr_len,
                 transcript[:40],
                 corrected[:40],
             )

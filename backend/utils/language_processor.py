@@ -53,6 +53,34 @@ HANGUL_PATTERN = re.compile(r"[\uac00-\ud7af\u1100-\u11ff\u3130-\u318f]")
 LATIN_PATTERN = re.compile(r"[a-zA-Z]")
 
 # 各言語のキーワード
+
+# Language detection design trade-offs (Bug #444):
+#
+# Engineer Cafe kiosk is in Japan; the primary language is Japanese. The
+# language detector resolves CJK ambiguity by preferring ja for queries that
+# could plausibly belong to either language. Specific trade-offs:
+#
+# 1. Pure Chinese place names without function words (e.g. "北京", "上海",
+#    "菜单") fall through to ja default. Adding a length-based zh CJK bonus
+#    would re-break Bug #444 (Japanese kanji-only queries like "時間",
+#    "福岡" misclassified as zh and answered in Chinese).
+#
+# 2. Shared kanji compounds (e.g. "未来", "目的地", "友好") are inherently
+#    ambiguous — they exist in both Japanese and Chinese with the same
+#    meaning. The dict-insertion-order tie-breaker resolves these to ja for
+#    the kiosk's primary user base.
+#
+# 3. Chinese queries containing function words (你, 我, 是, 的, 吗, 们, 这,
+#    那, 时, 间, 个, 师, 业 etc.) or distinctive simplified characters are
+#    correctly detected as zh. This covers all 7 RAGAS multilingual zh test
+#    cases and Codex round 1-3 verification cases.
+#
+# Trade-off rationale: Japanese is the primary user base for the Fukuoka
+# kiosk. Misclassifying a Japanese kanji query as Chinese (Bug #444) is
+# the original critical bug. Misclassifying rare Chinese noun-only queries
+# as Japanese is an acceptable secondary trade-off since (a) the kiosk
+# expects mostly Japanese-speaking visitors and (b) Chinese visitors
+# typically use sentences with function words rather than noun-only queries.
 JAPANESE_KEYWORDS = [
     # Particles (Japanese-only hiragana — strongest signal)
     "は",
