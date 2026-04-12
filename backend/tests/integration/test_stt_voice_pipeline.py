@@ -525,7 +525,12 @@ class TestVoiceAgentPipeline:
 
 
 class TestSTTToVoicePipeline:
-    """STT -> Voice のフルパイプライン統合テスト。"""
+    """STT -> Voice パイプライン統合テスト (hardcoded LLM responses).
+
+    このクラスは STT->TTS パイプラインを hardcoded な LLM レスポンスでテストします。
+    実際の STT->MainWorkflow->TTS フルパイプラインテストは
+    test_voice_full_pipeline.py を参照してください。
+    """
 
     async def test_full_pipeline_ja(
         self,

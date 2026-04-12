@@ -154,4 +154,5 @@ markers = [
     "vision: VisionAgent/OCR tests",
     "perf: performance benchmark tests",
     "adversarial: adversarial robustness tests",
+    "voice_pipeline: Voice full pipeline integration tests",
 ]

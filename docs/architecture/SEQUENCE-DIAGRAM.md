@@ -189,7 +189,7 @@ sequenceDiagram
 
 | 種別 | 入力 | 主なAPI | バックエンド処理 | 出力 |
 |------|------|---------|------------------|------|
-| **音声** | マイク録音（base64） | POST /api/voice (speech_to_text, process_voice, text_to_speech) | /api/voice はプレースホルダー。QA 部分は /api/chat → MainWorkflow | テキスト表示・音声再生・VRMリップシンク・表情 |
+| **音声** | マイク録音（base64） | POST /api/voice (speech_to_text, text_to_speech) | QA 部分は /api/chat → MainWorkflow | テキスト表示・音声再生・VRMリップシンク・表情 |
 | **テキスト** | テキスト質問 | POST /api/qa → Backend /api/chat | MainWorkflow (router → 専門エージェント → format_response) | テキスト表示・VRM表情 |
 | **画像** | 現状なし | — | — | 背景画像・スライド用画像は設定パネル/静的配置のみ。Q&A の画像入力は想定外 |
 | **スライド** | 操作・スライド内質問 | POST /api/slides | SlideAgent 直接 | スライド表示・ナレーション音声・回答表示 |

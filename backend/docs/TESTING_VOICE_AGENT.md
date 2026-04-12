@@ -477,32 +477,16 @@ curl -X POST http://localhost:8000/api/voice \
 
 ### 6.3 STT APIテスト（curl）
 
-> 現時点では`/api/voice`の`process_voice`アクションはプレースホルダーです。
-> STTAgent自体は実装済みですが、APIエンドポイントとの統合は未完了。
-
 ```bash
-# process_voice（プレースホルダー応答）
+# speech_to_text
 curl -X POST http://localhost:8000/api/voice \
   -H "Content-Type: application/json" \
   -d '{
-    "action": "process_voice",
-    "audioData": "",
+    "action": "speech_to_text",
+    "audioData": "<base64-encoded-wav>",
     "language": "ja",
     "sessionId": "test-session-001"
   }' | python -m json.tool
-```
-
-期待される応答（プレースホルダー）:
-
-```json
-{
-  "success": true,
-  "transcript": "音声処理中...",
-  "response": "音声処理機能は実装中です。",
-  "emotion": "neutral",
-  "sessionId": "test-session-001",
-  "error": null
-}
 ```
 
 ### 6.4 エラーケーステスト
@@ -610,7 +594,6 @@ docker compose logs voicevox --tail 20
 ### APIエンドポイント
 
 - [ ] `POST /api/voice` (text_to_speech) が200を返す
-- [ ] `POST /api/voice` (process_voice) がプレースホルダー応答を返す
 - [ ] 不正なリクエストが適切なエラーを返す
 
 ### Docker統合
@@ -701,7 +684,7 @@ VoiceVox DockerイメージはCPUモードで動作します。ARM版でも動�
 │                  (Next.js)                           │
 └─────────────┬───────────────────────────┬────────────┘
               │ POST /api/voice           │
-              │ action: text_to_speech    │ action: process_voice
+              │ action: text_to_speech    │ action: speech_to_text
               ▼                           ▼
 ┌─────────────────────────────────────────────────────┐
 │                  main.py                             │
