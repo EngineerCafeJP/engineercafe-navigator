@@ -162,7 +162,7 @@ async def _qwen_llm_post_process(transcript: str, language: str) -> str:
         corrected = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
         if not corrected:
             return transcript
-        # Edit-distance guard: reject paraphrases that changed > 30% of chars.
+        # Edit-distance guard: reject paraphrases that changed > 55% of chars.
         ratio = _edit_distance_ratio(transcript, corrected)
         if ratio > 0.55:
             logger.warning(

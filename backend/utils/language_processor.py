@@ -82,56 +82,43 @@ ENGLISH_KEYWORDS = [
     "facility",
 ]
 CHINESE_KEYWORDS = [
-    # Function words / particles
-    "的",
+    # zh-only function words / particles (rare or absent in Japanese)
     "是",
-    "了",
-    "在",
     "我",
-    "他",
     "她",
     "们",
     "吗",
     "呢",
     "吧",
-    "会",
     "这",
-    "那",
-    # Pronouns and common greetings
+    # Pronouns and common Chinese-only greetings
     "你",
     "您",
-    "好",
     "请",
     "谢",
-    # Question words
+    # Chinese-only question words
     "什么",
     "怎么",
     "为什么",
     "哪",
     "几",
-    "多少",
-    # Common content words
-    "不",
+    # Chinese-only content words
     "没",
-    "要",
-    "来",
     "今天",
     "明天",
     "现在",
-    # Simplified-Chinese-specific characters (distinct from Japanese kanji)
-    "时",
-    "间",
-    "个",
-    "对",
-    "开",
-    "关",
-    "说",
-    "爱",
-    # Domain-relevant simplified
-    "密码",
-    "营业",
-    "使用",
-    "可以",
+    # Simplified-Chinese-specific characters (Unicode-distinct from Japanese kanji)
+    "时",  # vs Japanese 時
+    "间",  # vs Japanese 間
+    "个",  # vs Japanese 個
+    "对",  # vs Japanese 対
+    "开",  # vs Japanese 開
+    "关",  # vs Japanese 関
+    "说",  # vs Japanese 説
+    "爱",  # vs Japanese 愛
+    # Simplified-Chinese-only domain compounds
+    "密码",  # vs Japanese パスワード
+    "营业",  # vs Japanese 営業
 ]
 KOREAN_KEYWORDS = ["은", "는", "이", "가", "을", "를", "에서", "입니다", "합니다", "있습니다"]
 

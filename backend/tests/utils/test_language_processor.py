@@ -45,6 +45,41 @@ class TestDetectJapanese:
         result = processor.detect_language("時間")
         assert result["detected"] == "ja"
 
+    def test_japanese_kanji_with_meeting_room(self, processor):
+        """Bug #444 regression: 会議室 (meeting room) must be ja, not zh."""
+        result = processor.detect_language("会議室")
+        assert result["detected"] == "ja"
+
+    def test_japanese_kanji_with_usage_fee(self, processor):
+        """Bug #444 regression: 使用料 (usage fee) must be ja, not zh."""
+        result = processor.detect_language("使用料")
+        assert result["detected"] == "ja"
+
+    def test_japanese_kanji_with_end_time(self, processor):
+        """Bug #444 regression: 終了時刻 (end time) must be ja, not zh."""
+        result = processor.detect_language("終了時刻")
+        assert result["detected"] == "ja"
+
+    def test_japanese_kanji_with_necessary(self, processor):
+        """Bug #444 regression: 必要 (necessary) must be ja, not zh."""
+        result = processor.detect_language("必要")
+        assert result["detected"] == "ja"
+
+    def test_japanese_kanji_with_impossible(self, processor):
+        """Bug #444 regression: 不可能 (impossible) must be ja, not zh."""
+        result = processor.detect_language("不可能")
+        assert result["detected"] == "ja"
+
+    def test_japanese_kanji_with_future(self, processor):
+        """Bug #444 regression: 未来 (future) must be ja, not zh."""
+        result = processor.detect_language("未来")
+        assert result["detected"] == "ja"
+
+    def test_japanese_kanji_with_member(self, processor):
+        """Bug #444 regression: 会員登録 (member registration) must be ja, not zh."""
+        result = processor.detect_language("会員登録")
+        assert result["detected"] == "ja"
+
 
 # =============================================================================
 # 英語
