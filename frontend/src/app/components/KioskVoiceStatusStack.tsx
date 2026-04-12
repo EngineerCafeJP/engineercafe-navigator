@@ -167,11 +167,13 @@ export function KioskVoiceStatusStack({
 
   if (!hasVisibleContent) {
     // Render an empty probe wrapper so E2E tests can observe sessionState
-    // transitions even when there is nothing to display. The wrapper has
-    // no visible children, so it has zero visual impact.
+    // transitions even when there is nothing to display. The wrapper is
+    // visually hidden via `sr-only` so it does not occupy layout space
+    // inside the parent flex container.
     return (
       <div
-        className="w-full space-y-2"
+        aria-hidden="true"
+        className="sr-only"
         data-testid="kiosk-voice-status"
         data-session-state={sessionState}
       />
