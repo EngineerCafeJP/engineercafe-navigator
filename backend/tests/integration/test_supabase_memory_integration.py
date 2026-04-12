@@ -14,6 +14,7 @@ Supabase DB結合テスト - SimplifiedMemoryHelper
   python -m pytest tests/integration/test_supabase_memory_integration.py -v
 """
 
+import logging
 import os
 import uuid
 import pytest
@@ -29,15 +30,40 @@ _supabase_available = bool(
     and _is_local_supabase
 )
 
+
+def _schema_ready() -> bool:
+    """Probe local Supabase for required tables before running integration tests.
+
+    Returns False (causing tests to skip) when the schema has not been applied
+    yet via ``supabase db push`` or a manual migration run. This prevents the
+    tests from crashing with cryptic PostgREST errors when the local instance
+    is empty.
+    """
+    if not _supabase_available:
+        return False
+    try:
+        from supabase import create_client
+
+        client = create_client(_supabase_url, os.getenv("SUPABASE_KEY", ""))
+        client.table("agent_memory").select("id").limit(1).execute()
+        return True
+    except Exception as exc:  # noqa: BLE001 - probe should never crash collection
+        logging.getLogger(__name__).info("Supabase schema probe failed: %s", exc)
+        return False
+
+
+_SCHEMA_READY = _schema_ready()
+
+
 pytestmark = [
     pytest.mark.integration,
     pytest.mark.asyncio,
     pytest.mark.skipif(
-        not _supabase_available,
+        not (_supabase_available and _SCHEMA_READY),
         reason=(
             "SUPABASE_URL/SUPABASE_KEY が未設定、test-key、"
-            "またはローカルSupabase以外"
-            "（localhost/127.0.0.1/kong が必要）"
+            "ローカルSupabase以外、または schema 未初期化"
+            "（localhost/127.0.0.1/kong + supabase db push が必要）"
         ),
     ),
 ]
