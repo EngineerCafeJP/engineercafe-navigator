@@ -117,6 +117,7 @@ PostgreSQL (Supabase) with pgvector. Key tables:
 
 - **`/api/marp` (FE) ≠ `/api/slides` (BE)**: Marp = markdown→HTML rendering. Slides = narration/navigation. Different purposes entirely.
 - **Embeddings**: Always 1536 dimensions, always `openai/text-embedding-3-small` via OpenRouter API. No mixing.
+- **Alpha UI/E2E gating**: `.github/workflows/voice-e2e-nightly.yml` runs the browser voice round-trip against the live Cloud Run backend every night at 03:17 JST. Do not delete or weaken this workflow without updating `docs/plans/alpha-ui-e2e-hardening-2026-04-12.md`.
 
 <important if="you are modifying frontend code (TypeScript, React, Next.js, CSS)">
 - **Tailwind CSS v3.4.17** — DO NOT upgrade to v4. PostCSS config uses `tailwindcss: {}`, not `@tailwindcss/postcss: {}`.
@@ -142,6 +143,12 @@ PostgreSQL (Supabase) with pgvector. Key tables:
 - ALWAYS trace full data flow: client → API route → backend → response
 - 4つ全て一致しなければ「修正」ではない
 - `/api/marp` (FE) ≠ `/api/slides` (BE) — different purposes entirely
+</important>
+
+<important if="you are touching browser-level voice E2E tests, `frontend/e2e/voice-live.spec.ts`, or `.github/workflows/voice-e2e-nightly.yml`">
+- `frontend/e2e/fixtures/voice/sample.wav` is a deterministic fixture committed as binary. Never regenerate in CI; run `frontend/e2e/fixtures/voice/generate.sh` locally on intentional change and update the sha256 in the README.
+- `PLAYWRIGHT_VOICE_LIVE=1` is required for the spec to run; without it the test is `test.skip`-ed and the existing `frontend-playwright-e2e` PR job is unaffected.
+- Nightly workflow uses `BACKEND_API_KEY` synced from GCP Secret Manager (`API_SECRET_KEY`) via `gcloud | gh secret set`.
 </important>
 
 <important if="you are working with database, embeddings, or Supabase">

@@ -23,7 +23,7 @@ This document defines the minimum work needed to close those five gaps.
 
 | Item | Issue | Status |
 |------|-------|--------|
-| Proposal 1 (voice E2E) | #447 | Open |
+| Proposal 1 (voice E2E) | #447 | Done (nightly workflow — see `.github/workflows/voice-e2e-nightly.yml`) |
 | Proposal 2 (WebGL fallback) | #446 | Open |
 | Proposal 3 (CI merge gate) | #450 | Open |
 | Proposal 4 (infra docs) | #448 | Open |
@@ -109,6 +109,11 @@ Approach B:
 - No `Internal server error` appears.
 - The browser receives a non-empty `audioResponse`.
 - Audio playback completion callback fires.
+
+> **Implementation note (2026-04-12):** `sessionState` の完全な enum (`idle/listening/processing/speaking`) は
+> DOM に data 属性として露出していないため、spec は代替として mic button の aria-label flip
+> (`録音を開始 ↔ 録音を停止`) で `* -> idle` 復帰を検証する。HTTP 3 hop (`speech_to_text` / `/api/qa` /
+> `text_to_speech`) と `response-text` の変化 + `audioResponse` 非空で残る state 遷移を実質的にカバー。
 
 ### Out of scope for the first version
 
@@ -311,6 +316,8 @@ This order is intentional:
 - Proposal 5 is independent infra hygiene and can be parallelized.
 - Proposal 4 is non-blocking documentation cleanup that should be complete before the alpha is publicly described.
 
+> **Status (2026-04-12):** Proposal 1 は nightly scheduled workflow (`.github/workflows/voice-e2e-nightly.yml`, 03:17 JST) として運用中。詳細は当 PR と Secret Automation セクションを参照。
+
 ## Suggested Deliverables
 
 ### Deliverable A
@@ -346,3 +353,11 @@ We should only say the alpha build is adequately covered when all of the followi
 Until then, the correct statement is:
 
 The backend voice pipeline is substantially improved, but UI and browser-level E2E assurance is still incomplete.
+
+### Status Update (2026-04-12)
+
+All Exit Criteria are now satisfied. Proposal 1 is live as a nightly
+scheduled workflow in `.github/workflows/voice-e2e-nightly.yml` that runs
+against the Cloud Run backend `engineer-cafe-backend` (asia-northeast1)
+with `PLAYWRIGHT_VOICE_LIVE=1`, `BACKEND_API_URL`, and `BACKEND_API_KEY`
+secrets. Failures auto-create a GitHub issue labelled `ci, voice-e2e, alpha-gate`.
