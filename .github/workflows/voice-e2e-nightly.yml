@@ -123,8 +123,7 @@ jobs:
         working-directory: ${{ github.workspace }}
         run: |
           gh issue create \
-            --title "Nightly voice E2E failed (run ${{ github.run_id }})" \
-            --label "ci,voice-e2e,alpha-gate" \
+            --title "[voice-e2e/alpha-gate] nightly voice E2E failed (run ${{ github.run_id }})" \
             --body "$(cat <<'BODY'
           Nightly voice-live E2E workflow failed.
 
