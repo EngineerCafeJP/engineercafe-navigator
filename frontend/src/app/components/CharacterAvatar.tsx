@@ -6,8 +6,16 @@ import { LipSyncAnalyzer } from '@/lib/lip-sync-analyzer';
 import { VRMBlendShapeController, VRMUtils, getLipSyncFactorFromEmotions } from '@/lib/vrm-utils';
 import { VRM, VRMLoaderPlugin } from '@pixiv/three-vrm';
 import { VRMAnimationLoaderPlugin, createVRMAnimationClip } from '@pixiv/three-vrm-animation';
-import { Settings, VolumeX } from 'lucide-react';
-import { useEffect, useRef, useState, useCallback, type ReactNode } from 'react';
+import { Settings, User, VolumeX } from 'lucide-react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  useCallback,
+  useMemo,
+  type CSSProperties,
+  type ReactNode,
+} from 'react';
 import { createPortal } from 'react-dom';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
@@ -225,7 +233,7 @@ export default function CharacterAvatar({
   const expressionWeightsUiRef = useRef<Record<string, number>>({});
   const lastManualExpressionUpdateMsRef = useRef<Record<string, number>>({});
   const lastSettingsPanelEmitMsRef = useRef(0);
-  const initializeSceneRef = useRef<() => void | (() => void)>(() => undefined);
+  const initializeSceneRef = useRef<() => { ok: boolean; disposeResize?: () => void }>(() => ({ ok: false }));
   const loadCharacterRef = useRef<() => Promise<void>>(async () => {});
   const cleanupRef = useRef<() => void>(() => {});
   const updateCharacterExpressionRef = useRef<(expression: string) => Promise<void>>(async () => {});
@@ -235,6 +243,7 @@ export default function CharacterAvatar({
   const loadedVrmSpecVersionRef = useRef<string | null>(null);
 
   const [isLoading, setIsLoading] = useState(true);
+  const [avatarRenderMode, setAvatarRenderMode] = useState<'webgl' | 'fallback'>('webgl');
   const [error, setError] = useState<string | null>(null);
   const [characterState, setCharacterState] = useState<CharacterState>({
     expression: initialExpression,
@@ -257,14 +266,18 @@ export default function CharacterAvatar({
 
   // Initialize Three.js scene
   useEffect(() => {
-    if (!containerRef.current) return;
-
-    const disposeScene = initializeSceneRef.current();
+    const init = initializeSceneRef.current();
+    if (!init.ok) {
+      setAvatarRenderMode('fallback');
+      setIsLoading(false);
+      return () => {
+        cleanupRef.current();
+      };
+    }
     void loadCharacterRef.current();
-
     return () => {
       cleanupRef.current();
-      disposeScene?.();
+      init.disposeResize?.();
     };
   }, []);
 
@@ -425,6 +438,36 @@ export default function CharacterAvatar({
     return { ...options, color1, color2, angle };
   };
 
+  const fallbackSurfaceStyle = useMemo((): CSSProperties => {
+    const bg =
+      background ?? {
+        type: 'gradient' as const,
+        color1: '#e0e7ff',
+        color2: '#c7d2fe',
+        angle: 135,
+      };
+    const normalized = normalizeBackgroundForScene(bg);
+    if (normalized.type === 'solid') {
+      const color = parseGradientColors(normalized.color1 || normalized.value || '#f5f5f5');
+      return { backgroundColor: color };
+    }
+    if (normalized.type === 'gradient') {
+      const c1 = normalized.color1 || '#e0e7ff';
+      const c2 = normalized.color2 || '#c7d2fe';
+      const angle = normalized.angle ?? 135;
+      return { background: `linear-gradient(${angle}deg, ${c1}, ${c2})` };
+    }
+    if (normalized.type === 'image' && (normalized.imageUrl || normalized.value)) {
+      const url = normalized.imageUrl || normalized.value || '';
+      return {
+        backgroundImage: `url(${JSON.stringify(url)})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+      };
+    }
+    return { background: 'linear-gradient(135deg, #e0e7ff, #c7d2fe)' };
+  }, [background]);
+
   const updateSceneBackground = (options: BackgroundOption) => {
     if (!sceneRef.current) return;
 
@@ -472,20 +515,31 @@ export default function CharacterAvatar({
     }
   };
 
-  const initializeScene = () => {
-    if (!containerRef.current) return;
+  const initializeScene = (): { ok: boolean; disposeResize?: () => void } => {
+    if (!containerRef.current) {
+      return { ok: false };
+    }
+
+    const clearSceneRefsOnFailure = () => {
+      const current = sceneRef.current;
+      if (current?.background instanceof THREE.Texture) {
+        current.background.dispose();
+      }
+      sceneRef.current = null;
+      cameraRef.current = null;
+    };
 
     // Scene with better background
     const scene = new THREE.Scene();
     sceneRef.current = scene;
-    
+
     // Set initial background
     if (background) {
       updateSceneBackground(background);
     } else {
       scene.background = new THREE.Color('#f5f5f5');
     }
-    
+
     scene.fog = new THREE.Fog(0xf5f5f5, 5, 10);
 
     // Camera
@@ -496,44 +550,54 @@ export default function CharacterAvatar({
       1000
     );
     camera.position.set(
-      0 + cameraPositionOffset.x, 
-      1.4 + cameraPositionOffset.y, 
+      0 + cameraPositionOffset.x,
+      1.4 + cameraPositionOffset.y,
       1.5 + cameraPositionOffset.z
     );
     camera.lookAt(0 + cameraPositionOffset.x, 1, 0);
     cameraRef.current = camera;
 
-    // Renderer with performance optimizations
-    // iOS detection removed - focusing on desktop/PC experience
-    const renderer = new THREE.WebGLRenderer({ 
-      antialias: true, // Enable antialiasing for desktop
-      alpha: true,
-      powerPreference: "low-power" // Use low-power GPU on mobile devices
-    });
+    let renderer: THREE.WebGLRenderer;
+    try {
+      renderer = new THREE.WebGLRenderer({
+        antialias: true,
+        alpha: true,
+        powerPreference: 'low-power',
+      });
+    } catch (err) {
+      console.warn('[CharacterAvatar] WebGL unavailable; using static avatar fallback.', err);
+      clearSceneRefsOnFailure();
+      return { ok: false };
+    }
+
+    if (!renderer.getContext()) {
+      renderer.dispose();
+      console.warn(
+        '[CharacterAvatar] WebGL unavailable; using static avatar fallback.',
+        new Error('No WebGL rendering context')
+      );
+      clearSceneRefsOnFailure();
+      return { ok: false };
+    }
+
     renderer.setSize(containerRef.current.clientWidth, containerRef.current.clientHeight);
-    
-    // Use native pixel ratio for desktop
+
     const pixelRatio = window.devicePixelRatio;
     renderer.setPixelRatio(pixelRatio);
-    
+
     renderer.outputColorSpace = THREE.SRGBColorSpace;
-    
-    // Enable shadows for desktop
+
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     containerRef.current.appendChild(renderer.domElement);
     rendererRef.current = renderer;
-    
-    // Add click event listener
+
     renderer.domElement.addEventListener('click', handleCanvasClick);
     renderer.domElement.style.cursor = enableClickAnimation ? 'pointer' : 'default';
 
-    // Enhanced lighting setup
-    // Ambient light for overall illumination
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.7 * lightingIntensity);
     scene.add(ambientLight);
 
-    // Main key light
     const directionalLight = new THREE.DirectionalLight(0xffffff, 0.9 * lightingIntensity);
     directionalLight.position.set(2, 3, 2);
     directionalLight.castShadow = true;
@@ -547,20 +611,16 @@ export default function CharacterAvatar({
     directionalLight.shadow.camera.bottom = -2;
     scene.add(directionalLight);
 
-    // Fill light to reduce harsh shadows
     const fillLight = new THREE.DirectionalLight(0xffffff, 0.4 * lightingIntensity);
     fillLight.position.set(-2, 2, 2);
     scene.add(fillLight);
 
-    // Rim/back light for character outline
     const rimLight = new THREE.DirectionalLight(0xffffff, 0.3 * lightingIntensity);
     rimLight.position.set(0, 2, -3);
     scene.add(rimLight);
 
-    // Clock for animations
     clockRef.current = new THREE.Clock();
 
-    // Handle window resize
     const handleResize = () => {
       if (!containerRef.current || !camera || !renderer) return;
 
@@ -571,11 +631,13 @@ export default function CharacterAvatar({
 
     window.addEventListener('resize', handleResize);
 
-    // Start render loop
     animate();
 
-    return () => {
-      window.removeEventListener('resize', handleResize);
+    return {
+      ok: true,
+      disposeResize: () => {
+        window.removeEventListener('resize', handleResize);
+      },
     };
   };
 
@@ -1092,8 +1154,16 @@ export default function CharacterAvatar({
   };
 
   useEffect(() => {
+    if (avatarRenderMode !== 'fallback') return;
+    onVisemeControl?.(() => {});
+    onExpressionControl?.(() => {});
+    onKeyframeAnimationControl?.(() => {});
+  }, [avatarRenderMode, onVisemeControl, onExpressionControl, onKeyframeAnimationControl]);
+
+  useEffect(() => {
+    if (avatarRenderMode === 'fallback') return;
     fetchVrmAnimations();
-  }, [fetchVrmAnimations]);
+  }, [fetchVrmAnimations, avatarRenderMode]);
 
   const updateCharacterExpression = async (expression: string) => {
     if (!charactersRef.current || !expression) return;
@@ -1466,14 +1536,25 @@ export default function CharacterAvatar({
 
   return (
     <div className="relative h-full bg-gray-100 rounded-lg overflow-hidden">
-      {/* 3D Scene Container */}
-      <div ref={containerRef} className="w-full h-full" />
+      {avatarRenderMode === 'fallback' ? (
+        <div
+          data-testid="character-avatar-fallback"
+          className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-4 text-gray-700"
+          style={fallbackSurfaceStyle}
+        >
+          <User className="h-16 w-16 opacity-80" aria-hidden />
+          <p className="max-w-sm text-center text-sm">
+            3Dアバターを表示できませんが、音声でのご利用はそのままお楽しみいただけます。
+          </p>
+        </div>
+      ) : (
+        <div ref={containerRef} className="h-full w-full" />
+      )}
 
-      {/* Loading Overlay */}
-      {isLoading && (
+      {avatarRenderMode !== 'fallback' && isLoading && (
         <div className="absolute inset-0 flex items-center justify-center bg-white bg-opacity-80">
           <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+            <div className="mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-b-2 border-blue-500"></div>
             <p className="text-gray-600">Loading character...</p>
           </div>
         </div>

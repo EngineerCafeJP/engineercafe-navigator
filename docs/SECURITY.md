@@ -1,10 +1,10 @@
 # Security Documentation
 
-> Last updated: 2026-03-15. This document reflects the security posture after the P0/P1 hardening sprint (PRs #233–#236, tracked under Issue #232). Earlier versions of this file described planned or aspirational controls; this version describes controls that are confirmed implemented and tested.
+> Last updated: 2026-04-12. This document reflects the current production topology: Vercel frontend, Cloud Run backend, and Supabase database.
 
 ## Overview
 
-Engineer Cafe Navigator is a multilingual voice AI agent system deployed as a Cloudflare Workers frontend backed by a Cloud Run FastAPI/LangGraph service and a Supabase database. The threat surface spans:
+Engineer Cafe Navigator is a multilingual voice AI agent system deployed as a Vercel-hosted Next.js frontend backed by a Cloud Run FastAPI/LangGraph service and a Supabase database. The threat surface spans:
 
 - Unauthenticated access to admin, cron, and monitoring API routes
 - Direct browser calls to backend services or the Supabase API
@@ -42,7 +42,7 @@ All routes under `/api/admin/*`, `/api/cron/*`, and `/api/monitoring/*` are prot
 
 **Excluded route**: `/api/alerts/webhook` is not covered by this middleware. It implements its own independent `ALERT_WEBHOOK_SECRET` verification.
 
-**Required environment variable**: `ADMIN_API_SECRET` — must be set in the Cloudflare Workers secret store for production deployments.
+**Required environment variable**: `ADMIN_API_SECRET` — must be set in the Vercel project environment for production deployments.
 
 ### Layer 2: Backend API Key (PR #234)
 
@@ -111,7 +111,7 @@ Key tables:
 
 The FastAPI backend uses `slowapi` for rate limiting keyed by remote address. The import is no longer a soft no-op: if `slowapi` cannot be imported, `main.py` calls `sys.exit(1)` in production and raises `RuntimeError` in other environments. This ensures rate limiting is either active or the process does not start.
 
-Infrastructure-level throttling (Cloud Run concurrency limits and Cloudflare Workers request limits) provides an additional layer.
+Infrastructure-level throttling (Cloud Run concurrency limits and Vercel/edge request limits) provides an additional layer.
 
 ---
 
@@ -147,9 +147,9 @@ The following secrets must be configured before a production deployment is valid
 
 | Variable | Service | Blocks startup | Purpose |
 |---|---|---|---|
-| `ADMIN_API_SECRET` | Frontend (Cloudflare) | Yes (returns 401 in prod) | Protects `/api/admin/*`, `/api/cron/*`, `/api/monitoring/*` |
+| `ADMIN_API_SECRET` | Frontend (Vercel) | Yes (returns 401 in prod) | Protects `/api/admin/*`, `/api/cron/*`, `/api/monitoring/*` |
 | `API_SECRET_KEY` | Backend (Cloud Run) | Yes (`sys.exit(1)`) | Authenticates frontend-to-backend requests |
-| `ALERT_WEBHOOK_SECRET` | Frontend (Cloudflare) | No | Authenticates `/api/alerts/webhook` POST |
+| `ALERT_WEBHOOK_SECRET` | Frontend (Vercel) | No | Authenticates `/api/alerts/webhook` POST |
 | `SUPABASE_SERVICE_ROLE_KEY` | Frontend + Backend | No (but functionally required) | Server-side Supabase access |
 | `OPENAI_API_KEY` | Backend | No (but functionally required) | Text embeddings |
 
@@ -198,7 +198,7 @@ The following items were identified during the 2026-03-14 hardening audit and ar
 
 **Contact**: security@engineer-cafe.jp
 
-**On credential exposure**: Rotate the affected secret immediately using Cloud Run `--update-env-vars` or Cloudflare Workers secrets. Do not reuse the exposed value. Audit access logs for the period between suspected exposure and rotation.
+**On credential exposure**: Rotate the affected secret immediately using Cloud Run `--update-env-vars` or the Vercel project environment settings. Do not reuse the exposed value. Audit access logs for the period between suspected exposure and rotation.
 
 ---
 
@@ -208,7 +208,7 @@ The following items were identified during the 2026-03-14 hardening audit and ar
 - [Web Crypto API — `SubtleCrypto.digest`](https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto/digest)
 - [Python `hmac.compare_digest`](https://docs.python.org/3/library/hmac.html#hmac.compare_digest)
 - [Supabase Row Level Security](https://supabase.com/docs/guides/auth/row-level-security)
-- [Cloudflare Workers Secrets](https://developers.cloudflare.com/workers/configuration/secrets/)
+- [Vercel Environment Variables](https://vercel.com/docs/projects/environment-variables)
 - [Cloud Run Secret Manager integration](https://cloud.google.com/run/docs/configuring/services/secrets)
 
 ---

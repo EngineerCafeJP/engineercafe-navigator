@@ -127,6 +127,67 @@ jobs:
           NEXT_PUBLIC_BACKEND_API_URL: ${{ secrets.NEXT_PUBLIC_BACKEND_API_URL || 'https://engineer-cafe-backend-639959525777.asia-northeast1.run.app' }}
           BACKEND_API_URL: ${{ secrets.BACKEND_API_URL || 'https://engineer-cafe-backend-639959525777.asia-northeast1.run.app' }}
 
+  # Frontend: Playwright E2E (smoke + reception subset)
+  frontend-playwright-e2e:
+    needs: [changes, frontend-build]
+    if: needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: frontend
+
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install chromium --with-deps
+        working-directory: frontend
+
+      - name: Run Playwright E2E (smoke + reception)
+        run: >-
+          pnpm exec playwright test
+          e2e/smoke.spec.ts
+          e2e/reception-flow.spec.ts
+          e2e/webgl-fallback.spec.ts
+        working-directory: frontend
+        env:
+          CI: true
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co' }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key' }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY || 'placeholder-service-role-key' }}
+          GOOGLE_GENERATIVE_AI_API_KEY: ${{ secrets.GOOGLE_GENERATIVE_AI_API_KEY || 'placeholder-google-ai-key' }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY || 'placeholder-openai-key' }}
+          NEXT_PUBLIC_BACKEND_API_URL: ${{ secrets.NEXT_PUBLIC_BACKEND_API_URL || 'https://engineer-cafe-backend-639959525777.asia-northeast1.run.app' }}
+          BACKEND_API_URL: ${{ secrets.BACKEND_API_URL || 'https://engineer-cafe-backend-639959525777.asia-northeast1.run.app' }}
+
+      - name: Upload Playwright HTML report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: frontend/playwright-report
+          retention-days: 14
+
+      - name: Upload Playwright test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-test-results
+          path: frontend/test-results
+          retention-days: 14
+
   # Backend: Lint
   backend-lint:
     needs: changes
@@ -339,7 +400,13 @@ jobs:
 
   # Final status check for branch protection
   ci-success:
-    needs: [frontend-lint, frontend-typecheck, frontend-build, backend-lint, backend-test]
+    needs:
+      - frontend-lint
+      - frontend-typecheck
+      - frontend-build
+      - frontend-playwright-e2e
+      - backend-lint
+      - backend-test
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -354,6 +421,7 @@ jobs:
             "${{ needs.frontend-lint.result }}" \
             "${{ needs.frontend-typecheck.result }}" \
             "${{ needs.frontend-build.result }}" \
+            "${{ needs.frontend-playwright-e2e.result }}" \
             "${{ needs.backend-lint.result }}" \
             "${{ needs.backend-test.result }}"; do
             if [[ "$job_result" == "failure" ]] || [[ "$job_result" == "cancelled" ]]; then

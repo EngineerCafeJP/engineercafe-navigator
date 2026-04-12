@@ -52,12 +52,26 @@ function mockReceptionStart(page: import('@playwright/test').Page, greeting?: st
   });
 }
 
+async function keepOcrCameraPending(page: import('@playwright/test').Page) {
+  await page.addInitScript(() => {
+    const mediaDevices = navigator.mediaDevices;
+    if (!mediaDevices) {
+      return;
+    }
+    mediaDevices.getUserMedia = async () =>
+      new Promise<MediaStream>(() => {
+        // Keep OCR overlays mounted without depending on real camera access.
+      });
+  });
+}
+
 // ---------------------------------------------------------------------------
 // A. Welcome button triggers reception greeting
 // ---------------------------------------------------------------------------
 
 test.describe('Reception flow — Welcome button', () => {
   test.beforeEach(async ({ page }) => {
+    await keepOcrCameraPending(page);
     await mockReceptionStart(page);
     // Stub QA endpoint to prevent real backend calls during voice flow.
     await page.route(`**${QA_CHAT_URL}`, async (route) => {
@@ -86,9 +100,8 @@ test.describe('Reception flow — Welcome button', () => {
     const welcomeButton = page.getByRole('button', { name: 'Welcome' });
     await welcomeButton.click();
 
-    // After clicking Welcome, the member-card OCR overlay should appear.
-    // The overlay contains a heading with the member-card label.
-    await expect(page.getByText(/会員証/)).toBeVisible({ timeout: 5_000 });
+    // After clicking Welcome, the compact member-card OCR overlay should appear.
+    await expect(page.getByTestId('kiosk-welcome-ocr-overlay')).toBeVisible({ timeout: 5_000 });
   });
 
   test('kiosk phase buttons are all present on idle screen', async ({ page }) => {
@@ -107,6 +120,7 @@ test.describe('Reception flow — Welcome button', () => {
 
 test.describe('Reception flow — device sensor trigger', () => {
   test.beforeEach(async ({ page }) => {
+    await keepOcrCameraPending(page);
     await mockReceptionStart(page);
     await page.route('**/api/voice', async (route) => {
       await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
@@ -132,7 +146,7 @@ test.describe('Reception flow — device sensor trigger', () => {
     });
 
     // The welcome flow should activate — member-card OCR overlay appears.
-    await expect(page.getByText(/会員証/)).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByTestId('kiosk-welcome-ocr-overlay')).toBeVisible({ timeout: 5_000 });
   });
 
   test('device-detection is ignored when kiosk is not in idle phase', async ({ page }) => {
@@ -169,6 +183,7 @@ test.describe('Reception flow — device sensor trigger', () => {
 
 test.describe('Reception flow — member card OCR', () => {
   test.beforeEach(async ({ page }) => {
+    await keepOcrCameraPending(page);
     await mockReceptionStart(page);
     await page.route('**/api/voice', async (route) => {
       await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
@@ -180,9 +195,7 @@ test.describe('Reception flow — member card OCR', () => {
   test('member card OCR overlay appears after Welcome click', async ({ page }) => {
     await page.getByRole('button', { name: 'Welcome' }).click();
 
-    // The OCR overlay shows the member-card label.
-    const ocrLabel = page.getByText(/会員証/);
-    await expect(ocrLabel).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByTestId('kiosk-welcome-ocr-overlay')).toBeVisible({ timeout: 5_000 });
   });
 
   test('dedicated member card button opens full OCR view', async ({ page }) => {
@@ -304,7 +317,8 @@ test.describe('Reception flow — settings', () => {
     await expect(settingsButton).toBeVisible();
     await settingsButton.click();
 
-    // Settings panel should now be visible with language/trigger options.
-    await expect(page.getByText(/表示言語|Display language/)).toBeVisible({ timeout: 3_000 });
+    await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible({
+      timeout: 3_000,
+    });
   });
 });

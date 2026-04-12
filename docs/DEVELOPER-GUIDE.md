@@ -36,7 +36,7 @@ docker run -d --name kokoro -p 8880:8880 ghcr.io/remsky/kokoro-fastapi:latest
 User Browser
     |
     v
-Cloudflare Workers (Frontend: Next.js 15)
+Vercel (Frontend: Next.js 15)
     |  Proxy: /api/* -> BACKEND_API_URL
     v
 Cloud Run (Backend: FastAPI + LangGraph)
@@ -53,7 +53,7 @@ Cloud Run (Backend: FastAPI + LangGraph)
 ### Frontend -> Backend Communication
 
 Frontend API routes proxy requests to the backend:
-- `BACKEND_API_URL` env var in `wrangler.jsonc` for production
+- `BACKEND_API_URL` / `NEXT_PUBLIC_BACKEND_API_URL` env vars in the Vercel project for production
 - `getBackendApiUrl()` in `frontend/src/lib/api/backend-url.ts` resolves the URL
 - Falls back to `http://localhost:8000` in local dev
 
@@ -91,7 +91,7 @@ Frontend API routes proxy requests to the backend:
 | Local Frontend | http://localhost:3000 |
 | Local Backend | http://localhost:8000 |
 | Local Backend Docs | http://localhost:8000/docs (Swagger UI) |
-| Production Frontend | https://engineer-cafe-navigator.your-domain.workers.dev |
+| Production Frontend | https://frontend-delta-six-20.vercel.app |
 | Production Backend | https://engineer-cafe-backend-639959525777.asia-northeast1.run.app |
 | Backend Health | `GET /api/health` |
 

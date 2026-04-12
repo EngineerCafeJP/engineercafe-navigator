@@ -131,6 +131,11 @@ export default function Home() {
     kioskPhaseRef.current = kioskPhase;
   }, [kioskPhase]);
 
+  const setKioskPhaseSynced = useCallback((nextPhase: KioskPhase) => {
+    kioskPhaseRef.current = nextPhase;
+    setKioskPhase(nextPhase);
+  }, []);
+
   const clearReturnToIdleTimer = useCallback(() => {
     if (returnToIdleTimerRef.current !== null) {
       clearTimeout(returnToIdleTimerRef.current);
@@ -147,8 +152,8 @@ export default function Home() {
   const returnToIdle = useCallback(() => {
     clearReturnToIdleTimer();
     kioskVisitCleanupRef.current?.();
-    setKioskPhase('idle');
-  }, [clearReturnToIdleTimer]);
+    setKioskPhaseSynced('idle');
+  }, [clearReturnToIdleTimer, setKioskPhaseSynced]);
 
   const scheduleReturnToIdle = useCallback(() => {
     clearReturnToIdleTimer();
@@ -256,7 +261,7 @@ export default function Home() {
     (language: 'ja' | 'en') => {
       clearReturnToIdleTimer();
       setCurrentLanguage(language);
-      setKioskPhase('slides');
+      setKioskPhaseSynced('slides');
 
       window.setTimeout(() => {
         window.dispatchEvent(
@@ -266,7 +271,7 @@ export default function Home() {
         );
       }, 150);
     },
-    [clearReturnToIdleTimer],
+    [clearReturnToIdleTimer, setKioskPhaseSynced],
   );
 
   const handleCloseSlides = useCallback(() => {
@@ -278,7 +283,7 @@ export default function Home() {
       <InitialSettingsModal
         language={currentLanguage}
         open={kioskPhase === 'notice'}
-        onClose={() => setKioskPhase('idle')}
+        onClose={() => setKioskPhaseSynced('idle')}
         onPreferencesSaved={(prefs) => {
           setCurrentLanguage(prefs.language);
           setTriggerMode(prefs.triggerMode);
@@ -407,7 +412,7 @@ export default function Home() {
 
             setOcrStatus(null);
             setKioskVoiceLocked(false);
-            setKioskPhase('voice');
+            setKioskPhaseSynced('voice');
             void voice.sendMessage(recognized);
           };
 
@@ -470,10 +475,7 @@ export default function Home() {
                   />
                 </div>
 
-                <div
-                  className="pointer-events-none absolute inset-0 z-30"
-                  aria-hidden={!showSettingsPanel}
-                >
+                <div className="pointer-events-none absolute inset-0 z-30">
                   <div
                   className="pointer-events-none absolute"
                   style={{

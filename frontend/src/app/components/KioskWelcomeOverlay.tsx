@@ -32,6 +32,7 @@ export function KioskWelcomeOverlay({
 
   return (
     <div
+      data-testid="kiosk-welcome-ocr-overlay"
       className="pointer-events-auto absolute z-[38] w-[min(92vw,13.5rem)] rounded-xl border border-white/25 bg-white/95 p-3 shadow-2xl backdrop-blur-md"
       style={{
         top: 'calc(max(1.5rem, env(safe-area-inset-top)) + 3.25rem)',
@@ -39,7 +40,12 @@ export function KioskWelcomeOverlay({
       }}
       onPointerDownCapture={bumpUserActivity}
     >
-      <p className="mb-2 text-center text-xs font-semibold text-slate-800">{labels.kioskOcrMember}</p>
+      <p
+        data-testid="kiosk-welcome-ocr-title"
+        className="mb-2 text-center text-xs font-semibold text-slate-800"
+      >
+        {labels.kioskOcrMember}
+      </p>
       <OcrCameraView
         key={welcomeMemberOcrSessionKey}
         mode="member_card"

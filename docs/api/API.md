@@ -2,13 +2,13 @@
 
 [日本語版](./API-ja.md) | English
 
-Updated for the current Cloudflare Workers + FastAPI deployment.
+Updated for the current Vercel + Cloud Run deployment.
 
 ## Overview
 
 Engineer Cafe Navigator uses a two-tier API architecture:
 
-- Public clients usually call the frontend routes at `https://engineer-cafe-navigator.company-997.workers.dev/api`.
+- Public clients usually call the frontend routes at `https://frontend-delta-six-20.vercel.app/api`.
 - Those frontend `/api/*` routes proxy to the FastAPI backend and attach `X-API-Key` automatically via `BACKEND_API_KEY`.
 - Admin, cron, and monitoring routes are protected at the frontend edge with `Authorization: Bearer <ADMIN_API_SECRET>`.
 - Core backend application routes such as `/api/chat` are not meant to be called directly from browsers.
@@ -16,7 +16,7 @@ Engineer Cafe Navigator uses a two-tier API architecture:
 ## Base URLs
 
 ```text
-Frontend production: https://engineer-cafe-navigator.company-997.workers.dev/api
+Frontend production: https://frontend-delta-six-20.vercel.app/api
 Frontend local:      http://localhost:3000/api
 Backend local:       http://localhost:8000
 ```
@@ -31,9 +31,9 @@ Backend local:       http://localhost:8000
 
 Notes:
 
-- `BACKEND_API_KEY` is a server-side secret used by the Next.js/Workers frontend when proxying requests to the backend.
+- `BACKEND_API_KEY` is a server-side secret used by the Next.js frontend when proxying requests to the backend.
 - `ADMIN_API_SECRET` is enforced by frontend middleware on `/api/admin/*`, `/api/cron/*`, and `/api/monitoring/*`.
-- The backend also restricts CORS to `https://engineer-cafe-navigator.company-997.workers.dev` plus local development origins.
+- The backend also restricts CORS to `https://frontend-delta-six-20.vercel.app` plus local development origins.
 
 ## Architecture Note
 
@@ -606,7 +606,7 @@ Backend validation and auth failures commonly use:
 
 ## Operational Notes
 
-- Required frontend secrets: `BACKEND_API_URL`, `BACKEND_API_KEY`, `ADMIN_API_SECRET`
+- Required frontend secrets: `NEXT_PUBLIC_BACKEND_API_URL`, `BACKEND_API_URL`, `BACKEND_API_KEY`, `ADMIN_API_SECRET`
 - Required backend secrets: `API_SECRET_KEY`
-- Backend health and CORS are configured for the Cloudflare Workers deployment domain
-- This document intentionally omits old Vercel demo and status links because they are no longer active
+- Backend health and CORS are configured for the Vercel production domain
+- Older Cloudflare references are legacy-only and should not be used for current operations
