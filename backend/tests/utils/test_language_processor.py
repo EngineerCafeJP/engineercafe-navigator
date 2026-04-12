@@ -70,10 +70,22 @@ class TestDetectChinese:
         assert result["detected"] == "zh"
         assert result["confidence"] == 0.9
 
-    def test_chinese_cjk_only(self, processor):
+    def test_cjk_only_defaults_to_ja(self, processor):
+        """Bug #444 fix: CJK-only text without Chinese keywords defaults to ja.
+
+        Previously, kanji-only inputs such as Japanese place names (e.g. "福岡")
+        or bare kanji queries (e.g. "時間") were misclassified as Chinese simply
+        because they contained CJK characters. Since Japanese is the primary
+        supported language and the knowledge base is Japanese-only, CJK-only
+        text without Chinese keyword evidence must resolve to "ja".
+        """
         result = processor.detect_language("福岡")
+        assert result["detected"] == "ja"
+
+    def test_chinese_with_keyword(self, processor):
+        """Regression guard: strings containing Chinese keywords still detect as zh."""
+        result = processor.detect_language("这里很好")
         assert result["detected"] == "zh"
-        assert result["confidence"] == 0.7
 
     def test_chinese_mixed_with_english(self, processor):
         result = processor.detect_language("WiFi的密码是什么")

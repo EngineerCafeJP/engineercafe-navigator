@@ -224,7 +224,9 @@ class LanguageProcessor:
             ),
             "en": a.en_keyword_count + (1 if a.has_latin else 0),
             "zh": (
-                (2 if a.has_cjk else 0) + a.zh_keyword_count - (1 if a.has_japanese_chars else 0)
+                (2 if (a.has_cjk and a.zh_keyword_count > 0) else 0)
+                + a.zh_keyword_count
+                - (1 if a.has_japanese_chars else 0)
             ),
             "ko": (2 if a.has_hangul else 0) + a.ko_keyword_count,
         }

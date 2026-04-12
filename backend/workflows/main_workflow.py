@@ -346,8 +346,17 @@ class MainWorkflow:
 
         language_processor = LanguageProcessor()
         language_result = language_processor.detect_language(query)
-        response_language = language_processor.determine_response_language(language_result)
-        return response_language or fallback_language
+        detected = language_processor.determine_response_language(language_result)
+
+        # Trust frontend fallback when detection is ambiguous or risks zh→ja flip.
+        # Kanji-only Japanese queries (e.g. "時間") cannot be distinguished from
+        # Chinese by statistical CJK scoring without hiragana/katakana markers.
+        confidence = language_result["confidence"]
+        if fallback_language in ("ja", "en", "zh", "ko"):
+            if confidence < 0.9 or (detected == "zh" and fallback_language == "ja"):
+                return fallback_language
+
+        return detected or fallback_language
 
     async def _store_fast_path_user_message(self, session_id: str, query: str) -> None:
         if not session_id or not query:
