@@ -329,7 +329,7 @@ class VoiceResponse(BaseModel):
 
 ```python
 async def _handle_stt(body: VoiceRequest) -> VoiceResponse:
-    """Shared STT processing for process_voice and speech_to_text"""
+    """Shared STT processing for speech_to_text action."""
     if not body.audioData:
         raise HTTPException(status_code=400,
                           detail="Missing audioData")
