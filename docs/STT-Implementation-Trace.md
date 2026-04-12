@@ -3,6 +3,9 @@
 **作成日:** 2026-03-28
 **プロジェクト:** Engineer Cafe Navigator
 **対象:** フロントエンド → バックエンド → Docker デプロイメント
+**更新:** 2026-04-12 - Wave 7 改善：`process_voice` 削除、STT → /api/chat → TTS の3分離設計に統一
+
+> **⚠️ 重要:** 本ドキュメントは Wave 7（ADR-006）での設計変更を反映しています。従来の `process_voice` 一括エンドポイントは削除されました。現行実装では、音声パイプラインは **STT（speech_to_text）→ /api/chat（質問ルーティング）→ TTS（text_to_speech）** の3つの分離された呼び出しで構成されています。
 
 ---
 
@@ -287,8 +290,6 @@ export async function POST(request: NextRequest) {
 async def voice_api(request: Request, body: VoiceRequest):
     try:
         if body.action == "speech_to_text":
-            return await _handle_stt(body)
-        elif body.action == "process_voice":
             return await _handle_stt(body)
         # ... other actions
     except Exception as e:
