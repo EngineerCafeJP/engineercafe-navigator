@@ -81,7 +81,6 @@ JAPANESE_KEYWORDS = [
     "予約",
     "利用",
     "案内",
-    "時間",  # Japanese form (vs simplified 时间)
     "開始",
     "場所",
     "価格",
@@ -118,8 +117,8 @@ ENGLISH_KEYWORDS = [
     "facility",
 ]
 CHINESE_KEYWORDS = [
-    # zh-only function words / particles
-    "的",  # most common Chinese particle (possessive/attributive)
+    # zh-only function words / particles (simplified)
+    "的",
     "是",
     "我",
     "她",
@@ -129,13 +128,12 @@ CHINESE_KEYWORDS = [
     "吧",
     "这",
     "那",
-    "可以",  # Chinese "can/may" — Japanese uses かのう/できる instead
     # Pronouns and Chinese-only greetings
     "你",
     "您",
     "请",
     "谢",
-    # Chinese-only question words
+    # Chinese-only question words (simplified)
     "什么",
     "怎么",
     "为什么",
@@ -146,6 +144,7 @@ CHINESE_KEYWORDS = [
     "今天",
     "明天",
     "现在",
+    "可以",
     # Simplified-Chinese-DISTINCT characters (Unicode-distinct from Japanese kanji)
     "时",  # vs Japanese 時
     "间",  # vs Japanese 間
@@ -155,14 +154,35 @@ CHINESE_KEYWORDS = [
     "关",  # vs Japanese 関
     "说",  # vs Japanese 説
     "爱",  # vs Japanese 愛
-    "师",  # vs Japanese 師 (engineer, teacher)
-    "书",  # vs Japanese 書 (book)
-    "现",  # vs Japanese 現 (now/present)
-    "业",  # vs Japanese 業 (business)
-    "钱",  # vs Japanese 錢/銭 (money)
+    "师",  # vs Japanese 師
+    "书",  # vs Japanese 書
+    "现",  # vs Japanese 現
+    "业",  # vs Japanese 業
+    "钱",  # vs Japanese 錢/銭
+    "议",  # vs Japanese 議 (会议 meeting, 建议 suggestion)
+    "动",  # vs Japanese 動 (活动 event, 运动 exercise)
+    "务",  # vs Japanese 務 (服务 service)
+    "头",  # vs Japanese 頭
+    "区",  # vs Japanese 區
+    "经",  # vs Japanese 經
+    "网",  # vs Japanese 網
+    "电",  # vs Japanese 電
+    "视",  # vs Japanese 視
+    # Chinese-only loanword / common-life characters (rare or absent in Japanese kanji)
+    "咖",  # 咖啡 = coffee (Japanese uses 珈琲 or katakana)
+    "啡",  # 咖啡
+    "厕",  # 厕所 = toilet (Japanese uses 廁 or トイレ)
+    # Traditional-Chinese function words / particles (rare in Japanese)
+    "這",  # traditional of 这
+    "麼",  # traditional of 么
+    "幾",  # traditional of 几
+    "嗎",  # traditional of 吗
+    "沒",  # traditional of 没
+    "點",  # traditional of 点 (point, marker for clock time)
+    "為",  # traditional of 为
     # Simplified-Chinese-only domain compounds
-    "密码",  # vs Japanese パスワード/暗証番号
-    "营业",  # vs Japanese 営業
+    "密码",
+    "营业",
 ]
 KOREAN_KEYWORDS = ["은", "는", "이", "가", "을", "를", "에서", "입니다", "합니다", "있습니다"]
 

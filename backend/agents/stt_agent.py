@@ -132,9 +132,12 @@ async def _qwen_llm_post_process(transcript: str, language: str) -> str:
     """LLM post-process for Qwen Japanese output with domain vocabulary hints.
 
     Returns the original transcript on any failure (OpenRouter error, timeout,
-    empty response, excessive divergence). Controlled by STT_QWEN_POSTPROCESS_ENABLED.
+    empty response, excessive divergence). Disabled by default — set
+    STT_QWEN_POSTPROCESS_ENABLED=true to opt in. This is a defense-in-depth
+    fix for Bug #439 (Qwen mangling proper nouns under noise) and adds
+    OpenRouter latency to every Japanese STT request when enabled.
     """
-    if os.getenv("STT_QWEN_POSTPROCESS_ENABLED", "true").lower() != "true":
+    if os.getenv("STT_QWEN_POSTPROCESS_ENABLED", "false").lower() != "true":
         return transcript
     if language != "ja":
         return transcript
