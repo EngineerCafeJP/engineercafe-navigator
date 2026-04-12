@@ -53,6 +53,17 @@ jobs:
       - name: Install Playwright Chromium
         run: pnpm exec playwright install chromium --with-deps
 
+      - name: Ensure triage labels exist
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        working-directory: ${{ github.workspace }}
+        run: |
+          for label in ci voice-e2e alpha-gate; do
+            gh label create "$label" --color BFD4F2 \
+              --description "Auto-created by voice-e2e-nightly workflow" \
+              2>/dev/null || echo "label $label already exists"
+          done
+
       - name: Validate live backend secret
         shell: bash
         run: |
@@ -82,7 +93,9 @@ jobs:
             echo "cold-start attempt $attempt failed, retrying in 10s..."
             sleep 10
           done
-          echo "warning: backend did not return healthy within the retry budget" >&2
+          echo "error: backend /health probe failed after 6 attempts" >&2
+          echo "Aborting voice-live run before Playwright wastes minutes on a dead backend." >&2
+          exit 1
         env:
           BACKEND_API_URL: ${{ secrets.BACKEND_API_URL }}
 
@@ -124,6 +137,7 @@ jobs:
         run: |
           gh issue create \
             --title "[voice-e2e/alpha-gate] nightly voice E2E failed (run ${{ github.run_id }})" \
+            --label "ci,voice-e2e,alpha-gate" \
             --body "$(cat <<'BODY'
           Nightly voice-live E2E workflow failed.
 
