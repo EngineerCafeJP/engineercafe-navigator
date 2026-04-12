@@ -82,11 +82,11 @@ test.describe('Voice live (browser voice round-trip against live backend)', () =
     );
 
     await voiceButton.click();
-    // Kiosk mode does not render STATUS_LABELS text (that branch lives in
-    // VoiceInterface's showDefaultUI={true} path). Instead, KioskBottomBar
-    // toggles the voice button to an emerald tint while kioskVoiceLocked
-    // is true, which is the only state signal exposed on the DOM.
-    await expect(voiceButton).toHaveClass(/bg-emerald-500/, {
+    // KioskVoiceStatusStack mirrors VoiceInterface's sessionState as a
+    // data-session-state attribute. Listening is the first post-click
+    // state; processing/speaking follow after STT returns.
+    const voiceStatus = page.getByTestId('kiosk-voice-status');
+    await expect(voiceStatus).toHaveAttribute('data-session-state', 'listening', {
       timeout: 15_000,
     });
     // Brief pause to let Chromium's fake audio device feed at least one
@@ -131,11 +131,12 @@ test.describe('Voice live (browser voice round-trip against live backend)', () =
     expect(finalText.toLowerCase()).not.toContain('internal server error');
     expect(finalText).not.toMatch(/stack trace|500 internal/i);
 
-    // Session must return to idle after speaking. The kiosk voice button
-    // drops the emerald tint once kioskVoiceLocked flips back to false,
-    // which is the observable proxy for the listening/processing/speaking
-    // chain ending and the VoiceInterface returning to idle.
-    await expect(voiceButton).not.toHaveClass(/bg-emerald-500/, {
+    // Session must return to idle after speaking. Unlike kioskVoiceLocked
+    // (which is user-driven — it drops immediately on the stop click),
+    // data-session-state reflects the VoiceInterface's actual lifecycle
+    // and only flips back to 'idle' after STT → QA → TTS → playback
+    // completes.
+    await expect(voiceStatus).toHaveAttribute('data-session-state', 'idle', {
       timeout: 90_000,
     });
     await expect(voiceButton).toBeEnabled();
