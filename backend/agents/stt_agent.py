@@ -59,7 +59,11 @@ _QWEN_VOCAB_CACHE: Optional[List[str]] = None
 
 
 def _load_qwen_vocab() -> List[str]:
-    """Load domain vocabulary once for Qwen post-processing hints."""
+    """Load domain vocabulary once for Qwen post-processing hints.
+
+    Reads backend/data/stt_vocabulary.json which has structure:
+    {"vocabulary": [{"word": "エンジニアカフェ", ...}, ...]}
+    """
     global _QWEN_VOCAB_CACHE
     if _QWEN_VOCAB_CACHE is not None:
         return _QWEN_VOCAB_CACHE
@@ -71,33 +75,26 @@ def _load_qwen_vocab() -> List[str]:
             _QWEN_VOCAB_CACHE = []
             return _QWEN_VOCAB_CACHE
         raw = json.loads(vocab_path.read_text())
-        # Normalize to list[str] — accept either list or dict structures.
-        if isinstance(raw, list):
-            words = [str(w) for w in raw if isinstance(w, (str, int, float))]
-        elif isinstance(raw, dict):
-            if "words" in raw and isinstance(raw["words"], list):
-                words = [str(w) for w in raw["words"]]
-            else:
-                # Dict-of-dicts: collect keys and any nested "word"/"text" fields.
-                words = []
-                for key, val in raw.items():
-                    if isinstance(key, str):
-                        words.append(key)
-                    if isinstance(val, dict):
-                        if "word" in val and isinstance(val["word"], str):
-                            words.append(val["word"])
-                        elif "text" in val and isinstance(val["text"], str):
-                            words.append(val["text"])
-        else:
-            words = []
+        words: List[str] = []
+        # Preferred schema: {"vocabulary": [{"word": "...", ...}, ...]}
+        if isinstance(raw, dict) and isinstance(raw.get("vocabulary"), list):
+            for entry in raw["vocabulary"]:
+                if isinstance(entry, dict):
+                    word = entry.get("word")
+                    if isinstance(word, str) and word.strip():
+                        words.append(word.strip())
+                elif isinstance(entry, str) and entry.strip():
+                    words.append(entry.strip())
+        # Legacy / fallback: plain list of strings
+        elif isinstance(raw, list):
+            words = [str(w).strip() for w in raw if isinstance(w, (str, int, float))]
         # Deduplicate while preserving order.
         seen = set()
         deduped: List[str] = []
         for w in words:
-            w_clean = w.strip()
-            if w_clean and w_clean not in seen:
-                seen.add(w_clean)
-                deduped.append(w_clean)
+            if w and w not in seen:
+                seen.add(w)
+                deduped.append(w)
         _QWEN_VOCAB_CACHE = deduped
     except Exception as exc:
         logger.warning("Qwen vocab load failed: %s", exc)
@@ -155,7 +152,7 @@ async def _qwen_llm_post_process(transcript: str, language: str) -> str:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": transcript},
                 ],
-                "max_tokens": 200,
+                "max_tokens": 600,
             },
         )
         if resp.status_code != 200:
@@ -167,7 +164,7 @@ async def _qwen_llm_post_process(transcript: str, language: str) -> str:
             return transcript
         # Edit-distance guard: reject paraphrases that changed > 30% of chars.
         ratio = _edit_distance_ratio(transcript, corrected)
-        if ratio > 0.3:
+        if ratio > 0.55:
             logger.warning(
                 "Qwen post-process rejected (edit ratio %.2f): '%s' -> '%s'",
                 ratio,
