@@ -11,6 +11,7 @@ ragas が未インストールの環境では全テストがスキップされ�
 
 import json
 import logging
+import os
 from pathlib import Path
 import pytest
 
@@ -38,6 +39,20 @@ PHASE_B_IDS = {
 }
 
 BASELINE_THRESHOLD = 0.7
+
+
+def _is_real_key(name: str) -> bool:
+    """Placeholder / test keys (test-*, placeholder*) は実際のAPI呼び出しに使えない"""
+    val = os.environ.get(name, "")
+    if not val:
+        return False
+    lower = val.lower()
+    return not (
+        lower.startswith("test-") or lower.startswith("placeholder") or val == "your_key_here"
+    )
+
+
+_HAS_REAL_API_KEY = _is_real_key("OPENAI_API_KEY") or _is_real_key("OPENROUTER_API_KEY")
 
 # LLM が要求された 3 generations のうち 1 しか返さない既知の問題
 # (ragas pydantic_prompt.py:303) により faithfulness / answer_correctness が
@@ -118,6 +133,10 @@ class TestGroundTruthIntegrity:
 
 
 @pytest.mark.ragas
+@pytest.mark.skipif(
+    not _HAS_REAL_API_KEY,
+    reason="Real OPENAI_API_KEY or OPENROUTER_API_KEY required (test-* keys are excluded)",
+)
 class TestRagasPhaseB:
     """Phase B ground truth に対する RAGAS 評価"""
 

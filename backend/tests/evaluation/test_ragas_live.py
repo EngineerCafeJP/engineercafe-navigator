@@ -18,10 +18,8 @@ import pytest
 from backend.evaluation.ragas_pipeline import RagasEvaluator, RagasReport, RagasResult
 from backend.tests.fixtures.dataset_loader import DatasetLoader
 
-# Skip entire module if no API key is available
-_has_api_key = bool(os.environ.get("OPENAI_API_KEY") or os.environ.get("OPENROUTER_API_KEY"))
 
-
+# Skip entire module if no real API key is available (test-* / placeholder keys are excluded)
 def _is_real_key(name: str) -> bool:
     val = os.environ.get(name, "")
     if not val:
@@ -32,9 +30,15 @@ def _is_real_key(name: str) -> bool:
     )
 
 
+_has_api_key = _is_real_key("OPENAI_API_KEY") or _is_real_key("OPENROUTER_API_KEY")
+
+
 pytestmark = [
     pytest.mark.ragas,
-    pytest.mark.skipif(not _has_api_key, reason="OPENAI_API_KEY or OPENROUTER_API_KEY required"),
+    pytest.mark.skipif(
+        not _has_api_key,
+        reason="Real OPENAI_API_KEY or OPENROUTER_API_KEY required (test-* keys are excluded)",
+    ),
 ]
 
 
