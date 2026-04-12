@@ -54,7 +54,7 @@ LATIN_PATTERN = re.compile(r"[a-zA-Z]")
 
 # 各言語のキーワード
 JAPANESE_KEYWORDS = [
-    # Particles (existing — Japanese-only hiragana)
+    # Particles (Japanese-only hiragana — strongest signal)
     "は",
     "が",
     "を",
@@ -66,27 +66,32 @@ JAPANESE_KEYWORDS = [
     "ます",
     "だ",
     "である",
-    # Common Japanese kanji compounds (distinguish kanji-only ja from zh)
-    "目的",
-    "必要",
-    "重要",
-    "終了",
-    "使用",
-    "会議",
-    "会員",
-    "会場",
-    "完了",
+    # Japanese kanji compounds where embedded chars are ALSO in CHINESE_KEYWORDS.
+    # These exist solely to break ties via dict insertion order — when both ja and
+    # zh score equally, the "ja" key comes first in the scores dict, so ja wins.
+    # Kanji-only Japanese queries containing 的/他/会/来/了/好 would otherwise
+    # be misclassified as zh.
+    "目的",  # contains 的
+    "目的地",  # contains 的
+    "他人",  # contains 他
+    "会議",  # contains 会
+    "会員",  # contains 会
+    "会場",  # contains 会
+    "未来",  # contains 来
+    "将来",  # contains 来
+    "来年",  # contains 来
+    "終了",  # contains 了
+    "完了",  # contains 了
+    "良好",  # contains 好
+    "友好",  # contains 好
+    # Japanese-specific compounds (kanji unique to Japanese vs simplified Chinese).
+    # These are kept because they include Japanese-only characters (営, 予, 受, 価, 場, 案, 申).
     "営業",
     "受付",
     "予約",
-    "利用",
     "案内",
-    "開始",
     "場所",
     "価格",
-    "料金",
-    "詳細",
-    "確認",
     "申込",
 ]
 ENGLISH_KEYWORDS = [
@@ -117,17 +122,23 @@ ENGLISH_KEYWORDS = [
     "facility",
 ]
 CHINESE_KEYWORDS = [
-    # zh-only function words / particles (simplified)
+    # Function words / particles (simplified)
     "的",
     "是",
+    "了",  # also breaks Japanese 終了/完了 → handled via JA_KW tie-breaker
+    "在",
     "我",
+    "他",  # also breaks Japanese 他人 → handled via JA_KW tie-breaker
     "她",
     "们",
     "吗",
     "呢",
     "吧",
+    "会",  # also breaks Japanese 会議/会員/会場 → handled via JA_KW
     "这",
     "那",
+    "好",  # also breaks Japanese 良好/友好 → handled via JA_KW
+    "来",  # also breaks Japanese 未来/将来/来年 → handled via JA_KW
     # Pronouns and Chinese-only greetings
     "你",
     "您",
@@ -146,40 +157,40 @@ CHINESE_KEYWORDS = [
     "现在",
     "可以",
     # Simplified-Chinese-DISTINCT characters (Unicode-distinct from Japanese kanji)
-    "时",  # vs Japanese 時
-    "间",  # vs Japanese 間
-    "个",  # vs Japanese 個
-    "对",  # vs Japanese 対
-    "开",  # vs Japanese 開
-    "关",  # vs Japanese 関
-    "说",  # vs Japanese 説
-    "爱",  # vs Japanese 愛
-    "师",  # vs Japanese 師
-    "书",  # vs Japanese 書
-    "现",  # vs Japanese 現
-    "业",  # vs Japanese 業
-    "钱",  # vs Japanese 錢/銭
-    "议",  # vs Japanese 議 (会议 meeting, 建议 suggestion)
-    "动",  # vs Japanese 動 (活动 event, 运动 exercise)
-    "务",  # vs Japanese 務 (服务 service)
-    "头",  # vs Japanese 頭
-    "区",  # vs Japanese 區
-    "经",  # vs Japanese 經
-    "网",  # vs Japanese 網
-    "电",  # vs Japanese 電
-    "视",  # vs Japanese 視
-    # Chinese-only loanword / common-life characters (rare or absent in Japanese kanji)
-    "咖",  # 咖啡 = coffee (Japanese uses 珈琲 or katakana)
-    "啡",  # 咖啡
-    "厕",  # 厕所 = toilet (Japanese uses 廁 or トイレ)
-    # Traditional-Chinese function words / particles (rare in Japanese)
-    "這",  # traditional of 这
-    "麼",  # traditional of 么
-    "幾",  # traditional of 几
-    "嗎",  # traditional of 吗
-    "沒",  # traditional of 没
-    "點",  # traditional of 点 (point, marker for clock time)
-    "為",  # traditional of 为
+    "时",
+    "间",
+    "个",
+    "对",
+    "开",
+    "关",
+    "说",
+    "爱",
+    "师",
+    "书",
+    "现",
+    "业",
+    "钱",
+    "议",
+    "动",
+    "务",
+    "头",
+    "区",
+    "经",
+    "网",
+    "电",
+    "视",
+    # Chinese-only loanword / common-life characters
+    "咖",
+    "啡",
+    "厕",
+    # Traditional-Chinese function words / particles
+    "這",
+    "麼",
+    "幾",
+    "嗎",
+    "沒",
+    "點",
+    "為",
     # Simplified-Chinese-only domain compounds
     "密码",
     "营业",
