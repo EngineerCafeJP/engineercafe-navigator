@@ -51,6 +51,138 @@ def _get_stt_postprocess_client() -> "_stt_httpx.AsyncClient":
     return _stt_postprocess_client
 
 
+# ---------------------------------------------------------------------------
+# Qwen LLM post-processing with domain vocabulary (Bug #439)
+# ---------------------------------------------------------------------------
+
+_QWEN_VOCAB_CACHE: Optional[List[str]] = None
+
+
+def _load_qwen_vocab() -> List[str]:
+    """Load domain vocabulary once for Qwen post-processing hints."""
+    global _QWEN_VOCAB_CACHE
+    if _QWEN_VOCAB_CACHE is not None:
+        return _QWEN_VOCAB_CACHE
+    try:
+        from pathlib import Path
+
+        vocab_path = Path(__file__).parent.parent / "data" / "stt_vocabulary.json"
+        if not vocab_path.exists():
+            _QWEN_VOCAB_CACHE = []
+            return _QWEN_VOCAB_CACHE
+        raw = json.loads(vocab_path.read_text())
+        # Normalize to list[str] — accept either list or dict structures.
+        if isinstance(raw, list):
+            words = [str(w) for w in raw if isinstance(w, (str, int, float))]
+        elif isinstance(raw, dict):
+            if "words" in raw and isinstance(raw["words"], list):
+                words = [str(w) for w in raw["words"]]
+            else:
+                # Dict-of-dicts: collect keys and any nested "word"/"text" fields.
+                words = []
+                for key, val in raw.items():
+                    if isinstance(key, str):
+                        words.append(key)
+                    if isinstance(val, dict):
+                        if "word" in val and isinstance(val["word"], str):
+                            words.append(val["word"])
+                        elif "text" in val and isinstance(val["text"], str):
+                            words.append(val["text"])
+        else:
+            words = []
+        # Deduplicate while preserving order.
+        seen = set()
+        deduped: List[str] = []
+        for w in words:
+            w_clean = w.strip()
+            if w_clean and w_clean not in seen:
+                seen.add(w_clean)
+                deduped.append(w_clean)
+        _QWEN_VOCAB_CACHE = deduped
+    except Exception as exc:
+        logger.warning("Qwen vocab load failed: %s", exc)
+        _QWEN_VOCAB_CACHE = []
+    return _QWEN_VOCAB_CACHE
+
+
+def _edit_distance_ratio(a: str, b: str) -> float:
+    """Return 1 - SequenceMatcher ratio; 0.0 means identical."""
+    if not a:
+        return 1.0
+    import difflib
+
+    return 1.0 - difflib.SequenceMatcher(None, a, b).ratio()
+
+
+async def _qwen_llm_post_process(transcript: str, language: str) -> str:
+    """LLM post-process for Qwen Japanese output with domain vocabulary hints.
+
+    Returns the original transcript on any failure (OpenRouter error, timeout,
+    empty response, excessive divergence). Controlled by STT_QWEN_POSTPROCESS_ENABLED.
+    """
+    if os.getenv("STT_QWEN_POSTPROCESS_ENABLED", "true").lower() != "true":
+        return transcript
+    if language != "ja":
+        return transcript
+    api_key = os.getenv("OPENROUTER_API_KEY", "")
+    if not api_key or not transcript.strip():
+        return transcript
+
+    vocab = _load_qwen_vocab()
+    vocab_hint = ", ".join(vocab[:15]) if vocab else ""
+    model = os.getenv("STT_POSTPROCESS_MODEL", "google/gemini-2.0-flash-001")
+
+    system_prompt = (
+        "You correct Japanese speech-to-text transcription errors for "
+        "Engineer Cafe (エンジニアカフェ) in Fukuoka. "
+        + (f"Domain terms that may appear: {vocab_hint}. " if vocab_hint else "")
+        + "Only correct phonetically similar errors. Do NOT paraphrase, "
+        "translate, or add commentary. Return ONLY the corrected Japanese "
+        "transcript."
+    )
+
+    try:
+        client = _get_stt_postprocess_client()
+        resp = await client.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": transcript},
+                ],
+                "max_tokens": 200,
+            },
+        )
+        if resp.status_code != 200:
+            logger.warning("Qwen post-process %d: %s", resp.status_code, resp.text[:100])
+            return transcript
+        data = resp.json()
+        corrected = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+        if not corrected:
+            return transcript
+        # Edit-distance guard: reject paraphrases that changed > 30% of chars.
+        ratio = _edit_distance_ratio(transcript, corrected)
+        if ratio > 0.3:
+            logger.warning(
+                "Qwen post-process rejected (edit ratio %.2f): '%s' -> '%s'",
+                ratio,
+                transcript[:40],
+                corrected[:40],
+            )
+            return transcript
+        if corrected != transcript:
+            logger.info("Qwen post-process: '%s' -> '%s'", transcript[:40], corrected[:40])
+        return corrected
+    except Exception as exc:
+        logger.warning("Qwen LLM post-process failed: %s", exc)
+        return transcript
+
+
 WAV_RIFF_HEADER = b"RIFF"
 MIN_WAV_HEADER_BYTES = 44
 MAX_AUDIO_UPLOAD_BYTES = 10 * 1024 * 1024
@@ -677,10 +809,29 @@ class QwenSTTClient:
     ) -> TranscriptionResult:
         loop = asyncio.get_running_loop()
         with concurrent.futures.ThreadPoolExecutor() as pool:
-            return await loop.run_in_executor(
+            result = await loop.run_in_executor(
                 pool,
                 lambda: self._sync_transcribe(audio_data, language),
             )
+
+        # Apply LLM post-processing for Japanese transcripts to correct
+        # domain-specific proper nouns (エンジニアカフェ, Wi-Fi, etc.).
+        # Env-toggled (STT_QWEN_POSTPROCESS_ENABLED), falls back to raw on
+        # any failure, guarded by edit-distance threshold.
+        if result.language == "ja" and result.text.strip():
+            try:
+                corrected_text = await _qwen_llm_post_process(result.text, result.language)
+                if corrected_text != result.text:
+                    result = TranscriptionResult(
+                        text=corrected_text,
+                        confidence=result.confidence,
+                        language=result.language,
+                        word_confidences=result.word_confidences,
+                    )
+            except Exception as exc:
+                logger.warning("Qwen post-process wrapper failed: %s", exc)
+
+        return result
 
 
 class Qwen06BCpuSTTClient(QwenSTTClient):
