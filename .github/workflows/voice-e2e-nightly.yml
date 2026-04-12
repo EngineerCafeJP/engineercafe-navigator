@@ -1,12 +1,14 @@
-name: Voice E2E (nightly)
+name: Voice E2E (live backend)
 
 on:
-  schedule:
-    # 18:17 UTC == 03:17 JST next day.
-    # Runs off the critical PR path so Cloud Run cold-start latency never
-    # gates developer merges. See docs/plans/alpha-ui-e2e-hardening-2026-04-12.md
-    # Proposal 1 for the rationale.
-    - cron: '17 18 * * *'
+  # NOTE: GitHub only evaluates `schedule` triggers from the repository's
+  # default branch (`main`). This workflow is merged to `develop` first and
+  # runs on-demand via workflow_dispatch. The nightly cron will be enabled
+  # in a follow-up PR that lands the same workflow on `main` (or via the
+  # develop -> main release PR), after which the following schedule block
+  # can be re-introduced at that time:
+  #   schedule:
+  #     - cron: '17 18 * * *'  # 03:17 JST (18:17 UTC previous day)
   workflow_dispatch: {}
 
 permissions:

@@ -117,7 +117,7 @@ PostgreSQL (Supabase) with pgvector. Key tables:
 
 - **`/api/marp` (FE) ≠ `/api/slides` (BE)**: Marp = markdown→HTML rendering. Slides = narration/navigation. Different purposes entirely.
 - **Embeddings**: Always 1536 dimensions, always `openai/text-embedding-3-small` via OpenRouter API. No mixing.
-- **Alpha UI/E2E gating**: `.github/workflows/voice-e2e-nightly.yml` runs the browser voice round-trip against the live Cloud Run backend every night at 03:17 JST. Do not delete or weaken this workflow without updating `docs/plans/alpha-ui-e2e-hardening-2026-04-12.md`.
+- **Alpha UI/E2E gating**: `.github/workflows/voice-e2e-nightly.yml` runs the browser voice round-trip against the live Cloud Run backend via `workflow_dispatch` (nightly cron to be re-enabled after the workflow file lands on the default branch `main`). Do not delete or weaken this workflow without updating `docs/plans/alpha-ui-e2e-hardening-2026-04-12.md`.
 
 <important if="you are modifying frontend code (TypeScript, React, Next.js, CSS)">
 - **Tailwind CSS v3.4.17** — DO NOT upgrade to v4. PostCSS config uses `tailwindcss: {}`, not `@tailwindcss/postcss: {}`.

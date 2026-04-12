@@ -23,7 +23,7 @@ This document defines the minimum work needed to close those five gaps.
 
 | Item | Issue | Status |
 |------|-------|--------|
-| Proposal 1 (voice E2E) | #447 | Done (nightly workflow — see `.github/workflows/voice-e2e-nightly.yml`) |
+| Proposal 1 (voice E2E) | #447 | Done (workflow dispatch — see `.github/workflows/voice-e2e-nightly.yml`; cron schedule to be enabled after default-branch sync) |
 | Proposal 2 (WebGL fallback) | #446 | Open |
 | Proposal 3 (CI merge gate) | #450 | Open |
 | Proposal 4 (infra docs) | #448 | Open |
@@ -316,7 +316,7 @@ This order is intentional:
 - Proposal 5 is independent infra hygiene and can be parallelized.
 - Proposal 4 is non-blocking documentation cleanup that should be complete before the alpha is publicly described.
 
-> **Status (2026-04-12):** Proposal 1 は nightly scheduled workflow (`.github/workflows/voice-e2e-nightly.yml`, 03:17 JST) として運用中。詳細は当 PR と Secret Automation セクションを参照。
+> **Status (2026-04-12):** Proposal 1 は `.github/workflows/voice-e2e-nightly.yml` として `workflow_dispatch` 経由で運用中。cron schedule は default branch (`main`) にこの workflow file が反映された後（develop → main release PR を想定）に再有効化する。Exit Criterion は dispatch による green run で満たす。
 
 ## Suggested Deliverables
 
@@ -361,3 +361,5 @@ scheduled workflow in `.github/workflows/voice-e2e-nightly.yml` that runs
 against the Cloud Run backend `engineer-cafe-backend` (asia-northeast1)
 with `PLAYWRIGHT_VOICE_LIVE=1`, `BACKEND_API_URL`, and `BACKEND_API_KEY`
 secrets. Failures auto-create a GitHub issue labelled `ci, voice-e2e, alpha-gate`.
+
+The cron schedule is intentionally deferred: GitHub evaluates `schedule` triggers only from the repository's default branch (`main`), so the nightly cron will be re-enabled in a follow-up PR that lands `.github/workflows/voice-e2e-nightly.yml` on `main` (typically via the next develop → main release PR). Until then, Exit Criterion #7 is satisfied by a manual `workflow_dispatch` run.
