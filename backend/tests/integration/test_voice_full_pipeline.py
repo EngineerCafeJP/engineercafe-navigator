@@ -244,6 +244,9 @@ class TestVoiceFullPipeline:
             result["stage"] == "complete"
         ), f"Pipeline stopped at {result['stage']}: {result.get('error')}"
 
+        # STT returned correct language
+        assert result["stt_result"]["language"] == "ja"
+
         # Workflow routed to business_info
         wf = result["workflow_result"]
         assert wf.get("answer") is not None
@@ -298,6 +301,9 @@ class TestVoiceFullPipeline:
             result["stage"] == "complete"
         ), f"Pipeline stopped at {result['stage']}: {result.get('error')}"
 
+        # STT returned correct language
+        assert result["stt_result"]["language"] == "en"
+
         # Workflow produced an answer
         wf = result["workflow_result"]
         assert wf.get("answer") is not None
@@ -339,16 +345,17 @@ class TestVoiceFullPipeline:
             result["stage"] == "complete"
         ), f"Pipeline stopped at {result['stage']}: {result.get('error')}"
 
-        # STT detected language
+        # STT auto-detected language must be explicit
         assert result["stt_result"]["language"] == "ja"
 
-        # Workflow used the detected language
+        # Workflow used the detected language (not the None hint)
         wf = result["workflow_result"]
         assert wf.get("answer") is not None
 
-        # TTS received language from pipeline
+        # TTS received the auto-detected language from pipeline
         tts = result["tts_result"]
         assert tts["success"] is True
+        assert tts.get("language") == "ja"
 
     # ------------------------------------------------------------------
     # Test 4: Emotion propagation through pipeline

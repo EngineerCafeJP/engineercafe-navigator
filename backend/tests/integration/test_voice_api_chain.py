@@ -214,6 +214,10 @@ class TestVoiceApiChain:
             assert stt_data["success"] is True
             assert stt_data["transcript"]
 
+            # Verify STT returned the expected transcript
+            expected_transcript = "エンジニアカフェの営業時間は？"
+            assert stt_data["transcript"] == expected_transcript
+
             # Step 2: Chat (use STT output directly)
             chat_resp = await self._call_chat(
                 client,
@@ -224,6 +228,11 @@ class TestVoiceApiChain:
             chat_data = chat_resp.json()
             assert chat_data["answer"]
             assert "emotion" in chat_data
+
+            # Verify workflow received the correct transcript from STT
+            mock_wf.ainvoke.assert_awaited_once()
+            call_args = mock_wf.ainvoke.call_args[0][0]
+            assert call_args["query"] == expected_transcript
 
             # Step 3: TTS (use Chat output directly)
             tts_resp = await self._call_tts(
