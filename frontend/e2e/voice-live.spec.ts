@@ -31,8 +31,8 @@ function parseAction(request: Request): string | undefined {
 
 test.describe('Voice live (browser voice round-trip against live backend)', () => {
   test.skip(
-    !voiceLive || !process.env.BACKEND_API_KEY,
-    'Set PLAYWRIGHT_VOICE_LIVE=1 + BACKEND_API_KEY (BACKEND_API_URL optional) to run live voice E2E.',
+    !voiceLive || !process.env.BACKEND_API_URL || !process.env.BACKEND_API_KEY,
+    'Set PLAYWRIGHT_VOICE_LIVE=1 + BACKEND_API_URL + BACKEND_API_KEY to run live voice E2E.',
   );
 
   test.describe.configure({ mode: 'serial' });
@@ -84,12 +84,15 @@ test.describe('Voice live (browser voice round-trip against live backend)', () =
     );
 
     await voiceButton.click();
-    await expect(page.getByRole('button', { name: '録音を停止' })).toBeVisible({
+    // Kiosk shows "Listening" from STATUS_LABELS.en when the VoiceInterface
+    // enters the listening state. We assert on that text because the mic
+    // button aria-label (`録音を停止`) is only rendered in the hidden
+    // showDefaultUI={true} path, not in kiosk mode.
+    await expect(page.getByText('Listening', { exact: true })).toBeVisible({
       timeout: 15_000,
     });
-    // Brief pause to let Chromium's --use-file-for-fake-audio-capture device
-    // feed at least one chunk of the fixture WAV (1.8s) into the MediaRecorder
-    // before we stop. Otherwise the resulting blob may be empty.
+    // Brief pause to let Chromium's fake audio device feed at least one
+    // chunk of the 1.8s fixture WAV into the real MediaRecorder.
     await page.waitForTimeout(2500);
     await voiceButton.click();
 
@@ -130,10 +133,11 @@ test.describe('Voice live (browser voice round-trip against live backend)', () =
     expect(finalText.toLowerCase()).not.toContain('internal server error');
     expect(finalText.toLowerCase()).not.toContain('error');
 
-    // Session should return to idle after speaking — mic button aria-label
-    // flips back to 録音を開始 and is re-enabled.
-    await expect(page.getByRole('button', { name: '録音を開始' })).toBeVisible({
-      timeout: 60_000,
+    // Session must return to idle after speaking. In kiosk mode the
+    // VoiceInterface surfaces its session state via STATUS_LABELS.en on
+    // KioskVoiceStatusStack, not via the hidden default UI aria-labels.
+    await expect(page.getByText('Ready', { exact: true })).toBeVisible({
+      timeout: 90_000,
     });
     await expect(voiceButton).toBeEnabled();
 
