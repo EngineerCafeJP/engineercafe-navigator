@@ -135,6 +135,12 @@ async def _qwen_llm_post_process(transcript: str, language: str) -> str:
     api_key = os.getenv("OPENROUTER_API_KEY", "")
     if not _is_real_openrouter_key(api_key) or not transcript.strip():
         return transcript
+    # Skip post-processing for long transcripts to avoid OpenRouter max_tokens
+    # truncation silently overwriting good STT output. Voice queries are
+    # typically short (<300 chars); longer transcripts are unlikely to need
+    # proper-noun correction enough to risk data loss.
+    if len(transcript) > 300:
+        return transcript
 
     vocab = _load_qwen_vocab()
     vocab_hint = ", ".join(vocab[:15]) if vocab else ""
