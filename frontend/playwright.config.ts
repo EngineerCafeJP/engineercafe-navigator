@@ -1,3 +1,5 @@
+import path from 'node:path';
+
 import { config as loadEnv } from 'dotenv';
 import { defineConfig, devices } from '@playwright/test';
 
@@ -24,7 +26,23 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
+      testIgnore: /voice-live\.spec\.ts/,
       use: { ...devices['Desktop Chrome'] },
+    },
+    {
+      name: 'chromium-voice-live',
+      testMatch: /voice-live\.spec\.ts/,
+      use: {
+        ...devices['Desktop Chrome'],
+        launchOptions: {
+          args: [
+            '--autoplay-policy=no-user-gesture-required',
+            '--use-fake-ui-for-media-stream',
+            '--use-fake-device-for-media-stream',
+            `--use-file-for-fake-audio-capture=${path.resolve(__dirname, 'e2e/fixtures/voice/sample.wav')}`,
+          ],
+        },
+      },
     },
   ],
   webServer: process.env.PLAYWRIGHT_BASE_URL

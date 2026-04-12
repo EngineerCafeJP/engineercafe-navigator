@@ -9,6 +9,10 @@ on:
     - cron: '17 18 * * *'
   workflow_dispatch: {}
 
+permissions:
+  contents: read
+  issues: write
+
 concurrency:
   group: voice-e2e-nightly-${{ github.ref }}
   cancel-in-progress: false
@@ -47,6 +51,22 @@ jobs:
       - name: Install Playwright Chromium
         run: pnpm exec playwright install chromium --with-deps
 
+      - name: Validate live backend secret
+        shell: bash
+        run: |
+          if [[ -z "${BACKEND_API_KEY:-}" ]]; then
+            echo "error: BACKEND_API_KEY is required to reach the live Cloud Run backend." >&2
+            echo "Sync with: gcloud secrets versions access latest --secret=API_SECRET_KEY --project=aipartner-426616 | gh secret set BACKEND_API_KEY" >&2
+            exit 1
+          fi
+          if [[ -z "${BACKEND_API_URL:-}" ]]; then
+            echo "note: BACKEND_API_URL not set; falling back to DEFAULT_BACKEND_URL=$DEFAULT_BACKEND_URL"
+          fi
+          echo "live-backend secret check passed"
+        env:
+          BACKEND_API_URL: ${{ secrets.BACKEND_API_URL }}
+          BACKEND_API_KEY: ${{ secrets.BACKEND_API_KEY }}
+
       - name: Warm up Cloud Run backend
         shell: bash
         run: |
@@ -65,7 +85,7 @@ jobs:
           BACKEND_API_URL: ${{ secrets.BACKEND_API_URL }}
 
       - name: Run voice-live spec
-        run: pnpm exec playwright test e2e/voice-live.spec.ts --reporter=line,html
+        run: pnpm exec playwright test e2e/voice-live.spec.ts --project=chromium-voice-live --reporter=line,html
         env:
           CI: 'true'
           PLAYWRIGHT_VOICE_LIVE: '1'

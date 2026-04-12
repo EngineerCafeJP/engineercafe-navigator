@@ -1,7 +1,5 @@
 import { expect, test, type Page, type Request } from '@playwright/test';
 
-import { installVoiceMediaMocks } from './helpers/voice-mocks';
-
 const voiceLive = process.env.PLAYWRIGHT_VOICE_LIVE === '1';
 
 interface ObservedCall {
@@ -33,16 +31,14 @@ function parseAction(request: Request): string | undefined {
 
 test.describe('Voice live (browser voice round-trip against live backend)', () => {
   test.skip(
-    !voiceLive || !process.env.BACKEND_API_URL || !process.env.BACKEND_API_KEY,
-    'Set PLAYWRIGHT_VOICE_LIVE=1 + BACKEND_API_URL + BACKEND_API_KEY to run live voice E2E.',
+    !voiceLive || !process.env.BACKEND_API_KEY,
+    'Set PLAYWRIGHT_VOICE_LIVE=1 + BACKEND_API_KEY (BACKEND_API_URL optional) to run live voice E2E.',
   );
 
   test.describe.configure({ mode: 'serial' });
 
   test('mic click drives STT → QA → TTS with live backend', async ({ page }) => {
-    test.setTimeout(180_000);
-
-    await installVoiceMediaMocks(page);
+    test.setTimeout(240_000);
 
     const apiCalls: ObservedCall[] = [];
     page.on('request', (request) => {
@@ -64,26 +60,43 @@ test.describe('Voice live (browser voice round-trip against live backend)', () =
     await expect(responseText).toBeVisible();
     const baselineText = ((await responseText.textContent()) ?? '').trim();
 
-    await voiceButton.click();
-    await expect(page.getByRole('button', { name: '録音を停止' })).toBeVisible({
-      timeout: 15_000,
-    });
-    await voiceButton.click();
-
-    const sttResponse = await page.waitForResponse(
+    // Pre-arm the response waiters BEFORE clicking so fast backends can't race
+    // us to the timeout threshold. Each promise resolves on the first matching
+    // response; they must be awaited in order after the stop-click fires.
+    const sttResponsePromise = page.waitForResponse(
       (response) =>
         response.url().includes('/api/voice') &&
         response.request().method() === 'POST' &&
         parseAction(response.request()) === 'speech_to_text',
-      { timeout: 90_000 },
+      { timeout: 120_000 },
     );
-    expect(sttResponse.ok()).toBeTruthy();
-
-    const qaResponse = await page.waitForResponse(
+    const qaResponsePromise = page.waitForResponse(
       (response) =>
         response.url().includes('/api/qa') && response.request().method() === 'POST',
-      { timeout: 90_000 },
+      { timeout: 120_000 },
     );
+    const ttsResponsePromise = page.waitForResponse(
+      (response) =>
+        response.url().includes('/api/voice') &&
+        response.request().method() === 'POST' &&
+        parseAction(response.request()) === 'text_to_speech',
+      { timeout: 120_000 },
+    );
+
+    await voiceButton.click();
+    await expect(page.getByRole('button', { name: '録音を停止' })).toBeVisible({
+      timeout: 15_000,
+    });
+    // Brief pause to let Chromium's --use-file-for-fake-audio-capture device
+    // feed at least one chunk of the fixture WAV (1.8s) into the MediaRecorder
+    // before we stop. Otherwise the resulting blob may be empty.
+    await page.waitForTimeout(2500);
+    await voiceButton.click();
+
+    const sttResponse = await sttResponsePromise;
+    expect(sttResponse.ok()).toBeTruthy();
+
+    const qaResponse = await qaResponsePromise;
     expect(qaResponse.ok()).toBeTruthy();
     const qaPayload = (await qaResponse.json().catch(() => null)) as {
       answer?: unknown;
@@ -93,13 +106,7 @@ test.describe('Voice live (browser voice round-trip against live backend)', () =
     expect(qaPayload?.success ?? true).not.toBe(false);
     expect(typeof qaPayload?.answer === 'string' && qaPayload.answer.length > 0).toBe(true);
 
-    const ttsResponse = await page.waitForResponse(
-      (response) =>
-        response.url().includes('/api/voice') &&
-        response.request().method() === 'POST' &&
-        parseAction(response.request()) === 'text_to_speech',
-      { timeout: 90_000 },
-    );
+    const ttsResponse = await ttsResponsePromise;
     expect(ttsResponse.ok()).toBeTruthy();
     const ttsPayload = (await ttsResponse.json().catch(() => null)) as {
       audioResponse?: unknown;
