@@ -44,6 +44,23 @@ logger = logging.getLogger(__name__)
 _stt_postprocess_client: Optional["_stt_httpx.AsyncClient"] = None
 
 
+def _is_real_openrouter_key(value: str) -> bool:
+    """Reject placeholder / test API keys to avoid network calls in unit tests.
+
+    backend/tests/conftest.py sets OPENROUTER_API_KEY=test-openrouter-key by
+    default, which would otherwise trigger real OpenRouter HTTP calls during
+    every Qwen ja transcribe in tests.
+    """
+    if not value:
+        return False
+    lower = value.lower()
+    if lower.startswith("test-") or lower.startswith("placeholder"):
+        return False
+    if value in ("your_key_here", "your-key-here", "sk-or-v1-your-key-here"):
+        return False
+    return True
+
+
 def _get_stt_postprocess_client() -> "_stt_httpx.AsyncClient":
     global _stt_postprocess_client
     if _stt_postprocess_client is None or _stt_postprocess_client.is_closed:
@@ -122,7 +139,7 @@ async def _qwen_llm_post_process(transcript: str, language: str) -> str:
     if language != "ja":
         return transcript
     api_key = os.getenv("OPENROUTER_API_KEY", "")
-    if not api_key or not transcript.strip():
+    if not _is_real_openrouter_key(api_key) or not transcript.strip():
         return transcript
 
     vocab = _load_qwen_vocab()

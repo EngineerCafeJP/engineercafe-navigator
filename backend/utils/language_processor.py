@@ -53,7 +53,43 @@ HANGUL_PATTERN = re.compile(r"[\uac00-\ud7af\u1100-\u11ff\u3130-\u318f]")
 LATIN_PATTERN = re.compile(r"[a-zA-Z]")
 
 # 各言語のキーワード
-JAPANESE_KEYWORDS = ["は", "が", "を", "に", "で", "の", "か", "です", "ます", "だ", "である"]
+JAPANESE_KEYWORDS = [
+    # Particles (existing — Japanese-only hiragana)
+    "は",
+    "が",
+    "を",
+    "に",
+    "で",
+    "の",
+    "か",
+    "です",
+    "ます",
+    "だ",
+    "である",
+    # Common Japanese kanji compounds (distinguish kanji-only ja from zh)
+    "目的",
+    "必要",
+    "重要",
+    "終了",
+    "使用",
+    "会議",
+    "会員",
+    "会場",
+    "完了",
+    "営業",
+    "受付",
+    "予約",
+    "利用",
+    "案内",
+    "時間",  # Japanese form (vs simplified 时间)
+    "開始",
+    "場所",
+    "価格",
+    "料金",
+    "詳細",
+    "確認",
+    "申込",
+]
 ENGLISH_KEYWORDS = [
     "what",
     "where",
@@ -82,7 +118,8 @@ ENGLISH_KEYWORDS = [
     "facility",
 ]
 CHINESE_KEYWORDS = [
-    # zh-only function words / particles (rare or absent in Japanese)
+    # zh-only function words / particles
+    "的",  # most common Chinese particle (possessive/attributive)
     "是",
     "我",
     "她",
@@ -91,7 +128,9 @@ CHINESE_KEYWORDS = [
     "呢",
     "吧",
     "这",
-    # Pronouns and common Chinese-only greetings
+    "那",
+    "可以",  # Chinese "can/may" — Japanese uses かのう/できる instead
+    # Pronouns and Chinese-only greetings
     "你",
     "您",
     "请",
@@ -107,7 +146,7 @@ CHINESE_KEYWORDS = [
     "今天",
     "明天",
     "现在",
-    # Simplified-Chinese-specific characters (Unicode-distinct from Japanese kanji)
+    # Simplified-Chinese-DISTINCT characters (Unicode-distinct from Japanese kanji)
     "时",  # vs Japanese 時
     "间",  # vs Japanese 間
     "个",  # vs Japanese 個
@@ -116,8 +155,13 @@ CHINESE_KEYWORDS = [
     "关",  # vs Japanese 関
     "说",  # vs Japanese 説
     "爱",  # vs Japanese 愛
+    "师",  # vs Japanese 師 (engineer, teacher)
+    "书",  # vs Japanese 書 (book)
+    "现",  # vs Japanese 現 (now/present)
+    "业",  # vs Japanese 業 (business)
+    "钱",  # vs Japanese 錢/銭 (money)
     # Simplified-Chinese-only domain compounds
-    "密码",  # vs Japanese パスワード
+    "密码",  # vs Japanese パスワード/暗証番号
     "营业",  # vs Japanese 営業
 ]
 KOREAN_KEYWORDS = ["은", "는", "이", "가", "을", "를", "에서", "입니다", "합니다", "있습니다"]
@@ -247,7 +291,7 @@ class LanguageProcessor:
             ),
             "en": a.en_keyword_count + (1 if a.has_latin else 0),
             "zh": (
-                (2 if (a.has_cjk and a.zh_keyword_count > 0) else 0)
+                (1 if (a.has_cjk and a.zh_keyword_count > 0) else 0)
                 + a.zh_keyword_count
                 - (1 if a.has_japanese_chars else 0)
             ),
@@ -276,7 +320,9 @@ class LanguageProcessor:
         # ---------------------------------------------------------------------
         # 3. 混合言語判定（TS版の isMixed 相当）
         # ---------------------------------------------------------------------
-        is_mixed = secondary_score > 0 and primary_score - secondary_score <= 2
+        # Threshold widened from <=2 to <=3 to preserve is_mixed semantics
+        # after Bug #444 Round 2 scoring change (larger JA_KEYWORDS + smaller zh CJK bonus).
+        is_mixed = secondary_score > 0 and primary_score - secondary_score <= 3
 
         # ---------------------------------------------------------------------
         # 4. 信頼度計算（TS版の思想を踏襲）
