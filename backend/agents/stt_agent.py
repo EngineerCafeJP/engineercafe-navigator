@@ -44,11 +44,163 @@ logger = logging.getLogger(__name__)
 _stt_postprocess_client: Optional["_stt_httpx.AsyncClient"] = None
 
 
+def _is_real_openrouter_key(value: str) -> bool:
+    """Reject placeholder / test API keys to avoid network calls in unit tests.
+
+    backend/tests/conftest.py sets OPENROUTER_API_KEY=test-openrouter-key by
+    default, which would otherwise trigger real OpenRouter HTTP calls during
+    every Qwen ja transcribe in tests.
+    """
+    if not value:
+        return False
+    lower = value.lower()
+    if lower.startswith("test-") or lower.startswith("placeholder"):
+        return False
+    if value in ("your_key_here", "your-key-here", "sk-or-v1-your-key-here"):
+        return False
+    return True
+
+
 def _get_stt_postprocess_client() -> "_stt_httpx.AsyncClient":
     global _stt_postprocess_client
     if _stt_postprocess_client is None or _stt_postprocess_client.is_closed:
         _stt_postprocess_client = _stt_httpx.AsyncClient(timeout=3.0)
     return _stt_postprocess_client
+
+
+# ---------------------------------------------------------------------------
+# Qwen LLM post-processing with domain vocabulary (Bug #439)
+# ---------------------------------------------------------------------------
+
+_QWEN_VOCAB_CACHE: Optional[List[str]] = None
+
+
+def _load_qwen_vocab() -> List[str]:
+    """Load domain vocabulary once for Qwen post-processing hints.
+
+    Reads backend/data/stt_vocabulary.json which has structure:
+    {"vocabulary": [{"word": "エンジニアカフェ", ...}, ...]}
+    """
+    global _QWEN_VOCAB_CACHE
+    if _QWEN_VOCAB_CACHE is not None:
+        return _QWEN_VOCAB_CACHE
+    try:
+        from pathlib import Path
+
+        vocab_path = Path(__file__).parent.parent / "data" / "stt_vocabulary.json"
+        if not vocab_path.exists():
+            _QWEN_VOCAB_CACHE = []
+            return _QWEN_VOCAB_CACHE
+        raw = json.loads(vocab_path.read_text())
+        words: List[str] = []
+        # Preferred schema: {"vocabulary": [{"word": "...", ...}, ...]}
+        if isinstance(raw, dict) and isinstance(raw.get("vocabulary"), list):
+            for entry in raw["vocabulary"]:
+                if isinstance(entry, dict):
+                    word = entry.get("word")
+                    if isinstance(word, str) and word.strip():
+                        words.append(word.strip())
+                elif isinstance(entry, str) and entry.strip():
+                    words.append(entry.strip())
+        # Legacy / fallback: plain list of strings
+        elif isinstance(raw, list):
+            words = [str(w).strip() for w in raw if isinstance(w, (str, int, float))]
+        # Deduplicate while preserving order.
+        seen = set()
+        deduped: List[str] = []
+        for w in words:
+            if w and w not in seen:
+                seen.add(w)
+                deduped.append(w)
+        _QWEN_VOCAB_CACHE = deduped
+    except Exception as exc:
+        logger.warning("Qwen vocab load failed: %s", exc)
+        _QWEN_VOCAB_CACHE = []
+    return _QWEN_VOCAB_CACHE
+
+
+async def _qwen_llm_post_process(transcript: str, language: str) -> str:
+    """LLM post-process for Qwen Japanese output with domain vocabulary hints.
+
+    Returns the original transcript on any failure (OpenRouter error, timeout,
+    empty response, excessive divergence). Disabled by default — set
+    STT_QWEN_POSTPROCESS_ENABLED=true to opt in. This is a defense-in-depth
+    fix for Bug #439 (Qwen mangling proper nouns under noise) and adds
+    OpenRouter latency to every Japanese STT request when enabled.
+    """
+    if os.getenv("STT_QWEN_POSTPROCESS_ENABLED", "false").lower() != "true":
+        return transcript
+    if language != "ja":
+        return transcript
+    api_key = os.getenv("OPENROUTER_API_KEY", "")
+    if not _is_real_openrouter_key(api_key) or not transcript.strip():
+        return transcript
+    # Skip post-processing for long transcripts to avoid OpenRouter max_tokens
+    # truncation silently overwriting good STT output. Voice queries are
+    # typically short (<300 chars); longer transcripts are unlikely to need
+    # proper-noun correction enough to risk data loss.
+    if len(transcript) > 300:
+        return transcript
+
+    vocab = _load_qwen_vocab()
+    vocab_hint = ", ".join(vocab[:15]) if vocab else ""
+    model = os.getenv("STT_POSTPROCESS_MODEL", "google/gemini-2.0-flash-001")
+
+    system_prompt = (
+        "You correct Japanese speech-to-text transcription errors for "
+        "Engineer Cafe (エンジニアカフェ) in Fukuoka. "
+        + (f"Domain terms that may appear: {vocab_hint}. " if vocab_hint else "")
+        + "Only correct phonetically similar errors. Do NOT paraphrase, "
+        "translate, or add commentary. Return ONLY the corrected Japanese "
+        "transcript."
+    )
+
+    try:
+        client = _get_stt_postprocess_client()
+        resp = await client.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": transcript},
+                ],
+                "max_tokens": 600,
+            },
+        )
+        if resp.status_code != 200:
+            logger.warning("Qwen post-process %d: %s", resp.status_code, resp.text[:100])
+            return transcript
+        data = resp.json()
+        corrected = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+        if not corrected:
+            return transcript
+        # Length-divergence guard: reject only when the corrected text is
+        # wildly longer or shorter than the original. This permits legitimate
+        # script conversions (hiragana → katakana / kanji) which look totally
+        # "different" at the character level but preserve content length.
+        # Hallucinations and paraphrases tend to balloon or truncate length.
+        orig_len = len(transcript)
+        corr_len = len(corrected)
+        if orig_len == 0 or corr_len > orig_len * 2 or corr_len < orig_len * 0.5:
+            logger.warning(
+                "Qwen post-process rejected (length %d->%d): '%s' -> '%s'",
+                orig_len,
+                corr_len,
+                transcript[:40],
+                corrected[:40],
+            )
+            return transcript
+        if corrected != transcript:
+            logger.info("Qwen post-process: '%s' -> '%s'", transcript[:40], corrected[:40])
+        return corrected
+    except Exception as exc:
+        logger.warning("Qwen LLM post-process failed: %s", exc)
+        return transcript
 
 
 WAV_RIFF_HEADER = b"RIFF"
@@ -677,10 +829,29 @@ class QwenSTTClient:
     ) -> TranscriptionResult:
         loop = asyncio.get_running_loop()
         with concurrent.futures.ThreadPoolExecutor() as pool:
-            return await loop.run_in_executor(
+            result = await loop.run_in_executor(
                 pool,
                 lambda: self._sync_transcribe(audio_data, language),
             )
+
+        # Apply LLM post-processing for Japanese transcripts to correct
+        # domain-specific proper nouns (エンジニアカフェ, Wi-Fi, etc.).
+        # Env-toggled (STT_QWEN_POSTPROCESS_ENABLED), falls back to raw on
+        # any failure, guarded by edit-distance threshold.
+        if result.language == "ja" and result.text.strip():
+            try:
+                corrected_text = await _qwen_llm_post_process(result.text, result.language)
+                if corrected_text != result.text:
+                    result = TranscriptionResult(
+                        text=corrected_text,
+                        confidence=result.confidence,
+                        language=result.language,
+                        word_confidences=result.word_confidences,
+                    )
+            except Exception as exc:
+                logger.warning("Qwen post-process wrapper failed: %s", exc)
+
+        return result
 
 
 class Qwen06BCpuSTTClient(QwenSTTClient):

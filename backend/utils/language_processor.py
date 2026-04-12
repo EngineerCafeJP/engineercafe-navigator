@@ -53,7 +53,75 @@ HANGUL_PATTERN = re.compile(r"[\uac00-\ud7af\u1100-\u11ff\u3130-\u318f]")
 LATIN_PATTERN = re.compile(r"[a-zA-Z]")
 
 # 各言語のキーワード
-JAPANESE_KEYWORDS = ["は", "が", "を", "に", "で", "の", "か", "です", "ます", "だ", "である"]
+
+# Language detection design trade-offs (Bug #444):
+#
+# Engineer Cafe kiosk is in Japan; the primary language is Japanese. The
+# language detector resolves CJK ambiguity by preferring ja for queries that
+# could plausibly belong to either language. Specific trade-offs:
+#
+# 1. Pure Chinese place names without function words (e.g. "北京", "上海",
+#    "菜单") fall through to ja default. Adding a length-based zh CJK bonus
+#    would re-break Bug #444 (Japanese kanji-only queries like "時間",
+#    "福岡" misclassified as zh and answered in Chinese).
+#
+# 2. Shared kanji compounds (e.g. "未来", "目的地", "友好") are inherently
+#    ambiguous — they exist in both Japanese and Chinese with the same
+#    meaning. The dict-insertion-order tie-breaker resolves these to ja for
+#    the kiosk's primary user base.
+#
+# 3. Chinese queries containing function words (你, 我, 是, 的, 吗, 们, 这,
+#    那, 时, 间, 个, 师, 业 etc.) or distinctive simplified characters are
+#    correctly detected as zh. This covers all 7 RAGAS multilingual zh test
+#    cases and Codex round 1-3 verification cases.
+#
+# Trade-off rationale: Japanese is the primary user base for the Fukuoka
+# kiosk. Misclassifying a Japanese kanji query as Chinese (Bug #444) is
+# the original critical bug. Misclassifying rare Chinese noun-only queries
+# as Japanese is an acceptable secondary trade-off since (a) the kiosk
+# expects mostly Japanese-speaking visitors and (b) Chinese visitors
+# typically use sentences with function words rather than noun-only queries.
+JAPANESE_KEYWORDS = [
+    # Particles (Japanese-only hiragana — strongest signal)
+    "は",
+    "が",
+    "を",
+    "に",
+    "で",
+    "の",
+    "か",
+    "です",
+    "ます",
+    "だ",
+    "である",
+    # Japanese kanji compounds where embedded chars are ALSO in CHINESE_KEYWORDS.
+    # These exist solely to break ties via dict insertion order — when both ja and
+    # zh score equally, the "ja" key comes first in the scores dict, so ja wins.
+    # Kanji-only Japanese queries containing 的/他/会/来/了/好 would otherwise
+    # be misclassified as zh.
+    "目的",  # contains 的
+    "目的地",  # contains 的
+    "他人",  # contains 他
+    "会議",  # contains 会
+    "会員",  # contains 会
+    "会場",  # contains 会
+    "未来",  # contains 来
+    "将来",  # contains 来
+    "来年",  # contains 来
+    "終了",  # contains 了
+    "完了",  # contains 了
+    "良好",  # contains 好
+    "友好",  # contains 好
+    # Japanese-specific compounds (kanji unique to Japanese vs simplified Chinese).
+    # These are kept because they include Japanese-only characters (営, 予, 受, 価, 場, 案, 申).
+    "営業",
+    "受付",
+    "予約",
+    "案内",
+    "場所",
+    "価格",
+    "申込",
+]
 ENGLISH_KEYWORDS = [
     "what",
     "where",
@@ -82,20 +150,78 @@ ENGLISH_KEYWORDS = [
     "facility",
 ]
 CHINESE_KEYWORDS = [
+    # Function words / particles (simplified)
     "的",
     "是",
-    "了",
+    "了",  # also breaks Japanese 終了/完了 → handled via JA_KW tie-breaker
     "在",
     "我",
-    "他",
+    "他",  # also breaks Japanese 他人 → handled via JA_KW tie-breaker
     "她",
     "们",
     "吗",
     "呢",
     "吧",
-    "会",
+    "会",  # also breaks Japanese 会議/会員/会場 → handled via JA_KW
     "这",
     "那",
+    "好",  # also breaks Japanese 良好/友好 → handled via JA_KW
+    "来",  # also breaks Japanese 未来/将来/来年 → handled via JA_KW
+    # Pronouns and Chinese-only greetings
+    "你",
+    "您",
+    "请",
+    "谢",
+    # Chinese-only question words (simplified)
+    "什么",
+    "怎么",
+    "为什么",
+    "哪",
+    "几",
+    # Chinese-only content words
+    "没",
+    "今天",
+    "明天",
+    "现在",
+    "可以",
+    # Simplified-Chinese-DISTINCT characters (Unicode-distinct from Japanese kanji)
+    "时",
+    "间",
+    "个",
+    "对",
+    "开",
+    "关",
+    "说",
+    "爱",
+    "师",
+    "书",
+    "现",
+    "业",
+    "钱",
+    "议",
+    "动",
+    "务",
+    "头",
+    "区",
+    "经",
+    "网",
+    "电",
+    "视",
+    # Chinese-only loanword / common-life characters
+    "咖",
+    "啡",
+    "厕",
+    # Traditional-Chinese function words / particles
+    "這",
+    "麼",
+    "幾",
+    "嗎",
+    "沒",
+    "點",
+    "為",
+    # Simplified-Chinese-only domain compounds
+    "密码",
+    "营业",
 ]
 KOREAN_KEYWORDS = ["은", "는", "이", "가", "을", "를", "에서", "입니다", "합니다", "있습니다"]
 
@@ -224,7 +350,9 @@ class LanguageProcessor:
             ),
             "en": a.en_keyword_count + (1 if a.has_latin else 0),
             "zh": (
-                (2 if a.has_cjk else 0) + a.zh_keyword_count - (1 if a.has_japanese_chars else 0)
+                (1 if (a.has_cjk and a.zh_keyword_count > 0) else 0)
+                + a.zh_keyword_count
+                - (1 if a.has_japanese_chars else 0)
             ),
             "ko": (2 if a.has_hangul else 0) + a.ko_keyword_count,
         }
@@ -251,7 +379,9 @@ class LanguageProcessor:
         # ---------------------------------------------------------------------
         # 3. 混合言語判定（TS版の isMixed 相当）
         # ---------------------------------------------------------------------
-        is_mixed = secondary_score > 0 and primary_score - secondary_score <= 2
+        # Threshold widened from <=2 to <=3 to preserve is_mixed semantics
+        # after Bug #444 Round 2 scoring change (larger JA_KEYWORDS + smaller zh CJK bonus).
+        is_mixed = secondary_score > 0 and primary_score - secondary_score <= 3
 
         # ---------------------------------------------------------------------
         # 4. 信頼度計算（TS版の思想を踏襲）
