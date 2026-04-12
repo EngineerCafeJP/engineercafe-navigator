@@ -53,7 +53,7 @@ Engineer Cafe Navigator は 2 層構成の API を採用しています。
 
 ```json
 {
-  "action": "process_voice",
+  "action": "speech_to_text",
   "audioData": "base64-encoded-audio",
   "sessionId": "session-123",
   "language": "ja"
@@ -62,7 +62,6 @@ Engineer Cafe Navigator は 2 層構成の API を採用しています。
 
 現在のバックエンドでサポートされる action:
 
-- `process_voice`
 - `speech_to_text`
 - `text_to_speech`
 - `set_language`

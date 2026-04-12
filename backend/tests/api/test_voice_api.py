@@ -56,7 +56,7 @@ _test_app = FastAPI()
 
 
 async def _handle_stt_test(request: VoiceRequest) -> VoiceResponse:
-    """Shared STT processing for process_voice and speech_to_text actions (test version)."""
+    """Shared STT processing for speech_to_text action (test version)."""
     if not request.audioData:
         raise HTTPException(status_code=400, detail="Missing audioData")
 
@@ -111,9 +111,6 @@ async def voice_api(request: VoiceRequest):
                 emotion=result.get("emotion"),
                 sessionId=request.sessionId,
             )
-
-        elif request.action == "process_voice":
-            return await _handle_stt_test(request)
 
         elif request.action == "set_language":
             return VoiceResponse(success=True, sessionId=request.sessionId)
@@ -269,100 +266,6 @@ class TestTextToSpeech:
             json={
                 "action": "text_to_speech",
                 "text": "テスト",
-                "sessionId": SAMPLE_SESSION_ID,
-            },
-        )
-
-        assert resp.status_code == 500
-
-
-# =============================================================================
-# process_voice
-# =============================================================================
-
-
-class TestProcessVoice:
-    """POST /api/voice  action=process_voice"""
-
-    def test_stt_success(self):
-        """STT 成功時に transcript を返す"""
-        mock_stt_agent.speech_to_text = AsyncMock(
-            return_value={
-                "success": True,
-                "transcript": "こんにちは",
-                "confidence": 0.92,
-                "language": "ja",
-                "provider": "vosk",
-            }
-        )
-
-        resp = client.post(
-            "/api/voice",
-            json={
-                "action": "process_voice",
-                "audioData": _fake_wav_b64(),
-                "language": "ja",
-                "sessionId": SAMPLE_SESSION_ID,
-            },
-        )
-
-        assert resp.status_code == 200
-        body = resp.json()
-        assert body["success"] is True
-        assert body["transcript"] == "こんにちは"
-        assert body["confidence"] == pytest.approx(0.92)
-        assert body["detectedLanguage"] == "ja"
-        assert body["sessionId"] == SAMPLE_SESSION_ID
-
-    def test_stt_missing_audio_returns_400(self):
-        """audioData がない場合は 400 エラー"""
-        resp = client.post(
-            "/api/voice",
-            json={
-                "action": "process_voice",
-                "audioData": None,
-                "sessionId": SAMPLE_SESSION_ID,
-            },
-        )
-        assert resp.status_code == 400
-
-    def test_stt_failure_returns_error(self):
-        """STT 失敗時に success=False + error を返す"""
-        mock_stt_agent.speech_to_text = AsyncMock(
-            return_value={
-                "success": False,
-                "transcript": "",
-                "confidence": 0.0,
-                "language": "unknown",
-                "provider": "vosk",
-                "error": "Vosk returned empty recognition result",
-            }
-        )
-
-        resp = client.post(
-            "/api/voice",
-            json={
-                "action": "process_voice",
-                "audioData": _fake_wav_b64(),
-                "language": "ja",
-                "sessionId": SAMPLE_SESSION_ID,
-            },
-        )
-
-        assert resp.status_code == 200
-        body = resp.json()
-        assert body["success"] is False
-        assert "empty" in body["error"].lower()
-
-    def test_stt_exception_returns_500(self):
-        """STT が例外を投げた場合は 500 エラー"""
-        mock_stt_agent.speech_to_text = AsyncMock(side_effect=RuntimeError("Vosk crashed"))
-
-        resp = client.post(
-            "/api/voice",
-            json={
-                "action": "process_voice",
-                "audioData": _fake_wav_b64(),
                 "sessionId": SAMPLE_SESSION_ID,
             },
         )
@@ -551,7 +454,7 @@ class TestLanguageParam:
         assert call_kwargs["language"] == "ja"
 
     def test_stt_passes_language_to_agent(self):
-        """process_voice は language を stt_agent に渡す"""
+        """speech_to_text は language を stt_agent に渡す"""
         mock_stt_agent.speech_to_text = AsyncMock(
             return_value={
                 "success": True,
@@ -565,7 +468,7 @@ class TestLanguageParam:
         client.post(
             "/api/voice",
             json={
-                "action": "process_voice",
+                "action": "speech_to_text",
                 "audioData": _fake_wav_b64(),
                 "language": "en",
             },
@@ -574,8 +477,8 @@ class TestLanguageParam:
         call_kwargs = mock_stt_agent.speech_to_text.call_args.kwargs
         assert call_kwargs["language"] == "en"
 
-    def test_process_voice_with_conversation_stage(self):
-        """process_voice は conversationStage を stt_agent に渡す"""
+    def test_speech_to_text_with_conversation_stage(self):
+        """speech_to_text は conversationStage を stt_agent に渡す"""
         mock_stt_agent.speech_to_text = AsyncMock(
             return_value={
                 "success": True,
@@ -589,7 +492,7 @@ class TestLanguageParam:
         resp = client.post(
             "/api/voice",
             json={
-                "action": "process_voice",
+                "action": "speech_to_text",
                 "audioData": _fake_wav_b64(),
                 "language": "ja",
                 "sessionId": SAMPLE_SESSION_ID,

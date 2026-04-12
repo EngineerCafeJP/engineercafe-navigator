@@ -53,7 +53,7 @@ Typical request:
 
 ```json
 {
-  "action": "process_voice",
+  "action": "speech_to_text",
   "audioData": "base64-encoded-audio",
   "sessionId": "session-123",
   "language": "ja"
@@ -62,7 +62,6 @@ Typical request:
 
 Supported actions in the current backend:
 
-- `process_voice`
 - `speech_to_text`
 - `text_to_speech`
 - `set_language`
