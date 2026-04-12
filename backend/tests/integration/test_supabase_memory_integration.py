@@ -30,6 +30,14 @@ _supabase_available = bool(
     and _is_local_supabase
 )
 
+_REQUIRED_TABLES = (
+    "agent_memory",
+    "conversation_sessions",
+    "conversation_history",
+    "knowledge_base",
+)
+_MISSING_SCHEMA_TABLES: tuple[str, ...] = ()
+
 
 def _schema_ready() -> bool:
     """Probe local Supabase for required tables before running integration tests.
@@ -39,21 +47,39 @@ def _schema_ready() -> bool:
     tests from crashing with cryptic PostgREST errors when the local instance
     is empty.
     """
+    global _MISSING_SCHEMA_TABLES
+    _MISSING_SCHEMA_TABLES = ()
+
     if not _supabase_available:
         return False
+
+    log = logging.getLogger(__name__)
+    missing: list[str] = []
+
     try:
         from supabase import create_client
 
         client = create_client(_supabase_url, os.getenv("SUPABASE_KEY", ""))
-        client.table("agent_memory").select("id").limit(1).execute()
-        return True
+        for table in _REQUIRED_TABLES:
+            try:
+                client.table(table).select("id").limit(1).execute()
+            except Exception as exc:  # noqa: BLE001 - probe should never crash collection
+                log.info("Supabase schema probe failed for table %s: %s", table, exc)
+                missing.append(table)
+
+        _MISSING_SCHEMA_TABLES = tuple(missing)
+        return not missing
     except Exception as exc:  # noqa: BLE001 - probe should never crash collection
-        logging.getLogger(__name__).info("Supabase schema probe failed: %s", exc)
+        log.info("Supabase schema probe failed: %s", exc)
+        _MISSING_SCHEMA_TABLES = tuple(_REQUIRED_TABLES)
         return False
 
 
 _SCHEMA_READY = _schema_ready()
 
+_missing_tables_suffix = (
+    f" 不足テーブル: {', '.join(_MISSING_SCHEMA_TABLES)}" if _MISSING_SCHEMA_TABLES else ""
+)
 
 pytestmark = [
     pytest.mark.integration,
@@ -64,6 +90,7 @@ pytestmark = [
             "SUPABASE_URL/SUPABASE_KEY が未設定、test-key、"
             "ローカルSupabase以外、または schema 未初期化"
             "（localhost/127.0.0.1/kong + supabase db push が必要）"
+            f"{_missing_tables_suffix}"
         ),
     ),
 ]

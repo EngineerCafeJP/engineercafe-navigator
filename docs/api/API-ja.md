@@ -2,13 +2,13 @@
 
 [English](./API.md) | 日本語版
 
-現在の Cloudflare Workers + FastAPI 構成に合わせて更新した API リファレンスです。
+現在の Vercel + Cloud Run 構成に合わせて更新した API リファレンスです。
 
 ## 概要
 
 Engineer Cafe Navigator は 2 層構成の API を採用しています。
 
-- 公開クライアントは通常 `https://engineer-cafe-navigator.company-997.workers.dev/api` 配下のフロントエンド route を呼び出します。
+- 公開クライアントは通常 `https://frontend-delta-six-20.vercel.app/api` 配下のフロントエンド route を呼び出します。
 - フロントエンドの `/api/*` route は FastAPI バックエンドへプロキシし、`BACKEND_API_KEY` を使って `X-API-Key` を自動付与します。
 - `/api/admin/*`、`/api/cron/*`、`/api/monitoring/*` はフロントエンド側で `Authorization: Bearer <ADMIN_API_SECRET>` により保護されます。
 - `/api/chat` などのコアなバックエンド route は、通常ブラウザから直接呼び出す想定ではありません。
@@ -16,7 +16,7 @@ Engineer Cafe Navigator は 2 層構成の API を採用しています。
 ## ベース URL
 
 ```text
-フロントエンド本番: https://engineer-cafe-navigator.company-997.workers.dev/api
+フロントエンド本番: https://frontend-delta-six-20.vercel.app/api
 フロントエンド local: http://localhost:3000/api
 バックエンド local:   http://localhost:8000
 ```
@@ -31,9 +31,9 @@ Engineer Cafe Navigator は 2 層構成の API を採用しています。
 
 補足:
 
-- `BACKEND_API_KEY` はフロントエンドがバックエンドへプロキシするためのサーバー側シークレットです。
+- `BACKEND_API_KEY` は Next.js フロントエンドがバックエンドへプロキシするためのサーバー側シークレットです。
 - `ADMIN_API_SECRET` はフロントエンド middleware により `/api/admin/*`、`/api/cron/*`、`/api/monitoring/*` に適用されます。
-- バックエンドの CORS は `https://engineer-cafe-navigator.company-997.workers.dev` と local 開発 origin を許可しています。
+- バックエンドの CORS は `https://frontend-delta-six-20.vercel.app` と local 開発 origin を許可しています。
 
 ## アーキテクチャ補足
 
@@ -606,7 +606,7 @@ RAG、admin knowledge ingestion、backend search の説明では、OpenAI `text-
 
 ## 運用メモ
 
-- 必須フロントエンド secret: `BACKEND_API_URL`, `BACKEND_API_KEY`, `ADMIN_API_SECRET`
+- 必須フロントエンド secret: `NEXT_PUBLIC_BACKEND_API_URL`, `BACKEND_API_URL`, `BACKEND_API_KEY`, `ADMIN_API_SECRET`
 - 必須バックエンド secret: `API_SECRET_KEY`
-- backend health と CORS は Cloudflare Workers の本番 domain を前提に設定されています
-- 旧 Vercel の demo / status link は廃止済みのため、この文書から除外しています
+- backend health と CORS は Vercel 本番 domain を前提に設定されています
+- 旧 Cloudflare 参照は履歴上の情報であり、現行運用の手順としては使用しません

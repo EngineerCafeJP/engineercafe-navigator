@@ -31,11 +31,15 @@ export function KioskOcrOverlay({
 
   return (
     <div
+      data-testid="kiosk-ocr-overlay"
       className="absolute inset-0 z-40 overflow-y-auto bg-black/60 p-4"
       onPointerDownCapture={bumpUserActivity}
     >
       <div className="mx-auto max-w-lg rounded-[28px] border border-white/15 bg-white/95 p-5 shadow-xl md:p-8">
-        <h3 className="mb-4 text-center text-lg font-semibold text-slate-900">
+        <h3
+          data-testid="kiosk-ocr-overlay-title"
+          className="mb-4 text-center text-lg font-semibold text-slate-900"
+        >
           {ocrMode === 'member_card' ? labels.kioskOcrMember : labels.kioskOcrHandwriting}
         </h3>
         <OcrCameraView
