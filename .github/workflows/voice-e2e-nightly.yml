@@ -1,0 +1,154 @@
+name: Voice E2E (live backend)
+
+on:
+  # NOTE: GitHub only evaluates `schedule` triggers from the repository's
+  # default branch (`main`). This workflow is merged to `develop` first and
+  # runs on-demand via workflow_dispatch. The nightly cron will be enabled
+  # in a follow-up PR that lands the same workflow on `main` (or via the
+  # develop -> main release PR), after which the following schedule block
+  # can be re-introduced at that time:
+  #   schedule:
+  #     - cron: '17 18 * * *'  # 03:17 JST (18:17 UTC previous day)
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: voice-e2e-nightly-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: '20'
+  PNPM_VERSION: '10'
+  DEFAULT_BACKEND_URL: https://engineer-cafe-backend-639959525777.asia-northeast1.run.app
+
+jobs:
+  voice-live:
+    name: Live browser voice E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install chromium --with-deps
+
+      - name: Ensure triage labels exist
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        working-directory: ${{ github.workspace }}
+        run: |
+          for label in ci voice-e2e alpha-gate; do
+            gh label create "$label" --color BFD4F2 \
+              --description "Auto-created by voice-e2e-nightly workflow" \
+              2>/dev/null || echo "label $label already exists"
+          done
+
+      - name: Validate live backend secret
+        shell: bash
+        run: |
+          if [[ -z "${BACKEND_API_KEY:-}" ]]; then
+            echo "error: BACKEND_API_KEY is required to reach the live Cloud Run backend." >&2
+            echo "Sync with: gcloud secrets versions access latest --secret=API_SECRET_KEY --project=aipartner-426616 | gh secret set BACKEND_API_KEY" >&2
+            exit 1
+          fi
+          if [[ -z "${BACKEND_API_URL:-}" ]]; then
+            echo "note: BACKEND_API_URL not set; falling back to DEFAULT_BACKEND_URL=$DEFAULT_BACKEND_URL"
+          fi
+          echo "live-backend secret check passed"
+        env:
+          BACKEND_API_URL: ${{ secrets.BACKEND_API_URL }}
+          BACKEND_API_KEY: ${{ secrets.BACKEND_API_KEY }}
+
+      - name: Warm up Cloud Run backend
+        shell: bash
+        run: |
+          BACKEND_URL="${BACKEND_API_URL:-$DEFAULT_BACKEND_URL}"
+          echo "Probing $BACKEND_URL/health ..."
+          for attempt in 1 2 3 4 5 6; do
+            if curl -fsS --max-time 60 "$BACKEND_URL/health" > /tmp/health.json; then
+              echo "health (attempt $attempt): $(cat /tmp/health.json)"
+              exit 0
+            fi
+            echo "cold-start attempt $attempt failed, retrying in 10s..."
+            sleep 10
+          done
+          echo "error: backend /health probe failed after 6 attempts" >&2
+          echo "Aborting voice-live run before Playwright wastes minutes on a dead backend." >&2
+          exit 1
+        env:
+          BACKEND_API_URL: ${{ secrets.BACKEND_API_URL }}
+
+      - name: Run voice-live spec
+        run: pnpm exec playwright test e2e/voice-live.spec.ts --project=chromium-voice-live --reporter=line,html
+        env:
+          CI: 'true'
+          PLAYWRIGHT_VOICE_LIVE: '1'
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co' }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key' }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY || 'placeholder-service-role-key' }}
+          GOOGLE_GENERATIVE_AI_API_KEY: ${{ secrets.GOOGLE_GENERATIVE_AI_API_KEY || 'placeholder-google-ai-key' }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY || 'placeholder-openai-key' }}
+          NEXT_PUBLIC_BACKEND_API_URL: ${{ secrets.NEXT_PUBLIC_BACKEND_API_URL || 'https://engineer-cafe-backend-639959525777.asia-northeast1.run.app' }}
+          BACKEND_API_URL: ${{ secrets.BACKEND_API_URL || 'https://engineer-cafe-backend-639959525777.asia-northeast1.run.app' }}
+          BACKEND_API_KEY: ${{ secrets.BACKEND_API_KEY }}
+
+      - name: Upload Playwright HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: voice-live-playwright-report
+          path: frontend/playwright-report
+          retention-days: 14
+
+      - name: Upload Playwright test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: voice-live-test-results
+          path: frontend/test-results
+          retention-days: 14
+
+      - name: Create failure issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        working-directory: ${{ github.workspace }}
+        run: |
+          gh issue create \
+            --title "[voice-e2e/alpha-gate] nightly voice E2E failed (run ${{ github.run_id }})" \
+            --label "ci,voice-e2e,alpha-gate" \
+            --body "$(cat <<'BODY'
+          Nightly voice-live E2E workflow failed.
+
+          **Run:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+          **Next steps:**
+          1. Download the `voice-live-playwright-report` artifact from the run.
+          2. Inspect the trace/video for the failed assertion.
+          3. Confirm the Cloud Run backend revision and `/health` status.
+          4. Open a hotfix PR if the regression is real; close this issue otherwise.
+
+          Triggered by: `.github/workflows/voice-e2e-nightly.yml`
+          BODY
+          )"

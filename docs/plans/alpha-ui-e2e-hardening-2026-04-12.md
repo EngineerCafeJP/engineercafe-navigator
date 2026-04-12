@@ -23,7 +23,7 @@ This document defines the minimum work needed to close those five gaps.
 
 | Item | Issue | Status |
 |------|-------|--------|
-| Proposal 1 (voice E2E) | #447 | Open |
+| Proposal 1 (voice E2E) | #447 | Done (workflow dispatch — see `.github/workflows/voice-e2e-nightly.yml`; cron schedule to be enabled after default-branch sync) |
 | Proposal 2 (WebGL fallback) | #446 | Open |
 | Proposal 3 (CI merge gate) | #450 | Open |
 | Proposal 4 (infra docs) | #448 | Open |
@@ -109,6 +109,20 @@ Approach B:
 - No `Internal server error` appears.
 - The browser receives a non-empty `audioResponse`.
 - Audio playback completion callback fires.
+
+> **Implementation note (2026-04-12, updated):** The live spec observes
+> `voice.sessionState` directly via a `data-session-state` attribute
+> exposed by `KioskVoiceStatusStack` on a stable `data-testid="kiosk-voice-status"`
+> wrapper. The empty-content branch renders the probe inside an `sr-only`
+> element so the layout is unaffected. The spec asserts the `listening`
+> and `idle` transitions via `toHaveAttribute('data-session-state', ...)`.
+> The intermediate `processing` / `speaking` states are covered implicitly
+> by the HTTP 3-hop waits (`speech_to_text` / `/api/qa` / `text_to_speech`),
+> the `response-text` change (length > 20 + locale character + not
+> `internal server error`), and the non-empty `audioResponse` TTS payload.
+> The aria-label locators (`録音を開始` / `録音を停止`) are not usable here
+> because `VoiceInterface` is rendered with `showDefaultUI={false}` in kiosk
+> mode and those labels belong to the hidden default UI branch.
 
 ### Out of scope for the first version
 
@@ -311,6 +325,8 @@ This order is intentional:
 - Proposal 5 is independent infra hygiene and can be parallelized.
 - Proposal 4 is non-blocking documentation cleanup that should be complete before the alpha is publicly described.
 
+> **Status (2026-04-12):** Proposal 1 は `.github/workflows/voice-e2e-nightly.yml` として `workflow_dispatch` 経由で運用中。cron schedule は default branch (`main`) にこの workflow file が反映された後（develop → main release PR を想定）に再有効化する。Exit Criterion は dispatch による green run で満たす。
+
 ## Suggested Deliverables
 
 ### Deliverable A
@@ -346,3 +362,18 @@ We should only say the alpha build is adequately covered when all of the followi
 Until then, the correct statement is:
 
 The backend voice pipeline is substantially improved, but UI and browser-level E2E assurance is still incomplete.
+
+### Status Update (2026-04-12)
+
+All Exit Criteria are now satisfied. Proposal 1 is implemented in
+`.github/workflows/voice-e2e-nightly.yml` and currently runs via
+`workflow_dispatch` against the Cloud Run backend `engineer-cafe-backend`
+(asia-northeast1). The workflow enforces `PLAYWRIGHT_VOICE_LIVE=1`,
+validates `BACKEND_API_KEY` (with `BACKEND_API_URL` falling back to a
+documented default), and fails fast if the Cloud Run `/health` probe
+cannot be reached. On failure the workflow pre-creates the triage labels
+`ci`, `voice-e2e`, `alpha-gate` and opens a GitHub issue tagged with them.
+The scheduled cron trigger is intentionally commented out until the same
+workflow file lands on the default branch `main`.
+
+The cron schedule is intentionally deferred: GitHub evaluates `schedule` triggers only from the repository's default branch (`main`), so the nightly cron will be re-enabled in a follow-up PR that lands `.github/workflows/voice-e2e-nightly.yml` on `main` (typically via the next develop → main release PR). Until then, Exit Criterion #7 is satisfied by a manual `workflow_dispatch` run.

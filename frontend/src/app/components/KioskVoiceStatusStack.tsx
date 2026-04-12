@@ -157,12 +157,35 @@ export function KioskVoiceStatusStack({
   const isTranscriptVisible =
     transcript.length > 0 && !isSttLoading && transcriptVisibleUntil > now;
 
-  if (!isSttLoading && !isTtsSynthesizing && !isTranscriptVisible && !isResponseVisible && !isErrorVisible && !isOcrStatusVisible) {
-    return null;
+  const hasVisibleContent =
+    isSttLoading ||
+    isTtsSynthesizing ||
+    isTranscriptVisible ||
+    isResponseVisible ||
+    isErrorVisible ||
+    isOcrStatusVisible;
+
+  if (!hasVisibleContent) {
+    // Render an empty probe wrapper so E2E tests can observe sessionState
+    // transitions even when there is nothing to display. The wrapper is
+    // visually hidden via `sr-only` so it does not occupy layout space
+    // inside the parent flex container.
+    return (
+      <div
+        aria-hidden="true"
+        className="sr-only"
+        data-testid="kiosk-voice-status"
+        data-session-state={sessionState}
+      />
+    );
   }
 
   return (
-    <div className="w-full space-y-2">
+    <div
+      className="w-full space-y-2"
+      data-testid="kiosk-voice-status"
+      data-session-state={sessionState}
+    >
       {isOcrStatusVisible && ocrStatus ? (
         <div className="flex w-full items-center gap-2 rounded-xl border border-white/30 bg-black/35 px-4 py-2 text-sm font-medium text-white/95 shadow-sm backdrop-blur-sm">
           {ocrStatus.kind === 'error' ? (

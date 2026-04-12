@@ -1,10 +1,12 @@
+import path from 'node:path';
+
 import { config as loadEnv } from 'dotenv';
 import { defineConfig, devices } from '@playwright/test';
 
 loadEnv({ path: '.env.local' });
 loadEnv({ path: '.env' });
 
-const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://127.0.0.1:3000';
+const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:3000';
 
 export default defineConfig({
   testDir: './e2e',
@@ -24,13 +26,29 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
+      testIgnore: /voice-live\.spec\.ts/,
       use: { ...devices['Desktop Chrome'] },
+    },
+    {
+      name: 'chromium-voice-live',
+      testMatch: /voice-live\.spec\.ts/,
+      use: {
+        ...devices['Desktop Chrome'],
+        launchOptions: {
+          args: [
+            '--autoplay-policy=no-user-gesture-required',
+            '--use-fake-ui-for-media-stream',
+            '--use-fake-device-for-media-stream',
+            `--use-file-for-fake-audio-capture=${path.resolve(__dirname, 'e2e/fixtures/voice/sample.wav')}`,
+          ],
+        },
+      },
     },
   ],
   webServer: process.env.PLAYWRIGHT_BASE_URL
     ? undefined
     : {
-        command: 'pnpm exec next dev --hostname 127.0.0.1 --port 3000',
+        command: 'pnpm exec next dev --hostname localhost --port 3000',
         url: baseURL,
         reuseExistingServer: !process.env.CI,
         timeout: 120_000,
