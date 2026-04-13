@@ -1,39 +1,41 @@
 ---
-name: Bug Report
+name: 不具合報告
 about: バグを報告する
-title: "[Bug] "
+title: "[不具合] "
 labels: bug
 assignees: ''
 ---
 
-## Description
+<!-- 原則として日本語で記入してください。 -->
+
+## 概要
 
 <!-- バグの内容を説明してください -->
 
-## Steps to Reproduce
+## 再現手順
 
 1.
 2.
 3.
 
-## Expected Behavior
+## 期待される動作
 
 <!-- 期待される動作 -->
 
-## Actual Behavior
+## 実際の動作
 
 <!-- 実際の動作 -->
 
-## Environment
+## 環境
 
 - OS:
 - Browser:
 - Device: (Desktop / Mobile / Tablet)
 
-## Screenshots
+## スクリーンショット
 
 <!-- スクリーンショットがあれば添付してください -->
 
-## Additional Context
+## 補足情報
 
 <!-- その他の情報があれば記載してください -->

@@ -1,27 +1,29 @@
 ---
-name: Feature Request
+name: 機能提案
 about: 新機能の提案
-title: "[Feature] "
+title: "[機能提案] "
 labels: enhancement
 assignees: ''
 ---
 
-## Summary
+<!-- 原則として日本語で記入してください。 -->
+
+## 概要
 
 <!-- 機能の概要を説明してください -->
 
-## Motivation
+## 背景・目的
 
 <!-- なぜこの機能が必要ですか？ -->
 
-## Proposed Solution
+## 提案する解決策
 
 <!-- 解決策の提案 -->
 
-## Alternatives Considered
+## 検討した代替案
 
 <!-- 検討した代替案があれば記載してください -->
 
-## Additional Context
+## 補足情報
 
 <!-- その他の情報があれば記載してください -->
