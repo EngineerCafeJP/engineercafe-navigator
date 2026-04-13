@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import path from 'node:path';
+
 import { expect, test, type Page, type Request } from '@playwright/test';
 
 const voiceLive = process.env.PLAYWRIGHT_VOICE_LIVE === '1';
@@ -8,14 +11,33 @@ interface ObservedCall {
   method: string;
 }
 
+function normalizeText(value: string | null | undefined): string {
+  return (value ?? '')
+    .replace(/\[\/?[a-zA-Z_]+(?::\d*\.?\d+)?\]/g, '')
+    .replace(/^(応答|Response)\s*:\s*/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+async function installDeterministicVoiceRecorder(page: Page): Promise<void> {
+  const sampleAudioBase64 = fs
+    .readFileSync(path.resolve(__dirname, 'fixtures/voice/sample.wav'))
+    .toString('base64');
+
+  await page.addInitScript(({ audioBase64 }) => {
+    (window as Window & { __PLAYWRIGHT_VOICE_AUDIO_BASE64__?: string }).__PLAYWRIGHT_VOICE_AUDIO_BASE64__ =
+      audioBase64;
+  }, { audioBase64: sampleAudioBase64 });
+}
+
 async function selectEnglishAndClose(page: Page, timeout = 15_000): Promise<void> {
-  const dialog = page.getByRole('dialog');
+  const dialog = page.getByRole('dialog', { name: /初期設定|Initial Settings/i });
   await expect(dialog).toBeVisible({ timeout });
-  await page.getByRole('button', { name: 'English' }).click();
-  await page.getByTestId('initial-settings-close').click();
-  await expect
-    .poll(async () => (await dialog.isHidden().catch(() => true)) === true, { timeout })
-    .toBe(true);
+  await page.waitForTimeout(500);
+  const closeButton = dialog.getByTestId('initial-settings-close');
+  await expect(closeButton).toBeVisible({ timeout });
+  await closeButton.click();
+  await expect(dialog).toBeHidden({ timeout });
 }
 
 function parseAction(request: Request): string | undefined {
@@ -29,14 +51,21 @@ function parseAction(request: Request): string | undefined {
   }
 }
 
+const ENGINEER_CAFE_PATTERN = /engineer\s*cafe|エンジニア\s*カフェ/i;
+
 test.describe('Voice live (browser voice round-trip against live backend)', () => {
   test.skip(
     !voiceLive || !process.env.BACKEND_API_URL || !process.env.BACKEND_API_KEY,
     'Set PLAYWRIGHT_VOICE_LIVE=1 + BACKEND_API_URL + BACKEND_API_KEY to run live voice E2E.',
   );
 
-  test('mic click drives STT → QA → TTS with live backend', async ({ page }) => {
+  test('mic click drives STT → QA → TTS with live backend', async ({ page, context, baseURL }) => {
     test.setTimeout(240_000);
+
+    await context.grantPermissions(['microphone'], {
+      origin: baseURL ?? 'http://127.0.0.1:3000',
+    });
+    await installDeterministicVoiceRecorder(page);
 
     const apiCalls: ObservedCall[] = [];
     page.on('request', (request) => {
@@ -47,7 +76,7 @@ test.describe('Voice live (browser voice round-trip against live backend)', () =
       apiCalls.push({ url, method, action: parseAction(request) });
     });
 
-    await page.goto('/', { waitUntil: 'networkidle' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await selectEnglishAndClose(page);
 
     const voiceButton = page.getByTestId('kiosk-voice-button');
@@ -82,20 +111,31 @@ test.describe('Voice live (browser voice round-trip against live backend)', () =
     );
 
     await voiceButton.click();
-    // KioskVoiceStatusStack mirrors VoiceInterface's sessionState as a
-    // data-session-state attribute. Listening is the first post-click
-    // state; processing/speaking follow after STT returns.
-    const voiceStatus = page.getByTestId('kiosk-voice-status');
-    await expect(voiceStatus).toHaveAttribute('data-session-state', 'listening', {
+    await expect(page.getByTestId('kiosk-voice-status')).toHaveAttribute(
+      'data-session-state',
+      'listening',
+      {
+        timeout: 15_000,
+      },
+    );
+    await expect(page.getByRole('button', { name: 'Welcome' })).toBeDisabled({
       timeout: 15_000,
     });
-    // Brief pause to let Chromium's fake audio device feed at least one
-    // chunk of the 1.8s fixture WAV into the real MediaRecorder.
-    await page.waitForTimeout(2500);
+    const voiceStatus = page.getByTestId('kiosk-voice-status');
+    await page.waitForTimeout(250);
     await voiceButton.click();
 
     const sttResponse = await sttResponsePromise;
     expect(sttResponse.ok()).toBeTruthy();
+    const sttPayload = (await sttResponse.json().catch(() => null)) as {
+      transcript?: unknown;
+      success?: unknown;
+    } | null;
+    expect(sttPayload).not.toBeNull();
+    expect(sttPayload?.success ?? true).not.toBe(false);
+    const transcript = typeof sttPayload?.transcript === 'string' ? sttPayload.transcript : '';
+    expect(transcript.length).toBeGreaterThan(5);
+    expect(transcript).toMatch(ENGINEER_CAFE_PATTERN);
 
     const qaResponse = await qaResponsePromise;
     expect(qaResponse.ok()).toBeTruthy();
@@ -106,6 +146,9 @@ test.describe('Voice live (browser voice round-trip against live backend)', () =
     expect(qaPayload).not.toBeNull();
     expect(qaPayload?.success ?? true).not.toBe(false);
     expect(typeof qaPayload?.answer === 'string' && qaPayload.answer.length > 0).toBe(true);
+    const qaAnswer = normalizeText(typeof qaPayload?.answer === 'string' ? qaPayload.answer : '');
+    expect(qaAnswer.length).toBeGreaterThan(20);
+    expect(qaAnswer).toMatch(ENGINEER_CAFE_PATTERN);
 
     const ttsResponse = await ttsResponsePromise;
     expect(ttsResponse.ok()).toBeTruthy();
@@ -125,11 +168,13 @@ test.describe('Voice live (browser voice round-trip against live backend)', () =
       })
       .not.toBe(baselineText);
 
-    const finalText = ((await responseText.textContent()) ?? '').trim();
+    const finalText = normalizeText((await responseText.textContent()) ?? '');
     expect(finalText.length).toBeGreaterThan(20);
     expect(finalText).toMatch(/[A-Za-z\u3040-\u30ff\u4e00-\u9fff]/);
     expect(finalText.toLowerCase()).not.toContain('internal server error');
     expect(finalText).not.toMatch(/stack trace|500 internal/i);
+    expect(finalText).toMatch(ENGINEER_CAFE_PATTERN);
+    expect(finalText).toBe(qaAnswer);
 
     // Session must return to idle after speaking. Unlike kioskVoiceLocked
     // (which is user-driven — it drops immediately on the stop click),

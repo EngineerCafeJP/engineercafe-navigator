@@ -26,6 +26,7 @@ export async function POST(request: NextRequest) {
         text,
         streaming: streaming || false,
       },
+      timeoutMs: 75_000,
     });
 
     if (!response.ok) {
@@ -47,6 +48,7 @@ export async function GET(request: NextRequest) {
     const response = await backendFetch('/api/voice', {
       method: 'GET',
       params: action ? { action } : undefined,
+      timeoutMs: 75_000,
     });
 
     if (!response.ok) {

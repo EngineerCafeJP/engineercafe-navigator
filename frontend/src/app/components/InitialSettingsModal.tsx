@@ -96,7 +96,7 @@ export default function InitialSettingsModal({
     ...initialSettingsModalLabels[uiLanguage],
   };
 
-  const handleClose = useCallback(async () => {
+  const handleClose = useCallback(() => {
     writeKioskTriggerMode(triggerMode);
     writeKioskMicMode(micMode);
     onPreferencesSaved?.({
@@ -105,13 +105,15 @@ export default function InitialSettingsModal({
       micMode,
     });
     markAudioUserInteraction();
-    try {
-      const { AudioInteractionManager } = await import('@/lib/audio/audio-interaction-manager');
-      await AudioInteractionManager.getInstance().ensureAudioContext();
-    } catch {
-      // Autoplay gate may still block until further gesture; kiosk flow continues.
-    }
     onClose();
+    void (async () => {
+      try {
+        const { AudioInteractionManager } = await import('@/lib/audio/audio-interaction-manager');
+        await AudioInteractionManager.getInstance().ensureAudioContext();
+      } catch {
+        // Autoplay gate may still block until further gesture; kiosk flow continues.
+      }
+    })();
   }, [micMode, onClose, onPreferencesSaved, triggerMode, uiLanguage]);
 
   if (!open) {
@@ -130,7 +132,7 @@ export default function InitialSettingsModal({
         <div className="pointer-events-auto relative max-h-[min(90vh,720px)] w-full overflow-y-auto rounded-[28px] border border-white/20 bg-slate-900/95 p-6 text-white shadow-2xl backdrop-blur-md md:p-8">
           <button
             type="button"
-            onClick={() => void handleClose()}
+            onClick={handleClose}
             className="absolute right-4 top-4 inline-flex size-10 items-center justify-center rounded-full bg-white/10 text-white transition-transform hover:scale-105"
             aria-label={labels.close}
           >
@@ -230,7 +232,7 @@ export default function InitialSettingsModal({
           <div className="mt-6 flex justify-end">
             <button
               type="button"
-              onClick={() => void handleClose()}
+              onClick={handleClose}
               data-testid="initial-settings-close"
               className="inline-flex min-h-11 min-w-[140px] items-center justify-center rounded-full bg-white px-6 py-3 text-sm font-semibold text-slate-900 shadow-lg transition-transform hover:scale-[1.02]"
             >

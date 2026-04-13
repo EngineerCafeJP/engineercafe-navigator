@@ -64,6 +64,14 @@ export function useVoiceWaveform({
       return;
     }
 
+    if (stream.getAudioTracks().length === 0) {
+      setIsAnalyzing(false);
+      setAverageLevel(0);
+      setLevels(createLevels(barCount));
+      setError(null);
+      return;
+    }
+
     const AudioContextConstructor = getAudioContextConstructor();
     if (!AudioContextConstructor) {
       setError('AudioContext is not supported in this browser');

@@ -32,6 +32,8 @@ jobs:
             frontend:
               - 'frontend/**'
               - 'pnpm-lock.yaml'
+              - '.github/workflows/ci.yml'
+              - '.github/workflows/voice-e2e-nightly.yml'
             backend:
               - 'backend/**'
 
@@ -132,6 +134,7 @@ jobs:
     needs: [changes, frontend-build]
     if: needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -161,6 +164,7 @@ jobs:
           e2e/smoke.spec.ts
           e2e/reception-flow.spec.ts
           e2e/webgl-fallback.spec.ts
+          --project=chromium
         working-directory: frontend
         env:
           CI: true
@@ -171,6 +175,100 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY || 'placeholder-openai-key' }}
           NEXT_PUBLIC_BACKEND_API_URL: ${{ secrets.NEXT_PUBLIC_BACKEND_API_URL || 'https://engineer-cafe-backend-639959525777.asia-northeast1.run.app' }}
           BACKEND_API_URL: ${{ secrets.BACKEND_API_URL || 'https://engineer-cafe-backend-639959525777.asia-northeast1.run.app' }}
+
+  # Frontend: Playwright browser voice E2E against live backend
+  frontend-playwright-voice-live:
+    needs: [changes, frontend-build]
+    if: needs.changes.outputs.frontend == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: frontend
+
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install chromium --with-deps
+        working-directory: frontend
+
+      - name: Validate live backend secret
+        shell: bash
+        working-directory: frontend
+        run: |
+          if [[ -z "${BACKEND_API_KEY:-}" ]]; then
+            echo "error: BACKEND_API_KEY is required for frontend-playwright-voice-live." >&2
+            exit 1
+          fi
+          echo "voice-live secret check passed"
+        env:
+          BACKEND_API_KEY: ${{ secrets.BACKEND_API_KEY }}
+
+      - name: Warm up live backend
+        shell: bash
+        working-directory: frontend
+        run: |
+          BACKEND_URL="${BACKEND_API_URL:-https://engineer-cafe-backend-639959525777.asia-northeast1.run.app}"
+          echo "Probing $BACKEND_URL/health ..."
+          for attempt in 1 2 3 4 5 6; do
+            if curl -fsS --max-time 60 "$BACKEND_URL/health" > /tmp/voice-live-health.json; then
+              echo "health (attempt $attempt): $(cat /tmp/voice-live-health.json)"
+              exit 0
+            fi
+            echo "cold-start attempt $attempt failed, retrying in 10s..."
+            sleep 10
+          done
+          echo "error: backend /health probe failed after 6 attempts" >&2
+          exit 1
+        env:
+          BACKEND_API_URL: ${{ secrets.BACKEND_API_URL }}
+
+      - name: Run Playwright E2E (voice live)
+        run: >-
+          pnpm exec playwright test
+          e2e/voice-live.spec.ts
+          --project=chromium-voice-live
+        working-directory: frontend
+        env:
+          CI: true
+          PLAYWRIGHT_VOICE_LIVE: '1'
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co' }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key' }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY || 'placeholder-service-role-key' }}
+          GOOGLE_GENERATIVE_AI_API_KEY: ${{ secrets.GOOGLE_GENERATIVE_AI_API_KEY || 'placeholder-google-ai-key' }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY || 'placeholder-openai-key' }}
+          NEXT_PUBLIC_BACKEND_API_URL: ${{ secrets.NEXT_PUBLIC_BACKEND_API_URL || 'https://engineer-cafe-backend-639959525777.asia-northeast1.run.app' }}
+          BACKEND_API_URL: ${{ secrets.BACKEND_API_URL || 'https://engineer-cafe-backend-639959525777.asia-northeast1.run.app' }}
+          BACKEND_API_KEY: ${{ secrets.BACKEND_API_KEY }}
+
+      - name: Upload Playwright HTML report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-voice-live-report
+          path: frontend/playwright-report
+          retention-days: 14
+
+      - name: Upload Playwright test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-voice-live-test-results
+          path: frontend/test-results
+          retention-days: 14
 
       - name: Upload Playwright HTML report
         if: failure()
@@ -405,6 +503,7 @@ jobs:
       - frontend-typecheck
       - frontend-build
       - frontend-playwright-e2e
+      - frontend-playwright-voice-live
       - backend-lint
       - backend-test
     if: always()
@@ -422,6 +521,7 @@ jobs:
             "${{ needs.frontend-typecheck.result }}" \
             "${{ needs.frontend-build.result }}" \
             "${{ needs.frontend-playwright-e2e.result }}" \
+            "${{ needs.frontend-playwright-voice-live.result }}" \
             "${{ needs.backend-lint.result }}" \
             "${{ needs.backend-test.result }}"; do
             if [[ "$job_result" == "failure" ]] || [[ "$job_result" == "cancelled" ]]; then
