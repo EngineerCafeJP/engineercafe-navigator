@@ -233,9 +233,10 @@ async def verify_api_key(request: Request) -> None:
         raise HTTPException(status_code=403, detail="Invalid or missing API key")
 
 
-ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "https://frontend-delta-six-20.vercel.app").split(
-    ","
+DEFAULT_FRONTEND_PRODUCTION_ORIGIN = os.getenv(
+    "FRONTEND_PRODUCTION_ORIGIN", "https://frontend-delta-six-20.vercel.app"
 )
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", DEFAULT_FRONTEND_PRODUCTION_ORIGIN).split(",")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,

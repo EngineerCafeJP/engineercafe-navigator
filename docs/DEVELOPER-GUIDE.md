@@ -91,7 +91,7 @@ Frontend API routes proxy requests to the backend:
 | Local Frontend | http://localhost:3000 |
 | Local Backend | http://localhost:8000 |
 | Local Backend Docs | http://localhost:8000/docs (Swagger UI) |
-| Production Frontend | https://frontend-delta-six-20.vercel.app |
+| Production Frontend | Vercel Production domain (`docs/DEPLOYMENT.md` を参照) |
 | Production Backend | https://engineer-cafe-backend-639959525777.asia-northeast1.run.app |
 | Backend Health | `GET /api/health` |
 

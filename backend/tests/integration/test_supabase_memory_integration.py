@@ -35,6 +35,8 @@ _REQUIRED_TABLES = (
     "conversation_sessions",
     "conversation_history",
     "knowledge_base",
+    "reception_sessions",
+    "visits",
 )
 _MISSING_SCHEMA_TABLES: tuple[str, ...] = ()
 
@@ -612,4 +614,16 @@ class TestDatabaseSchema:
         response = (
             memory_helper.supabase.table("conversation_history").select("id").limit(0).execute()
         )
+        assert response is not None
+
+    async def test_reception_sessions_table_exists(self, memory_helper):
+        """reception_sessionsテーブルが存在する"""
+        response = (
+            memory_helper.supabase.table("reception_sessions").select("id").limit(0).execute()
+        )
+        assert response is not None
+
+    async def test_visits_table_exists(self, memory_helper):
+        """visitsテーブルが存在する"""
+        response = memory_helper.supabase.table("visits").select("id").limit(0).execute()
         assert response is not None

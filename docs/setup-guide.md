@@ -389,7 +389,7 @@ Q&A:      ブラウザ → /api/qa (FE proxy) → Backend /api/chat → LangGrap
 
 | サービス | URL |
 |----------|-----|
-| フロントエンド (Vercel) | https://frontend-delta-six-20.vercel.app |
+| フロントエンド (Vercel) | Vercel の Production domain を参照 (`vercel list --yes` または `docs/DEPLOYMENT.md`) |
 | バックエンド (Cloud Run) | https://engineer-cafe-backend-639959525777.asia-northeast1.run.app |
 | VoiceVox (Cloud Run) | https://voicevox-proto-639959525777.asia-northeast2.run.app |
 

@@ -8,7 +8,7 @@ Updated for the current Vercel + Cloud Run deployment.
 
 Engineer Cafe Navigator uses a two-tier API architecture:
 
-- Public clients usually call the frontend routes at `https://frontend-delta-six-20.vercel.app/api`.
+- Public clients usually call the frontend routes at `<frontend-production-origin>/api` where the origin is the Vercel Production domain documented in `docs/DEPLOYMENT.md`.
 - Those frontend `/api/*` routes proxy to the FastAPI backend and attach `X-API-Key` automatically via `BACKEND_API_KEY`.
 - Admin, cron, and monitoring routes are protected at the frontend edge with `Authorization: Bearer <ADMIN_API_SECRET>`.
 - Core backend application routes such as `/api/chat` are not meant to be called directly from browsers.
@@ -16,7 +16,7 @@ Engineer Cafe Navigator uses a two-tier API architecture:
 ## Base URLs
 
 ```text
-Frontend production: https://frontend-delta-six-20.vercel.app/api
+Frontend production: <frontend-production-origin>/api
 Frontend local:      http://localhost:3000/api
 Backend local:       http://localhost:8000
 ```
@@ -33,7 +33,7 @@ Notes:
 
 - `BACKEND_API_KEY` is a server-side secret used by the Next.js frontend when proxying requests to the backend.
 - `ADMIN_API_SECRET` is enforced by frontend middleware on `/api/admin/*`, `/api/cron/*`, and `/api/monitoring/*`.
-- The backend also restricts CORS to `https://frontend-delta-six-20.vercel.app` plus local development origins.
+- The backend also restricts CORS to the configured Vercel Production origin plus local development origins.
 
 ## Architecture Note
 

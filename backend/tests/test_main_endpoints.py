@@ -285,11 +285,25 @@ class TestCORSConfiguration:
     def test_cors_default_origins(self, monkeypatch):
         """Without ALLOWED_ORIGINS env var, production default is used"""
         monkeypatch.delenv("ALLOWED_ORIGINS", raising=False)
+        monkeypatch.delenv("FRONTEND_PRODUCTION_ORIGIN", raising=False)
         import importlib
         import backend.main
 
         importlib.reload(backend.main)
         assert "https://frontend-delta-six-20.vercel.app" in backend.main.ALLOWED_ORIGINS
+
+    def test_cors_uses_frontend_origin_override(self, monkeypatch):
+        """FRONTEND_PRODUCTION_ORIGIN becomes the default when ALLOWED_ORIGINS is absent."""
+        monkeypatch.delenv("ALLOWED_ORIGINS", raising=False)
+        monkeypatch.setenv("FRONTEND_PRODUCTION_ORIGIN", "https://frontend-qwbhreahe-kousukes-projects-8e2831b8.vercel.app")
+        import importlib
+        import backend.main
+
+        importlib.reload(backend.main)
+        assert (
+            "https://frontend-qwbhreahe-kousukes-projects-8e2831b8.vercel.app"
+            in backend.main.ALLOWED_ORIGINS
+        )
 
     def test_cors_custom_origins(self, monkeypatch):
         """With ALLOWED_ORIGINS set, custom origins are used"""
@@ -302,6 +316,7 @@ class TestCORSConfiguration:
         assert "https://app.example.com" in backend.main.ALLOWED_ORIGINS
         # Restore
         monkeypatch.delenv("ALLOWED_ORIGINS", raising=False)
+        monkeypatch.delenv("FRONTEND_PRODUCTION_ORIGIN", raising=False)
         importlib.reload(backend.main)
 
 

@@ -10,7 +10,7 @@ Browser / Kiosk
      |
      v
 Vercel  (Next.js 15 frontend — App Router)
-  Production URL: https://frontend-delta-six-20.vercel.app
+  Production domain: Vercel project primary production alias
   Auto-deploy: push to `develop` (Vercel Git integration / deploy hook)
      |
      v
@@ -31,6 +31,12 @@ Cloud Run: engineer-cafe-backend   asia-northeast1   GCP: aipartner-426616
 | Backend | Cloud Run `engineer-cafe-backend` | `asia-northeast1` | FastAPI + LangGraph agents |
 | VoiceVox | Cloud Run `voicevox-proto` | `asia-northeast2` | Japanese TTS (when configured; not bundled in default staging deploy) |
 | Database | Supabase (PostgreSQL + pgvector) | Managed | Chat history, knowledge base, sessions |
+
+### Source of truth for frontend origin
+
+- The canonical frontend production origin is the **Vercel project's primary production domain**, not an arbitrary preview deployment URL.
+- Operators should verify it in the Vercel dashboard or `vercel list --yes`.
+- Backend deploys mirror that value through the GitHub Actions repo variable `FRONTEND_PRODUCTION_ORIGIN` and write it to both `FRONTEND_PRODUCTION_ORIGIN` and `ALLOWED_ORIGINS` on Cloud Run.
 
 ### Legacy (pre-2026-04): Cloudflare Workers
 
@@ -62,7 +68,7 @@ Typical **staging / production-aligned** flags from CI include:
 
 - `--memory 8Gi --cpu 2 --min-instances 1 --max-instances 3`
 - Non-secret env (example from workflow):  
-  `ENVIRONMENT=production`, `TTS_PROVIDER=piper`, `STT_PROVIDER=qwen-primary`, `ALLOWED_ORIGINS=https://frontend-delta-six-20.vercel.app`
+  `ENVIRONMENT=production`, `TTS_PROVIDER=piper`, `STT_PROVIDER=qwen-primary`, `FRONTEND_PRODUCTION_ORIGIN=<vercel-production-origin>`, `ALLOWED_ORIGINS=<vercel-production-origin>`
 - Secrets via `--update-secrets` (never `--set-secrets` in a way that drops existing bindings)
 
 | Variable | Required | Description |
@@ -84,7 +90,7 @@ Use `gcloud run services update --update-env-vars` to change individual vars. **
 ### Frontend: Vercel
 
 1. Merge to `develop` (or trigger the configured **Deploy Hook** if you use hook-based deploys).
-2. Vercel builds from the linked Git repo; production URL: https://frontend-delta-six-20.vercel.app
+2. Vercel builds from the linked Git repo; use the project's **Production** domain shown in Vercel as the canonical frontend URL.
 
 Local checks before shipping:
 
@@ -127,7 +133,8 @@ Confirm image, env vars, and secret bindings match expectations.
 **Frontend (Vercel)**
 
 - Dashboard: Vercel project → Deployments / Domains.  
-- CLI (if installed): `vercel ls` for recent deployments.
+- CLI (if installed): `vercel list --yes` for recent deployments.
+- Repo/CI source of truth: GitHub Actions repo variable `FRONTEND_PRODUCTION_ORIGIN` should match the Vercel Production domain.
 
 **Health**
 
@@ -145,7 +152,8 @@ curl -sf "$(gcloud run services describe engineer-cafe-backend --region asia-nor
 - [ ] CI green on the branch being deployed
 - [ ] `API_SECRET_KEY` set on Cloud Run for production
 - [ ] `ADMIN_API_SECRET` set in **Vercel** (not Cloudflare) for the frontend project
-- [ ] `ALLOWED_ORIGINS` on the backend includes https://frontend-delta-six-20.vercel.app (and preview URLs if you use them)
+- [ ] `FRONTEND_PRODUCTION_ORIGIN` matches the Vercel Production domain
+- [ ] `ALLOWED_ORIGINS` on the backend includes that same production origin (and preview URLs if you use them)
 - [ ] No new env vars without documentation
 - [ ] Supabase migrations applied if schema changed
 - [ ] Backend image built with `--platform linux/amd64` when building on Apple Silicon

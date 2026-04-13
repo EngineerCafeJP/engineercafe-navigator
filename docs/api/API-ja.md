@@ -8,7 +8,7 @@
 
 Engineer Cafe Navigator は 2 層構成の API を採用しています。
 
-- 公開クライアントは通常 `https://frontend-delta-six-20.vercel.app/api` 配下のフロントエンド route を呼び出します。
+- 公開クライアントは通常 `<frontend-production-origin>/api` 配下のフロントエンド route を呼び出します。ここでいう origin は `docs/DEPLOYMENT.md` に記載した Vercel の Production domain です。
 - フロントエンドの `/api/*` route は FastAPI バックエンドへプロキシし、`BACKEND_API_KEY` を使って `X-API-Key` を自動付与します。
 - `/api/admin/*`、`/api/cron/*`、`/api/monitoring/*` はフロントエンド側で `Authorization: Bearer <ADMIN_API_SECRET>` により保護されます。
 - `/api/chat` などのコアなバックエンド route は、通常ブラウザから直接呼び出す想定ではありません。
@@ -16,7 +16,7 @@ Engineer Cafe Navigator は 2 層構成の API を採用しています。
 ## ベース URL
 
 ```text
-フロントエンド本番: https://frontend-delta-six-20.vercel.app/api
+フロントエンド本番: <frontend-production-origin>/api
 フロントエンド local: http://localhost:3000/api
 バックエンド local:   http://localhost:8000
 ```
@@ -33,7 +33,7 @@ Engineer Cafe Navigator は 2 層構成の API を採用しています。
 
 - `BACKEND_API_KEY` は Next.js フロントエンドがバックエンドへプロキシするためのサーバー側シークレットです。
 - `ADMIN_API_SECRET` はフロントエンド middleware により `/api/admin/*`、`/api/cron/*`、`/api/monitoring/*` に適用されます。
-- バックエンドの CORS は `https://frontend-delta-six-20.vercel.app` と local 開発 origin を許可しています。
+- バックエンドの CORS は設定された Vercel Production origin と local 開発 origin を許可しています。
 
 ## アーキテクチャ補足
 
