@@ -63,6 +63,14 @@ _TRAG_PREAMBLE_RE = re.compile(
 )
 
 
+async def _probe_tts_duration_for_chat_answer(tts_text: str, language: str) -> Optional[float]:
+    """TTS と同じ前処理で合成し、実音声長（秒）を返す（失敗時 None）。"""
+    from backend.utils.voice_agent_provider import get_voice_agent
+
+    lang = language if language in ("ja", "en") else "ja"
+    return await get_voice_agent().probe_synthesis_duration_seconds(tts_text, lang)
+
+
 def _get_trag_client() -> "_httpx.AsyncClient":
     """Return a shared httpx client for tRAG translation."""
     global _trag_http_client
@@ -1205,32 +1213,6 @@ class MainWorkflow:
         if not isinstance(state_context, dict):
             state_context = {}
 
-        vrm_control = None
-        lipsync_data: list[dict[str, Any]] = []
-        if self._character_control_agent is not None:
-            try:
-                audio_duration = state_context.get("audio_duration") or state_context.get(
-                    "audioDuration"
-                )
-                vrm_control = await self._character_control_agent.process(
-                    state.get("emotion") or "neutral",
-                    raw_answer,
-                    audio_duration=audio_duration,
-                    context=state_context,
-                )
-                lipsync_data = vrm_control.get("keyframes", [])
-            except Exception as character_error:
-                logger.warning(
-                    "Character control generation failed, continuing without VRM metadata: %s",
-                    character_error,
-                    exc_info=True,
-                )
-
-        metadata = {
-            **state_metadata,
-            "vrm_control": vrm_control,
-            "lipsync_data": lipsync_data,
-        }
         # PII Defense-in-Depth: ワークフロー層でもスキャン（API層に加えて二重防御）
         try:
             masked, pii_items = scan_and_mask(answer)
@@ -1268,6 +1250,54 @@ class MainWorkflow:
                     "Response translation failed, using original: %s",
                     trans_err,
                 )
+
+        tts_text = answer
+        tts_lang = language if language in ("ja", "en") else "ja"
+
+        audio_duration: Optional[float] = None
+        raw_ad = state_context.get("audio_duration") or state_context.get("audioDuration")
+        if raw_ad is not None:
+            try:
+                audio_duration = float(raw_ad)
+                if audio_duration <= 0:
+                    audio_duration = None
+            except (TypeError, ValueError):
+                audio_duration = None
+
+        probe_enabled = os.getenv("VRM_TTS_DURATION_PROBE", "1").lower() not in (
+            "0",
+            "false",
+            "no",
+        )
+        if audio_duration is None and probe_enabled and tts_text.strip():
+            try:
+                audio_duration = await _probe_tts_duration_for_chat_answer(tts_text, tts_lang)
+            except Exception as probe_err:
+                logger.warning("TTS duration probe failed, using char estimate: %s", probe_err)
+
+        vrm_control = None
+        lipsync_data: list[dict[str, Any]] = []
+        if self._character_control_agent is not None:
+            try:
+                vrm_control = await self._character_control_agent.process(
+                    state.get("emotion") or "neutral",
+                    tts_text,
+                    audio_duration=audio_duration,
+                    context=state_context,
+                )
+                lipsync_data = vrm_control.get("keyframes", [])
+            except Exception as character_error:
+                logger.warning(
+                    "Character control generation failed, continuing without VRM metadata: %s",
+                    character_error,
+                    exc_info=True,
+                )
+
+        metadata = {
+            **state_metadata,
+            "vrm_control": vrm_control,
+            "lipsync_data": lipsync_data,
+        }
 
         # アシスタント応答を保存
         try:

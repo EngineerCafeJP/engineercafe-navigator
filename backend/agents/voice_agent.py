@@ -929,3 +929,41 @@ class VoiceAgent:
                     "error": f"Failed to generate speech: {str(e)}",
                     "emotion": "confused",
                 }
+
+    async def probe_synthesis_duration_seconds(self, text: str, language: str) -> Optional[float]:
+        """
+        Same preprocessing and TTS engine selection as text_to_speech, without ambiguity handling.
+        Used to align CharacterControlAgent lip-sync duration with actual synthesized audio length.
+        """
+        from backend.utils.tts_audio_duration import audio_duration_seconds_from_base64
+
+        try:
+            cleaned = clean_text_for_tts(text)
+            processed = preprocess_tts(cleaned, language)
+            if len(processed.encode("utf-8")) > 5000:
+                processed = truncate_by_bytes(processed, 5000)
+            if not processed.strip():
+                return None
+
+            vrm_emotion = "neutral"
+            if self.tts_provider == "piper":
+                audio_b64 = await self.tts_client.synthesize_wav_base64(processed, language)
+            elif language == "en":
+                if self.kokoro_client:
+                    audio_b64 = await self.kokoro_client.synthesize_wav_base64(processed, language)
+                else:
+                    audio_b64 = await self.tts_client.synthesize_wav_base64(processed, language)
+            elif self.tts_provider == "voicevox":
+                audio_b64 = await self.tts_client.synthesize_wav_base64(processed, language)
+            else:
+                tts_emotion = map_vrm_to_tts_emotion(vrm_emotion)
+                audio_b64 = await self.tts_client.synthesize_mp3_base64(
+                    processed, language, tts_emotion
+                )
+
+            duration = audio_duration_seconds_from_base64(audio_b64)
+            if duration is not None and duration > 0:
+                return duration
+        except Exception as e:
+            logger.warning("probe_synthesis_duration_seconds failed: %s", e, exc_info=False)
+        return None

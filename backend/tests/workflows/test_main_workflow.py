@@ -714,9 +714,104 @@ class TestOrchestratorIntegration:
             assert result["metadata"]["agent"] == "BusinessInfoAgent"
             assert result["metadata"]["vrm_control"]["name"] == "idle"
             assert result["metadata"]["lipsync_data"] == [{"time": 0}]
+            mock_character.process.assert_called_once()
+            call_kw = mock_character.process.call_args
+            assert call_kw[1]["audio_duration"] is None
+            assert call_kw[0][1] == "9時から22時です。"
             assert len(result["messages"]) == 2
             assert result["messages"][0].content == "営業時間は？"
             assert result["messages"][1].content == "9時から22時です。"
+
+    @pytest.mark.asyncio
+    @patch("backend.workflows.main_workflow.OrchestratorAgent")
+    async def test_format_response_node_uses_client_audio_duration(
+        self, mock_orchestrator_class, monkeypatch
+    ):
+        """context.audio_duration があれば TTS プローブより優先される。"""
+        monkeypatch.setenv("VRM_TTS_DURATION_PROBE", "1")
+
+        from backend.workflows.main_workflow import MainWorkflow
+
+        mock_orchestrator_class.return_value = AsyncMock()
+
+        with (
+            patch("backend.utils.memory_helper.get_memory_helper") as mock_get_helper,
+            patch("backend.workflows.main_workflow.CharacterControlAgent") as mock_character_class,
+            patch(
+                "backend.workflows.main_workflow._probe_tts_duration_for_chat_answer",
+                new=AsyncMock(return_value=99.0),
+            ) as mock_probe,
+        ):
+            mock_helper = AsyncMock()
+            mock_helper.store_message = AsyncMock()
+            mock_get_helper.return_value = mock_helper
+            mock_character = AsyncMock()
+            mock_character.process = AsyncMock(
+                return_value={"name": "idle", "duration": 1000, "keyframes": [{"time": 0}]}
+            )
+            mock_character_class.return_value = mock_character
+
+            workflow = MainWorkflow()
+
+            state = {
+                "query": "営業時間は？",
+                "answer": "9時から22時です。",
+                "session_id": "test-session",
+                "emotion": "neutral",
+                "metadata": {"agent": "BusinessInfoAgent"},
+                "context": {"audio_duration": 12.34},
+            }
+
+            await workflow._format_response_node(state, _mock_runtime())
+
+            mock_probe.assert_not_called()
+            mock_character.process.assert_called_once()
+            assert mock_character.process.call_args[1]["audio_duration"] == 12.34
+
+    @pytest.mark.asyncio
+    @patch("backend.workflows.main_workflow.OrchestratorAgent")
+    async def test_format_response_node_uses_probe_when_enabled(
+        self, mock_orchestrator_class, monkeypatch
+    ):
+        """VRM_TTS_DURATION_PROBE=1 かつクライアント未指定ならプローブ結果を渡す。"""
+        monkeypatch.setenv("VRM_TTS_DURATION_PROBE", "1")
+
+        from backend.workflows.main_workflow import MainWorkflow
+
+        mock_orchestrator_class.return_value = AsyncMock()
+
+        with (
+            patch("backend.utils.memory_helper.get_memory_helper") as mock_get_helper,
+            patch("backend.workflows.main_workflow.CharacterControlAgent") as mock_character_class,
+            patch(
+                "backend.workflows.main_workflow._probe_tts_duration_for_chat_answer",
+                new=AsyncMock(return_value=12.5),
+            ) as mock_probe,
+        ):
+            mock_helper = AsyncMock()
+            mock_helper.store_message = AsyncMock()
+            mock_get_helper.return_value = mock_helper
+            mock_character = AsyncMock()
+            mock_character.process = AsyncMock(
+                return_value={"name": "idle", "duration": 1000, "keyframes": [{"time": 0}]}
+            )
+            mock_character_class.return_value = mock_character
+
+            workflow = MainWorkflow()
+
+            state = {
+                "query": "営業時間は？",
+                "answer": "9時から22時です。",
+                "session_id": "test-session",
+                "emotion": "neutral",
+                "metadata": {"agent": "BusinessInfoAgent"},
+                "context": {},
+            }
+
+            await workflow._format_response_node(state, _mock_runtime())
+
+            mock_probe.assert_called_once()
+            assert mock_character.process.call_args[1]["audio_duration"] == 12.5
 
     @pytest.mark.asyncio
     @patch("backend.workflows.main_workflow.OrchestratorAgent")

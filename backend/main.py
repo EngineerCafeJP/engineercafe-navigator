@@ -287,7 +287,13 @@ class ChatRequest(BaseModel):
     query: str = Field(max_length=2000)
     session_id: Optional[str] = None
     language: Optional[str] = Field(default="ja", max_length=10)
-    context: Optional[Dict[str, Any]] = None
+    context: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description=(
+            "Optional client context. If audio_duration (seconds, float) is set, it takes "
+            "precedence over server-side TTS duration probing for CharacterControlAgent lip-sync."
+        ),
+    )
     visitor_id: Optional[str] = None  # Cross-session visitor identification
     image_data: str | None = None  # Base64 encoded image
 
@@ -534,7 +540,6 @@ class VoiceResponse(BaseModel):
     interruptStatus: Optional[str] = None
 
 
-_voice_agent: Optional[Any] = None  # VoiceAgent (lazy-loaded)
 _stt_agent: Optional[Any] = None  # STTAgent (lazy-loaded)
 _slide_agent: Optional[Any] = None  # SlideAgent (lazy-loaded)
 _session_task_manager: Optional[Any] = None
@@ -548,13 +553,9 @@ def _get_stm():
 
 
 def _get_voice_agent():
-    global _voice_agent
-    if _voice_agent is None:
-        from backend.agents.voice_agent import VoiceAgent
+    from backend.utils.voice_agent_provider import get_voice_agent
 
-        tts_provider = os.getenv("TTS_PROVIDER", "voicevox")
-        _voice_agent = VoiceAgent(tts_provider=tts_provider)
-    return _voice_agent
+    return get_voice_agent()
 
 
 def _get_stt_agent():
