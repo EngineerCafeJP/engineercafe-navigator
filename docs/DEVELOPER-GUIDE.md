@@ -1,5 +1,12 @@
 # Developer Guide - Engineer Cafe Navigator
 
+## 言語ルール
+
+- Issue、Pull Request、レビューコメント、進行メモは原則として日本語で記述する
+- 外部仕様名、ライブラリ名、API 名、コード識別子は必要に応じて英語のまま記載してよい
+- 英語で記録する必然性がある場合でも、日本語の要約を先に置く
+- GitHub の title / body / template も日本語を既定とする
+
 ## Quick Start
 
 ### Prerequisites
