@@ -59,10 +59,12 @@ Engineer Cafe Navigator のアルファテストに向けて、STT (Speech-to-Te
 
 | 変数 | デフォルト | 説明 |
 |---|---|---|
-| `STT_PROVIDER` | `vosk` | STT プロバイダー選択 |
+| `STT_PROVIDER` | コード既定: production=`google`, non-production=`qwen0.6b-cpu`; Cloud Run deploy は `qwen-primary` を明示設定 | STT プロバイダー選択 |
 | `QWEN_STT_TIMEOUT` | `10` | Qwen タイムアウト (秒) |
 | `STT_LLM_POSTPROCESS` | `false` | Vosk フォールバック時の LLM 後処理 |
 | `HF_HOME` | `/app/.hf_cache` | HuggingFace モデルキャッシュ |
+
+この ADR が意図する本番構成は `qwen-primary` であり、実際の Cloud Run デプロイも `.github/workflows/ci.yml` から `STT_PROVIDER=qwen-primary` を明示している。`STTAgent` クラスの未設定時フォールバック値はローカル/移行互換のために残っている実装詳細であり、本番ではそれに依存しない。
 
 ## Cloud Run 要件
 
@@ -129,6 +131,10 @@ Cloud Run revision 00077-rjb にデプロイし、本番環境で検証を実施
 - 初回リクエスト: ~40s (モデルロード) → 500 エラー
 - 2回目以降: 2-5s (モデル常駐)
 - min-instances=1 でコールドスタート回避
+
+### 2026-04-13 時点の追加運用確認
+- GitHub Actions の `frontend-playwright-voice-live` が live backend に対するブラウザ音声 round-trip を merge gate として実行
+- このジョブは UI 音声入力経路、`/api/qa` プロキシ、LangGraph 応答、TTS 応答の接続健全性を継続的に確認する
 
 ### 未解決課題
 1. **日本語 STT 精度**: カタカナ語 ("エンジニア") の認識が弱い

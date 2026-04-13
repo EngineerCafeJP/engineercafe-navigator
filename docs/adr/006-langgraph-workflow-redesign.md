@@ -120,11 +120,14 @@ LangGraph ワークフローを再設計し、キーワード fast-path 導入�
 
 ## Implementation Notes
 
-What was actually implemented versus the original plan, as of 2026-03-29:
+What was actually implemented versus the original plan, as of 2026-04-13:
 
-### D1: キーワード Fast-Path — In Progress (#377)
+### D1: キーワード Fast-Path — DONE (#377)
 
-実装未着手。グラフ構造変更（reception_check → keyword_router 分岐）は Wave 7 後半で対応予定。
+- `main_workflow.py` に `reception_check` と `keyword_router` を追加
+- グラフ構造を `START → reception_check → { active_reception: memory_loader, no_reception: keyword_router }` に変更
+- FAQ 系クエリは `keyword_router` から agent に直行し、mixed-intent / anaphora / memory 依存クエリは `memory_loader` にフォールバック
+- fast-path でも最低限の会話履歴は保存するようにした
 
 ### D2: Reception ワークフロー一本化 — DONE (PR #390)
 
@@ -150,6 +153,12 @@ What was actually implemented versus the original plan, as of 2026-03-29:
 - 新評価ランナー `run_multilingual_eval.py`（言語別スコア分解）
 - bilingual FAQ エントリの knowledge_base への追加は未実施
 
+### Browser / Live E2E Verification — DONE (#139, PR #455 / #456)
+
+- Playwright merge gate が `smoke.spec.ts`、`reception-flow.spec.ts`、`webgl-fallback.spec.ts` を実行
+- `voice-live.spec.ts` がブラウザから live backend に対して `STT -> /api/qa -> /api/chat -> TTS` の round-trip を検証
+- backend 側にも live LangGraph scenario / voice round-trip テストを追加し、UI 経由と API 経由の両方でワークフロー確認を行う体制にした
+
 ### D5: D-RAG — Deferred (Phase 2, post 4/11)
 
 計画通り延期。日英クロスバリデーションは Phase 2 で対応。
@@ -172,5 +181,5 @@ What was actually implemented versus the original plan, as of 2026-03-29:
 - Sub Issues: #377, #378, #379, #380, #381, #382
 - #117 (受付フロー統合)
 - #138 (多言語品質改善)
-- #139 (E2Eテスト)
+- #139 (E2Eテスト, closed 2026-04-13)
 - #367 (Wave 6計画)

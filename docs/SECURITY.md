@@ -167,7 +167,7 @@ The following items were identified during the 2026-03-14 hardening audit and ar
 
 **Browser and device validation**: Audio pipeline changes (WebM-to-WAV conversion, Web Audio API autoplay fixes) and VRM compatibility fixes from recent PRs have not been confirmed on all target kiosk browsers and tablet hardware. This is a deployment risk, not an authentication risk, but it belongs in a production sign-off checklist.
 
-**Frontend E2E coverage is thin**: Most current test coverage is at the unit and integration level. Playwright coverage does not yet cover admin authentication flows end-to-end.
+**Frontend E2E coverage is focused on kiosk core flows**: Playwright now gates smoke, reception, WebGL fallback, and live browser voice round-trip flows. Admin authentication and other backoffice paths are still not covered end-to-end.
 
 ---
 
