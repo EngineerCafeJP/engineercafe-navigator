@@ -199,6 +199,7 @@ ACCESS_DIRECTION_KEYWORDS = [
     "来方",
     "directions",
     "how to get",
+    "how do i get",
     # FROM cafe TO station (bidirectional - agent is at reception)
     "駅まで",
     "駅への",
@@ -284,6 +285,7 @@ LOST_FOUND_KEYWORDS = [
     "found",
     "missing",
     "left behind",
+    "left my",
     "forgot",
     "lost and found",
     "misplaced",

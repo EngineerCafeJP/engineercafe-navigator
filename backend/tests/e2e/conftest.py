@@ -6,8 +6,11 @@ E2Eテスト用フィクスチャ
 """
 
 import asyncio
+import base64
 import os
+import re
 import uuid
+from pathlib import Path
 
 import pytest
 
@@ -82,6 +85,17 @@ def workflow(_check_e2e_env):
 def e2e_session_id():
     """E2E テストセッション用の一意な session_id"""
     return f"e2e-test-{uuid.uuid4().hex[:12]}"
+
+
+@pytest.fixture(scope="session")
+def voice_sample_audio_b64() -> str:
+    """Frontend E2E でも使う音声 fixture を base64 で返す。"""
+    sample_path = (
+        Path(__file__).resolve().parents[3] / "frontend" / "e2e" / "fixtures" / "voice" / "sample.wav"
+    )
+    if not sample_path.exists():
+        pytest.skip(f"voice sample fixture not found: {sample_path}")
+    return base64.b64encode(sample_path.read_bytes()).decode()
 
 
 # ---------------------------------------------------------------------------
@@ -302,6 +316,64 @@ def keywords_match(answer: str, expected_keywords: list[str], threshold: float =
         return True
     hits = sum(1 for kw in expected_keywords if kw in answer)
     return (hits / len(expected_keywords)) >= threshold
+
+
+_ASSERTION_TRANSLATION = str.maketrans(
+    {
+        "〜": "~",
+        "–": "-",
+        "—": "-",
+        "−": "-",
+        "：": ":",
+        "　": " ",
+    }
+)
+
+
+def normalize_assertion_text(text: str) -> str:
+    """表記揺れに強い比較用の正規化。"""
+    normalized = text.casefold().translate(_ASSERTION_TRANSLATION)
+    normalized = re.sub(r"\s+", " ", normalized)
+    return normalized.strip()
+
+
+def keyword_group_match(answer: str, expected_keywords: list[str]) -> tuple[bool, str | None]:
+    """候補キーワード群のいずれかが回答に含まれるかを返す。"""
+    normalized_answer = normalize_assertion_text(answer)
+    for keyword in expected_keywords:
+        if normalize_assertion_text(keyword) in normalized_answer:
+            return True, keyword
+    return False, None
+
+
+def assert_keyword_groups(
+    answer: str,
+    expected_groups: list[list[str] | tuple[str, ...]],
+    *,
+    msg: str = "",
+):
+    """
+    複数の事実グループを検証する。
+
+    各グループは OR 条件、グループ間は AND 条件。
+    例: [["wifi", "wi-fi"], ["akarenga-112years"]]
+    """
+    if is_routing_failure(answer):
+        pytest.xfail(f"ルーティング非決定性によりRAG検索未実行: {answer[:100]}... {msg}")
+
+    hits: list[str] = []
+    misses: list[list[str] | tuple[str, ...]] = []
+    for group in expected_groups:
+        matched, keyword = keyword_group_match(answer, list(group))
+        if matched and keyword is not None:
+            hits.append(keyword)
+        else:
+            misses.append(group)
+
+    assert not misses, (
+        f"Fact-group assertion failed. Hits: {hits}, Missing groups: {misses}. "
+        f"Answer: {answer[:240]}... {msg}"
+    )
 
 
 def assert_keywords(
