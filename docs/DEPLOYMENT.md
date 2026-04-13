@@ -111,7 +111,7 @@ Manual deploy (operators): follow the same `docker build --platform linux/amd64`
 
 ## CI/CD
 
-- **Pull requests** to `main` / `develop`: lint, typecheck, build, backend tests, and (when `frontend/**` changes) Playwright E2E subset (`smoke`, `reception-flow`). Additional specs such as `e2e/webgl-fallback.spec.ts` can be run locally or added to CI as needed.
+- **Pull requests** to `main` / `develop`: lint, typecheck, build, backend tests, and (when `frontend/**` changes) Playwright merge-gate coverage for `smoke`, `reception-flow`, `webgl-fallback`, plus the live browser voice round-trip job `voice-live` against Cloud Run.
 - **Backend auto-deploy:** push to `develop` → GitHub Actions → Cloud Run (see workflow).
 - **Frontend auto-deploy:** push to `develop` → Vercel (Git or deploy hook).
 
