@@ -1,8 +1,10 @@
 # Voice Fixture: `sample.wav`
 
 Deterministic audio payload used by `frontend/e2e/voice-live.spec.ts` to drive the
-real browser voice pipeline against a live Cloud Run backend. CI does **not**
-regenerate this file; it is committed as a binary fixture.
+browser voice pipeline against a live Cloud Run backend. The Playwright spec
+injects this WAV through a deterministic `MediaRecorder` shim so the merge gate
+does not depend on headless Chromium's flaky fake-microphone behavior. CI does
+**not** regenerate this file; it is committed as a binary fixture.
 
 ## Details
 
@@ -60,7 +62,7 @@ not literal transcript content.
 
 - `16 kHz mono PCM16` matches the Qwen STT preprocessor's native sample rate,
   so backend-side resampling is skipped.
-- `audio/wav` with a real RIFF header is what `VoiceRecorder.onstop` would
-  normally emit. Using the same MIME type keeps `VoiceInterface.handleRecordedAudio`
-  on its happy path.
+- `audio/wav` with a real RIFF header is what the Playwright recorder shim emits
+  into `VoiceRecorder.onstop`, so `VoiceInterface.handleRecordedAudio` stays on
+  its production path.
 - ≤ 80 KB target keeps the fixture well inside git (no LFS required).

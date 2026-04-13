@@ -221,6 +221,9 @@ export default function CharacterAvatar({
   const lipSyncAnalyzerRef = useRef<LipSyncAnalyzer | null>(null);
   const expressionControllerRef = useRef<ExpressionController | null>(null);
   const autoBlinkCleanupRef = useRef<(() => void) | null>(null);
+  const onVisemeControlRef = useRef(onVisemeControl);
+  const onExpressionControlRef = useRef(onExpressionControl);
+  const onKeyframeAnimationControlRef = useRef(onKeyframeAnimationControl);
   const currentExpressionRef = useRef<{ expression: string; weight: number }>({ expression: 'neutral', weight: 1.0 });
   const expressionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const keyframeAnimationTimeoutsRef = useRef<NodeJS.Timeout[]>([]);
@@ -233,6 +236,12 @@ export default function CharacterAvatar({
   const expressionWeightsUiRef = useRef<Record<string, number>>({});
   const lastManualExpressionUpdateMsRef = useRef<Record<string, number>>({});
   const lastSettingsPanelEmitMsRef = useRef(0);
+
+  useEffect(() => {
+    onVisemeControlRef.current = onVisemeControl;
+    onExpressionControlRef.current = onExpressionControl;
+    onKeyframeAnimationControlRef.current = onKeyframeAnimationControl;
+  }, [onExpressionControl, onKeyframeAnimationControl, onVisemeControl]);
   const initializeSceneRef = useRef<() => { ok: boolean; disposeResize?: () => void }>(() => ({ ok: false }));
   const loadCharacterRef = useRef<() => Promise<void>>(async () => {});
   const cleanupRef = useRef<() => void>(() => {});
@@ -1155,10 +1164,10 @@ export default function CharacterAvatar({
 
   useEffect(() => {
     if (avatarRenderMode !== 'fallback') return;
-    onVisemeControl?.(() => {});
-    onExpressionControl?.(() => {});
-    onKeyframeAnimationControl?.(() => {});
-  }, [avatarRenderMode, onVisemeControl, onExpressionControl, onKeyframeAnimationControl]);
+    onVisemeControlRef.current?.(() => {});
+    onExpressionControlRef.current?.(() => {});
+    onKeyframeAnimationControlRef.current?.(() => {});
+  }, [avatarRenderMode]);
 
   useEffect(() => {
     if (avatarRenderMode === 'fallback') return;
@@ -1535,7 +1544,11 @@ export default function CharacterAvatar({
   }
 
   return (
-    <div className="relative h-full bg-gray-100 rounded-lg overflow-hidden">
+    <div
+      data-testid="character-avatar-root"
+      data-avatar-render-mode={avatarRenderMode}
+      className="relative h-full bg-gray-100 rounded-lg overflow-hidden"
+    >
       {avatarRenderMode === 'fallback' ? (
         <div
           data-testid="character-avatar-fallback"

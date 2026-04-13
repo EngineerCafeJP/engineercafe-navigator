@@ -176,8 +176,7 @@ const clearVisitorId = (): void => {
   window.localStorage.removeItem(VISITOR_ID_STORAGE_KEY);
 };
 
-const createSessionId = (): string =>
-  `voice-session-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+const createSessionId = (): string => generateUuid();
 
 const toLocale = (language: 'ja' | 'en'): string => (language === 'ja' ? 'ja-JP' : 'en-US');
 

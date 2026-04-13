@@ -24,6 +24,8 @@ export interface BackendProxyOptions {
   readonly params?: Readonly<Record<string, string>>;
   /** Abort signal for request cancellation. */
   readonly signal?: AbortSignal;
+  /** Optional timeout for the generated abort signal when no explicit signal is provided. */
+  readonly timeoutMs?: number;
 }
 
 export interface BackendProxyResult<T = unknown> {
@@ -43,7 +45,7 @@ export async function backendFetch<T = unknown>(
   path: string,
   opts: BackendProxyOptions = {},
 ): Promise<BackendProxyResult<T>> {
-  const { method = "POST", body, headers = {}, params, signal } = opts;
+  const { method = "POST", body, headers = {}, params, signal, timeoutMs } = opts;
   const apiKey = process.env.BACKEND_API_KEY || "";
 
   const url = buildUrl(path, params);
@@ -58,9 +60,10 @@ export async function backendFetch<T = unknown>(
     mergedHeaders["X-API-Key"] = apiKey;
   }
 
-  // 35s > backend's 30s workflow timeout, so the backend can return its
-  // graceful timeout response before the frontend aborts the connection.
-  const effectiveSignal = signal ?? AbortSignal.timeout(35_000);
+  // Default to 35s so the backend can return its graceful timeout response
+  // before the frontend aborts. Some voice endpoints need a higher ceiling
+  // to absorb cold starts and TTS/STT latency during live verification.
+  const effectiveSignal = signal ?? AbortSignal.timeout(timeoutMs ?? 35_000);
 
   const fetchInit: RequestInit = {
     method,

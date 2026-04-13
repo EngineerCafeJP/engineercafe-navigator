@@ -1,14 +1,11 @@
 name: Voice E2E (live backend)
 
 on:
-  # NOTE: GitHub only evaluates `schedule` triggers from the repository's
-  # default branch (`main`). This workflow is merged to `develop` first and
-  # runs on-demand via workflow_dispatch. The nightly cron will be enabled
-  # in a follow-up PR that lands the same workflow on `main` (or via the
-  # develop -> main release PR), after which the following schedule block
-  # can be re-introduced at that time:
-  #   schedule:
-  #     - cron: '17 18 * * *'  # 03:17 JST (18:17 UTC previous day)
+  # GitHub evaluates `schedule` triggers from the repository's default
+  # branch. This repository's default branch is `develop`, so the nightly
+  # cron is active here as well as workflow_dispatch.
+  schedule:
+    - cron: '17 18 * * *'  # 03:17 JST (18:17 UTC previous day)
   workflow_dispatch: {}
 
 permissions:

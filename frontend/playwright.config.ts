@@ -6,7 +6,7 @@ import { defineConfig, devices } from '@playwright/test';
 loadEnv({ path: '.env.local' });
 loadEnv({ path: '.env' });
 
-const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:3000';
+const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://127.0.0.1:3000';
 
 export default defineConfig({
   testDir: './e2e',
@@ -27,7 +27,12 @@ export default defineConfig({
     {
       name: 'chromium',
       testIgnore: /voice-live\.spec\.ts/,
-      use: { ...devices['Desktop Chrome'] },
+      use: {
+        ...devices['Desktop Chrome'],
+        launchOptions: {
+          args: ['--disable-gpu'],
+        },
+      },
     },
     {
       name: 'chromium-voice-live',
@@ -48,7 +53,7 @@ export default defineConfig({
   webServer: process.env.PLAYWRIGHT_BASE_URL
     ? undefined
     : {
-        command: 'pnpm exec next dev --hostname localhost --port 3000',
+        command: 'pnpm exec next dev --hostname 127.0.0.1 --port 3000',
         url: baseURL,
         reuseExistingServer: !process.env.CI,
         timeout: 120_000,

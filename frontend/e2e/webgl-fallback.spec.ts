@@ -30,7 +30,14 @@ test.describe('WebGL fallback', () => {
     expect(response).not.toBeNull();
     expect(response?.status()).toBe(200);
     await dismissInitialSettingsModal(page);
+    await expect(page.getByTestId('character-avatar-root')).toHaveAttribute(
+      'data-avatar-render-mode',
+      'fallback',
+    );
     await expect(page.getByTestId('character-avatar-fallback')).toBeVisible();
     await expect(page.getByTestId('response-bubble')).toBeVisible();
+    await expect(page.getByTestId('kiosk-voice-button')).toBeVisible();
+    await expect(page.getByTestId('kiosk-settings-button')).toBeVisible();
+    await expect(page.getByTestId('kiosk-slides-button')).toBeVisible();
   });
 });
