@@ -15,7 +15,7 @@ Each scenario represents a real visitor interaction at Engineer Cafe Fukuoka.
 
 from __future__ import annotations
 
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -154,6 +154,49 @@ async def _run_workflow(query, session_id, language, mock_decision, agent_attr, 
     return result
 
 
+async def _run_reception_turns(
+    *,
+    session_id: str,
+    language: str,
+    visitor_lookup_result,
+    user_message: str,
+    purpose_patch=None,
+):
+    """Advance the reception workflow through greeting -> prompt -> classify -> route."""
+    from backend.workflows.reception_workflow import get_reception_workflow, make_initial_state
+    from langchain_core.messages import HumanMessage
+
+    state = make_initial_state(
+        session_id=session_id,
+        language=language,
+        trigger_type="sensor",
+    )
+
+    svc = MagicMock()
+    svc.identify_by_visitor_id = AsyncMock(return_value=visitor_lookup_result)
+
+    with ExitStack() as stack:
+        stack.enter_context(
+            patch(
+                "backend.workflows.reception_workflow.VisitorIdentificationService",
+                return_value=svc,
+            )
+        )
+        if purpose_patch is not None:
+            stack.enter_context(purpose_patch)
+
+        graph = await get_reception_workflow()
+        greeted = await graph.ainvoke(state)
+        prompted = await graph.ainvoke(greeted)
+        prompted["messages"] = list(prompted.get("messages", [])) + [
+            HumanMessage(content=user_message)
+        ]
+        classified = await graph.ainvoke(prompted)
+        completed = await graph.ainvoke(classified)
+
+    return greeted, prompted, classified, completed
+
+
 # =============================================================================
 # A. Japanese Regular User (エンジニアカフェ利用客)
 # =============================================================================
@@ -279,7 +322,7 @@ class TestJapaneseRegularUser:
     @pytest.mark.asyncio
     async def test_a05_meeting_room_booking(self):
         """A05: "会議室の予約方法を教えてください" -> facility agent -> meeting room"""
-        assert extract_request_type("会議室の予約方法を教えてください") == "meeting-room"
+        assert extract_request_type("会議室の予約方法を教えてください") == "booking"
 
         result = await _run_workflow(
             query="会議室の予約方法を教えてください",
@@ -288,7 +331,7 @@ class TestJapaneseRegularUser:
             mock_decision=_build_decision(
                 next_agent="facility",
                 category="facility-info",
-                request_type="meeting-room",
+                request_type="booking",
                 confidence=0.92,
             ),
             agent_attr="_facility_agent",
@@ -335,7 +378,7 @@ class TestJapaneseRegularUser:
 
         Engineers need to charge laptops. Power outlets at most desks.
         """
-        assert extract_request_type("電源はどこにありますか？") == "facility"
+        assert extract_request_type("電源はどこにありますか？") == "location"
 
         result = await _run_workflow(
             query="電源はどこにありますか？",
@@ -344,7 +387,7 @@ class TestJapaneseRegularUser:
             mock_decision=_build_decision(
                 next_agent="facility",
                 category="facilities",
-                request_type="facility",
+                request_type="location",
                 confidence=0.90,
             ),
             agent_attr="_facility_agent",
@@ -668,32 +711,19 @@ class TestReceptionFlow:
         Visitor walks up to kiosk, sensor triggers greeting,
         they say they want to use the facility.
         """
-        from backend.workflows.reception_workflow import (
-            get_reception_workflow,
-            make_initial_state,
-        )
-        from langchain_core.messages import HumanMessage
-
-        state = make_initial_state(
+        greeted, prompted, classified, completed = await _run_reception_turns(
             session_id="scenario-c18",
             language="ja",
-            trigger_type="sensor",
+            visitor_lookup_result=None,
+            user_message="施設を使いたいです",
         )
-        state["messages"] = [HumanMessage(content="施設を使いたいです")]
 
-        svc = MagicMock()
-        svc.identify_by_visitor_id = AsyncMock(return_value=None)
-
-        with patch(
-            "backend.workflows.reception_workflow.VisitorIdentificationService",
-            return_value=svc,
-        ):
-            graph = await get_reception_workflow()
-            result = await graph.ainvoke(state)
-
-        assert result["stage"] == "completed"
-        assert result["purpose"]["category"] == "facility_use"
-        assert result["purpose"]["target_agent"] == "facility"
+        assert greeted["stage"] == "greeting"
+        assert prompted["stage"] == "purpose_hearing"
+        assert classified["stage"] == "routing"
+        assert completed["stage"] == "completed"
+        assert completed["purpose"]["category"] == "facility_use"
+        assert completed["purpose"]["target_agent"] == "facility"
 
     @pytest.mark.asyncio
     async def test_c19_sensor_trigger_tour(self):
@@ -701,37 +731,22 @@ class TestReceptionFlow:
 
         English tourist at kiosk wants to see the building.
         """
-        from backend.workflows.reception_workflow import (
-            get_reception_workflow,
-            make_initial_state,
-        )
-        from langchain_core.messages import HumanMessage
-
-        state = make_initial_state(
+        _, _, classified, completed = await _run_reception_turns(
             session_id="scenario-c19",
             language="en",
-            trigger_type="sensor",
-        )
-        state["messages"] = [HumanMessage(content="I want a tour of the building")]
-
-        svc = MagicMock()
-        svc.identify_by_visitor_id = AsyncMock(return_value=None)
-
-        with patch(
-            "backend.workflows.reception_workflow.VisitorIdentificationService",
-            return_value=svc,
-        ):
-            with patch(
+            visitor_lookup_result=None,
+            user_message="I want a tour of the building",
+            purpose_patch=patch(
                 "backend.utils.purpose_classifier.classify_purpose",
                 new_callable=AsyncMock,
                 return_value=("tour", "Building tour request", 0.90),
-            ):
-                graph = await get_reception_workflow()
-                result = await graph.ainvoke(state)
+            ),
+        )
 
-        assert result["stage"] == "completed"
-        assert result["purpose"]["category"] == "tour"
-        assert result["purpose"]["target_agent"] == "slide"
+        assert classified["stage"] == "routing"
+        assert completed["stage"] == "completed"
+        assert completed["purpose"]["category"] == "tour"
+        assert completed["purpose"]["target_agent"] == "slide"
 
     @pytest.mark.asyncio
     async def test_c20_sensor_trigger_event(self):
@@ -739,32 +754,17 @@ class TestReceptionFlow:
 
         Visitor came for a specific meetup/seminar.
         """
-        from backend.workflows.reception_workflow import (
-            get_reception_workflow,
-            make_initial_state,
-        )
-        from langchain_core.messages import HumanMessage
-
-        state = make_initial_state(
+        _, _, classified, completed = await _run_reception_turns(
             session_id="scenario-c20",
             language="ja",
-            trigger_type="sensor",
+            visitor_lookup_result=None,
+            user_message="イベントに参加しに来ました",
         )
-        state["messages"] = [HumanMessage(content="イベントに参加しに来ました")]
 
-        svc = MagicMock()
-        svc.identify_by_visitor_id = AsyncMock(return_value=None)
-
-        with patch(
-            "backend.workflows.reception_workflow.VisitorIdentificationService",
-            return_value=svc,
-        ):
-            graph = await get_reception_workflow()
-            result = await graph.ainvoke(state)
-
-        assert result["stage"] == "completed"
-        assert result["purpose"]["category"] == "event_participation"
-        assert result["purpose"]["target_agent"] == "event"
+        assert classified["stage"] == "routing"
+        assert completed["stage"] == "completed"
+        assert completed["purpose"]["category"] == "event_participation"
+        assert completed["purpose"]["target_agent"] == "event"
 
     @pytest.mark.asyncio
     @pytest.mark.xfail(reason="Wave 7: ambiguous purpose re-ask not yet implemented")
@@ -805,40 +805,23 @@ class TestReceptionFlow:
 
         Recognized visitor gets a personalized welcome with their name.
         """
-        from backend.workflows.reception_workflow import (
-            get_reception_workflow,
-            make_initial_state,
-        )
-        from langchain_core.messages import HumanMessage
-
-        state = make_initial_state(
+        greeted, _, _, completed = await _run_reception_turns(
             session_id="scenario-c22",
             language="ja",
-            trigger_type="sensor",
-        )
-        state["messages"] = [HumanMessage(content="作業したいです")]
-
-        svc = MagicMock()
-        svc.identify_by_visitor_id = AsyncMock(
-            return_value={
+            visitor_lookup_result={
                 "visitor_type": "returning",
                 "name": "山田太郎",
                 "last_purpose": "コーディング",
                 "visit_count": 5,
-            }
+            },
+            user_message="作業したいです",
         )
 
-        with patch(
-            "backend.workflows.reception_workflow.VisitorIdentificationService",
-            return_value=svc,
-        ):
-            graph = await get_reception_workflow()
-            result = await graph.ainvoke(state)
-
-        assert result["stage"] == "completed"
-        assert "山田太郎" in result["greeting"]
-        assert result["visitor_identity"]["visitor_type"] == "returning"
-        assert result["purpose"]["category"] == "facility_use"
+        assert greeted["stage"] == "greeting"
+        assert "山田太郎" in greeted["greeting"]
+        assert greeted["visitor_identity"]["visitor_type"] == "returning"
+        assert completed["stage"] == "completed"
+        assert completed["purpose"]["category"] == "facility_use"
 
 
 # =============================================================================

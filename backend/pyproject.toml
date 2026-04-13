@@ -149,6 +149,7 @@ pythonpath = ["."]
 markers = [
     "ragas: RAGAS evaluation tests (require OPENAI_API_KEY)",
     "e2e: end-to-end tests requiring real OPENROUTER_API_KEY and SUPABASE",
+    "scenario: scenario tests covering realistic visitor flows",
     "integration: integration tests requiring external services",
     "slow: slow-running tests",
     "vision: VisionAgent/OCR tests",

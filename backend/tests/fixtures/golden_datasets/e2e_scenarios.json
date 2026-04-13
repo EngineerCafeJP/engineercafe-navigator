@@ -136,8 +136,8 @@
           "query": "エンジニアカフェの住所を教えてください",
           "language": "ja",
           "expected_agent": "business_info",
-          "expected_keywords": ["福岡市博多区", "赤煉瓦文化館"],
-          "note": "住所の確認。福岡市博多区冷泉町5-35 赤煉瓦文化館。"
+          "expected_keywords": ["福岡市中央区", "天神1丁目15番30号", "赤煉瓦文化館"],
+          "note": "住所の確認。福岡市中央区天神1丁目15番30号、福岡市赤煉瓦文化館内。"
         },
         {
           "turn": 2,
@@ -175,8 +175,8 @@
           "query": "EC Labって何ですか？",
           "language": "ja",
           "expected_agent": "business_info",
-          "expected_keywords": ["EC Lab", "起業", "スタートアップ"],
-          "note": "EC Lab（エンジニアカフェラボ）について。起業・スタートアップ支援プログラム。"
+          "expected_keywords": ["U-25", "コミュニティ", "無料"],
+          "note": "Engineer Cafe Lab は U-25 向けの会員制コミュニティプログラム。事前応募・面接制で会費無料。"
         }
       ]
     },

@@ -403,7 +403,7 @@
     {
       "id": "gt-032",
       "question": "Wi-Fiのパスワードは何ですか？",
-      "answer": "パスワードはakarenga-112yearsです。SSID: engnecf-guest-2.4GHz または engnecf-guest-5GHz。",
+      "answer": "パスワードはakarenga-112yearsです。SSID: engnecf-guest-2.4GHz または engnecf-guest-5GHz です。",
       "contexts": [
         "SSID: engnecf-guest-2.4GHz または engnecf-guest-5GHz。パスワード: akarenga-112years。受付カードの裏面にも記載されています。"
       ],
@@ -777,11 +777,11 @@
     {
       "id": "gt-066",
       "question": "What is the Wi-Fi password?",
-      "answer": "SSID: engnrcf-guest-5GHz, Password: akarenga-112years.",
+      "answer": "SSID: engnecf-guest-2.4GHz or engnecf-guest-5GHz. Password: akarenga-112years.",
       "contexts": [
-        "Connect to Wi-Fi (SSID: engnrcf-guest-5GHz, Password: akarenga-112years), scan QR at reception."
+        "SSID: engnecf-guest-2.4GHz または engnecf-guest-5GHz。パスワード: akarenga-112years。受付カードの裏面にも記載されています。"
       ],
-      "ground_truth": "SSID: engnrcf-guest-5GHz (or 2.4GHz). Password: akarenga-112years. Also printed on reception card.",
+      "ground_truth": "SSID: engnecf-guest-2.4GHz/5GHz. Password: akarenga-112years. Also printed on the reception card.",
       "language": "en",
       "category": "facility-info"
     },
