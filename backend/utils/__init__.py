@@ -2,7 +2,7 @@
 
 from .language_processor import LanguageProcessor, LanguageDetectionResult
 from .query_classifier import QueryClassifier, QueryClassificationResult
-from .emotion_mapping import EmotionMapping, SupportedExpression
+from .emotion_mapping import EmotionMapping, SupportedAnimation, SupportedExpression
 from .kanji_converter import KanjiConverter
 
 __all__ = [
@@ -11,6 +11,7 @@ __all__ = [
     "QueryClassifier",
     "QueryClassificationResult",
     "EmotionMapping",
+    "SupportedAnimation",
     "SupportedExpression",
     "KanjiConverter",
 ]

@@ -13,6 +13,17 @@ from typing import Dict, Literal, Any, List, Optional
 # サポートされているVRM表情タイプ (VRM1.0準拠)
 SupportedExpression = Literal["neutral", "happy", "sad", "angry", "surprised", "relaxed"]
 
+# public/animations/manifest.json の .vrma 一覧に合わせる
+SupportedAnimation = Literal[
+    "idle",
+    "bowing",
+    "greeting",
+    "looking",
+    "surprised",
+    "talking",
+    "thinking",
+]
+
 
 class EmotionMapping:
     """
@@ -45,17 +56,26 @@ class EmotionMapping:
     DEFAULT_INTENSITY: float = 1.0
     DEFAULT_EXPRESSION_DURATION: float = 2.0
 
-    # VRM表情→アニメーションマッピングテーブル
-    ANIMATION_MAP: Dict[SupportedExpression, str] = {
+    # 感情タグ（小文字）→ SupportedAnimation。EXPRESSION_MAP の各キーをカバーすること。
+    ANIMATION_MAP: Dict[str, SupportedAnimation] = {
         "neutral": "idle",
         "happy": "greeting",
+        "excited": "greeting",
         "sad": "thinking",
-        "angry": "explaining",
-        "surprised": "greeting",
+        "angry": "talking",
         "relaxed": "thinking",
+        "surprised": "surprised",
+        "apologetic": "thinking",
+        "informative": "talking",
+        "guiding": "talking",
+        "helpful": "greeting",
+        "serious": "thinking",
+        "confident": "talking",
+        "grateful": "greeting",
+        "confused": "thinking",
     }
 
-    DEFAULT_ANIMATION: str = "idle"
+    DEFAULT_ANIMATION: SupportedAnimation = "idle"
 
     # Visemeマッピング（リップシンク用の口形状）
     # VRMのBlendShape名に対応: A→aa, I→ih, U→ou, E→ee, O→oh, Closed→neutral
@@ -98,24 +118,33 @@ class EmotionMapping:
         return cls.EXPRESSION_MAP.get(normalized_emotion, "neutral")
 
     @classmethod
-    def get_animation_for_emotion(cls, emotion: str) -> str:
+    def get_animation_for_emotion(cls, emotion: str) -> SupportedAnimation:
         """
-        感情に対応するアニメーション名を取得
+        感情タグに対応するアニメーション（SupportedAnimation）を取得
+
+        ``ANIMATION_MAP`` を感情キーで参照する（VRM 表情経由ではない）。
+        未登録の感情は ``DEFAULT_ANIMATION``。
 
         Args:
-            emotion: 感情タグ
+            emotion: 感情タグ（例: ``happy``, ``helpful``, ``apologetic``）
 
         Returns:
-            アニメーション名
+            ``SupportedAnimation`` に含まれるアニメーション名
 
         Examples:
             >>> EmotionMapping.get_animation_for_emotion("happy")
             'greeting'
             >>> EmotionMapping.get_animation_for_emotion("sad")
             'thinking'
+            >>> EmotionMapping.get_animation_for_emotion("helpful")
+            'greeting'
+            >>> EmotionMapping.get_animation_for_emotion("surprised")
+            'surprised'
         """
-        expression = cls.map_to_expression(emotion)
-        return cls.ANIMATION_MAP.get(expression, "idle")
+        if not emotion or not isinstance(emotion, str):
+            return cls.DEFAULT_ANIMATION
+        normalized = emotion.lower().strip()
+        return cls.ANIMATION_MAP.get(normalized, cls.DEFAULT_ANIMATION)
 
     @classmethod
     def get_intensity_for_emotion(cls, emotion: str) -> float:

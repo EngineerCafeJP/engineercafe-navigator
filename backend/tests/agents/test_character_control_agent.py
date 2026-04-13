@@ -126,14 +126,14 @@ class TestCharacterControlAgent:
         assert animation == "idle"
 
     def test_select_animation_angry(self):
-        """angry感情のアニメーション選択"""
+        """angry感情のアニメーション選択（SupportedAnimation: talking）"""
         animation = self.agent.select_animation("angry")
-        assert animation == "explaining"
+        assert animation == "talking"
 
     def test_select_animation_surprised(self):
-        """surprised感情のアニメーション選択"""
+        """surprised感情のアニメーション選択（SupportedAnimation: surprised）"""
         animation = self.agent.select_animation("surprised")
-        assert animation == "greeting"
+        assert animation == "surprised"
 
     def test_select_animation_relaxed(self):
         """relaxed感情のアニメーション選択"""
