@@ -34,9 +34,9 @@ def _assert_live_result(
     metadata = result.get("metadata") or {}
     agent = metadata.get("agent")
     if expected_agents and agent:
-        assert agent in expected_agents, (
-            f"{label}: unexpected agent {agent!r}, expected one of {sorted(expected_agents)}"
-        )
+        assert (
+            agent in expected_agents
+        ), f"{label}: unexpected agent {agent!r}, expected one of {sorted(expected_agents)}"
 
     retrieved_contexts = result.get("retrieved_contexts") or []
     if context_groups and retrieved_contexts:

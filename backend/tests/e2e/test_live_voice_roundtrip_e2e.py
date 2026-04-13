@@ -115,6 +115,6 @@ class TestLiveVoiceRoundTripE2E:
         assert len(tts_data["audioResponse"]) > 100, "voice:tts returned unexpectedly small audio"
         assert tts_data.get("audioFormat") in {"audio/wav", "audio/mpeg"}, tts_data
         assert tts_data.get("sessionId") == session_id, tts_data
-        assert tts_data.get("emotion") == emotion, (
-            "voice:tts did not preserve the LangGraph-selected emotion"
-        )
+        assert (
+            tts_data.get("emotion") == emotion
+        ), "voice:tts did not preserve the LangGraph-selected emotion"

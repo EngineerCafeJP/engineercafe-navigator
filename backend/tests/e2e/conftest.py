@@ -91,7 +91,12 @@ def e2e_session_id():
 def voice_sample_audio_b64() -> str:
     """Frontend E2E でも使う音声 fixture を base64 で返す。"""
     sample_path = (
-        Path(__file__).resolve().parents[3] / "frontend" / "e2e" / "fixtures" / "voice" / "sample.wav"
+        Path(__file__).resolve().parents[3]
+        / "frontend"
+        / "e2e"
+        / "fixtures"
+        / "voice"
+        / "sample.wav"
     )
     if not sample_path.exists():
         pytest.skip(f"voice sample fixture not found: {sample_path}")
