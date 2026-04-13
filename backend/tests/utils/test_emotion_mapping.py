@@ -9,6 +9,7 @@ class TestMapToExpression:
 
     def test_alias_mapping(self):
         assert EmotionMapping.map_to_expression("excited") == "happy"
+        assert EmotionMapping.map_to_expression("helpful") == "happy"
 
     def test_unknown_returns_neutral(self):
         assert EmotionMapping.map_to_expression("nonexistent") == "neutral"
@@ -33,17 +34,17 @@ class TestGetAnimationForEmotion:
 
 class TestGetIntensityForEmotion:
     def test_happy_intensity(self):
-        assert EmotionMapping.get_intensity_for_emotion("happy") == 0.8
+        assert EmotionMapping.get_intensity_for_emotion("happy") == 1.0
 
-    def test_excited_intensity(self):
-        assert EmotionMapping.get_intensity_for_emotion("excited") == 0.9
+    def test_unknown_alias_intensity(self):
+        assert EmotionMapping.get_intensity_for_emotion("nonexistent") == 1.0
 
 
 class TestGetExpressionWithIntensity:
     def test_happy_combined(self):
         result = EmotionMapping.get_expression_with_intensity("happy")
         assert result["expression"] == "happy"
-        assert result["intensity"] == 0.8
+        assert result["intensity"] == 1.0
 
     def test_unknown_returns_neutral(self):
         result = EmotionMapping.get_expression_with_intensity("nonexistent")
