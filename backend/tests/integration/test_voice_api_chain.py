@@ -118,7 +118,7 @@ def _patch_singletons(
     if stt_mock is not None:
         patches.append(patch("backend.main._stt_agent", stt_mock))
     if voice_mock is not None:
-        patches.append(patch("backend.main._voice_agent", voice_mock))
+        patches.append(patch("backend.main._get_voice_agent", return_value=voice_mock))
     patches.append(patch("backend.main._session_task_manager", stm_mock))
     if workflow_mock is not None:
         patches.append(

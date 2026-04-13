@@ -492,11 +492,8 @@ class TestVoiceAPIUnit:
             }
         )
 
-        original = main_mod._voice_agent
-        main_mod._voice_agent = mock_agent
-
-        try:
-            transport = ASGITransport(app=main_mod.app)
+        transport = ASGITransport(app=main_mod.app)
+        with patch.object(main_mod, "_get_voice_agent", return_value=mock_agent):
             async with AsyncClient(transport=transport, base_url="http://test") as ac:
                 resp = await ac.post(
                     "/api/voice",
@@ -510,8 +507,6 @@ class TestVoiceAPIUnit:
                 data = resp.json()
                 assert data["success"] is True
                 assert data["audioResponse"] == "dGVzdA=="
-        finally:
-            main_mod._voice_agent = original
 
     async def test_interrupt_action_without_session_id(self):
         """interrupt action で sessionId 未指定時に 400 が返ること"""
