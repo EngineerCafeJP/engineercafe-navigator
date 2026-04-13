@@ -3,8 +3,6 @@
 import io
 import wave
 
-import pytest
-
 from backend.utils.tts_audio_duration import (
     audio_duration_seconds_from_audio_bytes,
     audio_duration_seconds_from_base64,
