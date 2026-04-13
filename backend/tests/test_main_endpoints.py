@@ -295,7 +295,10 @@ class TestCORSConfiguration:
     def test_cors_uses_frontend_origin_override(self, monkeypatch):
         """FRONTEND_PRODUCTION_ORIGIN becomes the default when ALLOWED_ORIGINS is absent."""
         monkeypatch.delenv("ALLOWED_ORIGINS", raising=False)
-        monkeypatch.setenv("FRONTEND_PRODUCTION_ORIGIN", "https://frontend-qwbhreahe-kousukes-projects-8e2831b8.vercel.app")
+        monkeypatch.setenv(
+            "FRONTEND_PRODUCTION_ORIGIN",
+            "https://frontend-qwbhreahe-kousukes-projects-8e2831b8.vercel.app",
+        )
         import importlib
         import backend.main
 
