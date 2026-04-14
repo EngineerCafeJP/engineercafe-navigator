@@ -232,7 +232,9 @@ class TestVoiceEndpoint:
                 "emotion": "neutral",
             }
         )
-        with patch("backend.main._get_voice_agent_for_provider_key", return_value=mock_agent) as get_p:
+        with patch(
+            "backend.main._get_voice_agent_for_provider_key", return_value=mock_agent
+        ) as get_p:
             with patch("backend.main._get_voice_agent") as get_default:
                 from backend.main import voice_api, VoiceRequest
 
