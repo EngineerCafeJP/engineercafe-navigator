@@ -15,16 +15,31 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing required field: action' }, { status: 400 });
     }
 
-    const { action, audioData, sessionId, language, text, streaming } = body;
+    const {
+      action,
+      audioData,
+      sessionId,
+      language,
+      text,
+      streaming,
+      emotion,
+      outputEncoding,
+      ttsProvider,
+    } = body as Record<string, unknown>;
 
     const response = await backendFetch('/api/voice', {
       body: {
         action,
         audioData,
         sessionId,
-        language: language || 'ja',
+        language: (language as string) || 'ja',
         text,
-        streaming: streaming || false,
+        streaming: (streaming as boolean) || false,
+        ...(typeof emotion === 'string' && emotion.length > 0 ? { emotion } : {}),
+        ...(typeof outputEncoding === 'string' && outputEncoding.length > 0
+          ? { outputEncoding }
+          : {}),
+        ...(typeof ttsProvider === 'string' && ttsProvider.length > 0 ? { ttsProvider } : {}),
       },
       timeoutMs: 75_000,
     });

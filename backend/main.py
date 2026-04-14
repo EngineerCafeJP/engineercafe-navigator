@@ -518,6 +518,11 @@ class VoiceRequest(BaseModel):
     streaming: Optional[bool] = False
     conversationStage: Optional[str] = None
     emotion: Optional[str] = None  # Emotion for TTS synthesis
+    outputEncoding: Optional[str] = Field(default=None, max_length=10)  # e.g. "mp3" for WAV→MP3
+    ttsProvider: Optional[str] = Field(
+        default=None,
+        max_length=20,
+    )  # voicevox | piper | google — overrides TTS_PROVIDER for this request
 
 
 class VoiceResponse(BaseModel):
@@ -535,6 +540,8 @@ class VoiceResponse(BaseModel):
 
 
 _voice_agent: Optional[Any] = None  # VoiceAgent (lazy-loaded)
+_voice_agents_by_provider: dict[str, Any] = {}
+_ALLOWED_TTS_PROVIDERS = frozenset({"voicevox", "piper", "google"})
 _stt_agent: Optional[Any] = None  # STTAgent (lazy-loaded)
 _slide_agent: Optional[Any] = None  # SlideAgent (lazy-loaded)
 _session_task_manager: Optional[Any] = None
@@ -547,6 +554,27 @@ def _get_stm():
     return _session_task_manager
 
 
+def _normalize_tts_provider_override(raw: str) -> str:
+    key = raw.lower().strip()
+    if key not in _ALLOWED_TTS_PROVIDERS:
+        allowed = ", ".join(sorted(_ALLOWED_TTS_PROVIDERS))
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid ttsProvider: {raw!r} (allowed: {allowed})",
+        )
+    return key
+
+
+def _get_voice_agent_for_provider_key(provider_key: str):
+    """Lazily construct and cache VoiceAgent per TTS provider (for per-request override)."""
+    global _voice_agents_by_provider
+    if provider_key not in _voice_agents_by_provider:
+        from backend.agents.voice_agent import VoiceAgent
+
+        _voice_agents_by_provider[provider_key] = VoiceAgent(tts_provider=provider_key)
+    return _voice_agents_by_provider[provider_key]
+
+
 def _get_voice_agent():
     global _voice_agent
     if _voice_agent is None:
@@ -555,6 +583,13 @@ def _get_voice_agent():
         tts_provider = os.getenv("TTS_PROVIDER", "voicevox")
         _voice_agent = VoiceAgent(tts_provider=tts_provider)
     return _voice_agent
+
+
+def _resolve_tts_agent(body: VoiceRequest):
+    """Default env-based singleton, or a cached agent when ttsProvider is set."""
+    if body.ttsProvider and body.ttsProvider.strip():
+        return _get_voice_agent_for_provider_key(_normalize_tts_provider_override(body.ttsProvider))
+    return _get_voice_agent()
 
 
 def _get_stt_agent():
@@ -615,7 +650,17 @@ async def voice_get_api(action: str = ""):
                 {"code": "en", "name": "English"},
             ]
         }
-    return {"status": "ok", "actions": ["speech_to_text", "text_to_speech", "supported_languages"]}
+    default_tts = (os.getenv("TTS_PROVIDER", "voicevox") or "voicevox").strip().lower()
+    return {
+        "status": "ok",
+        "actions": ["speech_to_text", "text_to_speech", "supported_languages"],
+        "defaultTtsProvider": default_tts,
+        "ttsProviders": [
+            {"id": "voicevox", "label": "VoiceVox"},
+            {"id": "piper", "label": "Piper-plus"},
+            {"id": "google", "label": "Google Cloud TTS"},
+        ],
+    }
 
 
 _CALENDAR_TIME_RANGES = {"today", "thisWeek", "nextWeek", "thisMonth"}
@@ -650,7 +695,7 @@ async def voice_api(request: Request, body: VoiceRequest):
                 await _get_stm().register_session(body.sessionId)
 
             tts_task = asyncio.create_task(
-                _get_voice_agent().text_to_speech(
+                _resolve_tts_agent(body).text_to_speech(
                     text=body.text,
                     language=body.language or "ja",
                     emotion=body.emotion,  # Use requested emotion for TTS
@@ -661,13 +706,6 @@ async def voice_api(request: Request, body: VoiceRequest):
 
             result = await tts_task
 
-            if body.sessionId and result.get("audioResponse"):
-                try:
-                    audio_bytes = base64.b64decode(result["audioResponse"])
-                    await _get_stm().set_tts_buffer(body.sessionId, BytesIO(audio_bytes))
-                except Exception:
-                    logger.debug("Failed to register TTS buffer for session %s", body.sessionId)
-
             if not result.get("success"):
                 return VoiceResponse(
                     success=False,
@@ -677,10 +715,38 @@ async def voice_api(request: Request, body: VoiceRequest):
                     sessionId=body.sessionId,
                 )
 
+            audio_b64 = result.get("audioResponse")
+            audio_format = result.get("format")
+
+            if (
+                body.outputEncoding
+                and body.outputEncoding.lower() == "mp3"
+                and audio_format == "audio/wav"
+                and audio_b64
+            ):
+                try:
+                    from backend.utils.audio_encode import wav_base64_to_mp3_base64
+
+                    audio_b64 = wav_base64_to_mp3_base64(audio_b64)
+                    audio_format = "audio/mpeg"
+                except Exception as e:
+                    logger.exception("WAV to MP3 conversion failed: %s", e)
+                    raise HTTPException(
+                        status_code=502,
+                        detail="Audio encoding to MP3 failed (ensure ffmpeg is installed).",
+                    )
+
+            if body.sessionId and audio_b64:
+                try:
+                    audio_bytes = base64.b64decode(audio_b64)
+                    await _get_stm().set_tts_buffer(body.sessionId, BytesIO(audio_bytes))
+                except Exception:
+                    logger.debug("Failed to register TTS buffer for session %s", body.sessionId)
+
             return VoiceResponse(
                 success=True,
-                audioResponse=result.get("audioResponse"),
-                audioFormat=result.get("format"),
+                audioResponse=audio_b64,
+                audioFormat=audio_format,
                 emotion=result.get("emotion"),
                 sessionId=body.sessionId,
             )
