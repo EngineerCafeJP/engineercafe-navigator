@@ -25,6 +25,7 @@ export async function POST(request: NextRequest) {
       emotion,
       outputEncoding,
       ttsProvider,
+      includeVrmControl,
     } = body as Record<string, unknown>;
 
     const response = await backendFetch('/api/voice', {
@@ -40,6 +41,7 @@ export async function POST(request: NextRequest) {
           ? { outputEncoding }
           : {}),
         ...(typeof ttsProvider === 'string' && ttsProvider.length > 0 ? { ttsProvider } : {}),
+        ...(includeVrmControl === true ? { includeVrmControl: true } : {}),
       },
       timeoutMs: 75_000,
     });

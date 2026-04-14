@@ -3,6 +3,8 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import type { LipSyncData } from '@/lib/lip-sync-analyzer';
+
 const VRM_EMOTIONS = [
   { value: '', label: '指定なし（テキスト内タグ優先）' },
   { value: 'neutral', label: 'neutral' },
@@ -17,6 +19,13 @@ type TtsPreview = {
   url: string;
   format: string;
   durationMs: number | null;
+  /** LipSyncAnalyzer 形式（duration + frames）。解析失敗時は null */
+  lipSync: LipSyncData | null;
+  /** チャット metadata.vrm_control 相当（includeVrmControl 時・サーバー生成） */
+  vrmControl: Record<string, unknown> | null;
+  cleanText: string | null;
+  /** 生成リクエスト時に includeVrmControl がオンだったか（警告表示用） */
+  vrmControlWasRequested: boolean;
 };
 
 async function measureAudioDurationMs(blob: Blob): Promise<number | null> {
@@ -38,6 +47,20 @@ async function measureAudioDurationMs(blob: Blob): Promise<number | null> {
     return null;
   } finally {
     void ctx.close();
+  }
+}
+
+async function computeLipSyncFromBlob(blob: Blob): Promise<LipSyncData | null> {
+  try {
+    const { LipSyncAnalyzer } = await import('@/lib/lip-sync-analyzer');
+    const analyzer = new LipSyncAnalyzer();
+    try {
+      return await analyzer.analyzeLipSync(blob);
+    } finally {
+      analyzer.dispose();
+    }
+  } catch {
+    return null;
   }
 }
 
@@ -114,6 +137,7 @@ export default function VoiceLabPage() {
   const [voiceMetaLoaded, setVoiceMetaLoaded] = useState(false);
   const [serverDefaultTtsId, setServerDefaultTtsId] = useState<string | null>(null);
   const [preferMp3, setPreferMp3] = useState(false);
+  const [includeVrmControl, setIncludeVrmControl] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<TtsPreview | null>(null);
@@ -184,6 +208,9 @@ export default function VoiceLabPage() {
       if (ttsProviderId.trim()) {
         body.ttsProvider = ttsProviderId.trim();
       }
+      if (includeVrmControl) {
+        body.includeVrmControl = true;
+      }
 
       const res = await fetch('/api/voice', {
         method: 'POST',
@@ -227,18 +254,71 @@ export default function VoiceLabPage() {
       }
 
       const blob = new Blob([bytes], { type: mime });
-      const durationMs = await measureAudioDurationMs(blob);
+      const [durationMs, lipSync] = await Promise.all([
+        measureAudioDurationMs(blob),
+        computeLipSyncFromBlob(blob),
+      ]);
+      const vrmControl =
+        data.vrmControl &&
+        typeof data.vrmControl === 'object' &&
+        !Array.isArray(data.vrmControl)
+          ? (data.vrmControl as Record<string, unknown>)
+          : null;
+      const cleanText =
+        typeof data.cleanText === 'string' && data.cleanText.length > 0 ? data.cleanText : null;
       const url = URL.createObjectURL(blob);
       objectUrlRef.current = url;
-      setPreview({ url, format: mime, durationMs });
+      setPreview({
+        url,
+        format: mime,
+        durationMs,
+        lipSync,
+        vrmControl,
+        cleanText,
+        vrmControlWasRequested: includeVrmControl,
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : '不明なエラーが発生しました。');
     } finally {
       setLoading(false);
     }
-  }, [text, language, emotion, preferMp3, ttsProviderId, releaseObjectUrl]);
+  }, [text, language, emotion, preferMp3, includeVrmControl, ttsProviderId, releaseObjectUrl]);
 
   const downloadName = `voice-lab-${Date.now()}.${preview ? extensionForMime(preview.format) : 'wav'}`;
+
+  const downloadLipSyncJson = useCallback(() => {
+    if (!preview?.lipSync) return;
+    const payload = {
+      duration: preview.lipSync.duration,
+      frames: preview.lipSync.frames,
+    };
+    const jsonStr = `${JSON.stringify(payload, null, 2)}\n`;
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const u = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = u;
+    a.download = `voice-lab-${Date.now()}.lipsync.json`;
+    a.rel = 'noopener';
+    a.click();
+    URL.revokeObjectURL(u);
+  }, [preview]);
+
+  const downloadVrmControlJson = useCallback(() => {
+    if (!preview?.vrmControl) return;
+    const payload =
+      preview.cleanText !== null
+        ? { cleanText: preview.cleanText, vrmControl: preview.vrmControl }
+        : { vrmControl: preview.vrmControl };
+    const jsonStr = `${JSON.stringify(payload, null, 2)}\n`;
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const u = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = u;
+    a.download = `voice-lab-${Date.now()}.vrm-control.json`;
+    a.rel = 'noopener';
+    a.click();
+    URL.revokeObjectURL(u);
+  }, [preview]);
 
   return (
     <div className="min-h-screen bg-gray-50 p-8">
@@ -265,7 +345,16 @@ export default function VoiceLabPage() {
             <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">PIPER_PLUS_API_URL</code>{' '}
             の HTTP API に接続します。既定は WAV 出力です。チェックを入れたときのみ MP3
             変換を行います（WAV ソース時はサーバ側で変換、ffmpeg 必須。Google TTS など既に
-            MP3 の場合はそのまま）。
+            MP3 の場合はそのまま）。生成後、ブラウザ側の{' '}
+            <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">LipSyncAnalyzer</code>{' '}
+            でリップシンク JSON（<code className="rounded bg-gray-100 px-1 py-0.5 text-xs">duration</code>・
+            <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">frames</code>
+            ）も出力できます。チェックを入れると、本番チャットの{' '}
+            <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">metadata.vrm_control</code>{' '}
+            と同系のキーフレーム（<code className="rounded bg-gray-100 px-1 py-0.5 text-xs">
+              CharacterControlAgent
+            </code>
+            、TTS の WAV を渡して生成）をサーバーから取得し、JSON で保存できます。
           </p>
 
           <div className="space-y-4">
@@ -349,6 +438,17 @@ export default function VoiceLabPage() {
               MP3 で取得（オフのときは WAV のまま。オンで WAV→MP3 変換または既存 MP3 を返す）
             </label>
 
+            <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-700">
+              <input
+                type="checkbox"
+                checked={includeVrmControl}
+                onChange={(e) => setIncludeVrmControl(e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              VRM 制御 JSON を含める（<code className="rounded bg-gray-100 px-1 text-xs">includeVrmControl</code>
+              。WAV 生成時はその波形もリップ推定に利用）
+            </label>
+
             <button
               type="button"
               onClick={() => void handleGenerate()}
@@ -378,16 +478,64 @@ export default function VoiceLabPage() {
                   ) : (
                     <span className="text-gray-500">計測できませんでした</span>
                   )}
+                  {preview.lipSync ? (
+                    <>
+                      {' '}
+                      · クライアントリップシンク{' '}
+                      <span className="font-medium tabular-nums text-gray-900">
+                        {preview.lipSync.frames.length.toLocaleString('ja-JP')}
+                      </span>{' '}
+                      フレーム
+                    </>
+                  ) : null}
+                  {preview.vrmControl && Array.isArray(preview.vrmControl.keyframes) ? (
+                    <>
+                      {' '}
+                      · サーバー VRM キーフレーム{' '}
+                      <span className="font-medium tabular-nums text-gray-900">
+                        {(preview.vrmControl.keyframes as unknown[]).length.toLocaleString('ja-JP')}
+                      </span>{' '}
+                      件
+                    </>
+                  ) : null}
                 </p>
               </div>
               <audio controls className="w-full" src={preview.url} preload="auto" />
-              <a
-                href={preview.url}
-                download={downloadName}
-                className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50"
-              >
-                ファイルを保存（.{extensionForMime(preview.format)}）
-              </a>
+              <div className="flex flex-wrap gap-2">
+                <a
+                  href={preview.url}
+                  download={downloadName}
+                  className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50"
+                >
+                  音声を保存（.{extensionForMime(preview.format)}）
+                </a>
+                {preview.lipSync ? (
+                  <button
+                    type="button"
+                    onClick={downloadLipSyncJson}
+                    className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50"
+                  >
+                    クライアントリップ JSON（.lipsync.json）
+                  </button>
+                ) : (
+                  <p className="self-center text-sm text-amber-800">
+                    クライアント側リップシンク JSON は生成できませんでした（音声形式またはブラウザの制限の可能性があります）。
+                  </p>
+                )}
+                {preview.vrmControl ? (
+                  <button
+                    type="button"
+                    onClick={downloadVrmControlJson}
+                    className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50"
+                  >
+                    VRM 制御 JSON（.vrm-control.json）
+                  </button>
+                ) : preview.vrmControlWasRequested ? (
+                  <p className="self-center text-sm text-amber-800">
+                    サーバーから VRM 制御データを取得できませんでした。
+                  </p>
+                ) : null}
+              </div>
             </div>
           ) : null}
         </div>

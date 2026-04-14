@@ -12,6 +12,7 @@ import os
 import re
 import sys
 import time
+import wave
 from contextlib import asynccontextmanager
 from io import BytesIO
 
@@ -523,6 +524,8 @@ class VoiceRequest(BaseModel):
         default=None,
         max_length=20,
     )  # voicevox | piper | google — overrides TTS_PROVIDER for this request
+    # True: CharacterControlAgent → chat metadata.vrm_control 相当
+    includeVrmControl: Optional[bool] = False
 
 
 class VoiceResponse(BaseModel):
@@ -537,6 +540,9 @@ class VoiceResponse(BaseModel):
     detectedLanguage: Optional[str] = None
     confidence: Optional[float] = None
     interruptStatus: Optional[str] = None
+    cleanText: Optional[str] = None  # TTS 前処理後（includeVrmControl 時）
+    # CharacterControlAgent.process（チャット metadata 相当）
+    vrmControl: Optional[Dict[str, Any]] = None
 
 
 _voice_agent: Optional[Any] = None  # VoiceAgent (lazy-loaded)
@@ -609,6 +615,39 @@ def _get_slide_agent():
 
         _slide_agent = SlideAgent()
     return _slide_agent
+
+
+async def _generate_vrm_control_for_lab_tts(
+    *, clean_text: str, emotion: Optional[str], tts_wav_b64: Optional[str]
+) -> Optional[Dict[str, Any]]:
+    """Voice Lab: /api/chat の metadata.vrm_control と同系のキーフレームを生成。"""
+    try:
+        ctx: Optional[Dict[str, Any]] = None
+        duration_sec: Optional[float] = None
+        if tts_wav_b64:
+            ctx = {"audio_data": tts_wav_b64}
+            try:
+                raw = base64.b64decode(tts_wav_b64)
+                with wave.open(BytesIO(raw), "rb") as wf:
+                    nframes = wf.getnframes()
+                    rate = wf.getframerate()
+                    if rate and nframes >= 0:
+                        duration_sec = nframes / float(rate)
+            except Exception:
+                duration_sec = None
+
+        from backend.agents.character_control_agent import CharacterControlAgent
+
+        agent = CharacterControlAgent()
+        return await agent.process(
+            emotion=emotion or "neutral",
+            text=clean_text,
+            audio_duration=duration_sec,
+            context=ctx,
+        )
+    except Exception as e:
+        logger.warning("includeVrmControl: CharacterControlAgent failed: %s", e, exc_info=True)
+        return None
 
 
 async def _handle_stt(body: VoiceRequest) -> VoiceResponse:
@@ -717,6 +756,9 @@ async def voice_api(request: Request, body: VoiceRequest):
 
             audio_b64 = result.get("audioResponse")
             audio_format = result.get("format")
+            tts_wav_b64_for_vrm: Optional[str] = None
+            if audio_format == "audio/wav" and audio_b64:
+                tts_wav_b64_for_vrm = audio_b64
 
             if (
                 body.outputEncoding
@@ -743,12 +785,24 @@ async def voice_api(request: Request, body: VoiceRequest):
                 except Exception:
                     logger.debug("Failed to register TTS buffer for session %s", body.sessionId)
 
+            clean_txt = (result.get("cleanText") or "").strip() or body.text.strip()
+            emo_for_vrm = result.get("emotion") or body.emotion
+            vrm_out: Optional[Dict[str, Any]] = None
+            if body.includeVrmControl:
+                vrm_out = await _generate_vrm_control_for_lab_tts(
+                    clean_text=clean_txt,
+                    emotion=emo_for_vrm if isinstance(emo_for_vrm, str) else None,
+                    tts_wav_b64=tts_wav_b64_for_vrm,
+                )
+
             return VoiceResponse(
                 success=True,
                 audioResponse=audio_b64,
                 audioFormat=audio_format,
                 emotion=result.get("emotion"),
                 sessionId=body.sessionId,
+                cleanText=clean_txt if body.includeVrmControl else None,
+                vrmControl=vrm_out if body.includeVrmControl else None,
             )
 
         elif body.action == "set_language":
