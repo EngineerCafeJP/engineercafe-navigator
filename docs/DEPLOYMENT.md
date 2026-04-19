@@ -205,6 +205,11 @@ frontend は `BACKEND_API_KEY` が missing / stale でも startup 自体は止�
 3. 同じ時間帯の Cloud Run logs を確認する
 4. ここまで通って初めて healthy deploy とみなす
 
+実装済みの補助:
+
+- manual / local 実行: `scripts/verify-frontend-production.sh`
+- GitHub Actions: `.github/workflows/frontend-production-smoke.yml`
+
 ## Latency Baseline
 
 live 検証の前に、frontend 実経路の遅延を最低 1 回は採取する。
@@ -292,7 +297,7 @@ gcloud logging read \
 
 - Vercel の `BACKEND_API_KEY` を確認
 - Cloud Run の `API_SECRET_KEY` を確認
-- frontend-authenticated smoke check を再実行
+- `scripts/verify-frontend-production.sh <frontend_url>` で frontend-authenticated smoke check を再実行
 - 同じ deploy window の Cloud Run logs を確認
 
 ### Supabase errors

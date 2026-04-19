@@ -17,6 +17,10 @@
 - イベント照会で `明日` / `tomorrow` を専用 time range として扱い、JST 基準で日付計算するよう修正
 - iPad / iOS では `HTMLAudioElement` fallback を優先し、再生開始 watchdog を追加
 
+### Implemented
+- `scripts/verify-frontend-production.sh` を追加し、production frontend 経由の smoke check を script 化
+- `.github/workflows/frontend-production-smoke.yml` を追加し、`develop` push / manual 実行で smoke check を実施できるようにした
+
 ### Noted
 - 直近 3 日の Cloud Run logs で `POST /api/character` の `403` が繰り返し発生
 - 直近 3 日の Cloud Run logs で `/api/voice` に 60 秒超の latency spike を確認
