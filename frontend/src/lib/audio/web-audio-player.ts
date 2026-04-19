@@ -378,7 +378,11 @@ export class WebAudioPlayer {
   }
 
   private async resumeContextIfNeeded(): Promise<void> {
-    if (!this.audioContext || this.audioContext.state !== 'suspended') {
+    const state = this.audioContext?.state as string | undefined;
+    if (
+      !this.audioContext ||
+      (state !== 'suspended' && state !== 'interrupted')
+    ) {
       return;
     }
 
@@ -386,7 +390,7 @@ export class WebAudioPlayer {
       await waitForAudioUserInteraction();
     }
 
-    if (this.audioContext.state === 'suspended') {
+    if (this.audioContext.state !== 'running' && this.audioContext.state !== 'closed') {
       await this.audioContext.resume();
     }
   }
@@ -434,7 +438,11 @@ export class GlobalAudioManager {
   }
 
   public async ensureResumed(): Promise<void> {
-    if (!this.audioContext || this.audioContext.state !== 'suspended') {
+    const state = this.audioContext?.state as string | undefined;
+    if (
+      !this.audioContext ||
+      (state !== 'suspended' && state !== 'interrupted')
+    ) {
       return;
     }
 
@@ -442,7 +450,7 @@ export class GlobalAudioManager {
       await waitForAudioUserInteraction();
     }
 
-    if (this.audioContext.state === 'suspended') {
+    if (this.audioContext.state !== 'running' && this.audioContext.state !== 'closed') {
       await this.audioContext.resume();
     }
   }

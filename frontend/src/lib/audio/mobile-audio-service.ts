@@ -23,10 +23,14 @@ export interface MobileAudioOptions extends MobileAudioPlayerOptions {
 export type AudioPlaybackResult = AudioOperationResult;
 
 export class MobileAudioService {
+  private static readonly PLAYBACK_START_TIMEOUT_MS = 8000;
   private webAudioPlayer: WebAudioPlayer | null = null;
+  private htmlAudioElement: HTMLAudioElement | null = null;
+  private htmlAudioUrl: string | null = null;
+  private detachHtmlAudioListeners: (() => void) | null = null;
   private interactionManager: AudioInteractionManager;
   private options: MobileAudioOptions;
-  private currentMethod: 'web-audio' | null = null;
+  private currentMethod: 'web-audio' | 'html-audio' | null = null;
 
   constructor(options: MobileAudioOptions = {}) {
     this.options = {
@@ -49,20 +53,31 @@ export class MobileAudioService {
    */
   public async playAudio(audioData: AudioDataInput): Promise<AudioOperationResult> {
     try {
-      const result = await this.tryWebAudio(audioData);
+      const result = await this.withPlaybackStartTimeout(async () => {
+        if (DeviceDetector.isIOS()) {
+          const htmlAudioResult = await this.tryHtmlAudio(audioData);
+          if (htmlAudioResult.success) {
+            return htmlAudioResult;
+          }
+
+          console.warn('[MOBILE-AUDIO] HTML audio fallback failed, retrying Web Audio:', htmlAudioResult.error);
+        }
+
+        return this.tryWebAudio(audioData);
+      });
       if (result.success) {
-        this.currentMethod = 'web-audio';
-        return { ...result, method: 'web-audio' };
+        this.currentMethod = (result.method as 'web-audio' | null) ?? 'web-audio';
+        return result;
       }
       
       const error = result.error || new AudioError(
         AudioErrorType.PLAYBACK_FAILED, 
-        'Web Audio API playback failed'
+        'Audio playback failed'
       );
 
       return {
         success: false,
-        method: 'web-audio',
+        method: result.method ?? 'web-audio',
         error
       };
     } catch (error) {
@@ -144,6 +159,148 @@ export class MobileAudioService {
     }
   }
 
+  private async tryHtmlAudio(audioData: AudioDataInput): Promise<AudioOperationResult> {
+    try {
+      const audioBlob = await this.toAudioBlob(audioData);
+      this.cleanupHtmlAudio();
+
+      const audioUrl = URL.createObjectURL(audioBlob);
+      const audio = new Audio(audioUrl);
+      audio.preload = 'auto';
+      audio.volume = this.options.volume ?? 0.8;
+      audio.setAttribute('playsinline', 'true');
+      audio.setAttribute('webkit-playsinline', 'true');
+
+      let didEmitPlay = false;
+      const emitPlay = () => {
+        if (didEmitPlay) {
+          return;
+        }
+        didEmitPlay = true;
+        this.options.onPlay?.();
+      };
+
+      const onPlay = () => emitPlay();
+      const onPause = () => {
+        if (!audio.ended) {
+          this.options.onPause?.();
+        }
+      };
+      const onEnded = () => {
+        this.options.onEnded?.();
+        this.cleanupHtmlAudio();
+      };
+      const onError = () => {
+        const audioError = new AudioError(
+          AudioErrorType.PLAYBACK_FAILED,
+          'HTML audio playback failed on iOS',
+        );
+        this.options.onError?.(audioError);
+        this.cleanupHtmlAudio();
+      };
+
+      audio.addEventListener('play', onPlay);
+      audio.addEventListener('pause', onPause);
+      audio.addEventListener('ended', onEnded);
+      audio.addEventListener('error', onError);
+
+      this.detachHtmlAudioListeners = () => {
+        audio.removeEventListener('play', onPlay);
+        audio.removeEventListener('pause', onPause);
+        audio.removeEventListener('ended', onEnded);
+        audio.removeEventListener('error', onError);
+      };
+
+      this.htmlAudioElement = audio;
+      this.htmlAudioUrl = audioUrl;
+
+      await audio.play();
+      emitPlay();
+
+      return {
+        success: true,
+        method: 'html-audio',
+      };
+    } catch (error) {
+      this.cleanupHtmlAudio();
+      console.warn('[MOBILE-AUDIO] HTML audio playback failed:', error);
+      const audioError = AudioError.fromError(error as Error, AudioErrorType.PLAYBACK_FAILED);
+      return {
+        success: false,
+        method: 'html-audio',
+        error: audioError,
+      };
+    }
+  }
+
+  private async toAudioBlob(audioData: AudioDataInput): Promise<Blob> {
+    if (audioData instanceof Blob) {
+      return audioData;
+    }
+
+    if (audioData instanceof ArrayBuffer) {
+      const mimeType = AudioDataProcessor.detectAudioFormat(audioData);
+      return new Blob([audioData], { type: mimeType });
+    }
+
+    const blobResult = await AudioDataProcessor.base64ToBlob(audioData);
+    if (!blobResult.success || !blobResult.data) {
+      throw new AudioError(
+        AudioErrorType.INVALID_DATA,
+        blobResult.error || 'Failed to convert base64 audio to Blob',
+      );
+    }
+
+    return blobResult.data;
+  }
+
+  private async withPlaybackStartTimeout(
+    runner: () => Promise<AudioOperationResult>
+  ): Promise<AudioOperationResult> {
+    let timeoutId: number | null = null;
+
+    const timeoutPromise = new Promise<AudioOperationResult>((resolve) => {
+      timeoutId = window.setTimeout(() => {
+        this.stop();
+        resolve({
+          success: false,
+          method: this.currentMethod ?? 'web-audio',
+          error: new AudioError(
+            AudioErrorType.PLAYBACK_FAILED,
+            `Audio playback did not start within ${MobileAudioService.PLAYBACK_START_TIMEOUT_MS}ms`,
+          ),
+        });
+      }, MobileAudioService.PLAYBACK_START_TIMEOUT_MS);
+    });
+
+    try {
+      return await Promise.race([runner(), timeoutPromise]);
+    } finally {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    }
+  }
+
+  private cleanupHtmlAudio(revokeUrl: boolean = true): void {
+    if (this.detachHtmlAudioListeners) {
+      this.detachHtmlAudioListeners();
+      this.detachHtmlAudioListeners = null;
+    }
+
+    if (this.htmlAudioElement) {
+      this.htmlAudioElement.pause();
+      this.htmlAudioElement.removeAttribute('src');
+      this.htmlAudioElement.load();
+      this.htmlAudioElement = null;
+    }
+
+    if (revokeUrl && this.htmlAudioUrl) {
+      URL.revokeObjectURL(this.htmlAudioUrl);
+      this.htmlAudioUrl = null;
+    }
+  }
+
 
 
   // Removed helper methods - now using shared utilities from AudioDataProcessor and AudioError
@@ -152,6 +309,9 @@ export class MobileAudioService {
    * Pause current playback
    */
   public pause(): void {
+    if (this.htmlAudioElement) {
+      this.htmlAudioElement.pause();
+    }
     if (this.webAudioPlayer) {
       this.webAudioPlayer.pause();
     }
@@ -161,6 +321,8 @@ export class MobileAudioService {
    * Stop current playback
    */
   public stop(): void {
+    this.cleanupHtmlAudio();
+
     if (this.webAudioPlayer) {
       this.webAudioPlayer.stop();
       
@@ -176,6 +338,10 @@ export class MobileAudioService {
    * Set volume
    */
   public setVolume(volume: number): void {
+    this.options.volume = volume;
+    if (this.htmlAudioElement) {
+      this.htmlAudioElement.volume = volume;
+    }
     if (this.webAudioPlayer) {
       this.webAudioPlayer.setVolume(volume);
     }
@@ -185,6 +351,9 @@ export class MobileAudioService {
    * Get current playback time
    */
   public getCurrentTime(): number {
+    if (this.htmlAudioElement) {
+      return this.htmlAudioElement.currentTime;
+    }
     if (this.webAudioPlayer) {
       return this.webAudioPlayer.getCurrentTime();
     }
@@ -195,6 +364,9 @@ export class MobileAudioService {
    * Get duration
    */
   public getDuration(): number {
+    if (this.htmlAudioElement) {
+      return Number.isFinite(this.htmlAudioElement.duration) ? this.htmlAudioElement.duration : 0;
+    }
     if (this.webAudioPlayer) {
       return this.webAudioPlayer.getDuration();
     }
@@ -205,6 +377,9 @@ export class MobileAudioService {
    * Check if playing
    */
   public isPlaying(): boolean {
+    if (this.htmlAudioElement) {
+      return !this.htmlAudioElement.paused && !this.htmlAudioElement.ended;
+    }
     if (this.webAudioPlayer) {
       return this.webAudioPlayer.getIsPlaying();
     }
@@ -214,7 +389,7 @@ export class MobileAudioService {
   /**
    * Get current playback method
    */
-  public getCurrentMethod(): 'web-audio' | null {
+  public getCurrentMethod(): 'web-audio' | 'html-audio' | null {
     return this.currentMethod;
   }
 
@@ -229,6 +404,8 @@ export class MobileAudioService {
    * Cleanup resources
    */
   public dispose(): void {
+    this.cleanupHtmlAudio();
+
     if (this.webAudioPlayer) {
       this.webAudioPlayer.dispose();
       this.webAudioPlayer = null;

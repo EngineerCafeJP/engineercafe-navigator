@@ -116,7 +116,7 @@ class TestCalculateTimeRange:
         """Test 'today' returns same-day start (00:00:00) and end (23:59:59)"""
         monkeypatch.setattr(
             "backend.tools.calendar_service.datetime",
-            MagicMock(now=lambda: mock_now),
+            MagicMock(now=lambda *args, **kwargs: mock_now),
         )
 
         time_min, time_max = service._calculate_time_range("today")
@@ -124,11 +124,23 @@ class TestCalculateTimeRange:
         assert time_min == datetime(2026, 2, 16, 0, 0, 0, 0)
         assert time_max == datetime(2026, 2, 16, 23, 59, 59, 999999)
 
+    def test_calculate_tomorrow(self, service, mock_now, monkeypatch):
+        """Test 'tomorrow' returns next-day start (00:00:00) and end (23:59:59)"""
+        monkeypatch.setattr(
+            "backend.tools.calendar_service.datetime",
+            MagicMock(now=lambda *args, **kwargs: mock_now),
+        )
+
+        time_min, time_max = service._calculate_time_range("tomorrow")
+
+        assert time_min == datetime(2026, 2, 17, 0, 0, 0, 0)
+        assert time_max == datetime(2026, 2, 17, 23, 59, 59, 999999)
+
     def test_calculate_this_week(self, service, mock_now, monkeypatch):
         """Test 'thisWeek' returns Monday to Sunday of current week"""
         monkeypatch.setattr(
             "backend.tools.calendar_service.datetime",
-            MagicMock(now=lambda: mock_now),
+            MagicMock(now=lambda *args, **kwargs: mock_now),
         )
 
         time_min, time_max = service._calculate_time_range("thisWeek")
@@ -142,7 +154,7 @@ class TestCalculateTimeRange:
         """Test 'nextWeek' returns Monday to Sunday of next week"""
         monkeypatch.setattr(
             "backend.tools.calendar_service.datetime",
-            MagicMock(now=lambda: mock_now),
+            MagicMock(now=lambda *args, **kwargs: mock_now),
         )
 
         time_min, time_max = service._calculate_time_range("nextWeek")
@@ -156,7 +168,7 @@ class TestCalculateTimeRange:
         """Test 'thisMonth' returns first day to last day of current month"""
         monkeypatch.setattr(
             "backend.tools.calendar_service.datetime",
-            MagicMock(now=lambda: mock_now),
+            MagicMock(now=lambda *args, **kwargs: mock_now),
         )
 
         time_min, time_max = service._calculate_time_range("thisMonth")
@@ -300,6 +312,10 @@ class TestExtractTimeRange:
         """Test Japanese query for 'thisWeek'"""
         assert service.extract_time_range_from_query("今週のイベント") == "thisWeek"
 
+    def test_extract_japanese_tomorrow(self, service):
+        """Test Japanese query for 'tomorrow'"""
+        assert service.extract_time_range_from_query("明日のイベント") == "tomorrow"
+
     def test_extract_japanese_next_week(self, service):
         """Test Japanese query for 'nextWeek'"""
         assert service.extract_time_range_from_query("来週は?") == "nextWeek"
@@ -318,6 +334,11 @@ class TestExtractTimeRange:
         """Test English query for 'thisWeek'"""
         assert service.extract_time_range_from_query("this week") == "thisWeek"
         assert service.extract_time_range_from_query("This Week events") == "thisWeek"
+
+    def test_extract_english_tomorrow(self, service):
+        """Test English query for 'tomorrow'"""
+        assert service.extract_time_range_from_query("tomorrow") == "tomorrow"
+        assert service.extract_time_range_from_query("Tomorrow events") == "tomorrow"
 
     def test_extract_english_next_week(self, service):
         """Test English query for 'nextWeek'"""

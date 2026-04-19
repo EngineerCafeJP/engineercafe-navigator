@@ -1,0 +1,39 @@
+name: Frontend Latency Probe
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Probe target base URL"
+        required: false
+        default: "https://frontend-delta-six-20.vercel.app"
+      iterations:
+        description: "Requests per endpoint"
+        required: false
+        default: "3"
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Run latency probe
+        run: |
+          python scripts/latency_probe.py \
+            --base-url "${{ inputs.base_url }}" \
+            --iterations "${{ inputs.iterations }}" \
+            --json-out artifacts/latency-probe.json \
+            --markdown-out artifacts/latency-probe.md
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-latency-probe
+          path: artifacts/

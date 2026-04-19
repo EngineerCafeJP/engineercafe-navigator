@@ -80,7 +80,7 @@ class TestEventAgent:
 
     def test_get_no_events_response_various_time_ranges(self):
         """各時間範囲のイベントなし応答をテスト"""
-        for time_range in ["today", "thisWeek", "nextWeek", "thisMonth"]:
+        for time_range in ["today", "tomorrow", "thisWeek", "nextWeek", "thisMonth"]:
             response_ja = self.agent._get_no_events_response("ja", time_range)
             response_en = self.agent._get_no_events_response("en", time_range)
 

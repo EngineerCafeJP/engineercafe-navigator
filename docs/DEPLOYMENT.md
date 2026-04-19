@@ -185,6 +185,7 @@ curl -sf "$(gcloud run services describe engineer-cafe-backend --region asia-nor
 - voice path の smoke test が通る
 - production frontend 経由の `GET /api/voice?action=supported_languages` が `200`
 - production frontend 経由の `POST /api/character` が `200`
+- `frontend-latency-probe` workflow で `/api/qa` `/api/voice` `/api/character` の p50 / p95 / p99 を採取する
 - Cloud Run logs に immediate な `403` / `5xx` spike がない
 
 ## Release Guardrails
@@ -203,6 +204,34 @@ frontend は `BACKEND_API_KEY` が missing / stale でも startup 自体は止�
 2. その deployment に対して frontend-authenticated smoke check を実行する
 3. 同じ時間帯の Cloud Run logs を確認する
 4. ここまで通って初めて healthy deploy とみなす
+
+## Latency Baseline
+
+live 検証の前に、frontend 実経路の遅延を最低 1 回は採取する。
+
+### GitHub Actions
+
+- workflow: `Frontend Latency Probe`
+- trigger: `workflow_dispatch`
+- artifact:
+  - `artifacts/latency-probe.json`
+  - `artifacts/latency-probe.md`
+
+### Local execution
+
+```bash
+python scripts/latency_probe.py \
+  --base-url https://frontend-delta-six-20.vercel.app \
+  --iterations 3
+```
+
+この probe は以下を対象にする。
+
+- `POST /api/qa`
+- `POST /api/voice` (`text_to_speech`)
+- `POST /api/character`
+
+field verification で iPad 系の音声停止が出たため、数値だけでなく実機再生も合わせて確認する。
 
 ## ロールバック
 

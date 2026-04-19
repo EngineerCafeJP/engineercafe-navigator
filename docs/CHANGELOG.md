@@ -6,17 +6,22 @@
 - 運用検証と deploy guardrail を定義する ADR-008
 - 現在の follow-up plan として `docs/plans/production-readiness-followup-2026-04-19.md`
 - frontend -> backend auth drift 対策用の Issue `#468`
+- frontend 実経路の p50 / p95 / p99 を採る `scripts/latency_probe.py`
+- `workflow_dispatch` で走らせる `Frontend Latency Probe` workflow
 
 ### Changed
 - `docs/STATUS.md` を 2026-04-19 の codebase / live audit に同期
 - `docs/SECURITY.md` に `BACKEND_API_KEY` -> `API_SECRET_KEY` の auth chain を明記
 - `docs/DEPLOYMENT.md` を current Vercel + Cloud Run 運用と frontend-authenticated smoke check 前提に更新
 - `docs/README.md` で current docs と historical plan を明確に分離
+- イベント照会で `明日` / `tomorrow` を専用 time range として扱い、JST 基準で日付計算するよう修正
+- iPad / iOS では `HTMLAudioElement` fallback を優先し、再生開始 watchdog を追加
 
 ### Noted
 - 直近 3 日の Cloud Run logs で `POST /api/character` の `403` が繰り返し発生
 - 直近 3 日の Cloud Run logs で `/api/voice` に 60 秒超の latency spike を確認
 - Supabase CLI だけでは同等の runtime log inspection ができなかった
+- 2026-04-19 18:20-18:30 JST の Cloud Run / Vercel logs では `/api/qa` `/api/voice` は 200 応答で、iPad 音声停止は frontend playback path 側と判断
 
 ---
 

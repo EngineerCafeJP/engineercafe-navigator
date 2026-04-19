@@ -12,11 +12,13 @@ import re
 import hashlib
 from datetime import datetime, timedelta
 from typing import List, Dict, Literal, Optional
+from zoneinfo import ZoneInfo
 import httpx
 
 logger = logging.getLogger(__name__)
 
-TimeRange = Literal["today", "thisWeek", "nextWeek", "thisMonth"]
+TimeRange = Literal["today", "tomorrow", "thisWeek", "nextWeek", "thisMonth"]
+_JST = ZoneInfo("Asia/Tokyo")
 
 
 class CalendarService:
@@ -31,7 +33,7 @@ class CalendarService:
         指定期間のイベントを検索
 
         Args:
-            time_range: 検索期間（today, thisWeek, nextWeek, thisMonth）
+            time_range: 検索期間（today, tomorrow, thisWeek, nextWeek, thisMonth）
 
         Returns:
             イベント情報辞書 {success, data: {events, timeRange, eventCount}}
@@ -65,12 +67,17 @@ class CalendarService:
         Returns:
             (time_min, time_max)のタプル
         """
-        now = datetime.now()
+        now = datetime.now(_JST).replace(tzinfo=None)
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
         today_end = now.replace(hour=23, minute=59, second=59, microsecond=999999)
 
         if time_range == "today":
             return (today_start, today_end)
+
+        elif time_range == "tomorrow":
+            tomorrow_start = today_start + timedelta(days=1)
+            tomorrow_end = today_end + timedelta(days=1)
+            return (tomorrow_start, tomorrow_end)
 
         elif time_range == "thisWeek":
             # 今週の月曜日から日曜日
@@ -324,13 +331,17 @@ class CalendarService:
             query: ユーザークエリ
 
         Returns:
-            時間範囲（today, thisWeek, nextWeek, thisMonth）
+            時間範囲（today, tomorrow, thisWeek, nextWeek, thisMonth）
         """
         query_lower = query.lower()
 
         # 今日
         if "今日" in query_lower or "today" in query_lower or "本日" in query_lower:
             return "today"
+
+        # 明日
+        if "明日" in query_lower or "tomorrow" in query_lower:
+            return "tomorrow"
 
         # 今週
         if "今週" in query_lower or "this week" in query_lower:
