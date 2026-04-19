@@ -209,6 +209,42 @@ class TestVoiceEndpoint:
                 await voice_api(_mock_request(), body)
             assert "credential" not in exc_info.value.detail.lower()
 
+    @pytest.mark.asyncio
+    async def test_voice_invalid_tts_provider_returns_400(self):
+        from backend.main import voice_api, VoiceRequest
+        from fastapi import HTTPException
+
+        body = VoiceRequest(action="text_to_speech", text="hello", ttsProvider="vocaloid")
+        with pytest.raises(HTTPException) as exc_info:
+            await voice_api(_mock_request(), body)
+        assert exc_info.value.status_code == 400
+        detail_lower = exc_info.value.detail.lower()
+        assert "ttsprovider" in detail_lower and "vocaloid" in detail_lower
+
+    @pytest.mark.asyncio
+    async def test_voice_tts_provider_piper_uses_per_provider_agent(self):
+        mock_agent = AsyncMock()
+        mock_agent.text_to_speech = AsyncMock(
+            return_value={
+                "success": True,
+                "audioResponse": "d2F2",
+                "format": "audio/wav",
+                "emotion": "neutral",
+            }
+        )
+        with patch(
+            "backend.main._get_voice_agent_for_provider_key", return_value=mock_agent
+        ) as get_p:
+            with patch("backend.main._get_voice_agent") as get_default:
+                from backend.main import voice_api, VoiceRequest
+
+                body = VoiceRequest(action="text_to_speech", text="hello", ttsProvider="piper")
+                resp = await voice_api(_mock_request(), body)
+                get_p.assert_called_once_with("piper")
+                get_default.assert_not_called()
+                assert resp.success is True
+                assert resp.audioResponse == "d2F2"
+
 
 class TestSlidesEndpoint:
     @pytest.mark.asyncio

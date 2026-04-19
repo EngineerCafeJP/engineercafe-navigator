@@ -26,6 +26,8 @@ class VoiceRequest(BaseModel):
     text: Optional[str] = None
     streaming: Optional[bool] = False
     conversationStage: Optional[str] = None
+    emotion: Optional[str] = None
+    outputEncoding: Optional[str] = None
 
 
 class VoiceResponse(BaseModel):
@@ -33,6 +35,7 @@ class VoiceResponse(BaseModel):
     transcript: Optional[str] = None
     response: Optional[str] = None
     audioResponse: Optional[str] = None
+    audioFormat: Optional[str] = None
     emotion: Optional[str] = None
     sessionId: Optional[str] = None
     error: Optional[str] = None
@@ -95,19 +98,41 @@ async def voice_api(request: VoiceRequest):
             result = await mock_voice_agent.text_to_speech(
                 text=request.text,
                 language=request.language or "ja",
-                emotion=None,
+                emotion=request.emotion,
             )
             if not result.get("success"):
                 return VoiceResponse(
                     success=False,
                     error=result.get("error", "TTS failed"),
                     emotion=result.get("emotion"),
+                    audioFormat=result.get("format"),
                     sessionId=request.sessionId,
                 )
 
+            audio_b64 = result.get("audioResponse")
+            audio_format = result.get("format")
+
+            if (
+                request.outputEncoding
+                and request.outputEncoding.lower() == "mp3"
+                and audio_format == "audio/wav"
+                and audio_b64
+            ):
+                try:
+                    from backend.utils.audio_encode import wav_base64_to_mp3_base64
+
+                    audio_b64 = wav_base64_to_mp3_base64(audio_b64)
+                    audio_format = "audio/mpeg"
+                except Exception:
+                    raise HTTPException(
+                        status_code=502,
+                        detail="Audio encoding to MP3 failed (ensure ffmpeg is installed).",
+                    )
+
             return VoiceResponse(
                 success=True,
-                audioResponse=result.get("audioResponse"),
+                audioResponse=audio_b64,
+                audioFormat=audio_format,
                 emotion=result.get("emotion"),
                 sessionId=request.sessionId,
             )
@@ -271,6 +296,109 @@ class TestTextToSpeech:
         )
 
         assert resp.status_code == 500
+
+
+# =============================================================================
+# outputEncoding mp3 (WAV → MP3)
+# =============================================================================
+
+
+class TestOutputEncodingMp3:
+    """outputEncoding=mp3 で WAV を MP3 に変換する経路"""
+
+    def test_tts_output_mp3_converts_wav(self, monkeypatch):
+        def fake_wav_to_mp3(wav_b64: str) -> str:
+            assert wav_b64 == "d2F2LTE="
+            return "bXAz"
+
+        monkeypatch.setattr(
+            "backend.utils.audio_encode.wav_base64_to_mp3_base64",
+            fake_wav_to_mp3,
+        )
+        mock_voice_agent.text_to_speech = AsyncMock(
+            return_value={
+                "success": True,
+                "audioResponse": "d2F2LTE=",
+                "format": "audio/wav",
+                "emotion": "neutral",
+            }
+        )
+
+        resp = client.post(
+            "/api/voice",
+            json={
+                "action": "text_to_speech",
+                "text": "テスト",
+                "outputEncoding": "mp3",
+                "sessionId": SAMPLE_SESSION_ID,
+            },
+        )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["success"] is True
+        assert body["audioResponse"] == "bXAz"
+        assert body["audioFormat"] == "audio/mpeg"
+
+    def test_tts_output_mp3_skips_when_already_mpeg(self, monkeypatch):
+        def should_not_run(_wav_b64: str) -> str:
+            raise AssertionError("wav_base64_to_mp3_base64 should not run for audio/mpeg")
+
+        monkeypatch.setattr(
+            "backend.utils.audio_encode.wav_base64_to_mp3_base64",
+            should_not_run,
+        )
+        mock_voice_agent.text_to_speech = AsyncMock(
+            return_value={
+                "success": True,
+                "audioResponse": "Z29vZ2xl",
+                "format": "audio/mpeg",
+                "emotion": "neutral",
+            }
+        )
+
+        resp = client.post(
+            "/api/voice",
+            json={
+                "action": "text_to_speech",
+                "text": "hello",
+                "outputEncoding": "mp3",
+            },
+        )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["audioResponse"] == "Z29vZ2xl"
+        assert body["audioFormat"] == "audio/mpeg"
+
+    def test_tts_output_mp3_conversion_failure_returns_502(self, monkeypatch):
+        def boom(_wav_b64: str) -> str:
+            raise RuntimeError("ffmpeg missing")
+
+        monkeypatch.setattr(
+            "backend.utils.audio_encode.wav_base64_to_mp3_base64",
+            boom,
+        )
+        mock_voice_agent.text_to_speech = AsyncMock(
+            return_value={
+                "success": True,
+                "audioResponse": "d2F2",
+                "format": "audio/wav",
+                "emotion": "neutral",
+            }
+        )
+
+        resp = client.post(
+            "/api/voice",
+            json={
+                "action": "text_to_speech",
+                "text": "テスト",
+                "outputEncoding": "mp3",
+            },
+        )
+
+        assert resp.status_code == 502
+        assert "MP3" in resp.json()["detail"]
 
 
 # =============================================================================
