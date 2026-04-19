@@ -13,6 +13,10 @@
 - `docs/DEPLOYMENT.md` を current Vercel + Cloud Run 運用と frontend-authenticated smoke check 前提に更新
 - `docs/README.md` で current docs と historical plan を明確に分離
 
+### Implemented
+- `scripts/verify-frontend-production.sh` を追加し、production frontend 経由の smoke check を script 化
+- `.github/workflows/frontend-production-smoke.yml` を追加し、`develop` push / manual 実行で smoke check を実施できるようにした
+
 ### Noted
 - 直近 3 日の Cloud Run logs で `POST /api/character` の `403` が繰り返し発生
 - 直近 3 日の Cloud Run logs で `/api/voice` に 60 秒超の latency spike を確認

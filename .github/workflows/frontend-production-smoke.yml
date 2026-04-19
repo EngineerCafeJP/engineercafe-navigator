@@ -1,0 +1,56 @@
+name: Frontend Production Smoke
+
+on:
+  push:
+    branches: [develop]
+  workflow_dispatch:
+    inputs:
+      frontend_base_url:
+        description: Optional override for the frontend production URL
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: frontend-production-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DEFAULT_FRONTEND_PRODUCTION_ORIGIN: https://frontend-delta-six-20.vercel.app
+  MAX_ATTEMPTS: '12'
+  SLEEP_SECONDS: '15'
+
+jobs:
+  smoke:
+    name: Verify production frontend -> backend chain
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve target frontend URL
+        id: target
+        shell: bash
+        run: |
+          INPUT_URL="${{ github.event.inputs.frontend_base_url }}"
+          VAR_URL="${{ vars.FRONTEND_PRODUCTION_ORIGIN }}"
+
+          if [[ -n "$INPUT_URL" ]]; then
+            TARGET_URL="$INPUT_URL"
+          elif [[ -n "$VAR_URL" ]]; then
+            TARGET_URL="$VAR_URL"
+          else
+            TARGET_URL="$DEFAULT_FRONTEND_PRODUCTION_ORIGIN"
+          fi
+
+          echo "target_url=$TARGET_URL" >> "$GITHUB_OUTPUT"
+          echo "Using frontend target: $TARGET_URL"
+
+      - name: Run frontend production smoke checks
+        shell: bash
+        env:
+          FRONTEND_BASE_URL: ${{ steps.target.outputs.target_url }}
+          MAX_ATTEMPTS: ${{ env.MAX_ATTEMPTS }}
+          SLEEP_SECONDS: ${{ env.SLEEP_SECONDS }}
+        run: bash scripts/verify-frontend-production.sh
