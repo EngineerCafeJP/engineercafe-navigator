@@ -1,235 +1,153 @@
-# Current Status
+# 現在の状態
 
-Last updated: 2026-03-22
+Last updated: 2026-04-19
 
-## Summary
+## 概要
 
-Engineer Cafe Navigator is in active stabilization after completing Waves 1-3 of production integration.
+このページは、`develop` 上の現行コードと 2026-04-19 に実施した live audit をもとに更新しています。
 
-Confirmed current-state signals:
+確認元:
 
-- All frontend routes proxy to the FastAPI backend via `backendFetch()`.
-- Wave 1 (PR #320): OCR frontend connection — `POST /api/ocr` endpoint added.
-- Wave 2 (PR #321): Reception workflow integration — orchestrator gates on reception status, Welcome screen, device webhook.
-- Wave 3 (PR #322): Bug fixes — TTS, slide rendering, character timeout.
-- RAGAS baseline: context_precision 1.000, answer_correctness 0.770, answer_relevancy 0.895, faithfulness 0.871.
+- 2026-04-16 から 2026-04-19 UTC の Cloud Run ログ
+- 2026-04-19 UTC の直近 Vercel production deploy
+- 現在 open の GitHub Issue
 
-Implication:
+Supabase については、CLI で linked project の確認まではできましたが、このセッションでは recent runtime log
+を同じ粒度で取得できませんでした。データ層の詳細な運用確認には、dashboard か token 付きの別フローが必要です。
 
-- Core functionality is complete including OCR, reception flow, and chat.
-- Reception flow integrated end-to-end: sensor/button → OCR or voice → reception workflow → main agent.
-- Remaining gaps are operational (auth hardening, durable sessions, device testing).
+現状の結論:
 
-## Current Architecture
+- キオスクのコアフロー自体は実装済み
+- 現在の主リスクは「未実装の基本機能」ではなく「運用と整合性」
+
+特に優先度が高いのは次の 4 点です。
+
+1. deploy 時の frontend -> backend 認証ドリフト
+2. voice / chat 系の本番レイテンシ悪化
+3. 感情タグと VRM / VRMA 契約の不整合
+4. 多言語品質の未完了部分
+
+## 実装済みとして確認できたこと
 
 ### Frontend
 
-- Next.js 15 App Router
-- UI, VRM, audio interaction, admin UI
-- `/api/*` routes act as backend proxies (voice, qa, slides, character, reception, ocr)
-- OCR route (`/api/ocr`) proxies image data to backend chat with vision capabilities
+- Next.js 15 App Router が現行 frontend
+- `frontend/src/lib/api/backend-proxy.ts` の `backendFetch()` 経由で backend proxy を実施
+- `backendFetch()` は server-side で `BACKEND_API_KEY` を `X-API-Key` として付与
+- `frontend/src/middleware.ts` で `/api/admin/*`, `/api/cron/*`, `/api/monitoring/*` を保護
+- `GET /api/voice?action=supported_languages` は実装済み
+- `GET /api/character?action=supported_features` は実装済み
 
 ### Backend
 
-- FastAPI entrypoint in `backend/main.py`
-- LangGraph workflow for chat and domain routing
-- Dedicated APIs for chat, voice, slides, character, knowledge, STT vocabulary, reception, and OCR
-- OrchestratorAgent gates on reception status before LLM routing
-- Agent prompts include oral/conversational style for natural TTS output
-- `clean_text_for_tts` strips Markdown and HTML before speech synthesis
-- Supabase-backed data and external integrations
+- `backend/main.py` は `ENVIRONMENT=production` かつ `API_SECRET_KEY` 未設定時に起動失敗
+- `verify_api_key` は fail-open ではなく fail-closed
+- `slowapi` は production 相当環境で必須
+- 受付セッションは `ReceptionRepository` 経由で永続化される
+- OCR / reception / voice / character / slides / admin knowledge API は存在し、現行構成に接続されている
 
-### Current GitHub context
+### ドキュメント基準
 
-Open issues / PRs that materially affect delivery:
+- `docs/STATUS.md`, `docs/SECURITY.md`, `docs/DEPLOYMENT.md` は 2026-04-19 の監査結果に合わせて更新済み
+- 2026-03-14 と 2026-04-13 の計画文書は履歴として残すが、現行計画ではないことを明示した
 
-- Issue `#301`: QA oral style improvements (merged via PR #313)
-- Issue `#315`: Slide cascade fix (merged via PR #318)
-- Issue `#314`: OCR frontend orchestration (merged via PR #320)
-- Issue `#165`: Reception-2025 integration boundary and shared data usage
-- Issue `#138`: Multi-language improvements (English OK, Korean/Chinese need work)
-- Issue `#117`: Autonomous reception flow integration
-- Issue `#128`: Non-camera visitor detection research
-- Issue `#113`: Event participation / hosting flow guidance
-- Issue `#114`: Feedback collection
+## 本番運用で確認した事実
 
-## Confirmed Risks
+### Critical: frontend -> backend auth drift により一時的な 403 が出る可能性がある
 
-### 1. Admin and ops routes are still exposed
+2026-04-16 から 2026-04-19 UTC の Cloud Run ログで確認したこと:
 
-Confirmed in code:
+- `403` 応答: 145 件
+- 該当 protected route: `POST /api/character`
 
-- [frontend/src/app/api/admin/knowledge/route.ts](/Users/teradakousuke/Developer/engineer-cafe-navigator2025/frontend/src/app/api/admin/knowledge/route.ts#L1) performs knowledge-base reads and writes with no auth check.
-- [frontend/src/app/api/cron/update-slides/route.ts](/Users/teradakousuke/Developer/engineer-cafe-navigator2025/frontend/src/app/api/cron/update-slides/route.ts#L1) allows unauthenticated slide import execution.
-- [frontend/src/app/api/alerts/webhook/route.ts](/Users/teradakousuke/Developer/engineer-cafe-navigator2025/frontend/src/app/api/alerts/webhook/route.ts#L165) exposes recent alert retrieval via `GET` without auth.
-- There is no `frontend/src/middleware.ts` in the repository as of 2026-03-14.
+一方、2026-04-19 08:17 UTC の最新 production frontend 経由の確認では:
 
-Risk:
+- `/api/character` は `200`
+- `/api/voice?action=supported_languages` は `200`
 
-- Unauthorized data access
-- Unauthorized operational actions
-- Monitoring leakage
+解釈:
 
-Required before production:
+- 常時故障ではない
+- `BACKEND_API_KEY` と `API_SECRET_KEY` の不整合、または deploy / promotion 時の検証不足が本質的なリスク
 
-- Route-level auth for admin, monitoring, alerts, and cron
-- Clear split between public proxy routes and operator-only routes
-- Tests for unauthorized access paths
+関連 Issue:
 
-### 2. Backend protection is optional if a secret is missing
+- `#468`: deploy smoke gate による auth drift 防止
 
-Confirmed in code:
+### Critical: live latency が production 水準としてはまだ弱い
 
-- [backend/main.py](/Users/teradakousuke/Developer/engineer-cafe-navigator2025/backend/main.py#L205) treats API key verification as optional.
-- [backend/main.py](/Users/teradakousuke/Developer/engineer-cafe-navigator2025/backend/main.py#L208) only logs a warning if `API_SECRET_KEY` is missing in production.
-- [backend/main.py](/Users/teradakousuke/Developer/engineer-cafe-navigator2025/backend/main.py#L214) returns early from auth when no secret is set.
+同じ 3 日間の Cloud Run ログで slow request を確認:
 
-Risk:
+- `/api/voice`: slow request 15 件、最大 `62.68s`
+- `/api/character`: slow threshold 超過が 8 件
+- `/api/chat`: slow threshold 超過が 7 件
 
-- A misconfigured production deploy can expose backend write-capable endpoints.
+解釈:
 
-Required before production:
+- 現在のサービスは利用可能だが、production latency baseline を主張できる状態ではない
+- 既存の backend test だけでは不十分で、live latency を release 判断に組み込む必要がある
 
-- Fail startup when `ENVIRONMENT=production` and `API_SECRET_KEY` is absent
-- Document secret ownership and rotation
-- Add deployment validation
+関連 Issue:
 
-### 3. Reception state is not durable
+- `#140`: 負荷テストとパフォーマンス検証
 
-Confirmed in code:
+### High: 感情タグとアニメーション契約はまだずれている
 
-- [backend/api/reception.py](/Users/teradakousuke/Developer/engineer-cafe-navigator2025/backend/api/reception.py#L54) stores active reception sessions in a process-local `OrderedDict`.
+現在のコードと live response の両方で、Issue `#458` の症状を確認:
 
-Risk:
+- backend emotion mapping は `happy: 0.8` のような partial intensity を返す
+- frontend 側に独自正規化が残っている
+- production 確認時の `/api/character` 応答でも mixed intensity を返した
 
-- Session loss on restart
-- Inconsistent state across multiple instances
-- Weak observability and no recovery path
+関連 Issue:
 
-Required before production:
+- `#458`: emotion / expression / animation の整合
+- `#190`: target-device での character validation
 
-- Use the reception repository abstraction for durable storage
-- Add cleanup / expiry semantics at the persistence layer
-- Add multi-instance or restart recovery tests
+### High: 多言語品質は改善済みだが未完了
 
-### 4. Env validation exists but is not authoritative
+現状:
 
-Confirmed in code:
+- query 側の multilingual tRAG translation は en / ko / zh に入っている
+- response language の安定性は ja / en が中心
+- ko / zh は response translation より multilingual generation 依存がまだ大きい
 
-- [frontend/src/lib/env.ts](/Users/teradakousuke/Developer/engineer-cafe-navigator2025/frontend/src/lib/env.ts#L1) still requires several vars that recent proxy cleanup has made optional.
-- The validation helpers are not used by the runtime.
+関連 Issue:
 
-Risk:
+- `#138`: 多言語品質改善
+- `#398`: multilingual RAGAS / response stabilization
 
-- Docs and code disagree on required configuration
-- False confidence from unused validation helpers
+### Medium: frontend env validation は補助的で authoritative ではない
 
-Required before production:
+- `frontend/src/lib/env.ts` は useful な contract を示している
+- ただし実行時はなお `process.env` の直接参照が多く、単独で authoritative とは言えない
 
-- Choose one env contract per service
-- Enforce it at startup or build time
-- Remove or rewrite unused validation layers
+### Medium: Supabase observability は CLI だけでは不足
 
-### 5. Rate limiting is soft, not guaranteed
+- `supabase projects list` は成功
+- ただし authenticated な remote inspect / recent log まではこのセッションで取得できなかった
 
-Confirmed in code:
+## いま重要な Open Issues
 
-- [backend/main.py](/Users/teradakousuke/Developer/engineer-cafe-navigator2025/backend/main.py#L188) makes rate limiting a no-op when `slowapi` is unavailable.
+- `#468`: deploy-time auth drift guardrails
+- `#140`: load / latency baseline
+- `#458`: emotion / expression / animation alignment
+- `#190`: live character validation
+- `#117`: autonomous reception flow integration
+- `#138`: multilingual quality improvements
+- `#398`: multilingual RAGAS improvement phase 2
 
-Risk:
+## 推奨する実装順
 
-- Accidental unbounded exposure in production
-- No explicit guarantee that abuse controls exist in every deploy
-
-Required before production:
-
-- Make rate limiting mandatory
-- Document infra-level throttling
-- Add deploy-time verification
-
-### 6. Recent fixes still need manual device validation
-
-Recent merged PRs:
-
-- `#223` frontend hardening
-- `#225` proxy unification
-- `#226` Mastra-remnant cleanup
-- `#227` env cleanup
-- `#229` WebM-to-WAV conversion for Vosk
-- `#231` test fix for closing-time warnings
-
-Risk:
-
-- Browser and tablet behavior can still regress even when CI is green
-- Audio and VRM fixes are especially prone to environment-specific failures
-
-Required before production:
-
-- Repeatable smoke tests for kiosk browsers and tablets
-- Device matrix with pass/fail history
-- Post-deploy canary checks
-
-### 7. Some frontend feature-discovery paths are inconsistent with backend behavior
-
-Confirmed in code review:
-
-- `LanguageSelector` requests `GET /api/voice?action=supported_languages`, but the backend currently implements `POST /api/voice` only.
-- `CharacterAvatar` expects `GET /api/character?action=supported_features`, while the Next.js route returns a stub health payload.
-- STT vocabulary admin calls still have paths that bypass the normal server-proxy pattern.
-
-Risk:
-
-- Silent fallback behavior in the UI
-- Broken admin surfaces when backend auth is enabled
-- Integration regressions that basic smoke coverage does not catch
-
-Required before production:
-
-- Align UI capability discovery with actual backend routes
-- Move remaining browser-direct backend calls behind authenticated server routes
-- Expand frontend E2E coverage beyond the current thin proxy smoke layer
-
-## Production Readiness Gaps
-
-The minimum additional work to call this production-ready is:
-
-1. Authentication and authorization
-2. Durable reception/session persistence
-3. Mandatory secret validation and rate limiting
-4. Operator runbooks for cron, alerts, and knowledge import
-5. Browser/device smoke coverage for audio, VRM, and slides
-6. Documentation cleanup so active docs are clearly separated from legacy docs
-
-## Documentation State
-
-### Updated in this pass
-
-- [../README.md](/Users/teradakousuke/Developer/engineer-cafe-navigator2025/README.md)
-- [../README-EN.md](/Users/teradakousuke/Developer/engineer-cafe-navigator2025/README-EN.md)
-- [README.md](/Users/teradakousuke/Developer/engineer-cafe-navigator2025/docs/README.md)
-- [plans/production-hardening-session-2026-03-14.md](/Users/teradakousuke/Developer/engineer-cafe-navigator2025/docs/plans/production-hardening-session-2026-03-14.md)
-- [../frontend/README.md](/Users/teradakousuke/Developer/engineer-cafe-navigator2025/frontend/README.md)
-- [../backend/README.md](/Users/teradakousuke/Developer/engineer-cafe-navigator2025/backend/README.md)
-- [archive/README.md](/Users/teradakousuke/Developer/engineer-cafe-navigator2025/docs/archive/README.md)
-
-### Legacy docs still needing explicit refresh or archive decisions
-
-- `docs/api/`
-- `docs/architecture/`
-- `docs/DEPLOYMENT.md`
-- `docs/SECURITY.md`
-- `docs/development/`
-- Some API and testing docs that still mention Mastra-era behavior
-
-### Removed duplication
-
-- Deleted duplicate file `docs/spaces/spaces/basement-spaces.md`
-
-## Recommended Next Workstream
-
-1. Close Issue `#197` or merge/finish PR `#132`
-2. Persist reception sessions through the repository layer
-3. Rewrite env and deployment docs from actual runtime contracts
-4. Refresh API, architecture, security, and deployment docs to remove deprecated agent descriptions and Vercel-era assumptions
-5. Add operator-facing production checklist and smoke test checklist
-6. Use umbrella Issue `#232` as the execution tracker for the next hardening session
+1. deploy-time authenticated smoke check を入れる (`#468`)
+2. live latency baseline と load test を整備する (`#140`)
+3. emotion -> expression -> animation の契約を一本化する (`#458`, `#190`)
+4. multilingual quality を評価基準込みで閉じる (`#138`, `#398`)
+5. reception の残作業を行動フロー中心に進める (`#117`)
+
+## 参照
+
+- [SECURITY.md](SECURITY.md)
+- [DEPLOYMENT.md](DEPLOYMENT.md)
+- [plans/production-readiness-followup-2026-04-19.md](plans/production-readiness-followup-2026-04-19.md)
+- [adr/008-operational-verification-and-deployment-guardrails.md](adr/008-operational-verification-and-deployment-guardrails.md)
