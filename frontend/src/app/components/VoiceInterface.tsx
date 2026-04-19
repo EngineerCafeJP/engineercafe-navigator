@@ -9,6 +9,7 @@ import { cn } from '@/lib/cn';
 import { EmotionTagParser } from '@/lib/emotion-tag-parser';
 import { formatError } from '@/lib/error-messages';
 import { LipSyncAnalyzer, type LipSyncFrame } from '@/lib/lip-sync-analyzer';
+import { mergePlaybackMetadataWithTtsVrmControl } from '@/lib/voice/tts-vrm-metadata';
 import { preprocessTTS } from '@/utils/tts-preprocess';
 import { AlertCircle, Loader2, Mic, MicOff, Volume2, VolumeX, XCircle } from 'lucide-react';
 import {
@@ -521,31 +522,41 @@ export default function VoiceInterface({
         setResponse(cleanAnswer);
         setMetadata((qaResult.metadata as VoiceInterfaceMetadata | null) ?? null);
 
+        const ttsBody: Record<string, unknown> = {
+          action: 'text_to_speech',
+          text: preprocessTTS(cleanAnswer, currentLanguage),
+          language: currentLanguage,
+          sessionId: sessionIdRef.current,
+          includeVrmControl: true,
+        };
+        if (typeof qaResult.emotion === 'string' && qaResult.emotion.trim()) {
+          ttsBody.emotion = qaResult.emotion.trim();
+        }
+
         const ttsResponse = await fetch('/api/voice', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            action: 'text_to_speech',
-            text: preprocessTTS(cleanAnswer, currentLanguage),
-            language: currentLanguage,
-            sessionId: sessionIdRef.current,
-          }),
+          body: JSON.stringify(ttsBody),
           signal: abortController.signal,
         });
 
-        const ttsResult = await ttsResponse.json();
+        const ttsResult = (await ttsResponse.json()) as Record<string, unknown>;
         if (!ttsResponse.ok || !ttsResult.success) {
           const ttsError: Error & { status?: number } = new Error(
-            ttsResult.error || '音声の生成に失敗しました',
+            (typeof ttsResult.error === 'string' ? ttsResult.error : null) ||
+              '音声の生成に失敗しました',
           );
           ttsError.status = ttsResponse.status;
           throw ttsError;
         }
 
+        const qaMeta = (qaResult.metadata as VoiceInterfaceMetadata | null) ?? null;
+        const playbackMetadata = mergePlaybackMetadataWithTtsVrmControl(qaMeta, ttsResult);
+
         if (typeof ttsResult.audioResponse === 'string' && ttsResult.audioResponse.length > 0) {
-          await playAssistantAudio(ttsResult.audioResponse, qaResult.metadata ?? null);
+          await playAssistantAudio(ttsResult.audioResponse, playbackMetadata);
         } else {
           voiceController.notifySpeaking();
           window.setTimeout(() => {
@@ -606,27 +617,41 @@ export default function VoiceInterface({
       requestAbortRef.current = abortController;
 
       try {
+        const ttsBody: Record<string, unknown> = {
+          action: 'text_to_speech',
+          text: preprocessTTS(cleanAnswer, currentLanguage),
+          language: currentLanguage,
+          sessionId: sessionIdRef.current,
+          includeVrmControl: true,
+        };
+        if (parsedAnswer.primaryEmotion) {
+          ttsBody.emotion = parsedAnswer.primaryEmotion;
+        }
+
         const ttsResponse = await fetch('/api/voice', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            action: 'text_to_speech',
-            text: preprocessTTS(cleanAnswer, currentLanguage),
-            language: currentLanguage,
-            sessionId: sessionIdRef.current,
-          }),
+          body: JSON.stringify(ttsBody),
           signal: abortController.signal,
         });
 
-        const ttsResult = await ttsResponse.json();
+        const ttsResult = (await ttsResponse.json()) as Record<string, unknown>;
         if (!ttsResponse.ok || !ttsResult.success) {
-          throw new Error(ttsResult.error || '音声の生成に失敗しました');
+          throw new Error(
+            (typeof ttsResult.error === 'string' ? ttsResult.error : null) ||
+              '音声の生成に失敗しました',
+          );
         }
 
+        const playbackMetadata = mergePlaybackMetadataWithTtsVrmControl(
+          metadataForPlayback ?? null,
+          ttsResult,
+        );
+
         if (typeof ttsResult.audioResponse === 'string' && ttsResult.audioResponse.length > 0) {
-          await playAssistantAudio(ttsResult.audioResponse, metadataForPlayback ?? null);
+          await playAssistantAudio(ttsResult.audioResponse, playbackMetadata);
         } else {
           voiceController.notifySpeaking();
           window.setTimeout(() => {
