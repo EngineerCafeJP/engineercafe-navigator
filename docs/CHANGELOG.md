@@ -1,5 +1,25 @@
 # Changelog
 
+## [2026-04-19] - 運用監査の反映とガードレール計画の整理
+
+### Added
+- 運用検証と deploy guardrail を定義する ADR-008
+- 現在の follow-up plan として `docs/plans/production-readiness-followup-2026-04-19.md`
+- frontend -> backend auth drift 対策用の Issue `#468`
+
+### Changed
+- `docs/STATUS.md` を 2026-04-19 の codebase / live audit に同期
+- `docs/SECURITY.md` に `BACKEND_API_KEY` -> `API_SECRET_KEY` の auth chain を明記
+- `docs/DEPLOYMENT.md` を current Vercel + Cloud Run 運用と frontend-authenticated smoke check 前提に更新
+- `docs/README.md` で current docs と historical plan を明確に分離
+
+### Noted
+- 直近 3 日の Cloud Run logs で `POST /api/character` の `403` が繰り返し発生
+- 直近 3 日の Cloud Run logs で `/api/voice` に 60 秒超の latency spike を確認
+- Supabase CLI だけでは同等の runtime log inspection ができなかった
+
+---
+
 ## [2026-03-22] - Wave 1-3: OCR Integration, Reception Flow & Bug Fixes
 
 ### Added

@@ -4,6 +4,9 @@ Date: 2026-04-13
 Scope: Start alpha user testing for the kiosk core flow while tracking the remaining P1 quality and implementation risks in a fixed execution order.
 Tracking issue: #460
 
+> 履歴注記: この文書は 2026-04-13 時点の alpha 開始判断を記録したものです。
+> 現在の follow-up plan は [production-readiness-followup-2026-04-19.md](production-readiness-followup-2026-04-19.md) を参照してください。
+
 ## Objective Status
 
 The current build is suitable for a controlled alpha trial of the kiosk core flow.

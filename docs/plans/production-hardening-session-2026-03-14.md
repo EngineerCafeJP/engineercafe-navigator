@@ -2,6 +2,10 @@
 
 Last updated: 2026-03-14
 
+> 履歴注記: ここで挙げていた blocker の多くは 3 月の hardening 作業でコード上は解消済みです。
+> live runtime evidence を踏まえた現行計画は
+> [production-readiness-followup-2026-04-19.md](production-readiness-followup-2026-04-19.md) を参照してください。
+
 ## Goal
 
 次セッションで、現在確認できている production blocker をまとめて潰せるようにするための実行計画。
