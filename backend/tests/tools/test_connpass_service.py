@@ -184,6 +184,15 @@ class TestGetYmdList:
         today = datetime.now().date().strftime("%Y%m%d")
         assert result[0] == today
 
+    def test_get_ymd_list_tomorrow(self):
+        """Test 'tomorrow' returns next day's single date"""
+        service = ConnpassService()
+        result = service._get_ymd_list("tomorrow")
+
+        assert len(result) == 1
+        tomorrow = (datetime.now().date() + timedelta(days=1)).strftime("%Y%m%d")
+        assert result[0] == tomorrow
+
     def test_get_ymd_list_this_week(self):
         """Test 'thisWeek' returns 7 dates"""
         service = ConnpassService()
@@ -406,6 +415,13 @@ class TestExtractTimeRange:
 
         assert service.extract_time_range_from_query("今週のイベント") == "thisWeek"
         assert service.extract_time_range_from_query("this week events") == "thisWeek"
+
+    def test_extract_time_range_tomorrow(self):
+        """Test extracting 'tomorrow' from query"""
+        service = ConnpassService()
+
+        assert service.extract_time_range_from_query("明日のイベント") == "tomorrow"
+        assert service.extract_time_range_from_query("tomorrow events") == "tomorrow"
 
     def test_extract_time_range_next_week(self):
         """Test extracting 'nextWeek' from query"""

@@ -61,6 +61,26 @@ def test_calendar_get_rejects_invalid_time_range(monkeypatch):
     assert response.json() == {"detail": "Invalid timeRange"}
 
 
+def test_calendar_get_accepts_tomorrow(monkeypatch):
+    monkeypatch.setattr(main_mod, "_API_SECRET_KEY", None)
+
+    with patch.object(
+        main_mod.CalendarService,
+        "search_events",
+        new_callable=AsyncMock,
+    ) as mock_search:
+        mock_search.return_value = {
+            "success": True,
+            "data": {"events": [], "timeRange": "tomorrow", "eventCount": 0},
+        }
+
+        response = client.get("/api/calendar?timeRange=tomorrow")
+
+    assert response.status_code == 200
+    assert response.json()["data"]["timeRange"] == "tomorrow"
+    mock_search.assert_awaited_once_with("tomorrow")
+
+
 def test_calendar_get_surfaces_backend_fetch_failures(monkeypatch):
     monkeypatch.setattr(main_mod, "_API_SECRET_KEY", None)
 

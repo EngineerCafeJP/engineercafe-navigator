@@ -702,7 +702,7 @@ async def voice_get_api(action: str = ""):
     }
 
 
-_CALENDAR_TIME_RANGES = {"today", "thisWeek", "nextWeek", "thisMonth"}
+_CALENDAR_TIME_RANGES = {"today", "tomorrow", "thisWeek", "nextWeek", "thisMonth"}
 
 
 @app.get("/api/calendar", dependencies=[Depends(verify_api_key)])

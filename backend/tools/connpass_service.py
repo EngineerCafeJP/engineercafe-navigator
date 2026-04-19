@@ -7,11 +7,13 @@ import logging
 import os
 from datetime import datetime, timedelta
 from typing import Any, List, Dict, Optional, Literal
+from zoneinfo import ZoneInfo
 import httpx
 
 logger = logging.getLogger(__name__)
 
-TimeRange = Literal["today", "thisWeek", "nextWeek", "thisMonth"]
+TimeRange = Literal["today", "tomorrow", "thisWeek", "nextWeek", "thisMonth"]
+_JST = ZoneInfo("Asia/Tokyo")
 
 
 class ConnpassService:
@@ -62,7 +64,7 @@ class ConnpassService:
         Connpassからイベントを検索
 
         Args:
-            time_range: 検索期間（today, thisWeek, nextWeek, thisMonth）
+            time_range: 検索期間（today, tomorrow, thisWeek, nextWeek, thisMonth）
             keyword: 検索キーワード（オプション）
             prefecture: 都道府県コード（オプション、デフォルトは福岡）
             count: 取得件数（最大100）
@@ -148,11 +150,14 @@ class ConnpassService:
             >>> print(dates)
             ["20260125"]
         """
-        now = datetime.now()
+        now = datetime.now(_JST)
         today = now.date()
 
         if time_range == "today":
             return [today.strftime("%Y%m%d")]
+
+        elif time_range == "tomorrow":
+            return [(today + timedelta(days=1)).strftime("%Y%m%d")]
 
         elif time_range == "thisWeek":
             # 今週の月曜日から日曜日
@@ -292,13 +297,17 @@ class ConnpassService:
             query: ユーザークエリ
 
         Returns:
-            時間範囲（today, thisWeek, nextWeek, thisMonth）
+            時間範囲（today, tomorrow, thisWeek, nextWeek, thisMonth）
         """
         query_lower = query.lower()
 
         # 今日
         if "今日" in query_lower or "today" in query_lower or "本日" in query_lower:
             return "today"
+
+        # 明日
+        if "明日" in query_lower or "tomorrow" in query_lower:
+            return "tomorrow"
 
         # 今週
         if "今週" in query_lower or "this week" in query_lower:

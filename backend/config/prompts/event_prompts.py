@@ -11,6 +11,7 @@ from backend.utils.language_types import LANGUAGE_INSTRUCTION
 # 時間範囲ラベル
 TIME_RANGE_LABELS: Dict[str, Dict[str, str]] = {
     "today": {"ja": "本日", "en": "today", "zh": "今天", "ko": "오늘"},
+    "tomorrow": {"ja": "明日", "en": "tomorrow", "zh": "明天", "ko": "내일"},
     "thisWeek": {"ja": "今週", "en": "this week", "zh": "本周", "ko": "이번 주"},
     "nextWeek": {"ja": "来週", "en": "next week", "zh": "下周", "ko": "다음 주"},
     "thisMonth": {"ja": "今月", "en": "this month", "zh": "本月", "ko": "이번 달"},
