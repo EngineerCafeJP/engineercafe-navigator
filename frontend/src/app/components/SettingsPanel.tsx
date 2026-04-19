@@ -271,7 +271,7 @@ export default function SettingsPanel({
         </div>
       ) : null}
 
-      {show_admin_tab && active_tab === 'controls' ? (
+      {active_tab === 'controls' ? (
         <div className="mb-4 space-y-3">
           <CharacterSettings
             state={controls_state}
