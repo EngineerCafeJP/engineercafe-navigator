@@ -308,3 +308,136 @@ class TestGetTodayEvents:
 
             assert result["has_events"] is False
             assert result["count"] == 0
+
+
+# =========================================================================
+# Issue #509: EventAgent hallucination — emotion tag + grounding regression tests
+# =========================================================================
+
+
+class TestEventAgentHallucinationGuards:
+    """Ensure EventAgent never hallucinates events or emotion tags.
+
+    Corresponds to Issue #509 — the bug where the agent:
+    - read "Busy" ICS entries as real events,
+    - returned [happy] even when event_count == 0,
+    - fabricated specific future event names/dates.
+    """
+
+    def setup_method(self):
+        self.agent = EventAgent()
+
+    @pytest.mark.asyncio
+    async def test_no_events_returns_sad_emotion(self):
+        """When both calendar and connpass return zero events, response is [sad]."""
+        with (
+            patch.object(
+                self.agent.calendar_service,
+                "search_events",
+                new_callable=AsyncMock,
+            ) as mock_cal,
+            patch.object(
+                self.agent.connpass_service,
+                "search_events",
+                new_callable=AsyncMock,
+            ) as mock_conn,
+        ):
+            mock_cal.return_value = {"success": True, "data": {"events": []}}
+            mock_conn.return_value = {"success": True, "data": {"events": []}}
+
+            result = await self.agent.answer_event_query("今日のイベントは？", "ja")
+
+            assert result["emotion"] == "sad"
+            assert result["answer"].startswith("[sad]")
+            assert result["metadata"]["event_count"] == 0
+
+    @pytest.mark.asyncio
+    async def test_llm_hallucination_is_corrected_to_sad(self):
+        """If the LLM ignores the prompt and returns [happy] with no events,
+        the post-LLM safety net must rewrite the prefix to [sad]."""
+        with (
+            patch.object(
+                self.agent.calendar_service,
+                "search_events",
+                new_callable=AsyncMock,
+            ) as mock_cal,
+            patch.object(
+                self.agent.connpass_service,
+                "search_events",
+                new_callable=AsyncMock,
+            ) as mock_conn,
+            patch.object(
+                self.agent.llm_provider,
+                "generate",
+                new_callable=AsyncMock,
+            ) as mock_llm,
+        ):
+            mock_cal.return_value = {"success": True, "data": {"events": []}}
+            mock_conn.return_value = {"success": True, "data": {"events": []}}
+            mock_llm.return_value = "[happy]本日はランチ交流会があります！"
+
+            result = await self.agent.answer_event_query("今日は？", "ja")
+
+            # With zero events, _get_no_events_response short-circuits
+            # before the LLM is ever invoked, so emotion stays sad.
+            assert result["emotion"] == "sad"
+            assert result["answer"].startswith("[sad]")
+
+    def test_enforce_emotion_tag_rewrites_happy_to_sad(self):
+        """Direct unit test on the safety-net helper."""
+        text = "[happy] We have a Python workshop today!"
+        result = EventAgent._enforce_emotion_tag(text, event_count=0)
+        assert result.startswith("[sad]")
+        assert "[happy]" not in result
+
+    def test_enforce_emotion_tag_preserves_happy_when_events_exist(self):
+        """Safety net must NOT touch responses when events are real."""
+        text = "[happy] Python workshop at 2pm."
+        result = EventAgent._enforce_emotion_tag(text, event_count=2)
+        assert result == text
+
+    def test_enforce_emotion_tag_preserves_sad_tag(self):
+        """If LLM already said [sad] with zero events, leave it alone."""
+        text = "[sad] No events today."
+        result = EventAgent._enforce_emotion_tag(text, event_count=0)
+        assert result == text
+
+    def test_enforce_emotion_tag_handles_empty_string(self):
+        """Empty / None response must not crash the safety net."""
+        assert EventAgent._enforce_emotion_tag("", event_count=0) == ""
+
+    def test_prompt_forbids_fabrication_ja(self):
+        """Japanese prompt must contain an explicit 'do not invent' rule."""
+        from backend.config.prompts.event_prompts import build_event_prompt
+
+        prompt = build_event_prompt(
+            query="今日のイベント", events_text="", time_range="today", language="ja"
+        )
+
+        # The prompt must explicitly forbid invention and require [sad] on empty.
+        assert "作り出さない" in prompt or "でっち上げ" in prompt
+        assert "[sad]" in prompt
+
+    def test_prompt_forbids_fabrication_en(self):
+        """English prompt must contain an explicit 'do not invent' rule."""
+        from backend.config.prompts.event_prompts import build_event_prompt
+
+        prompt = build_event_prompt(
+            query="today's events", events_text="", time_range="today", language="en"
+        )
+
+        assert "Do not invent" in prompt or "do not invent" in prompt.lower()
+        assert "[sad]" in prompt
+
+    def test_prompt_hints_happy_when_events_present(self):
+        """When events are present, the prompt suggests the [happy] tag."""
+        from backend.config.prompts.event_prompts import build_event_prompt
+
+        prompt = build_event_prompt(
+            query="今日のイベント",
+            events_text="- Python Workshop（2026-04-23）[カレンダー]",
+            time_range="today",
+            language="ja",
+        )
+
+        assert "[happy]" in prompt
