@@ -37,6 +37,7 @@ from backend.agents.orchestrator_agent import (
 )
 from backend.agents.orchestrator_agent import OrchestratorAgent as RoutingLogicAgent
 from backend.config.routing_constants import GREETING_KEYWORDS, match_keywords
+from backend.utils.store import store_with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -683,8 +684,9 @@ class MainWorkflow:
                     from backend.utils.memory_feature_flags import get_memory_feature_flags
 
                     namespace = ("visitor_memories", user_id)
-                    memories = await runtime.store.asearch(
-                        namespace, query=state.get("query", ""), limit=5
+                    memories = await store_with_retry(
+                        lambda s: s.asearch(namespace, query=state.get("query", ""), limit=5),
+                        operation_name="long-term memory load",
                     )
                     flags = get_memory_feature_flags()
                     if flags.enable_long_term_memory_rerank and memories:
@@ -1300,15 +1302,18 @@ class MainWorkflow:
                     if facts:
                         namespace = ("visitor_memories", user_id)
                         for fact in facts:
-                            await runtime.store.aput(
-                                namespace,
-                                str(uuid.uuid4()),
-                                {
-                                    "data": fact["content"],
-                                    "type": fact["type"],
-                                    "confidence": fact.get("confidence", 0.5),
-                                    "timestamp": time.time(),
-                                },
+                            await store_with_retry(
+                                lambda s, f=fact: s.aput(
+                                    namespace,
+                                    str(uuid.uuid4()),
+                                    {
+                                        "data": f["content"],
+                                        "type": f["type"],
+                                        "confidence": f.get("confidence", 0.5),
+                                        "timestamp": time.time(),
+                                    },
+                                ),
+                                operation_name="long-term memory store",
                             )
                         logger.info(
                             "Stored %d long-term memories for user %s",
@@ -1327,10 +1332,13 @@ class MainWorkflow:
                         if candidates:
                             candidate_ns = ("visitor_memory_candidates", user_id)
                             for candidate in candidates:
-                                await runtime.store.aput(
-                                    candidate_ns,
-                                    str(uuid.uuid4()),
-                                    candidate,
+                                await store_with_retry(
+                                    lambda s, c=candidate: s.aput(
+                                        candidate_ns,
+                                        str(uuid.uuid4()),
+                                        c,
+                                    ),
+                                    operation_name="long-term memory store",
                                 )
                             logger.info(
                                 "Stored %d memory candidates for user %s",
