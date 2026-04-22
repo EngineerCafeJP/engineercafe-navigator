@@ -230,12 +230,17 @@ class TestMainWorkflowMemoryIntegration:
                 ):
                     await workflow._format_response_node(state, runtime)
 
-                runtime.store.aput.assert_called_once()
-                args = runtime.store.aput.await_args.args
-                assert args[0] == ("visitor_memory_candidates", "visitor-1")
-                assert isinstance(args[1], str)
-                assert args[2]["status"] == "candidate"
-                assert args[2]["candidate_type"] == "visitor_name"
+                assert runtime.store.aput.await_count == 2
+                calls = runtime.store.aput.await_args_list
+                candidate_args = calls[0].args
+                fast_path_args = calls[1].args
+                assert candidate_args[0] == ("visitor_memory_candidates", "visitor-1")
+                assert isinstance(candidate_args[1], str)
+                assert candidate_args[2]["status"] == "candidate"
+                assert candidate_args[2]["candidate_type"] == "visitor_name"
+                assert fast_path_args[0] == ("visitor_memories", "visitor-1")
+                assert fast_path_args[2]["type"] == "visitor_name"
+                assert fast_path_args[2]["source"] == "candidate_fast_path"
 
     @pytest.mark.asyncio
     @patch("backend.workflows.main_workflow.OrchestratorAgent")
@@ -425,10 +430,10 @@ class TestMainWorkflowMemoryIntegration:
 
     @pytest.mark.asyncio
     @patch("backend.workflows.main_workflow.OrchestratorAgent")
-    async def test_format_response_skips_direct_write_when_candidates_enabled(
+    async def test_format_response_fast_path_writes_ltm_when_candidates_enabled(
         self, mock_orchestrator_class
     ):
-        """enable_memory_candidates=True のとき直接書き込みがスキップされる"""
+        """enable_memory_candidates=True でも高信頼候補は即 LTM に保存される"""
         from backend.workflows.main_workflow import MainWorkflow
 
         mock_orchestrator_class.return_value = AsyncMock()
@@ -491,12 +496,14 @@ class TestMainWorkflowMemoryIntegration:
                 ):
                     await workflow._format_response_node(state, runtime)
 
-                # extract_memories should NOT be called when candidates enabled
+                # extract_memories should NOT be called directly when candidates enabled
                 extract_memories_mock.assert_not_called()
-                # Only candidate write should happen
-                runtime.store.aput.assert_called_once()
-                ns = runtime.store.aput.await_args.args[0]
-                assert ns == ("visitor_memory_candidates", "visitor-excl")
+                assert runtime.store.aput.await_count == 2
+                namespaces = [call.args[0] for call in runtime.store.aput.await_args_list]
+                assert namespaces == [
+                    ("visitor_memory_candidates", "visitor-excl"),
+                    ("visitor_memories", "visitor-excl"),
+                ]
 
     @pytest.mark.asyncio
     @patch("backend.workflows.main_workflow.OrchestratorAgent")
@@ -559,6 +566,65 @@ class TestMainWorkflowMemoryIntegration:
                 runtime.store.aput.assert_called_once()
                 ns = runtime.store.aput.await_args.args[0]
                 assert ns == ("visitor_memories", "visitor-direct")
+
+    @pytest.mark.asyncio
+    @patch("backend.workflows.main_workflow.OrchestratorAgent")
+    async def test_ltm_retry_idempotent_key_value(self, mock_orchestrator_class):
+        """store retry が同一 operation を再実行しても key/value が変わらない"""
+        from backend.workflows.main_workflow import MainWorkflow
+
+        mock_orchestrator_class.return_value = AsyncMock()
+
+        with patch("backend.utils.memory_helper.get_memory_helper") as mock_get_helper:
+            mock_helper = AsyncMock()
+            mock_helper.store_message = AsyncMock()
+            mock_get_helper.return_value = mock_helper
+
+            with (
+                patch(
+                    "backend.utils.memory_extractor.extract_memories",
+                    return_value=[{"type": "visitor_name", "content": "田中", "confidence": 0.9}],
+                ),
+                patch(
+                    "backend.utils.memory_feature_flags.get_memory_feature_flags",
+                    return_value=SimpleNamespace(
+                        enable_memory_candidates=False,
+                        enable_memory_promotion=False,
+                        enable_style_profile=False,
+                        enable_long_term_memory_rerank=False,
+                    ),
+                ),
+            ):
+                workflow = MainWorkflow()
+                runtime = MagicMock()
+                runtime.context = MagicMock()
+                runtime.context.user_id = "visitor-idempotent"
+                runtime.store = MagicMock()
+                runtime.store.aput = AsyncMock()
+
+                state = {
+                    "query": "私は田中です",
+                    "answer": "こんにちは田中さん",
+                    "session_id": "test-session",
+                    "language": "ja",
+                }
+
+                async def _retry_same_operation(op, **kw):
+                    await op(runtime.store)
+                    return await op(runtime.store)
+
+                with patch(
+                    "backend.workflows.main_workflow.store_with_retry",
+                    side_effect=_retry_same_operation,
+                ):
+                    await workflow._format_response_node(state, runtime)
+
+                assert runtime.store.aput.await_count == 2
+                first = runtime.store.aput.await_args_list[0].args
+                second = runtime.store.aput.await_args_list[1].args
+                assert first[0] == second[0]
+                assert first[1] == second[1]
+                assert first[2] == second[2]
 
     @pytest.mark.asyncio
     @patch("backend.workflows.main_workflow.OrchestratorAgent")
