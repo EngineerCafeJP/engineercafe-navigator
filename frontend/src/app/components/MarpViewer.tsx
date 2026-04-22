@@ -24,7 +24,6 @@ interface SlidesApiResponse {
   error?: string;
   transitionMessage?: string;
   characterAction?: string;
-  audioResponse?: string | null;
 }
 
 interface VoiceApiResponse {
@@ -410,6 +409,7 @@ export default function MarpViewer({
     if (
       isPlaying &&
       totalSlides > 0 &&
+      narrationData !== null &&
       !isNarratingRef.current &&
       !isNarrationInProgressRef.current
     ) {
@@ -428,11 +428,11 @@ export default function MarpViewer({
     } else if (!isPlaying) {
       stopAutoPlayRef.current();
     } else {
-      // Auto-play skipped - already playing
+      // Auto-play skipped - already playing or narrationData not yet loaded
     }
 
     return () => clearPlaybackWorkRef.current();
-  }, [isPlaying, totalSlides]);
+  }, [isPlaying, totalSlides, narrationData]);
 
   // Save settings to localStorage whenever they change
   useEffect(() => {
@@ -844,6 +844,11 @@ export default function MarpViewer({
       // Skipping narration - already playing
       return;
     }
+
+    if (narrationData === null) {
+      console.warn('[MarpViewer] narrateCurrentSlide called before narrationData loaded — skipping');
+      return;
+    }
     
     setIsNarrationInProgress(true);
     setIsNarrating(true);
@@ -856,10 +861,11 @@ export default function MarpViewer({
       narrationAbortControllerRef.current = new AbortController();
 
       const slideNarration =
-        narrationData?.slides[slideNumberAtStart - 1]?.narration?.auto?.trim() ?? '';
+        narrationData.slides[slideNumberAtStart - 1]?.narration?.auto?.trim() ?? '';
 
       // If the current slide has no auto narration, proceed without audio.
       if (!slideNarration) {
+        console.warn(`[MarpViewer] slide ${slideNumberAtStart} has no narration text — auto-advancing`);
         if (isActivePlaybackSession(playbackSession)) {
           advancePresentation(500);
         }
@@ -923,11 +929,14 @@ export default function MarpViewer({
           error?.name === 'NotAllowedError' ||
           error?.message?.includes('interaction')
         ) {
+          console.warn('[MarpViewer] autoplay blocked — user interaction required');
           setShowAudioPermissionPrompt(true);
           setIsPlaying(false);
           onPresentationComplete?.('stopped');
           return;
         }
+
+        console.error('[MarpViewer] narration playback failed:', error);
 
         if (isActivePlaybackSession(playbackSession)) {
           advancePresentation(1000);
@@ -954,6 +963,7 @@ export default function MarpViewer({
       await AudioPlaybackService.playAudioFast(audioBase64, volume / 100);
     } catch (error) {
       console.error('[MarpViewer] Error playing fast audio:', error);
+      throw error;
     }
   };
 
@@ -983,6 +993,7 @@ export default function MarpViewer({
       });
     } catch (error) {
       console.error('[MarpViewer] Error playing audio with lip-sync:', error);
+      throw error;
     }
   };
 
@@ -1048,11 +1059,6 @@ export default function MarpViewer({
         // Only update if we got a valid slide number
         if (result.slideNumber !== currentSlideRef.current) {
           setSlideState(result.slideNumber);
-        }
-
-        // Play narration audio if available
-        if (result.audioResponse) {
-          playNarrationAudio(result.audioResponse);
         }
       } else if (result.transitionMessage) {
         // Handle end of presentation or other transition messages
@@ -1352,11 +1358,6 @@ export default function MarpViewer({
 
       if (result.success) {
         onQuestionAsked?.(questionText);
-        
-        // Play answer audio if available
-        if (result.audioResponse) {
-          playNarrationAudio(result.audioResponse);
-        }
 
         // Show answer in some way (could be passed to parent component)
       }
