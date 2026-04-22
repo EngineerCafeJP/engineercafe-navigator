@@ -112,7 +112,7 @@ class TestLongTermMemoryStoreRetry:
     @pytest.mark.asyncio
     async def test_store_failed_log_only_on_final_failure(self, caplog):
         """The 'long-term memory store' log only appears after all retries exhausted."""
-        mock_store = _setup_mock_store()
+        _setup_mock_store()  # side-effect only: registers mock store singleton
 
         async def _always_fail(store):
             raise RuntimeError("connection is closed")
