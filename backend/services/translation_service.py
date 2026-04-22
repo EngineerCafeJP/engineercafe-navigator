@@ -167,23 +167,30 @@ class TranslationService:
     # Public async API
     # ------------------------------------------------------------------
 
+    _MAX_TRANSLATION_RETRIES = 3
+    _RETRY_BACKOFF_BASE = 0.5  # seconds
+
     async def translate(
         self,
         text: str,
         direction: TranslationDirection,
+        *,
+        max_retries: int = 3,
     ) -> str:
         """
         Translate text between English and Japanese.
 
         Skips translation when text is already in the target language.
+        Retries up to *max_retries* times with exponential backoff on failure.
 
         Args:
             text: Source text.
             direction: ``"en_to_ja"`` or ``"ja_to_en"``.
+            max_retries: Maximum number of retries (default 3).
 
         Returns:
             Translated text, or the original if already in the target language
-            or if translation fails.
+            or if translation fails after all retries.
         """
         if not text or not text.strip():
             return text
@@ -196,23 +203,42 @@ class TranslationService:
             logger.debug("Skip JA->EN: text is already Latin-only")
             return text
 
-        try:
-            loop = asyncio.get_running_loop()
-            translated = await loop.run_in_executor(None, self._translate_sync, text, direction)
-            logger.debug(
-                "Translated [%s]: '%s' -> '%s'",
-                direction,
-                text[:60],
-                translated[:60],
-            )
-            return translated
-        except Exception:
-            logger.warning(
-                "Translation failed [%s], returning original text.",
-                direction,
-                exc_info=True,
-            )
-            return text
+        loop = asyncio.get_running_loop()
+        for attempt in range(max_retries + 1):
+            try:
+                translated = await loop.run_in_executor(
+                    None,
+                    self._translate_sync,
+                    text,
+                    direction,
+                )
+                logger.debug(
+                    "Translated [%s]: '%s' -> '%s'",
+                    direction,
+                    text[:60],
+                    translated[:60],
+                )
+                return translated
+            except Exception as exc:
+                if attempt < max_retries:
+                    delay = self._RETRY_BACKOFF_BASE * (2**attempt)
+                    logger.warning(
+                        "Translation [%s] attempt %d/%d failed: %s — retrying in %.1fs",
+                        direction,
+                        attempt + 1,
+                        max_retries + 1,
+                        exc,
+                        delay,
+                    )
+                    await asyncio.sleep(delay)
+                else:
+                    logger.error(
+                        "Translation [%s] failed after %d attempts: %s",
+                        direction,
+                        max_retries + 1,
+                        exc,
+                    )
+        return text
 
     async def translate_batch(
         self,
