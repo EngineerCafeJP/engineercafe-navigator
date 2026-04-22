@@ -149,6 +149,25 @@ class TestGKAHandleMemoryQuery:
         assert result["metadata"]["status"] == "no_history"
 
     @pytest.mark.asyncio
+    async def test_handle_memory_write_query_without_history_acknowledges(self):
+        """初回の記憶登録依頼は履歴なし応答にしない"""
+        mock_memory = MagicMock()
+        mock_memory.get_context = AsyncMock(return_value={"recent_messages": []})
+
+        agent = self._create_agent(memory_system=mock_memory)
+        result = await agent._handle_memory_query(
+            "私の名前は佐藤花子です。覚えてください。",
+            "session1",
+            "ja",
+        )
+
+        assert result["emotion"] == "helpful"
+        assert result["metadata"]["status"] == "success"
+        assert result["metadata"]["query_type"] == "memory_write"
+        assert "覚えて" in result["answer"]
+        agent.provider.generate.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_handle_memory_query_uses_long_term_memory_without_session_history(self):
         """別セッション由来の長期メモリを会話履歴プロンプトへ注入する"""
         mock_memory = MagicMock()

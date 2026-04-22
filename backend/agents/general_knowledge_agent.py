@@ -240,6 +240,8 @@ class GeneralKnowledgeAgent:
             )
 
             if not context.get("recent_messages") and not context.get("long_term_memory"):
+                if self._is_memory_write_query(query):
+                    return self._memory_write_ack_response(language)
                 return self._no_history_response(language)
 
             prompt = self._build_memory_prompt(query, context, query_type, language)
@@ -323,6 +325,37 @@ class GeneralKnowledgeAgent:
             return "other_option"
 
         return "general_memory"
+
+    @staticmethod
+    def _is_memory_write_query(query: str) -> bool:
+        """初回の記憶登録依頼を、履歴参照質問と区別する。"""
+        lower_query = query.lower()
+        remember_keywords = [
+            "覚えて",
+            "憶えて",
+            "記憶して",
+            "忘れないで",
+            "remember",
+            "memorize",
+            "keep in mind",
+        ]
+        self_disclosure_keywords = [
+            "私の名前",
+            "僕の名前",
+            "俺の名前",
+            "名前は",
+            "わたしは",
+            "私は",
+            "ぼくは",
+            "僕は",
+            "my name is",
+            "i am ",
+            "i'm ",
+            "call me",
+        ]
+        return any(kw in lower_query for kw in remember_keywords) and any(
+            kw in lower_query for kw in self_disclosure_keywords
+        )
 
     def _build_memory_prompt(
         self, query: str, context: Dict, query_type: str, language: str
@@ -427,6 +460,23 @@ class GeneralKnowledgeAgent:
             "answer": message,
             "emotion": "sad",
             "metadata": {"agent": self.name, "status": "no_history", "query_type": "memory"},
+        }
+
+    def _memory_write_ack_response(self, language: str) -> Dict[str, Any]:
+        """初回の記憶登録依頼に対する応答。"""
+        message = (
+            "承知しました。今後の会話で参照できるように覚えておきます。"
+            if language == "ja"
+            else "Got it. I'll remember that so I can refer to it in future conversations."
+        )
+        return {
+            "answer": message,
+            "emotion": "helpful",
+            "metadata": {
+                "agent": self.name,
+                "status": "success",
+                "query_type": "memory_write",
+            },
         }
 
     # =========================================================================
