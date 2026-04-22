@@ -73,11 +73,11 @@ class TestCrossSessionMemoryRecall:
             session_1_id = f"s1-{uuid.uuid4().hex[:8]}"
             session_2_id = f"s2-{uuid.uuid4().hex[:8]}"
 
-            # Session 1: 名前と職業を伝える
+            # Session 1: 明示的に名前を覚えるよう依頼する
             result_1 = await asyncio.wait_for(
                 wf.ainvoke(
                     {
-                        "query": "私の名前は田中です。Pythonエンジニアです",
+                        "query": "私の名前は田中花子です。田中花子と呼んでください。覚えてください。",
                         "session_id": session_1_id,
                         "language": "ja",
                         "context": {},
@@ -95,12 +95,16 @@ class TestCrossSessionMemoryRecall:
             namespace = ("visitor_memories", test_visitor_id)
             stored_items = await store.asearch(namespace, query="田中", limit=10)
             assert isinstance(stored_items, list), "Store.asearch の戻り値がリストでない"
+            assert stored_items, "Session 1 の明示記憶要求が LTM に保存されていません"
+            assert any(
+                "田中" in str(getattr(item, "value", {})) for item in stored_items
+            ), "保存された LTM に田中への参照がありません"
 
-            # Session 2: 前回の訪問内容について聞く
+            # Session 2: 別 session で同じ visitor_id の記憶を確認する
             result_2 = await asyncio.wait_for(
                 wf.ainvoke(
                     {
-                        "query": "前回来た時のことを覚えていますか？",
+                        "query": "私の名前を覚えていますか？",
                         "session_id": session_2_id,
                         "language": "ja",
                         "context": {},
@@ -111,16 +115,12 @@ class TestCrossSessionMemoryRecall:
             )
             assert result_2.get("answer"), "Session 2 の回答が空です"
 
-            # 長期メモリが存在する場合、回答に「田中」への参照がある可能性
-            # （LLM 応答は不確定なため xfail で緩く検証）
-            if stored_items:
-                metadata_str = str(result_2.get("metadata", {}))
-                has_name_ref = "田中" in result_2["answer"] or "田中" in metadata_str
-                if not has_name_ref:
-                    pytest.xfail(
-                        "長期メモリは保存されているが、LLM応答に名前参照なし "
-                        f"（応答: {result_2['answer'][:100]}）"
-                    )
+            metadata_str = str(result_2.get("metadata", {}))
+            has_name_ref = "田中" in result_2["answer"] or "田中" in metadata_str
+            assert has_name_ref, (
+                "別セッションの回答に田中への参照がありません "
+                f"（応答: {result_2['answer'][:100]}）"
+            )
 
             # Cleanup
             try:
