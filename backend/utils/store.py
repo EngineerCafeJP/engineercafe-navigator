@@ -10,11 +10,70 @@ Supabase PostgreSQLを使用して訪問者の長期記憶を永続化する。
 import asyncio
 import logging
 import os
-from typing import Optional
+from typing import Awaitable, Callable, Optional, TypeVar
 
 from langgraph.store.postgres.aio import AsyncPostgresStore
 
 logger = logging.getLogger(__name__)
+
+_CONNECTION_ERROR_INDICATORS = (
+    "connection is closed",
+    "connection closed",
+    "pool is closed",
+    "server closed the connection unexpectedly",
+    "terminating connection",
+    "broken pipe",
+    "ssl connection has been closed unexpectedly",
+    "consuming input failed",
+)
+
+
+def is_store_connection_error(error: Exception) -> bool:
+    """Return True when the exception indicates a dead/closed Store connection."""
+    error_message = str(error).lower()
+    return any(indicator in error_message for indicator in _CONNECTION_ERROR_INDICATORS)
+
+
+_T = TypeVar("_T")
+
+
+async def store_with_retry(
+    operation: Callable[[AsyncPostgresStore], Awaitable[_T]],
+    *,
+    max_retries: int = 1,
+    operation_name: str = "store operation",
+) -> _T:
+    """Execute a store operation with automatic reconnect on connection errors.
+
+    On detected connection error (see is_store_connection_error), reset the
+    module-level store singleton via close_store() + get_store() and retry once.
+    """
+    store = await get_store()
+    for attempt in range(max_retries + 1):
+        try:
+            return await operation(store)
+        except Exception as e:
+            if not is_store_connection_error(e):
+                raise
+            if attempt >= max_retries:
+                logger.error(
+                    "%s failed after %d retries: %s",
+                    operation_name,
+                    max_retries,
+                    e,
+                )
+                raise
+            logger.warning(
+                "%s hit connection error (attempt %d/%d), resetting store: %s",
+                operation_name,
+                attempt + 1,
+                max_retries + 1,
+                e,
+            )
+            await close_store()
+            store = await get_store()
+    raise RuntimeError("store_with_retry exited loop unexpectedly")
+
 
 # 非同期シングルトン用ロック
 _store_lock = asyncio.Lock()
