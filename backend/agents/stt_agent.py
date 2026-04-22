@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures
+import contextlib
 import io
 import json
 import logging
@@ -1154,9 +1155,9 @@ class STTAgent:
     ) -> Dict[str, Any]:
         """Qwen primary + Vosk parallel fallback (ADR-007).
 
-        ``asyncio.gather`` で Qwen と Vosk を同時実行し、Qwen が
-        ``QWEN_STT_TIMEOUT`` 秒以内に成功すればその結果を返す。
-        タイムアウトまたはエラー時は Vosk の結果にフォールバックする。
+        Qwen と Vosk を同時実行し、Qwen が ``QWEN_STT_TIMEOUT`` 秒以内に
+        成功すれば Vosk の完了を待たずにその結果を返す。
+        タイムアウトまたはエラー時は、並走していた Vosk の結果にフォールバックする。
         """
 
         async def _run_qwen():
@@ -1170,44 +1171,72 @@ class STTAgent:
                 return await self._vosk_fallback_client.transcribe_auto_detect(audio_data)
             return await self._vosk_fallback_client.transcribe(audio_data, language)
 
-        qwen_result, vosk_result = await asyncio.gather(
-            _run_qwen(), _run_vosk(), return_exceptions=True
-        )
+        async def _discard_vosk_result(vosk_task: asyncio.Task[Any]) -> None:
+            if not vosk_task.done():
+                vosk_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await vosk_task
+                return
 
-        # Qwen success
-        if isinstance(qwen_result, TranscriptionResult):
-            return {
-                "success": True,
-                "transcript": qwen_result.text,
-                "confidence": qwen_result.confidence,
-                "language": qwen_result.language,
-                "provider": "qwen-primary",
-            }
+            with contextlib.suppress(Exception):
+                vosk_task.result()
 
-        # Qwen failed -> Vosk fallback
-        logger.warning(
-            "Qwen STT failed, using Vosk fallback: %s",
-            qwen_result,
-        )
-        if isinstance(vosk_result, TranscriptionResult):
-            transcript = vosk_result.text
-            postprocessed = False
-            if os.getenv("STT_LLM_POSTPROCESS", "false").lower() == "true":
-                corrected = await self._llm_post_process(transcript, vosk_result.language)
-                if corrected != transcript:
-                    postprocessed = True
-                    transcript = corrected
-            return {
-                "success": True,
-                "transcript": transcript,
-                "confidence": vosk_result.confidence,
-                "language": vosk_result.language,
-                "provider": "vosk-fallback",
-                "postprocessed": postprocessed,
-            }
+        qwen_task = asyncio.create_task(_run_qwen())
+        vosk_task = asyncio.create_task(_run_vosk())
 
-        # Both failed
-        raise RuntimeError(f"Both Qwen and Vosk STT failed: qwen={qwen_result}, vosk={vosk_result}")
+        try:
+            qwen_result: TranscriptionResult | Exception
+            try:
+                qwen_result = await qwen_task
+            except Exception as exc:
+                qwen_result = exc
+
+            # Qwen success
+            if isinstance(qwen_result, TranscriptionResult):
+                await _discard_vosk_result(vosk_task)
+                return {
+                    "success": True,
+                    "transcript": qwen_result.text,
+                    "confidence": qwen_result.confidence,
+                    "language": qwen_result.language,
+                    "provider": "qwen-primary",
+                }
+
+            # Qwen failed -> Vosk fallback
+            logger.warning(
+                "Qwen STT failed, using Vosk fallback: %s",
+                qwen_result,
+            )
+            try:
+                vosk_result: TranscriptionResult | Exception = await vosk_task
+            except Exception as exc:
+                vosk_result = exc
+
+            if isinstance(vosk_result, TranscriptionResult):
+                transcript = vosk_result.text
+                postprocessed = False
+                if os.getenv("STT_LLM_POSTPROCESS", "false").lower() == "true":
+                    corrected = await self._llm_post_process(transcript, vosk_result.language)
+                    if corrected != transcript:
+                        postprocessed = True
+                        transcript = corrected
+                return {
+                    "success": True,
+                    "transcript": transcript,
+                    "confidence": vosk_result.confidence,
+                    "language": vosk_result.language,
+                    "provider": "vosk-fallback",
+                    "postprocessed": postprocessed,
+                }
+
+            # Both failed
+            raise RuntimeError(
+                f"Both Qwen and Vosk STT failed: qwen={qwen_result}, vosk={vosk_result}"
+            )
+        finally:
+            for task in (qwen_task, vosk_task):
+                if not task.done():
+                    task.cancel()
 
     def _resolve_grammar(self, conversation_stage: Optional[str]) -> Optional[Dict[str, List[str]]]:
         """会話ステージに応じた Grammar 辞書を解決する。
