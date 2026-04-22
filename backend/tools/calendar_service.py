@@ -20,6 +20,48 @@ logger = logging.getLogger(__name__)
 TimeRange = Literal["today", "tomorrow", "thisWeek", "nextWeek", "thisMonth"]
 _JST = ZoneInfo("Asia/Tokyo")
 
+# Noise keyword set for filtering low-value calendar entries.
+# These SUMMARY values indicate a personal "Busy"/"Tentative"/"Free" marker
+# rather than a real cafe event, and must not be surfaced to end users.
+# Issue #509: EventAgent hallucination — the LLM would describe a
+# "Busy" VEVENT as if it were a real event.
+_NOISE_SUMMARIES = frozenset(
+    {
+        "busy",
+        "忙しい",
+        "tentative",
+        "free",
+        "out of office",
+        "ooo",
+    }
+)
+
+
+def _is_noise_summary(summary: Optional[str]) -> bool:
+    """Return True if ``summary`` is an empty/placeholder/noise value.
+
+    Rules (any match → True):
+        - None / empty / whitespace-only
+        - Lowercase-normalised value in ``_NOISE_SUMMARIES``
+        - Bare placeholder "予定" (exact match, no further detail)
+        - Single character (e.g. ".", "-", a single ASCII letter)
+    """
+    if summary is None:
+        return True
+    stripped = summary.strip()
+    if not stripped:
+        return True
+    lowered = stripped.lower()
+    if lowered in _NOISE_SUMMARIES:
+        return True
+    # Bare "予定" with no additional detail is a placeholder.
+    if stripped == "予定":
+        return True
+    # Single-character summaries are placeholders (e.g. ".").
+    if len(stripped) == 1:
+        return True
+    return False
+
 
 class CalendarService:
     """ICS/iCalカレンダーサービス"""
@@ -164,10 +206,29 @@ class CalendarService:
         vevent_pattern = r"BEGIN:VEVENT(.*?)END:VEVENT"
         vevent_matches = re.findall(vevent_pattern, content, re.DOTALL)
 
+        filtered_count = 0
+        first_filtered_summary = ""
         for vevent in vevent_matches:
             event = self._parse_vevent(vevent)
             if event:
                 events.append(event)
+                continue
+            # Distinguish "missing DTSTART / parse error" from "noise filter".
+            # We only want to count noise-filtered entries here.
+            summary_match = re.search(r"(?mi)^SUMMARY(?:;[^:\n]*)?:(.*)$", vevent)
+            summary_raw = summary_match.group(1).strip() if summary_match else ""
+            dtstart_present = bool(re.search(r"(?mi)^DTSTART(?:;[^:\n]*)?:", vevent))
+            if dtstart_present and _is_noise_summary(summary_raw):
+                filtered_count += 1
+                if not first_filtered_summary:
+                    first_filtered_summary = summary_raw or "(empty)"
+
+        if filtered_count:
+            logger.info(
+                "Filtered %d low-value calendar entries (noise): e.g. '%s'",
+                filtered_count,
+                first_filtered_summary[:50],
+            )
 
         return events
 
@@ -209,6 +270,13 @@ class CalendarService:
 
             # 必須フィールドの確認
             if "DTSTART" not in event_data:
+                return None
+
+            # Issue #509: reject noise entries (Busy / empty / placeholder).
+            # These pollute the LLM prompt and cause hallucinated event
+            # descriptions ("カレンダーにビジーと入っていますね").
+            summary_raw = event_data.get("SUMMARY", "")
+            if _is_noise_summary(summary_raw):
                 return None
 
             # IDの生成（UIDがない場合はハッシュ生成）

@@ -399,3 +399,180 @@ class TestParseICSDate:
         result = service._parse_ics_date("INVALID_DATE")
 
         assert result == "INVALID_DATE"
+
+
+# =========================================================================
+# Issue #509: Noise filtering (Busy / empty SUMMARY / tentative / free / OOO)
+# =========================================================================
+
+_BUSY_ICS = """BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Test Calendar//EN
+BEGIN:VEVENT
+DTSTART:20260215T100000Z
+DTEND:20260215T120000Z
+SUMMARY:Busy
+UID:busy-uid-001
+END:VEVENT
+END:VCALENDAR"""
+
+_EMPTY_SUMMARY_ICS = """BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Test Calendar//EN
+BEGIN:VEVENT
+DTSTART:20260215T100000Z
+DTEND:20260215T120000Z
+UID:nosum-uid-001
+END:VEVENT
+END:VCALENDAR"""
+
+_REAL_EVENT_ICS = """BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Test Calendar//EN
+BEGIN:VEVENT
+DTSTART:20260215T100000Z
+DTEND:20260215T120000Z
+SUMMARY:LT会 - Python入門
+DESCRIPTION:Python基礎のLT会
+LOCATION:Engineer Cafe
+UID:real-uid-001
+END:VEVENT
+END:VCALENDAR"""
+
+_MIXED_ICS = """BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Test Calendar//EN
+BEGIN:VEVENT
+DTSTART:20260215T100000Z
+SUMMARY:Busy
+UID:busy-1
+END:VEVENT
+BEGIN:VEVENT
+DTSTART:20260215T140000Z
+SUMMARY:Real Workshop
+DESCRIPTION:Intro to LangGraph
+UID:real-1
+END:VEVENT
+BEGIN:VEVENT
+DTSTART:20260215T180000Z
+UID:empty-1
+END:VEVENT
+END:VCALENDAR"""
+
+
+class TestParseICSNoiseFiltering:
+    """Issue #509: ensure noise VEVENTs never reach the LLM prompt."""
+
+    @pytest.fixture
+    def service(self):
+        return CalendarService()
+
+    def test_parse_ics_filters_busy_entries(self, service):
+        """'SUMMARY:Busy' VEVENT must be dropped."""
+        events = service._parse_ics_content(_BUSY_ICS)
+
+        assert events == []
+
+    def test_parse_ics_filters_empty_summary(self, service):
+        """VEVENT without SUMMARY is treated as noise."""
+        events = service._parse_ics_content(_EMPTY_SUMMARY_ICS)
+
+        assert events == []
+
+    def test_parse_ics_keeps_real_event(self, service):
+        """Real events with meaningful SUMMARY + DESCRIPTION must be kept."""
+        events = service._parse_ics_content(_REAL_EVENT_ICS)
+
+        assert len(events) == 1
+        assert events[0]["title"] == "LT会 - Python入門"
+        assert events[0]["description"] == "Python基礎のLT会"
+
+    @pytest.mark.parametrize(
+        "noise_keyword",
+        [
+            "busy",
+            "Busy",
+            "BUSY",
+            "忙しい",
+            "tentative",
+            "Tentative",
+            "free",
+            "Free",
+            "out of office",
+            "Out Of Office",
+            "ooo",
+            "OOO",
+        ],
+    )
+    def test_parse_ics_filters_noise_keywords(self, service, noise_keyword):
+        """Every noise keyword (any case) must be dropped."""
+        ics = (
+            "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//Test//EN\n"
+            "BEGIN:VEVENT\n"
+            "DTSTART:20260215T100000Z\n"
+            f"SUMMARY:{noise_keyword}\n"
+            "UID:noise-uid\n"
+            "END:VEVENT\nEND:VCALENDAR"
+        )
+
+        events = service._parse_ics_content(ics)
+
+        assert events == [], f"noise keyword '{noise_keyword}' was not filtered"
+
+    def test_parse_ics_mixed_drops_noise_keeps_real(self, service):
+        """Mixed feed: drop Busy + empty, keep real event."""
+        events = service._parse_ics_content(_MIXED_ICS)
+
+        assert len(events) == 1
+        assert events[0]["title"] == "Real Workshop"
+
+    def test_parse_ics_filters_single_char_summary(self, service):
+        """Single-character placeholder SUMMARY is noise."""
+        ics = (
+            "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//Test//EN\n"
+            "BEGIN:VEVENT\n"
+            "DTSTART:20260215T100000Z\n"
+            "SUMMARY:.\n"
+            "UID:dot-uid\n"
+            "END:VEVENT\nEND:VCALENDAR"
+        )
+
+        events = service._parse_ics_content(ics)
+
+        assert events == []
+
+    def test_parse_ics_filters_bare_yotei_placeholder(self, service):
+        """Bare '予定' (no detail) is a placeholder and must be filtered."""
+        ics = (
+            "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//Test//EN\n"
+            "BEGIN:VEVENT\n"
+            "DTSTART:20260215T100000Z\n"
+            "SUMMARY:予定\n"
+            "UID:yotei-uid\n"
+            "END:VEVENT\nEND:VCALENDAR"
+        )
+
+        events = service._parse_ics_content(ics)
+
+        assert events == []
+
+    def test_is_noise_summary_handles_none_gracefully(self):
+        """Helper must not raise on None input."""
+        from backend.tools.calendar_service import _is_noise_summary
+
+        assert _is_noise_summary(None) is True
+        assert _is_noise_summary("") is True
+        assert _is_noise_summary("   ") is True
+        assert _is_noise_summary("Real Event Title") is False
+
+    def test_parse_ics_logs_filtered_count(self, service, caplog):
+        """_parse_ics_content must log how many noise entries it filtered."""
+        import logging
+
+        with caplog.at_level(logging.INFO, logger="backend.tools.calendar_service"):
+            service._parse_ics_content(_MIXED_ICS)
+
+        messages = [r.getMessage() for r in caplog.records]
+        assert any(
+            "Filtered" in m and "low-value" in m for m in messages
+        ), f"expected a 'Filtered ... low-value' log, got: {messages}"
