@@ -4,12 +4,18 @@ Tests for ConnpassService
 Testing backend/tools/connpass_service.py
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
 from backend.tools.connpass_service import ConnpassService
+
+_JST = timezone(timedelta(hours=9))
+
+
+def _jst_today():
+    return datetime.now(_JST).date()
 
 
 class TestConnpassInit:
@@ -181,7 +187,7 @@ class TestGetYmdList:
         result = service._get_ymd_list("today")
 
         assert len(result) == 1
-        today = datetime.now().date().strftime("%Y%m%d")
+        today = _jst_today().strftime("%Y%m%d")
         assert result[0] == today
 
     def test_get_ymd_list_tomorrow(self):
@@ -190,7 +196,7 @@ class TestGetYmdList:
         result = service._get_ymd_list("tomorrow")
 
         assert len(result) == 1
-        tomorrow = (datetime.now().date() + timedelta(days=1)).strftime("%Y%m%d")
+        tomorrow = (_jst_today() + timedelta(days=1)).strftime("%Y%m%d")
         assert result[0] == tomorrow
 
     def test_get_ymd_list_this_week(self):
@@ -201,7 +207,7 @@ class TestGetYmdList:
         assert len(result) == 7
 
         # Verify it starts with Monday
-        today = datetime.now().date()
+        today = _jst_today()
         weekday = today.weekday()
         week_start = today - timedelta(days=weekday)
         assert result[0] == week_start.strftime("%Y%m%d")
@@ -219,7 +225,7 @@ class TestGetYmdList:
         assert len(result) == 7
 
         # Verify it starts with next Monday
-        today = datetime.now().date()
+        today = _jst_today()
         weekday = today.weekday()
         next_week_start = today - timedelta(days=weekday) + timedelta(weeks=1)
         assert result[0] == next_week_start.strftime("%Y%m%d")
@@ -234,7 +240,7 @@ class TestGetYmdList:
         service = ConnpassService()
         result = service._get_ymd_list("thisMonth")
 
-        today = datetime.now().date()
+        today = _jst_today()
         month_start = today.replace(day=1)
 
         # Calculate days in month
