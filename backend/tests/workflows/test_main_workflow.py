@@ -221,7 +221,14 @@ class TestMainWorkflowMemoryIntegration:
                     "language": "ja",
                 }
 
-                await workflow._format_response_node(state, runtime)
+                async def _passthrough(op, **kw):
+                    return await op(runtime.store)
+
+                with patch(
+                    "backend.workflows.main_workflow.store_with_retry",
+                    side_effect=_passthrough,
+                ):
+                    await workflow._format_response_node(state, runtime)
 
                 runtime.store.aput.assert_called_once()
                 args = runtime.store.aput.await_args.args
@@ -279,7 +286,14 @@ class TestMainWorkflowMemoryIntegration:
                     "language": "ja",
                 }
 
-                await workflow._format_response_node(state, runtime)
+                async def _passthrough(op, **kw):
+                    return await op(runtime.store)
+
+                with patch(
+                    "backend.workflows.main_workflow.store_with_retry",
+                    side_effect=_passthrough,
+                ):
+                    await workflow._format_response_node(state, runtime)
                 runtime.store.aput.assert_not_called()
 
     @pytest.mark.asyncio
@@ -331,7 +345,14 @@ class TestMainWorkflowMemoryIntegration:
                     "language": "ja",
                 }
 
-                result = await workflow._format_response_node(state, runtime)
+                async def _passthrough(op, **kw):
+                    return await op(runtime.store)
+
+                with patch(
+                    "backend.workflows.main_workflow.store_with_retry",
+                    side_effect=_passthrough,
+                ):
+                    result = await workflow._format_response_node(state, runtime)
                 assert "messages" in result
                 assert len(result["messages"]) == 2
 
@@ -391,7 +412,14 @@ class TestMainWorkflowMemoryIntegration:
                     "language": "ja",
                 }
 
-                await workflow._format_response_node(state, runtime)
+                async def _passthrough(op, **kw):
+                    return await op(runtime.store)
+
+                with patch(
+                    "backend.workflows.main_workflow.store_with_retry",
+                    side_effect=_passthrough,
+                ):
+                    await workflow._format_response_node(state, runtime)
 
                 mock_promoter.promote_for_user.assert_called_once()
 
@@ -454,7 +482,14 @@ class TestMainWorkflowMemoryIntegration:
                     "language": "ja",
                 }
 
-                await workflow._format_response_node(state, runtime)
+                async def _passthrough(op, **kw):
+                    return await op(runtime.store)
+
+                with patch(
+                    "backend.workflows.main_workflow.store_with_retry",
+                    side_effect=_passthrough,
+                ):
+                    await workflow._format_response_node(state, runtime)
 
                 # extract_memories should NOT be called when candidates enabled
                 extract_memories_mock.assert_not_called()
@@ -511,7 +546,14 @@ class TestMainWorkflowMemoryIntegration:
                     "language": "ja",
                 }
 
-                await workflow._format_response_node(state, runtime)
+                async def _passthrough(op, **kw):
+                    return await op(runtime.store)
+
+                with patch(
+                    "backend.workflows.main_workflow.store_with_retry",
+                    side_effect=_passthrough,
+                ):
+                    await workflow._format_response_node(state, runtime)
 
                 # Direct write to visitor_memories namespace
                 runtime.store.aput.assert_called_once()
@@ -587,7 +629,14 @@ class TestMainWorkflowMemoryIntegration:
                     "context": {},
                 }
 
-                result = await workflow._memory_loader_node(state, runtime)
+                async def _passthrough(op, **kw):
+                    return await op(runtime.store)
+
+                with patch(
+                    "backend.workflows.main_workflow.store_with_retry",
+                    side_effect=_passthrough,
+                ):
+                    result = await workflow._memory_loader_node(state, runtime)
                 lt = result["context"]["long_term_memory"]
                 assert lt
                 assert lt[0]["type"] == "explicit_remember"
