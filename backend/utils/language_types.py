@@ -35,16 +35,19 @@ DEFAULT_NOT_FOUND_RESPONSE: dict[str, str] = {
         "スタッフにお問い合わせください。"
     ),
     "en": (
-        "[sad]I'm sorry, I couldn't find the"
-        " information you're looking for."
-        " Please try rephrasing your question"
-        " or ask a staff member for help."
+        "[sad]I couldn't find a detailed English answer for that question. "
+        "Our Japanese knowledge base covers Engineer Cafe topics in detail — "
+        "please ask a staff member at the reception, "
+        "or try asking in Japanese for a richer answer."
     ),
-    "zh": ("[sad]抱歉，我未能找到您所需的信息。请尝试换一种方式提问，或联系工作人员寻求帮助。"),
+    "zh": (
+        "[sad]抱歉，暂时没有找到该问题的中文详细信息。"
+        "工程师咖啡馆以日语为主，请向前台工作人员咨询，"
+        "或以日语提问以获取详细答案。"
+    ),
     "ko": (
-        "[sad]죄송합니다. "
-        "찾으시는 정보를 찾지 못했습니다. "
-        "질문을 바꾸어 보시거나 "
-        "직원에게 문의해 주세요."
+        "[sad]해당 질문에 대한 한국어 상세 정보를 찾지 못했습니다. "
+        "프런트 직원에게 문의하시거나 "
+        "일본어로 질문해 주시면 자세히 안내해 드릴 수 있습니다."
     ),
 }

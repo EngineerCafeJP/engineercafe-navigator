@@ -483,12 +483,15 @@ async def generate_chunks_with_embeddings(
                 "title": title,
                 "content": chunk.content,
                 "category": chunk.category,
-                "metadata": chunk.metadata,
+                "metadata": {
+                    **chunk.metadata,
+                    "entry_id": chunk.entry_id,
+                },
+                "language": chunk.metadata.get("language", "ja"),
                 "content_embedding": embedding,
                 "chunk_level": chunk.chunk_level,
                 "chunk_index": chunk.chunk_index,
                 "token_count": chunk.token_count,
-                "entry_id": chunk.entry_id,
             }
         )
 
