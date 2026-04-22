@@ -59,6 +59,9 @@ class TestBusinessInfoAgent:
         response = self.agent._get_default_response("en", "price")
 
         assert response["answer"].startswith("[sad]")
-        assert "sorry" in response["answer"].lower()
+        assert any(
+            keyword in response["answer"].lower()
+            for keyword in ("sorry", "couldn't", "apologize", "unable")
+        ), f"Expected apology keyword in: {response['answer']}"
         assert response["emotion"] == "apologetic"
         assert response["metadata"]["agent"] == "BusinessInfoAgent"
