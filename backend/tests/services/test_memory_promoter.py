@@ -33,6 +33,7 @@ class TestMemoryPromoterAggregation:
         decision = MemoryPromoter.should_promote(
             {
                 "candidate_type": "explicit_remember",
+                "content": "火曜に来る",
                 "candidate_count": 1,
                 "repeat_count_sum": 1,
                 "confidence_max": 1.0,

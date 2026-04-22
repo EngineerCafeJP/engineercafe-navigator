@@ -77,7 +77,10 @@ class TestCrossSessionMemoryRecall:
             result_1 = await asyncio.wait_for(
                 wf.ainvoke(
                     {
-                        "query": "私の名前は田中花子です。田中花子と呼んでください。覚えてください。",
+                        "query": (
+                            "私の名前は田中花子です。"
+                            "田中花子と呼んでください。覚えてください。"
+                        ),
                         "session_id": session_1_id,
                         "language": "ja",
                         "context": {},
