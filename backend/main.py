@@ -767,9 +767,9 @@ async def voice_api(request: Request, body: VoiceRequest):
                 and audio_b64
             ):
                 try:
-                    from backend.utils.audio_encode import wav_base64_to_mp3_base64
+                    from backend.utils.audio_encode import wav_base64_to_mp3_base64_async
 
-                    audio_b64 = wav_base64_to_mp3_base64(audio_b64)
+                    audio_b64 = await wav_base64_to_mp3_base64_async(audio_b64)
                     audio_format = "audio/mpeg"
                 except Exception as e:
                     logger.exception("WAV to MP3 conversion failed: %s", e)
