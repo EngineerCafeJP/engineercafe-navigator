@@ -79,7 +79,7 @@ code=$(curl -s -o /dev/null -w "%{http_code}" \
   -X POST "$BASE_URL/api/slides" \
   -H "Content-Type: application/json" \
   -H "X-API-Key: $API_KEY" \
-  -d '{"action":"get_current","session_id":"test"}')
+  -d '{"action":"narrate","session_id":"smoke-test"}')
 check "POST /api/slides (with key)" 200 "$code"
 
 code=$(curl -s -o /dev/null -w "%{http_code}" \
@@ -113,7 +113,7 @@ code=$(curl -s -o /dev/null -w "%{http_code}" \
   -X POST "$BASE_URL/api/reception/start" \
   -H "Content-Type: application/json" \
   -H "X-API-Key: $API_KEY" \
-  -d '{"language":"ja"}')
+  -d "{\"session_id\":\"smoke-$(date +%s)\",\"language\":\"ja\"}")
 check "POST /api/reception/start (with key)" 200 "$code"
 
 code=$(curl -s -o /dev/null -w "%{http_code}" \

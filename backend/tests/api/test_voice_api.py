@@ -119,9 +119,9 @@ async def voice_api(request: VoiceRequest):
                 and audio_b64
             ):
                 try:
-                    from backend.utils.audio_encode import wav_base64_to_mp3_base64
+                    from backend.utils.audio_encode import wav_base64_to_mp3_base64_async
 
-                    audio_b64 = wav_base64_to_mp3_base64(audio_b64)
+                    audio_b64 = await wav_base64_to_mp3_base64_async(audio_b64)
                     audio_format = "audio/mpeg"
                 except Exception:
                     raise HTTPException(
@@ -305,6 +305,28 @@ class TestTextToSpeech:
 
 class TestOutputEncodingMp3:
     """outputEncoding=mp3 で WAV を MP3 に変換する経路"""
+
+    @pytest.mark.asyncio
+    async def test_wav_to_mp3_async_uses_executor(self, monkeypatch):
+        call_count = 0
+
+        def fake_wav_to_mp3(wav_b64: str) -> str:
+            nonlocal call_count
+            call_count += 1
+            assert wav_b64 == "input_b64"
+            return "mp3_result"
+
+        monkeypatch.setattr(
+            "backend.utils.audio_encode.wav_base64_to_mp3_base64",
+            fake_wav_to_mp3,
+        )
+
+        from backend.utils.audio_encode import wav_base64_to_mp3_base64_async
+
+        result = await wav_base64_to_mp3_base64_async("input_b64")
+
+        assert result == "mp3_result"
+        assert call_count == 1
 
     def test_tts_output_mp3_converts_wav(self, monkeypatch):
         def fake_wav_to_mp3(wav_b64: str) -> str:
