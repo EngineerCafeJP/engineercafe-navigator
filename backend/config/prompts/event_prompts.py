@@ -35,8 +35,16 @@ def build_event_prompt(query: str, events_text: str, time_range: str, language: 
 
     Returns:
         構築されたプロンプト
+
+    Notes:
+        Issue #509: the prompt enforces STRICT grounding — the LLM must
+        only reference events in ``events_text`` and must not invent or
+        predict events. When ``events_text`` is empty, the LLM must say
+        there are no events (with the ``[sad]`` emotion tag) instead of
+        fabricating entries.
     """
     time_range_text = get_time_range_label(time_range, language)
+    has_events = bool(events_text.strip())
 
     oral_instruction_ja = (
         "回答は口語（話し言葉）で返してください。"
@@ -50,19 +58,43 @@ def build_event_prompt(query: str, events_text: str, time_range: str, language: 
         "Write as if speaking aloud to someone."
     )
 
+    # STRICT grounding rules (Issue #509).
+    grounding_rule_ja = (
+        "【重要・厳守】以下に記載されているイベントだけを使って答えてください。"
+        "リストに載っていないイベントは絶対に作り出さない・予測しないこと。"
+        "具体的な日付・イベント名・講師名などをでっち上げてはいけません。"
+        f"もしリストが空の場合は、『{time_range_text}には登録されているイベントはありません』"
+        "と正直に答え、回答は必ず[sad]の感情タグで始めてください。"
+        "イベントがある場合のみ[happy]の感情タグで始めてください。"
+    )
+    grounding_rule_en = (
+        "[STRICT RULE] You must use ONLY the events listed below. "
+        "Do not invent, predict, or fabricate events, dates, names, "
+        "or speakers that are not in the list. "
+        f"If the list is empty, answer honestly with "
+        f"'There are no scheduled events for {time_range_text}.' "
+        "and start your response with the [sad] emotion tag. "
+        "Use the [happy] emotion tag only when events are present."
+    )
+
+    emotion_hint_ja = "[happy]" if has_events else "[sad]"
+    emotion_hint_en = "[happy]" if has_events else "[sad]"
+
     # Multilingual: append language instruction for zh/ko
     lang_suffix = LANGUAGE_INSTRUCTION.get(language, "")
 
     if language == "en":
-        prompt = f"""Based on the following event information \
-for {time_range_text}, answer the question.
+        prompt = f"""Answer the question using the event information for {time_range_text} below.
+
+{grounding_rule_en}
 
 Question: {query}
 
 Events {time_range_text}:
-{events_text}
+{events_text if has_events else "(no events)"}
 
-Provide a brief and friendly summary of the events. Start your response with [happy] emotion tag.
+Provide a brief and friendly summary of the events. \
+Start your response with the {emotion_hint_en} emotion tag.
 Maximum 2-3 sentences.
 {oral_instruction_en}"""
         if lang_suffix:
@@ -71,12 +103,15 @@ Maximum 2-3 sentences.
     else:
         prompt = f"""{time_range_text}のイベント情報に基づいて、質問に答えてください。
 
+{grounding_rule_ja}
+
 質問: {query}
 
 {time_range_text}のイベント:
-{events_text}
+{events_text if has_events else "(イベントなし)"}
 
-イベントについて簡潔でフレンドリーな説明を提供してください。[happy]の感情タグで回答を始めてください。
+イベントについて簡潔でフレンドリーな説明を提供してください。\
+{emotion_hint_ja}の感情タグで回答を始めてください。
 最大2-3文。
 {oral_instruction_ja}"""
         if lang_suffix:

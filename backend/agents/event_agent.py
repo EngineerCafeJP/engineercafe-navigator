@@ -171,6 +171,12 @@ class EventAgent:
             # イベントがある場合は happy
             emotion = "happy" if event_count > 0 else "sad"
 
+            # Issue #509 safety net: if the LLM ignored the grounding rule
+            # and produced a [happy] response despite zero (filtered) events,
+            # rewrite the emotion tag to [sad]. This is a last-line defence;
+            # the prompt should already prevent this.
+            response_text = self._enforce_emotion_tag(response_text, event_count)
+
             # ソース別のイベント数をカウント
             calendar_count = sum(1 for e in events if e.get("source") == "google_calendar")
             connpass_count = sum(1 for e in events if e.get("source") == "connpass")
@@ -192,6 +198,28 @@ class EventAgent:
         except Exception as e:
             logger.exception("LLM error: %s", e)
             return self._get_no_events_response(language, time_range)
+
+    @staticmethod
+    def _enforce_emotion_tag(response_text: str, event_count: int) -> str:
+        """Rewrite [happy] to [sad] when no events are available.
+
+        Issue #509: if the LLM hallucinated events and opened with [happy]
+        despite ``event_count == 0``, downgrade the tag to keep the
+        emotion consistent with the ground truth.
+        """
+        if event_count > 0 or not response_text:
+            return response_text
+        stripped = response_text.lstrip()
+        if stripped.startswith("[happy]"):
+            logger.warning(
+                "EventAgent: LLM returned [happy] with event_count=0; "
+                "rewriting to [sad] (Issue #509 safety net)."
+            )
+            leading_ws_len = len(response_text) - len(stripped)
+            leading_ws = response_text[:leading_ws_len]
+            rest = stripped[len("[happy]") :]
+            return f"{leading_ws}[sad]{rest}"
+        return response_text
 
     def _format_calendar_events(self, events: list, language: str) -> str:
         """イベントを整形（Google Calendar + Connpass両対応）
