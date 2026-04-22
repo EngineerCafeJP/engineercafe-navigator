@@ -68,8 +68,89 @@ def _get_trag_client() -> "_httpx.AsyncClient":
     """Return a shared httpx client for tRAG translation."""
     global _trag_http_client
     if _trag_http_client is None or _trag_http_client.is_closed:
-        _trag_http_client = _httpx.AsyncClient(timeout=10.0)
+        _trag_http_client = _httpx.AsyncClient(
+            timeout=_httpx.Timeout(connect=5.0, read=15.0, write=5.0, pool=5.0),
+        )
     return _trag_http_client
+
+
+async def _translate_llm_with_retry(
+    query: str,
+    language: str,
+    *,
+    max_retries: int = 3,
+    backoff_base: float = 0.5,
+) -> str:
+    """Translate KO/ZH query to JA via OpenRouter with exponential backoff."""
+    _TRAG_MODEL = os.getenv("TRAG_TRANSLATION_MODEL", "google/gemini-2.0-flash-001")
+    api_key = os.getenv("OPENROUTER_API_KEY", "")
+    if not api_key:
+        logger.warning("OPENROUTER_API_KEY not set, skipping %s->ja", language)
+        return ""
+
+    client = _get_trag_client()
+    payload = {
+        "model": _TRAG_MODEL,
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "You are a translation "
+                    "engine. Translate the "
+                    "user's text to Japanese."
+                    " Return ONLY the "
+                    "Japanese translation."
+                ),
+            },
+            {"role": "user", "content": query},
+        ],
+        "max_tokens": 200,
+    }
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+
+    for attempt in range(max_retries + 1):
+        try:
+            resp = await client.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers=headers,
+                json=payload,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                translated = (
+                    data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+                )
+                translated = _TRAG_PREAMBLE_RE.sub("", translated).strip()
+                if re.search(r"^[A-Za-z]{5,}", translated):
+                    logger.warning("tRAG preamble: '%s'", translated[:60])
+                    translated = ""
+                return translated
+            logger.warning(
+                "OpenRouter %d (attempt %d/%d): %s",
+                resp.status_code,
+                attempt + 1,
+                max_retries + 1,
+                resp.text[:200],
+            )
+        except Exception as exc:
+            logger.warning(
+                "LLM translation %s->ja request error (attempt %d/%d): %s",
+                language,
+                attempt + 1,
+                max_retries + 1,
+                exc,
+            )
+        if attempt < max_retries:
+            await asyncio.sleep(backoff_base * (2**attempt))
+    logger.error(
+        "LLM translation %s->ja failed after %d attempts",
+        language,
+        max_retries + 1,
+    )
+    return ""
 
 
 class WorkflowStateDict(TypedDict):
@@ -550,80 +631,20 @@ class MainWorkflow:
                         )
                 elif language in ("ko", "zh"):
                     try:
-                        _TRAG_MODEL = os.getenv(
-                            "TRAG_TRANSLATION_MODEL",
-                            "google/gemini-2.0-flash-001",
-                        )
-                        api_key = os.getenv("OPENROUTER_API_KEY", "")
-                        if not api_key:
-                            logger.warning(
-                                "OPENROUTER_API_KEY not set, skipping %s->ja",
+                        translated = await _translate_llm_with_retry(query, language)
+                        if translated and _JA_RE.search(translated):
+                            rag_query = translated
+                            logger.info(
+                                "tRAG %s->ja: '%s' -> '%s'",
                                 language,
+                                query[:40],
+                                rag_query[:40],
                             )
-                        else:
-                            client = _get_trag_client()
-                            resp = await client.post(
-                                "https://openrouter.ai/api/v1/chat/completions",
-                                headers={
-                                    "Authorization": f"Bearer {api_key}",
-                                    "Content-Type": "application/json",
-                                },
-                                json={
-                                    "model": _TRAG_MODEL,
-                                    "messages": [
-                                        {
-                                            "role": "system",
-                                            "content": (
-                                                "You are a translation "
-                                                "engine. Translate the "
-                                                "user's text to Japanese."
-                                                " Return ONLY the "
-                                                "Japanese translation."
-                                            ),
-                                        },
-                                        {
-                                            "role": "user",
-                                            "content": query,
-                                        },
-                                    ],
-                                    "max_tokens": 200,
-                                },
+                        elif translated:
+                            logger.warning(
+                                "tRAG not Japanese: '%s'",
+                                translated[:60],
                             )
-                            if resp.status_code == 200:
-                                data = resp.json()
-                                translated = (
-                                    data.get("choices", [{}])[0]
-                                    .get("message", {})
-                                    .get("content", "")
-                                    .strip()
-                                )
-                                # Sanitize LLM preamble
-                                translated = _TRAG_PREAMBLE_RE.sub("", translated).strip()
-                                if re.search(r"^[A-Za-z]{5,}", translated):
-                                    logger.warning(
-                                        "tRAG preamble: '%s'",
-                                        translated[:60],
-                                    )
-                                    translated = ""
-                                if translated and _JA_RE.search(translated):
-                                    rag_query = translated
-                                    logger.info(
-                                        "tRAG %s->ja: '%s' -> '%s'",
-                                        language,
-                                        query[:40],
-                                        rag_query[:40],
-                                    )
-                                elif translated:
-                                    logger.warning(
-                                        "tRAG not Japanese: '%s'",
-                                        translated[:60],
-                                    )
-                            else:
-                                logger.warning(
-                                    "OpenRouter %d: %s",
-                                    resp.status_code,
-                                    resp.text[:200],
-                                )
                     except Exception as trans_err:
                         logger.warning(
                             "LLM translation (%s->ja) failed: %s",
