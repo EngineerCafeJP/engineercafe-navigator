@@ -15,6 +15,14 @@ entries:
       「未経験からエンジニアになりたい社会人のためのスキルチェンジ相談会」も定期開催。
       コミュニティの構築・運営支援。エンジニア同士の交流促進・橋渡し。
       イベントの企画・運営サポート。技術的な相談にも対応可能です。
+    content_en: >
+      Multiple Community Managers (CMs) are stationed at Engineer Cafe.
+      They are present daily from around midday, supporting visitors through communication.
+      Consultation hours: 1:00 PM to 9:00 PM. No reservation needed; feel free to approach them.
+      Online consultations are also available.
+      Services: Maker and career advice, engineering career change support,
+      regular skill-change consultation events for working adults,
+      community building and networking facilitation, event planning support, and technical consultations.
     category: "consultation"
     tags: ["consultation", "career", "support", "engineer-cafe"]
     priority: 90

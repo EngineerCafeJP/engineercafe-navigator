@@ -511,7 +511,11 @@ class EnhancedRAGSearch:
                 query_builder = query_builder.eq("category", category)
 
             # KB is Japanese-only; filter to ja for reliable results
-            query_builder = query_builder.eq("language", "ja")
+            # (English content_en chunks are stored with language='en')
+            if language == "en":
+                query_builder = query_builder.in_("language", ["en", "ja"])
+            else:
+                query_builder = query_builder.eq("language", "ja")
 
             result = query_builder.limit(max_results).execute()
 

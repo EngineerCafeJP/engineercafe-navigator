@@ -30,6 +30,14 @@ entries:
       【参加方法】Connpassの場合はアカウント登録後、各イベントページから「参加する」ボタンで申し込みできます。
       参加費無料のイベントがほとんどです。定員がある場合は先着順が多いため、早めの申込をおすすめします。
       イベント当日は1階受付で利用登録（初回のみ）を行い、イベント参加者であることを伝えてください。
+    content_en: >
+      How to join events at Engineer Cafe.
+      Connpass: https://engineercafe.connpass.com/ (event list and registration).
+      Official events page: https://engineercafe.jp/ja/event (Engineer Cafe hosted/co-hosted events).
+      Official site: https://site.engineercafe.jp/ (facility-wide information and news).
+      Registration: Create a Connpass account, then click the "Join" button on each event page.
+      Most events are free. Capacity-limited events are first-come-first-served, so register early.
+      On the day: Complete first-time registration at the 1F reception and mention your event participation.
     category: "event"
     tags: ["event", "connpass", "registration", "engineer-cafe"]
     priority: 90

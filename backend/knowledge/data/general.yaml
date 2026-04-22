@@ -27,6 +27,12 @@ entries:
       コミュニティマネージャーへの相談受付時間は13:00〜21:00です。
       休館日は毎月最終月曜日（祝休日のときは翌平日）と、12月29日〜1月3日です。
       ゴールデンウィーク・お盆期間は通常通り開館しますが、特別告知がある場合はX(@EngineerCafeJP)で案内されます。
+    content_en: >
+      Engineer Cafe is open from 9:00 AM to 10:00 PM.
+      Community Manager consultation hours are 1:00 PM to 9:00 PM.
+      Closed on the last Monday of each month (or the next weekday if it falls on a holiday),
+      and December 29 through January 3.
+      Open during Golden Week and Obon as usual, but check X(@EngineerCafeJP) for special announcements.
     category: "hours"
     tags: ["hours", "schedule", "engineer-cafe"]
     priority: 90
@@ -48,6 +54,17 @@ entries:
       【2回目以降】会員番号を伝え、利用スペースを申告し、受付カードを受け取ります。
       退館時に受付カードを受付に返却してください。
       【利用制限】イベント開催も無料ですが、企業広告やヘッドハンティング目的など公共性にそぐわない利用は不可です。
+    content_en: >
+      Engineer Cafe is a public-private project under Fukuoka's "Engineer Friendly City" initiative.
+      It is open to working engineers, aspiring engineers, and anyone in engineering-related fields.
+      Facility and equipment use is free. Only cafe&bar saino food/drinks and 3D printer filament are paid.
+      First-time registration: Complete a form at reception (5-10 min, free, no ID required).
+      You will receive a briefing on facility rules (food policy, quiet zones, 15-min seat policy).
+      Registration is in-person only; no online pre-registration available.
+      No age limit, but you must be able to use the facility safely on your own.
+      Returning visitors: Give your member number, declare your space, and take a reception card.
+      Return the card at reception when leaving.
+      Events are also free, but commercial advertising and headhunting activities are not permitted.
     category: "pricing"
     tags: ["pricing", "registration", "free", "engineer-cafe"]
     priority: 90
@@ -63,6 +80,13 @@ entries:
       地下鉄空港線「天神駅」から徒歩5分、西鉄バス「天神4丁目」下車すぐです。
       専用の駐車場・駐輪場はありません。近隣のコインパーキングや公共駐輪場をご利用ください。
       公共交通機関でのお越しをおすすめします。
+    content_en: >
+      Engineer Cafe is located at 1-15-30 Tenjin, Chuo-ku, Fukuoka,
+      inside the Fukuoka City Akarenga Bunka-kan (Red-Brick Culture Hall).
+      5-minute walk from Tenjin Station (Fukuoka City Subway Kuko Line).
+      Right outside Nishitetsu Bus "Tenjin 4-chome" stop.
+      No dedicated parking or bicycle parking. Please use nearby coin parking lots and public bicycle parking.
+      Public transportation is recommended.
     category: "access"
     tags: ["access", "location", "address", "engineer-cafe"]
     priority: 90
@@ -78,6 +102,12 @@ entries:
       公式サイト: https://engineercafe.jp/
       お問い合わせフォーム: https://engineercafe.jp/ja/contact
       イベント情報（connpass）: https://engineercafe.connpass.com/
+    content_en: >
+      Phone: 080-6742-7231 (consultation hours 1:00 PM - 9:00 PM).
+      2F Meeting Rooms (managed by Akarenga Bunka-kan): 092-722-4666.
+      Official website: https://engineercafe.jp/
+      Contact form: https://engineercafe.jp/ja/contact
+      Events (connpass): https://engineercafe.connpass.com/
     category: "contact"
     tags: ["contact", "phone", "website", "engineer-cafe"]
     priority: 60

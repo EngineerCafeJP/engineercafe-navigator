@@ -14,6 +14,14 @@ entries:
       HHKBタッチ＆トライスポットも設置されており、自由に試用できます。
       これらの機材は通常イベントで使用しますが、コミュニティマネージャー同席のもと個別体験も可能です。
       電話、会話、オンラインミーティングが可能なオープンスペースです。
+    content_en: >
+      The 1F Main Hall serves as both an event space and a coworking area.
+      Events take priority; when no events are scheduled, it is open for coworking.
+      30 free seats with free Wi-Fi and power strips at every seat.
+      4K monitor rental and engineering book library available.
+      Latest tech: Apple Vision Pro, Meta Quest, mocopi motion capture, Tello drone, HHKB try station.
+      Equipment is typically used at events but individual demos may be possible with a Community Manager.
+      Phone calls, conversations, and online meetings are allowed in this open space.
     category: "facility-info"
     tags: ["main-hall", "coworking", "1f", "engineer-cafe"]
     priority: 90
@@ -37,6 +45,18 @@ entries:
       同一機材の予約は1人1件までです（利用前に別枠を予約すると先の予約がキャンセルされます。異なる機材の予約は重複可能）。
       【材料】材料は原則持ち込み制です。ただし3Dプリンターのフィラメントは持ち込み禁止で、使用分を買い取り方式で精算します。
       当日は1階受付で利用登録が必要です。予約時間を15分過ぎても来場がない場合は予約取り消しとなります。
+    content_en: >
+      The B1F MAKER's Space is a digital fabrication workshop.
+      8 seats, available 9:30 AM - 9:30 PM. Equipment use is free; 3D printer filament is paid.
+      Equipment: Laser cutter (trotec speedy100 C30), 3D printer (Bambu Lab P1S),
+      soldering iron, drill press, acrylic heater, oscilloscope, metal bender, band saw, and more.
+      First-time training (approx. 1 hour, free) is required for laser cutter and 3D printer.
+      Training requires advance booking via the official web page.
+      After training, equipment is free to use with reservation priority.
+      Bookings via: https://select-type.com/rsv/?id=K8t7W9WWRbc (up to the day before).
+      Materials: Bring your own. 3D printer filament must be purchased on-site (no outside filament).
+      Registration at 1F reception required on the day of use.
+      Reservations are cancelled if you are more than 15 minutes late.
     category: "facility-info"
     tags: ["makers-space", "fabrication", "b1f", "laser", "3d-printer", "engineer-cafe"]
     priority: 90
@@ -119,6 +139,15 @@ entries:
       【電源】各席に電源タップを設置しています（テラスを除く）。
       大規模イベントでも電源容量は十分に確保されています（50人規模のイベント実績あり）。
       cafe&bar sainoのカウンター席にもコンセントがあります。
+    content_en: >
+      Free Wi-Fi is available throughout Engineer Cafe.
+      SSID: engnecf-guest-2.4GHz or engnecf-guest-5GHz.
+      Password: akarenga-112years (also printed on the back of the reception card).
+      The 5GHz band provides high-speed connectivity. Coverage includes the terrace.
+      For large events (50+ people), simultaneous connections may cause instability.
+      A dedicated event Wi-Fi is available; ask staff when hosting events.
+      Power outlets are available at every seat (except the terrace).
+      cafe&bar saino counter seats also have power outlets.
     category: "facility-info"
     tags: ["wifi", "power", "internet", "engineer-cafe"]
     priority: 90
