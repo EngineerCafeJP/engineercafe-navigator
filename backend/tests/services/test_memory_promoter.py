@@ -55,6 +55,34 @@ class TestMemoryPromoterAggregation:
         assert decision.promote is False
         assert decision.reason == "insufficient_repetition"
 
+    def test_visitor_name_high_confidence_single_mention_promoted(self):
+        decision = MemoryPromoter.should_promote(
+            {
+                "candidate_type": "visitor_name",
+                "candidate_count": 1,
+                "repeat_count_sum": 1,
+                "confidence_max": 0.9,
+                "confidence_avg": 0.9,
+            }
+        )
+        assert decision.promote is True
+        assert decision.reason == "visitor_name_high_confidence"
+
+    def test_explicit_keyword_in_evidence_promoted(self):
+        decision = MemoryPromoter.should_promote(
+            {
+                "candidate_type": "visitor_name",
+                "content": "田中花子",
+                "candidate_count": 1,
+                "repeat_count_sum": 1,
+                "confidence_max": 0.85,
+                "confidence_avg": 0.85,
+                "evidence_queries": ["私の名前は田中花子です。覚えてください。"],
+            }
+        )
+        assert decision.promote is True
+        assert decision.reason == "explicit_remember"
+
 
 class TestMemoryPromoterService:
     @pytest.mark.asyncio
