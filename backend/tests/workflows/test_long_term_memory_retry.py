@@ -72,6 +72,23 @@ class TestLongTermMemoryLoadRetry:
         assert result == []
         assert mock_store.asearch.call_count == 1
 
+    @pytest.mark.asyncio
+    async def test_runtime_store_is_used_when_provided(self):
+        """runtime.store が渡された場合は singleton get_store を使わない。"""
+        runtime_store = AsyncMock()
+        runtime_store.asearch = AsyncMock(return_value=["runtime"])
+
+        with patch("backend.utils.store.get_store") as mock_get_store:
+            result = await store_with_retry(
+                lambda s: s.asearch(("visitor_memories", "test-user"), query="test", limit=5),
+                store=runtime_store,
+                operation_name="long-term memory load",
+            )
+
+        assert result == ["runtime"]
+        runtime_store.asearch.assert_called_once()
+        mock_get_store.assert_not_called()
+
 
 class TestLongTermMemoryStoreRetry:
     """Test store path retry via store_with_retry."""

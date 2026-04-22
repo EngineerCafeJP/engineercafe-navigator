@@ -113,6 +113,8 @@ class MemoryPromoter:
             extracted_at = float(value.get("extracted_at", 0) or 0)
             confidence = float(value.get("confidence", 0.5) or 0.5)
             repeat_count = int(value.get("repeat_count", 1) or 1)
+            evidence = value.get("evidence") or {}
+            evidence_query = evidence.get("query", "") if isinstance(evidence, dict) else ""
 
             if agg_key not in grouped:
                 grouped[agg_key] = {
@@ -130,6 +132,7 @@ class MemoryPromoter:
                     "languages": {value.get("language", "ja")},
                     "candidate_keys": [getattr(item, "key", "")],
                     "sources": {value.get("source", "conversation_turn")},
+                    "evidence_queries": {str(evidence_query)} if evidence_query else set(),
                 }
                 continue
 
@@ -144,11 +147,14 @@ class MemoryPromoter:
                 g["candidate_keys"].append(getattr(item, "key", ""))
             g["languages"].add(value.get("language", "ja"))
             g["sources"].add(value.get("source", "conversation_turn"))
+            if evidence_query:
+                g["evidence_queries"].add(str(evidence_query))
 
         for g in grouped.values():
             g["confidence_avg"] = g["confidence_sum"] / max(g["candidate_count"], 1)
             g["languages"] = sorted(g["languages"])
             g["sources"] = sorted(g["sources"])
+            g["evidence_queries"] = sorted(g["evidence_queries"])
         return grouped
 
     @staticmethod
@@ -158,10 +164,13 @@ class MemoryPromoter:
         count = int(aggregate.get("candidate_count", 0))
         repeat_sum = int(aggregate.get("repeat_count_sum", 0))
         conf_max = float(aggregate.get("confidence_max", 0.0))
-        if ctype == "explicit_remember":
-            if conf_max >= 0.8:
+        if MemoryPromoter._is_explicit_remember(aggregate):
+            if conf_max >= 0.5 and MemoryPromoter._has_actionable_content(aggregate):
                 return PromotionDecision(True, "explicit_remember")
             return PromotionDecision(False, "explicit_low_confidence")
+
+        if ctype == "visitor_name" and conf_max >= 0.9:
+            return PromotionDecision(True, "visitor_name_high_confidence")
 
         thresholds = {
             "visitor_name": 0.85,
@@ -218,6 +227,34 @@ class MemoryPromoter:
         normalized = unicodedata.normalize("NFKC", content)
         normalized = " ".join(normalized.strip().lower().split())
         return f"{memory_type}:{normalized}"
+
+    @staticmethod
+    def _is_explicit_remember(aggregate: Dict[str, Any]) -> bool:
+        ctype = str(aggregate.get("candidate_type", "unknown"))
+        if ctype == "explicit_remember":
+            return True
+
+        text_parts = [str(aggregate.get("content", ""))]
+        evidence_queries = aggregate.get("evidence_queries", [])
+        if isinstance(evidence_queries, list):
+            text_parts.extend(str(q) for q in evidence_queries)
+        text = " ".join(text_parts).lower()
+        return any(
+            keyword in text
+            for keyword in (
+                "覚えて",
+                "記憶して",
+                "忘れないで",
+                "remember",
+                "don't forget",
+                "keep in mind",
+            )
+        )
+
+    @staticmethod
+    def _has_actionable_content(aggregate: Dict[str, Any]) -> bool:
+        content = str(aggregate.get("content", "")).strip()
+        return content not in {"ください", "お願いします", "please"} and len(content) > 1
 
 
 # ---------------------------------------------------------------------------

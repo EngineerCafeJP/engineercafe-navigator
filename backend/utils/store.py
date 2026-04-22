@@ -40,6 +40,7 @@ _T = TypeVar("_T")
 async def store_with_retry(
     operation: Callable[[AsyncPostgresStore], Awaitable[_T]],
     *,
+    store: AsyncPostgresStore | None = None,
     max_retries: int = 1,
     operation_name: str = "store operation",
 ) -> _T:
@@ -47,11 +48,13 @@ async def store_with_retry(
 
     On detected connection error (see is_store_connection_error), reset the
     module-level store singleton via close_store() + get_store() and retry once.
+    If ``store`` is provided, use it as the first-choice runtime-injected Store
+    instead of the module-level singleton.
     """
-    store = await get_store()
+    active_store = store if store is not None else await get_store()
     for attempt in range(max_retries + 1):
         try:
-            return await operation(store)
+            return await operation(active_store)
         except Exception as e:
             if not is_store_connection_error(e):
                 raise
@@ -70,8 +73,9 @@ async def store_with_retry(
                 max_retries + 1,
                 e,
             )
-            await close_store()
-            store = await get_store()
+            if store is None:
+                await close_store()
+                active_store = await get_store()
     raise RuntimeError("store_with_retry exited loop unexpectedly")
 
 

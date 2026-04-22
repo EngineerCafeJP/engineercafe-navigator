@@ -707,6 +707,7 @@ class MainWorkflow:
                     namespace = ("visitor_memories", user_id)
                     memories = await store_with_retry(
                         lambda s: s.asearch(namespace, query=state.get("query", ""), limit=5),
+                        store=runtime.store,
                         operation_name="long-term memory load",
                     )
                     flags = get_memory_feature_flags()
@@ -1314,35 +1315,51 @@ class MainWorkflow:
                 from backend.utils.memory_feature_flags import get_memory_feature_flags
 
                 memory_flags = get_memory_feature_flags()
+                long_term_namespace = ("visitor_memories", user_id)
+                candidate_namespace = ("visitor_memory_candidates", user_id)
 
-                # Exclusion control: when candidate system is enabled,
-                # skip direct writes (Promoter handles long-term storage).
+                def _is_fast_path_memory(memory: dict[str, Any]) -> bool:
+                    memory_type = memory.get("candidate_type") or memory.get("type")
+                    confidence = float(memory.get("confidence", 0.0) or 0.0)
+                    content = str(memory.get("content", "")).strip()
+                    evidence = memory.get("evidence", {})
+                    evidence_query = ""
+                    if isinstance(evidence, dict):
+                        evidence_query = str(evidence.get("query", ""))
+                    explicit_text = f"{content} {evidence_query} {query}".lower()
+                    explicit_keywords = (
+                        "覚えて",
+                        "記憶して",
+                        "忘れないで",
+                        "remember",
+                        "don't forget",
+                        "keep in mind",
+                    )
+
+                    if memory_type == "explicit_remember":
+                        return confidence >= 0.5 and content not in {"ください", "お願いします"}
+                    if any(keyword in explicit_text for keyword in explicit_keywords):
+                        return confidence >= 0.8
+                    return memory_type == "visitor_name" and confidence >= 0.9
+
+                async def _write_long_term_memory(memory: dict[str, Any], source: str) -> None:
+                    key = str(uuid.uuid4())
+                    value = {
+                        "data": memory.get("content", ""),
+                        "type": memory.get("candidate_type") or memory.get("type", "unknown"),
+                        "confidence": memory.get("confidence", 0.5),
+                        "timestamp": time.time(),
+                        "source": source,
+                    }
+                    await store_with_retry(
+                        lambda s, k=key, v=value: s.aput(long_term_namespace, k, v),
+                        store=runtime.store,
+                        operation_name="long-term memory store",
+                    )
+
+                # Candidate system writes shadow candidates, while high-confidence
+                # explicit facts also enter LTM immediately for cross-session recall.
                 # When disabled, use legacy direct writes for backward compat.
-                if not memory_flags.enable_memory_candidates:
-                    facts = extract_memories(query, answer, state.get("language", "ja"))
-                    if facts:
-                        namespace = ("visitor_memories", user_id)
-                        for fact in facts:
-                            await store_with_retry(
-                                lambda s, f=fact: s.aput(
-                                    namespace,
-                                    str(uuid.uuid4()),
-                                    {
-                                        "data": f["content"],
-                                        "type": f["type"],
-                                        "confidence": f.get("confidence", 0.5),
-                                        "timestamp": time.time(),
-                                    },
-                                ),
-                                operation_name="long-term memory store",
-                            )
-                        logger.info(
-                            "Stored %d long-term memories for user %s",
-                            len(facts),
-                            user_id,
-                        )
-
-                # Candidate pipeline: store candidate memories for promotion.
                 if memory_flags.enable_memory_candidates:
                     try:
                         candidates = extract_memory_candidates(
@@ -1351,25 +1368,50 @@ class MainWorkflow:
                             language=state.get("language", "ja"),
                         )
                         if candidates:
-                            candidate_ns = ("visitor_memory_candidates", user_id)
+                            fast_path_count = 0
                             for candidate in candidates:
+                                candidate_key = str(uuid.uuid4())
+                                candidate_value = dict(candidate)
                                 await store_with_retry(
-                                    lambda s, c=candidate: s.aput(
-                                        candidate_ns,
-                                        str(uuid.uuid4()),
-                                        c,
+                                    lambda s, k=candidate_key, v=candidate_value: s.aput(
+                                        candidate_namespace,
+                                        k,
+                                        v,
                                     ),
+                                    store=runtime.store,
                                     operation_name="long-term memory store",
                                 )
+                                if _is_fast_path_memory(candidate_value):
+                                    await _write_long_term_memory(
+                                        candidate_value,
+                                        "candidate_fast_path",
+                                    )
+                                    fast_path_count += 1
                             logger.info(
                                 "Stored %d memory candidates for user %s",
                                 len(candidates),
                                 user_id,
                             )
+                            if fast_path_count:
+                                logger.info(
+                                    "Fast-path stored %d long-term memories for user %s",
+                                    fast_path_count,
+                                    user_id,
+                                )
                     except Exception as candidate_err:
                         logger.warning(
                             "Memory candidate write failed: %s",
                             candidate_err,
+                        )
+                else:
+                    facts = extract_memories(query, answer, state.get("language", "ja"))
+                    if facts:
+                        for fact in facts:
+                            await _write_long_term_memory(fact, "legacy_direct")
+                        logger.info(
+                            "Stored %d long-term memories for user %s",
+                            len(facts),
+                            user_id,
                         )
 
                 # Promote candidates to long-term memory (best effort).
