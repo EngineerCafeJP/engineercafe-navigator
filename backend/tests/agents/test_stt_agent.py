@@ -1671,6 +1671,51 @@ class TestQwenPrimaryParallel:
         assert result["transcript"] == "こんにちは"
 
     @pytest.mark.asyncio
+    async def test_qwen_success_does_not_wait_for_slow_vosk(self):
+        """Qwen succeeds -> returns immediately without waiting for Vosk fallback."""
+        import asyncio
+
+        vosk_started = asyncio.Event()
+        vosk_cancelled = asyncio.Event()
+
+        async def slow_vosk(*args, **kwargs):
+            vosk_started.set()
+            try:
+                await asyncio.sleep(20)
+            except asyncio.CancelledError:
+                vosk_cancelled.set()
+                raise
+            return TranscriptionResult(
+                text="slow fallback",
+                confidence=0.7,
+                language="ja",
+            )
+
+        mock_qwen = MagicMock()
+        mock_qwen.transcribe = AsyncMock(
+            return_value=TranscriptionResult(
+                text="qwen fast",
+                confidence=0.95,
+                language="ja",
+            )
+        )
+        mock_vosk = MagicMock(spec=LocalSTTClient)
+        mock_vosk.transcribe = AsyncMock(side_effect=slow_vosk)
+
+        agent = self._make_agent(mock_qwen, mock_vosk)
+        loop = asyncio.get_running_loop()
+        started_at = loop.time()
+        result = await agent.speech_to_text(b"audio", language="ja")
+        elapsed = loop.time() - started_at
+
+        assert result["success"] is True
+        assert result["provider"] == "qwen-primary"
+        assert result["transcript"] == "qwen fast"
+        assert vosk_started.is_set()
+        assert vosk_cancelled.is_set()
+        assert elapsed < 0.5
+
+    @pytest.mark.asyncio
     async def test_qwen_timeout_vosk_fallback(self):
         """Qwen times out -> Vosk fallback with provider='vosk-fallback'"""
         import asyncio
