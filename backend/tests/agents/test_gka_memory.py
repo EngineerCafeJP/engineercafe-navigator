@@ -54,9 +54,19 @@ class TestGKAAnswerQueryDispatch:
         agent._handle_memory_query = AsyncMock(
             return_value={"answer": "メモリ回答", "emotion": "relaxed", "metadata": {}}
         )
+        long_term_memory = [{"data": "ユーザーの名前は山田次郎です", "type": "visitor_name"}]
 
-        result = await agent.answer_query("さっき何を聞いた？", query_type="memory")
-        agent._handle_memory_query.assert_called_once()
+        result = await agent.answer_query(
+            "さっき何を聞いた？",
+            query_type="memory",
+            long_term_memory=long_term_memory,
+        )
+        agent._handle_memory_query.assert_called_once_with(
+            "さっき何を聞いた？",
+            "",
+            "ja",
+            long_term_memory=long_term_memory,
+        )
         assert result["answer"] == "メモリ回答"
 
     @pytest.mark.asyncio
@@ -67,8 +77,20 @@ class TestGKAAnswerQueryDispatch:
             return_value={"answer": "一般回答", "emotion": "neutral", "metadata": {}}
         )
 
-        result = await agent.answer_query("エンジニアカフェとは？", query_type="general")
-        agent.answer_general_query.assert_called_once()
+        long_term_memory = [{"data": "ユーザーは展示に興味があります", "type": "interest"}]
+        result = await agent.answer_query(
+            "エンジニアカフェとは？",
+            query_type="general",
+            long_term_memory=long_term_memory,
+        )
+        agent.answer_general_query.assert_called_once_with(
+            "エンジニアカフェとは？",
+            "ja",
+            None,
+            None,
+            None,
+            long_term_memory=long_term_memory,
+        )
         assert result["answer"] == "一般回答"
 
 
@@ -125,6 +147,38 @@ class TestGKAHandleMemoryQuery:
 
         assert result["emotion"] == "sad"
         assert result["metadata"]["status"] == "no_history"
+
+    @pytest.mark.asyncio
+    async def test_handle_memory_query_uses_long_term_memory_without_session_history(self):
+        """別セッション由来の長期メモリを会話履歴プロンプトへ注入する"""
+        mock_memory = MagicMock()
+        mock_memory.get_context = AsyncMock(
+            return_value={
+                "recent_messages": [],
+                "context_string": "",
+            }
+        )
+
+        agent = self._create_agent(memory_system=mock_memory)
+        result = await agent._handle_memory_query(
+            "私の名前を覚えてますか？",
+            "session2",
+            "ja",
+            long_term_memory=[
+                {
+                    "data": "ユーザーの名前は山田次郎です",
+                    "type": "visitor_name",
+                    "confidence": 0.95,
+                }
+            ],
+        )
+
+        assert result["metadata"]["status"] == "success"
+        assert result["metadata"]["long_term_memory_count"] == 1
+        call_kwargs = agent.provider.generate.call_args.kwargs
+        prompt = call_kwargs["messages"][0].content
+        assert "長期メモリ" in prompt
+        assert "山田次郎" in prompt
 
     @pytest.mark.asyncio
     async def test_handle_memory_query_error(self):
