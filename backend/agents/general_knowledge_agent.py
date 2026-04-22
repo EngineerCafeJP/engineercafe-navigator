@@ -84,9 +84,19 @@ class GeneralKnowledgeAgent:
     ) -> Dict[str, Any]:
         """統合クエリハンドラ: query_typeに応じて処理を分岐"""
         if query_type == "memory":
-            return await self._handle_memory_query(query, session_id or "", language)
+            return await self._handle_memory_query(
+                query,
+                session_id or "",
+                language,
+                long_term_memory=long_term_memory,
+            )
         return await self.answer_general_query(
-            query, language, session_id, state_context, context_signals
+            query,
+            language,
+            session_id,
+            state_context,
+            context_signals,
+            long_term_memory=long_term_memory,
         )
 
     async def answer_general_query(
@@ -96,6 +106,7 @@ class GeneralKnowledgeAgent:
         session_id: Optional[str] = None,
         state_context: Optional[Dict] = None,
         context_signals=None,
+        long_term_memory: Optional[list] = None,
     ) -> Dict[str, Any]:
         """
         一般的な質問に回答
@@ -159,6 +170,11 @@ class GeneralKnowledgeAgent:
                             "Web検索成功: %d chars, %d sources", len(web_text), len(web_sources)
                         )
 
+            long_term_text = self._format_long_term_memory_context(long_term_memory, language)
+            if long_term_text:
+                context = f"{context}\n\n{long_term_text}".strip()
+                sources.append("long_term_memory")
+
             # 4. コンテキストがない場合はフォールバック
             if not context:
                 logger.warning("コンテキストが取得できませんでした")
@@ -202,7 +218,11 @@ class GeneralKnowledgeAgent:
     # =========================================================================
 
     async def _handle_memory_query(
-        self, query: str, session_id: str, language: str = "ja"
+        self,
+        query: str,
+        session_id: str,
+        language: str = "ja",
+        long_term_memory: Optional[list] = None,
     ) -> Dict[str, Any]:
         """メモリ関連クエリを処理"""
         if not self.memory_system:
@@ -213,8 +233,13 @@ class GeneralKnowledgeAgent:
             context = await self.memory_system.get_context(
                 query, session_id, {"language": language, "inherit_context": True}
             )
+            context = self._merge_long_term_memory_context(
+                context,
+                long_term_memory,
+                language,
+            )
 
-            if not context.get("recent_messages"):
+            if not context.get("recent_messages") and not context.get("long_term_memory"):
                 return self._no_history_response(language)
 
             prompt = self._build_memory_prompt(query, context, query_type, language)
@@ -235,6 +260,7 @@ class GeneralKnowledgeAgent:
                     "query_type": query_type,
                     "message_count": len(context.get("recent_messages", [])),
                     "inherited_request_type": context.get("inherited_request_type"),
+                    "long_term_memory_count": len(context.get("long_term_memory", [])),
                 },
             }
         except Exception as e:
@@ -303,6 +329,65 @@ class GeneralKnowledgeAgent:
     ) -> str:
         """メモリプロンプト構築（memory_prompts.pyに委譲）"""
         return build_memory_prompt(query, context, query_type, language)
+
+    def _merge_long_term_memory_context(
+        self,
+        context: Dict[str, Any],
+        long_term_memory: Optional[list],
+        language: str,
+    ) -> Dict[str, Any]:
+        """セッション履歴コンテキストへ長期メモリを追記する。"""
+        if not long_term_memory:
+            return context
+
+        merged = dict(context or {})
+        long_term_text = self._format_long_term_memory_context(long_term_memory, language)
+        if not long_term_text:
+            return merged
+
+        existing_context = str(merged.get("context_string") or "").strip()
+        merged["context_string"] = f"{existing_context}\n\n{long_term_text}".strip()
+        merged["long_term_memory"] = long_term_memory
+        return merged
+
+    @staticmethod
+    def _format_long_term_memory_context(
+        long_term_memory: Optional[list],
+        language: str,
+    ) -> str:
+        """長期メモリをプロンプトへ渡せる短い箇条書きに整形する。"""
+        if not long_term_memory:
+            return ""
+
+        lines: list[str] = []
+        for memory in long_term_memory:
+            if isinstance(memory, dict):
+                content = str(
+                    memory.get("data")
+                    or memory.get("content")
+                    or memory.get("summary")
+                    or memory.get("text")
+                    or ""
+                ).strip()
+                memory_type = str(memory.get("type") or memory.get("candidate_type") or "").strip()
+                if content and memory_type:
+                    lines.append(f"- [{memory_type}] {content}")
+                elif content:
+                    lines.append(f"- {content}")
+            else:
+                content = str(memory).strip()
+                if content:
+                    lines.append(f"- {content}")
+
+        if not lines:
+            return ""
+
+        title = (
+            "長期メモリ（過去セッションから保持された利用者情報）"
+            if language == "ja"
+            else ("Long-term memory (visitor facts retained across sessions)")
+        )
+        return f"{title}:\n" + "\n".join(lines)
 
     def _determine_memory_emotion(self, context: Dict, query_type: str) -> str:
         """メモリクエリの感情タグ決定"""
