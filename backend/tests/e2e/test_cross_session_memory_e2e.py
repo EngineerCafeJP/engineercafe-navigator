@@ -78,8 +78,7 @@ class TestCrossSessionMemoryRecall:
                 wf.ainvoke(
                     {
                         "query": (
-                            "私の名前は田中花子です。"
-                            "田中花子と呼んでください。覚えてください。"
+                            "私の名前は田中花子です。" "田中花子と呼んでください。覚えてください。"
                         ),
                         "session_id": session_1_id,
                         "language": "ja",
