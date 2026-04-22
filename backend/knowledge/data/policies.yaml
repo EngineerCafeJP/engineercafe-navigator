@@ -37,6 +37,9 @@ entries:
     content: >
       エンジニアカフェには専用駐車場はありません。
       近隣のコインパーキングをご利用ください。公共交通機関でのお越しをおすすめします。
+    content_en: >
+      Engineer Cafe does not have dedicated parking.
+      Please use nearby coin parking lots. Public transportation is recommended.
     category: "parking"
     tags: ["parking", "access", "engineer-cafe"]
     priority: 60

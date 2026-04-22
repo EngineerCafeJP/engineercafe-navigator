@@ -208,13 +208,75 @@ def _apply_overlap(chunks: list[str], overlap_tokens: int) -> list[str]:
     return result
 
 
-def _build_metadata(entry: KnowledgeEntry) -> dict[str, Any]:
+def _build_metadata(entry: KnowledgeEntry, language: str = "ja") -> dict[str, Any]:
     """Build a *fresh* metadata dict for a chunk derived from *entry*."""
     return {
         "tags": list(entry.tags),
         "priority": entry.priority,
         "verified": entry.verified,
+        "language": language,
     }
+
+
+def _chunk_english_content(
+    entry: KnowledgeEntry,
+    strategy: ChunkingStrategy,
+) -> list[KnowledgeChunk]:
+    """Generate English-language chunks from content_en if present."""
+    if not entry.content_en:
+        return []
+
+    en_title = entry.title_en or f"{entry.title} (English)"
+    token_total = count_tokens(entry.content_en)
+
+    if token_total <= strategy.max_tokens:
+        return [
+            KnowledgeChunk(
+                entry_id=f"{entry.id}-en",
+                chunk_level="document",
+                chunk_index=0,
+                title=en_title,
+                content=entry.content_en,
+                token_count=token_total,
+                category=entry.category,
+                metadata=_build_metadata(entry, language="en"),
+            )
+        ]
+
+    summary = entry.content_en[:200].rstrip() + "..."
+    chunks: list[KnowledgeChunk] = [
+        KnowledgeChunk(
+            entry_id=f"{entry.id}-en",
+            chunk_level="document",
+            chunk_index=0,
+            title=en_title,
+            content=summary,
+            token_count=count_tokens(summary),
+            category=entry.category,
+            metadata=_build_metadata(entry, language="en"),
+        )
+    ]
+
+    merged = _split_and_merge(entry.content_en, strategy)
+    child_index = 1
+    for text in merged:
+        tc = count_tokens(text)
+        if tc < strategy.min_chunk_tokens:
+            continue
+        chunks.append(
+            KnowledgeChunk(
+                entry_id=f"{entry.id}-en",
+                chunk_level="chunk",
+                chunk_index=child_index,
+                title=en_title,
+                content=text,
+                token_count=tc,
+                category=entry.category,
+                metadata=_build_metadata(entry, language="en"),
+            )
+        )
+        child_index += 1
+    return chunks
 
 
 def _split_and_merge(content: str, strategy: ChunkingStrategy) -> list[str]:
@@ -324,7 +386,7 @@ def chunk_entry(
 
     # Small entry -> single document-level chunk
     if token_total <= strategy.max_tokens:
-        return [
+        chunks = [
             KnowledgeChunk(
                 entry_id=entry.id,
                 chunk_level="document",
@@ -336,11 +398,15 @@ def chunk_entry(
                 metadata=_build_metadata(entry),
             )
         ]
+        chunks.extend(_chunk_english_content(entry, strategy))
+        return chunks
 
     # Check for section headings in large entries
     sections = _split_into_sections(entry.content)
     if sections:
-        return _chunk_with_sections(entry, sections, strategy)
+        chunks = _chunk_with_sections(entry, sections, strategy)
+        chunks.extend(_chunk_english_content(entry, strategy))
+        return chunks
 
     # Large entry -> parent document + child chunks
     summary = entry.content[:200].rstrip() + "..."
@@ -362,7 +428,7 @@ def chunk_entry(
     for text in merged:
         tc = count_tokens(text)
         if tc < strategy.min_chunk_tokens:
-            continue  # Skip too-small standalone chunks
+            continue
         chunks.append(
             KnowledgeChunk(
                 entry_id=entry.id,
@@ -377,6 +443,7 @@ def chunk_entry(
         )
         child_index += 1
 
+    chunks.extend(_chunk_english_content(entry, strategy))
     return chunks
 
 
