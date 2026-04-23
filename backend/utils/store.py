@@ -112,38 +112,25 @@ async def store_with_retry(
                     e,
                 )
                 raise
-            retry_action = "checking runtime store pool"
-            if store is None:
-                retry_action = "checking singleton store pool"
+            retry_action = (
+                "checking singleton store pool" if store is None else "checking runtime store pool"
+            )
             try:
                 checked_pool = await _check_store_pool(active_store)
             except Exception as pool_error:
                 checked_pool = False
-                if store is not None:
-                    logger.warning(
-                        "%s runtime store pool health check failed; retrying same store: %s",
-                        operation_name,
-                        pool_error,
+                if store is None:
+                    await close_store()
+                    active_store = await get_store()
+                    checked_pool = True
+                    retry_action = (
+                        f"singleton store pool check failed ({pool_error!s}); "
+                        "resetting singleton store"
                     )
-                    retry_action = "runtime store pool check failed"
-                    logger.warning(
-                        "%s hit connection error (attempt %d/%d), %s: %s",
-                        operation_name,
-                        attempt + 1,
-                        max_retries + 1,
-                        retry_action,
-                        e,
+                else:
+                    retry_action = (
+                        f"runtime store pool check failed ({pool_error!s}); retrying same store"
                     )
-                    continue
-                logger.warning(
-                    "%s pool health check failed; resetting singleton store: %s",
-                    operation_name,
-                    pool_error,
-                )
-                await close_store()
-                active_store = await get_store()
-                checked_pool = True
-                retry_action = "resetting singleton store"
             if not checked_pool and store is None:
                 await close_store()
                 active_store = await get_store()
