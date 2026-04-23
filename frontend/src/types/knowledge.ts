@@ -43,6 +43,16 @@ export interface KnowledgeEditorConfig extends KnowledgeCategoriesResponse {
   availableCategories: string[];
 }
 
+export interface KnowledgeUploadConflict {
+  chunk_index: number | null;
+  title: string;
+}
+
+export interface KnowledgeUploadError {
+  message: string;
+  conflicts?: KnowledgeUploadConflict[];
+}
+
 export interface MetadataFieldConfig {
   type: 'select' | 'date' | 'tags' | 'text';
   options?: string[];

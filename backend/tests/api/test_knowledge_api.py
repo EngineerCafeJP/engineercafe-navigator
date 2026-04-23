@@ -567,14 +567,16 @@ def test_upload_markdown_splits_into_chunks(
 def test_upload_rejects_duplicate_chunk_title_from_batch_check(
     mock_get_sb, mock_parse_md, mock_chunk_text
 ):
-    """チャンクタイトル衝突時は単一INクエリで409を返す"""
+    """チャンクタイトル衝突時は全conflictを含む409を返す"""
     mock_parse_md.return_value = "Parsed markdown content"
-    mock_chunk_text.return_value = ["Chunk one", "Chunk two"]
+    mock_chunk_text.return_value = ["Chunk one", "Chunk two", "Chunk three"]
     mock_sb = _mock_supabase()
     mock_get_sb.return_value = mock_sb
 
     mock_sb.table.return_value.select.return_value.in_.return_value.execute.return_value = (
-        _mock_table_result([{"title": "duplicate_doc (part 2)"}])
+        _mock_table_result(
+            [{"title": "duplicate_doc (part 1)"}, {"title": "duplicate_doc (part 3)"}]
+        )
     )
 
     response = client.post(
@@ -584,12 +586,15 @@ def test_upload_rejects_duplicate_chunk_title_from_batch_check(
     )
 
     assert response.status_code == 409
-    assert (
-        response.json()["detail"] == "Knowledge with title 'duplicate_doc (part 2)' already exists"
-    )
+    detail = response.json()["detail"]
+    assert detail["message"] == "duplicate titles"
+    assert len(detail["conflicts"]) == 2
+    conflict_titles = {c["title"] for c in detail["conflicts"]}
+    assert "duplicate_doc (part 1)" in conflict_titles
+    assert "duplicate_doc (part 3)" in conflict_titles
     mock_sb.table.return_value.select.return_value.in_.assert_called_once_with(
         "title",
-        ["duplicate_doc (part 1)", "duplicate_doc (part 2)"],
+        ["duplicate_doc (part 1)", "duplicate_doc (part 2)", "duplicate_doc (part 3)"],
     )
     mock_sb.table.return_value.insert.assert_not_called()
 
@@ -693,7 +698,11 @@ def test_upload_rolls_back_inserted_chunks_on_unique_violation(
     )
 
     assert response.status_code == 409
-    assert response.json()["detail"] == "Knowledge with title 'race_doc (part 2)' already exists"
+    detail = response.json()["detail"]
+    assert detail["message"] == "duplicate titles"
+    assert len(detail["conflicts"]) == 1
+    assert detail["conflicts"][0]["title"] == "race_doc (part 2)"
+    assert detail["conflicts"][0]["chunk_index"] == 1
     assert mock_sb.table.return_value.delete.return_value.eq.call_args_list == [
         call("id", "first-chunk-id")
     ]

@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Toaster, toast } from 'react-hot-toast';
-import { downloadTemplate, getKnowledgeEditorConfig, uploadKnowledgeFile } from '@/lib/api/knowledge';
+import { downloadTemplate, getKnowledgeEditorConfig, uploadKnowledgeFile, KnowledgeUploadFileError } from '@/lib/api/knowledge';
 import type { KnowledgeEditorConfig } from '@/types/knowledge';
 import {
   transformKnowledgeUploadData,
@@ -119,7 +119,15 @@ export default function UploadKnowledgePage() {
       router.push('/admin/knowledge');
     } catch (error) {
       console.error('Upload error:', error);
-      toast.error(error instanceof Error ? error.message : 'アップロードに失敗しました');
+      if (error instanceof KnowledgeUploadFileError && error.conflicts?.length) {
+        const lines = error.conflicts.map(
+          (c) =>
+            `Chunk ${c.chunk_index !== null ? c.chunk_index + 1 : '?'}: 「${c.title}」は既存と重複`,
+        );
+        toast.error(lines.join('\n'), { duration: 8000 });
+      } else {
+        toast.error(error instanceof Error ? error.message : 'アップロードに失敗しました');
+      }
     } finally {
       setUploading(false);
     }
