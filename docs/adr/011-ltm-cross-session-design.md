@@ -34,7 +34,11 @@ Cloud Run で以下の長期記憶フラグを有効化しても、同じ `visit
 
 1. Candidate pipeline は shadow write として常に候補を保存する。
 2. Candidate 有効時でも、即時 recall が必要な事実は LTM に直接保存する。
-3. 即時 LTM 書き込み対象は `explicit_remember` と `confidence >= 0.9` の `visitor_name` とする。
+3. 即時 LTM 書き込み対象は、次の 2 条件のいずれかを満たす候補とする:
+   - `type == "explicit_remember"`、または `query` / `evidence` に明示記憶要求キーワード（「覚えて」「記憶して」「remember」等）が含まれ、かつ `confidence >= 0.8`
+   - `type == "visitor_name"` かつ `confidence >= 0.9`
+
+   実装は `backend/workflows/main_workflow.py` の `_is_fast_path_memory()` を参照。ADR 012 の connection pool 導入後も fast-path 判定そのものは本 ADR の条件のまま。
 4. Promoter は単発 `explicit_remember` と高信頼 `visitor_name` を昇格できる。
 5. `store_with_retry` は `store=` を受け取り、`runtime.store` を優先する。
 6. LTM 書き込みの key/value は retry lambda の外で生成し、retry 中の冪等性を保つ。
