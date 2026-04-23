@@ -26,7 +26,9 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 
 from backend.tools.calendar_service import CalendarService, TimeRange
+from backend.observability.structured_logger import log_chat_response
 from backend.utils.structured_logging import (
+    get_request_id,
     request_id_var,
     generate_request_id,
     setup_structured_logging,
@@ -390,6 +392,7 @@ async def chat(request: Request, body: ChatRequest):
 
     from backend.utils.interrupt_manager import get_interrupt_manager
 
+    started_at = time.perf_counter()
     session_id = body.session_id or str(_uuid.uuid4())
 
     get_interrupt_manager().clear_interrupt(session_id)
@@ -422,6 +425,13 @@ async def chat(request: Request, body: ChatRequest):
             logger.debug("PII scan skipped (non-critical): %s", e)
 
         metadata = result.get("metadata", {"query": body.query, "session_id": session_id})
+        latency_ms = int((time.perf_counter() - started_at) * 1000)
+        log_chat_response(
+            request_id=get_request_id() or request.headers.get("X-Request-ID"),
+            language=body.language,
+            metadata=metadata if isinstance(metadata, dict) else {},
+            latency_ms=latency_ms,
+        )
 
         return ChatResponse(
             answer=answer,

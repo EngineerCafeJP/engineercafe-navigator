@@ -1,0 +1,61 @@
+import logging
+from unittest.mock import AsyncMock, patch
+
+import httpx
+import pytest
+
+import backend.main as main_mod
+from backend.main import app
+
+pytestmark = pytest.mark.asyncio
+
+
+async def test_chat_emits_structured_observability_log(caplog, monkeypatch):
+    monkeypatch.setattr(main_mod, "_API_SECRET_KEY", None)
+    caplog.set_level(logging.INFO, logger="backend.observability.chat_response")
+
+    mock_result = {
+        "answer": "営業時間は9時からです。",
+        "emotion": "neutral",
+        "metadata": {
+            "category": "business_info",
+            "sources": ["enhanced_rag"],
+            "rag_fallback": False,
+            "hallucination_flag": True,
+            "ltm_store_write": "success",
+        },
+    }
+
+    with patch.object(
+        main_mod,
+        "_run_workflow_with_tracking",
+        new_callable=AsyncMock,
+        return_value=mock_result,
+    ):
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.post(
+                "/api/chat",
+                headers={"X-Request-ID": "req-obs-513"},
+                json={"query": "営業時間は？", "session_id": "s1", "language": "ja"},
+            )
+
+    assert response.status_code == 200
+    records = [
+        record
+        for record in caplog.records
+        if record.name == "backend.observability.chat_response"
+        and getattr(record, "event", None) == "chat_response"
+    ]
+    assert records
+
+    record = records[-1]
+    assert record.request_id == "req-obs-513"
+    assert record.language == "ja"
+    assert record.route == "business_info"
+    assert record.sources == ["enhanced_rag"]
+    assert record.rag_fallback is False
+    assert record.hallucination_flag is True
+    assert record.ltm_store_write == "success"
+    assert isinstance(record.latency_ms, int)
+    assert record.latency_ms >= 0
