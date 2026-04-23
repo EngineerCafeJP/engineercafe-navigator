@@ -1,10 +1,11 @@
 # ADR 009: Slow 403 responses during Cloud Run cold-start and model-load windows
 
-Date: 2026-04-22
+Date: 2026-04-22 (Proposed) / 2026-04-23 (Accepted)
 
 ## Status
 
-Proposed
+Accepted — #532 観測性 spec (docs/specs/rag-memory-observability.md) と連動して追跡する。
+実装の残タスクは #488 のコメント欄のチェックリストで管理する。
 
 ## Context
 
