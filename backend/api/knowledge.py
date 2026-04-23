@@ -474,10 +474,15 @@ async def upload_knowledge(
             supabase.table("knowledge_base").select("title").in_("title", chunk_titles).execute()
         )
         if existing.data:
-            conflicting_title = existing.data[0]["title"]
+            existing_titles = {row["title"] for row in existing.data}
+            conflicts = [
+                {"chunk_index": i, "title": chunk_titles[i]}
+                for i in range(len(chunk_titles))
+                if chunk_titles[i] in existing_titles
+            ]
             raise HTTPException(
                 status_code=409,
-                detail=f"Knowledge with title '{conflicting_title}' already exists",
+                detail={"message": "duplicate titles", "conflicts": conflicts},
             )
 
         inserted_rows: List[Dict[str, Any]] = []
@@ -559,15 +564,21 @@ async def upload_knowledge(
         except APIError as exc:
             _rollback_uploaded_chunks(supabase, inserted_ids)
             if _is_unique_violation(exc):
-                conflict_title = effective_title
-                if exc.args:
-                    conflict_title = next(
-                        (chunk_title for chunk_title in chunk_titles if chunk_title in str(exc)),
-                        effective_title,
-                    )
+                exc_str = str(exc)
+                conflict_title = next(
+                    (ct for ct in chunk_titles if ct in exc_str),
+                    effective_title,
+                )
+                conflict_index = next(
+                    (i for i, ct in enumerate(chunk_titles) if ct == conflict_title),
+                    None,
+                )
                 raise HTTPException(
                     status_code=409,
-                    detail=f"Knowledge with title '{conflict_title}' already exists",
+                    detail={
+                        "message": "duplicate titles",
+                        "conflicts": [{"chunk_index": conflict_index, "title": conflict_title}],
+                    },
                 )
             logger.error(
                 "Supabase insert failed: table=knowledge_base title=%s filename=%s error=%s",
@@ -615,7 +626,10 @@ async def upload_knowledge(
         if _is_unique_violation(e):
             raise HTTPException(
                 status_code=409,
-                detail=f"Knowledge with title '{effective_title}' already exists",
+                detail={
+                    "message": "duplicate titles",
+                    "conflicts": [{"chunk_index": None, "title": effective_title}],
+                },
             )
         logger.error(
             "Failed to upload knowledge (%s): %s; filename=%s file_type=%s content_size=%s",

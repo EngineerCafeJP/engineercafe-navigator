@@ -4,6 +4,7 @@ import {
   type KnowledgeItem,
   type KnowledgeListResponse,
   type KnowledgeResponse,
+  type KnowledgeUploadConflict,
 } from '@/types/knowledge';
 
 export type {
@@ -13,6 +14,7 @@ export type {
   KnowledgeListResponse,
   KnowledgeResponse,
 };
+export type { KnowledgeUploadConflict } from '@/types/knowledge';
 
 interface KnowledgeTemplatesResponse {
   templates: Record<string, Record<string, unknown>>;
@@ -141,6 +143,15 @@ export async function deleteKnowledge(id: string): Promise<void> {
   }
 }
 
+export class KnowledgeUploadFileError extends Error {
+  conflicts?: KnowledgeUploadConflict[];
+  constructor(detail: { message: string; conflicts?: KnowledgeUploadConflict[] }) {
+    super(detail.message);
+    this.name = 'KnowledgeUploadFileError';
+    this.conflicts = detail.conflicts;
+  }
+}
+
 export async function uploadKnowledgeFile(params: {
   file: File;
   category: string;
@@ -161,7 +172,30 @@ export async function uploadKnowledgeFile(params: {
   });
 
   if (!response.ok) {
-    throw new Error(await getErrorMessage(response, 'Failed to upload knowledge file'));
+    const text = await response.text();
+    if (text) {
+      try {
+        const data = JSON.parse(text) as {
+          detail?: string | { message: string; conflicts?: KnowledgeUploadConflict[] };
+          error?: string;
+          message?: string;
+        };
+        if (typeof data.detail === 'object' && data.detail !== null) {
+          throw new KnowledgeUploadFileError(data.detail);
+        }
+        throw new Error(
+          data.error ||
+            (typeof data.detail === 'string' ? data.detail : '') ||
+            data.message ||
+            'Failed to upload knowledge file',
+        );
+      } catch (e) {
+        if (e instanceof KnowledgeUploadFileError) throw e;
+        if (e instanceof Error) throw e;
+        throw new Error(text);
+      }
+    }
+    throw new Error('Failed to upload knowledge file');
   }
 
   const json = (await response.json()) as KnowledgeResponse | KnowledgeItem;
