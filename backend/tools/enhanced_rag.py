@@ -511,8 +511,10 @@ class EnhancedRAGSearch:
         """
         try:
             # カテゴリベースの検索
-            query_builder = self.supabase.table("knowledge_base").select(
-                "id, content, category, subcategory, language, source, metadata"
+            query_builder = (
+                self.supabase.table("knowledge_base")
+                .select("id, content, category, subcategory, language, source, metadata")
+                .filter("content_embedding", "not.is", None)
             )
 
             # カテゴリフィルタ（generalカテゴリ以外の場合）
@@ -533,6 +535,7 @@ class EnhancedRAGSearch:
                 result = (
                     self.supabase.table("knowledge_base")
                     .select("id, content, category, subcategory, language, source, metadata")
+                    .filter("content_embedding", "not.is", None)
                     .eq("language", "ja")
                     .limit(max_results)
                     .execute()

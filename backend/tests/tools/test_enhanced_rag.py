@@ -565,7 +565,14 @@ class TestTextFallbackSearch:
         mock_eq_lang.limit.return_value = mock_result
         mock_eq_cat = MagicMock()
         mock_eq_cat.eq.return_value = mock_eq_lang
+        # PR #546 (#541): _text_fallback_search now chains
+        # .filter("content_embedding", "not.is", None) after .select(...)
+        # before the category/language .eq(...) calls, so the mock chain
+        # must route through a filter node before reaching category eq.
+        mock_filter = MagicMock()
+        mock_filter.eq.return_value = mock_eq_cat
         mock_select = MagicMock()
+        mock_select.filter.return_value = mock_filter
         mock_select.eq.return_value = mock_eq_cat
         mock_table = MagicMock()
         mock_table.select.return_value = mock_select
