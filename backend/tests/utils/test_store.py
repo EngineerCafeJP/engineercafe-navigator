@@ -1,4 +1,4 @@
-"""Tests for backend.utils.store — AsyncPostgresStore singleton management."""
+"""Tests for backend.utils.store pooled AsyncPostgresStore management."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -6,6 +6,7 @@ import pytest
 
 import backend.utils.store as store_module
 from backend.utils.store import (
+    add_tcp_keepalive_params,
     close_store,
     create_store,
     get_store,
@@ -13,22 +14,55 @@ from backend.utils.store import (
 )
 
 
-def _make_mock_cm(store_instance):
-    """from_conn_string が返すコンテキストマネージャーのモックを生成"""
-    cm = MagicMock()
-    cm.__aenter__ = AsyncMock(return_value=store_instance)
-    cm.__aexit__ = AsyncMock(return_value=None)
-    return cm
+class FakePool(store_module.AsyncConnectionPool):
+    check_connection = AsyncMock()
+    instances: list["FakePool"] = []
+
+    def __init__(self, *args, **kwargs):
+        self.args = args
+        self.kwargs = kwargs
+        self.open = AsyncMock()
+        self.close = AsyncMock()
+        self.check = AsyncMock()
+        FakePool.instances.append(self)
+
+
+class FakeStore:
+    def __init__(self, conn):
+        self.conn = conn
+        self.setup = AsyncMock()
+        self.__aexit__ = AsyncMock(return_value=None)
 
 
 @pytest.fixture(autouse=True)
 def _reset_singleton():
     """各テスト前後にシングルトンをリセット"""
     store_module._store_instance = None
-    store_module._store_cm = None
+    FakePool.instances = []
     yield
     store_module._store_instance = None
-    store_module._store_cm = None
+    FakePool.instances = []
+
+
+class TestKeepaliveParams:
+    def test_adds_keepalive_params_to_empty_query(self):
+        result = add_tcp_keepalive_params("postgresql://u:p@localhost:5432/db")
+
+        assert result == (
+            "postgresql://u:p@localhost:5432/db?"
+            "keepalives=1&keepalives_idle=30&keepalives_interval=10&keepalives_count=3"
+        )
+
+    def test_preserves_existing_query_params(self):
+        result = add_tcp_keepalive_params(
+            "postgresql://u:p@localhost/db?sslmode=require&keepalives_idle=90"
+        )
+
+        assert "sslmode=require" in result
+        assert "keepalives=1" in result
+        assert "keepalives_idle=30" in result
+        assert "keepalives_interval=10" in result
+        assert "keepalives_count=3" in result
 
 
 class TestCreateStore:
@@ -48,29 +82,37 @@ class TestCreateStore:
 
     @pytest.mark.asyncio
     async def test_create_store_success(self):
-        mock_store = AsyncMock()
-        mock_store.setup = AsyncMock()
-        mock_cm = _make_mock_cm(mock_store)
+        with patch.dict("os.environ", {"SUPABASE_DB_URI": "postgresql://test@test/test"}):
+            with patch("backend.utils.store.AsyncConnectionPool", FakePool):
+                with patch("backend.utils.store.AsyncPostgresStore", FakeStore):
+                    result = await create_store()
 
-        with patch.dict("os.environ", {"SUPABASE_DB_URI": "postgresql://test:test@localhost/test"}):
-            with patch(
-                "backend.utils.store.AsyncPostgresStore.from_conn_string",
-                return_value=mock_cm,
-            ):
-                result = await create_store()
-                assert result is mock_store
-                mock_store.setup.assert_awaited_once()
-                mock_cm.__aenter__.assert_awaited_once()
+        assert isinstance(result, FakeStore)
+        assert result.conn is FakePool.instances[0]
+        result.setup.assert_awaited_once()
+        pool = FakePool.instances[0]
+        pool.open.assert_awaited_once()
+        assert pool.kwargs["min_size"] == 1
+        assert pool.kwargs["max_size"] == 5
+        assert pool.kwargs["max_idle"] == 120
+        assert pool.kwargs["timeout"] == 30
+        assert pool.kwargs["open"] is False
+        assert "keepalives_idle=30" in pool.kwargs["conninfo"]
 
     @pytest.mark.asyncio
-    async def test_create_store_connection_error(self):
+    async def test_create_store_connection_error_closes_pool(self):
+        class FailingStore(FakeStore):
+            def __init__(self, conn):
+                super().__init__(conn)
+                self.setup = AsyncMock(side_effect=Exception("Connection refused"))
+
         with patch.dict("os.environ", {"SUPABASE_DB_URI": "postgresql://bad@localhost/bad"}):
-            with patch(
-                "backend.utils.store.AsyncPostgresStore.from_conn_string",
-                side_effect=Exception("Connection refused"),
-            ):
-                with pytest.raises(ConnectionError, match="Failed to connect"):
-                    await create_store()
+            with patch("backend.utils.store.AsyncConnectionPool", FakePool):
+                with patch("backend.utils.store.AsyncPostgresStore", FailingStore):
+                    with pytest.raises(ConnectionError, match="Failed to connect"):
+                        await create_store()
+
+        FakePool.instances[0].close.assert_awaited_once()
 
 
 class TestGetStore:
@@ -78,38 +120,27 @@ class TestGetStore:
 
     @pytest.mark.asyncio
     async def test_get_store_creates_instance(self):
-        mock_store = AsyncMock()
-        mock_store.setup = AsyncMock()
-        mock_cm = _make_mock_cm(mock_store)
+        with patch.dict("os.environ", {"SUPABASE_DB_URI": "postgresql://test@test/test"}):
+            with patch("backend.utils.store.AsyncConnectionPool", FakePool):
+                with patch("backend.utils.store.AsyncPostgresStore", FakeStore):
+                    result = await get_store()
 
-        with patch.dict("os.environ", {"SUPABASE_DB_URI": "postgresql://test:test@localhost/test"}):
-            with patch(
-                "backend.utils.store.AsyncPostgresStore.from_conn_string",
-                return_value=mock_cm,
-            ):
-                result = await get_store()
-                assert result is mock_store
+        assert isinstance(result, FakeStore)
 
     @pytest.mark.asyncio
     async def test_get_store_returns_same_instance(self):
-        mock_store = AsyncMock()
-        mock_store.setup = AsyncMock()
-        mock_cm = _make_mock_cm(mock_store)
+        with patch.dict("os.environ", {"SUPABASE_DB_URI": "postgresql://test@test/test"}):
+            with patch("backend.utils.store.AsyncConnectionPool", FakePool):
+                with patch("backend.utils.store.AsyncPostgresStore", FakeStore):
+                    result1 = await get_store()
+                    result2 = await get_store()
 
-        with patch.dict("os.environ", {"SUPABASE_DB_URI": "postgresql://test:test@localhost/test"}):
-            with patch(
-                "backend.utils.store.AsyncPostgresStore.from_conn_string",
-                return_value=mock_cm,
-            ) as mock_from_conn:
-                result1 = await get_store()
-                result2 = await get_store()
-                assert result1 is result2
-                # from_conn_string は1回しか呼ばれない（シングルトン）
-                mock_from_conn.assert_called_once()
+        assert result1 is result2
+        assert len(FakePool.instances) == 1
 
     @pytest.mark.asyncio
     async def test_get_store_existing_instance(self):
-        existing = AsyncMock()
+        existing = MagicMock()
         store_module._store_instance = existing
         result = await get_store()
         assert result is existing
@@ -120,57 +151,40 @@ class TestCloseStore:
 
     @pytest.mark.asyncio
     async def test_close_store_no_instance(self):
-        # None の場合は何も起きない
         await close_store()
         assert store_module._store_instance is None
 
     @pytest.mark.asyncio
-    async def test_close_store_with_cm(self):
-        """_store_cm がある場合、__aexit__ を呼んでクリーンアップ"""
-        mock_store = AsyncMock()
-        mock_cm = MagicMock()
-        mock_cm.__aexit__ = AsyncMock(return_value=None)
+    async def test_close_store_with_pool(self):
+        pool = FakePool()
+        mock_store = FakeStore(pool)
         store_module._store_instance = mock_store
-        store_module._store_cm = mock_cm
 
         await close_store()
 
-        mock_cm.__aexit__.assert_awaited_once_with(None, None, None)
+        mock_store.__aexit__.assert_awaited_once_with(None, None, None)
+        pool.close.assert_awaited_once()
         assert store_module._store_instance is None
-        assert store_module._store_cm is None
 
     @pytest.mark.asyncio
-    async def test_close_store_without_cm(self):
-        """_store_cm が None でもインスタンスはクリーンアップされる"""
-        mock_store = AsyncMock()
+    async def test_close_store_without_pool(self):
+        mock_store = FakeStore(conn=object())
         store_module._store_instance = mock_store
-        store_module._store_cm = None
 
         await close_store()
 
+        mock_store.__aexit__.assert_awaited_once_with(None, None, None)
         assert store_module._store_instance is None
-        assert store_module._store_cm is None
 
     @pytest.mark.asyncio
     async def test_close_store_error_cleans_up(self):
-        """__aexit__ でエラーが発生してもインスタンスは None にリセット"""
-        mock_store = AsyncMock()
-        mock_cm = MagicMock()
-        mock_cm.__aexit__ = AsyncMock(side_effect=Exception("close error"))
-        store_module._store_instance = mock_store
-        store_module._store_cm = mock_cm
-
-        await close_store()
-        assert store_module._store_instance is None
-        assert store_module._store_cm is None
-
-    @pytest.mark.asyncio
-    async def test_close_store_instance_only(self):
-        """_store_cm なし・_store_instance ありでもエラーにならない"""
-        mock_store = MagicMock(spec=[])
+        pool = FakePool()
+        mock_store = FakeStore(pool)
+        mock_store.__aexit__ = AsyncMock(side_effect=Exception("close error"))
         store_module._store_instance = mock_store
 
         await close_store()
+
         assert store_module._store_instance is None
 
 
@@ -179,17 +193,15 @@ class TestResetStore:
 
     @pytest.mark.asyncio
     async def test_reset_store_calls_close(self):
-        mock_store = AsyncMock()
-        mock_cm = MagicMock()
-        mock_cm.__aexit__ = AsyncMock(return_value=None)
+        pool = FakePool()
+        mock_store = FakeStore(pool)
         store_module._store_instance = mock_store
-        store_module._store_cm = mock_cm
 
         await reset_store()
 
-        mock_cm.__aexit__.assert_awaited_once_with(None, None, None)
+        mock_store.__aexit__.assert_awaited_once_with(None, None, None)
+        pool.close.assert_awaited_once()
         assert store_module._store_instance is None
-        assert store_module._store_cm is None
 
     @pytest.mark.asyncio
     async def test_reset_store_no_instance(self):

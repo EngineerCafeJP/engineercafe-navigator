@@ -1729,9 +1729,9 @@ async def get_workflow() -> MainWorkflow:
                     logger.warning("Failed to create checkpointer: %s", e)
 
                 try:
-                    from backend.utils.store import create_store
+                    from backend.utils.store import get_store
 
-                    store = await create_store()
+                    store = await get_store()
                     logger.info("Workflow initialized with AsyncPostgresStore")
                 except ValueError:
                     logger.warning("SUPABASE_DB_URI not set, running without store.")
