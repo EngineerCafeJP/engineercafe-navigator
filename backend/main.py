@@ -789,6 +789,11 @@ async def voice_api(request: Request, body: VoiceRequest):
             emo_for_vrm = result.get("emotion") or body.emotion
             vrm_out: Optional[Dict[str, Any]] = None
             if body.includeVrmControl:
+                logger.warning(
+                    "DEPRECATED: includeVrmControl=true in /api/voice is deprecated. "
+                    "Use POST /api/character/auto instead. session=%s",
+                    body.sessionId,
+                )
                 vrm_out = await _generate_vrm_control_for_lab_tts(
                     clean_text=clean_txt,
                     emotion=emo_for_vrm if isinstance(emo_for_vrm, str) else None,
@@ -1052,6 +1057,52 @@ async def character_api(request: Request, body: CharacterRequest):
         )
     except Exception as e:
         logger.exception("Endpoint error: %s", e)
+        raise HTTPException(
+            status_code=500, detail="An internal error occurred. Please try again later."
+        )
+
+
+class CharacterAutoRequest(BaseModel):
+    """Request body for auto VRM control generation from TTS output."""
+
+    cleanText: str = Field(..., max_length=5000)
+    emotion: str = Field(default="neutral", max_length=50)
+    ttsWavB64: Optional[str] = None
+
+
+class CharacterAutoResponse(BaseModel):
+    success: bool
+    vrmControl: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+
+
+@app.post(
+    "/api/character/auto",
+    response_model=CharacterAutoResponse,
+    dependencies=[Depends(verify_api_key)],
+)
+@_rate_limit("20/minute")
+async def character_auto_api(request: Request, body: CharacterAutoRequest):
+    """Auto-generate VRM control data from TTS output.
+
+    Frontend can call this in parallel with /api/voice to avoid
+    blocking the audio response on VRM generation.
+    """
+    try:
+        vrm_result = await asyncio.wait_for(
+            _generate_vrm_control_for_lab_tts(
+                clean_text=body.cleanText,
+                emotion=body.emotion,
+                tts_wav_b64=body.ttsWavB64,
+            ),
+            timeout=15.0,
+        )
+        return CharacterAutoResponse(success=True, vrmControl=vrm_result)
+    except asyncio.TimeoutError:
+        logger.warning("Character auto VRM timed out after 15s")
+        raise HTTPException(status_code=504, detail="VRM generation timed out")
+    except Exception as e:
+        logger.exception("Character auto VRM error: %s", e)
         raise HTTPException(
             status_code=500, detail="An internal error occurred. Please try again later."
         )
