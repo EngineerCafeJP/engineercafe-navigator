@@ -23,6 +23,7 @@ tavily-python>=0.5.0
 # LangGraph Checkpointer (PostgreSQL)
 langgraph-checkpoint-postgres>=2.0.0
 psycopg[binary]>=3.1.0
+psycopg-pool>=3.1.0
 
 # Audio processing (STT/TTS)
 vosk>=0.3.45
