@@ -37,6 +37,7 @@ from backend.agents.orchestrator_agent import (
 )
 from backend.agents.orchestrator_agent import OrchestratorAgent as RoutingLogicAgent
 from backend.config.routing_constants import GREETING_KEYWORDS, match_keywords
+from backend.services.memory_promoter import MemoryPromoter
 from backend.utils.store import store_with_retry
 
 logger = logging.getLogger(__name__)
@@ -1336,8 +1337,14 @@ class MainWorkflow:
                         "keep in mind",
                     )
 
+                    # Gate fast-path with the same actionable-content rule as
+                    # MemoryPromoter so that empty / filler strings (e.g. "please",
+                    # "ください", single characters) never reach LTM.
+                    if not MemoryPromoter._has_actionable_content(memory):
+                        return False
+
                     if memory_type == "explicit_remember":
-                        return confidence >= 0.5 and content not in {"ください", "お願いします"}
+                        return confidence >= 0.5
                     if any(keyword in explicit_text for keyword in explicit_keywords):
                         return confidence >= 0.8
                     return memory_type == "visitor_name" and confidence >= 0.9
