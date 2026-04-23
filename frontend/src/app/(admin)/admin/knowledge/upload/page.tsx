@@ -4,8 +4,15 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Toaster, toast } from 'react-hot-toast';
-import { downloadTemplate, getKnowledgeEditorConfig, uploadKnowledgeFile, KnowledgeUploadFileError } from '@/lib/api/knowledge';
+import {
+  KnowledgeUploadFileError,
+  downloadTemplate,
+  getKnowledgeEditorConfig,
+  previewKnowledgeFile,
+  uploadKnowledgeFile,
+} from '@/lib/api/knowledge';
 import type { KnowledgeEditorConfig } from '@/types/knowledge';
+import type { KnowledgePreviewResult } from '@/lib/api/knowledge';
 import {
   transformKnowledgeUploadData,
   validateKnowledgeUploadForm,
@@ -31,6 +38,8 @@ export default function UploadKnowledgePage() {
   const [configError, setConfigError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [previewResult, setPreviewResult] = useState<KnowledgePreviewResult | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   useEffect(() => {
     const loadConfig = async () => {
@@ -88,6 +97,22 @@ export default function UploadKnowledgePage() {
 
     if (!title) {
       setTitle(selectedFile.name.replace(/\.[^.]+$/, ''));
+    }
+
+    setPreviewLoading(true);
+    setPreviewResult(null);
+    try {
+      const result = await previewKnowledgeFile({
+        file: selectedFile,
+        language,
+        category: category || undefined,
+      });
+      setPreviewResult(result);
+    } catch (err) {
+      console.error('Preview failed:', err);
+      setPreviewResult(null);
+    } finally {
+      setPreviewLoading(false);
     }
   };
 
@@ -194,6 +219,8 @@ export default function UploadKnowledgePage() {
               editorConfig={editorConfig}
               configLoading={configLoading}
               uploading={uploading}
+              previewResult={previewResult}
+              previewLoading={previewLoading}
               onFileSelect={handleFileSelect}
               onDragOver={() => setIsDragOver(true)}
               onDragLeave={() => setIsDragOver(false)}

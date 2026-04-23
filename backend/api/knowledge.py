@@ -166,6 +166,18 @@ def _rollback_uploaded_chunks(supabase: Any, inserted_ids: List[str]) -> None:
             logger.error("Failed to rollback chunk %s", row_id)
 
 
+def _build_duplicate_conflict(title: str, chunk_index: Optional[int] = None) -> Dict[str, Any]:
+    """重複conflictオブジェクトを構築"""
+    return {"title": title, "chunk_index": chunk_index}
+
+
+def _build_duplicate_conflict_detail(
+    conflicts: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """重複エラーの構造化detailを構築"""
+    return {"message": "duplicate titles", "conflicts": conflicts}
+
+
 def _build_knowledge_categories_response(supabase: Any) -> KnowledgeCategoriesResponse:
     """カテゴリ関連の編集設定データを構築する
 
@@ -331,7 +343,8 @@ async def create_knowledge(request: Request, body: KnowledgeCreateRequest):
         existing = supabase.table("knowledge_base").select("id").eq("title", body.title).execute()
         if existing.data:
             raise HTTPException(
-                status_code=409, detail=f"Knowledge with title '{body.title}' already exists"
+                status_code=409,
+                detail=_build_duplicate_conflict_detail([_build_duplicate_conflict(body.title)]),
             )
 
         # Embedding生成
@@ -367,7 +380,7 @@ async def create_knowledge(request: Request, body: KnowledgeCreateRequest):
         if _is_unique_violation(e):
             raise HTTPException(
                 status_code=409,
-                detail=f"Knowledge with title '{body.title}' already exists",
+                detail=_build_duplicate_conflict_detail([_build_duplicate_conflict(body.title)]),
             )
         logger.error("Failed to create knowledge: %s", e)
         raise HTTPException(status_code=500, detail="Failed to create knowledge entry")
@@ -667,6 +680,66 @@ async def upload_knowledge(
         raise HTTPException(status_code=500, detail="Failed to upload knowledge entry")
 
 
+@router.post("/knowledge/preview", status_code=200)
+@rate_limit("10/minute")
+async def preview_knowledge(
+    request: Request,
+    file: UploadFile = File(...),
+    language: str = Form(default="ja"),
+    category: str = Form(default=""),
+):
+    """ファイルプレビュー（parse + chunk の dry run）"""
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Filename is required")
+
+    if language not in ("ja", "en"):
+        raise HTTPException(status_code=400, detail="language must be 'ja' or 'en'")
+
+    file_type = detect_file_type(file.filename)
+    if file_type not in ("markdown", "pdf"):
+        raise HTTPException(
+            status_code=400,
+            detail="Unsupported file type: {}. Only .md and .pdf are supported.".format(
+                file.filename
+            ),
+        )
+
+    content_bytes = await file.read()
+    if not content_bytes:
+        raise HTTPException(status_code=400, detail="File is empty")
+    if len(content_bytes) > MAX_UPLOAD_SIZE:
+        raise HTTPException(
+            status_code=400,
+            detail="File too large. Maximum size is {}MB.".format(MAX_UPLOAD_SIZE // (1024 * 1024)),
+        )
+
+    try:
+        if file_type == "markdown":
+            parsed_content = parse_markdown(content_bytes)
+        else:
+            parsed_content = parse_pdf(content_bytes)
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+
+    if not parsed_content.strip():
+        raise HTTPException(status_code=400, detail="No text content extracted from file")
+
+    chunks = chunk_text(parsed_content)
+    if not chunks:
+        raise HTTPException(status_code=400, detail="No text content extracted from file")
+
+    base_title = file.filename.rsplit(".", 1)[0]
+    chunk_titles = [_chunk_title(base_title, index, len(chunks)) for index in range(len(chunks))]
+
+    return {
+        "file_type": file_type,
+        "extracted_preview": parsed_content[:1500],
+        "estimated_chunks": len(chunks),
+        "chunk_titles": chunk_titles,
+        "total_chars": len(parsed_content),
+    }
+
+
 @router.put("/knowledge/{knowledge_id}", response_model=KnowledgeResponse)
 @rate_limit("30/minute")
 async def update_knowledge(request: Request, knowledge_id: str, body: KnowledgeUpdateRequest):
@@ -689,7 +762,9 @@ async def update_knowledge(request: Request, knowledge_id: str, body: KnowledgeU
             if dup_check.data:
                 raise HTTPException(
                     status_code=409,
-                    detail=f"Knowledge with title '{body.title}' already exists",
+                    detail=_build_duplicate_conflict_detail(
+                        [_build_duplicate_conflict(body.title)]
+                    ),
                 )
 
         # 更新データ構築（Noneでない項目のみ）
@@ -738,7 +813,7 @@ async def update_knowledge(request: Request, knowledge_id: str, body: KnowledgeU
         if _is_unique_violation(e):
             raise HTTPException(
                 status_code=409,
-                detail=f"Knowledge with title '{body.title}' already exists",
+                detail=_build_duplicate_conflict_detail([_build_duplicate_conflict(body.title)]),
             )
         logger.error("Failed to update knowledge %s: %s", knowledge_id, e)
         raise HTTPException(status_code=500, detail="Failed to update knowledge entry")

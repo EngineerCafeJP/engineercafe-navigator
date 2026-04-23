@@ -327,6 +327,46 @@ def test_create_knowledge_duplicate_title(mock_get_sb, mock_embed):
     )
 
     assert response.status_code == 409
+    assert response.json()["detail"] == {
+        "message": "duplicate titles",
+        "conflicts": [{"title": "テスト記事", "chunk_index": None}],
+    }
+
+
+@patch("backend.api.knowledge.generate_embedding", new_callable=AsyncMock)
+@patch("backend.api.knowledge._get_supabase")
+def test_create_knowledge_unique_violation_returns_structured_detail(mock_get_sb, mock_embed):
+    """insert時のユニーク制約違反も構造化された409 detailを返す"""
+    mock_embed.return_value = FAKE_EMBEDDING
+    mock_sb = _mock_supabase()
+    mock_get_sb.return_value = mock_sb
+
+    mock_sb.table.return_value.select.return_value.eq.return_value.execute.return_value = (
+        _mock_table_result([])
+    )
+    mock_sb.table.return_value.insert.return_value.execute.side_effect = APIError(
+        {
+            "message": 'duplicate key value violates unique constraint for "テスト記事"',
+            "code": "23505",
+            "hint": "",
+            "details": "",
+        }
+    )
+
+    response = client.post(
+        "/api/knowledge",
+        json={
+            "title": "テスト記事",
+            "content": "テスト内容です",
+            "category": "general",
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == {
+        "message": "duplicate titles",
+        "conflicts": [{"title": "テスト記事", "chunk_index": None}],
+    }
 
 
 # =============================================================================
@@ -361,6 +401,38 @@ def test_update_knowledge(mock_get_sb, mock_embed):
     body = response.json()
     assert body["success"] is True
     mock_embed.assert_called_once()
+
+
+@patch("backend.api.knowledge.generate_embedding", new_callable=AsyncMock)
+@patch("backend.api.knowledge._get_supabase")
+def test_update_knowledge_unique_violation_returns_structured_detail(mock_get_sb, mock_embed):
+    """update時のユニーク制約違反も構造化された409 detailを返す"""
+    mock_embed.return_value = FAKE_EMBEDDING
+    mock_sb = _mock_supabase()
+    mock_get_sb.return_value = mock_sb
+
+    mock_sb.table.return_value.select.return_value.eq.return_value.execute.return_value = (
+        _mock_table_result([SAMPLE_ROW])
+    )
+    mock_sb.table.return_value.update.return_value.eq.return_value.execute.side_effect = APIError(
+        {
+            "message": 'duplicate key value violates unique constraint for "更新後タイトル"',
+            "code": "23505",
+            "hint": "",
+            "details": "",
+        }
+    )
+
+    response = client.put(
+        f"/api/knowledge/{SAMPLE_ROW['id']}",
+        json={"title": "更新後タイトル", "content": "更新された内容"},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == {
+        "message": "duplicate titles",
+        "conflicts": [{"title": "更新後タイトル", "chunk_index": None}],
+    }
 
 
 # =============================================================================
@@ -867,3 +939,74 @@ def test_upload_all_chunks_succeed_returns_200(mock_get_sb, mock_embed, mock_par
     body = response.json()
     assert body["success"] is True
     assert body["data"]["metadata"].get("failed_chunks", []) == []
+
+
+# =============================================================================
+# POST /api/knowledge/preview
+# =============================================================================
+
+
+@patch("backend.api.knowledge.parse_markdown")
+@patch("backend.api.knowledge.chunk_text")
+@patch("backend.api.knowledge._get_supabase")
+def test_preview_markdown(mock_get_sb, mock_chunk_text, mock_parse_md):
+    """Markdown ファイルのプレビュー"""
+    mock_parse_md.return_value = "Parsed markdown content for preview"
+    mock_chunk_text.return_value = ["Chunk one", "Chunk two"]
+    mock_sb = _mock_supabase()
+    mock_get_sb.return_value = mock_sb
+
+    response = client.post(
+        "/api/knowledge/preview",
+        data={"language": "ja"},
+        files={"file": ("test_doc.md", io.BytesIO(b"# Test"), "text/markdown")},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["file_type"] == "markdown"
+    assert body["extracted_preview"] == "Parsed markdown content for preview"[:1500]
+    assert body["estimated_chunks"] == 2
+    assert body["chunk_titles"] == ["test_doc (part 1)", "test_doc (part 2)"]
+    assert body["total_chars"] == len("Parsed markdown content for preview")
+    mock_sb.table.return_value.insert.assert_not_called()
+
+
+@patch("backend.api.knowledge.parse_pdf")
+@patch("backend.api.knowledge.chunk_text")
+@patch("backend.api.knowledge._get_supabase")
+def test_preview_pdf(mock_get_sb, mock_chunk_text, mock_parse_pdf):
+    """PDF ファイルのプレビュー"""
+    mock_parse_pdf.return_value = "Parsed PDF content for preview"
+    mock_chunk_text.return_value = ["Single chunk"]
+    mock_sb = _mock_supabase()
+    mock_get_sb.return_value = mock_sb
+
+    response = client.post(
+        "/api/knowledge/preview",
+        data={"language": "ja"},
+        files={"file": ("document.pdf", io.BytesIO(b"%PDF-1.4"), "application/pdf")},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["file_type"] == "pdf"
+    assert body["estimated_chunks"] == 1
+    assert body["chunk_titles"] == ["document"]
+    mock_sb.table.return_value.insert.assert_not_called()
+
+
+@patch("backend.api.knowledge._get_supabase")
+def test_preview_rejects_unsupported_file_type(mock_get_sb):
+    """プレビューでサポート外のファイル形式は400"""
+    mock_sb = _mock_supabase()
+    mock_get_sb.return_value = mock_sb
+
+    response = client.post(
+        "/api/knowledge/preview",
+        data={"language": "ja"},
+        files={"file": ("image.png", io.BytesIO(b"fake"), "image/png")},
+    )
+
+    assert response.status_code == 400
+    assert "Unsupported file type" in response.json()["detail"]

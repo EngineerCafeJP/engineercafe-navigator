@@ -5,6 +5,7 @@ import {
   type KnowledgeListResponse,
   type KnowledgeResponse,
   type KnowledgeUploadConflict,
+  type KnowledgeUploadError,
 } from '@/types/knowledge';
 
 export type {
@@ -13,8 +14,9 @@ export type {
   KnowledgeItem,
   KnowledgeListResponse,
   KnowledgeResponse,
+  KnowledgeUploadConflict,
+  KnowledgeUploadError,
 };
-export type { KnowledgeUploadConflict } from '@/types/knowledge';
 
 interface KnowledgeTemplatesResponse {
   templates: Record<string, Record<string, unknown>>;
@@ -145,7 +147,8 @@ export async function deleteKnowledge(id: string): Promise<void> {
 
 export class KnowledgeUploadFileError extends Error {
   conflicts?: KnowledgeUploadConflict[];
-  constructor(detail: { message: string; conflicts?: KnowledgeUploadConflict[] }) {
+
+  constructor(detail: KnowledgeUploadError) {
     super(detail.message);
     this.name = 'KnowledgeUploadFileError';
     this.conflicts = detail.conflicts;
@@ -176,7 +179,7 @@ export async function uploadKnowledgeFile(params: {
     if (text) {
       try {
         const data = JSON.parse(text) as {
-          detail?: string | { message: string; conflicts?: KnowledgeUploadConflict[] };
+          detail?: string | KnowledgeUploadError;
           error?: string;
           message?: string;
         };
@@ -241,4 +244,36 @@ export async function downloadTemplate(params: {
   }
 
   return response.blob();
+}
+
+export interface KnowledgePreviewResult {
+  readonly file_type: 'markdown' | 'pdf';
+  readonly extracted_preview: string;
+  readonly estimated_chunks: number;
+  readonly chunk_titles: readonly string[];
+  readonly total_chars: number;
+}
+
+export async function previewKnowledgeFile(params: {
+  file: File;
+  language: 'ja' | 'en';
+  category?: string;
+}): Promise<KnowledgePreviewResult> {
+  const formData = new FormData();
+  formData.append('file', params.file);
+  formData.append('language', params.language);
+  if (params.category) {
+    formData.append('category', params.category);
+  }
+
+  const response = await fetch('/api/admin/knowledge/preview', {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    throw new Error(await getErrorMessage(response, 'Failed to preview knowledge file'));
+  }
+
+  return (await response.json()) as KnowledgePreviewResult;
 }

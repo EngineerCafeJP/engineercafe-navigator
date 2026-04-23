@@ -1,4 +1,5 @@
 import type { KnowledgeEditorConfig } from '@/types/knowledge';
+import type { KnowledgePreviewResult } from '@/lib/api/knowledge';
 
 interface Preview {
   filename: string;
@@ -17,7 +18,9 @@ interface KnowledgeUploadFormProps {
   editorConfig: KnowledgeEditorConfig | null;
   configLoading: boolean;
   uploading: boolean;
-  onFileSelect: (file: File) => void;
+  previewResult: KnowledgePreviewResult | null;
+  previewLoading: boolean;
+  onFileSelect: (file: File) => Promise<void> | void;
   onDragOver: () => void;
   onDragLeave: () => void;
   onCategoryChange: (category: string) => void;
@@ -38,6 +41,8 @@ export function KnowledgeUploadForm({
   editorConfig,
   configLoading,
   uploading,
+  previewResult,
+  previewLoading,
   onFileSelect,
   onDragOver,
   onDragLeave,
@@ -123,11 +128,73 @@ export function KnowledgeUploadForm({
                 )}
               </div>
             </>
-          ) : (
-            <p className="text-xs text-gray-500 italic">
-              PDF ファイルのため、テキストプレビューは表示されません
-            </p>
-          )}
+          ) : null}
+
+          <div className="space-y-3 border-t border-gray-200 pt-3">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-xs font-medium text-gray-600">登録前プレビュー</span>
+              {previewResult ? (
+                <span className="text-xs text-gray-500">
+                  {previewResult.file_type === 'pdf' ? 'PDF' : 'Markdown'}
+                </span>
+              ) : null}
+            </div>
+
+            {previewLoading ? (
+              <div className="bg-white border border-gray-100 rounded p-3 space-y-2 animate-pulse">
+                <div className="h-3 w-28 rounded bg-gray-200" />
+                <div className="h-3 w-full rounded bg-gray-200" />
+                <div className="h-3 w-5/6 rounded bg-gray-200" />
+              </div>
+            ) : previewResult ? (
+              <div className="space-y-3">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="bg-white border border-gray-100 rounded p-3">
+                    <div className="text-[11px] font-medium text-gray-500 uppercase tracking-wide">
+                      推定チャンク数
+                    </div>
+                    <div className="mt-1 text-sm font-semibold text-gray-900">
+                      {previewResult.estimated_chunks.toLocaleString('ja-JP')}
+                    </div>
+                  </div>
+                  <div className="bg-white border border-gray-100 rounded p-3">
+                    <div className="text-[11px] font-medium text-gray-500 uppercase tracking-wide">
+                      抽出文字数
+                    </div>
+                    <div className="mt-1 text-sm font-semibold text-gray-900">
+                      {previewResult.total_chars.toLocaleString('ja-JP')}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white border border-gray-100 rounded p-3 space-y-2">
+                  <div className="text-[11px] font-medium text-gray-500 uppercase tracking-wide">
+                    抽出テキスト（先頭 1,500 文字）
+                  </div>
+                  <div className="text-xs text-gray-600 whitespace-pre-wrap max-h-40 overflow-y-auto">
+                    {previewResult.extracted_preview}
+                  </div>
+                </div>
+
+                <div className="bg-white border border-gray-100 rounded p-3 space-y-2">
+                  <div className="text-[11px] font-medium text-gray-500 uppercase tracking-wide">
+                    登録予定タイトル
+                  </div>
+                  <ul className="space-y-1 text-xs text-gray-600">
+                    {previewResult.chunk_titles.map((chunkTitle) => (
+                      <li key={chunkTitle} className="rounded bg-gray-50 px-2 py-1">
+                        {chunkTitle}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs text-gray-500 italic">
+                ファイル解析プレビューを取得できませんでした
+              </p>
+            )}
+          </div>
         </div>
       )}
 
