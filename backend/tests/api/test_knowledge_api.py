@@ -14,11 +14,22 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from backend.api.knowledge import router as knowledge_router
+from backend.utils.rate_limit import limiter
 
 # main.pyの全体インポートを避け、knowledge routerのみテスト用appに登録
 _test_app = FastAPI()
 _test_app.include_router(knowledge_router, prefix="/api")
 client = TestClient(_test_app)
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limiter():
+    """Reset rate limiter state between tests to avoid 429 flaps."""
+    if limiter is not None:
+        try:
+            limiter.reset()
+        except Exception:
+            pass
 
 # =============================================================================
 # Test fixtures
@@ -586,7 +597,7 @@ def test_upload_rejects_duplicate_chunk_title_from_batch_check(
 @patch("backend.api.knowledge.generate_embedding", new_callable=AsyncMock)
 @patch("backend.api.knowledge._get_supabase")
 def test_upload_continues_when_embedding_times_out(mock_get_sb, mock_embed, mock_parse_md):
-    """embedding timeout時も保存は継続し、embeddingなしで登録する"""
+    """Single chunk with embedding timeout → 503 (all chunks failed)"""
     mock_embed.side_effect = httpx.TimeoutException("Request timed out")
     mock_parse_md.return_value = "Parsed markdown content"
     mock_sb = _mock_supabase()
@@ -595,15 +606,6 @@ def test_upload_continues_when_embedding_times_out(mock_get_sb, mock_embed, mock
     mock_sb.table.return_value.select.return_value.in_.return_value.execute.return_value = (
         _mock_table_result([])
     )
-    uploaded_row = {
-        **SAMPLE_ROW,
-        "title": "timeout_doc",
-        "content": "Parsed markdown content",
-        "source": "file:timeout_doc.md",
-    }
-    mock_sb.table.return_value.insert.return_value.execute.return_value = _mock_table_result(
-        [uploaded_row]
-    )
 
     response = client.post(
         "/api/knowledge/upload",
@@ -611,9 +613,9 @@ def test_upload_continues_when_embedding_times_out(mock_get_sb, mock_embed, mock
         files={"file": ("timeout_doc.md", io.BytesIO(b"# Test"), "text/markdown")},
     )
 
-    assert response.status_code == 201
-    insert_data = mock_sb.table.return_value.insert.call_args.args[0]
-    assert "content_embedding" not in insert_data
+    assert response.status_code == 503
+    assert "unavailable" in response.json()["detail"].lower()
+    mock_sb.table.return_value.insert.assert_not_called()
 
 
 @patch("backend.api.knowledge.parse_markdown")
@@ -746,3 +748,112 @@ def test_upload_returns_504_on_overall_timeout(mock_wait_for):
 
     assert response.status_code == 504
     assert response.json()["detail"] == "Knowledge upload timed out"
+
+
+# =============================================================================
+# #541: Embedding null-safe + upload fault tolerance
+# =============================================================================
+
+
+@patch("backend.api.knowledge.parse_markdown")
+@patch("backend.api.knowledge.generate_embedding", new_callable=AsyncMock)
+@patch("backend.api.knowledge._get_supabase")
+def test_upload_all_chunks_timeout_returns_503(mock_get_sb, mock_embed, mock_parse_md):
+    """All chunk embeddings timeout → 503 Service Unavailable"""
+    mock_embed.side_effect = httpx.TimeoutException("Request timed out")
+    mock_parse_md.return_value = "Parsed markdown content"
+    mock_sb = _mock_supabase()
+    mock_get_sb.return_value = mock_sb
+
+    mock_sb.table.return_value.select.return_value.in_.return_value.execute.return_value = (
+        _mock_table_result([])
+    )
+
+    response = client.post(
+        "/api/knowledge/upload",
+        data={"category": "general", "language": "ja"},
+        files={"file": ("all_timeout.md", io.BytesIO(b"# Test"), "text/markdown")},
+    )
+
+    assert response.status_code == 503
+    assert "unavailable" in response.json()["detail"].lower()
+    mock_sb.table.return_value.insert.assert_not_called()
+
+
+@patch("backend.api.knowledge.chunk_text")
+@patch("backend.api.knowledge.parse_markdown")
+@patch("backend.api.knowledge.generate_embedding", new_callable=AsyncMock)
+@patch("backend.api.knowledge._get_supabase")
+def test_upload_partial_timeout_returns_200_with_failed_chunks(
+    mock_get_sb, mock_embed, mock_parse_md, mock_chunk_text
+):
+    """Some chunk embeddings timeout → 200 with failed_chunks metadata"""
+    mock_parse_md.return_value = "Parsed content"
+    mock_chunk_text.return_value = ["Chunk A", "Chunk B", "Chunk C"]
+    mock_embed.side_effect = [FAKE_EMBEDDING, httpx.TimeoutException("timeout"), FAKE_EMBEDDING]
+    mock_sb = _mock_supabase()
+    mock_get_sb.return_value = mock_sb
+
+    mock_sb.table.return_value.select.return_value.in_.return_value.execute.return_value = (
+        _mock_table_result([])
+    )
+    first_row = {**SAMPLE_ROW, "title": "partial_doc (part 1)", "content": "Chunk A"}
+    third_row = {**SAMPLE_ROW, "title": "partial_doc (part 3)", "content": "Chunk C"}
+    mock_sb.table.return_value.insert.return_value.execute.side_effect = [
+        _mock_table_result([first_row]),
+        _mock_table_result([third_row]),
+    ]
+
+    response = client.post(
+        "/api/knowledge/upload",
+        data={"category": "general", "language": "ja"},
+        files={"file": ("partial_doc.md", io.BytesIO(b"# Test"), "text/markdown")},
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["success"] is True
+    assert body["data"]["metadata"]["failed_chunks"] == [1]
+    assert body["data"]["metadata"]["chunks_created"] == 3
+    assert mock_sb.table.return_value.insert.call_count == 2
+
+
+@patch("backend.api.knowledge.parse_markdown")
+@patch("backend.api.knowledge.generate_embedding", new_callable=AsyncMock)
+@patch("backend.api.knowledge._get_supabase")
+def test_upload_all_chunks_succeed_returns_200(mock_get_sb, mock_embed, mock_parse_md):
+    """All chunks succeed → 200, failed_chunks is empty"""
+    mock_embed.return_value = FAKE_EMBEDDING
+    mock_parse_md.return_value = "Parsed markdown content"
+    mock_sb = _mock_supabase()
+    mock_get_sb.return_value = mock_sb
+
+    mock_sb.table.return_value.select.return_value.in_.return_value.execute.return_value = (
+        _mock_table_result([])
+    )
+    uploaded_row = {
+        **SAMPLE_ROW,
+        "title": "success_doc",
+        "content": "Parsed markdown content",
+        "source": "file:success_doc.md",
+        "metadata": {
+            "original_filename": "success_doc.md",
+            "file_type": "markdown",
+            "chunk_index": 0,
+            "total_chunks": 1,
+        },
+    }
+    mock_sb.table.return_value.insert.return_value.execute.return_value = _mock_table_result(
+        [uploaded_row]
+    )
+
+    response = client.post(
+        "/api/knowledge/upload",
+        data={"category": "general", "language": "ja"},
+        files={"file": ("success_doc.md", io.BytesIO(b"# Test"), "text/markdown")},
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["success"] is True
+    assert body["data"]["metadata"].get("failed_chunks", []) == []

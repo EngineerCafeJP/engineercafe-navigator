@@ -483,6 +483,7 @@ async def upload_knowledge(
         inserted_rows: List[Dict[str, Any]] = []
         inserted_ids: List[str] = []
         total_chunks = len(chunks)
+        failed_chunk_indices: List[int] = []
 
         try:
             for index, chunk_content in enumerate(chunks):
@@ -532,6 +533,16 @@ async def upload_knowledge(
                     )
                     embedding = []
 
+                if not embedding:
+                    logger.warning(
+                        "Skipping chunk %d/%d (no embedding): title=%s",
+                        index + 1,
+                        total_chunks,
+                        chunk_title,
+                    )
+                    failed_chunk_indices.append(index)
+                    continue
+
                 insert_data: Dict[str, Any] = {
                     "title": chunk_title,
                     "content": chunk_content,
@@ -539,6 +550,7 @@ async def upload_knowledge(
                     "subcategory": subcategory,
                     "language": language,
                     "source": f"file:{file.filename}",
+                    "content_embedding": embedding,
                     "metadata": {
                         "original_filename": file.filename,
                         "file_type": file_type,
@@ -547,8 +559,6 @@ async def upload_knowledge(
                         **metadata_payload,
                     },
                 }
-                if embedding:
-                    insert_data["content_embedding"] = embedding
 
                 result = supabase.table("knowledge_base").insert(insert_data).execute()
                 if not result.data:
@@ -589,9 +599,24 @@ async def upload_knowledge(
             _rollback_uploaded_chunks(supabase, inserted_ids)
             raise
 
+        if failed_chunk_indices:
+            if len(failed_chunk_indices) == total_chunks:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Embedding service unavailable for all chunks",
+                )
+            logger.warning(
+                "Partial embedding failure: %d/%d chunks inserted, %d skipped, failed_indices=%s",
+                total_chunks - len(failed_chunk_indices),
+                total_chunks,
+                len(failed_chunk_indices),
+                failed_chunk_indices,
+            )
+
         response_row = dict(inserted_rows[0])
         response_metadata = dict(response_row.get("metadata") or {})
         response_metadata["chunks_created"] = total_chunks
+        response_metadata["failed_chunks"] = failed_chunk_indices
         response_row["metadata"] = response_metadata
 
         return KnowledgeResponse(
