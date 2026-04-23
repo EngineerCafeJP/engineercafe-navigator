@@ -275,6 +275,23 @@ entries:
       【開館時間】9:00〜22:00（休館: 毎月最終月曜日、年末年始）
       【対象者】現役エンジニア、エンジニアを目指す学生、フリーランス、海外エンジニアなど
       エンジニアリングに関わるすべての方がご利用いただけます。
+    content_en: >
+      Welcome to Engineer Cafe! Here is a guide for first-time visitors.
+      What you can do: Free coworking with Wi-Fi and power outlets, join events
+      (hackathons, study groups), use 3D printers and laser cutters (first-time
+      training required, equipment is free), career and tech consultation with
+      Community Managers (1:00 PM - 9:00 PM), food and drinks at cafe&bar saino,
+      networking with fellow engineers.
+      First-time registration steps:
+      1. Visit the 1F reception desk.
+      2. Fill out the registration form (5-10 min, free, no ID required).
+      3. Receive a briefing on facility rules.
+      4. Get your member number and start using the space!
+      Returning visitors: Just give your member number at reception.
+      Hours: 9:00 AM - 10:00 PM. Closed on the last Monday of each month and
+      Dec 29 - Jan 3.
+      Open to all engineers: working engineers, students, freelancers,
+      and international engineers.
     category: "general"
     tags: ["welcome", "first-time", "reception", "guide", "overview", "engineer-cafe"]
     priority: 90

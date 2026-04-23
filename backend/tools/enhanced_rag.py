@@ -119,6 +119,15 @@ QUERY_EXPANSION_MAP: Dict[str, List[str]] = {
     "와이파이": ["Wi-Fi", "WiFi", "ネットワーク"],
     "이벤트": ["イベント", "セミナー", "勉強会"],
     "회의실": ["会議室", "meeting room", "予約"],
+    # English → Japanese keyword expansion (registration / membership)
+    "register": ["利用登録", "登録", "会員", "初回", "サインアップ"],
+    "membership": ["会員", "利用登録", "会員番号", "登録"],
+    "sign up": ["利用登録", "登録", "初回", "会員"],
+    "signing up": ["利用登録", "登録", "初回"],
+    "become a member": ["会員", "利用登録", "登録", "初回"],
+    "how to join": ["利用方法", "利用登録", "参加", "登録"],
+    "first time": ["初回", "初めて", "利用登録"],
+    "member number": ["会員番号", "受付", "受付カード"],
     # Chinese → Japanese keyword expansion
     "营业时间": ["営業時間", "開館時間"],
     "费用": ["料金", "値段", "無料"],
