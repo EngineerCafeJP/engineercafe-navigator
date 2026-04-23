@@ -293,6 +293,61 @@ class TestLocalSTTClient:
 
 
 # ==============================================================================
+# Resample Tests
+# ==============================================================================
+
+
+class TestResampleTo16khz:
+    """Tests for _resample_to_16khz static method."""
+
+    def test_passthrough_16khz(self):
+        """16kHz audio is returned unchanged."""
+        samples = np.zeros(16000, dtype=np.int16)
+        result_frames, result_rate = LocalSTTClient._resample_to_16khz(samples.tobytes(), 16000)
+        assert result_rate == 16000
+        assert result_frames == samples.tobytes()
+
+    def test_resample_22050hz_to_16khz(self):
+        """22050Hz audio (Piper output) is resampled to 16kHz."""
+        orig_rate = 22050
+        duration = 0.5
+        num_samples = int(orig_rate * duration)
+        t = np.linspace(0, duration, num_samples, endpoint=False)
+        tone = (np.sin(2 * np.pi * 440 * t) * 16000).astype(np.int16)
+        orig_bytes = tone.tobytes()
+
+        result_frames, result_rate = LocalSTTClient._resample_to_16khz(orig_bytes, orig_rate)
+        assert result_rate == 16000
+
+        result_samples = np.frombuffer(result_frames, dtype=np.int16)
+        expected_len = int(num_samples * 16000 / orig_rate)
+        assert abs(len(result_samples) - expected_len) <= 2
+
+    def test_resample_8khz_to_16khz(self):
+        """8kHz audio is upsampled to 16kHz."""
+        orig_rate = 8000
+        samples = np.ones(8000, dtype=np.int16) * 1000
+        result_frames, result_rate = LocalSTTClient._resample_to_16khz(samples.tobytes(), orig_rate)
+        assert result_rate == 16000
+        result_samples = np.frombuffer(result_frames, dtype=np.int16)
+        assert len(result_samples) == 16000
+
+    def test_resample_preserves_dtype(self):
+        """Resampled output is int16 (matches WAV 16-bit PCM)."""
+        samples = np.ones(22050, dtype=np.int16) * 5000
+        result_frames, _ = LocalSTTClient._resample_to_16khz(samples.tobytes(), 22050)
+        result_samples = np.frombuffer(result_frames, dtype=np.int16)
+        assert result_samples.dtype == np.int16
+
+    def test_resample_silence(self):
+        """Resampling silence produces silence."""
+        silence = np.zeros(22050, dtype=np.int16)
+        result_frames, _ = LocalSTTClient._resample_to_16khz(silence.tobytes(), 22050)
+        result_samples = np.frombuffer(result_frames, dtype=np.int16)
+        np.testing.assert_array_equal(result_samples, np.zeros_like(result_samples))
+
+
+# ==============================================================================
 # Confidence Extraction Tests
 # ==============================================================================
 

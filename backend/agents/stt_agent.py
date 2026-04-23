@@ -473,6 +473,38 @@ class LocalSTTClient:
         logger.info("Loaded Vosk %s model from %s", lang, model_path)
         return self._models[lang]
 
+    @staticmethod
+    def _resample_to_16khz(frames: bytes, orig_rate: int) -> tuple[bytes, int]:
+        """Resample PCM 16-bit mono audio to 16kHz using scipy.
+
+        Args:
+            frames: Raw PCM bytes (16-bit signed integers).
+            orig_rate: Original sample rate in Hz.
+
+        Returns:
+            Tuple of (resampled_frames_bytes, 16000).
+        """
+        if orig_rate == 16000:
+            return frames, 16000
+
+        from scipy.signal import resample_poly
+        from math import gcd
+
+        g = gcd(16000, orig_rate)
+        up = 16000 // g
+        down = orig_rate // g
+
+        audio = np.frombuffer(frames, dtype=np.int16).astype(np.float32)
+        resampled = resample_poly(audio, up, down)
+        resampled = np.clip(resampled, -32768, 32767).astype(np.int16)
+        logger.info(
+            "Resampled audio from %dHz to 16000Hz (%d -> %d samples)",
+            orig_rate,
+            len(audio),
+            len(resampled),
+        )
+        return resampled.tobytes(), 16000
+
     def _sync_transcribe(
         self,
         audio_data: bytes,
@@ -482,6 +514,7 @@ class LocalSTTClient:
         """Synchronous Vosk transcription (called via thread pool).
 
         注意: 入力は WAV (PCM) で、可能であれば 16kHz, 16bit, mono を推奨します。
+        非16kHz音声は自動的に16kHzにリサンプルされます。
         """
         import wave
 
@@ -499,10 +532,11 @@ class LocalSTTClient:
             frames = wf.readframes(wf.getnframes())
 
         if sample_rate != 16000:
-            logger.warning(
-                "Received sample rate %dHz — Vosk expects 16000Hz. Provide 16kHz for best results.",
+            logger.info(
+                "Received sample rate %dHz — resampling to 16000Hz for Vosk.",
                 sample_rate,
             )
+            frames, sample_rate = self._resample_to_16khz(frames, sample_rate)
 
         model = self._load_model(language)
 
