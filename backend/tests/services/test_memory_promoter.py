@@ -221,3 +221,26 @@ class TestSingleton:
         reset_memory_promoter()
         b = get_memory_promoter()
         assert a is not b
+
+
+# --- Regression tests for #522 (fast-path actionable gate) -----------------
+# `_has_actionable_content` is shared between MemoryPromoter.promote_for_user
+# and _is_fast_path_memory in backend/workflows/main_workflow.py so that
+# empty / filler / single-character content — including the English "please"
+# extracted from remember-requests — never reaches LTM.
+@pytest.mark.parametrize(
+    "content, expected",
+    [
+        ("please", False),
+        ("ください", False),
+        ("お願いします", False),
+        ("a", False),  # len == 1
+        ("", False),
+        ("太郎", True),
+        ("田中太郎", True),
+        ("I love engineer cafe", True),
+    ],
+)
+def test_has_actionable_content_rejects_filler_strings(content, expected):
+    aggregate = {"content": content}
+    assert MemoryPromoter._has_actionable_content(aggregate) is expected
