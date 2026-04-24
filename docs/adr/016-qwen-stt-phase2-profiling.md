@@ -1,10 +1,13 @@
 # ADR 016: Qwen STT Phase 2 Profiling
 
 作成日: 2026-04-24
+更新日: 2026-04-25 (Phase B-1 production 実測結果追記)
 
 ## ステータス
 
-採用: Phase A profiling instrumentation 後、Phase B-1 `Qwen-only path` を実装する。
+**完了**: Phase A profiling (PR #558) + Phase B-1 Qwen-only fast-path (PR #560) 両方実装・
+deploy・live 実測済み。目標 p50 3.1s を上回る 2827ms (34% 短縮) を達成。
+Epic #474 Exit Criterion `/api/voice p95 < 10s` 達成 (p95 = 7035ms)。
 
 ## 背景
 
@@ -40,33 +43,52 @@ Phase A では以下を実施する。
 
 ## Profile 結果
 
-Codex のローカル作業環境では本番 Cloud Run への env 更新、deploy、live profiling は実行
-していない。`QWEN_STT_TIMEOUT` の本番値修正は、Phase A PR merge/deploy 前に terisuke /
-Claude の明示的承認後、以下で行う。
+### Phase A baseline (rev `00099-rx2`, 2026-04-24)
 
-```bash
-gcloud run services update engineer-cafe-backend \
-  --region=asia-northeast1 \
-  --project=aipartner-426616 \
-  --update-env-vars QWEN_STT_TIMEOUT=10
-```
+`QWEN_STT_TIMEOUT=10` 更新 + Phase A structured logger deploy 後、
+`scripts/profile_stt.sh --iterations 20 --sleep 4` を実行。
 
-deploy 後、以下を実行して `backend/tests/reports/stt-profile-<timestamp>.md` と CSV を
-生成する。
-
-```bash
-scripts/profile_stt.sh --iterations 20 --sleep 4
-```
-
-この ADR の最終版では、生成された report から以下を転記する。
+Source: `backend/tests/reports/stt-profile-20260424T115017Z.md`
 
 | Metric | count | p50 ms | p90 ms | p95 ms | max ms |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| request_total | TBD | TBD | TBD | TBD | TBD |
-| stt_overall | TBD | TBD | TBD | TBD | TBD |
-| qwen_inference | TBD | TBD | TBD | TBD | TBD |
-| vosk_inference | TBD | TBD | TBD | TBD | TBD |
-| model_load | TBD | TBD | TBD | TBD | TBD |
+| request_total | 20 | 4522 | 8853 | 43248 | 71850 |
+| stt_overall | 19 | 4318 | 4562 | 11302 | 71551 |
+| qwen_inference | 19 | 3098 | 3279 | 10050 | 70791 |
+| vosk_inference | 19 | 4317 | 4560 | 11224 | 70790 |
+| model_load | 1 | 33022 | 33022 | 33022 | 33022 |
+
+winners: qwen=18, vosk=1
+
+### Phase B-1 results (rev `00100-ltt`, 2026-04-25 post merge #560)
+
+Phase B-1 `Qwen-only fast-path with Vosk cancellation` (PR #560) deploy 後、同条件で再計測。
+
+Source: `backend/tests/reports/stt-profile-20260424T154617Z.md`
+
+| Metric | count | p50 ms | p90 ms | p95 ms | max ms |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| request_total | 20 | 2978 | 3172 | 7035 | 78340 |
+| stt_overall | 19 | 2827 | 2999 | 10536 | 78192 |
+| qwen_inference | 19 | 2826 | 2997 | 9910 | 71935 |
+| vosk_inference | 19 | 2826 | 2997 | 3262 | 5458 |
+| model_load | 1 | 35365 | 35365 | 35365 | 35365 |
+
+winners: qwen=18, vosk=1
+
+### 改善サマリ (Phase A → Phase B-1)
+
+| Metric | Phase A p50 | Phase B-1 p50 | 短縮 |
+| --- | ---: | ---: | ---: |
+| request_total | 4522 | **2978** | **-34%** |
+| stt_overall | 4318 | **2827** | **-34%** |
+| qwen_inference | 3098 | 2826 | -9% |
+| request_total p95 | 43248 | **7035** | **-84%** |
+
+**重要**: Phase B-1 の狙い通り `stt_overall p50 (2827ms) ≈ qwen_inference p50 (2826ms)` で
+**差 1ms** に収束。Qwen 勝利時に Vosk 完了を待たず即 return する fastpath が完全機能。
+
+Epic #474 Exit Criterion `/api/voice p95 < 10s` はこれで達成 (p95 = 7035ms)。
 
 ## Phase B 判断基準
 
@@ -97,6 +119,11 @@ cancel して即 return する。Qwen failure / timeout の場合だけ Vosk を
 の約 4.3 秒から約 1.2 秒短縮すること。merge / deploy 後に
 `scripts/profile_stt.sh --iterations 20 --sleep 4` を再実行し、この ADR に Phase B-1 実測値を
 追記する。
+
+**実測結果 (rev `00100-ltt` 2026-04-25)**: Phase B-1 merge + deploy 後の実測で `stt_overall`
+p50 は **2827ms** となり、期待値 3.1 秒を上回る改善 (-34%、Phase A 比 -1491ms)。
+`stt_overall - qwen_inference` 差は 1ms に収束し、Qwen 勝利時の Vosk 完了待ちが完全に
+解消されていることを実証。詳細は「Profile 結果 > Phase B-1 results」セクション参照。
 
 ## 互換性
 
