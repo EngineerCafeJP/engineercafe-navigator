@@ -179,10 +179,12 @@ async def test_text_to_speech_fallback_on_error(monkeypatch):
 async def test_text_to_speech_cache_hit_reuses_audio(monkeypatch):
     agent = VoiceAgent(tts_provider="google")
     calls = {"count": 0}
+    first_audio = "A" * 128
 
     async def fake_synth(text, lang, tts_emotion):
+        del text, lang, tts_emotion
         calls["count"] += 1
-        return f"BASE64_MP3_{calls['count']}"
+        return first_audio
 
     monkeypatch.setattr(agent.tts_client, "synthesize_mp3_base64", fake_synth)
 
@@ -190,10 +192,10 @@ async def test_text_to_speech_cache_hit_reuses_audio(monkeypatch):
     second = await agent.text_to_speech(text="[happy]こんにちは", language="ja")
 
     assert calls["count"] == 1
-    assert first["audioResponse"] == "BASE64_MP3_1"
+    assert first["audioResponse"] == first_audio
     assert first["tts_cache_hit"] is False
     assert first["format"] == "audio/mpeg"
-    assert second["audioResponse"] == "BASE64_MP3_1"
+    assert second["audioResponse"] == first_audio
     assert second["tts_cache_hit"] is True
     assert second["format"] == "audio/mpeg"
 

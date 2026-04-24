@@ -10,11 +10,13 @@ from typing import Any, Literal, cast
 CHAT_RESPONSE_EVENT = "chat_response"
 CHAT_RESPONSE_LOGGER_NAME = "backend.observability.chat_response"
 STT_LOGGER_NAME = "backend.observability.stt"
+TTS_CACHE_LOGGER_NAME = "backend.observability.tts_cache"
 
 LtmStoreWrite = Literal["success", "failed", "skipped"]
 
 _CHAT_LOG_HANDLER_MARKER = "_engineer_cafe_chat_response_json_handler"
 _STT_LOG_HANDLER_MARKER = "_engineer_cafe_stt_json_handler"
+_TTS_CACHE_LOG_HANDLER_MARKER = "_engineer_cafe_tts_cache_json_handler"
 
 
 class _ChatResponseJsonFormatter(logging.Formatter):
@@ -40,7 +42,6 @@ class _SttJsonFormatter(logging.Formatter):
 def _get_chat_response_logger() -> logging.Logger:
     logger = logging.getLogger(CHAT_RESPONSE_LOGGER_NAME)
     logger.setLevel(logging.INFO)
-    logger.propagate = True
 
     if not any(getattr(handler, _CHAT_LOG_HANDLER_MARKER, False) for handler in logger.handlers):
         handler = logging.StreamHandler(sys.stdout)
@@ -60,6 +61,22 @@ def _get_stt_logger() -> logging.Logger:
         handler = logging.StreamHandler(sys.stdout)
         handler.setFormatter(_SttJsonFormatter())
         setattr(handler, _STT_LOG_HANDLER_MARKER, True)
+        logger.addHandler(handler)
+
+    return logger
+
+
+def _get_tts_cache_logger() -> logging.Logger:
+    logger = logging.getLogger(TTS_CACHE_LOGGER_NAME)
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+
+    if not any(
+        getattr(handler, _TTS_CACHE_LOG_HANDLER_MARKER, False) for handler in logger.handlers
+    ):
+        handler = logging.StreamHandler(sys.stdout)
+        handler.setFormatter(_ChatResponseJsonFormatter())
+        setattr(handler, _TTS_CACHE_LOG_HANDLER_MARKER, True)
         logger.addHandler(handler)
 
     return logger
@@ -169,3 +186,16 @@ def log_stt_event(*, event: str, **fields: Any) -> dict[str, Any]:
         },
     )
     return payload
+
+
+def log_tts_cache_event(*, hit: bool, cache_key: str, language: str | None = None) -> None:
+    """Log TTS cache hit/miss as structured JSON."""
+
+    logger = _get_tts_cache_logger()
+    payload = {
+        "event": "tts_cache",
+        "tts_cache_hit": hit,
+        "cache_key": cache_key,
+        "language": language or "unknown",
+    }
+    logger.info("tts_cache", extra={**payload, "observability_payload": payload})

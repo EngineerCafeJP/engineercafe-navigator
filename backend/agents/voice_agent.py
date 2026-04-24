@@ -29,6 +29,7 @@ from typing import Any, Dict, List, Optional
 import httpx
 from cachetools import TTLCache
 
+from backend.observability.structured_logger import log_tts_cache_event
 from backend.utils.clarification_templates import (
     ClarificationCategory,
     get_clarification_response,
@@ -724,7 +725,7 @@ class VoiceAgent:
 
     @staticmethod
     def _tts_cache_key(text: str, language: str, provider: str, emotion: str) -> str:
-        raw = f"{text}|{language}|{provider}|{emotion or ''}"
+        raw = f"{text}|{language}|{provider}|{emotion or 'neutral'}"
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
     def _tts_audio_format(self, language: str) -> str:
@@ -839,19 +840,15 @@ class VoiceAgent:
             processed = truncate_by_bytes(processed, 5000)
             logger.warning("Text truncated to 5000 bytes")
 
+        cache_store = getattr(self, "_tts_cache", None)
+        if cache_store is None:
+            cache_store = TTLCache(maxsize=200, ttl=3600)
+            self._tts_cache = cache_store
+
         cache_key = self._tts_cache_key(processed, language, self.tts_provider, vrm_emotion)
-        cached_audio = self._tts_cache.get(cache_key)
+        cached_audio = cache_store.get(cache_key)
         if cached_audio is not None:
-            logger.info(
-                "TTS cache hit: key=%s text_len=%d",
-                cache_key[:8],
-                len(processed),
-                extra={
-                    "tts_cache_hit": True,
-                    "tts_cache_key_prefix": cache_key[:8],
-                    "tts_cache_text_len": len(processed),
-                },
-            )
+            log_tts_cache_event(hit=True, cache_key=cache_key, language=language)
             return {
                 "success": True,
                 "audioResponse": cached_audio,
@@ -863,16 +860,7 @@ class VoiceAgent:
                 "tts_cache_hit": True,
             }
 
-        logger.info(
-            "TTS cache miss: key=%s text_len=%d",
-            cache_key[:8],
-            len(processed),
-            extra={
-                "tts_cache_miss": True,
-                "tts_cache_key_prefix": cache_key[:8],
-                "tts_cache_text_len": len(processed),
-            },
-        )
+        log_tts_cache_event(hit=False, cache_key=cache_key, language=language)
 
         try:
             # ステップ5: 言語に基づいてTTSエンジンを選択
@@ -900,7 +888,8 @@ class VoiceAgent:
                 )
                 audio_format = "audio/mpeg"
 
-            self._tts_cache[cache_key] = audio_b64
+            if audio_b64 and len(audio_b64) > 100:
+                cache_store[cache_key] = audio_b64
 
             return {
                 "success": True,
