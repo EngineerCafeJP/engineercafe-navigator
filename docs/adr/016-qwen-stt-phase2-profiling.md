@@ -4,7 +4,7 @@
 
 ## ステータス
 
-提案: Phase A profiling instrumentation を先に入れ、ONNX/INT4 には進まない。
+採用: Phase A profiling instrumentation 後、Phase B-1 `Qwen-only path` を実装する。
 
 ## 背景
 
@@ -79,8 +79,24 @@ Profile 結果に基づいて Phase B を 1 つだけ選ぶ。
 - Qwen 品質または runtime packaging がボトルネックで、Whisper の品質/速度が勝る場合:
   B-3 `Whisper-large-v3-turbo` spike を検討する。
 
-現時点では Phase B の実装には進まない。Phase A の live profile report と Claude /
-terisuke の明示的 GO を待つ。
+Phase A profile (`backend/tests/reports/stt-profile-20260424T115017Z.md`) では、STT latency は
+以下だった。
+
+| Metric | p50 ms |
+| --- | ---: |
+| stt_overall | 4318 |
+| qwen_inference | 3098 |
+| vosk_inference | 4317 |
+
+winner 分布は qwen=18、vosk=1 で、Qwen が多くの request で勝っていた。一方で
+`stt_overall` は `vosk_inference` に近く、Qwen 勝利後も Vosk 側の完了待ちまたは CPU 競合
+が残っていた。したがって Phase B-1 を採用し、Qwen success path では Vosk fallback task を
+cancel して即 return する。Qwen failure / timeout の場合だけ Vosk を sequential に起動する。
+
+期待値は `stt_overall` p50 が `qwen_inference` p50 に近い約 3.1 秒となること、つまり Phase A
+の約 4.3 秒から約 1.2 秒短縮すること。merge / deploy 後に
+`scripts/profile_stt.sh --iterations 20 --sleep 4` を再実行し、この ADR に Phase B-1 実測値を
+追記する。
 
 ## 互換性
 
