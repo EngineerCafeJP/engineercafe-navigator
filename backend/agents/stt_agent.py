@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures
-import contextlib
 import io
 import json
 import logging
@@ -1242,11 +1241,11 @@ class STTAgent:
         audio_data: bytes,
         language: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Qwen primary + Vosk parallel fallback (ADR-007).
+        """Qwen primary + Vosk fallback-only path (ADR-007/016).
 
-        Qwen と Vosk を同時実行し、Qwen が ``QWEN_STT_TIMEOUT`` 秒以内に
-        成功すれば Vosk の完了を待たずにその結果を返す。
-        タイムアウトまたはエラー時は、並走していた Vosk の結果にフォールバックする。
+        Qwen が ``QWEN_STT_TIMEOUT`` 秒以内に成功すれば Vosk の fallback task を
+        cancel して即座に返す。タイムアウトまたはエラー時だけ Vosk inference を
+        sequential に起動してフォールバックする。
         """
 
         stt_trace_id = f"stt-{uuid.uuid4().hex[:12]}"
@@ -1317,6 +1316,7 @@ class STTAgent:
                     language=language,
                     success=False,
                     cancelled=True,
+                    vosk_fallback_started=True,
                     stt_vosk_duration_ms=_duration_ms(vosk_started_at),
                 )
                 raise
@@ -1344,18 +1344,28 @@ class STTAgent:
             )
             return result
 
-        async def _discard_vosk_result(vosk_task: asyncio.Task[Any]) -> None:
-            if not vosk_task.done():
-                vosk_task.cancel()
-                with contextlib.suppress(asyncio.CancelledError):
-                    await vosk_task
-                return
+        vosk_fallback_allowed = asyncio.Event()
 
-            with contextlib.suppress(Exception):
-                vosk_task.result()
+        async def _run_vosk_after_qwen_failure():
+            vosk_task_started_at = time.perf_counter()
+            try:
+                await vosk_fallback_allowed.wait()
+            except asyncio.CancelledError:
+                log_stt_event(
+                    event="stt_vosk_complete",
+                    stt_trace_id=stt_trace_id,
+                    provider="vosk-fallback",
+                    language=language,
+                    success=False,
+                    cancelled=True,
+                    vosk_fallback_started=False,
+                    stt_vosk_duration_ms=_duration_ms(vosk_task_started_at),
+                )
+                raise
+            return await _run_vosk()
 
         qwen_task = asyncio.create_task(_run_qwen())
-        vosk_task = asyncio.create_task(_run_vosk())
+        vosk_task = asyncio.create_task(_run_vosk_after_qwen_failure())
 
         try:
             qwen_result: TranscriptionResult | Exception
@@ -1366,7 +1376,9 @@ class STTAgent:
 
             # Qwen success
             if isinstance(qwen_result, TranscriptionResult):
-                await _discard_vosk_result(vosk_task)
+                if not vosk_task.done():
+                    vosk_task.cancel()
+                    await asyncio.gather(vosk_task, return_exceptions=True)
                 log_stt_event(
                     event="stt_winner",
                     stt_trace_id=stt_trace_id,
@@ -1390,6 +1402,7 @@ class STTAgent:
                 "Qwen STT failed, using Vosk fallback: %s",
                 qwen_result,
             )
+            vosk_fallback_allowed.set()
             try:
                 vosk_result: TranscriptionResult | Exception = await vosk_task
             except Exception as exc:
@@ -1437,9 +1450,11 @@ class STTAgent:
                 f"Both Qwen and Vosk STT failed: qwen={qwen_result}, vosk={vosk_result}"
             )
         finally:
-            for task in (qwen_task, vosk_task):
-                if not task.done():
-                    task.cancel()
+            pending_tasks = [task for task in (qwen_task, vosk_task) if not task.done()]
+            for task in pending_tasks:
+                task.cancel()
+            if pending_tasks:
+                await asyncio.gather(*pending_tasks, return_exceptions=True)
 
     def _resolve_grammar(self, conversation_stage: Optional[str]) -> Optional[Dict[str, List[str]]]:
         """会話ステージに応じた Grammar 辞書を解決する。

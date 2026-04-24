@@ -1806,12 +1806,12 @@ class TestSTTLLMPostProcess:
 
 
 # ==============================================================================
-# Qwen Primary + Vosk Parallel Fallback (ADR-007)
+# Qwen Primary + Vosk Fallback (ADR-007/016)
 # ==============================================================================
 
 
-class TestQwenPrimaryParallel:
-    """Tests for qwen-primary provider with Vosk parallel fallback."""
+class TestQwenPrimaryFallback:
+    """Tests for qwen-primary provider with Vosk fallback."""
 
     def _make_agent(self, mock_qwen, mock_vosk):
         """Create STTAgent wired for qwen-primary with mock clients."""
@@ -1879,20 +1879,14 @@ class TestQwenPrimaryParallel:
         assert qwen_complete.stt_trace_id == winner.stt_trace_id
 
     @pytest.mark.asyncio
-    async def test_qwen_success_does_not_wait_for_slow_vosk(self):
-        """Qwen succeeds -> returns immediately without waiting for Vosk fallback."""
+    async def test_qwen_success_cancels_vosk_and_logs_cancellation(self, caplog):
+        """Qwen succeeds -> cancels Vosk fallback task and returns immediately."""
         import asyncio
 
-        vosk_started = asyncio.Event()
-        vosk_cancelled = asyncio.Event()
+        caplog.set_level(logging.INFO, logger="backend.observability.stt")
 
         async def slow_vosk(*args, **kwargs):
-            vosk_started.set()
-            try:
-                await asyncio.sleep(20)
-            except asyncio.CancelledError:
-                vosk_cancelled.set()
-                raise
+            await asyncio.sleep(20)
             return TranscriptionResult(
                 text="slow fallback",
                 confidence=0.7,
@@ -1919,9 +1913,32 @@ class TestQwenPrimaryParallel:
         assert result["success"] is True
         assert result["provider"] == "qwen-primary"
         assert result["transcript"] == "qwen fast"
-        assert vosk_started.is_set()
-        assert vosk_cancelled.is_set()
+        mock_vosk.transcribe.assert_not_called()
         assert elapsed < 0.5
+
+        stt_records = [
+            record for record in caplog.records if record.name == "backend.observability.stt"
+        ]
+        vosk_cancel = next(
+            record
+            for record in stt_records
+            if getattr(record, "event", None) == "stt_vosk_complete"
+            and getattr(record, "cancelled", False) is True
+        )
+        winner = next(
+            record for record in stt_records if getattr(record, "event", None) == "stt_winner"
+        )
+        qwen_complete = next(
+            record
+            for record in stt_records
+            if getattr(record, "event", None) == "stt_qwen_complete"
+        )
+        assert vosk_cancel.success is False
+        assert vosk_cancel.provider == "vosk-fallback"
+        assert vosk_cancel.vosk_fallback_started is False
+        assert isinstance(vosk_cancel.stt_vosk_duration_ms, int)
+        assert winner.stt_winner == "qwen"
+        assert winner.stt_overall_duration_ms - qwen_complete.stt_qwen_duration_ms < 100
 
     @pytest.mark.asyncio
     async def test_qwen_timeout_vosk_fallback(self):
@@ -1971,6 +1988,45 @@ class TestQwenPrimaryParallel:
         assert result["success"] is True
         assert result["provider"] == "vosk-fallback"
         assert result["transcript"] == "fallback ok"
+
+    @pytest.mark.asyncio
+    async def test_qwen_failure_starts_vosk_after_qwen_and_returns_vosk(self, caplog):
+        """Qwen failure -> Vosk starts sequentially and returns fallback transcript."""
+        caplog.set_level(logging.INFO, logger="backend.observability.stt")
+        calls = []
+
+        async def fail_qwen(*args, **kwargs):
+            calls.append("qwen")
+            raise RuntimeError("Model OOM")
+
+        async def run_vosk(*args, **kwargs):
+            calls.append("vosk")
+            return TranscriptionResult(
+                text="fallback ok",
+                confidence=0.75,
+                language="en",
+            )
+
+        mock_qwen = MagicMock()
+        mock_qwen.transcribe = AsyncMock(side_effect=fail_qwen)
+        mock_vosk = MagicMock(spec=LocalSTTClient)
+        mock_vosk.transcribe = AsyncMock(side_effect=run_vosk)
+
+        agent = self._make_agent(mock_qwen, mock_vosk)
+        result = await agent.speech_to_text(b"audio", language="en")
+
+        assert calls == ["qwen", "vosk"]
+        assert result["success"] is True
+        assert result["provider"] == "vosk-fallback"
+        assert result["transcript"] == "fallback ok"
+        mock_qwen.transcribe.assert_called_once_with(b"audio", language="en")
+        mock_vosk.transcribe.assert_called_once_with(b"audio", "en")
+
+        stt_records = [
+            record for record in caplog.records if record.name == "backend.observability.stt"
+        ]
+        events = [getattr(record, "event", None) for record in stt_records]
+        assert events.index("stt_qwen_complete") < events.index("stt_vosk_start")
 
     @pytest.mark.asyncio
     async def test_both_fail_raises(self):
@@ -2040,7 +2096,7 @@ class TestQwenPrimaryParallel:
         assert result["provider"] == "qwen-primary"
         assert result["language"] == "en"
         mock_qwen.transcribe.assert_called_once_with(b"audio", language=None)
-        mock_vosk.transcribe_auto_detect.assert_called_once_with(b"audio")
+        mock_vosk.transcribe_auto_detect.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_vosk_fallback_with_llm_postprocess(self, monkeypatch):
