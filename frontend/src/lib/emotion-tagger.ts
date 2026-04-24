@@ -1,77 +1,79 @@
+import { EmotionMapping } from './emotion-mapping';
+
 /**
  * Unified Emotion Tagging System
  * Ensures consistent emotion tags across all agents
  * 
- * Supported emotions: happy, angry, sad, relaxed, surprised
+ * Supported expressions: neutral, happy, angry, sad, relaxed, surprised
  */
 
-export type UnifiedEmotion = 'happy' | 'angry' | 'sad' | 'relaxed' | 'surprised';
+export type SupportedExpression = 'neutral' | 'happy' | 'angry' | 'sad' | 'relaxed' | 'surprised';
 
-interface EmotionRule {
+interface ExpressionRule {
   patterns: string[];
-  emotion: UnifiedEmotion;
+  expression: SupportedExpression;
   priority: number; // Higher priority rules override lower ones
 }
 
 export class EmotionTagger {
-  private static readonly EMOTION_RULES: EmotionRule[] = [
+  private static readonly EXPRESSION_RULES: ExpressionRule[] = [
     // Happy patterns (priority: 8)
     {
       patterns: ['はじめまして', 'ようこそ', 'いらっしゃい', 'こんにちは', 'hello', 'welcome', 'nice to meet'],
-      emotion: 'happy',
+      expression: 'happy',
       priority: 8
     },
     {
       patterns: ['！', '!', 'ありがとう', 'thank', '嬉しい', 'happy', '楽しい', 'fun', '素晴らしい', 'wonderful'],
-      emotion: 'happy',
+      expression: 'happy',
       priority: 7
     },
     {
       patterns: ['お手伝い', 'help', 'どうぞ', 'please', 'ご利用', 'サービス', 'service'],
-      emotion: 'happy',
+      expression: 'happy',
       priority: 6
     },
     
     // Sad patterns (priority: 9 - highest for apologies)
     {
       patterns: ['申し訳', 'すみません', 'ごめん', 'sorry', 'apologize', '残念', 'unfortunately'],
-      emotion: 'sad',
+      expression: 'sad',
       priority: 9
     },
     {
       patterns: ['できません', 'できない', 'cannot', "can't", '無理', 'impossible'],
-      emotion: 'sad',
+      expression: 'sad',
       priority: 7
     },
     
     // Angry patterns (priority: 5)
     {
       patterns: ['だめ', '禁止', 'forbidden', 'prohibited', '違反', 'violation'],
-      emotion: 'angry',
+      expression: 'angry',
       priority: 5
     },
     
     // Surprised patterns (priority: 7)
     {
       patterns: ['どちら', 'どれ', 'which', '選んで', 'choose', '？', '?', 'それとも', 'or'],
-      emotion: 'surprised',
+      expression: 'surprised',
       priority: 7
     },
     {
       patterns: ['えっ', 'え？', 'what', 'really', '本当', 'まさか', 'びっくり'],
-      emotion: 'surprised',
+      expression: 'surprised',
       priority: 8
     },
     
     // Relaxed patterns (priority: 4)
     {
       patterns: ['説明', 'について', 'とは', 'explain', 'about', '詳細', 'details'],
-      emotion: 'relaxed',
+      expression: 'relaxed',
       priority: 4
     },
     {
       patterns: ['営業時間', '料金', '場所', 'hours', 'price', 'location', '設備', 'facility'],
-      emotion: 'relaxed',
+      expression: 'relaxed',
       priority: 3
     },
   ];
@@ -83,7 +85,7 @@ export class EmotionTagger {
    * @param forceEmotion - Optional emotion to force (overrides detection)
    * @returns Text with emotion tag prepended
    */
-  static addEmotionTag(text: string, forceEmotion?: UnifiedEmotion): string {
+  static addEmotionTag(text: string, forceExpression?: SupportedExpression): string {
     if (!text || text.trim().length === 0) {
       return text;
     }
@@ -95,8 +97,8 @@ export class EmotionTagger {
     }
 
     // Use forced emotion if provided
-    const emotion = forceEmotion || this.detectEmotion(text);
-    return `[${emotion}]${text}`;
+    const expression = forceExpression || this.getExpressionFromText(text);
+    return `[${expression}]${text}`;
   }
 
   /**
@@ -105,17 +107,17 @@ export class EmotionTagger {
    * @param text - The text to analyze
    * @returns Detected emotion
    */
-  static detectEmotion(text: string): UnifiedEmotion {
+  static getExpressionFromText(text: string): SupportedExpression {
     const lowerText = text.toLowerCase();
-    let detectedEmotion: UnifiedEmotion = 'neutral' as UnifiedEmotion;
+    let detectedExpression: SupportedExpression = 'neutral' as SupportedExpression;
     let highestPriority = -1;
 
     // Check all rules and use the highest priority match
-    for (const rule of this.EMOTION_RULES) {
+    for (const rule of this.EXPRESSION_RULES) {
       if (rule.priority > highestPriority) {
         for (const pattern of rule.patterns) {
           if (lowerText.includes(pattern.toLowerCase())) {
-            detectedEmotion = rule.emotion;
+            detectedExpression = rule.expression;
             highestPriority = rule.priority;
             break;
           }
@@ -127,21 +129,21 @@ export class EmotionTagger {
     if (highestPriority === -1) {
       // For informational content, use relaxed
       if (text.length > 100) {
-        return 'relaxed';
+        return 'relaxed' as SupportedExpression;
       }
       // For short responses, default to neutral (which maps to happy)
-      return 'happy';
+      return 'happy' as SupportedExpression;
     }
 
-    return detectedEmotion;
+    return detectedExpression;
   }
 
   /**
    * Update emotion mapping to use 5 standard emotions
    * Maps neutral to happy for more positive interactions
    */
-  static normalizeEmotion(emotion: string): UnifiedEmotion {
-    const emotionMap: Record<string, UnifiedEmotion> = {
+  static normalizeExpression(emotion: string): SupportedExpression {
+    const emotionMap: Record<string, SupportedExpression> = {
       // Direct mappings
       'happy': 'happy',
       'angry': 'angry',
@@ -162,7 +164,7 @@ export class EmotionTagger {
       'greeting': 'happy',
     };
 
-    return emotionMap[emotion.toLowerCase()] || 'happy';
+    return emotionMap[emotion.toLowerCase()] || 'happy' as SupportedExpression;
   }
 
   /**
@@ -171,10 +173,10 @@ export class EmotionTagger {
    * @param text - Text that may contain emotion tags
    * @returns Extracted emotion or null
    */
-  static extractEmotion(text: string): UnifiedEmotion | null {
+  static extractExpression(text: string): SupportedExpression | null {
     const match = text.match(/^\[([a-zA-Z_]+)(?::\d*\.?\d+)?\]/);
     if (match) {
-      return this.normalizeEmotion(match[1]);
+      return EmotionMapping.mapToExpression(match[1]);
     }
     return null;
   }
@@ -196,9 +198,9 @@ export class EmotionTagger {
    * @param category - Response category
    * @returns Appropriate emotion
    */
-  static getEmotionForContext(agentName: string, category?: string): UnifiedEmotion {
+  static getExpressionForContext(agentName: string, category?: string): SupportedExpression {
     // Agent-specific emotions
-    const contextMap: Record<string, UnifiedEmotion> = {
+    const contextMap: Record<string, SupportedExpression> = {
       // ClarificationAgent - always curious/surprised
       'ClarificationAgent': 'surprised',
       
@@ -223,6 +225,6 @@ export class EmotionTagger {
     };
 
     const key = category ? `${agentName}-${category}` : agentName;
-    return contextMap[key] || contextMap[agentName] || 'relaxed';
+    return contextMap[key] || contextMap[agentName] || 'relaxed' as SupportedExpression;
   }
 }

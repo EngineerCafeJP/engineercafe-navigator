@@ -1,86 +1,88 @@
-import { EmotionMapping, type SupportedEmotion } from './emotion-mapping';
+import {
+  CANONICAL_EXPRESSIONS,
+  EmotionMapping,
+  type SupportedExpression,
+} from './emotion-mapping';
 
 /**
  * Emotion Tag Parser for VRM character expression control
- * Parses emotion tags like [happy], [sad], [curious] from AI responses
+ * Parses emotion tags like [happy], [sad], [apologetic] from AI responses.
+ * Tag keys must exist in EmotionMapping.EXPRESSION_MAP (aligned with backend).
  */
 
 export interface ParsedResponse {
-  cleanText: string;        // Text with emotion tags removed
-  emotions: EmotionTag[];   // Array of detected emotion tags
-  primaryEmotion?: string;  // The most prominent emotion
+  cleanText: string;
+  emotions: EmotionTag[];
+  primaryEmotion?: string;
 }
 
 export interface EmotionTag {
   emotion: string;
-  position: number;         // Position in original text
-  intensity?: number;       // Optional intensity (0-1)
+  position: number;
+  intensity?: number;
 }
 
 export class EmotionTagParser {
+  /** EXPRESSION_MAP のキーとして解釈できるか（タグ名サポート判定） */
+  private static isExpressionMapKey(raw: string): boolean {
+    const key = raw.toLowerCase().trim();
+    return key !== '' && key in EmotionMapping.EXPRESSION_MAP;
+  }
 
   /**
    * Parse emotion tags from text
    */
   static parseEmotionTags(text: string): ParsedResponse {
-    // Regex to match emotion tags: [emotion] or [emotion:intensity]
     const emotionRegex = /\[\/?([a-zA-Z_]+)(?::(\d*\.?\d+))?\]/g;
     const emotions: EmotionTag[] = [];
-    let cleanText = text;
-    let match;
 
-    // Find all emotion tags
+    let match;
     while ((match = emotionRegex.exec(text)) !== null) {
-      const emotion = match[1].toLowerCase();
+      const tagName = match[1].toLowerCase();
       const intensityStr = match[2];
       const intensity = intensityStr ? parseFloat(intensityStr) : 1.0;
       const position = match.index;
 
-      // Map to VRM expression if supported
-      if (EmotionMapping.isSupportedEmotion(emotion)) {
-        const mappedEmotion = EmotionMapping.mapToVRMEmotion(emotion);
+      if (this.isExpressionMapKey(tagName)) {
+        const mapped = EmotionMapping.mapToExpression(tagName);
         emotions.push({
-          emotion: mappedEmotion,
+          emotion: mapped,
           position,
-          intensity: Math.max(0, Math.min(1, intensity))
+          intensity: Math.max(0, Math.min(1, intensity)),
         });
       } else {
-        console.warn(`Unknown emotion tag: [${emotion}]`);
+        console.warn(`Unknown emotion tag: [${tagName}]`);
       }
     }
 
-    // Remove all emotion tags from text
-    cleanText = text.replace(emotionRegex, '').trim();
-    
-    // Remove extra whitespace
+    let cleanText = text.replace(emotionRegex, '').trim();
     cleanText = cleanText.replace(/\s+/g, ' ').trim();
 
-    // Determine primary emotion (first valid emotion or most intense)
     let primaryEmotion: string | undefined;
     if (emotions.length > 0) {
-      // Use the first emotion, or the one with highest intensity
-      const sortedEmotions = emotions.sort((a, b) => (b.intensity || 1) - (a.intensity || 1));
+      const sortedEmotions = [...emotions].sort(
+        (a, b) => (b.intensity || 1) - (a.intensity || 1),
+      );
       primaryEmotion = sortedEmotions[0].emotion;
     }
 
     return {
       cleanText,
       emotions,
-      primaryEmotion
+      primaryEmotion,
     };
   }
 
   /**
-   * Get VRM expression weights for given emotion
+   * Get VRM expression weights for given emotion (canonical 6 keys)
    */
   static getExpressionWeights(emotion: string, intensity: number = 1.0): Record<string, number> {
-    const supportedEmotions = EmotionMapping.getSupportedEmotions();
     const weights: Record<string, number> = {};
-    
-    // Initialize all emotions to 0
-    supportedEmotions.forEach(e => weights[e] = 0);
+    for (const e of CANONICAL_EXPRESSIONS) {
+      weights[e] = 0;
+    }
 
-    const normalizedEmotion = EmotionMapping.mapToVRMEmotion(emotion);
+    const normalizedEmotion = EmotionMapping.mapToExpression(emotion);
     const normalizedIntensity = Math.max(0, Math.min(1, intensity));
 
     if (normalizedEmotion === 'neutral') {
@@ -99,105 +101,151 @@ export class EmotionTagParser {
   static createSampleEmotionalText(language: 'ja' | 'en' = 'ja'): string {
     if (language === 'ja') {
       return '[happy]はじめまして！[neutral]今日はとても良い天気ですね。[relaxed]ところで、何かお手伝いできることはありますか？[/relaxed]';
-    } else {
-      return '[happy]Hello there! [neutral]It\'s such a beautiful day today. [relaxed]By the way, is there anything I can help you with?[/relaxed]';
     }
+    return "[happy]Hello there! [neutral]It's such a beautiful day today. [relaxed]By the way, is there anything I can help you with?[/relaxed]";
   }
 
   /**
-   * Validate if emotion tag is supported
+   * Validate if emotion tag name is in EXPRESSION_MAP
    */
   static isValidEmotion(emotion: string): boolean {
-    return EmotionMapping.isSupportedEmotion(emotion);
+    return this.isExpressionMapKey(emotion);
   }
 
   /**
-   * Get all supported emotions
+   * All tag aliases (keys of EXPRESSION_MAP)
    */
   static getSupportedEmotions(): string[] {
-    return EmotionMapping.getAllEmotionAliases();
+    return Object.keys(EmotionMapping.EXPRESSION_MAP);
   }
 
   /**
-   * Get mapped VRM expressions
+   * Canonical VRM expression names (6)
    */
-  static getVRMExpressions(): string[] {
-    return EmotionMapping.getSupportedEmotions();
+  static getVRMExpressions(): SupportedExpression[] {
+    return [...CANONICAL_EXPRESSIONS];
   }
 
   /**
    * Auto-add emotion tags to AI responses based on content analysis
    */
   static addEmotionTags(text: string, language: 'ja' | 'en' = 'ja'): string {
-    // If text already has emotion tags, return as is
     if (text.includes('[') && text.includes(']')) {
       return text;
     }
 
-    // Analyze text content to determine appropriate emotion
     const lowerText = text.toLowerCase();
-    let emotion = 'neutral'; // default
+    let tagKey = 'neutral';
 
-    // Detection patterns for different emotions
     if (language === 'ja') {
-      if (lowerText.includes('ようこそ') || lowerText.includes('はじめまして') || lowerText.includes('ありがとう') || lowerText.includes('素晴らしい')) {
-        emotion = 'happy';
-      } else if (lowerText.includes('申し訳') || lowerText.includes('すみません') || lowerText.includes('残念') || lowerText.includes('困り')) {
-        emotion = 'sad';
-      } else if (lowerText.includes('考え') || lowerText.includes('うーん') || lowerText.includes('どうしよう') || lowerText.includes('リラックス')) {
-        emotion = 'relaxed';
-      } else if (lowerText.includes('びっくり') || lowerText.includes('驚き') || lowerText.includes('すごい') || lowerText.includes('まさか')) {
-        emotion = 'curious';
-      } else if (lowerText.includes('問題') || lowerText.includes('怒り') || lowerText.includes('イライラ')) {
-        emotion = 'angry';
+      if (
+        lowerText.includes('ようこそ') ||
+        lowerText.includes('はじめまして') ||
+        lowerText.includes('ありがとう') ||
+        lowerText.includes('素晴らしい')
+      ) {
+        tagKey = 'happy';
+      } else if (
+        lowerText.includes('申し訳') ||
+        lowerText.includes('すみません') ||
+        lowerText.includes('残念') ||
+        lowerText.includes('困り')
+      ) {
+        tagKey = 'sad';
+      } else if (
+        lowerText.includes('考え') ||
+        lowerText.includes('うーん') ||
+        lowerText.includes('どうしよう') ||
+        lowerText.includes('リラックス')
+      ) {
+        tagKey = 'relaxed';
+      } else if (
+        lowerText.includes('びっくり') ||
+        lowerText.includes('驚き') ||
+        lowerText.includes('すごい') ||
+        lowerText.includes('まさか')
+      ) {
+        tagKey = 'surprised';
+      } else if (
+        lowerText.includes('問題') ||
+        lowerText.includes('怒り') ||
+        lowerText.includes('イライラ')
+      ) {
+        tagKey = 'angry';
       }
     } else {
-      if (lowerText.includes('welcome') || lowerText.includes('hello') || lowerText.includes('great') || lowerText.includes('wonderful') || lowerText.includes('thank')) {
-        emotion = 'happy';
-      } else if (lowerText.includes('sorry') || lowerText.includes('apologize') || lowerText.includes('unfortunately') || lowerText.includes('problem')) {
-        emotion = 'sad';
-      } else if (lowerText.includes('think') || lowerText.includes('consider') || lowerText.includes('hmm') || lowerText.includes('relax')) {
-        emotion = 'relaxed';
-      } else if (lowerText.includes('wow') || lowerText.includes('amazing') || lowerText.includes('surprised') || lowerText.includes('incredible')) {
-        emotion = 'curious';
-      } else if (lowerText.includes('angry') || lowerText.includes('frustrated') || lowerText.includes('annoying')) {
-        emotion = 'angry';
+      if (
+        lowerText.includes('welcome') ||
+        lowerText.includes('hello') ||
+        lowerText.includes('great') ||
+        lowerText.includes('wonderful') ||
+        lowerText.includes('thank')
+      ) {
+        tagKey = 'happy';
+      } else if (
+        lowerText.includes('sorry') ||
+        lowerText.includes('apologize') ||
+        lowerText.includes('unfortunately') ||
+        lowerText.includes('problem')
+      ) {
+        tagKey = 'sad';
+      } else if (
+        lowerText.includes('think') ||
+        lowerText.includes('consider') ||
+        lowerText.includes('hmm') ||
+        lowerText.includes('relax')
+      ) {
+        tagKey = 'relaxed';
+      } else if (
+        lowerText.includes('wow') ||
+        lowerText.includes('amazing') ||
+        lowerText.includes('surprised') ||
+        lowerText.includes('incredible')
+      ) {
+        tagKey = 'surprised';
+      } else if (
+        lowerText.includes('angry') ||
+        lowerText.includes('frustrated') ||
+        lowerText.includes('annoying')
+      ) {
+        tagKey = 'angry';
       }
     }
 
-    return `[${emotion}]${text}[/${emotion}]`;
+    return `[${tagKey}]${text}[/${tagKey}]`;
   }
 
   /**
    * Auto-enhance agent responses with appropriate emotion tags
    */
-  static enhanceAgentResponse(response: string, context?: 'welcome' | 'qa' | 'error' | 'success', language: 'ja' | 'en' = 'ja'): string {
-    // If response already has emotion tags, return as is
+  static enhanceAgentResponse(
+    response: string,
+    context?: 'welcome' | 'qa' | 'error' | 'success',
+    language: 'ja' | 'en' = 'ja',
+  ): string {
     if (response.includes('[') && response.includes(']')) {
       return response;
     }
 
-    let emotion = 'neutral';
+    let tagKey = 'neutral';
 
-    // Context-based emotion selection
     switch (context) {
       case 'welcome':
-        emotion = 'happy';
+        tagKey = 'happy';
         break;
       case 'qa':
-        emotion = 'neutral';
+        tagKey = 'neutral';
         break;
       case 'error':
-        emotion = 'sad';
+        tagKey = 'sad';
         break;
       case 'success':
-        emotion = 'happy';
+        tagKey = 'happy';
         break;
       default:
-        // Use content-based detection
         return this.addEmotionTags(response, language);
     }
 
-    return `[${emotion}]${response}[/${emotion}]`;
+    return `[${tagKey}]${response}[/${tagKey}]`;
   }
 }

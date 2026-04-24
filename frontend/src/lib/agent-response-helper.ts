@@ -3,7 +3,7 @@
  * Ensures all agent responses include proper emotion tags
  */
 
-import { EmotionTagger, UnifiedEmotion } from './emotion-tagger';
+import { EmotionTagger, type SupportedExpression } from './emotion-tagger';
 import { SupportedLanguage } from '@/lib/types';
 
 export interface AgentResponseOptions {
@@ -29,7 +29,7 @@ export class AgentResponseHelper {
     }
 
     // Determine appropriate emotion based on context
-    let emotion: UnifiedEmotion;
+    let emotion: SupportedExpression;
     
     if (options.hasError) {
       emotion = 'sad';
@@ -37,7 +37,7 @@ export class AgentResponseHelper {
       emotion = 'sad';
     } else {
       // Get emotion based on agent and category
-      emotion = EmotionTagger.getEmotionForContext(options.agent, options.category);
+      emotion = EmotionTagger.getExpressionForContext(options.agent, options.category);
     }
 
     // Add emotion tag
@@ -78,7 +78,7 @@ Example responses:
   static wrapPrompt(
     prompt: string,
     language: SupportedLanguage,
-    defaultEmotion: UnifiedEmotion = 'relaxed'
+    defaultEmotion: SupportedExpression = 'relaxed'
   ): string {
     const emotionInstruction = language === 'en'
       ? `Remember to start your response with an emotion tag: [happy], [sad], [angry], [relaxed], or [surprised]. Default to [${defaultEmotion}] if unsure.`
@@ -92,7 +92,7 @@ Example responses:
    */
   static formatLLMResponse(
     rawResponse: string,
-    fallbackEmotion: UnifiedEmotion = 'relaxed'
+    fallbackEmotion: SupportedExpression = 'relaxed'
   ): string {
     // Clean up any double emotion tags or malformed tags
     let cleaned = rawResponse.trim();
@@ -111,8 +111,8 @@ Example responses:
   /**
    * Get emotion for specific response types
    */
-  static getEmotionForResponseType(responseType: string): UnifiedEmotion {
-    const emotionMap: Record<string, UnifiedEmotion> = {
+  static getEmotionForResponseType(responseType: string): SupportedExpression {
+    const emotionMap: Record<string, SupportedExpression> = {
       // Positive responses
       'found': 'happy',
       'available': 'happy',

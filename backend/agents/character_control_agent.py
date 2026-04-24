@@ -196,7 +196,7 @@ class CharacterControlAgent:
             context: コンテキスト情報（将来の拡張用、現時点では未使用）
 
         Returns:
-            アニメーション名（"idle", "greeting", "thinking", "explaining"等）
+            アニメーション名（SupportedAnimation: idle, greeting, thinking, talking 等）
 
         Examples:
             >>> agent = CharacterControlAgent()
