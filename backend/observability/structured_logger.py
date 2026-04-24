@@ -5,14 +5,16 @@ from __future__ import annotations
 import json
 import logging
 import sys
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 CHAT_RESPONSE_EVENT = "chat_response"
 CHAT_RESPONSE_LOGGER_NAME = "backend.observability.chat_response"
+STT_LOGGER_NAME = "backend.observability.stt"
 
 LtmStoreWrite = Literal["success", "failed", "skipped"]
 
 _CHAT_LOG_HANDLER_MARKER = "_engineer_cafe_chat_response_json_handler"
+_STT_LOG_HANDLER_MARKER = "_engineer_cafe_stt_json_handler"
 
 
 class _ChatResponseJsonFormatter(logging.Formatter):
@@ -25,6 +27,16 @@ class _ChatResponseJsonFormatter(logging.Formatter):
         return json.dumps(payload, ensure_ascii=False, default=str)
 
 
+class _SttJsonFormatter(logging.Formatter):
+    """Emit STT observability payloads as top-level JSON objects."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        payload = getattr(record, "observability_payload", None)
+        if not isinstance(payload, dict):
+            payload = {"event": getattr(record, "event", "stt_event")}
+        return json.dumps(payload, ensure_ascii=False, default=str)
+
+
 def _get_chat_response_logger() -> logging.Logger:
     logger = logging.getLogger(CHAT_RESPONSE_LOGGER_NAME)
     logger.setLevel(logging.INFO)
@@ -34,6 +46,20 @@ def _get_chat_response_logger() -> logging.Logger:
         handler = logging.StreamHandler(sys.stdout)
         handler.setFormatter(_ChatResponseJsonFormatter())
         setattr(handler, _CHAT_LOG_HANDLER_MARKER, True)
+        logger.addHandler(handler)
+
+    return logger
+
+
+def _get_stt_logger() -> logging.Logger:
+    logger = logging.getLogger(STT_LOGGER_NAME)
+    logger.setLevel(logging.INFO)
+    logger.propagate = True
+
+    if not any(getattr(handler, _STT_LOG_HANDLER_MARKER, False) for handler in logger.handlers):
+        handler = logging.StreamHandler(sys.stdout)
+        handler.setFormatter(_SttJsonFormatter())
+        setattr(handler, _STT_LOG_HANDLER_MARKER, True)
         logger.addHandler(handler)
 
     return logger
@@ -53,7 +79,7 @@ def _coerce_sources(raw_sources: Any) -> list[str]:
 
 def _coerce_ltm_store_write(value: Any) -> LtmStoreWrite:
     if value in ("success", "failed", "skipped"):
-        return value
+        return cast(LtmStoreWrite, value)
     if value is True:
         return "success"
     if value is False:
@@ -113,6 +139,30 @@ def log_chat_response(
     logger = _get_chat_response_logger()
     logger.info(
         CHAT_RESPONSE_EVENT,
+        extra={
+            **payload,
+            "observability_payload": payload,
+        },
+    )
+    return payload
+
+
+def build_stt_event_payload(*, event: str, **fields: Any) -> dict[str, Any]:
+    """Build the STT structured log payload used by profiling scripts."""
+
+    return {
+        "event": event,
+        **fields,
+    }
+
+
+def log_stt_event(*, event: str, **fields: Any) -> dict[str, Any]:
+    """Log an STT observability event and return the payload for tests."""
+
+    payload = build_stt_event_payload(event=event, **fields)
+    logger = _get_stt_logger()
+    logger.info(
+        event,
         extra={
             **payload,
             "observability_payload": payload,

@@ -28,13 +28,18 @@ import contextlib
 import io
 import json
 import logging
+import math
 import numpy as np
 import os
+import time
+import uuid
 import wave
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 import httpx as _stt_httpx
+
+from backend.observability.structured_logger import log_stt_event
 
 logger = logging.getLogger(__name__)
 
@@ -129,7 +134,7 @@ async def _qwen_llm_post_process(transcript: str, language: str) -> str:
     fix for Bug #439 (Qwen mangling proper nouns under noise) and adds
     OpenRouter latency to every Japanese STT request when enabled.
     """
-    if os.getenv("STT_QWEN_POSTPROCESS_ENABLED", "false").lower() != "true":
+    if not _qwen_postprocess_enabled():
         return transcript
     if language != "ja":
         return transcript
@@ -215,6 +220,33 @@ AUDIO_CONVERSION_ERROR_PREFIX = "Failed to convert WebM audio to WAV for STT tra
 PYDUB_IMPORT_ERROR = (
     "WebM audio conversion requires pydub. Install backend dependencies with pydub included."
 )
+
+
+def _duration_ms(started_at: float) -> int:
+    return int((time.perf_counter() - started_at) * 1000)
+
+
+def _parse_qwen_stt_timeout(raw_value: Optional[str], default: float = 10.0) -> float:
+    """Parse QWEN_STT_TIMEOUT defensively; production once had `true`."""
+
+    if raw_value is None or raw_value.strip() == "":
+        return default
+
+    try:
+        timeout = float(raw_value)
+    except (TypeError, ValueError):
+        logger.warning("Invalid QWEN_STT_TIMEOUT=%r; falling back to %.1fs", raw_value, default)
+        return default
+
+    if not math.isfinite(timeout) or timeout <= 0:
+        logger.warning("Invalid QWEN_STT_TIMEOUT=%r; falling back to %.1fs", raw_value, default)
+        return default
+
+    return timeout
+
+
+def _qwen_postprocess_enabled() -> bool:
+    return os.getenv("STT_QWEN_POSTPROCESS_ENABLED", "false").lower() == "true"
 
 
 def convert_audio_to_wav_bytes(audio_data: bytes) -> bytes:
@@ -803,12 +835,21 @@ class QwenSTTClient:
         self.device = resolved_device
 
         logger.info("Loading Qwen3-ASR model %s on %s", self.model_name, self.device)
+        load_started_at = time.perf_counter()
         self._model = Qwen3ASRModel.from_pretrained(
             self.model_name,
             torch_dtype=torch_dtype,
             device_map=self.device,
             low_cpu_mem_usage=True,
             max_new_tokens=256,
+        )
+        log_stt_event(
+            event="stt_model_load_complete",
+            stt_model_load_duration_ms=_duration_ms(load_started_at),
+            provider="qwen",
+            model_name=self.model_name,
+            model_variant=self.model_variant,
+            device=self.device,
         )
 
     def _sync_transcribe(
@@ -961,7 +1002,7 @@ class STTAgent:
                 default_language=os.getenv("QWEN_STT_LANGUAGE", "ja"),
             )
             self._vosk_fallback_client = LocalSTTClient()
-            self._qwen_timeout = float(os.getenv("QWEN_STT_TIMEOUT", "10"))
+            self._qwen_timeout = _parse_qwen_stt_timeout(os.getenv("QWEN_STT_TIMEOUT"))
         else:
             raise ValueError(f"Unknown STT provider: {self.stt_provider}")
 
@@ -1194,16 +1235,100 @@ class STTAgent:
         タイムアウトまたはエラー時は、並走していた Vosk の結果にフォールバックする。
         """
 
+        stt_trace_id = f"stt-{uuid.uuid4().hex[:12]}"
+        overall_started_at = time.perf_counter()
+        qwen_postprocess_enabled = _qwen_postprocess_enabled()
+
         async def _run_qwen():
-            return await asyncio.wait_for(
-                self.stt_client.transcribe(audio_data, language=language),
-                timeout=self._qwen_timeout,
+            qwen_started_at = time.perf_counter()
+            log_stt_event(
+                event="stt_qwen_start",
+                stt_trace_id=stt_trace_id,
+                provider="qwen-primary",
+                language=language,
+                timeout_s=self._qwen_timeout,
+                audio_bytes=len(audio_data),
+                qwen_postprocess_enabled=qwen_postprocess_enabled,
             )
+            try:
+                result = await asyncio.wait_for(
+                    self.stt_client.transcribe(audio_data, language=language),
+                    timeout=self._qwen_timeout,
+                )
+            except Exception as exc:
+                log_stt_event(
+                    event="stt_qwen_complete",
+                    stt_trace_id=stt_trace_id,
+                    provider="qwen-primary",
+                    language=language,
+                    success=False,
+                    error_type=type(exc).__name__,
+                    stt_qwen_duration_ms=_duration_ms(qwen_started_at),
+                    qwen_postprocess_enabled=qwen_postprocess_enabled,
+                )
+                raise
+
+            log_stt_event(
+                event="stt_qwen_complete",
+                stt_trace_id=stt_trace_id,
+                provider="qwen-primary",
+                language=result.language,
+                success=True,
+                transcript_chars=len(result.text),
+                confidence=result.confidence,
+                stt_qwen_duration_ms=_duration_ms(qwen_started_at),
+                qwen_postprocess_enabled=qwen_postprocess_enabled,
+            )
+            return result
 
         async def _run_vosk():
-            if language is None:
-                return await self._vosk_fallback_client.transcribe_auto_detect(audio_data)
-            return await self._vosk_fallback_client.transcribe(audio_data, language)
+            vosk_started_at = time.perf_counter()
+            log_stt_event(
+                event="stt_vosk_start",
+                stt_trace_id=stt_trace_id,
+                provider="vosk-fallback",
+                language=language,
+                audio_bytes=len(audio_data),
+            )
+            try:
+                if language is None:
+                    result = await self._vosk_fallback_client.transcribe_auto_detect(audio_data)
+                else:
+                    result = await self._vosk_fallback_client.transcribe(audio_data, language)
+            except asyncio.CancelledError:
+                log_stt_event(
+                    event="stt_vosk_complete",
+                    stt_trace_id=stt_trace_id,
+                    provider="vosk-fallback",
+                    language=language,
+                    success=False,
+                    cancelled=True,
+                    stt_vosk_duration_ms=_duration_ms(vosk_started_at),
+                )
+                raise
+            except Exception as exc:
+                log_stt_event(
+                    event="stt_vosk_complete",
+                    stt_trace_id=stt_trace_id,
+                    provider="vosk-fallback",
+                    language=language,
+                    success=False,
+                    error_type=type(exc).__name__,
+                    stt_vosk_duration_ms=_duration_ms(vosk_started_at),
+                )
+                raise
+
+            log_stt_event(
+                event="stt_vosk_complete",
+                stt_trace_id=stt_trace_id,
+                provider="vosk-fallback",
+                language=result.language,
+                success=True,
+                transcript_chars=len(result.text),
+                confidence=result.confidence,
+                stt_vosk_duration_ms=_duration_ms(vosk_started_at),
+            )
+            return result
 
         async def _discard_vosk_result(vosk_task: asyncio.Task[Any]) -> None:
             if not vosk_task.done():
@@ -1228,6 +1353,16 @@ class STTAgent:
             # Qwen success
             if isinstance(qwen_result, TranscriptionResult):
                 await _discard_vosk_result(vosk_task)
+                log_stt_event(
+                    event="stt_winner",
+                    stt_trace_id=stt_trace_id,
+                    stt_winner="qwen",
+                    provider="qwen-primary",
+                    language=qwen_result.language,
+                    success=True,
+                    stt_overall_duration_ms=_duration_ms(overall_started_at),
+                    qwen_postprocess_enabled=qwen_postprocess_enabled,
+                )
                 return {
                     "success": True,
                     "transcript": qwen_result.text,
@@ -1254,6 +1389,17 @@ class STTAgent:
                     if corrected != transcript:
                         postprocessed = True
                         transcript = corrected
+                log_stt_event(
+                    event="stt_winner",
+                    stt_trace_id=stt_trace_id,
+                    stt_winner="vosk",
+                    provider="vosk-fallback",
+                    language=vosk_result.language,
+                    success=True,
+                    stt_overall_duration_ms=_duration_ms(overall_started_at),
+                    vosk_postprocessed=postprocessed,
+                    qwen_error_type=type(qwen_result).__name__,
+                )
                 return {
                     "success": True,
                     "transcript": transcript,
@@ -1264,6 +1410,15 @@ class STTAgent:
                 }
 
             # Both failed
+            log_stt_event(
+                event="stt_winner",
+                stt_trace_id=stt_trace_id,
+                stt_winner="none",
+                success=False,
+                stt_overall_duration_ms=_duration_ms(overall_started_at),
+                qwen_error_type=type(qwen_result).__name__,
+                vosk_error_type=type(vosk_result).__name__,
+            )
             raise RuntimeError(
                 f"Both Qwen and Vosk STT failed: qwen={qwen_result}, vosk={vosk_result}"
             )

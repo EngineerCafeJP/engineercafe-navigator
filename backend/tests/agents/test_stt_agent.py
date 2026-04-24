@@ -1,5 +1,6 @@
 """Tests for STTAgent - Speech-to-Text integration"""
 
+import logging
 import pytest
 import json
 import io
@@ -748,6 +749,30 @@ class TestSTTAgent:
 
         assert agent.stt_provider == "qwen0.6b-cpu"
         mock_qwen_client.assert_called_once_with(default_language="ja")
+
+    def test_init_qwen_primary_timeout_env_guard(self, monkeypatch):
+        """qwen-primary tolerates malformed QWEN_STT_TIMEOUT from prod env."""
+        monkeypatch.setenv("QWEN_STT_TIMEOUT", "true")
+
+        with (
+            patch("backend.agents.stt_agent.Qwen06BCpuSTTClient"),
+            patch("backend.agents.stt_agent.LocalSTTClient"),
+        ):
+            agent = STTAgent(stt_provider="qwen-primary")
+
+        assert agent._qwen_timeout == pytest.approx(10.0)
+
+    def test_init_qwen_primary_timeout_env_numeric(self, monkeypatch):
+        """qwen-primary accepts numeric QWEN_STT_TIMEOUT values."""
+        monkeypatch.setenv("QWEN_STT_TIMEOUT", "2.5")
+
+        with (
+            patch("backend.agents.stt_agent.Qwen06BCpuSTTClient"),
+            patch("backend.agents.stt_agent.LocalSTTClient"),
+        ):
+            agent = STTAgent(stt_provider="qwen-primary")
+
+        assert agent._qwen_timeout == pytest.approx(2.5)
 
     def test_init_invalid_provider_raises_error(self):
         """STTAgent raises ValueError for unknown provider"""
@@ -1699,8 +1724,9 @@ class TestQwenPrimaryParallel:
         return agent
 
     @pytest.mark.asyncio
-    async def test_qwen_primary_success(self):
+    async def test_qwen_primary_success(self, caplog):
         """Qwen succeeds -> provider='qwen-primary'"""
+        caplog.set_level(logging.INFO, logger="backend.observability.stt")
         mock_qwen = MagicMock()
         mock_qwen.transcribe = AsyncMock(
             return_value=TranscriptionResult(
@@ -1724,6 +1750,30 @@ class TestQwenPrimaryParallel:
         assert result["success"] is True
         assert result["provider"] == "qwen-primary"
         assert result["transcript"] == "こんにちは"
+        stt_records = [
+            record for record in caplog.records if record.name == "backend.observability.stt"
+        ]
+        events = [getattr(record, "event", None) for record in stt_records]
+        assert "stt_qwen_start" in events
+        assert "stt_qwen_complete" in events
+        assert "stt_winner" in events
+
+        winner = next(
+            record for record in stt_records if getattr(record, "event", None) == "stt_winner"
+        )
+        assert winner.stt_winner == "qwen"
+        assert winner.provider == "qwen-primary"
+        assert isinstance(winner.stt_overall_duration_ms, int)
+        assert winner.stt_trace_id.startswith("stt-")
+
+        qwen_complete = next(
+            record
+            for record in stt_records
+            if getattr(record, "event", None) == "stt_qwen_complete"
+        )
+        assert qwen_complete.success is True
+        assert isinstance(qwen_complete.stt_qwen_duration_ms, int)
+        assert qwen_complete.stt_trace_id == winner.stt_trace_id
 
     @pytest.mark.asyncio
     async def test_qwen_success_does_not_wait_for_slow_vosk(self):
