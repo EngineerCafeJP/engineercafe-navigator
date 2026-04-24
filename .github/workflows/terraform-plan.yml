@@ -1,0 +1,108 @@
+name: Terraform Plan
+
+on:
+  pull_request:
+    branches: [develop, main]
+    paths:
+      - 'infra/terraform/**'
+      - '.github/workflows/terraform-plan.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: terraform-plan-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  TERRAFORM_WORKING_DIRECTORY: infra/terraform
+  TF_IN_AUTOMATION: 'true'
+  TF_INPUT: 'false'
+
+jobs:
+  terraform-plan:
+    name: Terraform PR validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Detect Terraform directory
+        id: terraform_directory
+        shell: bash
+        run: |
+          if [[ -d "$TERRAFORM_WORKING_DIRECTORY" ]]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipping Terraform checks because $TERRAFORM_WORKING_DIRECTORY does not exist in this checkout."
+          fi
+
+      - name: Setup Terraform
+        if: steps.terraform_directory.outputs.exists == 'true'
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Check Terraform formatting
+        if: steps.terraform_directory.outputs.exists == 'true'
+        working-directory: ${{ env.TERRAFORM_WORKING_DIRECTORY }}
+        run: terraform fmt -check -recursive
+
+      - name: Initialize Terraform without backend
+        if: steps.terraform_directory.outputs.exists == 'true'
+        working-directory: ${{ env.TERRAFORM_WORKING_DIRECTORY }}
+        run: terraform init -backend=false
+
+      - name: Validate Terraform configuration
+        if: steps.terraform_directory.outputs.exists == 'true'
+        working-directory: ${{ env.TERRAFORM_WORKING_DIRECTORY }}
+        run: terraform validate
+
+      - name: Check GCP plan credentials
+        id: gcp_credentials
+        if: steps.terraform_directory.outputs.exists == 'true'
+        shell: bash
+        env:
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID || secrets.GCP_PROJECT_ID || 'aipartner-426616' }}
+          GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          GCP_SERVICE_ACCOUNT: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+        run: |
+          missing=()
+
+          if [[ -z "${GCP_PROJECT_ID:-}" ]]; then
+            missing+=("GCP_PROJECT_ID repository variable or secret")
+          fi
+
+          if [[ -z "${GCP_WORKLOAD_IDENTITY_PROVIDER:-}" ]]; then
+            missing+=("GCP_WORKLOAD_IDENTITY_PROVIDER secret")
+          fi
+
+          if [[ -z "${GCP_SERVICE_ACCOUNT:-}" ]]; then
+            missing+=("GCP_SERVICE_ACCOUNT secret")
+          fi
+
+          if (( ${#missing[@]} > 0 )); then
+            printf 'Missing optional inputs for terraform plan:\n' >&2
+            printf ' - %s\n' "${missing[@]}" >&2
+            echo "::notice::Skipping terraform plan because optional GCP Workload Identity inputs are not configured for this run."
+            echo "can_plan=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "can_plan=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Authenticate to Google Cloud
+        if: steps.terraform_directory.outputs.exists == 'true' && steps.gcp_credentials.outputs.can_plan == 'true'
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID || secrets.GCP_PROJECT_ID || 'aipartner-426616' }}
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Create Terraform plan
+        if: steps.terraform_directory.outputs.exists == 'true' && steps.gcp_credentials.outputs.can_plan == 'true'
+        working-directory: ${{ env.TERRAFORM_WORKING_DIRECTORY }}
+        env:
+          GOOGLE_CLOUD_PROJECT: ${{ vars.GCP_PROJECT_ID || secrets.GCP_PROJECT_ID || 'aipartner-426616' }}
+          GOOGLE_PROJECT: ${{ vars.GCP_PROJECT_ID || secrets.GCP_PROJECT_ID || 'aipartner-426616' }}
+          TF_VAR_project_id: ${{ vars.GCP_PROJECT_ID || secrets.GCP_PROJECT_ID || 'aipartner-426616' }}
+        run: terraform plan -no-color -input=false
