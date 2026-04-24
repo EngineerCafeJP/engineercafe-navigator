@@ -1,3 +1,5 @@
+import { EmotionMapping } from './emotion-mapping';
+
 /**
  * Unified Emotion Tagging System
  * Ensures consistent emotion tags across all agents
@@ -174,7 +176,7 @@ export class EmotionTagger {
   static extractExpression(text: string): SupportedExpression | null {
     const match = text.match(/^\[([a-zA-Z_]+)(?::\d*\.?\d+)?\]/);
     if (match) {
-      return this.getExpressionFromText(match[1]);
+      return EmotionMapping.mapToExpression(match[1]);
     }
     return null;
   }
