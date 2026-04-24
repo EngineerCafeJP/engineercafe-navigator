@@ -189,20 +189,9 @@ resource "google_logging_metric" "memory_helper_error_count" {
   description = "Count of existing structured root logs from backend.utils.memory_helper at ERROR level."
   filter      = "${local.cloud_run_filter} jsonPayload.logger=\"backend.utils.memory_helper\" jsonPayload.level=\"ERROR\""
 
-  label_extractors = {
-    message = "EXTRACT(jsonPayload.message)"
-  }
-
   metric_descriptor {
     metric_kind = "DELTA"
     value_type  = "INT64"
     unit        = "1"
-
-    labels {
-      key         = "message"
-      value_type  = "STRING"
-      description = "Memory helper error message template."
-    }
   }
 }
-
