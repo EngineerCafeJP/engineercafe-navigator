@@ -137,6 +137,51 @@ class TestQueryExpansion:
 
         assert "Where is the location?" in result
 
+    @pytest.mark.parametrize(
+        ("query", "expected_terms"),
+        [
+            ("Tell me about membership", ["会員", "利用登録", "無料"]),
+            ("What is the membership like?", ["会員", "利用登録", "受付"]),
+            ("Can I become a member?", ["会員", "利用登録", "初回"]),
+            ("Are there member benefits?", ["無料", "利用料", "会員"]),
+        ],
+    )
+    def test_expand_query_membership_english_matches_kb_terms(
+        self,
+        rag_search,
+        query,
+        expected_terms,
+    ):
+        """英語のmembership系クエリがKB由来の語彙へ拡張される"""
+        result = rag_search._expand_query(query, "general", "en")
+
+        assert result.startswith(query)
+        assert "(" in result
+        for term in expected_terms:
+            assert term in result
+
+    def test_expand_query_register_as_member_uses_corpus_terms(self, rag_search):
+        """member登録系クエリでKBにある語彙が優先される"""
+        result = rag_search._expand_query("How do I register as a member?", "general", "en")
+
+        assert "利用登録" in result
+        assert "会員" in result
+        assert "受付" in result
+        assert "サインアップ" not in result
+
+    def test_expand_query_parking_has_no_membership_noise(self, rag_search):
+        """関係ないクエリにmembership拡張が混ざらない"""
+        result = rag_search._expand_query("parking", "general", "en")
+
+        assert result == "parking"
+
+    def test_expand_query_business_hours_still_works_in_english(self, rag_search):
+        """既存の営業時間クエリ拡張が維持される"""
+        result = rag_search._expand_query("What are your business hours?", "hours", "en")
+
+        assert result.startswith("What are your business hours?")
+        assert "営業時間" in result or "開館時間" in result
+
     def test_expand_query_no_expansion_needed(self, rag_search):
         """拡張が不要なクエリ（generalカテゴリではアンカリングしない）"""
         result = rag_search._expand_query("こんにちは", "general", "ja")
@@ -644,6 +689,14 @@ class TestQueryExpansionMap:
         assert "営業時間" in QUERY_EXPANSION_MAP["opening hours"]
         assert "料金" in QUERY_EXPANSION_MAP["price"]
         assert "アクセス" in QUERY_EXPANSION_MAP["location"]
+
+    def test_membership_entries_use_kb_aligned_terms(self):
+        """membership系の英語キーがKB語彙に寄せられている"""
+        assert "サインアップ" not in QUERY_EXPANSION_MAP["register"]
+        assert "利用登録" in QUERY_EXPANSION_MAP["register"]
+        assert "無料" in QUERY_EXPANSION_MAP["membership"]
+        assert "無料" in QUERY_EXPANSION_MAP["member benefits"]
+        assert "会員番号" in QUERY_EXPANSION_MAP["member"]
 
 
 # ==============================================================================

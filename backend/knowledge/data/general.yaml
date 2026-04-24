@@ -41,7 +41,7 @@ entries:
 
   - id: "general-pricing"
     title: "エンジニアカフェ 料金・利用登録"
-    title_en: "Engineer Cafe Pricing and Registration"
+    title_en: "Engineer Cafe Pricing, Registration, and Membership"
     content: >
       エンジニアカフェは「エンジニアフレンドリーシティ福岡」の実現を目的とした官民一体型プロジェクトで、
       現役エンジニア、エンジニアを目指す方、エンジニアリング分野に関連する業務や学習に取り組む方が対象です。
@@ -57,7 +57,8 @@ entries:
     content_en: >
       Engineer Cafe is a public-private project under Fukuoka's "Engineer Friendly City" initiative.
       It is open to working engineers, aspiring engineers, and anyone in engineering-related fields.
-      Facility and equipment use is free. Only cafe&bar saino food/drinks and 3D printer filament are paid.
+      Membership registration and facility use are free. Only cafe&bar saino food/drinks and
+      3D printer filament are paid.
       First-time registration: Complete a form at reception (5-10 min, free, no ID required).
       You will receive a briefing on facility rules (food policy, quiet zones, 15-min seat policy).
       Registration is in-person only; no online pre-registration available.
@@ -66,7 +67,7 @@ entries:
       Return the card at reception when leaving.
       Events are also free, but commercial advertising and headhunting activities are not permitted.
     category: "pricing"
-    tags: ["pricing", "registration", "free", "engineer-cafe"]
+    tags: ["pricing", "registration", "membership", "free", "engineer-cafe"]
     priority: 90
     source: "official"
     verified: true
