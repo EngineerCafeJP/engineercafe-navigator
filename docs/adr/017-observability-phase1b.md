@@ -101,6 +101,19 @@ log の `logger=backend.utils.memory_helper` と `level=ERROR` を使う。
 - 既存 structured log schema を前提にする。
 - Terraform apply までは GCP Monitoring resource は変更されない。
 
+## Phase 1b pre-apply fix (#564)
+
+Terraform apply 前の安全対策として、memory helper error metric の `message` label は採用しない。
+`backend.utils.memory_helper` の ERROR log は `"Error storing message: %s"` など例外内容を含む
+free-form message であり、Supabase/PostgREST の response、session/key、接続エラー詳細などが
+混入すると log-based metric label の cardinality が無制限に増える。alert と dashboard では
+message 別内訳よりも 15m error count の検知を優先する。
+
+また、alert policy と dashboard の Monitoring filter は
+`google_logging_metric.*.name` から組み立てた metric type を使う。これにより初回 apply 時に
+log-based metric descriptor が alert/dashboard より先に作成される Terraform graph になるため、
+静的文字列だけで参照した場合の descriptor 作成順序リスクを避ける。
+
 ## ロールバック
 
 問題が出た場合は、該当 alert policy の notification を停止するか、Terraform で対象 resource

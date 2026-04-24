@@ -3,13 +3,13 @@ locals {
   cloud_run_metric_scope = "resource.type=\"cloud_run_revision\" resource.label.service_name=\"${var.cloud_run_service_name}\" resource.label.location=\"${var.region}\""
 
   metric_type = {
-    chat_response_count       = "logging.googleapis.com/user/engineer_cafe_chat_response_count"
-    chat_rag_fallback_count   = "logging.googleapis.com/user/engineer_cafe_chat_rag_fallback_count"
-    chat_response_latency_ms  = "logging.googleapis.com/user/engineer_cafe_chat_response_latency_ms"
-    stt_winner_count          = "logging.googleapis.com/user/engineer_cafe_stt_winner_count"
-    stt_none_count            = "logging.googleapis.com/user/engineer_cafe_stt_none_count"
-    stt_overall_duration_ms   = "logging.googleapis.com/user/engineer_cafe_stt_overall_duration_ms"
-    memory_helper_error_count = "logging.googleapis.com/user/engineer_cafe_memory_helper_error_count"
+    chat_response_count       = "logging.googleapis.com/user/${google_logging_metric.chat_response_count.name}"
+    chat_rag_fallback_count   = "logging.googleapis.com/user/${google_logging_metric.chat_rag_fallback_count.name}"
+    chat_response_latency_ms  = "logging.googleapis.com/user/${google_logging_metric.chat_response_latency_ms.name}"
+    stt_winner_count          = "logging.googleapis.com/user/${google_logging_metric.stt_winner_count.name}"
+    stt_none_count            = "logging.googleapis.com/user/${google_logging_metric.stt_none_count.name}"
+    stt_overall_duration_ms   = "logging.googleapis.com/user/${google_logging_metric.stt_overall_duration_ms.name}"
+    memory_helper_error_count = "logging.googleapis.com/user/${google_logging_metric.memory_helper_error_count.name}"
   }
 
   slo = {

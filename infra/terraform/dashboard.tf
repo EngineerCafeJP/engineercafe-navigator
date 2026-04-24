@@ -87,7 +87,6 @@ resource "google_monitoring_dashboard" "observability_phase1b" {
                         alignmentPeriod    = "900s"
                         perSeriesAligner   = "ALIGN_DELTA"
                         crossSeriesReducer = "REDUCE_SUM"
-                        groupByFields      = ["metric.label.message"]
                       }
                     }
                   }
