@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
 import json
 import logging
 import os
@@ -26,6 +27,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 import httpx
+from cachetools import TTLCache
 
 from backend.utils.clarification_templates import (
     ClarificationCategory,
@@ -718,6 +720,18 @@ class VoiceAgent:
         else:
             self.voicevox_fallback_client = None
 
+        self._tts_cache: TTLCache = TTLCache(maxsize=200, ttl=3600)
+
+    @staticmethod
+    def _tts_cache_key(text: str, language: str, provider: str, emotion: str) -> str:
+        raw = f"{text}|{language}|{provider}|{emotion or ''}"
+        return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+    def _tts_audio_format(self, language: str) -> str:
+        if self.tts_provider == "piper" or language == "en" or self.tts_provider == "voicevox":
+            return "audio/wav"
+        return "audio/mpeg"
+
     def _detect_category(self, text: str, language: str) -> Optional[ClarificationCategory]:
         """
         テキストから曖昧性カテゴリを検出
@@ -825,6 +839,41 @@ class VoiceAgent:
             processed = truncate_by_bytes(processed, 5000)
             logger.warning("Text truncated to 5000 bytes")
 
+        cache_key = self._tts_cache_key(processed, language, self.tts_provider, vrm_emotion)
+        cached_audio = self._tts_cache.get(cache_key)
+        if cached_audio is not None:
+            logger.info(
+                "TTS cache hit: key=%s text_len=%d",
+                cache_key[:8],
+                len(processed),
+                extra={
+                    "tts_cache_hit": True,
+                    "tts_cache_key_prefix": cache_key[:8],
+                    "tts_cache_text_len": len(processed),
+                },
+            )
+            return {
+                "success": True,
+                "audioResponse": cached_audio,
+                "emotion": vrm_emotion,
+                "cleanText": processed,
+                "format": self._tts_audio_format(language),
+                "language": language,
+                "ambiguity_resolved": ambiguity_category is not None,
+                "tts_cache_hit": True,
+            }
+
+        logger.info(
+            "TTS cache miss: key=%s text_len=%d",
+            cache_key[:8],
+            len(processed),
+            extra={
+                "tts_cache_miss": True,
+                "tts_cache_key_prefix": cache_key[:8],
+                "tts_cache_text_len": len(processed),
+            },
+        )
+
         try:
             # ステップ5: 言語に基づいてTTSエンジンを選択
             if self.tts_provider == "piper":
@@ -851,6 +900,8 @@ class VoiceAgent:
                 )
                 audio_format = "audio/mpeg"
 
+            self._tts_cache[cache_key] = audio_b64
+
             return {
                 "success": True,
                 "audioResponse": audio_b64,
@@ -859,6 +910,7 @@ class VoiceAgent:
                 "format": audio_format,
                 "language": language,
                 "ambiguity_resolved": ambiguity_category is not None,
+                "tts_cache_hit": False,
             }
         except Exception as e:
             logger.exception("TTS failed, trying fallback: %s", e)
@@ -921,6 +973,7 @@ class VoiceAgent:
                     "cleanText": fb_text,
                     "error": str(e),
                     "format": audio_format,
+                    "tts_cache_hit": False,
                 }
             except Exception as fallback_error:
                 logger.error("Fallback TTS also failed: %s", fallback_error)
@@ -928,4 +981,5 @@ class VoiceAgent:
                     "success": False,
                     "error": f"Failed to generate speech: {str(e)}",
                     "emotion": "confused",
+                    "tts_cache_hit": False,
                 }

@@ -1,4 +1,5 @@
 import pytest
+from cachetools import TTLCache
 
 from backend.agents.voice_agent import (
     parse_emotion_tags,
@@ -8,6 +9,17 @@ from backend.agents.voice_agent import (
     map_vrm_to_tts_emotion,
     VoiceAgent,
 )
+
+
+class FakeTimer:
+    def __init__(self) -> None:
+        self.current = 0.0
+
+    def __call__(self) -> float:
+        return self.current
+
+    def advance(self, seconds: float) -> None:
+        self.current += seconds
 
 
 def test_parse_emotion_tags_removes_tags_and_maps_alias():
@@ -161,6 +173,95 @@ async def test_text_to_speech_fallback_on_error(monkeypatch):
     assert result["success"] is True
     assert result["audioResponse"] == "FALLBACK_BASE64"
     assert state["n"] == 2  # 1回失敗 + フォールバックで1回成功
+
+
+@pytest.mark.asyncio
+async def test_text_to_speech_cache_hit_reuses_audio(monkeypatch):
+    agent = VoiceAgent(tts_provider="google")
+    calls = {"count": 0}
+
+    async def fake_synth(text, lang, tts_emotion):
+        calls["count"] += 1
+        return f"BASE64_MP3_{calls['count']}"
+
+    monkeypatch.setattr(agent.tts_client, "synthesize_mp3_base64", fake_synth)
+
+    first = await agent.text_to_speech(text="[happy]こんにちは", language="ja")
+    second = await agent.text_to_speech(text="[happy]こんにちは", language="ja")
+
+    assert calls["count"] == 1
+    assert first["audioResponse"] == "BASE64_MP3_1"
+    assert first["tts_cache_hit"] is False
+    assert first["format"] == "audio/mpeg"
+    assert second["audioResponse"] == "BASE64_MP3_1"
+    assert second["tts_cache_hit"] is True
+    assert second["format"] == "audio/mpeg"
+
+
+@pytest.mark.asyncio
+async def test_text_to_speech_cache_miss_for_different_text(monkeypatch):
+    agent = VoiceAgent(tts_provider="google")
+    calls = {"count": 0}
+
+    async def fake_synth(text, lang, tts_emotion):
+        calls["count"] += 1
+        return f"BASE64_MP3_{calls['count']}"
+
+    monkeypatch.setattr(agent.tts_client, "synthesize_mp3_base64", fake_synth)
+
+    first = await agent.text_to_speech(text="こんにちは", language="ja")
+    second = await agent.text_to_speech(text="こんばんは", language="ja")
+
+    assert calls["count"] == 2
+    assert first["audioResponse"] == "BASE64_MP3_1"
+    assert first["tts_cache_hit"] is False
+    assert second["audioResponse"] == "BASE64_MP3_2"
+    assert second["tts_cache_hit"] is False
+
+
+@pytest.mark.asyncio
+async def test_text_to_speech_cache_expires_after_ttl(monkeypatch):
+    agent = VoiceAgent(tts_provider="voicevox")
+    timer = FakeTimer()
+    agent._tts_cache = TTLCache(maxsize=200, ttl=3600, timer=timer)
+    calls = {"count": 0}
+
+    async def fake_synth(text, lang, speaker_id=None):
+        calls["count"] += 1
+        return f"VOICEVOX_BASE64_{calls['count']}"
+
+    monkeypatch.setattr(agent.tts_client, "synthesize_wav_base64", fake_synth)
+
+    first = await agent.text_to_speech(text="こんにちは", language="ja")
+    timer.advance(3601)
+    second = await agent.text_to_speech(text="こんにちは", language="ja")
+
+    assert calls["count"] == 2
+    assert first["audioResponse"] == "VOICEVOX_BASE64_1"
+    assert first["tts_cache_hit"] is False
+    assert second["audioResponse"] == "VOICEVOX_BASE64_2"
+    assert second["tts_cache_hit"] is False
+
+
+@pytest.mark.asyncio
+async def test_text_to_speech_cache_key_varies_by_language(monkeypatch):
+    agent = VoiceAgent(tts_provider="piper")
+    calls = {"count": 0, "languages": []}
+
+    async def fake_synth(text, lang):
+        calls["count"] += 1
+        calls["languages"].append(lang)
+        return f"PIPER_BASE64_{calls['count']}"
+
+    monkeypatch.setattr(agent.tts_client, "synthesize_wav_base64", fake_synth)
+
+    first = await agent.text_to_speech(text="Hello", language="en")
+    second = await agent.text_to_speech(text="Hello", language="ja")
+
+    assert calls["count"] == 2
+    assert calls["languages"] == ["en", "ja"]
+    assert first["tts_cache_hit"] is False
+    assert second["tts_cache_hit"] is False
 
 
 @pytest.mark.asyncio
