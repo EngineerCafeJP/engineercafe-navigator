@@ -44,7 +44,7 @@ def generate_test_wav(sample_rate: int = 16000, duration: float = 0.5, channels:
     """Generate a simple test WAV file (silence or tone)"""
     num_samples = int(sample_rate * duration)
     # Generate silence
-    samples = np.zeros(num_samples, dtype=np.int16)
+    samples = np.zeros((num_samples, channels), dtype=np.int16)
 
     bio = io.BytesIO()
     with wave.open(bio, "wb") as wf:
@@ -52,6 +52,28 @@ def generate_test_wav(sample_rate: int = 16000, duration: float = 0.5, channels:
         wf.setsampwidth(2)  # 16-bit
         wf.setframerate(sample_rate)
         wf.writeframes(samples.tobytes())
+
+    bio.seek(0)
+    return bio.read()
+
+
+def generate_test_wav_24bit(
+    sample_rate: int = 16000, duration: float = 0.5, channels: int = 1
+) -> bytes:
+    """Generate a 24-bit PCM WAV fixture for unsupported-width tests."""
+    num_samples = int(sample_rate * duration)
+    samples = np.zeros((num_samples, channels), dtype=np.int32)
+    packed_samples = bytearray()
+
+    for sample in samples.reshape(-1):
+        packed_samples.extend(int(sample).to_bytes(3, byteorder="little", signed=True))
+
+    bio = io.BytesIO()
+    with wave.open(bio, "wb") as wf:
+        wf.setnchannels(channels)
+        wf.setsampwidth(3)  # 24-bit
+        wf.setframerate(sample_rate)
+        wf.writeframes(bytes(packed_samples))
 
     bio.seek(0)
     return bio.read()
@@ -67,6 +89,12 @@ def test_wav_16khz() -> bytes:
 def test_wav_8khz() -> bytes:
     """Test WAV: 8kHz (non-ideal for Vosk)"""
     return generate_test_wav(sample_rate=8000, duration=0.5)
+
+
+@pytest.fixture
+def test_wav_48khz_stereo() -> bytes:
+    """Test WAV: 48kHz, 16-bit, stereo."""
+    return generate_test_wav(sample_rate=48000, duration=0.5, channels=2)
 
 
 # ==============================================================================
@@ -345,6 +373,81 @@ class TestResampleTo16khz:
         result_frames, _ = LocalSTTClient._resample_to_16khz(silence.tobytes(), 22050)
         result_samples = np.frombuffer(result_frames, dtype=np.int16)
         np.testing.assert_array_equal(result_samples, np.zeros_like(result_samples))
+
+
+class TestMultichannelWavHandling:
+    """Tests for WAV channel normalization before Vosk transcription."""
+
+    @pytest.mark.asyncio
+    async def test_stereo_wav_downmixed_to_mono_before_resample(self, test_wav_48khz_stereo):
+        """Stereo WAV frames are downmixed before resampling for Vosk."""
+        client = LocalSTTClient()
+        mock_recognizer = MagicMock()
+        mock_recognizer.FinalResult.return_value = json.dumps(
+            {"result": [{"conf": 0.9, "word": "hello"}], "text": "hello"}
+        )
+
+        with wave.open(io.BytesIO(test_wav_48khz_stereo), "rb") as wf:
+            raw_frames = wf.readframes(wf.getnframes())
+            expected_downmixed = (
+                np.frombuffer(raw_frames, dtype=np.int16)
+                .reshape(-1, wf.getnchannels())
+                .mean(axis=1)
+                .astype(np.int16)
+                .tobytes()
+            )
+
+        with _vosk_patched():
+            _vosk_mock.KaldiRecognizer.return_value = mock_recognizer
+            with patch.object(LocalSTTClient, "_resample_to_16khz") as mock_resample:
+                mock_resample.return_value = (expected_downmixed, 16000)
+                with patch("backend.agents.stt_agent.LocalSTTClient._load_model"):
+                    result = await client.transcribe(test_wav_48khz_stereo, language="en")
+
+        resample_frames, resample_rate = mock_resample.call_args.args
+        assert resample_rate == 48000
+        assert resample_frames == expected_downmixed
+        assert len(resample_frames) * 2 == len(raw_frames)
+        mock_recognizer.AcceptWaveform.assert_called_once_with(expected_downmixed)
+        assert result.text == "hello"
+        assert result.language == "en"
+
+    @pytest.mark.asyncio
+    async def test_24bit_wav_raises_value_error(self):
+        """24-bit WAV inputs are rejected with a clear error."""
+        client = LocalSTTClient()
+        test_wav_24bit = generate_test_wav_24bit(sample_rate=16000, duration=0.25)
+
+        with _vosk_patched():
+            with patch("backend.agents.stt_agent.LocalSTTClient._load_model") as mock_load:
+                with pytest.raises(ValueError, match="Unsupported sample width: 3 bytes"):
+                    await client.transcribe(test_wav_24bit, language="ja")
+
+        mock_load.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_mono_wav_passthrough_still_works(self, test_wav_8khz):
+        """Mono WAV audio is passed to resampling without channel rewriting."""
+        client = LocalSTTClient()
+        mock_recognizer = MagicMock()
+        mock_recognizer.FinalResult.return_value = json.dumps(
+            {"result": [{"conf": 0.92, "word": "test"}], "text": "test"}
+        )
+
+        with wave.open(io.BytesIO(test_wav_8khz), "rb") as wf:
+            mono_frames = wf.readframes(wf.getnframes())
+
+        with _vosk_patched():
+            _vosk_mock.KaldiRecognizer.return_value = mock_recognizer
+            with patch.object(LocalSTTClient, "_resample_to_16khz") as mock_resample:
+                mock_resample.return_value = (mono_frames, 16000)
+                with patch("backend.agents.stt_agent.LocalSTTClient._load_model"):
+                    result = await client.transcribe(test_wav_8khz, language="en")
+
+        mock_resample.assert_called_once_with(mono_frames, 8000)
+        mock_recognizer.AcceptWaveform.assert_called_once_with(mono_frames)
+        assert result.text == "test"
+        assert result.language == "en"
 
 
 # ==============================================================================

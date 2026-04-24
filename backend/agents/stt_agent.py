@@ -484,6 +484,8 @@ class LocalSTTClient:
         Returns:
             Tuple of (resampled_frames_bytes, 16000).
         """
+        assert len(frames) % 2 == 0, "Expected 16-bit aligned PCM data"
+
         if orig_rate == 16000:
             return frames, 16000
 
@@ -529,7 +531,19 @@ class LocalSTTClient:
         bio = io.BytesIO(audio_data)
         with wave.open(bio, "rb") as wf:
             sample_rate = wf.getframerate()
+            nchannels = wf.getnchannels()
+            sampwidth = wf.getsampwidth()
             frames = wf.readframes(wf.getnframes())
+
+        if sampwidth != 2:
+            raise ValueError(
+                f"Unsupported sample width: {sampwidth} bytes (only 16-bit PCM supported)"
+            )
+
+        if nchannels > 1:
+            audio_np = np.frombuffer(frames, dtype=np.int16).reshape(-1, nchannels)
+            frames = audio_np.mean(axis=1).astype(np.int16).tobytes()
+            logger.info("Downmixed %d-channel audio to mono", nchannels)
 
         if sample_rate != 16000:
             logger.info(
