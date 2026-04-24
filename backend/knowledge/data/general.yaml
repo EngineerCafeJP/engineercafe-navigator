@@ -13,6 +13,17 @@ entries:
       イベントがない時間帯はコワーキングスペースとして自由にご利用いただけます。
       エンジニアリングに関わる方が対象で、現役エンジニアだけでなく、
       エンジニアを目指す学生やフリーランス、海外のエンジニアなども利用できます。
+    content_en: >
+      Engineer Cafe (Engineer Cafe – Hacker Space Fukuoka –) is a free coworking and
+      community space for engineers, established in August 2019 as a core facility of
+      Fukuoka City's "Engineer Friendly City" initiative.
+      Located inside the historic Akarenga Bunka-kan (Red-Brick Culture Hall, built in 1909,
+      a nationally designated Important Cultural Property) in Tenjin, Chuo-ku, Fukuoka.
+      Equipped with Wi-Fi, power outlets, and workspace.
+      Operated as an event-priority space; when no events are scheduled, freely available as
+      a coworking space.
+      Open to anyone involved in engineering: working engineers, aspiring students,
+      freelancers, and international engineers alike.
     category: "general"
     tags: ["overview", "basic", "engineer-cafe"]
     priority: 90
@@ -197,6 +208,19 @@ entries:
       【車の場合】専用駐車場はありません。近隣のコインパーキングをご利用ください。
       天神地下街の駐車場（30分250円〜）が便利です。
       【自転車の場合】建物周辺に駐輪スペースがあります。
+    content_en: >
+      Detailed access information to Engineer Cafe (Fukuoka City Akarenga Bunka-kan).
+      From Fukuoka Airport: Take the Fukuoka City Subway Kuko Line to Tenjin Station
+      (about 11 minutes, 260 yen). Walk about 5 minutes from Tenjin Station
+      (east through Tenjin Underground Mall, then above ground along Showa-dori).
+      From Hakata Station: Take the subway to Tenjin Station (about 6 minutes, 210 yen),
+      or take a Nishitetsu Bus to Tenjin.
+      Walking route from Tenjin Station: Exit from Exit 16, walk east on Showa-dori for
+      about 5 minutes. The red-brick Western-style building is the landmark.
+      Address: 1-15-30 Tenjin, Chuo-ku, Fukuoka.
+      By car: No dedicated parking. Please use nearby coin parking lots.
+      Tenjin Underground Mall parking (from 250 yen/30 min) is convenient.
+      By bicycle: Bicycle parking spaces available around the building.
     category: "access"
     tags: ["access", "airport", "hakata", "subway", "engineer-cafe"]
     priority: 90
@@ -295,6 +319,41 @@ entries:
       and international engineers.
     category: "general"
     tags: ["welcome", "first-time", "reception", "guide", "overview", "engineer-cafe"]
+    priority: 90
+    source: "official"
+    verified: true
+
+  - id: "general-membership-overview"
+    title: "会員制度について"
+    title_en: "About Membership"
+    content: >
+      エンジニアカフェの会員制度についてご案内します。
+      エンジニアカフェは無料で利用できるエンジニア向けコワーキングスペースです。
+      利用には初回のみ受付での利用登録（約5〜10分・無料・身分証不要）が必要です。
+      登録完了時に会員番号が発行され、2回目以降は会員番号を伝えるだけで利用できます。
+      会員登録料・年会費は一切かかりません。
+      施設・設備の利用料も無料です（カフェ飲食と3Dプリンターフィラメントのみ有料）。
+      利用対象者は、現役エンジニア、エンジニアを目指す学生・フリーランス、
+      海外のエンジニアなど、エンジニアリングに関わるすべての方です。
+      年齢制限はありませんが、一人で安全に利用できることが条件です。
+      Day Passや一時利用制度はなく、登録済みの利用者が開館時間内（9:00〜22:00）に
+      自由に利用できます。
+      オンライン事前登録には対応しておらず、来館時の登録のみ可能です。
+    content_en: >
+      Here is an overview of the Engineer Cafe membership system.
+      Engineer Cafe is a free coworking space for engineers.
+      First-time users need to register at the reception desk (about 5-10 minutes, free, no ID required).
+      Upon registration, you receive a member number. On subsequent visits, simply provide your member number.
+      There is no registration fee or annual membership fee.
+      Facility and equipment use is also free (only cafe food/drinks and 3D printer filament are paid).
+      The space is open to all engineers: working engineers, students aspiring to become engineers,
+      freelancers, and international engineers — anyone involved in engineering.
+      There is no age limit, but you must be able to use the facility safely on your own.
+      There is no Day Pass or temporary usage system — registered members can freely use the space
+      during opening hours (9:00 AM to 10:00 PM).
+      Online pre-registration is not available; registration must be done in person at the facility.
+    category: "general"
+    tags: ["membership", "member", "会員", "会員制度", "registration", "free"]
     priority: 90
     source: "official"
     verified: true
