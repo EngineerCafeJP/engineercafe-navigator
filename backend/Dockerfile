@@ -65,7 +65,9 @@ COPY . .
 
 # Set HuggingFace cache to writable path (avoids /nonexistent home dir issue)
 ENV HF_HOME=/app/.hf_cache
+ENV NUMBA_CACHE_DIR=/app/.numba_cache
 RUN mkdir -p $HF_HOME
+RUN mkdir -p $NUMBA_CACHE_DIR
 
 # Download Vosk STT models (~88MB) — required for Cloud Run where
 # volume mounts are not available.
@@ -73,6 +75,9 @@ RUN bash scripts/download_vosk_models.sh models
 
 # Download Qwen3-ASR 0.6B model (~1.2GB) — primary STT provider (ADR-007)
 RUN bash scripts/download_qwen_model.sh
+
+# Pre-warm numba JIT cache for librosa resample used by qwen-asr audio preprocessing.
+RUN python -c "import librosa; import numpy as np; librosa.resample(np.zeros(16000, dtype=np.float32), orig_sr=16000, target_sr=8000); print('numba warm complete')" || echo 'numba warm failed (non-fatal)'
 
 # Set ownership and switch to non-root user
 RUN chown -R appuser:appuser /app
