@@ -16,6 +16,9 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEFAULT_URL="https://engineer-cafe-backend-639959525777.asia-northeast1.run.app"
 BASE_URL="${ALPHA_SMOKE_BASE_URL:-$DEFAULT_URL}"
+FRONTEND_URL="${ALPHA_SMOKE_FRONTEND_URL:-https://frontend-delta-six-20.vercel.app}"
+CLOUD_RUN_REVISION="${ALPHA_SMOKE_CLOUD_RUN_REVISION:-engineer-cafe-backend-00103-r6s}"
+BACKEND_SHA="${ALPHA_SMOKE_BACKEND_SHA:-72d0cfcf9ff4a7c3fb9280f2bfe0d43c0a9c36ac}"
 API_KEY="${API_SECRET_KEY:-}"
 SECRET_PROJECT="${ALPHA_SMOKE_SECRET_PROJECT:-aipartner-426616}"
 SECRET_NAME="API_SECRET_KEY"
@@ -111,12 +114,15 @@ scenario_enabled() {
 }
 
 json_get() {
-  local path="$1"
-  python3 - "$path" <<'PY'
+  local path="$1" tmp
+  tmp="$(mktemp)"
+  cat > "$tmp"
+  python3 - "$path" "$tmp" <<'PY'
 import json, sys
 path = sys.argv[1].split(".")
 try:
-    node = json.load(sys.stdin)
+    with open(sys.argv[2], encoding="utf-8") as f:
+        node = json.load(f)
     for key in path:
         if isinstance(node, dict):
             node = node.get(key, "")
@@ -132,6 +138,7 @@ try:
 except Exception:
     print("")
 PY
+  rm -f "$tmp"
 }
 
 chat_body() {
@@ -292,7 +299,7 @@ A2-EN-006|en|wifi|I need a stable wireless connection for a video call. Which ar
 A2-EN-007|en|reception|What should I say at reception when I arrive for my first visit?
 A2-EN-008|en|reception|I have registered before. Can I just check in again today?
 A2-EN-009|en|reception|If I bring one guest with me, does that person need a separate reception process?
-A2-EN-010|en|schedule|What are today's opening hours and the last reception time?
+A2-EN-010|en|schedule|What are the opening hours today and the last reception time?
 A2-EN-011|en|schedule|Can I use the space on Saturday evening, and what time does it close?
 A2-EN-012|en|pricing|How much does it cost to use the coworking space?
 A2-EN-013|en|pricing|Are events free to join, and where can I confirm paid events?
@@ -427,12 +434,45 @@ run_scenario_a() {
 }
 
 metadata_agent() {
-  local body="$1" agent route category request_type
+  local body="$1" agent route category request_type raw_value
   agent="$(printf '%s' "$body" | json_get metadata.agent)"
   route="$(printf '%s' "$body" | json_get metadata.route)"
   category="$(printf '%s' "$body" | json_get metadata.category)"
   request_type="$(printf '%s' "$body" | json_get metadata.request_type)"
-  printf '%s' "${agent:-${route:-${category:-$request_type}}}"
+  raw_value="$agent"
+  [ -n "$raw_value" ] || raw_value="$route"
+  [ -n "$raw_value" ] || raw_value="$category"
+  [ -n "$raw_value" ] || raw_value="$request_type"
+  normalize_routing_value "$raw_value"
+}
+
+normalize_routing_value() {
+  local raw="$1" value
+  value="$(printf '%s' "$raw" | tr '[:upper:]' '[:lower:]')"
+  value="${value//-/_}"
+  case "$value" in
+    businessinfoagent|business_info|business_hours|hours|pricing|price|reception|community|consultation)
+      printf '%s' "business_info"
+      ;;
+    facilityagent|facility|facility_info|basement_facility|wifi|access|facilities|parking)
+      printf '%s' "facility"
+      ;;
+    eventagent|event|events)
+      printf '%s' "event"
+      ;;
+    generalknowledgeagent|general_knowledge|general|memory)
+      printf '%s' "general_knowledge"
+      ;;
+    slideagent|slide)
+      printf '%s' "slide"
+      ;;
+    farewellagent|farewell)
+      printf '%s' "farewell"
+      ;;
+    *)
+      printf '%s' "$raw"
+      ;;
+  esac
 }
 
 run_routing_case() {
@@ -611,9 +651,23 @@ run_scenario_d() {
 }
 
 write_report() {
-  python3 - "$REPORT_CSV" "$REPORT_MD" "$TIMESTAMP" "$BASE_URL" "$SCENARIOS" "$PASS_COUNT" "$WARN_COUNT" "$FAIL_COUNT" "$TTS_PROVIDER" "$STT_THRESHOLD" <<'PY'
+  python3 - "$REPORT_CSV" "$REPORT_MD" "$TIMESTAMP" "$BASE_URL" "$FRONTEND_URL" "$CLOUD_RUN_REVISION" "$BACKEND_SHA" "$SCENARIOS" "$PASS_COUNT" "$WARN_COUNT" "$FAIL_COUNT" "$TTS_PROVIDER" "$STT_THRESHOLD" <<'PY'
 import csv, statistics, sys
-csv_path, md_path, timestamp, base_url, scenarios, passed, warned, failed, provider, stt_threshold = sys.argv[1:11]
+(
+    csv_path,
+    md_path,
+    timestamp,
+    base_url,
+    frontend_url,
+    cloud_run_revision,
+    backend_sha,
+    scenarios,
+    passed,
+    warned,
+    failed,
+    provider,
+    stt_threshold,
+) = sys.argv[1:14]
 rows = list(csv.DictReader(open(csv_path, encoding="utf-8")))
 latencies = {}
 for row in rows:
@@ -636,6 +690,9 @@ lines = [
     "",
     f"- Timestamp: {timestamp}",
     f"- Base URL: {base_url}",
+    f"- Frontend URL: {frontend_url}",
+    f"- Cloud Run revision: {cloud_run_revision}",
+    f"- Backend SHA: {backend_sha}",
     f"- Scenarios: {scenarios}",
     f"- TTS provider for round-trip audio: {provider}",
     f"- STT similarity threshold: {stt_threshold}",
@@ -668,6 +725,9 @@ PY
 dry_run() {
   echo "Dry run: no network calls and no Secret Manager access."
   echo "Base URL: $BASE_URL"
+  echo "Frontend URL: $FRONTEND_URL"
+  echo "Cloud Run revision: $CLOUD_RUN_REVISION"
+  echo "Backend SHA: $BACKEND_SHA"
   echo "Scenarios: $SCENARIOS"
   echo "Reports: $REPORT_MD / $REPORT_CSV"
   printf 'A utterances: '; printf '%s\n' "$A_UTTERANCES" | sed '/^$/d' | wc -l | tr -d ' '
@@ -703,6 +763,9 @@ main() {
   echo "============================================"
   echo "Alpha final comprehensive smoke"
   echo "URL: $BASE_URL"
+  echo "Frontend: $FRONTEND_URL"
+  echo "Cloud Run revision: $CLOUD_RUN_REVISION"
+  echo "Backend SHA: $BACKEND_SHA"
   echo "Scenarios: $SCENARIOS"
   echo "Report: $REPORT_MD"
   echo "============================================"

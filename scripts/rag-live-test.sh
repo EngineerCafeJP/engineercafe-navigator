@@ -1,12 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Alpha final live RAGAS wrapper.
+# Alpha final direct-RAG RAGAS wrapper.
 #
 # Usage:
 #   scripts/rag-live-test.sh
 #   scripts/rag-live-test.sh --languages ja,en --max-cases 127
 #   scripts/rag-live-test.sh --dry-run
+#
+# This script evaluates EnhancedRAGSearch directly via
+# backend/tests/evaluation/run_ragas_evaluation.py. Use
+# scripts/rag-api-live-test.sh for /api/chat live API evaluation.
 #
 # Env:
 #   OPENAI_API_KEY / OPENROUTER_API_KEY  Required by RAGAS live evaluation.
@@ -34,7 +38,7 @@ usage() {
   cat <<'EOF'
 
 Options:
-  --max-cases N          Cases per language passed to run_ragas_evaluation.py (default: 127)
+  --max-cases N          Cases per language passed to direct RAG runner (default: 127)
   --languages LIST       Comma-separated languages (default: ja,en,zh,ko)
   --output-dir DIR       Report directory (default: backend/tests/evaluation/reports)
   --timeout-seconds N    Timeout per language in seconds (default: 900)
@@ -44,8 +48,8 @@ Options:
   -h, --help             Show this usage
 
 Outputs:
-  backend/tests/evaluation/reports/ragas-live-<timestamp>.json
-  backend/tests/evaluation/reports/ragas-live-<timestamp>.md
+  backend/tests/evaluation/reports/ragas-direct-live-<timestamp>.json
+  backend/tests/evaluation/reports/ragas-direct-live-<timestamp>.md
 EOF
   exit "${1:-0}"
 }
@@ -112,10 +116,10 @@ write_summary() {
 import json, sys
 payload = json.load(open(sys.argv[1], encoding="utf-8"))
 lines = [
-    "# RAGAS Live Evaluation Summary",
+    "# RAGAS Direct Live Evaluation Summary",
     "",
     f"- Timestamp: {payload['timestamp']}",
-    f"- Mode: live",
+    f"- Mode: direct-rag-live",
     f"- Max cases per language: {payload['max_cases']}",
     f"- Overall passed: {'yes' if payload['passed'] else 'no'}",
     "",
@@ -147,8 +151,8 @@ if [ ! -f "$RUNNER" ]; then
   exit 2
 fi
 
-COMBINED_JSON="$OUTPUT_DIR/ragas-live-$TIMESTAMP.json"
-SUMMARY_MD="$OUTPUT_DIR/ragas-live-$TIMESTAMP.md"
+COMBINED_JSON="$OUTPUT_DIR/ragas-direct-live-$TIMESTAMP.json"
+SUMMARY_MD="$OUTPUT_DIR/ragas-direct-live-$TIMESTAMP.md"
 
 LANG_LIST="$(split_languages)"
 if [ -z "$LANG_LIST" ]; then
@@ -157,9 +161,10 @@ if [ -z "$LANG_LIST" ]; then
 fi
 
 if [ "$DRY_RUN" = "1" ]; then
-  echo "Dry run: no live RAGAS commands will be executed."
+  echo "Dry run: no direct RAGAS commands will be executed."
   echo "Runner: $RUNNER"
   echo "Output: $COMBINED_JSON"
+  echo "API live wrapper: scripts/rag-api-live-test.sh"
   printf '%s\n' "$LANG_LIST" | while IFS= read -r lang; do
     [ -n "$lang" ] || continue
     echo "Would run: python3 $RUNNER --mode live --max-cases $MAX_CASES --language $lang --output-dir $OUTPUT_DIR (timeout ${PER_LANGUAGE_TIMEOUT}s)"
@@ -186,7 +191,7 @@ printf '%s\n' "$LANG_LIST" | while IFS= read -r lang; do
   fi
 
   marker="$(mktemp)"
-  echo "Running live RAGAS language=$lang max_cases=$MAX_CASES timeout=${PER_LANGUAGE_TIMEOUT}s"
+  echo "Running direct live RAGAS language=$lang max_cases=$MAX_CASES timeout=${PER_LANGUAGE_TIMEOUT}s"
   if python3 - "$PER_LANGUAGE_TIMEOUT" "$RUNNER" "$MAX_CASES" "$lang" "$OUTPUT_DIR" <<'PY'; then
 import subprocess, sys
 timeout_s, runner, max_cases, lang, output_dir = sys.argv[1:6]
@@ -266,7 +271,7 @@ for line in open(result_lines, encoding="utf-8"):
 errors = [line.strip() for line in open(error_lines, encoding="utf-8") if line.strip()]
 payload = {
     "timestamp": timestamp,
-    "mode": "live",
+    "mode": "direct-rag-live",
     "max_cases": int(max_cases),
     "passed": bool(items) and all(item.get("passed") for item in items) and not errors,
     "languages": items,

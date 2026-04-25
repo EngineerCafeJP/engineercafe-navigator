@@ -2,12 +2,21 @@
 
 Alpha 最終 Live 検証は **2026-04-26** に Cloud Run live 環境で実施予定です。このドキュメントは、事前準備スクリプトがそのまま参照できるように、音声発話、LangGraph routing、adversarial prompt、長文発話サンプルを固定 ID 付きで定義します。
 
+## Live Target
+
+- Backend: `https://engineer-cafe-backend-639959525777.asia-northeast1.run.app`
+- Cloud Run revision: `engineer-cafe-backend-00103-r6s`
+- Backend SHA: `72d0cfcf9ff4a7c3fb9280f2bfe0d43c0a9c36ac`
+- Frontend: `https://frontend-delta-six-20.vercel.app`
+
 ## Usage Notes
 
 - `id` はレポート CSV / Markdown の stable key として使用します。
-- `expected_agent` は `/api/chat` または `/api/voice` 応答の `metadata.agent` で確認します。
+- `expected_agent` は `/api/chat` 応答の metadata から正規化して確認します。live API は `metadata.agent=BusinessInfoAgent` のようなクラス名を返す場合があるため、スクリプト側で `business_info` などのcanonical名へ変換します。
 - A 系の `category` は音声 round-trip と STT 精度確認で coverage を集計するための分類です。
 - 受付系の質問では visitor/session ID をスクリプト側で付与し、同一 ID の多ターン文脈維持を検証します。
+- RAGAS は direct RAG 評価と `/api/chat` live API 評価を分離します。`scripts/rag-live-test.sh` は `EnhancedRAGSearch` 直評価、`scripts/rag-api-live-test.sh` は `/api/chat` 経由評価です。
+- A 系の音声本実行前に `scripts/stt-live-preflight.sh` で直近の `stt_winner` latency / timeout 分布を確認します。
 
 ## A-1 Japanese Realistic Utterances
 
@@ -47,7 +56,7 @@ Alpha 最終 Live 検証は **2026-04-26** に Cloud Run live 環境で実施予
 | A2-EN-007 | reception | What should I say at reception when I arrive for my first visit? | Explains first-time reception flow |
 | A2-EN-008 | reception | I have registered before. Can I just check in again today? | Handles returning visitor context |
 | A2-EN-009 | reception | If I bring one guest with me, does that person need a separate reception process? | Addresses guest reception and staff confirmation |
-| A2-EN-010 | schedule | What are today's opening hours and the last reception time? | Routes to business hours |
+| A2-EN-010 | schedule | What are the opening hours today and the last reception time? | Routes to business hours |
 | A2-EN-011 | schedule | Can I use the space on Saturday evening, and what time does it close? | Handles day and closing time |
 | A2-EN-012 | pricing | How much does it cost to use the coworking space? | Routes to pricing or usage conditions |
 | A2-EN-013 | pricing | Are events free to join, and where can I confirm paid events? | Separates event pricing and confirmation source |
