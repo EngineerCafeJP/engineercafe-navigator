@@ -271,6 +271,15 @@ def _stt_preload_vosk_fallback_enabled() -> bool:
     )
 
 
+def _stt_preload_qwen_primary_enabled() -> bool:
+    """Preload Qwen primary model before serving production traffic."""
+
+    return _env_flag(
+        "STT_PRELOAD_QWEN_PRIMARY",
+        default=os.getenv("ENVIRONMENT") == "production" and not _env_flag("CI"),
+    )
+
+
 def _qwen_postprocess_enabled() -> bool:
     return os.getenv("STT_QWEN_POSTPROCESS_ENABLED", "false").lower() == "true"
 
@@ -977,6 +986,11 @@ class QwenSTTClient:
 
         return result
 
+    async def preload_model(self) -> None:
+        """Load the Qwen model in the shared executor before serving traffic."""
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(_get_qwen_stt_executor(), self._load_model)
+
 
 class Qwen06BCpuSTTClient(QwenSTTClient):
     """Qwen3-ASR 0.6B CPU固定の軽量クライアント。"""
@@ -1075,6 +1089,16 @@ class STTAgent:
             except ImportError:
                 logger.warning("LanguageProcessor not available, skipping language validation")
                 self.language_processor = None
+
+    async def warmup(self) -> None:
+        """Warm STT models that must not load on the first user request."""
+        if (
+            self.stt_provider == "qwen-primary"
+            and isinstance(self.stt_client, QwenSTTClient)
+            and _stt_preload_qwen_primary_enabled()
+        ):
+            logger.info("Preloading Qwen primary STT model before serving traffic")
+            await self.stt_client.preload_model()
 
     async def _validate_language(
         self,

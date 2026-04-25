@@ -150,6 +150,17 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("Checkpointer warm-up failed (non-critical): %s", e)
 
+    if os.getenv("STT_PROVIDER") == "qwen-primary":
+        try:
+            stt_agent = _get_stt_agent()
+            warmup = getattr(stt_agent, "warmup", None)
+            if warmup is not None:
+                await warmup()
+        except Exception as e:
+            logger.error("STT warm-up failed: %s", e)
+            if _ENVIRONMENT == "production":
+                raise
+
     yield
 
     # Shutdown

@@ -1039,6 +1039,46 @@ class TestSTTAgent:
 
         mock_vosk_client.return_value.preload_models.assert_not_called()
 
+    @pytest.mark.asyncio
+    async def test_qwen_primary_warmup_preloads_qwen_in_production(self, monkeypatch):
+        """Production qwen-primary warmup loads Qwen before serving traffic."""
+        monkeypatch.setenv("ENVIRONMENT", "production")
+        monkeypatch.delenv("CI", raising=False)
+        monkeypatch.setenv("STT_PRELOAD_QWEN_PRIMARY", "true")
+
+        mock_qwen = MagicMock(spec=Qwen06BCpuSTTClient)
+        mock_qwen.preload_model = AsyncMock()
+        agent = STTAgent(
+            stt_provider="qwen-primary",
+            stt_client=mock_qwen,
+            fallback_client=None,
+            language_processor=None,
+        )
+
+        await agent.warmup()
+
+        mock_qwen.preload_model.assert_awaited_once_with()
+
+    @pytest.mark.asyncio
+    async def test_qwen_primary_warmup_can_be_disabled(self, monkeypatch):
+        """STT_PRELOAD_QWEN_PRIMARY=false skips Qwen startup warmup."""
+        monkeypatch.setenv("ENVIRONMENT", "production")
+        monkeypatch.delenv("CI", raising=False)
+        monkeypatch.setenv("STT_PRELOAD_QWEN_PRIMARY", "false")
+
+        mock_qwen = MagicMock(spec=Qwen06BCpuSTTClient)
+        mock_qwen.preload_model = AsyncMock()
+        agent = STTAgent(
+            stt_provider="qwen-primary",
+            stt_client=mock_qwen,
+            fallback_client=None,
+            language_processor=None,
+        )
+
+        await agent.warmup()
+
+        mock_qwen.preload_model.assert_not_awaited()
+
     def test_init_invalid_provider_raises_error(self):
         """STTAgent raises ValueError for unknown provider"""
         with pytest.raises(ValueError) as exc_info:
