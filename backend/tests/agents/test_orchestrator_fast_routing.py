@@ -298,6 +298,18 @@ class TestOrchestratorFastRouting:
         assert result is not None
         assert result["category"] == "greeting"
 
+    def test_general_explanation_does_not_match_slide(self, orchestrator):
+        """一般的な説明依頼は slide fast-path に吸わせない"""
+        result = orchestrator._try_fast_routing("Docker を使うメリットを短く説明してください。")
+        assert result is None or result["agent"] != "slide"
+
+    def test_explicit_slide_explanation_still_matches_slide(self, orchestrator):
+        """スライド明示の説明依頼は slide fast-path のまま"""
+        result = orchestrator._try_fast_routing("このスライドを説明してください。")
+        assert result is not None
+        assert result["agent"] == "slide"
+        assert result["request_type"] == "slide"
+
 
 def test_zh_greeting_template_content():
     """Chinese greeting templates should exist for all time periods"""
