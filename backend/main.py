@@ -405,8 +405,10 @@ async def chat(request: Request, body: ChatRequest):
     import uuid as _uuid
 
     from backend.utils.interrupt_manager import get_interrupt_manager
+    from backend.utils.input_sanitizer import sanitize_input
 
     started_at = time.perf_counter()
+    body = body.copy(update={"query": sanitize_input(body.query)})
     session_id = body.session_id or str(_uuid.uuid4())
 
     get_interrupt_manager().clear_interrupt(session_id)

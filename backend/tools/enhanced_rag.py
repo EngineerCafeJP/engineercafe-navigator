@@ -44,7 +44,7 @@ CATEGORY_THRESHOLDS = {
     "location": {"high": 0.70, "medium": 0.50, "term_match": 0.20},
     "event": {"high": 0.80, "medium": 0.60, "term_match": 0.30},
     "general": {"high": 0.72, "medium": 0.52, "term_match": 0.20},
-    "consultation": {"high": 0.73, "medium": 0.48, "term_match": 0.20},
+    "consultation": {"high": 0.65, "medium": 0.45, "term_match": 0.18},
     "community": {"high": 0.73, "medium": 0.53, "term_match": 0.20},
 }
 DEFAULT_THRESHOLDS = {"high": 0.78, "medium": 0.58, "term_match": 0.25}

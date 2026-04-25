@@ -180,6 +180,14 @@ class EventAgent:
             # ソース別のイベント数をカウント
             calendar_count = sum(1 for e in events if e.get("source") == "google_calendar")
             connpass_count = sum(1 for e in events if e.get("source") == "connpass")
+            sources = [
+                source
+                for source, count in (
+                    ("google_calendar", calendar_count),
+                    ("connpass", connpass_count),
+                )
+                if count > 0
+            ] or ["google_calendar", "connpass"]
 
             return {
                 "answer": response_text,
@@ -188,10 +196,7 @@ class EventAgent:
                     "agent": "EventAgent",
                     "time_range": time_range,
                     "event_count": event_count,
-                    "sources": {
-                        "google_calendar": calendar_count,
-                        "connpass": connpass_count,
-                    },
+                    "sources": sources,
                 },
             }
 
@@ -348,10 +353,7 @@ class EventAgent:
                 "agent": "EventAgent",
                 "time_range": time_range,
                 "event_count": 0,
-                "sources": {
-                    "google_calendar": 0,
-                    "connpass": 0,
-                },
+                "sources": ["google_calendar", "connpass"],
             },
         }
 
