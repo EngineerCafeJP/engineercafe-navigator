@@ -137,7 +137,7 @@ main() {
   if [ "$CHECK_TARGETS" = "1" ]; then
     cmd+=(--check-targets)
   fi
-  "${cmd[@]}"
+  PYTHONPATH="$ROOT_DIR:$ROOT_DIR/backend:${PYTHONPATH:-}" "${cmd[@]}"
 }
 
 main "$@"

@@ -98,7 +98,7 @@ jobs:
         continue-on-error: true
         env:
           API_SECRET_KEY: ${{ secrets.BACKEND_API_KEY }}
-        run: scripts/alpha-smoke-comprehensive.sh --timestamp "${ALPHA_TIMESTAMP}-a" --scenarios A --timeout 120 --sleep 1
+        run: scripts/alpha-smoke-comprehensive.sh --timestamp "${ALPHA_TIMESTAMP}-a" --host "$ALPHA_SMOKE_BASE_URL" --scenarios A --timeout 120 --sleep 3.2
 
       - name: B LangGraph routing live smoke
         id: alpha_b
@@ -106,7 +106,7 @@ jobs:
         continue-on-error: true
         env:
           API_SECRET_KEY: ${{ secrets.BACKEND_API_KEY }}
-        run: scripts/alpha-smoke-comprehensive.sh --timestamp "${ALPHA_TIMESTAMP}-b" --scenarios B --timeout 120 --sleep 1
+        run: scripts/alpha-smoke-comprehensive.sh --timestamp "${ALPHA_TIMESTAMP}-b" --host "$ALPHA_SMOKE_BASE_URL" --scenarios B --timeout 120 --sleep 1
 
       - name: C live API RAGAS
         id: rag_api_live
@@ -126,7 +126,7 @@ jobs:
         continue-on-error: true
         env:
           API_SECRET_KEY: ${{ secrets.BACKEND_API_KEY }}
-        run: scripts/alpha-smoke-comprehensive.sh --timestamp "${ALPHA_TIMESTAMP}-d" --scenarios D --timeout 120 --sleep 1 --parallel 5
+        run: scripts/alpha-smoke-comprehensive.sh --timestamp "${ALPHA_TIMESTAMP}-d" --host "$ALPHA_SMOKE_BASE_URL" --scenarios D --timeout 120 --sleep 2.2 --parallel 1
 
       - name: E Cloud Logging verification
         id: cloud_logging
