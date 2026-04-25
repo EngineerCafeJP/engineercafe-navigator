@@ -877,6 +877,48 @@ class TestSTTAgent:
 
         assert agent._qwen_timeout == pytest.approx(2.5)
 
+    def test_qwen_primary_preloads_vosk_fallback_in_production(self, monkeypatch):
+        """Production qwen-primary preloads fallback models to avoid first-request latency."""
+        monkeypatch.setenv("ENVIRONMENT", "production")
+        monkeypatch.delenv("CI", raising=False)
+        monkeypatch.delenv("STT_PRELOAD_VOSK_FALLBACK", raising=False)
+
+        with (
+            patch("backend.agents.stt_agent.Qwen06BCpuSTTClient"),
+            patch("backend.agents.stt_agent.LocalSTTClient") as mock_vosk_client,
+        ):
+            STTAgent(stt_provider="qwen-primary")
+
+        mock_vosk_client.return_value.preload_models.assert_called_once_with()
+
+    def test_qwen_primary_vosk_preload_disabled_by_default_in_ci(self, monkeypatch):
+        """CI should not load real Vosk models just because ENVIRONMENT=production."""
+        monkeypatch.setenv("ENVIRONMENT", "production")
+        monkeypatch.setenv("CI", "true")
+        monkeypatch.delenv("STT_PRELOAD_VOSK_FALLBACK", raising=False)
+
+        with (
+            patch("backend.agents.stt_agent.Qwen06BCpuSTTClient"),
+            patch("backend.agents.stt_agent.LocalSTTClient") as mock_vosk_client,
+        ):
+            STTAgent(stt_provider="qwen-primary")
+
+        mock_vosk_client.return_value.preload_models.assert_not_called()
+
+    def test_qwen_primary_vosk_preload_can_be_disabled(self, monkeypatch):
+        """STT_PRELOAD_VOSK_FALLBACK=false keeps startup lightweight when needed."""
+        monkeypatch.setenv("ENVIRONMENT", "production")
+        monkeypatch.delenv("CI", raising=False)
+        monkeypatch.setenv("STT_PRELOAD_VOSK_FALLBACK", "false")
+
+        with (
+            patch("backend.agents.stt_agent.Qwen06BCpuSTTClient"),
+            patch("backend.agents.stt_agent.LocalSTTClient") as mock_vosk_client,
+        ):
+            STTAgent(stt_provider="qwen-primary")
+
+        mock_vosk_client.return_value.preload_models.assert_not_called()
+
     def test_init_invalid_provider_raises_error(self):
         """STTAgent raises ValueError for unknown provider"""
         with pytest.raises(ValueError) as exc_info:

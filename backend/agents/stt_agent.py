@@ -244,6 +244,22 @@ def _parse_qwen_stt_timeout(raw_value: Optional[str], default: float = 10.0) -> 
     return timeout
 
 
+def _env_flag(name: str, default: bool = False) -> bool:
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return default
+    return raw_value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _stt_preload_vosk_fallback_enabled() -> bool:
+    """Preload fallback Vosk models by default in production qwen-primary mode."""
+
+    return _env_flag(
+        "STT_PRELOAD_VOSK_FALLBACK",
+        default=os.getenv("ENVIRONMENT") == "production" and not _env_flag("CI"),
+    )
+
+
 def _qwen_postprocess_enabled() -> bool:
     return os.getenv("STT_QWEN_POSTPROCESS_ENABLED", "false").lower() == "true"
 
@@ -470,6 +486,15 @@ class LocalSTTClient:
         self.model_paths = {**DEFAULT_MODEL_PATHS, **(model_paths or {})}
         self._models: Dict[str, Any] = {}
         logger.info("LocalSTTClient initialized (models will be loaded on first use)")
+
+    def preload_models(self, languages: Optional[List[str]] = None) -> None:
+        """Load configured Vosk models before the first user-facing fallback."""
+
+        for lang in languages or list(SUPPORTED_LANGUAGES):
+            try:
+                self._load_model(lang)
+            except Exception as exc:
+                logger.warning("Vosk preload failed for %s: %s", lang, exc)
 
     def _convert_audio_to_wav(self, audio_data: bytes) -> bytes:
         """Convert WebM/Opus audio bytes to WAV PCM for Vosk."""
@@ -1016,6 +1041,8 @@ class STTAgent:
             )
             self._vosk_fallback_client = LocalSTTClient()
             self._qwen_timeout = _parse_qwen_stt_timeout(os.getenv("QWEN_STT_TIMEOUT"))
+            if _stt_preload_vosk_fallback_enabled():
+                self._vosk_fallback_client.preload_models()
         else:
             raise ValueError(f"Unknown STT provider: {self.stt_provider}")
 
