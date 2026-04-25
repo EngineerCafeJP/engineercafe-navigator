@@ -31,6 +31,7 @@ SLEEP_SECONDS=1
 TTS_PROVIDER="piper"
 PARALLEL=5
 STT_THRESHOLD=0.50
+REQUIRE_QWEN_PRIMARY="${ALPHA_SMOKE_REQUIRE_QWEN_PRIMARY:-1}"
 RETRIES="${ALPHA_SMOKE_RETRIES:-3}"
 
 PASS_COUNT=0
@@ -58,6 +59,7 @@ Options:
   --tts-provider NAME    TTS provider for A-4 round-trip audio (default: piper)
   --parallel N           D-1 visitor parallelism (default: 5)
   --stt-threshold FLOAT  A-4 SequenceMatcher similarity threshold (default: 0.50)
+  --allow-vosk-fallback  Allow A scenario STT provider to be vosk-fallback (debug only)
   --retries N            Retries for HTTP 429 responses (default: 3)
   --dry-run              Validate script data and planned requests without network
   -h, --help             Show this usage
@@ -83,6 +85,7 @@ while [ "$#" -gt 0 ]; do
     --tts-provider) TTS_PROVIDER="$2"; shift 2 ;;
     --parallel) PARALLEL="$2"; shift 2 ;;
     --stt-threshold) STT_THRESHOLD="$2"; shift 2 ;;
+    --allow-vosk-fallback) REQUIRE_QWEN_PRIMARY=0; shift ;;
     --retries) RETRIES="$2"; shift 2 ;;
     --dry-run) DRY_RUN=1; shift ;;
     -h|--help) usage 0 ;;
@@ -393,7 +396,7 @@ EOF
 )
 
 run_voice_case() {
-  local case_id="$1" lang="$2" category="$3" text="$4" session_id transcript answer emotion audio sim status
+  local case_id="$1" lang="$2" category="$3" text="$4" session_id transcript provider answer emotion audio sim status
   session_id="alpha-a-$TIMESTAMP-$case_id"
 
   post_json "/api/voice" "$(voice_tts_body "$text" "$lang" "$session_id" "$TTS_PROVIDER")"
@@ -407,14 +410,22 @@ run_voice_case() {
 
   post_json "/api/voice" "$(printf '%s' "$audio" | voice_stt_body "$lang" "$session_id")"
   transcript="$(printf '%s' "$LAST_BODY" | json_get transcript)"
+  provider="$(printf '%s' "$LAST_BODY" | json_get sttProvider)"
   if is_success_json && [ -n "$transcript" ]; then
+    if [ "$provider" = "qwen-primary" ]; then
+      record_result "A" "$case_id" "stt_provider" "PASS" "$LAST_HTTP" "$LAST_TIME_MS" "$lang" "qwen-primary" "$provider" "primary provider selected"
+    elif [ "$REQUIRE_QWEN_PRIMARY" = "1" ]; then
+      record_result "A" "$case_id" "stt_provider" "FAIL" "$LAST_HTTP" "$LAST_TIME_MS" "$lang" "qwen-primary" "${provider:-unknown}" "Qwen primary required; transcript=$transcript"
+    else
+      record_result "A" "$case_id" "stt_provider" "WARN" "$LAST_HTTP" "$LAST_TIME_MS" "$lang" "qwen-primary" "${provider:-unknown}" "fallback allowed for this run"
+    fi
     sim="$(similarity "$text" "$transcript")"
     status="$(python3 - "$sim" "$STT_THRESHOLD" <<'PY'
 import sys
 print("PASS" if float(sys.argv[1]) >= float(sys.argv[2]) else "WARN")
 PY
 )"
-    record_result "A" "$case_id" "stt_accuracy" "$status" "$LAST_HTTP" "$LAST_TIME_MS" "$lang" "similarity>=$STT_THRESHOLD" "$sim" "transcript=$transcript"
+    record_result "A" "$case_id" "stt_accuracy" "$status" "$LAST_HTTP" "$LAST_TIME_MS" "$lang" "similarity>=$STT_THRESHOLD" "$sim" "provider=${provider:-unknown}; transcript=$transcript"
   else
     record_result "A" "$case_id" "stt_accuracy" "FAIL" "$LAST_HTTP" "$LAST_TIME_MS" "$lang" "transcript" "" "STT failed"
     return
@@ -665,7 +676,7 @@ run_scenario_d() {
 }
 
 write_report() {
-  python3 - "$REPORT_CSV" "$REPORT_MD" "$TIMESTAMP" "$BASE_URL" "$FRONTEND_URL" "$CLOUD_RUN_REVISION" "$BACKEND_SHA" "$SCENARIOS" "$PASS_COUNT" "$WARN_COUNT" "$FAIL_COUNT" "$TTS_PROVIDER" "$STT_THRESHOLD" <<'PY'
+  python3 - "$REPORT_CSV" "$REPORT_MD" "$TIMESTAMP" "$BASE_URL" "$FRONTEND_URL" "$CLOUD_RUN_REVISION" "$BACKEND_SHA" "$SCENARIOS" "$PASS_COUNT" "$WARN_COUNT" "$FAIL_COUNT" "$TTS_PROVIDER" "$STT_THRESHOLD" "$REQUIRE_QWEN_PRIMARY" <<'PY'
 import csv, statistics, sys
 (
     csv_path,
@@ -681,7 +692,8 @@ import csv, statistics, sys
     failed,
     provider,
     stt_threshold,
-) = sys.argv[1:14]
+    require_qwen_primary,
+) = sys.argv[1:15]
 rows = list(csv.DictReader(open(csv_path, encoding="utf-8")))
 latencies = {}
 for row in rows:
@@ -710,6 +722,7 @@ lines = [
     f"- Scenarios: {scenarios}",
     f"- TTS provider for round-trip audio: {provider}",
     f"- STT similarity threshold: {stt_threshold}",
+    f"- Require Qwen primary for A STT: {'yes' if require_qwen_primary == '1' else 'no'}",
     f"- Summary: {passed} passed, {warned} warned, {failed} failed",
     f"- Detail CSV: {csv_path}",
     "",
