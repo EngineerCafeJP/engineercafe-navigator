@@ -142,6 +142,15 @@ class RagasReport:
     results: List[RagasResult] = field(default_factory=list)
     errors: List[str] = field(default_factory=list)
 
+    _ALL_METRIC_NAMES = (
+        "faithfulness",
+        "answer_relevancy",
+        "context_precision",
+        "context_recall",
+        "answer_correctness",
+        "answer_similarity",
+    )
+
     @property
     def metrics_summary(self) -> Dict[str, float]:
         """メトリクスの平均値サマリー（NaNだったメトリクスはそのメトリクスの平均から除外）"""
@@ -151,19 +160,33 @@ class RagasReport:
         if not valid:
             return {}
 
-        metric_names = (
-            "faithfulness",
-            "answer_relevancy",
-            "context_precision",
-            "context_recall",
-            "answer_correctness",
-            "answer_similarity",
-        )
         summary: Dict[str, float] = {}
-        for name in metric_names:
+        for name in self._ALL_METRIC_NAMES:
             values = [getattr(r, name) for r in valid if name not in r.nan_metrics]
             summary[name] = sum(values) / len(values) if values else 0.0
         return summary
+
+    @property
+    def all_metrics_nan(self) -> bool:
+        if not self.results:
+            return False
+        valid = [r for r in self.results if r.error is None]
+        if not valid:
+            return False
+        return all(set(r.nan_metrics) == set(self._ALL_METRIC_NAMES) for r in valid)
+
+    @property
+    def nan_ratio(self) -> float:
+        if not self.results:
+            return 0.0
+        valid = [r for r in self.results if r.error is None]
+        if not valid:
+            return 0.0
+        total = len(valid) * len(self._ALL_METRIC_NAMES)
+        if total == 0:
+            return 0.0
+        nan_count = sum(len(r.nan_metrics) for r in valid)
+        return nan_count / total
 
 
 class RagasEvaluator:
@@ -390,6 +413,11 @@ class RagasEvaluator:
             report.errors.append(str(e))
 
         report.metrics = report.metrics_summary
+        if report.nan_ratio > 0.5:
+            report.errors.append(
+                f"RAGAS evaluation produced excessive NaN metrics "
+                f"({report.nan_ratio:.0%}). Results are unreliable."
+            )
         return report
 
     def _build_eval_kwargs(self, metrics_objs: list) -> Dict:

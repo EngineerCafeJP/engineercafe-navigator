@@ -504,3 +504,52 @@ class TestReportRagasMetrics:
             timestamp="2026-02-15",
         )
         assert report.ragas_metrics is None
+
+
+class TestNanMetricsDetection:
+    def test_all_nan_metrics_detected_as_failure(self):
+        from backend.evaluation.ragas_pipeline import RagasReport, RagasResult
+
+        all_nan = (
+            "faithfulness",
+            "answer_relevancy",
+            "context_precision",
+            "context_recall",
+            "answer_correctness",
+            "answer_similarity",
+        )
+        report = RagasReport(
+            total_cases=2,
+            evaluated_cases=2,
+            results=[
+                RagasResult(question="q1", nan_metrics=all_nan),
+                RagasResult(question="q2", nan_metrics=all_nan),
+            ],
+        )
+        assert report.all_metrics_nan is True
+        assert report.nan_ratio == 1.0
+
+    def test_nan_ratio_partial(self):
+        from backend.evaluation.ragas_pipeline import RagasReport, RagasResult
+
+        report = RagasReport(
+            total_cases=2,
+            evaluated_cases=2,
+            results=[
+                RagasResult(
+                    question="q1",
+                    faithfulness=0.9,
+                    nan_metrics=("answer_correctness",),
+                ),
+                RagasResult(question="q2", nan_metrics=()),
+            ],
+        )
+        assert report.all_metrics_nan is False
+        assert report.nan_ratio == pytest.approx(1 / 12, abs=0.01)
+
+    def test_nan_ratio_empty_report(self):
+        from backend.evaluation.ragas_pipeline import RagasReport
+
+        report = RagasReport()
+        assert report.all_metrics_nan is False
+        assert report.nan_ratio == 0.0

@@ -244,6 +244,8 @@ async def run_evaluation(
         "evaluated_cases": report.evaluated_cases,
         "skipped_cases": report.skipped_cases,
         "metrics": report.metrics,
+        "nan_ratio": report.nan_ratio,
+        "all_metrics_nan": report.all_metrics_nan,
         "errors": report.errors,
     }
 
@@ -290,11 +292,13 @@ def _write_github_outputs(result: Dict) -> None:
             metrics = result.get("metrics", {})
             for key, value in metrics.items():
                 f.write(f"{key}={value}\n")
+            f.write(f"nan_ratio={result.get('nan_ratio', 0.0)}\n")
+            f.write(f"all_metrics_nan={result.get('all_metrics_nan', False)}\n")
             f.write(f"evaluated_cases={result.get('evaluated_cases', 0)}\n")
             f.write(f"skipped_cases={result.get('skipped_cases', 0)}\n")
             f.write(f"status={result.get('status', 'unknown')}\n")
             f.write(f"mode={result.get('mode', 'unknown')}\n")
-        logger.info("Wrote %d outputs to GITHUB_OUTPUT", len(metrics) + 4)
+        logger.info("Wrote %d outputs to GITHUB_OUTPUT", len(metrics) + 6)
     except Exception as e:
         logger.warning("Failed to write GITHUB_OUTPUT: %s", e)
 
@@ -360,6 +364,34 @@ def main():
     if args.ci_mode:
         _write_github_outputs(result)
         _write_github_summary(result)
+
+    per_case = result.get("per_case", [])
+    all_metric_names = [
+        "faithfulness",
+        "answer_relevancy",
+        "context_precision",
+        "context_recall",
+        "answer_correctness",
+        "answer_similarity",
+    ]
+
+    if per_case and all(
+        set(case.get("nan_metrics", [])) == set(all_metric_names) for case in per_case
+    ):
+        logger.error(
+            "All %d cases produced NaN for every metric. "
+            "Evaluation is invalid - treating as CI failure.",
+            len(per_case),
+        )
+        sys.exit(1)
+
+    nan_ratio = float(result.get("nan_ratio", 0.0) or 0.0)
+    if nan_ratio > 0.5:
+        logger.error(
+            "RAGAS evaluation produced excessive NaN metrics (%.0f%%). " "Treating as CI failure.",
+            nan_ratio * 100,
+        )
+        sys.exit(1)
 
     if result.get("status") == "completed":
         logger.info("Evaluation completed successfully.")
