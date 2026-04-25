@@ -322,3 +322,110 @@ test.describe('Reception flow — settings', () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// G. STT warmup fires on Welcome and voice button
+// ---------------------------------------------------------------------------
+
+test.describe('Reception flow — STT warmup', () => {
+  test.beforeEach(async ({ page }) => {
+    await keepOcrCameraPending(page);
+    await mockReceptionStart(page);
+    await page.route(`**${QA_CHAT_URL}`, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ answer: 'テスト応答', emotion: 'neutral', metadata: {} }),
+      });
+    });
+    await page.route('**/api/voice', async (route) => {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+    });
+    await page.goto('/');
+    await dismissInitialModal(page);
+  });
+
+  test('Welcome click fires warmup request to /api/voice', async ({ page }) => {
+    const warmupRequests: Array<Record<string, unknown>> = [];
+    await page.route('**/api/voice', async (route) => {
+      const body = route.request().postDataJSON();
+      if (body && body.action === 'warmup') {
+        warmupRequests.push(body);
+      }
+      await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+    });
+
+    await page.getByRole('button', { name: 'Welcome' }).click();
+
+    await expect
+      .poll(() => warmupRequests.length, { timeout: 5_000 })
+      .toBeGreaterThanOrEqual(1);
+    expect(warmupRequests[0]!.action).toBe('warmup');
+    expect(typeof warmupRequests[0]!.sessionId).toBe('string');
+  });
+
+  test('voice button click fires warmup request to /api/voice', async ({ page }) => {
+    const warmupRequests: Array<Record<string, unknown>> = [];
+    await page.route('**/api/voice', async (route) => {
+      const body = route.request().postDataJSON();
+      if (body && body.action === 'warmup') {
+        warmupRequests.push(body);
+      }
+      await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+    });
+
+    await page.getByRole('button', { name: /音声応対|Voice chat/ }).click();
+
+    await expect
+      .poll(() => warmupRequests.length, { timeout: 5_000 })
+      .toBeGreaterThanOrEqual(1);
+    expect(warmupRequests[0]!.action).toBe('warmup');
+    expect(typeof warmupRequests[0]!.sessionId).toBe('string');
+  });
+
+  test('OCR overlay is visible during welcome flow', async ({ page }) => {
+    await page.getByRole('button', { name: 'Welcome' }).click();
+    await expect(page.getByTestId('kiosk-welcome-ocr-overlay')).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByTestId('kiosk-welcome-ocr-title')).toBeVisible();
+  });
+
+  test('warmup does not block greeting TTS playback', async ({ page }) => {
+    let warmupStarted = false;
+    let ttsRequests = 0;
+    let releaseWarmup: (() => void) | null = null;
+    await page.route('**/api/voice', async (route) => {
+      const body = route.request().postDataJSON();
+      if (body && body.action === 'warmup') {
+        warmupStarted = true;
+        await new Promise<void>((resolve) => {
+          releaseWarmup = resolve;
+        });
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true, sttWarmupStatus: 'ready' }),
+        });
+        return;
+      }
+      if (body && body.action === 'text_to_speech') {
+        ttsRequests += 1;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true }),
+      });
+    });
+
+    await page.getByRole('button', { name: 'Welcome' }).click();
+
+    await expect(page.getByTestId('kiosk-welcome-ocr-overlay')).toBeVisible({ timeout: 5_000 });
+    await expect
+      .poll(() => warmupStarted, { timeout: 5_000 })
+      .toBe(true);
+    await expect
+      .poll(() => ttsRequests, { timeout: 5_000 })
+      .toBeGreaterThanOrEqual(1);
+    releaseWarmup?.();
+  });
+});

@@ -128,3 +128,47 @@ test(
     assert.equal('GET' in slidesRoute, false);
   }
 );
+
+test(
+  'voice POST forwards warmup action to backend',
+  { concurrency: false },
+  async () => {
+    process.env.BACKEND_API_URL = 'https://backend.example.com';
+    (process.env as Record<string, string | undefined>).NODE_ENV = 'test';
+    let capturedBody: Record<string, unknown> | null = null;
+    global.fetch = (async (_input, init) => {
+      capturedBody =
+        typeof init?.body === 'string' ? (JSON.parse(init.body) as Record<string, unknown>) : null;
+      return new Response(
+        JSON.stringify({
+          success: true,
+          sttWarmupStatus: 'started',
+          sttWarmupProvider: 'qwen-primary',
+        }),
+        {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }
+      );
+    }) as typeof fetch;
+
+    const { POST } = await import('../app/api/voice/route');
+    const response = await POST(
+      new NextRequest('https://example.com/api/voice', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'warmup', language: 'ja', sessionId: 'session-123' }),
+        headers: { 'Content-Type': 'application/json' },
+      })
+    );
+
+    assert.equal(response.status, 200);
+    const body = (await response.json()) as Record<string, unknown>;
+    assert.equal(body.success, true);
+    assert.deepEqual(capturedBody, {
+      action: 'warmup',
+      sessionId: 'session-123',
+      language: 'ja',
+      streaming: false,
+    });
+  }
+);

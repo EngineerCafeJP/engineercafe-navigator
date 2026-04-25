@@ -27,6 +27,7 @@ from starlette.requests import Request
 
 from backend.tools.calendar_service import CalendarService, TimeRange
 from backend.observability.structured_logger import log_chat_response
+from backend.services.stt_warmup_service import get_stt_warmup_service
 from backend.utils.structured_logging import (
     get_request_id,
     request_id_var,
@@ -152,10 +153,12 @@ async def lifespan(app: FastAPI):
 
     if os.getenv("STT_PROVIDER") == "qwen-primary":
         try:
-            stt_agent = _get_stt_agent()
-            warmup = getattr(stt_agent, "warmup", None)
-            if warmup is not None:
-                await warmup()
+            await get_stt_warmup_service().warmup(
+                provider=os.getenv("STT_PROVIDER"),
+                warmup_factory=lambda: _get_stt_agent().warmup(),
+                wait=True,
+                raise_on_failure=_ENVIRONMENT == "production",
+            )
         except Exception as e:
             logger.error("STT warm-up failed: %s", e)
             if _ENVIRONMENT == "production":
@@ -560,7 +563,13 @@ class VoiceResponse(BaseModel):
     error: Optional[str] = None
     detectedLanguage: Optional[str] = None
     confidence: Optional[float] = None
+    sttProvider: Optional[str] = None
+    sttPostprocessed: Optional[bool] = None
     interruptStatus: Optional[str] = None
+    sttWarmupStatus: Optional[str] = None
+    sttWarmupProvider: Optional[str] = None
+    sttWarmupError: Optional[str] = None
+    sttWarmupDurationMs: Optional[int] = None
     cleanText: Optional[str] = None  # TTS 前処理後（includeVrmControl 時）
     # CharacterControlAgent.process（チャット metadata 相当）
     vrmControl: Optional[Dict[str, Any]] = None
@@ -697,7 +706,27 @@ async def _handle_stt(body: VoiceRequest) -> VoiceResponse:
         emotion="neutral",
         detectedLanguage=stt_result.get("language"),
         confidence=stt_result.get("confidence"),
+        sttProvider=stt_result.get("provider"),
+        sttPostprocessed=stt_result.get("postprocessed"),
         sessionId=body.sessionId,
+    )
+
+
+async def _handle_stt_warmup(body: VoiceRequest) -> VoiceResponse:
+    """Start STT model warmup without tying it to the user audio request."""
+    snapshot = await get_stt_warmup_service().warmup(
+        provider=os.getenv("STT_PROVIDER"),
+        warmup_factory=lambda: _get_stt_agent().warmup(),
+        session_id=body.sessionId,
+        wait=False,
+    )
+    return VoiceResponse(
+        success=True,
+        sessionId=body.sessionId,
+        sttWarmupStatus=snapshot.status,
+        sttWarmupProvider=snapshot.provider,
+        sttWarmupError=snapshot.error,
+        sttWarmupDurationMs=snapshot.duration_ms,
     )
 
 
@@ -713,7 +742,7 @@ async def voice_get_api(action: str = ""):
     default_tts = (os.getenv("TTS_PROVIDER", "voicevox") or "voicevox").strip().lower()
     return {
         "status": "ok",
-        "actions": ["speech_to_text", "text_to_speech", "supported_languages"],
+        "actions": ["speech_to_text", "text_to_speech", "warmup", "supported_languages"],
         "defaultTtsProvider": default_tts,
         "ttsProviders": [
             {"id": "voicevox", "label": "VoiceVox"},
@@ -836,6 +865,9 @@ async def voice_api(request: Request, body: VoiceRequest):
 
         elif body.action == "speech_to_text":
             return await _handle_stt(body)
+
+        elif body.action == "warmup":
+            return await _handle_stt_warmup(body)
 
         elif body.action == "interrupt":
             if not body.sessionId:
