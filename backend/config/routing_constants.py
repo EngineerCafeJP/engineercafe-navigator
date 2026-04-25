@@ -168,7 +168,6 @@ SLIDE_KEYWORDS = [
     "前のスライド",
     "slide",
     "presentation",
-    "説明して",
     "ナレーション",
     "narration",
 ]
