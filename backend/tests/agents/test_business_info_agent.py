@@ -18,6 +18,7 @@ class TestBusinessInfoAgent:
         assert self.agent._map_request_type_to_category("price") == "pricing"
         assert self.agent._map_request_type_to_category("location") == "location"
         assert self.agent._map_request_type_to_category("access") == "location"
+        assert self.agent._map_request_type_to_category("reception") == "general"
         assert self.agent._map_request_type_to_category("unknown") == "general"
 
     def test_get_request_type_prompt_japanese(self):

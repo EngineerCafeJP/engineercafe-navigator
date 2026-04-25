@@ -6,11 +6,14 @@ Supabase + OpenAI Embeddings統合による高精度RAG検索
 import asyncio
 import logging
 import os
+import re
 import time
+from pathlib import Path
 from typing import List, Dict, Optional
 
 import httpx
 from supabase import create_client, Client
+import yaml
 
 logger = logging.getLogger(__name__)
 
@@ -220,7 +223,14 @@ class EnhancedRAGSearch:
         """
         if _rag_circuit_breaker.is_open:
             logger.warning("RAG circuit breaker is open, skipping search")
-            return {"success": False, "error": "Circuit breaker is open"}
+            return await self._fallback_search_response(
+                query=query,
+                category=category,
+                language=language,
+                include_advice=include_advice,
+                max_results=max_results,
+                error="Circuit breaker is open",
+            )
 
         try:
             logger.info("Starting search: category=%s, language=%s", category, language)
@@ -230,7 +240,19 @@ class EnhancedRAGSearch:
             logger.debug("Expanded query length: %d chars", len(expanded_query))
 
             # 2. OpenAI Embeddings APIでクエリをエンベディング化
-            embedding = await self._generate_embedding(expanded_query)
+            try:
+                embedding = await self._generate_embedding(expanded_query)
+            except Exception as e:
+                _rag_circuit_breaker.record_failure()
+                logger.error("Embedding generation failed, trying fallback search: %s", e)
+                return await self._fallback_search_response(
+                    query=query,
+                    category=category,
+                    language=language,
+                    include_advice=include_advice,
+                    max_results=max_results,
+                    error=str(e),
+                )
 
             # 3. Supabase RPCでベクトル検索（カテゴリ別閾値を使用）
             try:
@@ -250,15 +272,14 @@ class EnhancedRAGSearch:
             except asyncio.TimeoutError:
                 logger.error("Supabase RPC timed out after %.0fs", RPC_TIMEOUT_SECONDS)
                 _rag_circuit_breaker.record_failure()
-                return {
-                    "success": False,
-                    "data": {
-                        "context": "",
-                        "results": [],
-                        "totalResults": 0,
-                        "topEntity": "general",
-                    },
-                }
+                return await self._fallback_search_response(
+                    query=query,
+                    category=category,
+                    language=language,
+                    include_advice=include_advice,
+                    max_results=max_results,
+                    error="Supabase RPC timeout",
+                )
 
             # 4. ベクトル検索で結果が不十分な場合、テキストベースのフォールバック
             if not search_results.data or len(search_results.data) < 2:
@@ -273,6 +294,14 @@ class EnhancedRAGSearch:
                             if search_results.data is None:
                                 search_results.data = []  # type: ignore[assignment]
                             search_results.data.append(tr)
+                else:
+                    local_results = self._local_knowledge_fallback_search(
+                        query, category, language, max_results
+                    )
+                    if local_results:
+                        if search_results.data is None:
+                            search_results.data = []  # type: ignore[assignment]
+                        search_results.data.extend(local_results)
 
             if not search_results.data:
                 _rag_circuit_breaker.record_success()
@@ -332,7 +361,14 @@ class EnhancedRAGSearch:
         except Exception as e:
             _rag_circuit_breaker.record_failure()
             logger.error("Search error: %s", e)
-            return {"success": False, "error": str(e)}
+            return await self._fallback_search_response(
+                query=query,
+                category=category,
+                language=language,
+                include_advice=include_advice,
+                max_results=max_results,
+                error=str(e),
+            )
 
     async def search_hierarchical(
         self,
@@ -541,7 +577,9 @@ class EnhancedRAGSearch:
 
             result = query_builder.limit(max_results).execute()
 
-            if not result.data:
+            result_data = result.data if isinstance(result.data, list) else []
+
+            if not result_data:
                 # カテゴリフィルタなしで再試行
                 result = (
                     self.supabase.table("knowledge_base")
@@ -551,22 +589,13 @@ class EnhancedRAGSearch:
                     .limit(max_results)
                     .execute()
                 )
+                result_data = result.data if isinstance(result.data, list) else []
 
-            if result.data:
+            if result_data:
                 # テキストマッチングでスコア付け
                 scored: list[Dict] = []
-                for row in result.data:
-                    content_lower = row.get("content", "").lower()
-                    query_lower = query.lower()
-                    # 簡易テキストマッチスコア
-                    match_score = 0.0
-                    query_terms = query_lower.replace("？", "").replace("?", "").split()
-                    for term in query_terms:
-                        if len(term) >= 2 and term in content_lower:
-                            match_score += 0.15
-                    # カテゴリ一致ボーナス
-                    if row.get("category") == category:
-                        match_score += 0.2
+                for row in result_data:
+                    match_score = self._calculate_text_match_score(row, query, category, language)
                     if match_score > 0:
                         scored.append({**row, "similarity": min(match_score, 0.7)})
 
@@ -578,6 +607,212 @@ class EnhancedRAGSearch:
         except Exception as e:
             logger.error("Text fallback search error: %s", e)
             return []
+
+    async def _fallback_search_response(
+        self,
+        query: str,
+        category: str,
+        language: str,
+        include_advice: bool,
+        max_results: int,
+        error: str,
+    ) -> Dict:
+        """Build a normal search response from non-vector fallbacks."""
+        results = await self._text_fallback_search(query, category, language, max_results)
+        if not results:
+            results = self._local_knowledge_fallback_search(query, category, language, max_results)
+
+        if not results:
+            return {"success": False, "error": error}
+
+        scored_results = self._score_results(results, query, category, language)
+        scored_results = self._grade_result_relevance(scored_results, query, category)
+        top_results = scored_results[:max_results]
+        context = self._build_context_from_results(top_results, category, language)
+
+        if include_advice:
+            advice = self._generate_practical_advice(top_results, query, category, language)
+            if advice:
+                context += f"\n\n{advice}"
+
+        _rag_circuit_breaker.record_success()
+        return {
+            "success": True,
+            "data": {
+                "context": context,
+                "results": top_results,
+                "totalResults": len(scored_results),
+                "topEntity": top_results[0].get("entity", "general") if top_results else "general",
+            },
+        }
+
+    def _local_knowledge_fallback_search(
+        self,
+        query: str,
+        category: str,
+        language: str,
+        max_results: int,
+    ) -> List[Dict]:
+        """Search the checked-in official YAML knowledge used to seed live RAG."""
+        try:
+            data_dir = Path(__file__).resolve().parents[1] / "knowledge" / "data"
+            rows: list[Dict] = []
+            for path in sorted(data_dir.glob("*.yaml")):
+                with open(path, encoding="utf-8") as fh:
+                    payload = yaml.safe_load(fh) or {}
+                for entry in payload.get("entries", []):
+                    content = entry.get("content_en") if language == "en" else entry.get("content")
+                    if not content:
+                        content = entry.get("content") or entry.get("content_en") or ""
+                    row = {
+                        "id": entry.get("id"),
+                        "title": entry.get("title_en") if language == "en" else entry.get("title"),
+                        "content": content,
+                        "category": entry.get("category", "general"),
+                        "subcategory": entry.get("subcategory"),
+                        "language": language,
+                        "source": entry.get("source") or "official-yaml",
+                        "metadata": {
+                            "entity": "engineer-cafe",
+                            "tags": entry.get("tags", []),
+                            "priority": entry.get("priority", 50),
+                            "verified": entry.get("verified", False),
+                            "local_fallback": True,
+                        },
+                    }
+                    score = self._calculate_text_match_score(row, query, category, language)
+                    if score > 0:
+                        rows.append({**row, "similarity": min(score, 0.7)})
+
+            rows.sort(
+                key=lambda row: (
+                    row.get("similarity", 0.0),
+                    row.get("metadata", {}).get("priority", 0),
+                ),
+                reverse=True,
+            )
+            return rows[:max_results]
+        except Exception as e:
+            logger.error("Local YAML fallback search error: %s", e)
+            return []
+
+    def _calculate_text_match_score(
+        self,
+        row: Dict,
+        query: str,
+        category: str,
+        language: str,
+    ) -> float:
+        searchable = " ".join(
+            str(part)
+            for part in (
+                row.get("title", ""),
+                row.get("content", ""),
+                (
+                    " ".join(row.get("metadata", {}).get("tags", []))
+                    if isinstance(row.get("metadata"), dict)
+                    else ""
+                ),
+            )
+        ).lower()
+        terms = self._extract_text_query_terms(query, category, language)
+
+        if category != "general" and row.get("category") != category:
+            return 0.0
+
+        match_score = 0.0
+        has_content_match = False
+        for term in terms:
+            if term in searchable:
+                match_score += 0.08 if self._contains_cjk(term) else 0.12
+                has_content_match = True
+
+        if row.get("category") == category:
+            match_score += 0.18
+
+        query_lower = query.lower()
+        if any(term in query_lower for term in ("wi-fi", "wifi", "ssid", "接続")) and any(
+            term in searchable for term in ("ssid", "engnecf", "password", "パスワード")
+        ):
+            match_score += 0.28
+            has_content_match = True
+        if any(term in query for term in ("料金", "いくら", "無料")) and any(
+            term in searchable for term in ("無料", "free")
+        ):
+            match_score += 0.24
+            has_content_match = True
+        if any(term in query for term in ("受付", "初めて", "再受付", "登録")) and any(
+            term in searchable for term in ("受付", "registration", "会員番号", "reception")
+        ):
+            match_score += 0.2
+            has_content_match = True
+
+        if not has_content_match:
+            return 0.0
+
+        priority = row.get("metadata", {}).get("priority", 50)
+        if isinstance(priority, int):
+            match_score += min(priority, 100) / 1000
+
+        return match_score
+
+    def _extract_text_query_terms(self, query: str, category: str, language: str) -> list[str]:
+        text = self._expand_query(query, category, language).lower()
+        terms = set(re.findall(r"[a-z0-9][a-z0-9_.+-]*|[\u3040-\u30ff\u4e00-\u9fff]{2,}", text))
+
+        domain_terms = (
+            "wi-fi",
+            "wifi",
+            "ssid",
+            "料金",
+            "無料",
+            "利用",
+            "受付",
+            "初めて",
+            "登録",
+            "会員",
+            "予約",
+            "営業時間",
+            "開館",
+            "駐車",
+            "電源",
+        )
+        query_lower = query.lower()
+        for term in domain_terms:
+            if term.lower() in query_lower:
+                terms.add(term.lower())
+
+        cjk_compounds = [term for term in terms if self._contains_cjk(term)]
+        for term in cjk_compounds:
+            terms.update(term[i : i + 2] for i in range(len(term) - 1))
+
+        stop_terms = {
+            "です",
+            "ます",
+            "ませ",
+            "さい",
+            "くだ",
+            "テスト",
+            "テス",
+            "スト",
+            "教え",
+            "えて",
+            "して",
+            "した",
+            "the",
+            "can",
+            "how",
+            "what",
+            "where",
+            "is",
+            "to",
+            "i",
+        }
+        return sorted(term for term in terms if len(term) >= 2 and term not in stop_terms)
+
+    @staticmethod
+    def _contains_cjk(text: str) -> bool:
+        return any("\u3040" <= c <= "\u30ff" or "\u4e00" <= c <= "\u9fff" for c in text)
 
     async def _generate_embedding(self, text: str) -> List[float]:
         """OpenRouter API経由でエンベディングを生成。

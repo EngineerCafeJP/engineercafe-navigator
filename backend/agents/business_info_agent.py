@@ -215,7 +215,7 @@ class BusinessInfoAgent:
             "basement": "facility-info",
             "facility": "facility-info",
             "wifi": "facility-info",
-            "reception": "consultation",
+            "reception": "general",
         }
 
         return category_mapping.get(request_type or "", "general")

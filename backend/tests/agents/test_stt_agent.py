@@ -974,7 +974,7 @@ class TestSTTAgent:
         mock_qwen_client.assert_called_once_with(default_language="ja")
 
     def test_init_qwen_primary_timeout_env_guard(self, monkeypatch):
-        """qwen-primary uses 12s default after alpha live verification."""
+        """qwen-primary uses 24s default after alpha live verification."""
         monkeypatch.setenv("QWEN_STT_TIMEOUT", "true")
 
         with (
@@ -983,7 +983,7 @@ class TestSTTAgent:
         ):
             agent = STTAgent(stt_provider="qwen-primary")
 
-        assert agent._qwen_timeout == pytest.approx(12.0)
+        assert agent._qwen_timeout == pytest.approx(24.0)
 
     def test_init_qwen_primary_timeout_env_numeric(self, monkeypatch):
         """qwen-primary accepts numeric QWEN_STT_TIMEOUT values."""

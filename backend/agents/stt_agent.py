@@ -236,7 +236,7 @@ def _duration_ms(started_at: float) -> int:
     return int((time.perf_counter() - started_at) * 1000)
 
 
-def _parse_qwen_stt_timeout(raw_value: Optional[str], default: float = 12.0) -> float:
+def _parse_qwen_stt_timeout(raw_value: Optional[str], default: float = 24.0) -> float:
     """Parse QWEN_STT_TIMEOUT defensively; production once had `true`."""
 
     if raw_value is None or raw_value.strip() == "":

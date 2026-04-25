@@ -645,6 +645,48 @@ class TestTextFallbackSearch:
 
         assert results == []
 
+    def test_local_yaml_fallback_returns_pricing_from_official_knowledge(self, rag_search):
+        """外部RAGが不安定でも公式YAMLから料金案内を検索できる"""
+        results = rag_search._local_knowledge_fallback_search(
+            query="利用料金はいくらですか。",
+            category="pricing",
+            language="ja",
+            max_results=3,
+        )
+
+        assert results
+        assert "無料" in results[0]["content"]
+        assert results[0]["metadata"]["local_fallback"] is True
+
+    def test_local_yaml_fallback_returns_wifi_for_english_query(self, rag_search):
+        """英語Wi-Fi質問でも実地案内に必要なSSID情報を返せる"""
+        results = rag_search._local_knowledge_fallback_search(
+            query="How can I connect to the Wi-Fi?",
+            category="facility-info",
+            language="en",
+            max_results=3,
+        )
+
+        assert results
+        assert "SSID" in results[0]["content"] or "engnecf" in results[0]["content"]
+
+    @pytest.mark.asyncio
+    async def test_search_uses_local_yaml_when_embedding_fails(self, rag_search):
+        """embedding API障害時も公式ナレッジ由来の通常検索レスポンスを返す"""
+        rag_search._generate_embedding = AsyncMock(side_effect=Exception("embedding down"))
+        rag_search._text_fallback_search = AsyncMock(return_value=[])
+
+        result = await rag_search.search(
+            query="Wi-Fiの接続方法を教えてください。",
+            category="facility-info",
+            language="ja",
+            include_advice=False,
+        )
+
+        assert result["success"] is True
+        assert result["data"]["context"]
+        assert "SSID" in result["data"]["context"]
+
 
 # ==============================================================================
 # Entity Priority Tests
