@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       suites:
-        description: 'Comma-separated suites: stt,v,a,b,c,d,e,h,all'
+        description: 'Comma-separated suites: stt,v,a,b,c,d,e,h,q,m,t,all'
         default: 'stt,v,b,d,e'
         type: string
       timestamp:
@@ -134,6 +134,30 @@ jobs:
         continue-on-error: true
         run: scripts/cloud-logging-verify.sh --timestamp "${ALPHA_TIMESTAMP}-e" --minutes 240 --limit 1000
 
+      - name: Q LangGraph answer quality gate
+        id: quality_q
+        if: contains(format(',{0},', inputs.suites), ',q,') || contains(format(',{0},', inputs.suites), ',all,')
+        continue-on-error: true
+        env:
+          API_SECRET_KEY: ${{ secrets.BACKEND_API_KEY }}
+        run: scripts/alpha-quality-gates.sh --timestamp "${ALPHA_TIMESTAMP}-q" --host "$ALPHA_SMOKE_BASE_URL" --suites q
+
+      - name: M STM/LTM memory quality gate
+        id: quality_m
+        if: contains(format(',{0},', inputs.suites), ',m,') || contains(format(',{0},', inputs.suites), ',all,')
+        continue-on-error: true
+        env:
+          API_SECRET_KEY: ${{ secrets.BACKEND_API_KEY }}
+        run: scripts/alpha-quality-gates.sh --timestamp "${ALPHA_TIMESTAMP}-m" --host "$ALPHA_SMOKE_BASE_URL" --suites m
+
+      - name: T PiperPlus answer TTS quality gate
+        id: quality_t
+        if: contains(format(',{0},', inputs.suites), ',t,') || contains(format(',{0},', inputs.suites), ',all,')
+        continue-on-error: true
+        env:
+          API_SECRET_KEY: ${{ secrets.BACKEND_API_KEY }}
+        run: scripts/alpha-quality-gates.sh --timestamp "${ALPHA_TIMESTAMP}-t" --host "$ALPHA_SMOKE_BASE_URL" --suites t
+
       - name: Setup pnpm for H suite
         if: contains(format(',{0},', inputs.suites), ',h,') || contains(format(',{0},', inputs.suites), ',all,')
         uses: pnpm/action-setup@v2
@@ -201,6 +225,9 @@ jobs:
           | rag_api_live | ${{ steps.rag_api_live.outcome }} |
           | alpha_d | ${{ steps.alpha_d.outcome }} |
           | cloud_logging | ${{ steps.cloud_logging.outcome }} |
+          | quality_q | ${{ steps.quality_q.outcome }} |
+          | quality_m | ${{ steps.quality_m.outcome }} |
+          | quality_t | ${{ steps.quality_t.outcome }} |
           | welcome_live | ${{ steps.welcome_live.outcome }} |
           EOF
 
@@ -218,6 +245,9 @@ jobs:
             "${{ steps.rag_api_live.outcome }}" \
             "${{ steps.alpha_d.outcome }}" \
             "${{ steps.cloud_logging.outcome }}" \
+            "${{ steps.quality_q.outcome }}" \
+            "${{ steps.quality_m.outcome }}" \
+            "${{ steps.quality_t.outcome }}" \
             "${{ steps.welcome_live.outcome }}"; do
             if [[ "$outcome" == "failure" ]]; then
               failed=1
