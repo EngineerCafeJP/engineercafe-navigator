@@ -80,13 +80,13 @@ jobs:
 
       - name: STT live preflight
         id: stt_preflight
-        if: contains(inputs.suites, 'all') || contains(inputs.suites, 'stt')
+        if: contains(format(',{0},', inputs.suites), ',stt,') || contains(format(',{0},', inputs.suites), ',all,')
         continue-on-error: true
         run: scripts/stt-live-preflight.sh --timestamp "${ALPHA_TIMESTAMP}-stt" --minutes 1440 --limit 1000
 
       - name: A voice round-trip smoke
         id: alpha_a
-        if: contains(inputs.suites, 'all') || contains(inputs.suites, 'a')
+        if: contains(format(',{0},', inputs.suites), ',a,') || contains(format(',{0},', inputs.suites), ',all,')
         continue-on-error: true
         env:
           API_SECRET_KEY: ${{ secrets.BACKEND_API_KEY }}
@@ -94,7 +94,7 @@ jobs:
 
       - name: B LangGraph routing live smoke
         id: alpha_b
-        if: contains(inputs.suites, 'all') || contains(inputs.suites, 'b')
+        if: contains(format(',{0},', inputs.suites), ',b,') || contains(format(',{0},', inputs.suites), ',all,')
         continue-on-error: true
         env:
           API_SECRET_KEY: ${{ secrets.BACKEND_API_KEY }}
@@ -102,7 +102,7 @@ jobs:
 
       - name: C live API RAGAS
         id: rag_api_live
-        if: contains(inputs.suites, 'all') || contains(inputs.suites, 'c')
+        if: contains(format(',{0},', inputs.suites), ',c,') || contains(format(',{0},', inputs.suites), ',all,')
         continue-on-error: true
         env:
           API_SECRET_KEY: ${{ secrets.BACKEND_API_KEY }}
@@ -114,7 +114,7 @@ jobs:
 
       - name: D memory and state durability smoke
         id: alpha_d
-        if: contains(inputs.suites, 'all') || contains(inputs.suites, 'd')
+        if: contains(format(',{0},', inputs.suites), ',d,') || contains(format(',{0},', inputs.suites), ',all,')
         continue-on-error: true
         env:
           API_SECRET_KEY: ${{ secrets.BACKEND_API_KEY }}
@@ -122,7 +122,7 @@ jobs:
 
       - name: E Cloud Logging verification
         id: cloud_logging
-        if: contains(inputs.suites, 'all') || contains(inputs.suites, 'e')
+        if: contains(format(',{0},', inputs.suites), ',e,') || contains(format(',{0},', inputs.suites), ',all,')
         continue-on-error: true
         run: scripts/cloud-logging-verify.sh --timestamp "${ALPHA_TIMESTAMP}-e" --minutes 240 --limit 1000
 

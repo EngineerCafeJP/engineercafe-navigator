@@ -1,9 +1,11 @@
 """Tests for STTAgent - Speech-to-Text integration"""
 
+import asyncio
 import logging
 import pytest
 import json
 import io
+import threading
 import time
 import wave
 import numpy as np
@@ -819,6 +821,102 @@ class TestQwenSTTClient:
                 )
 
         assert time.perf_counter() - started_at < 0.2
+
+    @pytest.mark.asyncio
+    async def test_shared_executor_reused_across_calls(self):
+        import concurrent.futures
+
+        import backend.agents.stt_agent as _mod
+
+        client = QwenSTTClient(model_variant="0.6b", device="cpu")
+        executor_ids = []
+
+        def capture_executor(*args, **kwargs):
+            executor_ids.append(threading.current_thread().name)
+            return TranscriptionResult(text="hi", confidence=None, language="ja")
+
+        with patch.object(client, "_sync_transcribe", side_effect=capture_executor):
+            with patch.object(_mod, "_get_qwen_stt_executor") as mock_get:
+                shared = concurrent.futures.ThreadPoolExecutor(
+                    max_workers=1, thread_name_prefix="qwen-stt-test"
+                )
+                mock_get.return_value = shared
+                try:
+                    await client.transcribe(b"RIFF" + b"\x00" * 40, language="ja")
+                    await client.transcribe(b"RIFF" + b"\x00" * 40, language="ja")
+                finally:
+                    shared.shutdown(wait=False)
+
+        assert mock_get.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_concurrent_requests_queue_on_single_worker(self):
+        import concurrent.futures
+
+        import backend.agents.stt_agent as _mod
+
+        client = QwenSTTClient(model_variant="0.6b", device="cpu")
+        call_order = []
+        call_lock = threading.Lock()
+
+        def slow_transcribe(*args, **kwargs):
+            with call_lock:
+                call_order.append("start")
+            time.sleep(0.15)
+            with call_lock:
+                call_order.append("end")
+            return TranscriptionResult(text="done", confidence=None, language="ja")
+
+        shared = concurrent.futures.ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="qwen-stt-queue"
+        )
+
+        with patch.object(client, "_sync_transcribe", side_effect=slow_transcribe):
+            with patch.object(_mod, "_get_qwen_stt_executor", return_value=shared):
+                try:
+                    t1 = asyncio.create_task(
+                        client.transcribe(b"RIFF" + b"\x00" * 40, language="ja")
+                    )
+                    t2 = asyncio.create_task(
+                        client.transcribe(b"RIFF" + b"\x00" * 40, language="ja")
+                    )
+                    await asyncio.gather(t1, t2)
+                finally:
+                    shared.shutdown(wait=False)
+
+        assert call_order == ["start", "end", "start", "end"]
+
+    @pytest.mark.asyncio
+    async def test_timeout_does_not_cancel_thread_future(self):
+        import concurrent.futures
+
+        import backend.agents.stt_agent as _mod
+
+        client = QwenSTTClient(model_variant="0.6b", device="cpu")
+        completed_flag = threading.Event()
+
+        def slow_transcribe(*args, **kwargs):
+            time.sleep(0.3)
+            completed_flag.set()
+            return TranscriptionResult(text="late", confidence=None, language="ja")
+
+        shared = concurrent.futures.ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="qwen-stt-timeout"
+        )
+
+        with patch.object(client, "_sync_transcribe", side_effect=slow_transcribe):
+            with patch.object(_mod, "_get_qwen_stt_executor", return_value=shared):
+                try:
+                    with pytest.raises(asyncio.TimeoutError):
+                        await asyncio.wait_for(
+                            client.transcribe(b"RIFF" + b"\x00" * 40, language="ja"),
+                            timeout=0.05,
+                        )
+                finally:
+                    pass
+
+        assert completed_flag.wait(timeout=1.0), "Thread should complete after timeout"
+        shared.shutdown(wait=True)
 
 
 # ==============================================================================
