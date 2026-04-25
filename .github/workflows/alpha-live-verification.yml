@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       suites:
-        description: 'Comma-separated suites: stt,v,a,b,c,d,e,h,all'
+        description: 'Comma-separated suites: stt,v,a,b,c,d,e,h,q,m,t,all'
         default: 'stt,v,b,d,e'
         type: string
       timestamp:
@@ -166,6 +166,30 @@ jobs:
           BACKEND_API_KEY: ${{ secrets.BACKEND_API_KEY }}
         run: scripts/welcome-live-preflight.sh --timestamp "${ALPHA_TIMESTAMP}-h" --host "$ALPHA_SMOKE_BASE_URL" --delays 0,5,10
 
+      - name: Q LangGraph answer quality gate
+        id: quality_q
+        if: contains(format(',{0},', inputs.suites), ',q,') || contains(format(',{0},', inputs.suites), ',all,')
+        continue-on-error: true
+        env:
+          API_SECRET_KEY: ${{ secrets.BACKEND_API_KEY }}
+        run: scripts/alpha-quality-gates.sh --timestamp "${ALPHA_TIMESTAMP}-q" --host "$ALPHA_SMOKE_BASE_URL" --suites q
+
+      - name: M STM/LTM memory quality gate
+        id: quality_m
+        if: contains(format(',{0},', inputs.suites), ',m,') || contains(format(',{0},', inputs.suites), ',all,')
+        continue-on-error: true
+        env:
+          API_SECRET_KEY: ${{ secrets.BACKEND_API_KEY }}
+        run: scripts/alpha-quality-gates.sh --timestamp "${ALPHA_TIMESTAMP}-m" --host "$ALPHA_SMOKE_BASE_URL" --suites m
+
+      - name: T PiperPlus answer TTS quality gate
+        id: quality_t
+        if: contains(format(',{0},', inputs.suites), ',t,') || contains(format(',{0},', inputs.suites), ',all,')
+        continue-on-error: true
+        env:
+          API_SECRET_KEY: ${{ secrets.BACKEND_API_KEY }}
+        run: scripts/alpha-quality-gates.sh --timestamp "${ALPHA_TIMESTAMP}-t" --host "$ALPHA_SMOKE_BASE_URL" --suites t
+
       - name: Upload alpha reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -202,6 +226,9 @@ jobs:
           | alpha_d | ${{ steps.alpha_d.outcome }} |
           | cloud_logging | ${{ steps.cloud_logging.outcome }} |
           | welcome_live | ${{ steps.welcome_live.outcome }} |
+          | quality_q | ${{ steps.quality_q.outcome }} |
+          | quality_m | ${{ steps.quality_m.outcome }} |
+          | quality_t | ${{ steps.quality_t.outcome }} |
           EOF
 
       - name: Fail when any selected suite failed
@@ -218,7 +245,10 @@ jobs:
             "${{ steps.rag_api_live.outcome }}" \
             "${{ steps.alpha_d.outcome }}" \
             "${{ steps.cloud_logging.outcome }}" \
-            "${{ steps.welcome_live.outcome }}"; do
+            "${{ steps.welcome_live.outcome }}" \
+            "${{ steps.quality_q.outcome }}" \
+            "${{ steps.quality_m.outcome }}" \
+            "${{ steps.quality_t.outcome }}"; do
             if [[ "$outcome" == "failure" ]]; then
               failed=1
             fi
