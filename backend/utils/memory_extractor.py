@@ -176,7 +176,9 @@ def _extract_name(query: str, language: str) -> str | None:
     for pattern in patterns:
         match = re.search(pattern, query, re.IGNORECASE)
         if match:
-            name = match.group(1).strip()
+            name = _clean_name_candidate(match.group(1))
+            if not _looks_like_person_name(name, language):
+                continue
             # Filter out common non-name words
             non_names = {
                 "エンジニア",
@@ -195,6 +197,47 @@ def _extract_name(query: str, language: str) -> str | None:
             if name.lower() not in {n.lower() for n in non_names} and len(name) > 0:
                 return name
     return None
+
+
+def _clean_name_candidate(name: str) -> str:
+    candidate = name.strip()
+    candidate = re.sub(
+        r"(?:です|だよ|と申します|といいます|です。|です\.|です！|です!)+$",
+        "",
+        candidate,
+    )
+    return candidate.strip()
+
+
+def _looks_like_person_name(name: str, language: str) -> bool:
+    """Reject factual clauses that the loose Japanese `です` pattern can capture."""
+    normalized = name.strip()
+    if not normalized:
+        return False
+
+    lower = normalized.lower()
+    non_name_fragments = (
+        "wi-fi",
+        "wifi",
+        "ssid",
+        "パスワード",
+        "password",
+        "http",
+        "://",
+        "@",
+        "=",
+    )
+    if any(fragment in lower for fragment in non_name_fragments):
+        return False
+
+    if language == "ja":
+        if any(particle in normalized for particle in ("は", "が", "を", "に", "で", "の")):
+            return False
+        return len(normalized) <= 12
+
+    if len(normalized.split()) > 3:
+        return False
+    return True
 
 
 def _extract_affiliation(query: str, language: str) -> str | None:

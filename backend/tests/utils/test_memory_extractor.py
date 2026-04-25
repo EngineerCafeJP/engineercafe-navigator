@@ -171,6 +171,12 @@ class TestExtractName:
     def test_non_name_filtered_ja(self):
         assert _extract_name("エンジニアです", "ja") is None
 
+    def test_wifi_ssid_statement_not_extracted_as_name(self):
+        query = "Wi-FiのSSIDはcafe-freeです。接続方法を教えてください。"
+
+        assert _extract_name(query, "ja") is None
+        assert extract_memories(query, "受付で確認してください", "ja") == []
+
     def test_non_name_filtered_en(self):
         assert _extract_name("I'm fine", "en") is None
         assert _extract_name("I'm good", "en") is None
