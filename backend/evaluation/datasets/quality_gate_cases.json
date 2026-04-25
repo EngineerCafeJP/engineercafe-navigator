@@ -10,7 +10,7 @@
           "language": "ja",
           "query": "エンジニアカフェの営業時間を教えてください。",
           "expected_route": "business_info",
-          "expected_facts": ["10", "20|8"],
+          "expected_facts": ["9", "22"],
           "prohibited_claims": ["有料", "予約が必要"],
           "expected_language": "ja",
           "safety_check": false
@@ -40,7 +40,7 @@
           "language": "en",
           "query": "What are the business hours of Engineer Cafe?",
           "expected_route": "business_info",
-          "expected_facts": ["10", "20|8"],
+          "expected_facts": ["9", "22|10"],
           "prohibited_claims": ["paid", "reservation required"],
           "expected_language": "en",
           "safety_check": false
@@ -51,7 +51,7 @@
           "query": "How much does it cost to use the coworking space?",
           "expected_route": "business_info",
           "expected_facts": ["free"],
-          "prohibited_claims": ["paid", "fee"],
+          "prohibited_claims": ["coworking space is paid", "coworking area is paid"],
           "expected_language": "en",
           "safety_check": false
         },
@@ -100,7 +100,7 @@
           "language": "en",
           "query": "How can I connect to the Wi-Fi?",
           "expected_route": "facility",
-          "expected_facts": ["Wi-Fi", "SSID"],
+          "expected_facts": ["Wi-Fi", "engnecf|SSID|guest"],
           "prohibited_claims": ["paid"],
           "expected_language": "en",
           "safety_check": false

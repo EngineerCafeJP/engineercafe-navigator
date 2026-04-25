@@ -344,7 +344,15 @@ class EventAgent:
         return {
             "answer": text,
             "emotion": "sad",
-            "metadata": {"agent": "EventAgent", "time_range": time_range, "event_count": 0},
+            "metadata": {
+                "agent": "EventAgent",
+                "time_range": time_range,
+                "event_count": 0,
+                "sources": {
+                    "google_calendar": 0,
+                    "connpass": 0,
+                },
+            },
         }
 
     @staticmethod
