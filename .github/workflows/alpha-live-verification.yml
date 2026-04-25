@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       suites:
-        description: 'Comma-separated suites: stt,v,a,b,c,d,e,h,q,m,t,all'
+        description: 'Comma-separated suites: stt,v,a,b,c,d,e,h-ui,h,q,m,t,all (h is a compatibility alias for h-ui)'
         default: 'stt,v,b,d,e'
         type: string
       timestamp:
@@ -158,33 +158,33 @@ jobs:
           API_SECRET_KEY: ${{ secrets.BACKEND_API_KEY }}
         run: scripts/alpha-quality-gates.sh --timestamp "${ALPHA_TIMESTAMP}-t" --host "$ALPHA_SMOKE_BASE_URL" --suites t
 
-      - name: Setup pnpm for H suite
-        if: contains(format(',{0},', inputs.suites), ',h,') || contains(format(',{0},', inputs.suites), ',all,')
+      - name: Setup pnpm for H-UI suite
+        if: contains(format(',{0},', inputs.suites), ',h-ui,') || contains(format(',{0},', inputs.suites), ',h,') || contains(format(',{0},', inputs.suites), ',all,')
         uses: pnpm/action-setup@v2
         with:
           version: 10.12.1
 
-      - name: Setup Node for H suite
-        if: contains(format(',{0},', inputs.suites), ',h,') || contains(format(',{0},', inputs.suites), ',all,')
+      - name: Setup Node for H-UI suite
+        if: contains(format(',{0},', inputs.suites), ',h-ui,') || contains(format(',{0},', inputs.suites), ',h,') || contains(format(',{0},', inputs.suites), ',all,')
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
 
-      - name: Install frontend dependencies for H suite
-        if: contains(format(',{0},', inputs.suites), ',h,') || contains(format(',{0},', inputs.suites), ',all,')
+      - name: Install frontend dependencies for H-UI suite
+        if: contains(format(',{0},', inputs.suites), ',h-ui,') || contains(format(',{0},', inputs.suites), ',h,') || contains(format(',{0},', inputs.suites), ',all,')
         working-directory: frontend
         run: pnpm install --frozen-lockfile
 
-      - name: Install Playwright browser for H suite
-        if: contains(format(',{0},', inputs.suites), ',h,') || contains(format(',{0},', inputs.suites), ',all,')
+      - name: Install Playwright browser for H-UI suite
+        if: contains(format(',{0},', inputs.suites), ',h-ui,') || contains(format(',{0},', inputs.suites), ',h,') || contains(format(',{0},', inputs.suites), ',all,')
         working-directory: frontend
         run: pnpm exec playwright install --with-deps chromium
 
-      - name: H Welcome UI live scenario (fixture audio)
+      - name: H-UI Welcome UI live scenario (fixture audio)
         id: welcome_live
-        if: contains(format(',{0},', inputs.suites), ',h,') || contains(format(',{0},', inputs.suites), ',all,')
+        if: contains(format(',{0},', inputs.suites), ',h-ui,') || contains(format(',{0},', inputs.suites), ',h,') || contains(format(',{0},', inputs.suites), ',all,')
         continue-on-error: true
         env:
           BACKEND_API_KEY: ${{ secrets.BACKEND_API_KEY }}
