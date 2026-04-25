@@ -4,6 +4,7 @@ import logging
 import pytest
 import json
 import io
+import time
 import wave
 import numpy as np
 from types import SimpleNamespace
@@ -797,6 +798,27 @@ class TestQwenSTTClient:
         assert (
             "language" not in call_kwargs.kwargs
         ), "language should not be passed to Qwen when auto-detect is intended"
+
+    @pytest.mark.asyncio
+    async def test_transcribe_cancellation_does_not_wait_for_blocking_executor(self):
+        """Qwen timeout should return promptly even if the worker thread keeps running."""
+        import asyncio
+
+        client = QwenSTTClient(model_variant="0.6b", device="cpu")
+
+        def blocking_transcribe(*args, **kwargs):
+            time.sleep(0.5)
+            return TranscriptionResult(text="late", confidence=None, language="ja")
+
+        started_at = time.perf_counter()
+        with patch.object(client, "_sync_transcribe", side_effect=blocking_transcribe):
+            with pytest.raises(asyncio.TimeoutError):
+                await asyncio.wait_for(
+                    client.transcribe(b"RIFF" + b"\x00" * 40, language="ja"),
+                    timeout=0.01,
+                )
+
+        assert time.perf_counter() - started_at < 0.2
 
 
 # ==============================================================================

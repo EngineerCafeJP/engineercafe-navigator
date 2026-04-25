@@ -47,6 +47,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _stt_postprocess_client: Optional["_stt_httpx.AsyncClient"] = None
+_qwen_stt_executor: Optional[concurrent.futures.ThreadPoolExecutor] = None
 
 
 def _is_real_openrouter_key(value: str) -> bool:
@@ -71,6 +72,16 @@ def _get_stt_postprocess_client() -> "_stt_httpx.AsyncClient":
     if _stt_postprocess_client is None or _stt_postprocess_client.is_closed:
         _stt_postprocess_client = _stt_httpx.AsyncClient(timeout=3.0)
     return _stt_postprocess_client
+
+
+def _get_qwen_stt_executor() -> concurrent.futures.ThreadPoolExecutor:
+    global _qwen_stt_executor
+    if _qwen_stt_executor is None:
+        _qwen_stt_executor = concurrent.futures.ThreadPoolExecutor(
+            max_workers=1,
+            thread_name_prefix="qwen-stt",
+        )
+    return _qwen_stt_executor
 
 
 # ---------------------------------------------------------------------------
@@ -942,11 +953,10 @@ class QwenSTTClient:
         language: Optional[str] = None,
     ) -> TranscriptionResult:
         loop = asyncio.get_running_loop()
-        with concurrent.futures.ThreadPoolExecutor() as pool:
-            result = await loop.run_in_executor(
-                pool,
-                lambda: self._sync_transcribe(audio_data, language),
-            )
+        result = await loop.run_in_executor(
+            _get_qwen_stt_executor(),
+            lambda: self._sync_transcribe(audio_data, language),
+        )
 
         # Apply LLM post-processing for Japanese transcripts to correct
         # domain-specific proper nouns (エンジニアカフェ, Wi-Fi, etc.).
