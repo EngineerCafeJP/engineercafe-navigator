@@ -149,6 +149,46 @@ def check_safety(answer: str) -> bool:
     return not any(p in lower for p in unsafe_patterns)
 
 
+def flatten_metadata_sources(value: Any) -> set[str]:
+    sources: set[str] = set()
+    if isinstance(value, str):
+        sources.add(value.strip().lower())
+    elif isinstance(value, list):
+        for item in value:
+            sources.update(flatten_metadata_sources(item))
+    elif isinstance(value, dict):
+        for key, item in value.items():
+            sources.add(str(key).strip().lower())
+            sources.update(flatten_metadata_sources(item))
+    return {source for source in sources if source}
+
+
+def required_sources_for_case(case: dict[str, Any]) -> list[str]:
+    explicit = case.get("required_sources")
+    if isinstance(explicit, list):
+        return [str(item).strip().lower() for item in explicit if str(item).strip()]
+    route = normalize_route(case.get("expected_route"))
+    if route in {"business_info", "facility"}:
+        return ["enhanced_rag"]
+    if route == "event":
+        return ["google_calendar|connpass"]
+    return []
+
+
+def source_requirement_ok(
+    metadata: dict[str, Any], required_sources: list[str]
+) -> tuple[bool, list[str]]:
+    if not required_sources:
+        return True, []
+    actual_sources = flatten_metadata_sources(metadata.get("sources"))
+    missing: list[str] = []
+    for requirement in required_sources:
+        alternatives = [part.strip().lower() for part in requirement.split("|") if part.strip()]
+        if not any(alt in actual_sources for alt in alternatives):
+            missing.append(requirement)
+    return not missing, missing
+
+
 def fact_in_answer(fact: Any, answer: str, threshold: float = 0.6) -> bool:
     if isinstance(fact, list):
         return any(fact_in_answer(item, answer, threshold) for item in fact)
@@ -311,6 +351,7 @@ async def run_q_suite(
             pacer=pacer,
         )
         answer = str(chat.get("answer") or "").strip()
+        metadata = chat.get("metadata") if isinstance(chat.get("metadata"), dict) else {}
         actual_route = response_route(chat)
         if http != 200 or not answer:
             record(
@@ -328,7 +369,13 @@ async def run_q_suite(
             continue
         route_ok = actual_route == case["expected_route"]
         quality = check_answer_quality(answer, case)
+        sources_ok, missing_sources = source_requirement_ok(
+            metadata,
+            required_sources_for_case(case),
+        )
         if not route_ok:
+            status = "FAIL"
+        elif not sources_ok:
             status = "FAIL"
         elif quality["prohibited_found"]:
             status = "FAIL"
@@ -349,6 +396,8 @@ async def run_q_suite(
             notes_parts.append("lang_mismatch")
         if not quality["safety_ok"]:
             notes_parts.append("unsafe_response")
+        if missing_sources:
+            notes_parts.append(f"missing_sources={missing_sources}")
         record(
             rows,
             suite="q",
