@@ -27,6 +27,7 @@ import {
 } from '../hooks/useVoiceSessionController';
 import type { WakeWordMatch } from '../hooks/useWakeWord';
 import { VoiceRecorder } from '@/lib/voice-recorder';
+import { cancelSttWarmup, sendSttWarmup } from '@/lib/stt-warmup';
 import type { CharacterAnimationData } from '../utils/character-animation-utils';
 
 export type VoiceSessionState = 'idle' | 'listening' | 'processing' | 'speaking';
@@ -841,11 +842,12 @@ export default function VoiceInterface({
 
   const startListening = useCallback(() => {
     markAudioUserInteraction();
+    sendSttWarmup({ language: currentLanguage, sessionId: sessionIdRef.current });
     cancelPendingRequest();
     stopPlayback(false);
     setError(null);
     voiceController.startManualSession();
-  }, [cancelPendingRequest, stopPlayback, voiceController]);
+  }, [cancelPendingRequest, currentLanguage, stopPlayback, voiceController]);
 
   const stopListening = useCallback(() => {
     if (sessionState !== 'listening') {
@@ -856,6 +858,7 @@ export default function VoiceInterface({
   }, [sessionState, voiceController]);
 
   const cancelSession = useCallback(() => {
+    cancelSttWarmup();
     cancelPendingRequest();
     stopPlayback(false);
     shouldDiscardNextAudioRef.current = true;

@@ -40,6 +40,7 @@ import VoiceInterface, {
 } from './components/VoiceInterface';
 import type { OcrResponse } from '@/lib/api/ocr-api';
 import { startReception } from '@/lib/reception-api';
+import { cancelSttWarmup, sendSttWarmup } from '@/lib/stt-warmup';
 
 const kioskReceptionSlidesUsePdf =
   process.env.NEXT_PUBLIC_RECEPTION_SLIDE_RENDERER !== 'marp';
@@ -323,6 +324,7 @@ export default function Home() {
       >
         {(voice) => {
           kioskVisitCleanupRef.current = () => {
+            cancelSttWarmup();
             voice.clearVisitState();
             setKioskVoiceLocked(false);
             setWelcomeMemberOcrOpen(false);
@@ -337,6 +339,7 @@ export default function Home() {
               return;
             }
             markAudioUserInteraction();
+            sendSttWarmup({ language: voice.currentLanguage, sessionId: voice.sessionId });
             clearReturnToIdleTimer();
             setWelcomeMemberOcrSessionKey((n) => n + 1);
             setWelcomeMemberOcrOpen(true);

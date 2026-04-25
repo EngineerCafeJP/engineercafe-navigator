@@ -26,7 +26,7 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      testIgnore: /voice-live\.spec\.ts/,
+      testIgnore: /(voice-live|welcome-live)\.spec\.ts/,
       use: {
         ...devices['Desktop Chrome'],
         launchOptions: {
@@ -36,7 +36,7 @@ export default defineConfig({
     },
     {
       name: 'chromium-voice-live',
-      testMatch: /voice-live\.spec\.ts/,
+      testMatch: /(voice-live|welcome-live)\.spec\.ts/,
       use: {
         ...devices['Desktop Chrome'],
         launchOptions: {

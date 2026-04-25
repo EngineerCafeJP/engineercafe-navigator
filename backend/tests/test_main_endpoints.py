@@ -38,6 +38,72 @@ class TestHealthCheck:
         assert data["service"] == "engineer-cafe-navigator-backend"
 
 
+class TestVoiceWarmupEndpoint:
+    def test_voice_get_lists_warmup_action(self):
+        from backend.main import app
+
+        client = TestClient(app)
+        response = client.get("/api/voice")
+
+        assert response.status_code == 200
+        assert "warmup" in response.json()["actions"]
+
+    def test_voice_warmup_returns_status_without_waiting(self, monkeypatch):
+        from backend.main import app
+        from backend.services.stt_warmup_service import STTWarmupSnapshot
+
+        monkeypatch.setenv("STT_PROVIDER", "qwen-primary")
+        fake_service = MagicMock()
+        fake_service.warmup = AsyncMock(
+            return_value=STTWarmupSnapshot(status="started", provider="qwen-primary")
+        )
+
+        with patch("backend.main.get_stt_warmup_service", return_value=fake_service):
+            client = TestClient(app)
+            response = client.post(
+                "/api/voice",
+                json={"action": "warmup", "sessionId": "session-123"},
+            )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["success"] is True
+        assert body["sessionId"] == "session-123"
+        assert body["sttWarmupStatus"] == "started"
+        assert body["sttWarmupProvider"] == "qwen-primary"
+        fake_service.warmup.assert_awaited_once()
+        call_kwargs = fake_service.warmup.await_args.kwargs
+        assert call_kwargs["provider"] == "qwen-primary"
+        assert call_kwargs["session_id"] == "session-123"
+        assert call_kwargs["wait"] is False
+
+    def test_voice_warmup_failure_status_is_not_500(self, monkeypatch):
+        from backend.main import app
+        from backend.services.stt_warmup_service import STTWarmupSnapshot
+
+        monkeypatch.setenv("STT_PROVIDER", "qwen-primary")
+        fake_service = MagicMock()
+        fake_service.warmup = AsyncMock(
+            return_value=STTWarmupSnapshot(
+                status="failed",
+                provider="qwen-primary",
+                error="RuntimeError: model load failed",
+                duration_ms=1234,
+            )
+        )
+
+        with patch("backend.main.get_stt_warmup_service", return_value=fake_service):
+            client = TestClient(app)
+            response = client.post("/api/voice", json={"action": "warmup"})
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["success"] is True
+        assert body["sttWarmupStatus"] == "failed"
+        assert body["sttWarmupError"] == "RuntimeError: model load failed"
+        assert body["sttWarmupDurationMs"] == 1234
+
+
 class TestLifespan:
     @pytest.mark.asyncio
     async def test_lifespan_prewarms_checkpointer(self):
@@ -208,6 +274,31 @@ class TestVoiceEndpoint:
             with pytest.raises(HTTPException) as exc_info:
                 await voice_api(_mock_request(), body)
             assert "credential" not in exc_info.value.detail.lower()
+
+    @pytest.mark.asyncio
+    async def test_voice_stt_exposes_selected_provider(self):
+        mock_stt = AsyncMock()
+        mock_stt.speech_to_text = AsyncMock(
+            return_value={
+                "success": True,
+                "transcript": "営業時間を教えてください",
+                "confidence": 0.91,
+                "language": "ja",
+                "provider": "qwen-primary",
+                "postprocessed": False,
+            }
+        )
+
+        with patch("backend.main._get_stt_agent", return_value=mock_stt):
+            from backend.main import voice_api, VoiceRequest
+
+            body = VoiceRequest(action="speech_to_text", audioData="ZHVtbXk=", sessionId="s1")
+            response = await voice_api(_mock_request(), body)
+
+        assert response.success is True
+        assert response.transcript == "営業時間を教えてください"
+        assert response.sttProvider == "qwen-primary"
+        assert response.sttPostprocessed is False
 
     @pytest.mark.asyncio
     async def test_voice_invalid_tts_provider_returns_400(self):

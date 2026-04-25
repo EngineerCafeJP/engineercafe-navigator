@@ -4,8 +4,8 @@ on:
   workflow_dispatch:
     inputs:
       suites:
-        description: 'Comma-separated suites: stt,a,b,c,d,e,all'
-        default: 'stt,b,d,e'
+        description: 'Comma-separated suites: stt,v,a,b,c,d,e,h,all'
+        default: 'stt,v,b,d,e'
         type: string
       timestamp:
         description: 'Stable timestamp marker. Empty uses current UTC time.'
@@ -84,6 +84,14 @@ jobs:
         continue-on-error: true
         run: scripts/stt-live-preflight.sh --timestamp "${ALPHA_TIMESTAMP}-stt" --minutes 1440 --limit 1000
 
+      - name: V voice pipeline live preflight
+        id: voice_pipeline
+        if: contains(format(',{0},', inputs.suites), ',v,') || contains(format(',{0},', inputs.suites), ',all,')
+        continue-on-error: true
+        env:
+          API_SECRET_KEY: ${{ secrets.BACKEND_API_KEY }}
+        run: scripts/voice-pipeline-live-preflight.sh --timestamp "${ALPHA_TIMESTAMP}-v" --host "$ALPHA_SMOKE_BASE_URL" --case-set smoke
+
       - name: A voice round-trip smoke
         id: alpha_a
         if: contains(format(',{0},', inputs.suites), ',a,') || contains(format(',{0},', inputs.suites), ',all,')
@@ -126,6 +134,38 @@ jobs:
         continue-on-error: true
         run: scripts/cloud-logging-verify.sh --timestamp "${ALPHA_TIMESTAMP}-e" --minutes 240 --limit 1000
 
+      - name: Setup pnpm for H suite
+        if: contains(format(',{0},', inputs.suites), ',h,') || contains(format(',{0},', inputs.suites), ',all,')
+        uses: pnpm/action-setup@v2
+        with:
+          version: 10.12.1
+
+      - name: Setup Node for H suite
+        if: contains(format(',{0},', inputs.suites), ',h,') || contains(format(',{0},', inputs.suites), ',all,')
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install frontend dependencies for H suite
+        if: contains(format(',{0},', inputs.suites), ',h,') || contains(format(',{0},', inputs.suites), ',all,')
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browser for H suite
+        if: contains(format(',{0},', inputs.suites), ',h,') || contains(format(',{0},', inputs.suites), ',all,')
+        working-directory: frontend
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: H Welcome live scenario
+        id: welcome_live
+        if: contains(format(',{0},', inputs.suites), ',h,') || contains(format(',{0},', inputs.suites), ',all,')
+        continue-on-error: true
+        env:
+          BACKEND_API_KEY: ${{ secrets.BACKEND_API_KEY }}
+        run: scripts/welcome-live-preflight.sh --timestamp "${ALPHA_TIMESTAMP}-h" --host "$ALPHA_SMOKE_BASE_URL" --delays 0,5,10
+
       - name: Upload alpha reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -134,6 +174,8 @@ jobs:
           path: |
             backend/tests/reports/
             backend/tests/evaluation/reports/
+            frontend/playwright-report/
+            frontend/test-results/
           if-no-files-found: warn
           retention-days: 30
 
@@ -153,11 +195,13 @@ jobs:
           | Step | Outcome |
           | --- | --- |
           | stt_preflight | ${{ steps.stt_preflight.outcome }} |
+          | voice_pipeline | ${{ steps.voice_pipeline.outcome }} |
           | alpha_a | ${{ steps.alpha_a.outcome }} |
           | alpha_b | ${{ steps.alpha_b.outcome }} |
           | rag_api_live | ${{ steps.rag_api_live.outcome }} |
           | alpha_d | ${{ steps.alpha_d.outcome }} |
           | cloud_logging | ${{ steps.cloud_logging.outcome }} |
+          | welcome_live | ${{ steps.welcome_live.outcome }} |
           EOF
 
       - name: Fail when any selected suite failed
@@ -168,11 +212,13 @@ jobs:
           failed=0
           for outcome in \
             "${{ steps.stt_preflight.outcome }}" \
+            "${{ steps.voice_pipeline.outcome }}" \
             "${{ steps.alpha_a.outcome }}" \
             "${{ steps.alpha_b.outcome }}" \
             "${{ steps.rag_api_live.outcome }}" \
             "${{ steps.alpha_d.outcome }}" \
-            "${{ steps.cloud_logging.outcome }}"; do
+            "${{ steps.cloud_logging.outcome }}" \
+            "${{ steps.welcome_live.outcome }}"; do
             if [[ "$outcome" == "failure" ]]; then
               failed=1
             fi
