@@ -1,0 +1,180 @@
+name: Alpha Live Verification
+
+on:
+  workflow_dispatch:
+    inputs:
+      suites:
+        description: 'Comma-separated suites: stt,a,b,c,d,e,all'
+        default: 'stt,b,d,e'
+        type: string
+      timestamp:
+        description: 'Stable timestamp marker. Empty uses current UTC time.'
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: alpha-live-verification-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PYTHON_VERSION: '3.11'
+  PROJECT_ID: aipartner-426616
+  REGION: asia-northeast1
+  SERVICE_NAME: engineer-cafe-backend
+  DEFAULT_BACKEND_URL: https://engineer-cafe-backend-639959525777.asia-northeast1.run.app
+
+jobs:
+  alpha-live:
+    name: Alpha live verification scripts
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Install backend evaluation dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[evaluation]"
+
+      - name: Resolve live target
+        shell: bash
+        run: |
+          set -euo pipefail
+          ts="${{ inputs.timestamp }}"
+          if [[ -z "$ts" ]]; then
+            ts="$(date -u +%Y%m%d_%H%M%S)"
+          fi
+          service_url="$(gcloud run services describe "$SERVICE_NAME" --project "$PROJECT_ID" --region "$REGION" --format='value(status.url)')"
+          revision="$(gcloud run services describe "$SERVICE_NAME" --project "$PROJECT_ID" --region "$REGION" --format='value(status.latestReadyRevisionName)')"
+          echo "ALPHA_TIMESTAMP=$ts" >> "$GITHUB_ENV"
+          echo "ALPHA_SMOKE_BASE_URL=${service_url:-$DEFAULT_BACKEND_URL}" >> "$GITHUB_ENV"
+          echo "RAG_API_LIVE_BASE_URL=${service_url:-$DEFAULT_BACKEND_URL}" >> "$GITHUB_ENV"
+          echo "ALPHA_SMOKE_CLOUD_RUN_REVISION=$revision" >> "$GITHUB_ENV"
+          echo "ALPHA_SMOKE_BACKEND_SHA=${GITHUB_SHA}" >> "$GITHUB_ENV"
+          echo "Live target: ${service_url:-$DEFAULT_BACKEND_URL}"
+          echo "Revision: $revision"
+          echo "SHA: ${GITHUB_SHA}"
+
+      - name: Validate backend health
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 60 "$ALPHA_SMOKE_BASE_URL/health"
+
+      - name: STT live preflight
+        id: stt_preflight
+        if: contains(inputs.suites, 'all') || contains(inputs.suites, 'stt')
+        continue-on-error: true
+        run: scripts/stt-live-preflight.sh --timestamp "${ALPHA_TIMESTAMP}-stt" --minutes 1440 --limit 1000
+
+      - name: A voice round-trip smoke
+        id: alpha_a
+        if: contains(inputs.suites, 'all') || contains(inputs.suites, 'a')
+        continue-on-error: true
+        env:
+          API_SECRET_KEY: ${{ secrets.BACKEND_API_KEY }}
+        run: scripts/alpha-smoke-comprehensive.sh --timestamp "${ALPHA_TIMESTAMP}-a" --scenarios A --timeout 120 --sleep 1
+
+      - name: B LangGraph routing live smoke
+        id: alpha_b
+        if: contains(inputs.suites, 'all') || contains(inputs.suites, 'b')
+        continue-on-error: true
+        env:
+          API_SECRET_KEY: ${{ secrets.BACKEND_API_KEY }}
+        run: scripts/alpha-smoke-comprehensive.sh --timestamp "${ALPHA_TIMESTAMP}-b" --scenarios B --timeout 120 --sleep 1
+
+      - name: C live API RAGAS
+        id: rag_api_live
+        if: contains(inputs.suites, 'all') || contains(inputs.suites, 'c')
+        continue-on-error: true
+        env:
+          API_SECRET_KEY: ${{ secrets.BACKEND_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: scripts/rag-api-live-test.sh --timestamp "${ALPHA_TIMESTAMP}-c" --languages ja,en,zh,ko
+
+      - name: D memory and state durability smoke
+        id: alpha_d
+        if: contains(inputs.suites, 'all') || contains(inputs.suites, 'd')
+        continue-on-error: true
+        env:
+          API_SECRET_KEY: ${{ secrets.BACKEND_API_KEY }}
+        run: scripts/alpha-smoke-comprehensive.sh --timestamp "${ALPHA_TIMESTAMP}-d" --scenarios D --timeout 120 --sleep 1 --parallel 5
+
+      - name: E Cloud Logging verification
+        id: cloud_logging
+        if: contains(inputs.suites, 'all') || contains(inputs.suites, 'e')
+        continue-on-error: true
+        run: scripts/cloud-logging-verify.sh --timestamp "${ALPHA_TIMESTAMP}-e" --minutes 240 --limit 1000
+
+      - name: Upload alpha reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: alpha-live-verification-${{ github.run_id }}
+          path: |
+            backend/tests/reports/
+            backend/tests/evaluation/reports/
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Summarize outcomes
+        if: always()
+        shell: bash
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+          # Alpha Live Verification
+
+          - suites: ${{ inputs.suites }}
+          - timestamp: ${ALPHA_TIMESTAMP:-unknown}
+          - backend: ${ALPHA_SMOKE_BASE_URL:-unknown}
+          - revision: ${ALPHA_SMOKE_CLOUD_RUN_REVISION:-unknown}
+          - sha: ${ALPHA_SMOKE_BACKEND_SHA:-unknown}
+
+          | Step | Outcome |
+          | --- | --- |
+          | stt_preflight | ${{ steps.stt_preflight.outcome }} |
+          | alpha_a | ${{ steps.alpha_a.outcome }} |
+          | alpha_b | ${{ steps.alpha_b.outcome }} |
+          | rag_api_live | ${{ steps.rag_api_live.outcome }} |
+          | alpha_d | ${{ steps.alpha_d.outcome }} |
+          | cloud_logging | ${{ steps.cloud_logging.outcome }} |
+          EOF
+
+      - name: Fail when any selected suite failed
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          failed=0
+          for outcome in \
+            "${{ steps.stt_preflight.outcome }}" \
+            "${{ steps.alpha_a.outcome }}" \
+            "${{ steps.alpha_b.outcome }}" \
+            "${{ steps.rag_api_live.outcome }}" \
+            "${{ steps.alpha_d.outcome }}" \
+            "${{ steps.cloud_logging.outcome }}"; do
+            if [[ "$outcome" == "failure" ]]; then
+              failed=1
+            fi
+          done
+          exit "$failed"
