@@ -182,7 +182,7 @@ jobs:
         working-directory: frontend
         run: pnpm exec playwright install --with-deps chromium
 
-      - name: H Welcome live scenario
+      - name: H Welcome UI live scenario (fixture audio)
         id: welcome_live
         if: contains(format(',{0},', inputs.suites), ',h,') || contains(format(',{0},', inputs.suites), ',all,')
         continue-on-error: true

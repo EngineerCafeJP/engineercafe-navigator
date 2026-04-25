@@ -369,13 +369,18 @@ async def run_q_suite(
             continue
         route_ok = actual_route == case["expected_route"]
         quality = check_answer_quality(answer, case)
+        max_latency_ms = int(case.get("max_latency_ms", 15000))
+        warn_latency_ms = int(case.get("warn_latency_ms", 10000))
         sources_ok, missing_sources = source_requirement_ok(
             metadata,
             required_sources_for_case(case),
         )
+        actual_sources = sorted(flatten_metadata_sources(metadata.get("sources")))
         if not route_ok:
             status = "FAIL"
         elif not sources_ok:
+            status = "FAIL"
+        elif duration_ms > max_latency_ms:
             status = "FAIL"
         elif quality["prohibited_found"]:
             status = "FAIL"
@@ -398,6 +403,10 @@ async def run_q_suite(
             notes_parts.append("unsafe_response")
         if missing_sources:
             notes_parts.append(f"missing_sources={missing_sources}")
+        if duration_ms > warn_latency_ms:
+            notes_parts.append(f"latency={duration_ms}ms")
+        if actual_sources:
+            notes_parts.append(f"sources={actual_sources}")
         record(
             rows,
             suite="q",
@@ -938,7 +947,8 @@ def write_reports(
         "",
         "## Gate Coverage",
         "",
-        "- q: LangGraph回答品質 (expected facts / prohibited claims / language / safety)",
+        "- q: LangGraph回答品質 "
+        "(route / expected facts / prohibited claims / language / safety / live sources / latency)",
         "- m: STM/LTM memory品質 (recall / leakage / explicit-only / practical)",
         "- t: PiperPlus回答TTS品質 (format / size / latency / duration / back-check)",
         "- スライド系は除外済み",

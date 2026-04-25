@@ -113,6 +113,7 @@ main() {
     echo "Languages: ${LANG_ARGS[*]}"
     if [ "$CHECK_TARGETS" = "1" ]; then
       echo "Target check: enabled"
+      echo "Live source metadata gate: enabled"
     else
       echo "Target check: disabled"
     fi

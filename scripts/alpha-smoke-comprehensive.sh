@@ -31,6 +31,7 @@ SLEEP_SECONDS=1
 TTS_PROVIDER="piper"
 PARALLEL=5
 STT_THRESHOLD=0.50
+RETRIES="${ALPHA_SMOKE_RETRIES:-3}"
 
 PASS_COUNT=0
 FAIL_COUNT=0
@@ -57,6 +58,7 @@ Options:
   --tts-provider NAME    TTS provider for A-4 round-trip audio (default: piper)
   --parallel N           D-1 visitor parallelism (default: 5)
   --stt-threshold FLOAT  A-4 SequenceMatcher similarity threshold (default: 0.50)
+  --retries N            Retries for HTTP 429 responses (default: 3)
   --dry-run              Validate script data and planned requests without network
   -h, --help             Show this usage
 
@@ -81,6 +83,7 @@ while [ "$#" -gt 0 ]; do
     --tts-provider) TTS_PROVIDER="$2"; shift 2 ;;
     --parallel) PARALLEL="$2"; shift 2 ;;
     --stt-threshold) STT_THRESHOLD="$2"; shift 2 ;;
+    --retries) RETRIES="$2"; shift 2 ;;
     --dry-run) DRY_RUN=1; shift ;;
     -h|--help) usage 0 ;;
     *) echo "Unknown arg: $1" >&2; usage 1 ;;
@@ -223,15 +226,24 @@ record_result() {
 
 post_json() {
   local endpoint="$1" body="$2" timeout="${3:-$REQUEST_TIMEOUT}"
-  local tmp body_file meta status seconds
+  local tmp body_file meta status seconds attempt delay
   tmp="$(mktemp)"
   body_file="$(mktemp)"
   printf '%s' "$body" > "$body_file"
-  meta="$(curl -sS -m "$timeout" -o "$tmp" -w "%{http_code} %{time_total}" \
-    -X POST "$BASE_URL$endpoint" \
-    -H "Content-Type: application/json" \
-    -H "X-API-Key: $API_KEY" \
-    --data-binary "@$body_file" 2>/dev/null || true)"
+  for attempt in $(seq 0 "$RETRIES"); do
+    : > "$tmp"
+    meta="$(curl -sS -m "$timeout" -o "$tmp" -w "%{http_code} %{time_total}" \
+      -X POST "$BASE_URL$endpoint" \
+      -H "Content-Type: application/json" \
+      -H "X-API-Key: $API_KEY" \
+      --data-binary "@$body_file" 2>/dev/null || true)"
+    status="${meta%% *}"
+    if [ "$status" != "429" ] || [ "$attempt" -ge "$RETRIES" ]; then
+      break
+    fi
+    delay=$((5 * (attempt + 1)))
+    sleep "$delay"
+  done
   status="${meta%% *}"
   seconds="${meta#* }"
   LAST_HTTP="$status"
@@ -731,6 +743,7 @@ dry_run() {
   echo "Cloud Run revision: $CLOUD_RUN_REVISION"
   echo "Backend SHA: $BACKEND_SHA"
   echo "Scenarios: $SCENARIOS"
+  echo "429 retries: $RETRIES"
   echo "Reports: $REPORT_MD / $REPORT_CSV"
   printf 'A utterances: '; printf '%s\n' "$A_UTTERANCES" | sed '/^$/d' | wc -l | tr -d ' '
   echo ""
