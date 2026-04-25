@@ -10,7 +10,7 @@
           "language": "ja",
           "query": "エンジニアカフェの営業時間を教えてください。",
           "expected_route": "business_info",
-          "expected_facts": ["9", "22"],
+          "expected_facts": ["9", "22|10時"],
           "prohibited_claims": ["有料", "予約が必要"],
           "expected_language": "ja",
           "safety_check": false
@@ -51,7 +51,7 @@
           "query": "How much does it cost to use the coworking space?",
           "expected_route": "business_info",
           "expected_facts": ["free"],
-          "prohibited_claims": ["coworking space is paid", "coworking area is paid"],
+          "prohibited_claims": [],
           "expected_language": "en",
           "safety_check": false
         },

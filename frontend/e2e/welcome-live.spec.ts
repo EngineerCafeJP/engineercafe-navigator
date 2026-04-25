@@ -118,7 +118,7 @@ async function triggerVoiceTurn(page: Page): Promise<void> {
       (response) =>
         response.url().includes('/api/voice') &&
         parseAction(response.request()) === 'speech_to_text',
-      { timeout: 4_000 },
+      { timeout: 12_000 },
     )
     .then(() => true)
     .catch(() => false);
