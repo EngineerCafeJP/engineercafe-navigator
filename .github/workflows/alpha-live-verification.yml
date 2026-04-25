@@ -4,13 +4,17 @@ on:
   workflow_dispatch:
     inputs:
       suites:
-        description: 'Comma-separated suites: stt,v,a,b,c,d,e,h,all'
+        description: 'Comma-separated suites: stt,v,a,b,c,d,e,h-ui,h,q,m,t,all (h is a compatibility alias for h-ui)'
         default: 'stt,v,b,d,e'
         type: string
       timestamp:
         description: 'Stable timestamp marker. Empty uses current UTC time.'
         default: ''
         type: string
+      require_deployed_sha_match:
+        description: 'Fail unless the live Cloud Run image tag contains this workflow SHA. Keep true for GO proof.'
+        default: true
+        type: boolean
 
 permissions:
   contents: read
@@ -63,14 +67,29 @@ jobs:
           fi
           service_url="$(gcloud run services describe "$SERVICE_NAME" --project "$PROJECT_ID" --region "$REGION" --format='value(status.url)')"
           revision="$(gcloud run services describe "$SERVICE_NAME" --project "$PROJECT_ID" --region "$REGION" --format='value(status.latestReadyRevisionName)')"
+          image="$(gcloud run services describe "$SERVICE_NAME" --project "$PROJECT_ID" --region "$REGION" --format='value(spec.template.spec.containers[0].image)')"
+          sha_match=false
+          if [[ "$image" == *"${GITHUB_SHA}"* ]]; then
+            sha_match=true
+          fi
           echo "ALPHA_TIMESTAMP=$ts" >> "$GITHUB_ENV"
           echo "ALPHA_SMOKE_BASE_URL=${service_url:-$DEFAULT_BACKEND_URL}" >> "$GITHUB_ENV"
           echo "RAG_API_LIVE_BASE_URL=${service_url:-$DEFAULT_BACKEND_URL}" >> "$GITHUB_ENV"
           echo "ALPHA_SMOKE_CLOUD_RUN_REVISION=$revision" >> "$GITHUB_ENV"
           echo "ALPHA_SMOKE_BACKEND_SHA=${GITHUB_SHA}" >> "$GITHUB_ENV"
+          echo "ALPHA_SMOKE_BACKEND_IMAGE=$image" >> "$GITHUB_ENV"
+          echo "ALPHA_SMOKE_BACKEND_SHA_MATCH=$sha_match" >> "$GITHUB_ENV"
           echo "Live target: ${service_url:-$DEFAULT_BACKEND_URL}"
           echo "Revision: $revision"
           echo "SHA: ${GITHUB_SHA}"
+          echo "Image: $image"
+          echo "Image contains workflow SHA: $sha_match"
+
+          if [[ "${{ inputs.require_deployed_sha_match }}" == "true" && "$sha_match" != "true" ]]; then
+            echo "Error: live Cloud Run image does not contain workflow SHA ${GITHUB_SHA}." >&2
+            echo "For #571 GO proof, dispatch this workflow from the deployed commit or set require_deployed_sha_match=false only for harness debugging." >&2
+            exit 2
+          fi
 
       - name: Validate backend health
         shell: bash
@@ -98,7 +117,7 @@ jobs:
         continue-on-error: true
         env:
           API_SECRET_KEY: ${{ secrets.BACKEND_API_KEY }}
-        run: scripts/alpha-smoke-comprehensive.sh --timestamp "${ALPHA_TIMESTAMP}-a" --scenarios A --timeout 120 --sleep 1
+        run: scripts/alpha-smoke-comprehensive.sh --timestamp "${ALPHA_TIMESTAMP}-a" --host "$ALPHA_SMOKE_BASE_URL" --scenarios A --timeout 120 --sleep 3.2
 
       - name: B LangGraph routing live smoke
         id: alpha_b
@@ -106,7 +125,7 @@ jobs:
         continue-on-error: true
         env:
           API_SECRET_KEY: ${{ secrets.BACKEND_API_KEY }}
-        run: scripts/alpha-smoke-comprehensive.sh --timestamp "${ALPHA_TIMESTAMP}-b" --scenarios B --timeout 120 --sleep 1
+        run: scripts/alpha-smoke-comprehensive.sh --timestamp "${ALPHA_TIMESTAMP}-b" --host "$ALPHA_SMOKE_BASE_URL" --scenarios B --timeout 120 --sleep 1
 
       - name: C live API RAGAS
         id: rag_api_live
@@ -126,7 +145,7 @@ jobs:
         continue-on-error: true
         env:
           API_SECRET_KEY: ${{ secrets.BACKEND_API_KEY }}
-        run: scripts/alpha-smoke-comprehensive.sh --timestamp "${ALPHA_TIMESTAMP}-d" --scenarios D --timeout 120 --sleep 1 --parallel 5
+        run: scripts/alpha-smoke-comprehensive.sh --timestamp "${ALPHA_TIMESTAMP}-d" --host "$ALPHA_SMOKE_BASE_URL" --scenarios D --timeout 120 --sleep 2.2 --parallel 1
 
       - name: E Cloud Logging verification
         id: cloud_logging
@@ -134,33 +153,57 @@ jobs:
         continue-on-error: true
         run: scripts/cloud-logging-verify.sh --timestamp "${ALPHA_TIMESTAMP}-e" --minutes 240 --limit 1000
 
-      - name: Setup pnpm for H suite
-        if: contains(format(',{0},', inputs.suites), ',h,') || contains(format(',{0},', inputs.suites), ',all,')
+      - name: Q LangGraph answer quality gate
+        id: quality_q
+        if: contains(format(',{0},', inputs.suites), ',q,') || contains(format(',{0},', inputs.suites), ',all,')
+        continue-on-error: true
+        env:
+          API_SECRET_KEY: ${{ secrets.BACKEND_API_KEY }}
+        run: scripts/alpha-quality-gates.sh --timestamp "${ALPHA_TIMESTAMP}-q" --host "$ALPHA_SMOKE_BASE_URL" --suites q
+
+      - name: M STM/LTM memory quality gate
+        id: quality_m
+        if: contains(format(',{0},', inputs.suites), ',m,') || contains(format(',{0},', inputs.suites), ',all,')
+        continue-on-error: true
+        env:
+          API_SECRET_KEY: ${{ secrets.BACKEND_API_KEY }}
+        run: scripts/alpha-quality-gates.sh --timestamp "${ALPHA_TIMESTAMP}-m" --host "$ALPHA_SMOKE_BASE_URL" --suites m
+
+      - name: T PiperPlus answer TTS quality gate
+        id: quality_t
+        if: contains(format(',{0},', inputs.suites), ',t,') || contains(format(',{0},', inputs.suites), ',all,')
+        continue-on-error: true
+        env:
+          API_SECRET_KEY: ${{ secrets.BACKEND_API_KEY }}
+        run: scripts/alpha-quality-gates.sh --timestamp "${ALPHA_TIMESTAMP}-t" --host "$ALPHA_SMOKE_BASE_URL" --suites t
+
+      - name: Setup pnpm for H-UI suite
+        if: contains(format(',{0},', inputs.suites), ',h-ui,') || contains(format(',{0},', inputs.suites), ',h,') || contains(format(',{0},', inputs.suites), ',all,')
         uses: pnpm/action-setup@v2
         with:
           version: 10.12.1
 
-      - name: Setup Node for H suite
-        if: contains(format(',{0},', inputs.suites), ',h,') || contains(format(',{0},', inputs.suites), ',all,')
+      - name: Setup Node for H-UI suite
+        if: contains(format(',{0},', inputs.suites), ',h-ui,') || contains(format(',{0},', inputs.suites), ',h,') || contains(format(',{0},', inputs.suites), ',all,')
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
 
-      - name: Install frontend dependencies for H suite
-        if: contains(format(',{0},', inputs.suites), ',h,') || contains(format(',{0},', inputs.suites), ',all,')
+      - name: Install frontend dependencies for H-UI suite
+        if: contains(format(',{0},', inputs.suites), ',h-ui,') || contains(format(',{0},', inputs.suites), ',h,') || contains(format(',{0},', inputs.suites), ',all,')
         working-directory: frontend
         run: pnpm install --frozen-lockfile
 
-      - name: Install Playwright browser for H suite
-        if: contains(format(',{0},', inputs.suites), ',h,') || contains(format(',{0},', inputs.suites), ',all,')
+      - name: Install Playwright browser for H-UI suite
+        if: contains(format(',{0},', inputs.suites), ',h-ui,') || contains(format(',{0},', inputs.suites), ',h,') || contains(format(',{0},', inputs.suites), ',all,')
         working-directory: frontend
         run: pnpm exec playwright install --with-deps chromium
 
-      - name: H Welcome live scenario
+      - name: H-UI Welcome UI live scenario (fixture audio)
         id: welcome_live
-        if: contains(format(',{0},', inputs.suites), ',h,') || contains(format(',{0},', inputs.suites), ',all,')
+        if: contains(format(',{0},', inputs.suites), ',h-ui,') || contains(format(',{0},', inputs.suites), ',h,') || contains(format(',{0},', inputs.suites), ',all,')
         continue-on-error: true
         env:
           BACKEND_API_KEY: ${{ secrets.BACKEND_API_KEY }}
@@ -191,6 +234,8 @@ jobs:
           - backend: ${ALPHA_SMOKE_BASE_URL:-unknown}
           - revision: ${ALPHA_SMOKE_CLOUD_RUN_REVISION:-unknown}
           - sha: ${ALPHA_SMOKE_BACKEND_SHA:-unknown}
+          - image: ${ALPHA_SMOKE_BACKEND_IMAGE:-unknown}
+          - image_sha_match: ${ALPHA_SMOKE_BACKEND_SHA_MATCH:-unknown}
 
           | Step | Outcome |
           | --- | --- |
@@ -201,6 +246,9 @@ jobs:
           | rag_api_live | ${{ steps.rag_api_live.outcome }} |
           | alpha_d | ${{ steps.alpha_d.outcome }} |
           | cloud_logging | ${{ steps.cloud_logging.outcome }} |
+          | quality_q | ${{ steps.quality_q.outcome }} |
+          | quality_m | ${{ steps.quality_m.outcome }} |
+          | quality_t | ${{ steps.quality_t.outcome }} |
           | welcome_live | ${{ steps.welcome_live.outcome }} |
           EOF
 
@@ -218,6 +266,9 @@ jobs:
             "${{ steps.rag_api_live.outcome }}" \
             "${{ steps.alpha_d.outcome }}" \
             "${{ steps.cloud_logging.outcome }}" \
+            "${{ steps.quality_q.outcome }}" \
+            "${{ steps.quality_m.outcome }}" \
+            "${{ steps.quality_t.outcome }}" \
             "${{ steps.welcome_live.outcome }}"; do
             if [[ "$outcome" == "failure" ]]; then
               failed=1

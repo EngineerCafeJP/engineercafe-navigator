@@ -2,11 +2,15 @@
 
 Alpha 最終 Live 検証は **2026-04-26** に Cloud Run live 環境で実施予定です。このドキュメントは、事前準備スクリプトがそのまま参照できるように、音声発話、LangGraph routing、adversarial prompt、長文発話サンプルを固定 ID 付きで定義します。
 
+## Current Status
+
+2026-04-25 時点の live verification は **NO-GO** です。最新の実行結果、残 blocker、再開手順は [Alpha Live Verification Status 2026-04-25](alpha-live-verification-status-2026-04-25.md) を正本として参照してください。
+
 ## Live Target
 
 - Backend: `https://engineer-cafe-backend-639959525777.asia-northeast1.run.app`
-- Cloud Run revision: `engineer-cafe-backend-00103-r6s`
-- Backend SHA: `72d0cfcf9ff4a7c3fb9280f2bfe0d43c0a9c36ac`
+- Cloud Run revision: GO 判定時は workflow の `Resolve live target` 出力を正本にする
+- Backend SHA: `require_deployed_sha_match=true` で workflow SHA と Cloud Run image tag の一致を必須にする
 - Frontend: `https://frontend-delta-six-20.vercel.app`
 
 ## Usage Notes

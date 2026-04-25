@@ -3,6 +3,16 @@
 Issue #513 Phase 1b monitors Cloud Run logs through Terraform-managed log metrics,
 dashboard panels, and alert policies. Terraform changes are applied manually after merge.
 
+## Alpha Live Verification Permission Note
+
+2026-04-25 の Alpha Live Verification run では、GitHub Actions の GCP service account
+`engineer-cafe-navigator@aipartner-426616.iam.gserviceaccount.com` が Cloud Logging を読めず、
+`scripts/stt-live-preflight.sh` と `scripts/cloud-logging-verify.sh` が
+`PERMISSION_DENIED` で失敗した。
+
+GO 判定前に、live verification 用 service account へ Cloud Logging 読み取り権限を付与する。
+少なくとも `gcloud logging read` で Cloud Run revision logs を読める必要がある。
+
 ## Terraform Apply
 
 Run from the Terraform observability directory used by the infra PR. Example:

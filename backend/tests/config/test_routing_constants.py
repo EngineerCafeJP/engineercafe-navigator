@@ -79,6 +79,10 @@ class TestReceptionRouting:
         """受付キーワードがreceptionにルーティングされることを確認"""
         assert extract_request_type(query) == expected
 
+    def test_reception_place_query_stays_location(self):
+        """受付の場所を聞く質問は来館受付フローではなく施設案内として扱う"""
+        assert extract_request_type("受付はどこにありますか？") == "location"
+
     def test_reception_maps_to_business_info(self):
         """receptionカテゴリがbusiness_infoにマッピングされることを確認"""
         assert CATEGORY_TO_AGENT_MAP["reception"] == "business_info"

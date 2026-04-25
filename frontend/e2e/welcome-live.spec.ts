@@ -108,6 +108,41 @@ function firstCall(calls: ObservedCall[], predicate: (call: ObservedCall) => boo
   return calls.find(predicate);
 }
 
+async function triggerVoiceTurn(page: Page): Promise<void> {
+  const voiceButton = page.getByTestId('kiosk-voice-button');
+  await expect(voiceButton).toBeVisible({ timeout: 15_000 });
+  await voiceButton.scrollIntoViewIfNeeded();
+
+  const speechToTextStarted = page
+    .waitForResponse(
+      (response) =>
+        response.url().includes('/api/voice') &&
+        parseAction(response.request()) === 'speech_to_text',
+      { timeout: 12_000 },
+    )
+    .then(() => true)
+    .catch(() => false);
+
+  const box = await voiceButton.boundingBox();
+  if (box) {
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.waitForTimeout(1_400);
+    await page.mouse.up();
+    await page.waitForTimeout(350);
+  }
+
+  if (await speechToTextStarted) {
+    return;
+  }
+
+  await voiceButton.click();
+  await page.waitForTimeout(250);
+  await voiceButton.click();
+}
+
 test.describe('Welcome live (Welcome → OCR → STT warmup → first voice)', () => {
   test.skip(
     !welcomeLive || !process.env.BACKEND_API_URL || !process.env.BACKEND_API_KEY,
@@ -202,10 +237,7 @@ test.describe('Welcome live (Welcome → OCR → STT warmup → first voice)', (
         { timeout: 120_000 },
       );
 
-      const voiceButton = page.getByTestId('kiosk-voice-button');
-      await voiceButton.click();
-      await page.waitForTimeout(250);
-      await voiceButton.click();
+      await triggerVoiceTurn(page);
 
       const [stt, qa, tts] = await Promise.all([sttResponse, qaResponse, ttsResponse]);
       expect(stt.ok(), 'speech_to_text response').toBeTruthy();

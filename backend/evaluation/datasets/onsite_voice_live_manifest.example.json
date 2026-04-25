@@ -1,0 +1,33 @@
+{
+  "version": "1.0",
+  "description": "Example only. Replace audio_path with WAV files recorded on the real kiosk or target device microphone.",
+  "cases": [
+    {
+      "id": "ONSITE-JA-BIZ-001",
+      "audio_path": "audio/onsite-ja-biz-001.wav",
+      "language": "ja",
+      "expected_transcript": "エンジニアカフェの営業時間を教えてください。",
+      "expected_route": "business_info",
+      "required_sources": ["enhanced_rag"],
+      "expected_facts": ["10", "20|8"]
+    },
+    {
+      "id": "ONSITE-JA-FAC-001",
+      "audio_path": "audio/onsite-ja-fac-001.wav",
+      "language": "ja",
+      "expected_transcript": "Wi-Fiの接続方法を教えてください。",
+      "expected_route": "facility",
+      "required_sources": ["enhanced_rag"],
+      "expected_facts": ["Wi-Fi", "SSID"]
+    },
+    {
+      "id": "ONSITE-JA-EVT-001",
+      "audio_path": "audio/onsite-ja-evt-001.wav",
+      "language": "ja",
+      "expected_transcript": "今日開催されるイベントを教えてください。",
+      "expected_route": "event",
+      "required_sources": ["google_calendar|connpass"],
+      "expected_facts": ["イベント"]
+    }
+  ]
+}

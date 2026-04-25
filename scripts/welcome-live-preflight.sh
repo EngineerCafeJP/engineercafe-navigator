@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Browser-level Welcome live preflight for alpha H scenarios.
+# Browser-level Welcome UI live preflight for alpha H scenarios.
+# Uses deterministic fixture audio; it validates the user-facing workflow and live
+# backend calls, but it is not an on-site microphone/acoustic proof.
 #
 # Usage:
 #   scripts/welcome-live-preflight.sh
@@ -75,6 +77,7 @@ if [ "$DRY_RUN" = "1" ]; then
   echo "Timestamp: $TIMESTAMP"
   echo "Delays: $DELAYS"
   echo "Output: $OUTPUT_DIR/welcome-live-preflight-$TIMESTAMP.md"
+  echo "Audio source: frontend/e2e/fixtures/voice/sample.wav (fixture, not on-site microphone)"
   echo "Command: PLAYWRIGHT_WELCOME_LIVE=1 BACKEND_API_URL=$BASE_URL BACKEND_API_KEY=<redacted> PLAYWRIGHT_WELCOME_VOICE_DELAYS=$DELAYS pnpm --dir frontend exec playwright test --config=playwright.config.ts e2e/welcome-live.spec.ts --project=chromium-voice-live --workers=1"
   exit 0
 fi
@@ -99,19 +102,25 @@ STATUS="${PIPESTATUS[0]}"
 set -e
 
 {
-  echo "# Welcome Live Preflight"
+  echo "# Welcome UI Live Preflight"
   echo
   echo "- Timestamp: $TIMESTAMP"
   echo "- Backend: $BASE_URL"
   echo "- Delays: $DELAYS"
   echo "- Status: $([ "$STATUS" = "0" ] && echo PASS || echo FAIL)"
   echo "- Playwright log: $(basename "$LOG")"
+  echo "- Audio source: frontend/e2e/fixtures/voice/sample.wav"
+  echo "- Acoustic scope: fixture audio only; this is not an on-site microphone proof"
   echo
   echo "## Scope"
   echo
   echo "- H-1: Welcome 起動 → greeting TTS → OCR sidecar → STT warmup"
   echo "- H-2/H-3: Welcome 後 0秒/5秒/10秒の初回発話"
   echo "- H-6/H-7: frontend cleanup / stale warmup の回帰は mocked E2E と合わせて確認"
+  echo
+  echo "## Not Covered"
+  echo
+  echo "- 実地マイク入力、現地騒音、話者差、端末内蔵マイク固有の音響劣化"
 } > "$REPORT"
 
 echo "$REPORT"

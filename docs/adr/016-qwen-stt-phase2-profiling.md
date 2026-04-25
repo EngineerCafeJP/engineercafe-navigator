@@ -9,6 +9,13 @@
 deploy・live 実測済み。目標 p50 3.1s を上回る 2827ms (34% 短縮) を達成。
 Epic #474 Exit Criterion `/api/voice p95 < 10s` 達成 (p95 = 7035ms)。
 
+**2026-04-25 追記**: 上記は profiling script による STT 単体の達成状況であり、#571 の
+Alpha Live Verification では NO-GO。PR #592 の live run
+`24929491049` では、warmup 後も V voice pipeline / A voice round-trip で
+`vosk-fallback` が多数発生した。Alpha GO には、STT 単体 p95 だけでなく
+Welcome 起点の live round-trip で `sttProvider=qwen-primary` を維持できることが必要。
+最新の blocker は `docs/testing/alpha-live-verification-status-2026-04-25.md` を参照。
+
 ## 背景
 
 ADR 010 では Qwen3-ASR の ONNX/INT4 化を No-Go とした。理由は、Qwen3-ASR が

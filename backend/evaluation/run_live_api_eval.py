@@ -44,6 +44,39 @@ TARGETS: Dict[str, float] = {
 }
 
 
+def _flatten_metadata_sources(value: Any) -> set[str]:
+    sources: set[str] = set()
+    if isinstance(value, str):
+        sources.add(value.strip().lower())
+    elif isinstance(value, list):
+        for item in value:
+            sources.update(_flatten_metadata_sources(item))
+    elif isinstance(value, dict):
+        for key, item in value.items():
+            sources.add(str(key).strip().lower())
+            sources.update(_flatten_metadata_sources(item))
+    return {source for source in sources if source}
+
+
+def _required_live_sources(query: Dict[str, Any]) -> List[str]:
+    category = str(query.get("category") or "").strip().lower().replace("-", "_")
+    if category == "event":
+        return ["google_calendar|connpass"]
+    return ["enhanced_rag"]
+
+
+def _source_requirement_ok(
+    metadata: Dict[str, Any], required_sources: Sequence[str]
+) -> tuple[bool, List[str], List[str]]:
+    actual_sources = sorted(_flatten_metadata_sources(metadata.get("sources")))
+    missing: List[str] = []
+    for requirement in required_sources:
+        alternatives = [part.strip().lower() for part in requirement.split("|") if part.strip()]
+        if not any(alt in actual_sources for alt in alternatives):
+            missing.append(requirement)
+    return not missing, missing, actual_sources
+
+
 def _load_multilingual_config() -> Dict[str, Any]:
     """Load the multilingual evaluation manifest."""
     with open(MULTILINGUAL_QUERIES_PATH, "r", encoding="utf-8") as f:
@@ -94,6 +127,7 @@ async def run_live_api_evaluation(
     api_key: Optional[str] = None,
     languages: Optional[Sequence[str]] = None,
     output_dir: Optional[Path] = None,
+    check_live_sources: bool = True,
 ) -> Dict[str, Any]:
     """Run RAGAS evaluation against the live API.
 
@@ -145,6 +179,11 @@ async def run_live_api_evaluation(
 
                     answer = api_response.get("answer", "")
                     metadata = api_response.get("metadata", {})
+                    metadata_dict = metadata if isinstance(metadata, dict) else {}
+                    required_sources = _required_live_sources(query)
+                    sources_ok, missing_sources, actual_sources = _source_requirement_ok(
+                        metadata_dict, required_sources
+                    )
 
                     lang_cases.append(
                         {
@@ -157,9 +196,19 @@ async def run_live_api_evaluation(
                             "language": lang,
                             "category": query["category"],
                             "metadata": query["metadata"],
+                            "evaluation_context_source": "golden_dataset",
+                            "live_source_check": {
+                                "enabled": check_live_sources,
+                                "passed": sources_ok,
+                                "required_sources": required_sources,
+                                "actual_sources": actual_sources,
+                                "missing_sources": missing_sources,
+                            },
                             "api_metadata": {
-                                "agent": metadata.get("agent"),
-                                "category": metadata.get("category"),
+                                "agent": metadata_dict.get("agent"),
+                                "category": metadata_dict.get("category"),
+                                "route": metadata_dict.get("route"),
+                                "sources": metadata_dict.get("sources"),
                                 "elapsed_seconds": round(elapsed, 2),
                             },
                         }
@@ -168,7 +217,7 @@ async def run_live_api_evaluation(
                         "  [%s] %s -> agent=%s (%.1fs)",
                         query["id"],
                         query["question"][:40],
-                        metadata.get("agent", "?"),
+                        metadata_dict.get("agent", "?"),
                         elapsed,
                     )
                 except Exception as exc:
@@ -220,6 +269,8 @@ async def run_live_api_evaluation(
                         "question": c["question"],
                         "answer": c["answer"][:200],
                         "api_metadata": c["api_metadata"],
+                        "evaluation_context_source": c["evaluation_context_source"],
+                        "live_source_check": c["live_source_check"],
                     }
                     for c in cases
                 ],
@@ -244,6 +295,8 @@ async def run_live_api_evaluation(
                     "context_precision": result.context_precision,
                     "error": result.error,
                     "api_metadata": case["api_metadata"],
+                    "evaluation_context_source": case["evaluation_context_source"],
+                    "live_source_check": case["live_source_check"],
                 }
             )
 
@@ -258,14 +311,23 @@ async def run_live_api_evaluation(
         }
 
     # Phase 3: Compare with targets
-    comparison = _compare_targets(per_language_results, selected_languages)
-    report_text = _format_report(per_language_results, comparison, selected_languages)
+    comparison = _compare_targets(
+        per_language_results, selected_languages, check_live_sources=check_live_sources
+    )
+    report_text = _format_report(
+        per_language_results,
+        comparison,
+        selected_languages,
+        check_live_sources=check_live_sources,
+    )
 
     result = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "mode": "live-api",
         "base_url": base_url,
         "languages": selected_languages,
+        "ragas_context_source": "golden_dataset",
+        "live_source_gate_enabled": check_live_sources,
         "per_language": per_language_results,
         "comparison": comparison,
         "report": report_text,
@@ -289,9 +351,12 @@ async def run_live_api_evaluation(
 def _compare_targets(
     lang_results: Dict[str, Dict[str, Any]],
     languages: Sequence[str],
+    *,
+    check_live_sources: bool,
 ) -> Dict[str, Any]:
     """Compare per-language answer_correctness against targets."""
     failed: List[Dict[str, Any]] = []
+    failed_source_cases: List[Dict[str, Any]] = []
     per_language: Dict[str, Any] = {}
 
     for lang in languages:
@@ -299,13 +364,32 @@ def _compare_targets(
         metrics = result.get("metrics", {})
         target = TARGETS.get(lang, 0.0)
         actual = metrics.get("answer_correctness")
+        source_failures = []
+        if check_live_sources:
+            for case_result in result.get("results", []):
+                source_check = case_result.get("live_source_check") or {}
+                if source_check.get("enabled") and not source_check.get("passed"):
+                    source_failures.append(
+                        {
+                            "query_id": case_result.get("query_id"),
+                            "language": lang,
+                            "missing_sources": source_check.get("missing_sources", []),
+                            "actual_sources": source_check.get("actual_sources", []),
+                        }
+                    )
 
-        passed = isinstance(actual, (int, float)) and actual >= target
+        answer_target_passed = isinstance(actual, (int, float)) and actual >= target
+        passed = answer_target_passed and not source_failures
         per_language[lang] = {
             "answer_correctness": {
                 "actual": (round(actual, 4) if isinstance(actual, (int, float)) else None),
                 "target": target,
-                "passed": passed,
+                "passed": answer_target_passed,
+            },
+            "live_source_gate": {
+                "enabled": check_live_sources,
+                "failed_case_count": len(source_failures),
+                "passed": not source_failures,
             },
             "passed": passed,
         }
@@ -323,12 +407,16 @@ def _compare_targets(
                     "language": lang,
                     "actual": per_language[lang]["answer_correctness"]["actual"],
                     "target": target,
+                    "answer_target_passed": answer_target_passed,
+                    "source_failures": len(source_failures),
                 }
             )
+        failed_source_cases.extend(source_failures)
 
     return {
         "per_language": per_language,
         "failed_targets": failed,
+        "failed_source_cases": failed_source_cases,
         "all_targets_met": not failed,
     }
 
@@ -337,6 +425,8 @@ def _format_report(
     lang_results: Dict[str, Dict[str, Any]],
     comparison: Dict[str, Any],
     languages: Sequence[str],
+    *,
+    check_live_sources: bool,
 ) -> str:
     """Format a human-readable report."""
     lines = [
@@ -346,6 +436,8 @@ def _format_report(
         "=" * 60,
         "",
         "Targets: ja >= 0.85, en >= 0.75, zh >= 0.65, ko >= 0.65",
+        "RAGAS contexts: golden_dataset references, not live retrieved chunks",
+        f"Live source metadata gate: {'enabled' if check_live_sources else 'disabled'}",
         "",
     ]
 
@@ -378,6 +470,14 @@ def _format_report(
             else:
                 lines.append(f"  {metric}: {val_str}")
 
+        source_gate = comp.get("live_source_gate", {})
+        if source_gate.get("enabled"):
+            sg_status = "PASS" if source_gate.get("passed") else "FAIL"
+            lines.append(
+                "  live_source_gate: "
+                f"failed_cases={source_gate.get('failed_case_count', 0)} [{sg_status}]"
+            )
+
         overall = "PASS" if comp.get("passed", False) else "FAIL"
         lines.append(f"  overall: {overall}")
         lines.append("")
@@ -390,10 +490,15 @@ def _format_report(
                 ac_str = f"{ac:.3f}" if isinstance(ac, (int, float)) else "n/a"
                 agent = r.get("api_metadata", {}).get("agent", "?")
                 elapsed = r.get("api_metadata", {}).get("elapsed_seconds", "?")
+                source_check = r.get("live_source_check") or {}
+                source_status = "src=off"
+                if source_check.get("enabled"):
+                    source_status = "src=ok" if source_check.get("passed") else "src=missing"
                 lines.append(
                     f"    {r.get('query_id', '?')}: "
                     f"ac={ac_str} "
                     f"agent={agent} "
+                    f"{source_status} "
                     f"time={elapsed}s "
                     f"q={r.get('question', '')[:40]}"
                 )
@@ -406,7 +511,20 @@ def _format_report(
     if not all_met:
         lines.append("Failed targets:")
         for f in comparison.get("failed_targets", []):
-            lines.append(f"  {f['language']}: actual={f['actual']} target={f['target']}")
+            lines.append(
+                f"  {f['language']}: actual={f['actual']} target={f['target']} "
+                f"answer_target_passed={f.get('answer_target_passed')} "
+                f"source_failures={f.get('source_failures', 0)}"
+            )
+
+    failed_source_cases = comparison.get("failed_source_cases", [])
+    if failed_source_cases:
+        lines.append("Failed live source cases:")
+        for case in failed_source_cases[:40]:
+            lines.append(
+                f"  {case.get('query_id')}: missing={case.get('missing_sources')} "
+                f"actual={case.get('actual_sources')}"
+            )
 
     lines.append("=" * 60)
     return "\n".join(lines)
@@ -445,6 +563,14 @@ def main() -> None:
         action="store_true",
         help="Exit with status 1 when targets are missed.",
     )
+    parser.add_argument(
+        "--no-check-live-sources",
+        action="store_true",
+        help=(
+            "Do not fail targets when live /api/chat metadata.sources is missing expected "
+            "RAG/event sources. Diagnostic use only."
+        ),
+    )
     parser.add_argument("--verbose", action="store_true", help="Enable debug logging.")
     args = parser.parse_args()
 
@@ -460,6 +586,7 @@ def main() -> None:
             api_key=args.api_key,
             languages=args.languages,
             output_dir=output_dir,
+            check_live_sources=not args.no_check_live_sources,
         )
     )
 

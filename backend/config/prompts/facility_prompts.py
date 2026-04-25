@@ -126,6 +126,31 @@ def build_facility_prompt(
         "headers, bullet points, bold, or tables. "
         "Write as if speaking aloud to someone."
     )
+    explicit_recall_instructions = {
+        "ja": (
+            "ユーザーが『覚えて』『記憶して』と明示的に指示した情報のみを想起してください。"
+            "それ以外の前回会話の事実は、現在の質問が直接的にその情報を求めていない限り、"
+            "回答に使わないでください。"
+        ),
+        "en": (
+            "Recall only information the user explicitly instructed you to "
+            "remember. Do not use other facts from a previous conversation in "
+            "your answer unless the current question directly asks for that "
+            "information."
+        ),
+        "zh": (
+            "只回忆用户明确要求你“记住”或“记录”的信息。"
+            "除非当前问题直接询问该信息，否则不要在回答中使用上次对话中的其他事实。"
+        ),
+        "ko": (
+            "사용자가 '기억해' 또는 '저장해'라고 명시적으로 지시한 정보만 떠올리세요. "
+            "현재 질문이 해당 정보를 직접 요구하지 않는 한, 이전 대화의 다른 사실은 "
+            "답변에 사용하지 마세요."
+        ),
+    }
+    explicit_recall_instruction = explicit_recall_instructions.get(
+        language, explicit_recall_instructions["ja"]
+    )
 
     # Multilingual: append language instruction for zh/ko
     lang_suffix = LANGUAGE_INSTRUCTION.get(language, "")
@@ -146,6 +171,7 @@ def build_facility_prompt(
                 f"names) when available.\n\n"
                 f"Question: {query}\n"
                 f"Information: {context}\n\n"
+                f"{explicit_recall_instruction}\n"
                 f"Answer in 2-3 sentences with specific, relevant "
                 f"details. Do not include unrelated information.\n"
                 f"IMPORTANT: Start your response with [relaxed] "
@@ -164,6 +190,7 @@ def build_facility_prompt(
                 f"\n\n"
                 f"質問: {query}\n"
                 f"情報: {context}\n\n"
+                f"{explicit_recall_instruction}\n"
                 f"具体的で関連性の高い情報を2-3文で答えてください。"
                 f"質問と無関係な情報は含めないでください。\n"
                 f"重要: 情報提供の場合は[relaxed]、"
@@ -180,6 +207,7 @@ def build_facility_prompt(
                 f"information. Be concise and direct.\n\n"
                 f"Question: {query}\n"
                 f"Information: {context}\n\n"
+                f"{explicit_recall_instruction}\n"
                 f"Answer briefly (2-3 sentences) with only the "
                 f"relevant information.\n"
                 f"IMPORTANT: Start your response with an emotion "
@@ -196,6 +224,7 @@ def build_facility_prompt(
                 f"簡潔で直接的に答えてください。\n\n"
                 f"質問: {query}\n"
                 f"情報: {context}\n\n"
+                f"{explicit_recall_instruction}\n"
                 f"関連する情報のみを簡潔に（2-3文）"
                 f"答えてください。\n"
                 f"重要: 感情タグで回答を始めてください: "

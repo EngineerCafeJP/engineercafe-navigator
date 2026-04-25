@@ -79,6 +79,16 @@ fetch_api_key_from_gcloud() {
   fi
 }
 
+require_ragas_judge_key() {
+  if [ -n "${OPENAI_API_KEY:-}" ] || [ -n "${OPENROUTER_API_KEY:-}" ]; then
+    return
+  fi
+
+  echo "Error: C live RAGAS requires OPENAI_API_KEY or OPENROUTER_API_KEY." >&2
+  echo "This gate judges live /api/chat answers against the golden dataset; without a judge key the score is not meaningful." >&2
+  exit 2
+}
+
 language_args() {
   python3 - "$LANGUAGES" <<'PY'
 import sys
@@ -113,11 +123,14 @@ main() {
     echo "Languages: ${LANG_ARGS[*]}"
     if [ "$CHECK_TARGETS" = "1" ]; then
       echo "Target check: enabled"
+      echo "Live source metadata gate: enabled"
     else
       echo "Target check: disabled"
     fi
     exit 0
   fi
+
+  require_ragas_judge_key
 
   if [ -z "$API_KEY" ]; then
     API_KEY="$(fetch_api_key_from_gcloud)"
@@ -137,7 +150,7 @@ main() {
   if [ "$CHECK_TARGETS" = "1" ]; then
     cmd+=(--check-targets)
   fi
-  "${cmd[@]}"
+  PYTHONPATH="$ROOT_DIR:$ROOT_DIR/backend:${PYTHONPATH:-}" "${cmd[@]}"
 }
 
 main "$@"

@@ -240,12 +240,24 @@ COMMUNITY_KEYWORDS = [
 
 RECEPTION_KEYWORDS = [
     "registration",
+    "reception",
     "初回利用",
     "利用方法",
+    "再受付",
+    "会員番号",
+    "会員カード",
+    "受付カード",
+    "予約なし",
+    "予約不要",
     "check-in",
+    "check in",
     "チェックイン",
     "初めて",
     "はじめて",
+    "returning visitor",
+    "registered before",
+    "without a reservation",
+    "no reservation",
 ]
 
 EMERGENCY_KEYWORDS = [
