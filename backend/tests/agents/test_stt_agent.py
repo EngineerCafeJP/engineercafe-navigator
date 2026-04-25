@@ -1727,6 +1727,42 @@ class TestLowConfidenceFallback:
         mock_fallback.transcribe.assert_not_awaited()
 
     @pytest.mark.asyncio
+    async def test_vosk_success_emits_stt_winner_log(self, caplog):
+        """Vosk-only path emits structured stt_winner for live preflight."""
+        caplog.set_level(logging.INFO, logger="backend.observability.stt")
+        mock_client = MagicMock(spec=LocalSTTClient)
+        mock_client.transcribe = AsyncMock(
+            return_value=TranscriptionResult(
+                text="こんにちは",
+                confidence=0.9,
+                language="ja",
+                word_confidences=[{"word": "こんにちは", "conf": 0.9}],
+            )
+        )
+
+        agent = STTAgent(
+            stt_provider="vosk",
+            stt_client=mock_client,
+            language_processor=None,
+            fallback_client=None,
+            confidence_threshold=0.4,
+        )
+        result = await agent.speech_to_text(b"audio", language="ja")
+
+        assert result["success"] is True
+        stt_records = [
+            record for record in caplog.records if record.name == "backend.observability.stt"
+        ]
+        winner = next(
+            record for record in stt_records if getattr(record, "event", None) == "stt_winner"
+        )
+        assert winner.stt_winner == "vosk"
+        assert winner.provider == "vosk"
+        assert winner.success is True
+        assert isinstance(winner.stt_overall_duration_ms, int)
+        assert winner.stt_trace_id.startswith("stt-")
+
+    @pytest.mark.asyncio
     async def test_fallback_google_failure_returns_vosk_result(self):
         """Google STT fails → Vosk result returned"""
         mock_client = MagicMock(spec=LocalSTTClient)

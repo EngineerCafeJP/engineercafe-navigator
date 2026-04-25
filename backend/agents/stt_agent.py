@@ -236,6 +236,16 @@ def _duration_ms(started_at: float) -> int:
     return int((time.perf_counter() - started_at) * 1000)
 
 
+def _stt_winner_name(provider: str) -> str:
+    if provider.startswith("vosk"):
+        return "vosk"
+    if provider.startswith("google"):
+        return "google"
+    if provider.startswith("qwen"):
+        return "qwen"
+    return provider or "unknown"
+
+
 def _parse_qwen_stt_timeout(raw_value: Optional[str], default: float = 10.0) -> float:
     """Parse QWEN_STT_TIMEOUT defensively; production once had `true`."""
 
@@ -1551,6 +1561,9 @@ class STTAgent:
         provider = self.stt_provider
         if provider == "qwen-primary":
             return await self._transcribe_qwen_primary(audio_data, language)
+
+        stt_trace_id = f"stt-{uuid.uuid4().hex[:12]}"
+        overall_started_at = time.perf_counter()
         grammar = self._resolve_grammar(conversation_stage)
         try:
             if language is None and isinstance(self.stt_client, LocalSTTClient):
@@ -1597,17 +1610,47 @@ class STTAgent:
                         response["original_transcript"] = original
                         response["postprocessed"] = True
 
+                winner_provider = response.get("provider") or provider
+                log_stt_event(
+                    event="stt_winner",
+                    stt_trace_id=stt_trace_id,
+                    stt_winner=_stt_winner_name(winner_provider),
+                    provider=winner_provider,
+                    language=response.get("language"),
+                    success=True,
+                    stt_overall_duration_ms=_duration_ms(overall_started_at),
+                )
                 return response
             else:
-                return {
+                response = {
                     "success": True,
                     "transcript": result,
                     "confidence": None,
                     "language": language or "ja",
                     "provider": provider,
                 }
+                log_stt_event(
+                    event="stt_winner",
+                    stt_trace_id=stt_trace_id,
+                    stt_winner=_stt_winner_name(provider),
+                    provider=provider,
+                    language=response["language"],
+                    success=True,
+                    stt_overall_duration_ms=_duration_ms(overall_started_at),
+                )
+                return response
         except Exception as e:
             logger.error("STT failed (%s): %s", provider, e)
+            log_stt_event(
+                event="stt_winner",
+                stt_trace_id=stt_trace_id,
+                stt_winner="none",
+                provider=provider,
+                language=language or getattr(self.stt_client, "default_language", "unknown"),
+                success=False,
+                stt_overall_duration_ms=_duration_ms(overall_started_at),
+                error_type=type(e).__name__,
+            )
             return {
                 "success": False,
                 "transcript": "",
