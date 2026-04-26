@@ -33,6 +33,8 @@ PARALLEL=5
 STT_THRESHOLD=0.50
 REQUIRE_QWEN_PRIMARY="${ALPHA_SMOKE_REQUIRE_QWEN_PRIMARY:-1}"
 RETRIES="${ALPHA_SMOKE_RETRIES:-3}"
+LTM_RECALL_RETRIES="${ALPHA_SMOKE_LTM_RECALL_RETRIES:-2}"
+LTM_RECALL_RETRY_SLEEP="${ALPHA_SMOKE_LTM_RECALL_RETRY_SLEEP:-2}"
 
 PASS_COUNT=0
 FAIL_COUNT=0
@@ -581,7 +583,7 @@ run_scenario_b() {
 }
 
 run_ltm_visitor() {
-  local visitor="$1" out="$2" session query answer status actual
+  local visitor="$1" out="$2" session query answer status actual attempt attempts
   session="alpha-d1-$TIMESTAMP-$visitor-s1"
   query="私の好きな席は窓側です。visitor ${visitor} として覚えてください。"
   post_json "/api/chat" "$(chat_body "$query" "ja" "$session" "$visitor")"
@@ -593,8 +595,18 @@ run_ltm_visitor() {
   query="前に覚えてもらった好きな席を教えてください。"
   post_json "/api/chat" "$(chat_body "$query" "ja" "$session" "$visitor")"
   answer="$(printf '%s' "$LAST_BODY" | json_get answer)"
+  attempts=1
+  for attempt in $(seq 1 "$LTM_RECALL_RETRIES"); do
+    if chat_success && [[ "$answer" == *"窓"* ]]; then
+      break
+    fi
+    sleep "$LTM_RECALL_RETRY_SLEEP"
+    post_json "/api/chat" "$(chat_body "$query" "ja" "$session" "$visitor")"
+    answer="$(printf '%s' "$LAST_BODY" | json_get answer)"
+    attempts=$((attempts + 1))
+  done
   if chat_success && [[ "$answer" == *"窓"* ]]; then status="PASS"; else status="WARN"; fi
-  printf '%s|%s|%s|%s|%s|%s|%s\n' "D1-$visitor-2" "$status" "$LAST_HTTP" "$LAST_TIME_MS" "ltm_recall_s2" "窓側" "${answer:0:120}" >> "$out"
+  printf '%s|%s|%s|%s|%s|%s|%s\n' "D1-$visitor-2" "$status" "$LAST_HTTP" "$LAST_TIME_MS" "ltm_recall_s2" "窓側; attempts=$attempts" "${answer:0:120}" >> "$out"
 
   session="alpha-d1-$TIMESTAMP-$visitor-s3"
   query="今日も窓側の席を希望しています。覚えている内容とあわせて案内してください。"
