@@ -76,6 +76,8 @@ class TestBusinessInfoAgent:
         assert response is not None
         assert "1F reception" in response["answer"]
         assert "5 to 10 minutes" in response["answer"]
+        assert "web form" in response["answer"].lower()
+        assert "Online pre-registration is not available" in response["answer"]
         assert "free" in response["answer"].lower()
 
     def test_opening_hours_canonical_response_japanese(self):
@@ -87,8 +89,22 @@ class TestBusinessInfoAgent:
         )
 
         assert response is not None
-        assert "9:00から22:00" in response["answer"]
+        assert "朝9:00から夜22:00" in response["answer"]
         assert "13:00から21:00" in response["answer"]
+        assert "毎月最終月曜日" in response["answer"]
+
+    def test_pricing_canonical_response_english(self):
+        """料金は無料範囲と有料例を明示する"""
+        response = self.agent._get_canonical_response(
+            "How much does it cost to use Engineer Cafe?",
+            "pricing",
+            "en",
+        )
+
+        assert response is not None
+        assert "free" in response["answer"].lower()
+        assert "3D printer filament" in response["answer"]
+        assert "second-floor meeting rooms" in response["answer"]
 
     def test_reception_request_type_alone_does_not_force_first_visit(self):
         """reception routingだけで初回登録回答へ倒さない"""
@@ -109,6 +125,7 @@ class TestBusinessInfoAgent:
         assert response is not None
         assert "9:00" in response["answer"]
         assert "22:00" in response["answer"]
+        assert "직원" in response["answer"]
         assert "코워킹" not in response["answer"]
 
     def test_contact_canonical_response_japanese_phone(self):

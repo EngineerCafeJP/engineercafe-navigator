@@ -445,23 +445,51 @@ Information: {context}
         if self._asks_opening_hours(normalized, request_type):
             answers = {
                 "ja": (
-                    "[relaxed]エンジニアカフェの開館時間は9:00から22:00までです。"
+                    "[relaxed]エンジニアカフェの開館時間は朝9:00から夜22:00までです。"
                     "コミュニティマネージャーへの相談受付は13:00から21:00までなので、"
                     "相談したい場合はその時間帯にお越しください。"
+                    "毎月最終月曜日と年末年始は休館です。"
                 ),
                 "en": (
-                    "[relaxed]Engineer Cafe is open from 9:00 to 22:00. Community "
-                    "manager consultation hours are 13:00 to 21:00, so please visit "
-                    "during that window if you want to talk with staff."
+                    "[relaxed]Engineer Cafe is open from 9:00 AM to 10:00 PM "
+                    "(9:00 to 22:00). Community manager consultations are available "
+                    "from 13:00 to 21:00. It is closed on the last Monday of each "
+                    "month and during the year-end and New Year holidays."
                 ),
                 "zh": (
-                    "[relaxed]工程师咖啡的开放时间是9:00到22:00。"
-                    "社区经理咨询时间是13:00到21:00，如需咨询请在该时间段来访。"
+                    "[relaxed]工程师咖啡的开放时间是早上9点到晚上10点"
+                    "（9:00到22:00）。社区经理咨询时间是13:00到21:00。"
+                    "每月最后一个星期一和年底年初闭馆休息。"
                 ),
                 "ko": (
-                    "[relaxed]엔지니어 카페의 운영 시간은 9:00부터 22:00까지입니다. "
-                    "커뮤니티 매니저 상담은 13:00부터 21:00까지 가능하니, "
-                    "상담이 필요하면 그 시간대에 방문해 주세요."
+                    "[relaxed]엔지니어 카페의 운영 시간은 오전 9시부터 밤 10시까지"
+                    "(9:00-22:00)입니다. 커뮤니티 매니저 상담은 13:00부터 "
+                    "21:00까지 가능하며, 자세한 사항은 직원에게 문의해 주세요."
+                ),
+            }
+            return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
+        if self._asks_pricing(normalized, request_type):
+            answers = {
+                "ja": (
+                    "[relaxed]エンジニアカフェの利用登録、コワーキングスペース、"
+                    "設備利用は無料です。cafe&bar sainoの飲食代、3Dプリンターの"
+                    "フィラメント代、2階の会議室など一部の貸室は有料です。"
+                ),
+                "en": (
+                    "[relaxed]Engineer Cafe registration, coworking space use, and "
+                    "most equipment use are free. Food and drinks at cafe&bar saino, "
+                    "3D printer filament, and some paid spaces such as second-floor "
+                    "meeting rooms are charged separately."
+                ),
+                "zh": (
+                    "[relaxed]工程师咖啡的使用登记、共享办公空间和大部分设备都是免费的。"
+                    "cafe&bar saino的餐饮、3D打印机耗材以及二楼会议室等部分空间需要另外付费。"
+                ),
+                "ko": (
+                    "[relaxed]엔지니어 카페의 이용 등록, 코워킹 공간, 대부분의 설비 이용은 "
+                    "무료입니다. cafe&bar saino의 음식과 음료, 3D 프린터 필라멘트, "
+                    "2층 회의실 같은 일부 유료 공간은 별도 비용이 필요합니다."
                 ),
             }
             return self._canonical_result(answers.get(language, answers["ja"]), request_type)
@@ -471,21 +499,25 @@ Information: {context}
                 "ja": (
                     "[relaxed]初めて利用する場合は、来館時に1階受付で利用登録をします。"
                     "所要時間は約5〜10分で、登録料は無料です。"
-                    "オンライン事前登録ではなく、受付でスタッフに声をかけてください。"
+                    "受付で案内されるWebフォームに入力します。オンライン事前登録ではなく、"
+                    "受付でスタッフに声をかけてください。"
                 ),
                 "en": (
                     "[relaxed]For your first visit, register at the 1F reception when "
-                    "you arrive. It takes about 5 to 10 minutes and is free, so please "
-                    "ask the staff at reception for help."
+                    "you arrive. It takes about 5 to 10 minutes, is free, and is "
+                    "completed with a web form at reception. Online pre-registration "
+                    "is not available, so please ask the staff for help."
                 ),
                 "zh": (
                     "[relaxed]第一次来访时，请到一楼前台办理登记。登记免费，"
-                    "大约需要5到10分钟，有不清楚的地方可以直接询问工作人员。"
+                    "大约需要5到10分钟，需要在前台填写网页表单。不能在线预先登记，"
+                    "有不清楚的地方可以直接询问工作人员。"
                 ),
                 "ko": (
                     "[relaxed]처음 방문하실 때는 1층 안내 데스크에서 이용 등록을 "
-                    "하시면 됩니다. 등록은 무료이고 약 5분에서 10분 정도 걸리니 "
-                    "직원에게 문의해 주세요."
+                    "하시면 됩니다. 등록은 무료이고 약 5분에서 10분 정도 걸리며 "
+                    "안내 데스크에서 웹 폼을 작성합니다. 온라인 사전 등록은 지원하지 "
+                    "않으니 직원에게 문의해 주세요."
                 ),
             }
             return self._canonical_result(answers.get(language, answers["ja"]), request_type)
@@ -608,6 +640,26 @@ Information: {context}
             "几点",
             "운영 시간",
             "이용 시간",
+        )
+        return any(keyword in query for keyword in keywords)
+
+    @staticmethod
+    def _asks_pricing(query: str, request_type: Optional[str]) -> bool:
+        if request_type in ("price", "pricing"):
+            return True
+        keywords = (
+            "cost",
+            "fee",
+            "price",
+            "charge",
+            "料金",
+            "費用",
+            "いくら",
+            "收费",
+            "费用",
+            "요금",
+            "비용",
+            "얼마",
         )
         return any(keyword in query for keyword in keywords)
 
