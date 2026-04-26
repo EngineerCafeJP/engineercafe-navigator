@@ -219,6 +219,17 @@ class TestFacilityAgent:
         assert agent._determine_emotion("wifi", "[sad]Wi-Fiは利用できません") == "sad"
         assert agent._determine_emotion("wifi", "[relaxed]Wi-Fiがあります") == "relaxed"
 
+    def test_wifi_canonical_response_korean_public_guest_credentials(self):
+        """通常のWi-Fi質問には公開ゲストSSIDとパスワードを案内する"""
+        agent = FacilityAgent()
+        response = agent._get_canonical_response("와이파이 비밀번호가 뭐예요?", "wifi", "ko")
+
+        assert response is not None
+        assert "engnecf-guest-2.4GHz" in response["answer"]
+        assert "engnecf-guest-5GHz" in response["answer"]
+        assert "akarenga-112years" in response["answer"]
+        assert "테라스" in response["answer"]
+
     def test_access_canonical_response_english(self):
         """アクセス案内は住所と最寄り駅を含める"""
         agent = FacilityAgent()

@@ -345,7 +345,8 @@ class FacilityAgent:
                 "en": (
                     "[relaxed]Engineer Cafe is inside the Fukuoka City Red Brick "
                     "Culture Hall at 1-15-30 Tenjin, Chuo-ku, Fukuoka. It is about a "
-                    "5-minute walk from Tenjin Station."
+                    "5-minute walk from Tenjin Station and is also close to the "
+                    "Tenjin 4-chome bus stop. Please ask staff if you need help on arrival."
                 ),
                 "zh": (
                     "[relaxed]工程师咖啡位于福冈市中央区天神1丁目15番30号的"
@@ -355,7 +356,8 @@ class FacilityAgent:
                 "ko": (
                     "[relaxed]엔지니어 카페는 후쿠오카시 주오구 텐진 1-15-30, "
                     "아카렌가 문화관 안에 있습니다. 텐진역에서 걸어서 약 5분 "
-                    "거리이며, 방문 시 직원에게 문의하시면 안내받을 수 있어요."
+                    "거리이며 니시테츠 버스 텐진 4초메 정류장에서도 가깝습니다. "
+                    "방문 시 직원에게 문의하시면 안내받을 수 있어요."
                 ),
             }
             return self._canonical_result(answers.get(language, answers["ja"]), request_type)
@@ -419,18 +421,21 @@ class FacilityAgent:
                     "パスワードは受付カードの裏面で確認するか、受付スタッフに確認してください。"
                 ),
                 "en": (
-                    "[relaxed]Free Wi-Fi is available at Engineer Cafe. Please check "
-                    "the SSID and password on the reception card or ask the reception "
-                    "staff."
+                    "[relaxed]Free Wi-Fi is available at Engineer Cafe. The SSIDs are "
+                    "engnecf-guest-2.4GHz and engnecf-guest-5GHz, and the password is "
+                    "akarenga-112years. It is also printed on the back of the reception "
+                    "card and can be used in the facility, including the terrace."
                 ),
                 "zh": (
-                    "[relaxed]工程师咖啡可以使用免费Wi-Fi。SSID和密码请查看"
-                    "前台卡片背面，或向前台工作人员确认。"
+                    "[relaxed]工程师咖啡可以使用免费Wi-Fi。SSID为 "
+                    "engnecf-guest-2.4GHz 或 engnecf-guest-5GHz，密码是 "
+                    "akarenga-112years。接待卡背面也有记载，设施内包括露台都可以使用。"
                 ),
                 "ko": (
-                    "[relaxed]엔지니어 카페에서는 무료 Wi-Fi를 이용할 수 있습니다. "
-                    "SSID와 비밀번호는 접수 카드 뒷면에서 확인하거나 안내 데스크 "
-                    "직원에게 문의해 주세요."
+                    "[relaxed]엔지니어 카페의 무료 Wi-Fi SSID는 "
+                    "engnecf-guest-2.4GHz 또는 engnecf-guest-5GHz이고, "
+                    "비밀번호는 akarenga-112years입니다. 접수 카드 뒷면에서도 "
+                    "확인할 수 있으며 테라스를 포함한 시설 내에서 이용할 수 있습니다."
                 ),
             }
             return self._canonical_result(answers.get(language, answers["ja"]), request_type)
