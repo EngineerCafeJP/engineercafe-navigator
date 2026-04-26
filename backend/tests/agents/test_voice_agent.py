@@ -2,9 +2,11 @@ import pytest
 from cachetools import TTLCache
 
 from backend.agents.voice_agent import (
+    DEFAULT_TTS_MAX_BYTES,
     parse_emotion_tags,
     preprocess_tts,
     clean_text_for_tts,
+    get_tts_max_bytes,
     truncate_by_bytes,
     map_vrm_to_tts_emotion,
     VoiceAgent,
@@ -100,6 +102,28 @@ def test_truncate_by_bytes_over_limit():
     text = "あ" * 3000
     out = truncate_by_bytes(text, 5000)
     assert len(out.encode("utf-8")) <= 5000
+
+
+def test_truncate_by_bytes_handles_sentence_ending_over_limit():
+    sentence = "エンジニアカフェの施設について詳しく説明します。"
+    out = truncate_by_bytes(sentence * 20, 300)
+    assert len(out.encode("utf-8")) <= 300
+    assert out.endswith("。")
+    assert out != sentence * 20
+
+
+def test_get_tts_max_bytes_defaults_and_guards_invalid_env(monkeypatch):
+    monkeypatch.delenv("TTS_MAX_BYTES", raising=False)
+    assert get_tts_max_bytes() == DEFAULT_TTS_MAX_BYTES
+
+    monkeypatch.setenv("TTS_MAX_BYTES", "1200")
+    assert get_tts_max_bytes() == 1200
+
+    monkeypatch.setenv("TTS_MAX_BYTES", "100")
+    assert get_tts_max_bytes() == 200
+
+    monkeypatch.setenv("TTS_MAX_BYTES", "invalid")
+    assert get_tts_max_bytes() == DEFAULT_TTS_MAX_BYTES
 
 
 def test_map_vrm_to_tts_emotion():
@@ -385,6 +409,30 @@ async def test_text_to_speech_piper_routes_japanese(monkeypatch):
     assert result["audioResponse"] == "PIPER_BASE64_JA"
     assert result["format"] == "audio/wav"
     assert result["language"] == "ja"
+
+
+@pytest.mark.asyncio
+async def test_text_to_speech_truncates_long_spoken_text(monkeypatch):
+    agent = VoiceAgent(tts_provider="google")
+    calls = {}
+
+    async def fake_google_synth(text, lang, tts_emotion):
+        calls["text"] = text
+        calls["lang"] = lang
+        calls["tts_emotion"] = tts_emotion
+        return "PIPER_BASE64_JA"
+
+    monkeypatch.setenv("TTS_MAX_BYTES", "300")
+    monkeypatch.setattr(agent.tts_client, "synthesize_mp3_base64", fake_google_synth)
+
+    result = await agent.text_to_speech(
+        text="。".join(["エンジニアカフェの施設について詳しく説明します"] * 30),
+        language="ja",
+    )
+
+    assert result["success"] is True
+    assert len(calls["text"].encode("utf-8")) <= 300
+    assert calls["text"].endswith("。")
 
 
 @pytest.mark.asyncio

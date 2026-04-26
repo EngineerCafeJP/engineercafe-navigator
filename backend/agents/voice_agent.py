@@ -4,7 +4,7 @@ Phase 1 (TTS only):
 - Emotion tag parsing + alias normalization (TS EmotionTagParser / EmotionMapping compatible)
 - Text cleaning for TTS (TS VoiceOutputAgent.cleanTextForTTS compatible)
 - preprocessTTS (currently MTG -> ミーティング/meeting)
-- 5000 bytes truncation
+- Configurable byte truncation for practical spoken responses
 - Fallback handling
 - Google TTS REST client (service account -> bearer token)
   for integration (can be monkeypatched in unit tests)
@@ -254,8 +254,22 @@ def clean_text_for_tts(text: str) -> str:
 
 
 # -----------------------------------------------------------------------------
-# Truncate by UTF-8 bytes (limit 5000 by default)
+# Truncate by UTF-8 bytes
 # -----------------------------------------------------------------------------
+
+DEFAULT_TTS_MAX_BYTES = 900
+
+
+def get_tts_max_bytes() -> int:
+    raw = os.getenv("TTS_MAX_BYTES", "").strip()
+    if not raw:
+        return DEFAULT_TTS_MAX_BYTES
+    try:
+        value = int(raw)
+    except ValueError:
+        logger.warning("Invalid TTS_MAX_BYTES=%r; using %d", raw, DEFAULT_TTS_MAX_BYTES)
+        return DEFAULT_TTS_MAX_BYTES
+    return max(200, value)
 
 
 def truncate_by_bytes(text: str, max_bytes: int = 5000) -> str:
@@ -265,7 +279,7 @@ def truncate_by_bytes(text: str, max_bytes: int = 5000) -> str:
     truncated = text
     while truncated and byte_len(truncated) > max_bytes:
         if "。" in truncated:
-            parts = truncated.split("。")
+            parts = [part for part in truncated.split("。") if part.strip()]
             if len(parts) > 1:
                 parts.pop()
                 truncated = "。".join(parts).strip()
@@ -836,9 +850,10 @@ class VoiceAgent:
                 logger.error("Clarification handling failed: %s, proceeding with original text", e)
 
         # ステップ4: テキスト長チェック
-        if len(processed.encode("utf-8")) > 5000:
-            processed = truncate_by_bytes(processed, 5000)
-            logger.warning("Text truncated to 5000 bytes")
+        max_tts_bytes = get_tts_max_bytes()
+        if len(processed.encode("utf-8")) > max_tts_bytes:
+            processed = truncate_by_bytes(processed, max_tts_bytes)
+            logger.warning("Text truncated to %d bytes for TTS", max_tts_bytes)
 
         cache_store = getattr(self, "_tts_cache", None)
         if cache_store is None:
