@@ -67,11 +67,12 @@ source of truth は `.github/workflows/ci.yml` の deploy job。
 
 典型的な deploy 設定:
 
-- `--memory 8Gi --cpu 2 --min-instances 1 --max-instances 3`
+- `--memory 8Gi --cpu 4 --concurrency 1 --min-instances 1 --max-instances 3`
 - non-secret env 例:
   - `ENVIRONMENT=production`
   - `TTS_PROVIDER=piper`
   - `STT_PROVIDER=qwen-primary`
+  - `QWEN_STT_TIMEOUT=45`
   - `FRONTEND_PRODUCTION_ORIGIN=<vercel-production-origin>`
   - `ALLOWED_ORIGINS=<vercel-production-origin>`
 - secret は `--update-secrets` で更新する

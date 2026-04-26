@@ -405,15 +405,44 @@ async def chat(request: Request, body: ChatRequest):
     import uuid as _uuid
 
     from backend.utils.interrupt_manager import get_interrupt_manager
-    from backend.utils.input_sanitizer import sanitize_input
+    from backend.utils.input_sanitizer import (
+        contains_prompt_injection,
+        prompt_injection_refusal,
+        sanitize_input,
+    )
 
     started_at = time.perf_counter()
-    body = body.copy(update={"query": sanitize_input(body.query)})
     session_id = body.session_id or str(_uuid.uuid4())
 
     get_interrupt_manager().clear_interrupt(session_id)
 
     try:
+        if contains_prompt_injection(body.query):
+            sanitized_query = sanitize_input(body.query)
+            metadata = {
+                "query": sanitized_query,
+                "session_id": session_id,
+                "agent": "SafetyGuard",
+                "category": "safety",
+                "route": "safety_guard",
+                "safety_guard": True,
+                "sources": [],
+                "rag_fallback": False,
+            }
+            latency_ms = int((time.perf_counter() - started_at) * 1000)
+            log_chat_response(
+                request_id=get_request_id() or request.headers.get("X-Request-ID"),
+                language=body.language,
+                metadata=metadata,
+                latency_ms=latency_ms,
+            )
+            return ChatResponse(
+                answer=prompt_injection_refusal(body.language),
+                emotion="neutral",
+                metadata=metadata,
+            )
+
+        body = body.copy(update={"query": sanitize_input(body.query)})
         result = await _run_workflow_with_tracking(
             payload=_build_workflow_payload(body, session_id),
             session_id=session_id,

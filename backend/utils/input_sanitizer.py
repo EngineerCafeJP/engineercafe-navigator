@@ -93,3 +93,34 @@ def sanitize_input(text: str, max_length: int = MAX_QUERY_LENGTH) -> str:
         sanitized = re.sub(pattern, "[FILTERED]", sanitized)
 
     return sanitized
+
+
+def contains_prompt_injection(text: str) -> bool:
+    """
+    Return True when the raw user input matches known prompt-injection patterns.
+
+    This intentionally runs before sanitize_input(), because replacing dangerous
+    fragments with [FILTERED] can leave enough surrounding text for a model to
+    treat the request as a normal operational question.
+    """
+    if not text:
+        return False
+
+    return any(re.search(pattern, text) for pattern in DANGEROUS_PATTERNS)
+
+
+def prompt_injection_refusal(language: str | None = None) -> str:
+    """Build a concise refusal that avoids echoing attacker-controlled tokens."""
+    if language == "en":
+        return (
+            "I can't enable debug modes, bypass internal routing or safety behavior, "
+            "reveal private instructions, or change logging and memory policy. "
+            "I can still help with public Engineer Cafe information and normal "
+            "navigation questions."
+        )
+
+    return (
+        "デバッグ権限の有効化、内部ルーティングや安全制御の回避、非公開指示や秘密情報の開示、"
+        "ログや記憶ポリシーの変更には対応できません。"
+        "エンジニアカフェの公開情報や通常の案内であればお手伝いできます。"
+    )
