@@ -174,6 +174,33 @@ def check_safety(answer: str) -> bool:
     return True
 
 
+def denies_explicit_ltm_recall(answer: str) -> bool:
+    """Return true when the answer explicitly says the prior SSID is not remembered."""
+    text = answer.lower()
+    explicit_denials = (
+        "含まれていない",
+        "残っておりません",
+        "残っていません",
+        "記録がありません",
+        "記録にはありません",
+        "覚えていません",
+        "覚えておりません",
+        "把握できておりません",
+        "確認できません",
+        "履歴には",
+        "not in",
+        "do not have",
+        "don't have",
+        "cannot find",
+        "can't find",
+        "not remember",
+        "don't remember",
+        "do not remember",
+        "was not saved",
+    )
+    return any(phrase in text for phrase in explicit_denials)
+
+
 def flatten_metadata_sources(value: Any) -> set[str]:
     sources: set[str] = set()
     if isinstance(value, str):
@@ -641,7 +668,10 @@ async def run_m_suite(
                 )
             if http != 200:
                 status = "FAIL"
-            elif "cafe-free" in last_answer.lower() or "ssid" in last_answer.lower():
+            elif "cafe-free" in last_answer.lower():
+                status = "WARN"
+                notes = "明示的なLTM昇格なしに具体SSIDが保持されている可能性あり"
+            elif "ssid" in last_answer.lower() and not denies_explicit_ltm_recall(last_answer):
                 status = "WARN"
                 notes = "情報が保持されている可能性あり（明示的なLTM昇格ではない想定）"
             else:

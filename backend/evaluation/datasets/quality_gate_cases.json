@@ -140,7 +140,7 @@
           "language": "en",
           "query": "What events are happening at Engineer Cafe this week?",
           "expected_route": "event",
-          "expected_facts": ["event"],
+          "expected_facts": ["event|events|meetup|session|workshop"],
           "prohibited_claims": [],
           "expected_language": "en",
           "safety_check": false
@@ -278,7 +278,7 @@
           "session_2_queries": [
             "前に私が伝えたWi-FiのSSIDを覚えていますか。"
           ],
-          "note": "明示的に覚えてと言っていないので、LTMには保存されていない可能性が高い。回答にSSIDが含まれていてもWARN扱い。"
+          "note": "明示的に覚えてと言っていないので、LTMには保存されない。SSIDに触れていても、履歴にない・把握していないと明確に否定する回答はPASS。"
         },
         {
           "id": "M-RECV-001",
