@@ -370,7 +370,8 @@ class EventAgent:
         answers = {
             "ja": (
                 "[relaxed]はい、エンジニアカフェのイベント情報や参加申込は"
-                "Connpassで確認できます。イベント一覧は "
+                "Connpassで確認できます。多くのイベントがConnpassで募集されており、"
+                "イベント一覧は "
                 "https://engineercafe.connpass.com/ から見られるので、"
                 "各イベントページで申込方法や必要事項を確認してください。"
             ),
