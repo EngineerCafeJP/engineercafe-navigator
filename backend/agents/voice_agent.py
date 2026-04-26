@@ -30,10 +30,7 @@ import httpx
 from cachetools import TTLCache
 
 from backend.observability.structured_logger import log_tts_cache_event
-from backend.utils.clarification_templates import (
-    ClarificationCategory,
-    get_clarification_response,
-)
+from backend.utils.clarification_templates import ClarificationCategory
 from backend.utils.language_processor import LanguageProcessor
 
 logger = logging.getLogger(__name__)
@@ -667,7 +664,7 @@ class PiperPlusTTSClient:
 
 
 # =============================================================================
-# VoiceAgent class (modified for provider switching + language detection + clarification)
+# VoiceAgent class (modified for provider switching + language detection)
 # =============================================================================
 
 
@@ -687,9 +684,8 @@ class VoiceAgent:
                 If None, creates default client based on provider.
             language_processor: LanguageProcessor for language
                 detection. If None, creates default instance.
-            clarification_agent: Optional clarification handler for
-                ambiguity resolution. If None, built-in clarification
-                templates are used.
+            clarification_agent: Deprecated. Clarification is handled by the
+                chat workflow; TTS speaks the supplied text without rewriting it.
         """
         self.tts_provider = tts_provider
 
@@ -713,7 +709,6 @@ class VoiceAgent:
         logger.info("LanguageProcessor initialized for voice_agent")
 
         self.clarification_agent = clarification_agent
-        logger.info("Clarification handler initialized for voice_agent")
 
         # Kokoro TTSクライアント（英語TTS用 / piper障害時の英語フォールバック）
         # Cloud Run環境でKOKORO_API_URL未設定の場合は初期化しない
@@ -785,11 +780,10 @@ class VoiceAgent:
         language: Optional[str] = None,
         emotion: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Convert text to speech with language detection and clarification.
+        """Convert text to speech with language detection.
 
         Features:
             - Automatic language detection (when language is None)
-            - Ambiguity checking (clarification template integration)
             - TTS provider switching (voicevox / google / kokoro)
 
         Args:
@@ -805,7 +799,7 @@ class VoiceAgent:
                 - cleanText (str): Processed text after cleaning and emotion tag removal.
                 - format (str): Audio format ('audio/wav' or 'audio/mpeg').
                 - language (str): Language used for synthesis.
-                - ambiguity_resolved (bool): Whether ambiguity was detected and resolved.
+                - ambiguity_resolved (bool): Always False. Kept for response compatibility.
                 - error (str): Error message if failed. Optional.
         """
         # ステップ1: 言語自動検出（未指定時）
@@ -825,29 +819,6 @@ class VoiceAgent:
         vrm_emotion = (
             map_to_vrm_emotion(emotion) if emotion else (parsed.primary_emotion or "neutral")
         )
-
-        # ステップ3: 曖昧性チェック
-        ambiguity_category = self._detect_category(text, language)
-        if ambiguity_category:
-            logger.info("Ambiguity detected: %s", ambiguity_category)
-            try:
-                if self.clarification_agent is None:
-                    clarification_result = get_clarification_response(
-                        category=ambiguity_category,
-                        language=language,
-                    )
-                else:
-                    clarification_result = await self.clarification_agent.handle_clarification(
-                        query=text,
-                        category=ambiguity_category,
-                        language=language,
-                    )
-                clarification_text = clarification_result["response"]
-                logger.info("Using clarification response instead of original query")
-                processed = preprocess_tts(clarification_text, language)
-                vrm_emotion = clarification_result.get("emotion", "surprised")
-            except Exception as e:
-                logger.error("Clarification handling failed: %s, proceeding with original text", e)
 
         # ステップ4: テキスト長チェック
         max_tts_bytes = get_tts_max_bytes()
@@ -871,7 +842,7 @@ class VoiceAgent:
                 "cleanText": processed,
                 "format": self._tts_audio_format(language),
                 "language": language,
-                "ambiguity_resolved": ambiguity_category is not None,
+                "ambiguity_resolved": False,
                 "tts_cache_hit": True,
             }
 
@@ -913,7 +884,7 @@ class VoiceAgent:
                 "cleanText": processed,
                 "format": audio_format,
                 "language": language,
-                "ambiguity_resolved": ambiguity_category is not None,
+                "ambiguity_resolved": False,
                 "tts_cache_hit": False,
             }
         except Exception as e:
