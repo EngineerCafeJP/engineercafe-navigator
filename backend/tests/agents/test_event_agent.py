@@ -97,6 +97,14 @@ class TestEventAgent:
         assert "registration" in response["answer"].lower()
         assert response["metadata"]["sources"] == ["connpass"]
 
+    def test_connpass_canonical_response_japanese_mentions_recruitment(self):
+        """日本語Connpass案内は募集・申込確認まで含める"""
+        response = self.agent._get_connpass_response("ja")
+
+        assert "多くのイベント" in response["answer"]
+        assert "https://engineercafe.connpass.com/" in response["answer"]
+        assert "申込" in response["answer"]
+
 
 class TestEventDeduplication:
     """イベント重複排除テスト"""

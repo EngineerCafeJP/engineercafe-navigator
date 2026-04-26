@@ -228,6 +228,18 @@ class TestFacilityAgent:
         assert "1-15-30" in response["answer"]
         assert "Tenjin Station" in response["answer"]
 
+    def test_access_canonical_response_japanese_includes_parking_context(self):
+        """アクセス案内は徒歩導線と駐車場注意を含める"""
+        agent = FacilityAgent()
+        response = agent._get_canonical_response(
+            "エンジニアカフェへのアクセス方法は？", "access", "ja"
+        )
+
+        assert response is not None
+        assert "天神駅" in response["answer"]
+        assert "徒歩約5分" in response["answer"]
+        assert "専用駐車場はない" in response["answer"]
+
     def test_generic_wifi_query_does_not_expose_credentials(self):
         """一般的なWi-Fi可否質問では認証情報回答へ固定しない"""
         agent = FacilityAgent()

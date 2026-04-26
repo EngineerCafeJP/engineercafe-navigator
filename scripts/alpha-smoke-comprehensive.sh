@@ -290,7 +290,7 @@ chat_success() {
 
 A_UTTERANCES=$(cat <<'EOF'
 A1-JA-001|ja|proper_noun|エンジニアカフェのサイバーセキュリティイベントについて教えてください。
-A1-JA-002|ja|proper_noun|Engineer Cafe と赤煉瓦文化館は同じ建物の中にありますか。
+A1-JA-002|ja|proper_noun|エンジニアカフェと赤煉瓦文化館は同じ建物の中にありますか。
 A1-JA-003|ja|proper_noun|Fukuoka Growth Next からエンジニアカフェまで歩いて何分くらいですか。
 A1-JA-004|ja|wifi|今日初めて来ました。Wi-Fi の SSID とパスワードの確認方法を教えてください。
 A1-JA-005|ja|wifi|地下のイベントスペースでも WiFi は使えますか。

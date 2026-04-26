@@ -339,6 +339,8 @@ class FacilityAgent:
                     "[relaxed]エンジニアカフェは福岡市中央区天神1丁目15番30号、"
                     "福岡市赤煉瓦文化館の中にあります。地下鉄空港線の天神駅から"
                     "徒歩約5分で、16番出口から昭和通りを東へ進むと赤煉瓦の建物が目印です。"
+                    "専用駐車場はないため、車の場合は天神地下街など近隣の有料駐車場を"
+                    "利用してください。"
                 ),
                 "en": (
                     "[relaxed]Engineer Cafe is inside the Fukuoka City Red Brick "

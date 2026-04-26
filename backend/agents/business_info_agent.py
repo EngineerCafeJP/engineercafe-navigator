@@ -125,7 +125,7 @@ class BusinessInfoAgent:
         )
 
         canonical = self._get_canonical_response(query, request_type, language)
-        if canonical:
+        if canonical and state_context is None:
             return canonical
 
         # requestTypeをcategoryにマッピング
@@ -155,6 +155,9 @@ class BusinessInfoAgent:
 
         if not context:
             return self._get_default_response(language, request_type)
+
+        if canonical:
+            return canonical
 
         # プロンプト構築
         prompt = self._build_prompt(query, context, request_type, language)
@@ -439,6 +442,30 @@ Information: {context}
     ) -> Optional[Dict]:
         """Return complete answers for common visitor-critical business questions."""
         normalized = query.lower()
+        if self._asks_opening_hours(normalized, request_type):
+            answers = {
+                "ja": (
+                    "[relaxed]エンジニアカフェの開館時間は9:00から22:00までです。"
+                    "コミュニティマネージャーへの相談受付は13:00から21:00までなので、"
+                    "相談したい場合はその時間帯にお越しください。"
+                ),
+                "en": (
+                    "[relaxed]Engineer Cafe is open from 9:00 to 22:00. Community "
+                    "manager consultation hours are 13:00 to 21:00, so please visit "
+                    "during that window if you want to talk with staff."
+                ),
+                "zh": (
+                    "[relaxed]工程师咖啡的开放时间是9:00到22:00。"
+                    "社区经理咨询时间是13:00到21:00，如需咨询请在该时间段来访。"
+                ),
+                "ko": (
+                    "[relaxed]엔지니어 카페의 운영 시간은 9:00부터 22:00까지입니다. "
+                    "커뮤니티 매니저 상담은 13:00부터 21:00까지 가능하니, "
+                    "상담이 필요하면 그 시간대에 방문해 주세요."
+                ),
+            }
+            return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
         if self._asks_first_visit_registration(normalized, request_type):
             answers = {
                 "ja": (
@@ -561,6 +588,26 @@ Information: {context}
             "登记",
             "처음",
             "등록",
+        )
+        return any(keyword in query for keyword in keywords)
+
+    @staticmethod
+    def _asks_opening_hours(query: str, request_type: Optional[str]) -> bool:
+        if request_type == "hours":
+            return True
+        keywords = (
+            "opening hours",
+            "open hours",
+            "business hours",
+            "what time",
+            "営業時間",
+            "開館時間",
+            "何時から",
+            "何時まで",
+            "营业时间",
+            "几点",
+            "운영 시간",
+            "이용 시간",
         )
         return any(keyword in query for keyword in keywords)
 

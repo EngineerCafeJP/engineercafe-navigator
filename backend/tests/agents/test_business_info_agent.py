@@ -78,6 +78,18 @@ class TestBusinessInfoAgent:
         assert "5 to 10 minutes" in response["answer"]
         assert "free" in response["answer"].lower()
 
+    def test_opening_hours_canonical_response_japanese(self):
+        """営業時間は開館時間と相談受付時間を分けて案内する"""
+        response = self.agent._get_canonical_response(
+            "エンジニアカフェの営業時間は何時から何時までですか？",
+            "hours",
+            "ja",
+        )
+
+        assert response is not None
+        assert "9:00から22:00" in response["answer"]
+        assert "13:00から21:00" in response["answer"]
+
     def test_reception_request_type_alone_does_not_force_first_visit(self):
         """reception routingだけで初回登録回答へ倒さない"""
         response = self.agent._get_canonical_response(
@@ -88,13 +100,16 @@ class TestBusinessInfoAgent:
 
         assert response is None
 
-    def test_korean_hours_query_does_not_match_what_is_engineer_cafe(self):
+    def test_korean_hours_query_matches_hours_not_what_is_engineer_cafe(self):
         """韓国語の営業時間質問を施設紹介に誤分類しない"""
         response = self.agent._get_canonical_response(
             "엔지니어 카페의 운영 시간은 어떻게 되나요?", "hours", "ko"
         )
 
-        assert response is None
+        assert response is not None
+        assert "9:00" in response["answer"]
+        assert "22:00" in response["answer"]
+        assert "코워킹" not in response["answer"]
 
     def test_contact_canonical_response_japanese_phone(self):
         """電話番号の実地案内を固定する"""
