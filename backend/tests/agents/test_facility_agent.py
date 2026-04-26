@@ -231,12 +231,12 @@ class TestFacilityAgent:
         assert "테라스" in response["answer"]
 
     def test_access_canonical_response_english(self):
-        """アクセス案内は住所と最寄り駅を含める"""
+        """アクセス案内は施設名と最寄り駅を含める"""
         agent = FacilityAgent()
         response = agent._get_canonical_response("Where is Engineer Cafe located?", "access", "en")
 
         assert response is not None
-        assert "1-15-30" in response["answer"]
+        assert "Red Brick Culture Hall" in response["answer"]
         assert "Tenjin Station" in response["answer"]
 
     def test_access_canonical_response_japanese_includes_parking_context(self):

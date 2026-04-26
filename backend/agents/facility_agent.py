@@ -343,10 +343,9 @@ class FacilityAgent:
                     "利用してください。"
                 ),
                 "en": (
-                    "[relaxed]Engineer Cafe is inside the Fukuoka City Red Brick "
-                    "Culture Hall at 1-15-30 Tenjin, Chuo-ku, Fukuoka. It is about a "
-                    "5-minute walk from Tenjin Station and is also close to the "
-                    "Tenjin 4-chome bus stop. Please ask staff if you need help on arrival."
+                    "[relaxed]Engineer Cafe is located in the Fukuoka City Red Brick "
+                    "Culture Hall in Tenjin, Fukuoka. It is about a five-minute walk "
+                    "from Tenjin Station."
                 ),
                 "zh": (
                     "[relaxed]工程师咖啡位于福冈市中央区天神1丁目15番30号的"
@@ -354,10 +353,9 @@ class FacilityAgent:
                     "从天神站步行约5分钟。"
                 ),
                 "ko": (
-                    "[relaxed]엔지니어 카페는 후쿠오카시 주오구 텐진 1-15-30, "
-                    "아카렌가 문화관 안에 있습니다. 텐진역에서 걸어서 약 5분 "
-                    "거리이며 니시테츠 버스 텐진 4초메 정류장에서도 가깝습니다. "
-                    "방문 시 직원에게 문의하시면 안내받을 수 있어요."
+                    "[relaxed]엔지니어 카페는 텐진 아카렌가 문화관 안에 있습니다. "
+                    "텐진역에서 걸어서 약 5분 거리이며, 방문 시 직원에게 문의하시면 "
+                    "안내받을 수 있습니다."
                 ),
             }
             return self._canonical_result(answers.get(language, answers["ja"]), request_type)
