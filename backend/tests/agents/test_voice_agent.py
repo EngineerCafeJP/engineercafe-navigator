@@ -1,3 +1,5 @@
+from unittest.mock import AsyncMock
+
 import pytest
 from cachetools import TTLCache
 
@@ -172,6 +174,29 @@ async def test_text_to_speech_calls_tts_with_processed_text_and_emotion(monkeypa
 
     # VRM happy -> TTS happy
     assert calls["tts_emotion"] == "happy"
+
+
+@pytest.mark.asyncio
+async def test_text_to_speech_does_not_replace_ambiguous_source_text(monkeypatch):
+    agent = VoiceAgent(tts_provider="piper")
+    calls = {}
+    agent.clarification_agent = AsyncMock()
+
+    async def fake_synth(text, lang):
+        calls["text"] = text
+        calls["lang"] = lang
+        return "PIPER_BASE64_DUMMY"
+
+    monkeypatch.setattr(agent.tts_client, "synthesize_wav_base64", fake_synth)
+    source_text = "What are good conversation topics when meeting engineers in Fukuoka?"
+
+    result = await agent.text_to_speech(text=source_text, language="en")
+
+    assert result["success"] is True
+    assert calls["text"] == source_text
+    assert calls["lang"] == "en"
+    assert result["ambiguity_resolved"] is False
+    agent.clarification_agent.handle_clarification.assert_not_awaited()
 
 
 @pytest.mark.asyncio
