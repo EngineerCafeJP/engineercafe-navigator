@@ -322,6 +322,15 @@ class EnhancedRAGSearch:
             scored_results = self._grade_result_relevance(
                 scored_results, query, category, context_signals=context_signals
             )
+            if not scored_results:
+                local_results = self._local_knowledge_fallback_search(
+                    query, category, language, max_results
+                )
+                if local_results:
+                    scored_results = self._score_results(local_results, query, category, language)
+                    scored_results = self._grade_result_relevance(
+                        scored_results, query, category, context_signals=context_signals
+                    )
 
             # 6. トップ結果を取得
             top_results = scored_results[:max_results]
@@ -627,6 +636,13 @@ class EnhancedRAGSearch:
 
         scored_results = self._score_results(results, query, category, language)
         scored_results = self._grade_result_relevance(scored_results, query, category)
+        if not scored_results:
+            local_results = self._local_knowledge_fallback_search(
+                query, category, language, max_results
+            )
+            if local_results:
+                scored_results = self._score_results(local_results, query, category, language)
+                scored_results = self._grade_result_relevance(scored_results, query, category)
         top_results = scored_results[:max_results]
         context = self._build_context_from_results(top_results, category, language)
 
@@ -717,7 +733,21 @@ class EnhancedRAGSearch:
         ).lower()
         terms = self._extract_text_query_terms(query, category, language)
 
-        if category != "general" and row.get("category") != category:
+        row_category = row.get("category")
+        if category != "general" and row_category != category:
+            return 0.0
+        if category == "general" and row_category not in {
+            "general",
+            "hours",
+            "pricing",
+            "access",
+            "contact",
+            "policy",
+            "parking",
+            "bicycle",
+            "food_drink",
+            "smoking",
+        }:
             return 0.0
 
         match_score = 0.0
@@ -726,9 +756,6 @@ class EnhancedRAGSearch:
             if term in searchable:
                 match_score += 0.08 if self._contains_cjk(term) else 0.12
                 has_content_match = True
-
-        if row.get("category") == category:
-            match_score += 0.18
 
         query_lower = query.lower()
         if any(term in query_lower for term in ("wi-fi", "wifi", "ssid", "接続")) and any(
@@ -741,14 +768,39 @@ class EnhancedRAGSearch:
         ):
             match_score += 0.24
             has_content_match = True
+        if (
+            any(term in query for term in ("予約", "予約なし", "予約不要"))
+            or any(
+                term in query_lower
+                for term in ("reservation", "without a reservation", "no reservation")
+            )
+        ) and any(
+            term in searchable
+            for term in (
+                "予約不要",
+                "予約なし",
+                "does not require a reservation",
+                "no reservation",
+            )
+        ):
+            match_score += 0.35
+            has_content_match = True
         if any(term in query for term in ("受付", "初めて", "再受付", "登録")) and any(
             term in searchable for term in ("受付", "registration", "会員番号", "reception")
         ):
             match_score += 0.2
             has_content_match = True
+        if any(term in query for term in ("再受付", "以前登録", "登録した", "2回目")) and any(
+            term in searchable for term in ("2回目以降", "会員番号", "受付カード", "受付")
+        ):
+            match_score += 0.3
+            has_content_match = True
 
         if not has_content_match:
             return 0.0
+
+        if row_category == category:
+            match_score += 0.18
 
         priority = row.get("metadata", {}).get("priority", 50)
         if isinstance(priority, int):
