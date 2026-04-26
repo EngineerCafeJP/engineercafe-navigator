@@ -66,3 +66,40 @@ class TestBusinessInfoAgent:
         ), f"Expected apology keyword in: {response['answer']}"
         assert response["emotion"] == "apologetic"
         assert response["metadata"]["agent"] == "BusinessInfoAgent"
+
+    def test_first_visit_registration_canonical_response(self):
+        """初回登録の実地案内を固定する"""
+        response = self.agent._get_canonical_response(
+            "How do I register for my first visit?", None, "en"
+        )
+
+        assert response is not None
+        assert "1F reception" in response["answer"]
+        assert "5 to 10 minutes" in response["answer"]
+        assert "free" in response["answer"].lower()
+
+    def test_reception_request_type_alone_does_not_force_first_visit(self):
+        """reception routingだけで初回登録回答へ倒さない"""
+        response = self.agent._get_canonical_response(
+            "I have registered before. Can I just check in again today?",
+            "reception",
+            "en",
+        )
+
+        assert response is None
+
+    def test_korean_hours_query_does_not_match_what_is_engineer_cafe(self):
+        """韓国語の営業時間質問を施設紹介に誤分類しない"""
+        response = self.agent._get_canonical_response(
+            "엔지니어 카페의 운영 시간은 어떻게 되나요?", "hours", "ko"
+        )
+
+        assert response is None
+
+    def test_contact_canonical_response_japanese_phone(self):
+        """電話番号の実地案内を固定する"""
+        response = self.agent._get_canonical_response("電話番号を教えてください", None, "ja")
+
+        assert response is not None
+        assert "080-6742-7231" in response["answer"]
+        assert "13時から21時" in response["answer"]

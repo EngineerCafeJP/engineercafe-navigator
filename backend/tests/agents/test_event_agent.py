@@ -89,6 +89,14 @@ class TestEventAgent:
             assert response_ja["emotion"] == "sad"
             assert response_en["emotion"] == "sad"
 
+    def test_connpass_canonical_response_english(self):
+        """Connpass質問には実際の一覧URLと申込確認を返す"""
+        response = self.agent._get_connpass_response("en")
+
+        assert "https://engineercafe.connpass.com/" in response["answer"]
+        assert "registration" in response["answer"].lower()
+        assert response["metadata"]["sources"] == ["connpass"]
+
 
 class TestEventDeduplication:
     """イベント重複排除テスト"""

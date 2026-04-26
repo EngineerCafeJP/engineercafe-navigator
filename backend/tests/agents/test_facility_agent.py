@@ -219,6 +219,38 @@ class TestFacilityAgent:
         assert agent._determine_emotion("wifi", "[sad]Wi-Fiは利用できません") == "sad"
         assert agent._determine_emotion("wifi", "[relaxed]Wi-Fiがあります") == "relaxed"
 
+    def test_access_canonical_response_english(self):
+        """アクセス案内は住所と最寄り駅を含める"""
+        agent = FacilityAgent()
+        response = agent._get_canonical_response("Where is Engineer Cafe located?", "access", "en")
+
+        assert response is not None
+        assert "1-15-30" in response["answer"]
+        assert "Tenjin Station" in response["answer"]
+
+    def test_generic_wifi_query_does_not_expose_credentials(self):
+        """一般的なWi-Fi可否質問では認証情報回答へ固定しない"""
+        agent = FacilityAgent()
+        response = agent._get_canonical_response("Wi-Fiはありますか？", "wifi", "ja")
+
+        assert response is None
+
+    def test_wifi_password_canonical_response_does_not_expose_literal_secret(self):
+        """実地では受付カード・スタッフ確認へ誘導し、固定パスワードを出さない"""
+        agent = FacilityAgent()
+        response = agent._get_canonical_response("Wi-Fiのパスワードは何ですか？", "wifi", "ja")
+
+        assert response is not None
+        assert "受付カード" in response["answer"]
+        assert "akarenga-112years" not in response["answer"]
+
+    def test_bringing_laptop_does_not_match_food_policy(self):
+        """bringだけで飲食持ち込み回答へ倒さない"""
+        agent = FacilityAgent()
+        response = agent._get_canonical_response("Can I bring my laptop?", "facility", "en")
+
+        assert response is None
+
     def test_determine_emotion_default(self):
         """デフォルト感情タグ"""
         agent = FacilityAgent()
