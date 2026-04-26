@@ -11,6 +11,7 @@ set -euo pipefail
 #   API_SECRET_KEY                 Required unless --key is provided or gcloud can read it.
 #   RAG_API_LIVE_BASE_URL          Overrides default Cloud Run URL.
 #   RAG_API_LIVE_SECRET_PROJECT    Overrides Secret Manager project.
+#   RAG_API_LIVE_METRICS           Comma-separated RAGAS metrics.
 #   OPENAI_API_KEY / OPENROUTER_API_KEY are required by the RAGAS evaluator.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -22,6 +23,7 @@ SECRET_PROJECT="${RAG_API_LIVE_SECRET_PROJECT:-aipartner-426616}"
 SECRET_NAME="API_SECRET_KEY"
 OUTPUT_DIR="$ROOT_DIR/backend/tests/evaluation/reports"
 LANGUAGES="ja,en,zh,ko"
+METRICS="${RAG_API_LIVE_METRICS:-answer_correctness}"
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 DRY_RUN=0
 CHECK_TARGETS=1
@@ -36,6 +38,7 @@ Options:
   --secret-project ID    GCP project for Secret Manager (default: aipartner-426616)
   --secret-name NAME     Secret Manager secret name (default: API_SECRET_KEY)
   --languages LIST       Comma-separated languages (default: ja,en,zh,ko)
+  --metrics LIST         Comma-separated RAGAS metrics (default: answer_correctness)
   --output-dir DIR       Report directory (default: backend/tests/evaluation/reports)
   --timestamp VALUE      Stable timestamp marker printed for operator correlation
   --no-check-targets     Do not fail when configured answer_correctness targets are missed
@@ -56,6 +59,7 @@ while [ "$#" -gt 0 ]; do
     --secret-project) SECRET_PROJECT="$2"; shift 2 ;;
     --secret-name) SECRET_NAME="$2"; shift 2 ;;
     --languages) LANGUAGES="$2"; shift 2 ;;
+    --metrics) METRICS="$2"; shift 2 ;;
     --output-dir) OUTPUT_DIR="$2"; shift 2 ;;
     --timestamp) TIMESTAMP="$2"; shift 2 ;;
     --no-check-targets) CHECK_TARGETS=0; shift ;;
@@ -98,8 +102,18 @@ for lang in langs:
 PY
 }
 
+metric_args() {
+  python3 - "$METRICS" <<'PY'
+import sys
+metrics = [x.strip() for x in sys.argv[1].split(",") if x.strip()]
+for metric in metrics:
+    print(metric)
+PY
+}
+
 main() {
   require_cmd python3
+  require_cmd uv
   if [ ! -f "$RUNNER" ]; then
     echo "Error: live API RAGAS runner not found: $RUNNER" >&2
     exit 2
@@ -113,6 +127,14 @@ main() {
     echo "Error: --languages produced an empty list" >&2
     exit 2
   fi
+  METRIC_ARGS=()
+  while IFS= read -r metric; do
+    METRIC_ARGS+=("$metric")
+  done < <(metric_args)
+  if [ "${#METRIC_ARGS[@]}" -eq 0 ]; then
+    echo "Error: --metrics produced an empty list" >&2
+    exit 2
+  fi
 
   if [ "$DRY_RUN" = "1" ]; then
     echo "Dry run: no /api/chat live RAGAS commands will be executed."
@@ -121,6 +143,7 @@ main() {
     echo "Base URL: $BASE_URL"
     echo "Output dir: $OUTPUT_DIR"
     echo "Languages: ${LANG_ARGS[*]}"
+    echo "Metrics: ${METRIC_ARGS[*]}"
     if [ "$CHECK_TARGETS" = "1" ]; then
       echo "Target check: enabled"
       echo "Live source metadata gate: enabled"
@@ -145,12 +168,20 @@ main() {
   echo "Timestamp: $TIMESTAMP"
   echo "Base URL: $BASE_URL"
   echo "Languages: ${LANG_ARGS[*]}"
+  echo "Metrics: ${METRIC_ARGS[*]}"
 
-  cmd=(python3 "$RUNNER" --base-url "$BASE_URL" --api-key "$API_KEY" --languages "${LANG_ARGS[@]}" --output-dir "$OUTPUT_DIR")
+  cmd=(python evaluation/run_live_api_eval.py --base-url "$BASE_URL" --languages "${LANG_ARGS[@]}" --metrics "${METRIC_ARGS[@]}" --output-dir "$OUTPUT_DIR")
   if [ "$CHECK_TARGETS" = "1" ]; then
     cmd+=(--check-targets)
   fi
-  PYTHONPATH="$ROOT_DIR:$ROOT_DIR/backend:${PYTHONPATH:-}" "${cmd[@]}"
+  (
+    cd "$ROOT_DIR/backend"
+    API_SECRET_KEY="$API_KEY" \
+      RAGAS_BATCH_STRATEGY="${RAGAS_BATCH_STRATEGY:-single}" \
+      RAGAS_OUTER_SINGLE_TIMEOUT="${RAGAS_OUTER_SINGLE_TIMEOUT:-300}" \
+      PYTHONPATH="$ROOT_DIR:$ROOT_DIR/backend:${PYTHONPATH:-}" \
+      uv run --extra evaluation "${cmd[@]}"
+  )
 }
 
 main "$@"

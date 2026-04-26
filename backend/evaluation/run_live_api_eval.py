@@ -14,6 +14,7 @@ import argparse
 import asyncio
 import json
 import logging
+import os
 import sys
 import time
 from datetime import datetime, timezone
@@ -128,6 +129,7 @@ async def run_live_api_evaluation(
     languages: Optional[Sequence[str]] = None,
     output_dir: Optional[Path] = None,
     check_live_sources: bool = True,
+    metrics: Optional[Sequence[str]] = None,
 ) -> Dict[str, Any]:
     """Run RAGAS evaluation against the live API.
 
@@ -143,6 +145,7 @@ async def run_live_api_evaluation(
     config = _load_multilingual_config()
     gt_lookup = _load_ground_truth_lookup()
     selected_languages = list(languages or ALL_LANGUAGES)
+    selected_metrics = tuple(metrics or TRACKED_METRICS)
 
     per_language_results: Dict[str, Dict[str, Any]] = {}
     all_eval_cases: Dict[str, List[Dict[str, Any]]] = {}
@@ -246,12 +249,7 @@ async def run_live_api_evaluation(
             continue
 
         evaluator = RagasEvaluator(
-            metrics=(
-                "faithfulness",
-                "answer_relevancy",
-                "context_precision",
-                "answer_correctness",
-            ),
+            metrics=selected_metrics,
             max_cases=len(cases),
         )
 
@@ -326,6 +324,7 @@ async def run_live_api_evaluation(
         "mode": "live-api",
         "base_url": base_url,
         "languages": selected_languages,
+        "metrics": list(selected_metrics),
         "ragas_context_source": "golden_dataset",
         "live_source_gate_enabled": check_live_sources,
         "per_language": per_language_results,
@@ -379,12 +378,25 @@ def _compare_targets(
                     )
 
         answer_target_passed = isinstance(actual, (int, float)) and actual >= target
-        passed = answer_target_passed and not source_failures
+        requested_count = int(result.get("requested_case_count", 0) or 0)
+        evaluated_count = int(result.get("evaluated_case_count", 0) or 0)
+        evaluation_complete = (
+            requested_count > 0
+            and evaluated_count == requested_count
+            and not result.get("errors")
+            and not result.get("error")
+        )
+        passed = answer_target_passed and not source_failures and evaluation_complete
         per_language[lang] = {
             "answer_correctness": {
                 "actual": (round(actual, 4) if isinstance(actual, (int, float)) else None),
                 "target": target,
                 "passed": answer_target_passed,
+            },
+            "evaluation_complete": {
+                "requested": requested_count,
+                "evaluated": evaluated_count,
+                "passed": evaluation_complete,
             },
             "live_source_gate": {
                 "enabled": check_live_sources,
@@ -408,6 +420,7 @@ def _compare_targets(
                     "actual": per_language[lang]["answer_correctness"]["actual"],
                     "target": target,
                     "answer_target_passed": answer_target_passed,
+                    "evaluation_complete": evaluation_complete,
                     "source_failures": len(source_failures),
                 }
             )
@@ -471,6 +484,13 @@ def _format_report(
                 lines.append(f"  {metric}: {val_str}")
 
         source_gate = comp.get("live_source_gate", {})
+        eval_complete = comp.get("evaluation_complete", {})
+        eval_status = "PASS" if eval_complete.get("passed") else "FAIL"
+        lines.append(
+            "  evaluation_complete: "
+            f"evaluated={eval_complete.get('evaluated', 0)}/"
+            f"{eval_complete.get('requested', 0)} [{eval_status}]"
+        )
         if source_gate.get("enabled"):
             sg_status = "PASS" if source_gate.get("passed") else "FAIL"
             lines.append(
@@ -514,6 +534,7 @@ def _format_report(
             lines.append(
                 f"  {f['language']}: actual={f['actual']} target={f['target']} "
                 f"answer_target_passed={f.get('answer_target_passed')} "
+                f"evaluation_complete={f.get('evaluation_complete')} "
                 f"source_failures={f.get('source_failures', 0)}"
             )
 
@@ -543,7 +564,7 @@ def main() -> None:
         "--api-key",
         type=str,
         default=None,
-        help="API key for authentication (X-API-Key header).",
+        help="API key for authentication (X-API-Key header). Prefer API_SECRET_KEY env.",
     )
     parser.add_argument(
         "--languages",
@@ -562,6 +583,16 @@ def main() -> None:
         "--check-targets",
         action="store_true",
         help="Exit with status 1 when targets are missed.",
+    )
+    parser.add_argument(
+        "--metrics",
+        nargs="+",
+        choices=TRACKED_METRICS,
+        default=list(TRACKED_METRICS),
+        help=(
+            "RAGAS metrics to evaluate. For alpha GO target checks, "
+            "answer_correctness plus live source gate is sufficient."
+        ),
     )
     parser.add_argument(
         "--no-check-live-sources",
@@ -583,10 +614,11 @@ def main() -> None:
     result = asyncio.run(
         run_live_api_evaluation(
             base_url=args.base_url,
-            api_key=args.api_key,
+            api_key=args.api_key or os.environ.get("API_SECRET_KEY"),
             languages=args.languages,
             output_dir=output_dir,
             check_live_sources=not args.no_check_live_sources,
+            metrics=args.metrics,
         )
     )
 

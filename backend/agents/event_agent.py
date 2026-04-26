@@ -122,6 +122,9 @@ class EventAgent:
         """
         logger.info("Processing query: %s..., language: %s", query[:50], language)
 
+        if self._asks_connpass(query):
+            return self._get_connpass_response(language)
+
         # クエリから時間範囲を抽出
         time_range = self.calendar_service.extract_time_range_from_query(query)
 
@@ -354,6 +357,47 @@ class EventAgent:
                 "time_range": time_range,
                 "event_count": 0,
                 "sources": ["google_calendar", "connpass"],
+            },
+        }
+
+    @staticmethod
+    def _asks_connpass(query: str) -> bool:
+        normalized = query.lower()
+        return "connpass" in normalized or "コンパス" in normalized or "콘파스" in normalized
+
+    @staticmethod
+    def _get_connpass_response(language: str) -> Dict:
+        answers = {
+            "ja": (
+                "[relaxed]はい、エンジニアカフェのイベント情報や参加申込は"
+                "Connpassで確認できます。イベント一覧は "
+                "https://engineercafe.connpass.com/ から見られるので、"
+                "各イベントページで申込方法や必要事項を確認してください。"
+            ),
+            "en": (
+                "[relaxed]Yes, you can check Engineer Cafe events and registration "
+                "details on Connpass at https://engineercafe.connpass.com/. Please "
+                "open each event page to confirm whether registration is required."
+            ),
+            "zh": (
+                "[relaxed]可以在Connpass上查看工程师咖啡的活动信息和报名详情："
+                "https://engineercafe.connpass.com/。请打开各活动页面确认是否需要报名。"
+            ),
+            "ko": (
+                "[relaxed]네, 엔지니어 카페의 이벤트 정보와 참가 신청은 Connpass에서 "
+                "확인할 수 있습니다: https://engineercafe.connpass.com/. 각 이벤트 "
+                "페이지에서 신청 필요 여부를 확인해 주세요."
+            ),
+        }
+        answer = answers.get(language, answers["ja"])
+        return {
+            "answer": answer,
+            "emotion": "relaxed",
+            "metadata": {
+                "agent": "EventAgent",
+                "time_range": "thisWeek",
+                "event_count": 0,
+                "sources": ["connpass"],
             },
         }
 

@@ -94,6 +94,7 @@ RAGAS_MAX_WORKERS = _safe_int_env("RAGAS_MAX_WORKERS", 16)
 # Outer wall-clock guards (protect against hangs inside ragas/provider layers)
 RAGAS_OUTER_SINGLE_TIMEOUT = _safe_int_env("RAGAS_OUTER_SINGLE_TIMEOUT", 180)
 RAGAS_OUTER_BATCH_TIMEOUT = _safe_int_env("RAGAS_OUTER_BATCH_TIMEOUT", 600)
+RAGAS_BATCH_STRATEGY = os.environ.get("RAGAS_BATCH_STRATEGY", "batch").strip().lower()
 
 # 全6メトリクス
 DEFAULT_METRICS = (
@@ -496,6 +497,9 @@ class RagasEvaluator:
         report: RagasReport,
     ) -> RagasReport:
         """バッチ評価を実行（v0.4.3 EvaluationDataset API）"""
+        if RAGAS_BATCH_STRATEGY in {"single", "per_case", "per-case"}:
+            return await self._run_per_case_batch_evaluation(cases, report)
+
         samples = [
             _SingleTurnSample(
                 user_input=c["question"],
@@ -524,6 +528,27 @@ class RagasEvaluator:
             )
 
         report.evaluated_cases = len(report.results)
+        return report
+
+    async def _run_per_case_batch_evaluation(
+        self,
+        cases: List[Dict],
+        report: RagasReport,
+    ) -> RagasReport:
+        """Evaluate cases one by one so provider stalls do not fail the full language batch."""
+        for case in cases:
+            result = await self.evaluate_single(
+                question=case["question"],
+                answer=case["answer"],
+                contexts=case["contexts"],
+                ground_truth=case["ground_truth"],
+            )
+            report.results.append(result)
+            if result.error:
+                case_id = case.get("query_id", case["question"][:40])
+                report.errors.append(f"{case_id}: {result.error}")
+
+        report.evaluated_cases = len([result for result in report.results if result.error is None])
         return report
 
     def _get_metric_objects(self) -> list:
