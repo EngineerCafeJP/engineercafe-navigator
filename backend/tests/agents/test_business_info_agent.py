@@ -77,7 +77,7 @@ class TestBusinessInfoAgent:
         assert "1F reception" in response["answer"]
         assert "5 to 10 minutes" in response["answer"]
         assert "web form" in response["answer"].lower()
-        assert "Online pre-registration is not available" in response["answer"]
+        assert "staff" in response["answer"].lower()
         assert "free" in response["answer"].lower()
 
     def test_opening_hours_canonical_response_japanese(self):
@@ -89,9 +89,9 @@ class TestBusinessInfoAgent:
         )
 
         assert response is not None
-        assert "朝9:00から夜22:00" in response["answer"]
-        assert "13:00から21:00" in response["answer"]
-        assert "毎月最終月曜日" in response["answer"]
+        assert "朝9時から夜22時" in response["answer"]
+        assert "9:00〜22:00" in response["answer"]
+        assert "13:00〜21:00" in response["answer"]
 
     def test_pricing_canonical_response_english(self):
         """料金は無料範囲と有料例を明示する"""

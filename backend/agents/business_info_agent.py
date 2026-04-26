@@ -445,16 +445,12 @@ Information: {context}
         if self._asks_opening_hours(normalized, request_type):
             answers = {
                 "ja": (
-                    "[relaxed]エンジニアカフェの開館時間は朝9:00から夜22:00までです。"
-                    "コミュニティマネージャーへの相談受付は13:00から21:00までなので、"
-                    "相談したい場合はその時間帯にお越しください。"
-                    "毎月最終月曜日と年末年始は休館です。"
+                    "[relaxed]エンジニアカフェの開館時間は朝9時から夜22時まで"
+                    "（9:00〜22:00）です。コミュニティマネージャーへの"
+                    "相談受付は13:00〜21:00です。"
                 ),
                 "en": (
-                    "[relaxed]Engineer Cafe is open from 9:00 AM to 10:00 PM "
-                    "(9:00 to 22:00). Community manager consultations are available "
-                    "from 13:00 to 21:00. It is closed on the last Monday of each "
-                    "month and during the year-end and New Year holidays."
+                    "[relaxed]Engineer Cafe is open from 9:00 AM to 10:00 PM " "(9:00 to 22:00)."
                 ),
                 "zh": (
                     "[relaxed]工程师咖啡的开放时间是早上9点到晚上10点"
@@ -463,8 +459,7 @@ Information: {context}
                 ),
                 "ko": (
                     "[relaxed]엔지니어 카페의 운영 시간은 오전 9시부터 밤 10시까지"
-                    "(9:00-22:00)입니다. 커뮤니티 매니저 상담은 13:00부터 "
-                    "21:00까지 가능하며, 자세한 사항은 직원에게 문의해 주세요."
+                    "(9:00-22:00)입니다. 궁금한 점은 직원에게 문의해 주세요."
                 ),
             }
             return self._canonical_result(answers.get(language, answers["ja"]), request_type)
@@ -504,9 +499,8 @@ Information: {context}
                 ),
                 "en": (
                     "[relaxed]For your first visit, register at the 1F reception when "
-                    "you arrive. It takes about 5 to 10 minutes, is free, and is "
-                    "completed with a web form at reception. Online pre-registration "
-                    "is not available, so please ask the staff for help."
+                    "you arrive. It is free, takes about 5 to 10 minutes, and staff "
+                    "can help you complete the web form."
                 ),
                 "zh": (
                     "[relaxed]第一次来访时，请到一楼前台办理登记。登记免费，"
@@ -514,10 +508,9 @@ Information: {context}
                     "有不清楚的地方可以直接询问工作人员。"
                 ),
                 "ko": (
-                    "[relaxed]처음 방문하실 때는 1층 안내 데스크에서 이용 등록을 "
-                    "하시면 됩니다. 등록은 무료이고 약 5분에서 10분 정도 걸리며 "
-                    "안내 데스크에서 웹 폼을 작성합니다. 온라인 사전 등록은 지원하지 "
-                    "않으니 직원에게 문의해 주세요."
+                    "[relaxed]처음 방문하실 때는 1층 안내 데스크에서 등록하시면 "
+                    "됩니다. 등록은 무료이고 약 5분에서 10분 정도 걸리며, "
+                    "직원에게 문의하시면 안내받을 수 있습니다."
                 ),
             }
             return self._canonical_result(answers.get(language, answers["ja"]), request_type)

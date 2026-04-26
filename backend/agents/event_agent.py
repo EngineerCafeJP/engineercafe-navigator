@@ -369,29 +369,21 @@ class EventAgent:
     def _get_connpass_response(language: str) -> Dict:
         answers = {
             "ja": (
-                "[relaxed]はい、エンジニアカフェのイベント情報や参加申込は"
-                "Connpassで確認できます。多くのイベントがConnpassで募集されており、"
-                "イベント一覧は "
-                "https://engineercafe.connpass.com/ から見られるので、"
-                "各イベントページで申込方法や必要事項を確認してください。"
-                "参加費無料のイベントがほとんどで、定員がある場合は先着順が多いです。"
+                "[relaxed]はい、Connpassでエンジニアカフェのイベント情報を"
+                "確認できます。多くのイベントがConnpassで募集されており、"
+                "詳細や参加申し込みも各イベントページで確認できます。"
             ),
             "en": (
-                "[relaxed]Yes. Engineer Cafe event listings and sign-up information "
-                "are available on Connpass at https://engineercafe.connpass.com/. "
-                "Most events are free, and many are first-come, first-served, so "
-                "please check each event page and register early when needed."
+                "[relaxed]Yes, you can check Engineer Cafe events on Connpass. "
+                "Event listings and sign-up information are available there."
             ),
             "zh": (
-                "[relaxed]可以在Connpass上查看工程师咖啡的活动信息和报名详情："
-                "https://engineercafe.connpass.com/。大多数活动免费，很多活动为先到先得，"
-                "请打开各活动页面确认是否需要报名并尽早申请。"
+                "[relaxed]可以在Connpass上查看工程师咖啡的活动信息。"
+                "活动详情和报名信息也可以在各活动页面确认。"
             ),
             "ko": (
-                "[relaxed]네, 엔지니어 카페의 이벤트 정보와 참가 신청은 Connpass에서 "
-                "확인할 수 있습니다: https://engineercafe.connpass.com/. 대부분 무료이며 "
-                "선착순인 경우가 많으니, 각 이벤트 페이지에서 신청 필요 여부를 확인하고 "
-                "필요하면 빨리 신청해 주세요."
+                "[relaxed]네, Connpass에서 엔지니어 카페의 이벤트 정보를 확인할 수 "
+                "있습니다. 각 이벤트 페이지에서 참가 신청 정보도 확인할 수 있습니다."
             ),
         }
         answer = answers.get(language, answers["ja"])
