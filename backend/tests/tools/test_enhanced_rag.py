@@ -670,6 +670,21 @@ class TestTextFallbackSearch:
         assert results
         assert "SSID" in results[0]["content"] or "engnecf" in results[0]["content"]
 
+    def test_local_yaml_fallback_keeps_reception_queries_on_general_guides(self, rag_search):
+        """受付・予約なし質問ではイベント予約ではなく一般受付案内を優先する"""
+        results = rag_search._local_knowledge_fallback_search(
+            query="予約なしで利用できますか。",
+            category="general",
+            language="ja",
+            max_results=3,
+        )
+
+        assert results
+        assert results[0]["id"] == "general-pricing"
+        assert results[0]["category"] == "pricing"
+        assert "予約不要" in results[0]["content"]
+        assert "受付" in results[0]["content"]
+
     @pytest.mark.asyncio
     async def test_search_uses_local_yaml_when_embedding_fails(self, rag_search):
         """embedding API障害時も公式ナレッジ由来の通常検索レスポンスを返す"""
@@ -686,6 +701,49 @@ class TestTextFallbackSearch:
         assert result["success"] is True
         assert result["data"]["context"]
         assert "SSID" in result["data"]["context"]
+
+    @pytest.mark.asyncio
+    async def test_search_uses_local_yaml_when_text_results_grade_out(self, rag_search):
+        """DBテキスト候補がgradingで全落ちした場合も公式YAMLへ降りる"""
+        rag_search._generate_embedding = AsyncMock(return_value=[0.1] * 1536)
+        mock_execute = MagicMock()
+        mock_execute.execute.return_value = MagicMock(
+            data=[
+                {
+                    "id": "weak",
+                    "content": "これは質問と関係のない短い説明です。",
+                    "category": "general",
+                    "language": "ja",
+                    "source": "official",
+                    "metadata": {},
+                    "similarity": 0.01,
+                }
+            ]
+        )
+        rag_search.supabase.rpc.return_value = mock_execute
+        rag_search._text_fallback_search = AsyncMock(
+            return_value=[
+                {
+                    "id": "weak-text",
+                    "content": "これは質問と関係のない短い説明です。",
+                    "category": "general",
+                    "language": "ja",
+                    "source": "official",
+                    "metadata": {},
+                    "similarity": 0.01,
+                }
+            ]
+        )
+
+        result = await rag_search.search(
+            query="予約なしで利用できますか。",
+            category="general",
+            language="ja",
+            include_advice=False,
+        )
+
+        assert result["success"] is True
+        assert "予約不要" in result["data"]["context"]
 
 
 # ==============================================================================
