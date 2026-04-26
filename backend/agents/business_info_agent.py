@@ -125,7 +125,7 @@ class BusinessInfoAgent:
         )
 
         canonical = self._get_canonical_response(query, request_type, language)
-        if canonical:
+        if canonical and state_context is None:
             return canonical
 
         # requestTypeをcategoryにマッピング
@@ -155,6 +155,9 @@ class BusinessInfoAgent:
 
         if not context:
             return self._get_default_response(language, request_type)
+
+        if canonical:
+            return canonical
 
         # プロンプト構築
         prompt = self._build_prompt(query, context, request_type, language)
