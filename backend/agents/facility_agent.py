@@ -333,6 +333,29 @@ class FacilityAgent:
     ) -> Optional[Dict]:
         """Return complete answers for common visitor-critical facility questions."""
         normalized = query.lower()
+        if self._asks_power_outlet(normalized):
+            answers = {
+                "ja": (
+                    "[relaxed]エンジニアカフェでは作業席の周辺で電源コンセントを"
+                    "利用できます。見つからない場合や席の移動が必要な場合は、"
+                    "受付スタッフに確認してください。"
+                ),
+                "en": (
+                    "[relaxed]Power outlets are available around the coworking and "
+                    "work areas at Engineer Cafe. If you cannot find one nearby, "
+                    "please ask the reception staff."
+                ),
+                "zh": (
+                    "[relaxed]工程师咖啡的共享办公和工作区域附近可以使用电源插座。"
+                    "如果找不到，请向前台工作人员确认。"
+                ),
+                "ko": (
+                    "[relaxed]엔지니어 카페의 코워킹 및 작업 공간 주변에서 전원 "
+                    "콘센트를 이용할 수 있습니다. 찾기 어려우면 접수 직원에게 문의해 주세요."
+                ),
+            }
+            return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
         if request_type == "access" or self._asks_location(normalized):
             answers = {
                 "ja": (
@@ -465,6 +488,24 @@ class FacilityAgent:
             "在哪里",
             "위치",
             "어디",
+        )
+        return any(keyword in query for keyword in keywords)
+
+    @staticmethod
+    def _asks_power_outlet(query: str) -> bool:
+        keywords = (
+            "power",
+            "outlet",
+            "outlets",
+            "socket",
+            "sockets",
+            "plug",
+            "電源",
+            "コンセント",
+            "插座",
+            "电源",
+            "전원",
+            "콘센트",
         )
         return any(keyword in query for keyword in keywords)
 
