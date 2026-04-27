@@ -102,7 +102,9 @@ class TestEventAgent:
         response = self.agent._get_connpass_response("ja")
 
         assert "多くのイベント" in response["answer"]
+        assert "https://engineercafe.connpass.com/" in response["answer"]
         assert "申込" in response["answer"] or "申し込み" in response["answer"]
+        assert "参加費無料" in response["answer"]
 
 
 class TestEventDeduplication:

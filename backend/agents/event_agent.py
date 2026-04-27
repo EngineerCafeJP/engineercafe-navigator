@@ -369,9 +369,11 @@ class EventAgent:
     def _get_connpass_response(language: str) -> Dict:
         answers = {
             "ja": (
-                "[relaxed]はい、Connpassでエンジニアカフェのイベント情報を"
-                "確認できます。多くのイベントがConnpassで募集されており、"
-                "詳細や参加申し込みも各イベントページで確認できます。"
+                "[relaxed]はい、エンジニアカフェのイベント情報や参加申込は"
+                "Connpassで確認できます。多くのイベントがConnpassで募集されており、"
+                "イベント一覧は https://engineercafe.connpass.com/ から見られるので、"
+                "各イベントページで詳細や申込方法を確認してください。"
+                "参加費無料のイベントがほとんどで、定員がある場合は先着順が多いです。"
             ),
             "en": (
                 "[relaxed]Yes, you can check Engineer Cafe events on Connpass. "
