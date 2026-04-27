@@ -106,6 +106,20 @@ class TestBusinessInfoAgent:
         assert "3D printer filament" in response["answer"]
         assert "second-floor meeting rooms" in response["answer"]
 
+    def test_pricing_canonical_response_japanese(self):
+        """一般的な料金質問では基本無料と主要な有料例を簡潔に案内する"""
+        response = self.agent._get_canonical_response(
+            "料金はいくらですか？",
+            "pricing",
+            "ja",
+        )
+
+        assert response is not None
+        assert "施設・設備の利用料は無料" in response["answer"]
+        assert "cafe&bar saino" in response["answer"]
+        assert "3Dプリンターのフィラメント代" in response["answer"]
+        assert "2階" not in response["answer"]
+
     def test_reception_request_type_alone_does_not_force_first_visit(self):
         """reception routingだけで初回登録回答へ倒さない"""
         response = self.agent._get_canonical_response(
