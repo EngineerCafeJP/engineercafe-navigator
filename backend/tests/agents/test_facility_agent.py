@@ -239,6 +239,18 @@ class TestFacilityAgent:
         assert "Red Brick Culture Hall" in response["answer"]
         assert "Tenjin Station" in response["answer"]
 
+    def test_power_outlet_query_does_not_route_to_access(self):
+        """whereを含む電源質問は所在地ではなく電源案内にする"""
+        agent = FacilityAgent()
+        response = agent._get_canonical_response(
+            "Where can I find power outlets?", "facility", "en"
+        )
+
+        assert response is not None
+        assert "Power outlets" in response["answer"]
+        assert "reception staff" in response["answer"]
+        assert "Tenjin Station" not in response["answer"]
+
     def test_access_canonical_response_japanese_includes_parking_context(self):
         """アクセス案内は徒歩導線と駐車場注意を含める"""
         agent = FacilityAgent()
