@@ -468,8 +468,8 @@ Information: {context}
             answers = {
                 "ja": (
                     "[relaxed]エンジニアカフェの利用登録、コワーキングスペース、"
-                    "設備利用は無料です。cafe&bar sainoの飲食代、3Dプリンターの"
-                    "フィラメント代、2階の会議室など一部の貸室は有料です。"
+                    "施設・設備の利用料は無料です。ただしcafe&bar sainoの飲食代と"
+                    "3Dプリンターのフィラメント代は有料です。"
                 ),
                 "en": (
                     "[relaxed]Engineer Cafe registration, coworking space use, and "
