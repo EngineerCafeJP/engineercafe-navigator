@@ -113,7 +113,6 @@ PY
 
 main() {
   require_cmd python3
-  require_cmd uv
   if [ ! -f "$RUNNER" ]; then
     echo "Error: live API RAGAS runner not found: $RUNNER" >&2
     exit 2
@@ -176,11 +175,19 @@ main() {
   fi
   (
     cd "$ROOT_DIR/backend"
-    API_SECRET_KEY="$API_KEY" \
-      RAGAS_BATCH_STRATEGY="${RAGAS_BATCH_STRATEGY:-single}" \
-      RAGAS_OUTER_SINGLE_TIMEOUT="${RAGAS_OUTER_SINGLE_TIMEOUT:-300}" \
-      PYTHONPATH="$ROOT_DIR:$ROOT_DIR/backend:${PYTHONPATH:-}" \
-      uv run --extra evaluation "${cmd[@]}"
+    if command -v uv >/dev/null 2>&1; then
+      API_SECRET_KEY="$API_KEY" \
+        RAGAS_BATCH_STRATEGY="${RAGAS_BATCH_STRATEGY:-single}" \
+        RAGAS_OUTER_SINGLE_TIMEOUT="${RAGAS_OUTER_SINGLE_TIMEOUT:-300}" \
+        PYTHONPATH="$ROOT_DIR:$ROOT_DIR/backend:${PYTHONPATH:-}" \
+        uv run --extra evaluation "${cmd[@]}"
+    else
+      API_SECRET_KEY="$API_KEY" \
+        RAGAS_BATCH_STRATEGY="${RAGAS_BATCH_STRATEGY:-single}" \
+        RAGAS_OUTER_SINGLE_TIMEOUT="${RAGAS_OUTER_SINGLE_TIMEOUT:-300}" \
+        PYTHONPATH="$ROOT_DIR:$ROOT_DIR/backend:${PYTHONPATH:-}" \
+        "${cmd[@]}"
+    fi
   )
 }
 

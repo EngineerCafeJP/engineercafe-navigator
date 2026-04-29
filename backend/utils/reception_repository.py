@@ -2,15 +2,32 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import os
 from datetime import datetime, timedelta, timezone
-from typing import Any, Optional
+from typing import Any, Callable, Optional, TypeVar
 
 from supabase import Client
 
 from backend.utils.supabase_helper import get_supabase_client
 
 logger = logging.getLogger(__name__)
+_T = TypeVar("_T")
+
+
+def _db_timeout_seconds() -> float:
+    raw = os.getenv("RECEPTION_DB_TIMEOUT_SECONDS", "3.0")
+    try:
+        value = float(raw)
+    except ValueError:
+        return 3.0
+    return value if value > 0 else 3.0
+
+
+async def _run_db_call(call: Callable[[], _T]) -> _T:
+    """Run the synchronous Supabase client without blocking the event loop."""
+    return await asyncio.wait_for(asyncio.to_thread(call), timeout=_db_timeout_seconds())
 
 
 class ReceptionRepository:
@@ -50,7 +67,7 @@ class ReceptionRepository:
             "expires_at": data.get("expires_at", (now + timedelta(hours=24)).isoformat()),
         }
 
-        client.table("reception_sessions").upsert(payload).execute()
+        await _run_db_call(lambda: client.table("reception_sessions").upsert(payload).execute())
 
     async def get_session(self, session_id: str) -> dict[str, Any] | None:
         return await self.get_session_record(session_id)
@@ -65,7 +82,7 @@ class ReceptionRepository:
         else:
             query = query.eq("status", "active")
 
-        result = query.limit(1).execute()
+        result = await _run_db_call(lambda: query.limit(1).execute())
         if result.data:
             return result.data[0]
         return None
@@ -90,8 +107,8 @@ class ReceptionRepository:
         # (e.g. "voice-session-*" from the browser).
         try:
             client = await self._get_client()
-            result = (
-                client.table("reception_sessions")
+            result = await _run_db_call(
+                lambda: client.table("reception_sessions")
                 .select("*")
                 .eq("session_id", session_id)
                 .in_("status", ["active", "completed"])
@@ -114,16 +131,19 @@ class ReceptionRepository:
 
     async def complete_session(self, session_id: str) -> None:
         client = await self._get_client()
-        client.table("reception_sessions").update({"status": "completed"}).eq(
-            "id", session_id
-        ).execute()
+        await _run_db_call(
+            lambda: client.table("reception_sessions")
+            .update({"status": "completed"})
+            .eq("id", session_id)
+            .execute()
+        )
 
     async def list_active_sessions(self, limit: int = 100) -> list[dict[str, Any]]:
         await self.cleanup_expired()
 
         client = await self._get_client()
-        result = (
-            client.table("reception_sessions")
+        result = await _run_db_call(
+            lambda: client.table("reception_sessions")
             .select("*")
             .eq("status", "active")
             .order("created_at", desc=True)
@@ -135,8 +155,8 @@ class ReceptionRepository:
     async def cleanup_expired(self) -> int:
         client = await self._get_client()
         cutoff = datetime.now(timezone.utc).isoformat()
-        result = (
-            client.table("reception_sessions")
+        result = await _run_db_call(
+            lambda: client.table("reception_sessions")
             .update({"status": "expired"})
             .eq("status", "active")
             .lt("expires_at", cutoff)
@@ -151,13 +171,17 @@ class ReceptionRepository:
     async def store_sensor_event(self, device_id: str, sensor_type: str, distance_mm: int) -> None:
         """Insert a new sensor trigger event into ``sensor_events``."""
         client = await self._get_client()
-        client.table("sensor_events").insert(
-            {
-                "device_id": device_id,
-                "sensor_type": sensor_type,
-                "distance_mm": distance_mm,
-            }
-        ).execute()
+        await _run_db_call(
+            lambda: client.table("sensor_events")
+            .insert(
+                {
+                    "device_id": device_id,
+                    "sensor_type": sensor_type,
+                    "distance_mm": distance_mm,
+                }
+            )
+            .execute()
+        )
 
     async def get_latest_sensor_event(
         self, device_id: str, since_epoch: float = 0
@@ -181,7 +205,7 @@ class ReceptionRepository:
             since_dt = datetime.fromtimestamp(since_epoch, tz=timezone.utc).isoformat()
             query = query.gt("triggered_at", since_dt)
 
-        result = query.execute()
+        result = await _run_db_call(lambda: query.execute())
         if not result.data:
             return None
 

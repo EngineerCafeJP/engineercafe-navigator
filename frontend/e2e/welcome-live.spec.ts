@@ -43,6 +43,8 @@ async function installDeterministicVoiceRecorder(page: Page): Promise<void> {
 
 async function keepOcrCameraPending(page: Page): Promise<void> {
   await page.addInitScript(() => {
+    window.localStorage.setItem('engineer_cafe_kiosk_mic_mode', 'toggle');
+    window.localStorage.setItem('engineer_cafe_kiosk_trigger_mode', 'screen');
     if (!navigator.mediaDevices) {
       return;
     }
@@ -111,36 +113,19 @@ function firstCall(calls: ObservedCall[], predicate: (call: ObservedCall) => boo
 async function triggerVoiceTurn(page: Page): Promise<void> {
   const voiceButton = page.getByTestId('kiosk-voice-button');
   await expect(voiceButton).toBeVisible({ timeout: 15_000 });
+  await expect(voiceButton).toBeEnabled({ timeout: 15_000 });
   await voiceButton.scrollIntoViewIfNeeded();
-
-  const speechToTextStarted = page
-    .waitForResponse(
-      (response) =>
-        response.url().includes('/api/voice') &&
-        parseAction(response.request()) === 'speech_to_text',
-      { timeout: 12_000 },
-    )
-    .then(() => true)
-    .catch(() => false);
-
-  const box = await voiceButton.boundingBox();
-  if (box) {
-    const x = box.x + box.width / 2;
-    const y = box.y + box.height / 2;
-    await page.mouse.move(x, y);
-    await page.mouse.down();
-    await page.waitForTimeout(1_400);
-    await page.mouse.up();
-    await page.waitForTimeout(350);
-  }
-
-  if (await speechToTextStarted) {
-    return;
-  }
+  const voiceStatus = page.getByTestId('kiosk-voice-status');
 
   await voiceButton.click();
+  await expect(voiceStatus).toHaveAttribute('data-session-state', 'listening', {
+    timeout: 15_000,
+  });
   await page.waitForTimeout(250);
   await voiceButton.click();
+  await expect(voiceStatus).toHaveAttribute('data-session-state', /processing|speaking|idle/, {
+    timeout: 15_000,
+  });
 }
 
 test.describe('Welcome live (Welcome → OCR → STT warmup → first voice)', () => {
