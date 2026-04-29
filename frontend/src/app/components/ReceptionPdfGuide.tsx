@@ -1,8 +1,9 @@
 'use client';
 
 /**
- * Kiosk: shows bundled PDF at public/reception/engineer-cafe-ja.pdf.
- * Optional per-page audio under public/reception/audio/ja/01.mp3 …
+ * Kiosk: reception PDF from public/reception/engineer-cafe-{ja,en}.pdf.
+ * Optional per-page audio: public/reception/audio/{lang}/01.mp3 …
+ * Falls back to Web Speech API using narration Markdown (no LLM).
  */
 import { useKeyboardControls } from '@/app/hooks/useKeyboardControls';
 import { audioStateManager } from '@/lib/audio-state-manager';
@@ -10,19 +11,75 @@ import type { LipSyncData } from '@/lib/audio/audio-playback-service';
 import { AudioPlaybackService } from '@/lib/audio/audio-playback-service';
 import {
   RECEPTION_GUIDE_AUDIO_EXT,
-  RECEPTION_GUIDE_AUDIO_PREFIX_JA,
-  RECEPTION_GUIDE_LIPSYNC_PREFIX_JA,
-  RECEPTION_GUIDE_PDF_JA,
+  receptionGuideAudioPrefix,
+  receptionGuideLipsyncPrefix,
   receptionGuidePageStem,
+  receptionGuidePdfUrl,
 } from '@/lib/reception/reception-pdf-constants';
+import { parseReceptionNarrationMarkdown } from '@/lib/reception/parse-reception-narration-md';
 import { cn } from '@/lib/cn';
-import { ChevronLeft, ChevronRight, Pause, Play, RotateCcw } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Pause, Play, RotateCw, RotateCcw } from 'lucide-react';
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import type { PresentationCompleteReason } from './presentation-types';
 
 const SLIDE_DELAY_MS = 500;
 const NARRATION_GAP_MS = 300;
+
+function useLandscapeReady(): boolean {
+  const [landscape, setLandscape] = useState(false);
+
+  useEffect(() => {
+    const update = () => {
+      const mq = window.matchMedia('(orientation: landscape)');
+      const bySize = window.innerWidth > window.innerHeight;
+      setLandscape(mq.matches || bySize);
+    };
+    update();
+    const mq = window.matchMedia('(orientation: landscape)');
+    mq.addEventListener('change', update);
+    window.addEventListener('resize', update);
+    window.addEventListener('orientationchange', update);
+    return () => {
+      mq.removeEventListener('change', update);
+      window.removeEventListener('resize', update);
+      window.removeEventListener('orientationchange', update);
+    };
+  }, []);
+
+  return landscape;
+}
+
+async function speakNarrationText(
+  text: string,
+  language: 'ja' | 'en',
+  signal: AbortSignal,
+): Promise<void> {
+  if (typeof window === 'undefined' || !window.speechSynthesis) {
+    await new Promise((r) => setTimeout(r, Math.min(15000, 600 + text.length * 45)));
+    return;
+  }
+  return new Promise((resolve) => {
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = language === 'ja' ? 'ja-JP' : 'en-US';
+    u.rate = 1;
+    const onAbort = () => {
+      window.speechSynthesis.cancel();
+      resolve();
+    };
+    signal.addEventListener('abort', onAbort);
+    u.onend = () => {
+      signal.removeEventListener('abort', onAbort);
+      resolve();
+    };
+    u.onerror = () => {
+      signal.removeEventListener('abort', onAbort);
+      resolve();
+    };
+    window.speechSynthesis.speak(u);
+  });
+}
 
 /** flex 子で contentRect.height が 0 のとき client から内側の描画域を拾う */
 function measurePdfWrapContent(
@@ -67,6 +124,9 @@ function parseLipSyncJson(raw: unknown): LipSyncData | null {
 }
 
 interface ReceptionPdfGuideProps {
+  language: 'ja' | 'en';
+  rotateLandscapeHint: string;
+  autoStartKey?: number;
   className?: string;
   onVisemeControl?: ((viseme: string, intensity: number) => void) | null;
   onExpressionControl?: ((expression: string, weight: number) => void) | null;
@@ -75,13 +135,17 @@ interface ReceptionPdfGuideProps {
 }
 
 export default function ReceptionPdfGuide({
+  language,
+  rotateLandscapeHint,
+  autoStartKey,
   className,
   onVisemeControl,
   onExpressionControl,
   volume = 80,
   onPresentationComplete,
 }: ReceptionPdfGuideProps) {
-  const pdfUrl = RECEPTION_GUIDE_PDF_JA;
+  const pdfUrl = receptionGuidePdfUrl(language);
+  const landscapeReady = useLandscapeReady();
 
   const [settings, setSettings] = useState(() => ({
     autoAdvance: true,
@@ -96,6 +160,7 @@ export default function ReceptionPdfGuide({
   const [isNarrating, setIsNarrating] = useState(false);
   const [isNarrationInProgress, setIsNarrationInProgress] = useState(false);
   const [containerBounds, setContainerBounds] = useState({ width: 800, height: 600 });
+  const [narrationTexts, setNarrationTexts] = useState<string[]>([]);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -113,11 +178,41 @@ export default function ReceptionPdfGuide({
   const currentPageRef = useRef(currentPage);
   const totalPagesRef = useRef(totalPages);
 
+  const pendingAutoStartRef = useRef(false);
+  const lastAutoStartKeyRef = useRef<number | null>(null);
+  const languageRef = useRef(language);
+  languageRef.current = language;
+
   isPlayingRef.current = isPlaying;
   isNarratingRef.current = isNarrating;
   isNarrationInProgressRef.current = isNarrationInProgress;
   currentPageRef.current = currentPage;
   totalPagesRef.current = totalPages;
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const mdUrl =
+        language === 'ja'
+          ? '/reception/engineer-cafe-narration-ja.md'
+          : '/reception/engineer-cafe-narration-en.md';
+      try {
+        const res = await fetch(mdUrl);
+        const md = await res.text();
+        const slides = parseReceptionNarrationMarkdown(md, language);
+        if (!cancelled) {
+          setNarrationTexts(slides);
+        }
+      } catch {
+        if (!cancelled) {
+          setNarrationTexts([]);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [language]);
 
   useLayoutEffect(() => {
     if (isLoading || error) {
@@ -131,7 +226,7 @@ export default function ReceptionPdfGuide({
     if (m.width > 0) {
       setContainerBounds({ width: m.width, height: m.height });
     }
-  }, [isLoading, error]);
+  }, [isLoading, error, landscapeReady]);
 
   useEffect(() => {
     if (isLoading || error) {
@@ -165,7 +260,7 @@ export default function ReceptionPdfGuide({
     });
     ro.observe(el);
     return () => ro.disconnect();
-  }, [isLoading, error]);
+  }, [isLoading, error, landscapeReady]);
 
   useEffect(() => {
     let cancelled = false;
@@ -206,6 +301,88 @@ export default function ReceptionPdfGuide({
       }
     };
   }, [pdfUrl]);
+
+  useEffect(() => {
+    const onAutoStart = (ev: Event) => {
+      const ce = ev as CustomEvent<{ autoPlay?: boolean; language?: string }>;
+      const lang = ce.detail?.language === 'en' ? 'en' : 'ja';
+      if (lang !== languageRef.current) {
+        return;
+      }
+      pendingAutoStartRef.current = true;
+    };
+    window.addEventListener('autoStartPresentation', onAutoStart as EventListener);
+    return () => {
+      window.removeEventListener('autoStartPresentation', onAutoStart as EventListener);
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      try {
+        window.speechSynthesis?.cancel();
+      } catch {
+        /* ignore */
+      }
+    };
+  }, []);
+
+  const tryConsumePendingAutoStart = useCallback(() => {
+    if (
+      !pendingAutoStartRef.current ||
+      !landscapeReady ||
+      isLoading ||
+      totalPages <= 0
+    ) {
+      return;
+    }
+    pendingAutoStartRef.current = false;
+    playbackSessionRef.current += 1;
+    isPlayingRef.current = true;
+    setIsPlaying(true);
+  }, [isLoading, landscapeReady, totalPages]);
+
+  useEffect(() => {
+    tryConsumePendingAutoStart();
+  }, [tryConsumePendingAutoStart]);
+
+  useEffect(() => {
+    if (!autoStartKey || lastAutoStartKeyRef.current === autoStartKey) {
+      return;
+    }
+    lastAutoStartKeyRef.current = autoStartKey;
+    pendingAutoStartRef.current = true;
+    tryConsumePendingAutoStart();
+  }, [autoStartKey, tryConsumePendingAutoStart]);
+
+  useEffect(() => {
+    if (!landscapeReady && isPlayingRef.current) {
+      pendingAutoStartRef.current = false;
+      playbackSessionRef.current += 1;
+      isPlayingRef.current = false;
+      setIsPlaying(false);
+      if (autoPlayTimerRef.current) {
+        clearTimeout(autoPlayTimerRef.current);
+        autoPlayTimerRef.current = null;
+      }
+      if (narrationScheduleRef.current) {
+        clearTimeout(narrationScheduleRef.current);
+        narrationScheduleRef.current = null;
+      }
+      narrationAbortRef.current?.abort();
+      narrationAbortRef.current = null;
+      setIsNarrating(false);
+      setIsNarrationInProgress(false);
+      try {
+        window.speechSynthesis?.cancel();
+      } catch {
+        /* ignore */
+      }
+      audioStateManager.stopAll();
+      onVisemeControl?.('Closed', 0);
+      onExpressionControl?.('neutral', 1.0);
+    }
+  }, [landscapeReady, onExpressionControl, onVisemeControl]);
 
   useEffect(() => {
     const pdf = pdfDocRef.current;
@@ -249,7 +426,7 @@ export default function ReceptionPdfGuide({
       cancelled = true;
       renderTaskRef.current?.cancel();
     };
-  }, [currentPage, totalPages, containerBounds.width, containerBounds.height]);
+  }, [currentPage, totalPages, containerBounds]);
 
   const startPlaybackSession = () => {
     playbackSessionRef.current += 1;
@@ -269,6 +446,11 @@ export default function ReceptionPdfGuide({
   const clearPlaybackWork = useCallback(() => {
     narrationAbortRef.current?.abort();
     narrationAbortRef.current = null;
+    try {
+      window.speechSynthesis?.cancel();
+    } catch {
+      /* ignore */
+    }
     if (autoPlayTimerRef.current) {
       clearTimeout(autoPlayTimerRef.current);
       autoPlayTimerRef.current = null;
@@ -343,68 +525,93 @@ export default function ReceptionPdfGuide({
     const sid = playbackSessionRef.current;
     const pageAtStart = currentPageRef.current;
     const stem = receptionGuidePageStem(pageAtStart);
-    const audioUrl = `${RECEPTION_GUIDE_AUDIO_PREFIX_JA}/${stem}.${RECEPTION_GUIDE_AUDIO_EXT}`;
+    const audioPrefix = receptionGuideAudioPrefix(language);
+    const lipsyncPrefix = receptionGuideLipsyncPrefix(language);
+    const audioUrl = `${audioPrefix}/${stem}.${RECEPTION_GUIDE_AUDIO_EXT}`;
 
     narrationAbortRef.current = new AbortController();
     const { signal } = narrationAbortRef.current;
 
     try {
       const res = await fetch(audioUrl, { signal });
-      if (!res.ok) {
+      if (res.ok) {
+        const buf = await res.arrayBuffer();
+        if (!isActiveSession(sid) || currentPageRef.current !== pageAtStart) {
+          return;
+        }
+
+        let precomputed: LipSyncData | null = null;
+        try {
+          const lipRes = await fetch(`${lipsyncPrefix}/${stem}.json`, {
+            signal,
+          });
+          if (lipRes.ok) {
+            precomputed = parseLipSyncJson(await lipRes.json());
+          }
+        } catch {
+          /* optional */
+        }
+
+        if (!isActiveSession(sid) || currentPageRef.current !== pageAtStart) {
+          return;
+        }
+
+        setIsNarrationInProgress(true);
+        setIsNarrating(true);
+        try {
+          await AudioPlaybackService.playAudioWithLipSync(buf, {
+            volume: volume / 100,
+            enableLipSync: settings.enableLipSync,
+            precomputedLipSync: precomputed,
+            onVisemeUpdate: onVisemeControl || undefined,
+          });
+          if (!isActiveSession(sid) || currentPageRef.current !== pageAtStart) {
+            return;
+          }
+          if (settings.autoAdvance) {
+            advancePresentation(SLIDE_DELAY_MS);
+          }
+        } catch (err: unknown) {
+          const e = err as { name?: string; message?: string; requiresUserInteraction?: boolean };
+          if (
+            e?.name === 'NotAllowedError' ||
+            e?.requiresUserInteraction ||
+            e?.message?.includes('interaction')
+          ) {
+            setIsPlaying(false);
+            onPresentationComplete?.('stopped');
+            return;
+          }
+          if (isActiveSession(sid)) {
+            advancePresentation(800);
+          }
+        } finally {
+          setIsNarrating(false);
+          setIsNarrationInProgress(false);
+        }
+        return;
+      }
+
+      const text =
+        narrationTexts[pageAtStart - 1]?.trim() ?? '';
+      if (!text) {
         if (isActiveSession(sid)) {
           advancePresentation(400);
         }
         return;
       }
-      const buf = await res.arrayBuffer();
       if (!isActiveSession(sid) || currentPageRef.current !== pageAtStart) {
         return;
       }
-
-      let precomputed: LipSyncData | null = null;
-      try {
-        const lipRes = await fetch(`${RECEPTION_GUIDE_LIPSYNC_PREFIX_JA}/${stem}.json`, {
-          signal,
-        });
-        if (lipRes.ok) {
-          precomputed = parseLipSyncJson(await lipRes.json());
-        }
-      } catch {
-        /* optional */
-      }
-
-      if (!isActiveSession(sid) || currentPageRef.current !== pageAtStart) {
-        return;
-      }
-
       setIsNarrationInProgress(true);
       setIsNarrating(true);
       try {
-        await AudioPlaybackService.playAudioWithLipSync(buf, {
-          volume: volume / 100,
-          enableLipSync: settings.enableLipSync,
-          precomputedLipSync: precomputed,
-          onVisemeUpdate: onVisemeControl || undefined,
-        });
+        await speakNarrationText(text, language, signal);
         if (!isActiveSession(sid) || currentPageRef.current !== pageAtStart) {
           return;
         }
         if (settings.autoAdvance) {
           advancePresentation(SLIDE_DELAY_MS);
-        }
-      } catch (err: unknown) {
-        const e = err as { name?: string; message?: string; requiresUserInteraction?: boolean };
-        if (
-          e?.name === 'NotAllowedError' ||
-          e?.requiresUserInteraction ||
-          e?.message?.includes('interaction')
-        ) {
-          setIsPlaying(false);
-          onPresentationComplete?.('stopped');
-          return;
-        }
-        if (isActiveSession(sid)) {
-          advancePresentation(800);
         }
       } finally {
         setIsNarrating(false);
@@ -420,6 +627,8 @@ export default function ReceptionPdfGuide({
     }
   }, [
     advancePresentation,
+    language,
+    narrationTexts,
     onPresentationComplete,
     onVisemeControl,
     settings.autoAdvance,
@@ -456,6 +665,7 @@ export default function ReceptionPdfGuide({
 
   useEffect(() => {
     if (
+      landscapeReady &&
       isPlaying &&
       totalPages > 0 &&
       !isNarratingRef.current &&
@@ -469,9 +679,10 @@ export default function ReceptionPdfGuide({
     return () => {
       clearPlaybackWorkRef.current();
     };
-  }, [isPlaying, totalPages]);
+  }, [isPlaying, totalPages, landscapeReady, language]);
 
   const stopAutoPlay = () => {
+    pendingAutoStartRef.current = false;
     invalidatePlaybackSession();
     clearPlaybackWork();
   };
@@ -482,6 +693,9 @@ export default function ReceptionPdfGuide({
       setIsPlaying(false);
       onPresentationComplete?.('stopped');
     } else {
+      if (!landscapeReady) {
+        return;
+      }
       startPlaybackSession();
       setIsPlaying(true);
     }
@@ -528,7 +742,7 @@ export default function ReceptionPdfGuide({
     onReset: () => gotoSlide(1),
     onTogglePlay: toggleAutoPlay,
     onNumberKey: (num) => gotoSlide(num),
-    enabled: true,
+    enabled: landscapeReady && !isLoading && !error,
   });
 
   if (isLoading) {
@@ -537,7 +751,9 @@ export default function ReceptionPdfGuide({
         data-testid="reception-pdf-guide"
         className={cn('flex h-full items-center justify-center', className)}
       >
-        <p className="text-gray-600">読み込み中…</p>
+        <p className="text-gray-600">
+          {language === 'ja' ? '読み込み中…' : 'Loading…'}
+        </p>
       </div>
     );
   }
@@ -549,6 +765,26 @@ export default function ReceptionPdfGuide({
         className={cn('flex h-full items-center justify-center p-4', className)}
       >
         <p className="text-center text-red-600">{error}</p>
+      </div>
+    );
+  }
+
+  if (!landscapeReady) {
+    return (
+      <div
+        data-testid="reception-pdf-guide"
+        className={cn(
+          'flex h-full min-h-0 flex-col items-center justify-center gap-6 bg-slate-900/95 p-8 text-center text-white',
+          className,
+        )}
+      >
+        <RotateCw className="h-20 w-20 shrink-0 opacity-90" aria-hidden />
+        <p
+          data-testid="reception-pdf-rotate-hint"
+          className="max-w-md text-lg font-medium leading-relaxed"
+        >
+          {rotateLandscapeHint}
+        </p>
       </div>
     );
   }
@@ -597,7 +833,9 @@ export default function ReceptionPdfGuide({
             {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
           </button>
           {isNarrating ? (
-            <span className="text-xs text-blue-700">ナレーション中…</span>
+            <span className="text-xs text-blue-700">
+              {language === 'ja' ? 'ナレーション中…' : 'Narrating…'}
+            </span>
           ) : null}
           <button
             type="button"
@@ -615,7 +853,7 @@ export default function ReceptionPdfGuide({
                 setSettings((s) => ({ ...s, enableLipSync: e.target.checked }))
               }
             />
-            リップ
+            {language === 'ja' ? 'リップ' : 'Lip'}
           </label>
           <label className="flex items-center gap-1 text-xs text-gray-600">
             <input
@@ -625,15 +863,16 @@ export default function ReceptionPdfGuide({
                 setSettings((s) => ({ ...s, autoAdvance: e.target.checked }))
               }
             />
-            自動送り
+            {language === 'ja' ? '自動送り' : 'Auto-advance'}
           </label>
         </div>
       </div>
       <div
         ref={wrapRef}
+        data-testid="reception-pdf-landscape-panel"
         className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-slate-100 p-2 sm:p-3"
       >
-        <canvas ref={canvasRef} className="shadow-lg" data-testid="reception-pdf-canvas" />
+        <canvas ref={canvasRef} className="max-h-full max-w-full shadow-lg" data-testid="reception-pdf-canvas" />
       </div>
     </div>
   );
