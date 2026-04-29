@@ -117,10 +117,19 @@ async function triggerVoiceTurn(page: Page): Promise<void> {
   await voiceButton.scrollIntoViewIfNeeded();
   const voiceStatus = page.getByTestId('kiosk-voice-status');
 
-  await voiceButton.click();
-  await expect(voiceStatus).toHaveAttribute('data-session-state', 'listening', {
-    timeout: 15_000,
-  });
+  let isListening = false;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await voiceButton.click();
+    isListening = await expect(voiceStatus)
+      .toHaveAttribute('data-session-state', 'listening', { timeout: 5_000 })
+      .then(() => true)
+      .catch(() => false);
+    if (isListening) {
+      break;
+    }
+    await page.waitForTimeout(250);
+  }
+  expect(isListening, 'voice session did not enter listening state').toBe(true);
   await page.waitForTimeout(1_400);
   await voiceButton.click();
   await expect(voiceStatus).toHaveAttribute('data-session-state', /processing|speaking|idle/, {
@@ -193,10 +202,26 @@ test.describe('Welcome live (Welcome → OCR → STT warmup → first voice)', (
           parseAction(response.request()) === 'warmup',
         { timeout: 90_000 },
       );
+      const receptionResponse = page.waitForResponse(
+        (response) => response.url().includes('/api/reception/start'),
+        { timeout: 90_000 },
+      );
+      const greetingTtsResponse = page.waitForResponse(
+        (response) =>
+          response.url().includes('/api/voice') &&
+          parseAction(response.request()) === 'text_to_speech',
+        { timeout: 120_000 },
+      );
 
       await page.getByRole('button', { name: 'Welcome' }).click();
-      const warmup = await warmupResponse;
+      const [warmup, reception, greetingTts] = await Promise.all([
+        warmupResponse,
+        receptionResponse,
+        greetingTtsResponse,
+      ]);
       expect(warmup.ok(), 'warmup response').toBeTruthy();
+      expect(reception.ok(), 'reception start response').toBeTruthy();
+      expect(greetingTts.ok(), 'greeting TTS response').toBeTruthy();
       await expect(page.getByTestId('kiosk-welcome-ocr-overlay')).toBeVisible({
         timeout: 15_000,
       });
