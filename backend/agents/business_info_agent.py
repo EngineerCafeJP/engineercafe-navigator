@@ -599,7 +599,15 @@ Information: {context}
         if request_type == "reception" and (
             "受付" in query or "reception" in query or "check in" in query or "check-in" in query
         ):
-            first_visit_terms = ("first", "first-time", "first time", "初回", "初めて", "第一次", "처음")
+            first_visit_terms = (
+                "first",
+                "first-time",
+                "first time",
+                "初回",
+                "初めて",
+                "第一次",
+                "처음",
+            )
             if any(term in query for term in first_visit_terms):
                 return True
         keywords = (
