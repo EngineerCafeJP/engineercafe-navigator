@@ -45,9 +45,6 @@ import { cancelSttWarmup, sendSttWarmup } from '@/lib/stt-warmup';
 const kioskReceptionSlidesUsePdf =
   process.env.NEXT_PUBLIC_RECEPTION_SLIDE_RENDERER !== 'marp';
 
-/** 閉じるボタン用上部余白 + ツールバー（ReceptionPdfGuide の pt-11 + 操作条）— 16:9 算出から除く */
-const RECEPTION_PDF_PANEL_CHROME_HEIGHT = '7rem';
-
 export default function Home() {
   const [kioskPhase, setKioskPhase] = useState<KioskPhase>('notice');
   const kioskPhaseRef = useRef<KioskPhase>('notice');
@@ -88,6 +85,7 @@ export default function Home() {
   const settingsPanelPropsRef = useRef<SettingsPanelPropsFromSource | null>(null);
   const [settingsPanelProps, setSettingsPanelProps] =
     useState<SettingsPanelPropsFromSource | null>(null);
+  const [presentationAutoStartKey, setPresentationAutoStartKey] = useState(0);
   const playKeyframeAnimationRef = useRef<((data: CharacterAnimationData) => void) | null>(null);
   const lastVrmControlPlayedRef = useRef<unknown>(null);
   const pendingVrmPlaybackRef = useRef<CharacterAnimationData | null>(null);
@@ -262,6 +260,7 @@ export default function Home() {
     (language: 'ja' | 'en') => {
       clearReturnToIdleTimer();
       setCurrentLanguage(language);
+      setPresentationAutoStartKey((key) => key + 1);
       setKioskPhaseSynced('slides');
 
       window.setTimeout(() => {
@@ -371,15 +370,6 @@ export default function Home() {
             paddingRight: 'max(1.5rem, env(safe-area-inset-right))',
           } satisfies CSSProperties;
 
-          /**
-           * PDF 案内: パディング内で「16:9 の表示域」が収まる最大サイズを取り、
-           * パネル幅 = その幅、高さ = 表示域高さ + ツールバー（画面内に全体が収まる）。
-           * cqw/cqh はコンテナのコンテンツボックス（＝セーフエリア内の利用可能矩形）。
-           */
-          const receptionPdfPanelStyle = {
-            width: `min(100cqw, max(0px, 100cqh - ${RECEPTION_PDF_PANEL_CHROME_HEIGHT}) * 16 / 9)`,
-            height: `calc(min(100cqw, max(0px, 100cqh - ${RECEPTION_PDF_PANEL_CHROME_HEIGHT}) * 16 / 9) * 9 / 16 + ${RECEPTION_PDF_PANEL_CHROME_HEIGHT})`,
-          } satisfies CSSProperties;
 
           const characterCameraOffset = { x: 0, y: 0, z: 0 };
           const characterModelOffset = { x: 0, y: 0, z: 0 };
@@ -641,12 +631,11 @@ export default function Home() {
                 {showSlideMode ? (
                   kioskReceptionSlidesUsePdf ? (
                     <div
-                      className="pointer-events-none absolute inset-0 z-30 flex w-full flex-col items-center justify-end"
-                      style={{ ...screenPadding, containerType: 'size' }}
+                      className="pointer-events-none absolute inset-0 z-30 flex h-full w-full flex-col"
+                      style={screenPadding}
                     >
                       <div
-                        className="pointer-events-auto relative flex max-w-full shrink-0 flex-col overflow-hidden rounded-[32px] bg-white/95 shadow-2xl transition-all duration-300 ease-out"
-                        style={receptionPdfPanelStyle}
+                        className="pointer-events-auto relative flex h-full min-h-0 w-full flex-col overflow-hidden rounded-[32px] bg-white/95 shadow-2xl transition-all duration-300 ease-out"
                         onPointerDownCapture={bumpUserActivity}
                       >
                         <button
@@ -658,6 +647,9 @@ export default function Home() {
                           <X className="size-5" />
                         </button>
                         <ReceptionPdfGuide
+                          language={voice.currentLanguage}
+                          rotateLandscapeHint={labels.slideRotateHint}
+                          autoStartKey={presentationAutoStartKey}
                           className="min-h-0 flex-1 pt-11"
                           onVisemeControl={setVisemeFunction}
                           onExpressionControl={setExpressionFunction}
