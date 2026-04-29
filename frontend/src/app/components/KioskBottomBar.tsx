@@ -1,10 +1,11 @@
 'use client';
 
-import { markAudioUserInteraction } from '@/lib/audio/audio-user-interaction-gate';
+import { unlockAudioForUserGesture } from '@/lib/audio/audio-interaction-manager';
 import { cn } from '@/lib/cn';
 import { overlayLabels } from '@/lib/kiosk-labels';
 import type { KioskMicMode, KioskPhase } from '@/lib/kiosk-constants';
 import { Camera, Mic, PenLine, Presentation, Sparkles } from 'lucide-react';
+import { useRef } from 'react';
 import { KioskVoiceStatusStack } from './KioskVoiceStatusStack';
 import type { VoiceInterfaceRenderProps } from './VoiceInterface';
 
@@ -47,6 +48,7 @@ export function KioskBottomBar({
 }) {
   const isVoiceCaptureActive = kioskPhase === 'voice' && kioskVoiceLocked;
   const isPushToTalk = micInputMode === 'push_to_talk';
+  const pushToTalkPointerActiveRef = useRef(false);
   const voiceButtonLabel = isPushToTalk
     ? isVoiceCaptureActive
       ? labels.kioskVoicePushActive
@@ -56,7 +58,7 @@ export function KioskBottomBar({
       : labels.kioskVoice;
 
   const handleKioskVoiceStart = () => {
-    markAudioUserInteraction();
+    unlockAudioForUserGesture();
     clearReturnToIdleTimer();
     setWelcomeMemberOcrOpen(false);
     setKioskPhase('voice');
@@ -100,6 +102,7 @@ export function KioskBottomBar({
             <button
               type="button"
               onClick={() => {
+                unlockAudioForUserGesture();
                 void onPlayWelcome();
               }}
               disabled={isVoiceCaptureActive || voice.isLoading || welcomeCooldown}
@@ -125,6 +128,7 @@ export function KioskBottomBar({
                 }
                 event.preventDefault();
                 event.currentTarget.setPointerCapture(event.pointerId);
+                pushToTalkPointerActiveRef.current = true;
                 if (!isVoiceCaptureActive) {
                   handleKioskVoiceStart();
                 }
@@ -136,7 +140,8 @@ export function KioskBottomBar({
                 if (event.currentTarget.hasPointerCapture(event.pointerId)) {
                   event.currentTarget.releasePointerCapture(event.pointerId);
                 }
-                if (isVoiceCaptureActive) {
+                if (pushToTalkPointerActiveRef.current) {
+                  pushToTalkPointerActiveRef.current = false;
                   handleKioskVoiceStop();
                 }
               }}
@@ -147,7 +152,8 @@ export function KioskBottomBar({
                 if (event.currentTarget.hasPointerCapture(event.pointerId)) {
                   event.currentTarget.releasePointerCapture(event.pointerId);
                 }
-                if (isVoiceCaptureActive) {
+                if (pushToTalkPointerActiveRef.current) {
+                  pushToTalkPointerActiveRef.current = false;
                   handleKioskVoiceStop();
                 }
               }}
@@ -177,7 +183,7 @@ export function KioskBottomBar({
             <button
               type="button"
               onClick={() => {
-                markAudioUserInteraction();
+                unlockAudioForUserGesture();
                 setWelcomeMemberOcrOpen(false);
                 setOcrMode('member_card');
                 setKioskPhase('ocr');
@@ -198,7 +204,7 @@ export function KioskBottomBar({
             <button
               type="button"
               onClick={() => {
-                markAudioUserInteraction();
+                unlockAudioForUserGesture();
                 setWelcomeMemberOcrOpen(false);
                 setOcrMode('handwriting');
                 setKioskPhase('ocr');
@@ -220,7 +226,7 @@ export function KioskBottomBar({
               data-testid="kiosk-slides-button"
               type="button"
               onClick={() => {
-                markAudioUserInteraction();
+                unlockAudioForUserGesture();
                 setWelcomeMemberOcrOpen(false);
                 onStartPresentation();
               }}

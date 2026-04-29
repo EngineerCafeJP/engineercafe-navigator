@@ -390,3 +390,23 @@ export const useAudioInteraction = () => {
     getState
   };
 };
+
+/**
+ * Call directly from a trusted user gesture. Safari/iOS needs the actual
+ * AudioContext creation/resume to start during that gesture, not after later
+ * async STT/QA/TTS work.
+ */
+export const unlockAudioForUserGesture = (): void => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    markAudioUserInteraction();
+    void AudioInteractionManager.getInstance().forceInitialize().catch((error) => {
+      console.warn('[AudioInteractionManager] Failed to unlock audio from user gesture:', error);
+    });
+  } catch (error) {
+    console.warn('[AudioInteractionManager] Failed to start audio unlock:', error);
+  }
+};

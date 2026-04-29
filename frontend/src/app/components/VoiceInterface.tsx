@@ -2,6 +2,7 @@
 
 import { AudioQueue } from '@/lib/audio-queue';
 import { AudioDataProcessor } from '@/lib/audio/audio-data-processor';
+import { unlockAudioForUserGesture } from '@/lib/audio/audio-interaction-manager';
 import { markAudioUserInteraction } from '@/lib/audio/audio-user-interaction-gate';
 import { MobileAudioService } from '@/lib/audio/mobile-audio-service';
 import { audioStateManager } from '@/lib/audio-state-manager';
@@ -248,6 +249,7 @@ export default function VoiceInterface({
   const mobileAudioServiceRef = useRef<MobileAudioService | null>(null);
   const audioUrlRef = useRef<string | null>(null);
   const isRecordingRef = useRef(false);
+  const shouldListenRef = useRef(false);
   const fastFillerTimerRef = useRef<number | null>(null);
   const fastFillerUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
@@ -356,6 +358,10 @@ export default function VoiceInterface({
   });
 
   const sessionState = normalizeSessionState(voiceController.mode);
+
+  useEffect(() => {
+    shouldListenRef.current = voiceController.shouldListen;
+  }, [voiceController.shouldListen]);
 
   const setVolume = useCallback((nextVolume: number) => {
     setVolumeState(nextVolume);
@@ -876,6 +882,14 @@ export default function VoiceInterface({
       await new Promise<void>((resolve) => {
         queueMicrotask(() => resolve());
       });
+      if (!shouldListenRef.current) {
+        recorder.cleanup();
+        if (recorderRef.current === recorder) {
+          recorderRef.current = null;
+          setMediaStream(null);
+        }
+        return;
+      }
       if (recorder.getState() === 'recording') {
         return;
       }
@@ -912,7 +926,7 @@ export default function VoiceInterface({
   }, [sessionState, startRecorderCapture, stopRecorderCapture, voiceController.shouldListen]);
 
   const startListening = useCallback(() => {
-    markAudioUserInteraction();
+    unlockAudioForUserGesture();
     sendSttWarmup({ language: currentLanguage, sessionId: sessionIdRef.current });
     cancelPendingRequest();
     stopPlayback(false);
@@ -921,12 +935,8 @@ export default function VoiceInterface({
   }, [cancelPendingRequest, currentLanguage, stopPlayback, voiceController]);
 
   const stopListening = useCallback(() => {
-    if (sessionState !== 'listening') {
-      return;
-    }
-
     voiceController.notifyProcessing();
-  }, [sessionState, voiceController]);
+  }, [voiceController]);
 
   const cancelSession = useCallback(() => {
     cancelSttWarmup();
