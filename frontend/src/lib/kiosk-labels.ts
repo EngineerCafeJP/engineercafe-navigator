@@ -17,6 +17,8 @@ export const overlayLabels = {
     textPlaceholder: 'ここに質問を入力します',
     send: '送信',
     openSlides: 'スライド案内',
+    slideRotateHint:
+      'スライド案内は横向き表示です。端末を横に回転してください。',
     closeSlides: 'スライドを閉じる',
     clearConversation: '会話をクリア',
     cancelSession: '応答を止める',
@@ -60,6 +62,7 @@ export const overlayLabels = {
     textPlaceholder: 'Type your question here',
     send: 'Send',
     openSlides: 'Open slides',
+    slideRotateHint: 'Slide guide works best in landscape. Please rotate your device.',
     closeSlides: 'Close slides',
     clearConversation: 'Clear conversation',
     cancelSession: 'Cancel current turn',
