@@ -290,7 +290,7 @@ class MainWorkflow:
         "space-clarification-needed",
         "general-clarification-needed",
     )
-    _PRE_MEMORY_DIRECT_AGENTS = {"facility"}
+    _PRE_MEMORY_DIRECT_AGENTS = {"facility", "general_knowledge"}
     _PRE_MEMORY_INLINE_CATEGORIES = {"emergency", "greeting", *_CLARIFICATION_CATEGORIES}
     _ANAPHORA_MARKERS = (
         "それについて",
@@ -355,6 +355,7 @@ class MainWorkflow:
             {
                 "normal": "memory_loader",
                 "facility": "facility",
+                "general_knowledge": "general_knowledge",
             },
         )
         workflow.add_edge("vision", "memory_loader")

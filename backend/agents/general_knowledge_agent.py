@@ -90,6 +90,20 @@ class GeneralKnowledgeAgent:
                 language,
                 long_term_memory=long_term_memory,
             )
+        if query_type == "assistant_profile":
+            return self._assistant_profile_response(language)
+        if query_type == "daily_conversation":
+            return self._daily_conversation_response(query, language)
+        if query_type == "current_info":
+            return await self.answer_general_query(
+                query,
+                language,
+                session_id,
+                state_context,
+                context_signals,
+                long_term_memory=long_term_memory,
+                query_type="current_info",
+            )
         return await self.answer_general_query(
             query,
             language,
@@ -107,6 +121,7 @@ class GeneralKnowledgeAgent:
         state_context: Optional[Dict] = None,
         context_signals=None,
         long_term_memory: Optional[list] = None,
+        query_type: str = "general_light",
     ) -> Dict[str, Any]:
         """
         一般的な質問に回答
@@ -123,8 +138,14 @@ class GeneralKnowledgeAgent:
         logger.info("一般質問処理開始: query=%s..., language=%s", query[:50], language)
 
         try:
-            # 1. Web検索の必要性判定（適応的）
-            needs_web_search = self._should_use_web_search_adaptive(query, context_signals)
+            mode = self._resolve_general_mode(query, query_type)
+            if mode == "assistant_profile":
+                return self._assistant_profile_response(language)
+            if mode == "daily_conversation":
+                return self._daily_conversation_response(query, language)
+
+            # 1. current-info のみ Web 検索を許可する。
+            needs_web_search = mode == "current_info"
             logger.info("Web検索必要性判定: %s", needs_web_search)
 
             # 2. ナレッジベース検索（キャッシュチェック付き）
@@ -151,9 +172,12 @@ class GeneralKnowledgeAgent:
                     logger.info("ナレッジベース検索成功: %d chars", len(context))
 
             # 3. Web検索(条件付き)
-            if needs_web_search or not context:
+            if needs_web_search:
                 logger.info("Web検索を実行します")
-                web_result = await self.web_search.search(query=query, language=language)
+                web_result = await self.web_search.search(
+                    query=self._normalize_current_info_query(query),
+                    language=language,
+                )
 
                 if web_result.get("success"):
                     web_text = web_result.get("text", "")
@@ -175,13 +199,12 @@ class GeneralKnowledgeAgent:
                 context = f"{context}\n\n{long_term_text}".strip()
                 sources.append("long_term_memory")
 
-            # 4. コンテキストがない場合はフォールバック
-            if not context:
-                logger.warning("コンテキストが取得できませんでした")
-                return self._handle_error(language)
+            # 4. current-info で外部情報が取れない場合だけ、古い情報で断言しない。
+            if mode == "current_info" and "web_search" not in sources:
+                return self._current_info_unavailable_response(language)
 
             # 5. プロンプト構築
-            prompt = self._build_general_prompt(query, context, sources, language)
+            prompt = self._build_general_prompt(query, context, sources, language, mode=mode)
 
             # 6. LLM生成
             from langchain_core.messages import HumanMessage
@@ -205,7 +228,10 @@ class GeneralKnowledgeAgent:
                     "status": "success",
                     "confidence": confidence,
                     "category": "general_knowledge",
+                    "query_type": mode,
                     "sources": sources,
+                    "web_search_used": "web_search" in sources,
+                    "rag_used": any(source.startswith("knowledge_base") for source in sources),
                 },
             }
 
@@ -508,11 +534,200 @@ class GeneralKnowledgeAgent:
         """Web検索が必要かどうか判定"""
         return TavilySearchTool.should_use_web_search(query)
 
+    def _resolve_general_mode(self, query: str, query_type: str) -> str:
+        if query_type in {
+            "assistant_profile",
+            "daily_conversation",
+            "general_light",
+            "current_info",
+        }:
+            return query_type
+        lower_query = query.lower()
+        if self._is_current_info_query(lower_query):
+            return "current_info"
+        if self._is_daily_conversation_query(lower_query):
+            return "daily_conversation"
+        return "general_light"
+
+    @staticmethod
+    def _is_current_info_query(lower_query: str) -> bool:
+        markers = (
+            "今日",
+            "明日",
+            "今朝",
+            "今夜",
+            "今週",
+            "最新",
+            "現在",
+            "ニュース",
+            "天気",
+            "気温",
+            "雨",
+            "today",
+            "tomorrow",
+            "this week",
+            "latest",
+            "current",
+            "news",
+            "weather",
+            "temperature",
+            "rain",
+        )
+        return any(marker in lower_query for marker in markers)
+
+    @staticmethod
+    def _is_daily_conversation_query(lower_query: str) -> bool:
+        markers = (
+            "雑談",
+            "おしゃべり",
+            "少し話",
+            "ちょっと話",
+            "話し相手",
+            "元気",
+            "疲れた",
+            "ひま",
+            "暇",
+            "ありがとう",
+            "サンキュー",
+            "small talk",
+            "chat with me",
+            "talk with me",
+            "talk to me",
+            "how are you",
+            "i am tired",
+            "i'm tired",
+            "thanks",
+            "thank you",
+        )
+        return any(marker in lower_query for marker in markers)
+
+    @staticmethod
+    def _normalize_current_info_query(query: str) -> str:
+        lower_query = query.lower()
+        asks_weather = any(
+            marker in lower_query for marker in ("天気", "気温", "雨", "weather", "temperature")
+        )
+        has_location = any(
+            marker in lower_query for marker in ("福岡", "fukuoka", "天神", "tenjin")
+        )
+        if asks_weather and not has_location:
+            return f"福岡市 天神 {query}"
+        return query
+
+    def _assistant_profile_response(self, language: SupportedLanguage) -> Dict[str, Any]:
+        if language == "en":
+            message = (
+                "I am Engineer Cafe Navigator. I can help with Engineer Cafe facilities, "
+                "events, membership check-in, Wi-Fi, slide guidance, and everyday questions "
+                "visitors commonly ask at reception."
+            )
+        else:
+            message = (
+                "私は Engineer Cafe Navigator です。エンジニアカフェの施設利用、イベント、"
+                "会員証、Wi-Fi、スライド案内に加えて、受付でよくある日常的な質問にもお答えします。"
+            )
+        return {
+            "answer": message,
+            "emotion": "helpful",
+            "metadata": {
+                "agent": self.name,
+                "status": "success",
+                "category": "general_knowledge",
+                "query_type": "assistant_profile",
+                "sources": [],
+                "web_search_used": False,
+                "rag_used": False,
+                "provider_called": False,
+            },
+        }
+
+    def _daily_conversation_response(
+        self, query: str, language: SupportedLanguage
+    ) -> Dict[str, Any]:
+        lower_query = query.lower()
+        if any(
+            marker in lower_query for marker in ("ありがとう", "サンキュー", "thanks", "thank you")
+        ):
+            message = (
+                "どういたしまして。ほかにも気になることがあれば、気軽に聞いてください。"
+                if language == "ja"
+                else "You're welcome. Feel free to ask me anything else."
+            )
+        elif any(marker in lower_query for marker in ("疲れた", "i am tired", "i'm tired")):
+            message = (
+                "少し休憩しましょう。エンジニアカフェでは、落ち着いて作業したり一息ついたりできます。"
+                if language == "ja"
+                else "Take a short break. Engineer Cafe is a good place to settle in and recharge."
+            )
+        elif any(marker in lower_query for marker in ("元気", "how are you")):
+            message = (
+                "元気です。今日は受付として、施設案内でも雑談でもすぐお手伝いできます。"
+                if language == "ja"
+                else "I'm doing well. I can help with reception guidance or a quick casual chat."
+            )
+        else:
+            message = (
+                "もちろんです。短くお話ししましょう。施設のことでも、今日の過ごし方でも気軽に聞いてください。"
+                if language == "ja"
+                else (
+                    "Of course. We can keep it light. Ask me about the facility "
+                    "or anything practical for your visit."
+                )
+            )
+        return {
+            "answer": message,
+            "emotion": "relaxed",
+            "metadata": {
+                "agent": self.name,
+                "status": "success",
+                "category": "general_knowledge",
+                "query_type": "daily_conversation",
+                "sources": [],
+                "web_search_used": False,
+                "rag_used": False,
+                "provider_called": False,
+            },
+        }
+
+    def _current_info_unavailable_response(self, language: SupportedLanguage) -> Dict[str, Any]:
+        message = (
+            "最新情報を確認できませんでした。少し時間をおいてもう一度聞いてください。"
+            if language == "ja"
+            else (
+                "I couldn't confirm the latest information right now. "
+                "Please ask again in a moment."
+            )
+        )
+        return {
+            "answer": message,
+            "emotion": "apologetic",
+            "metadata": {
+                "agent": self.name,
+                "status": "current_info_unavailable",
+                "category": "general_knowledge",
+                "query_type": "current_info",
+                "sources": [],
+                "web_search_used": False,
+                "rag_used": False,
+            },
+        }
+
     def _build_general_prompt(
-        self, query: str, context: str, sources: List[str], language: SupportedLanguage
+        self,
+        query: str,
+        context: str,
+        sources: List[str],
+        language: SupportedLanguage,
+        *,
+        mode: str = "general_light",
     ) -> str:
         """プロンプトを構築"""
         source_info = " and ".join(sources) if sources else "available information"
+        if not context:
+            context = (
+                "No trusted local or current external context was found. "
+                "Answer from stable general knowledge only. Do not claim to have searched."
+            )
 
         oral_instruction_ja = (
             "回答は口語（話し言葉）で返してください。"
@@ -528,6 +743,24 @@ class GeneralKnowledgeAgent:
 
         # Multilingual: append language instruction for zh/ko
         lang_suffix = LANGUAGE_INSTRUCTION.get(language, "")
+        scope_instruction_ja = (
+            "あなた自身の正体を聞かれていない限り、モデル名や提供会社名を自分の正体として述べないでください。"
+            "回答は受付での会話として短く自然にしてください。"
+        )
+        scope_instruction_en = (
+            "Do not describe your model provider as your identity unless explicitly asked. "
+            "Keep the answer short and natural for a reception conversation."
+        )
+        if mode == "current_info":
+            scope_instruction_ja += (
+                " 最新情報として扱う場合は、確認できた範囲で断定しすぎず答えてください。"
+            )
+            scope_instruction_en += (
+                " For current information, answer only within what the provided context supports."
+            )
+        else:
+            scope_instruction_ja += " 最新情報や検索結果を確認したとは言わないでください。"
+            scope_instruction_en += " Do not say you checked current information or search results."
 
         if language == "en":
             header = (
@@ -553,6 +786,7 @@ Information:
 Provide a comprehensive but concise answer.
 If the information is from web search, mention that it's current information.
 Be helpful and informative.
+{scope_instruction_en}
 {oral_instruction_en}"""
             if lang_suffix:
                 prompt += f"\n{lang_suffix}"
@@ -575,6 +809,7 @@ Be helpful and informative.
 {context}
 
 包括的だが簡潔な回答を提供してください。情報がウェブ検索からのものである場合は、それが最新の情報であることを述べてください。役立つ情報を提供してください。
+{scope_instruction_ja}
 {oral_instruction_ja}"""
             if lang_suffix:
                 prompt += f"\n{lang_suffix}"
@@ -582,7 +817,7 @@ Be helpful and informative.
 
     def _calculate_confidence(self, sources: List[str]) -> float:
         """信頼度を計算"""
-        has_kb = "knowledge_base" in sources
+        has_kb = any(source.startswith("knowledge_base") for source in sources)
         has_web = "web_search" in sources
 
         if has_kb and has_web:

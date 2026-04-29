@@ -59,9 +59,9 @@ alpha で許容できないのは「モデルが遅いこと」だけではな�
 GeneralKnowledgeAgent は一律に RAG miss -> web search -> LLM へ進ませない。
 
 - `assistant_profile`: deterministic response
-- `daily_conversation`: fast LLM、search なし
+- `daily_conversation`: deterministic short response first、search なし
 - `general_light`: fast LLM、RAG context があれば使う、search なし
-- `current_info`: calendar / web search が必要なときだけ search path
+- `current_info`: 天気・ニュース・今日/明日など current external facts が必要なときだけ search path
 - `memory`: memory helper のみを使い、施設案内や slide route に転送しない
 
 ### 3. Fast LLM は env で provider / model を差し替える
@@ -101,8 +101,8 @@ alpha release 前に最低限通す gate:
 | Gate | 目標 |
 | --- | --- |
 | identity response | p95 1s 未満、LLM / RAG / web search 不使用 |
-| daily/general light chat | p95 3s 未満、Tavily 不使用 |
-| current-info route | 必要時だけ web search / calendar を使う |
+| daily/general light chat | daily は p95 1s 未満、general light は p95 3s 未満、Tavily 不使用 |
+| current-info route | 天気など受付雑談の live facts だけ web search / calendar を使う |
 | provider self-disclosure | Google / OpenAI / Anthropic / Cerebras 等の自己紹介を 0 件にする |
 | stale request type | 前 turn の `request_type` で別 route に流れない |
 | full voice turn | STT + chat + TTS p95 を issue #613 の基準で再計測 |

@@ -113,6 +113,32 @@ class TestGeneralKnowledgeAgent:
         assert response["metadata"]["agent"] == "GeneralKnowledgeAgent"
         assert response["metadata"]["status"] == "error"
 
+    def test_assistant_profile_response_never_self_discloses_provider(self):
+        response = self.agent._assistant_profile_response("ja")
+
+        assert "Engineer Cafe Navigator" in response["answer"]
+        assert "Google" not in response["answer"]
+        assert "OpenAI" not in response["answer"]
+        assert response["metadata"]["query_type"] == "assistant_profile"
+        assert response["metadata"]["provider_called"] is False
+
+    def test_daily_conversation_response_is_deterministic_no_search(self):
+        response = self.agent._daily_conversation_response("少し雑談して", "ja")
+
+        assert response["metadata"]["query_type"] == "daily_conversation"
+        assert response["metadata"]["web_search_used"] is False
+        assert response["metadata"]["provider_called"] is False
+
+    def test_resolve_general_mode_splits_current_info_and_general_light(self):
+        assert self.agent._resolve_general_mode("今日の福岡の天気は？", "general") == "current_info"
+        assert self.agent._resolve_general_mode("Pythonって何？", "general") == "general_light"
+
+    def test_normalize_weather_query_defaults_to_fukuoka_tenjin(self):
+        normalized = self.agent._normalize_current_info_query("今日の天気は？")
+
+        assert "福岡市" in normalized
+        assert "天神" in normalized
+
 
 class TestGeneralKnowledgeAgentIntegration:
     """GeneralKnowledgeAgent の統合テスト"""
@@ -215,3 +241,73 @@ class TestGeneralKnowledgeAgentIntegration:
 
         assert "answer" in result
         assert "metadata" in result
+
+    @pytest.mark.asyncio
+    async def test_answer_query_assistant_profile_does_not_call_provider_or_search(self):
+        result = await self.agent.answer_query(
+            query="あなたの名前は？",
+            language="ja",
+            session_id="test_session",
+            query_type="assistant_profile",
+        )
+
+        assert result["metadata"]["query_type"] == "assistant_profile"
+        assert result["metadata"]["web_search_used"] is False
+        self.mock_provider.generate.assert_not_called()
+        self.mock_web_search.search.assert_not_called()
+        self.mock_rag_search.search.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_answer_query_daily_conversation_does_not_call_provider_or_search(self):
+        result = await self.agent.answer_query(
+            query="今日は少し疲れた",
+            language="ja",
+            session_id="test_session",
+            query_type="daily_conversation",
+        )
+
+        assert result["metadata"]["query_type"] == "daily_conversation"
+        assert result["metadata"]["web_search_used"] is False
+        self.mock_provider.generate.assert_not_called()
+        self.mock_web_search.search.assert_not_called()
+        self.mock_rag_search.search.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_answer_query_current_weather_uses_web_search(self):
+        self.mock_web_search.search = AsyncMock(
+            return_value={
+                "success": True,
+                "text": "福岡市天神の今日の天気は晴れ、気温は20度前後です。",
+                "sources": [{"uri": "https://example.com/weather", "title": "Weather"}],
+            }
+        )
+
+        result = await self.agent.answer_query(
+            query="今日の福岡の天気は？",
+            language="ja",
+            session_id="test_session",
+            query_type="current_info",
+        )
+
+        assert result["metadata"]["query_type"] == "current_info"
+        assert result["metadata"]["web_search_used"] is True
+        self.mock_web_search.search.assert_awaited_once()
+        self.mock_provider.generate.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_general_light_does_not_search_when_rag_misses(self):
+        self.mock_rag_search.search = AsyncMock(
+            return_value={"success": False, "data": {"context": "", "results": []}}
+        )
+
+        result = await self.agent.answer_query(
+            query="Pythonって何？",
+            language="ja",
+            session_id="test_session",
+            query_type="general",
+        )
+
+        assert result["metadata"]["query_type"] == "general_light"
+        assert result["metadata"]["web_search_used"] is False
+        self.mock_web_search.search.assert_not_called()
+        self.mock_provider.generate.assert_awaited_once()
