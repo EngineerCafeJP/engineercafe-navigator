@@ -135,23 +135,24 @@ export function formatError(
   
   // Check for API-specific error patterns
   if (error.message) {
+    const message = String(error.message).toLowerCase();
     if (
-      error.message.includes('音声認識に失敗') ||
-      error.message.includes('speech recognition')
+      message.includes('音声認識に失敗') ||
+      message.includes('speech recognition')
     ) {
       return getErrorMessage('STT_ERROR', language);
     }
     if (
-      error.message.includes('質問の送信に失敗') ||
-      error.message.includes('send question') ||
-      error.message.includes('chat')
+      message.includes('質問の送信に失敗') ||
+      message.includes('send question') ||
+      message.includes('chat')
     ) {
       return getErrorMessage('QA_ERROR', language);
     }
     if (
-      error.message.includes('音声の生成に失敗') ||
-      error.message.includes('voice generation') ||
-      error.message.includes('text_to_speech')
+      message.includes('音声の生成に失敗') ||
+      message.includes('voice generation') ||
+      message.includes('text_to_speech')
     ) {
       return getErrorMessage('TTS_ERROR', language);
     }
@@ -164,13 +165,22 @@ export function formatError(
 
   // Check for specific error messages
   if (error.message) {
-    if (error.message.includes('microphone')) {
+    const message = String(error.message).toLowerCase();
+    if (message.includes('not supported') || message.includes('not available')) {
+      return getErrorMessage('NOT_SUPPORTED', language);
+    }
+    if (
+      message.includes('microphone') ||
+      message.includes('getusermedia') ||
+      message.includes('mediarecorder') ||
+      message.includes('recorder')
+    ) {
       return getErrorMessage('MICROPHONE_PERMISSION_DENIED', language);
     }
-    if (error.message.includes('network') || error.message.includes('fetch')) {
+    if (message.includes('network') || message.includes('fetch')) {
       return getErrorMessage('NETWORK_ERROR', language);
     }
-    if (error.message.includes('rate limit')) {
+    if (message.includes('rate limit')) {
       return getErrorMessage('RATE_LIMIT_EXCEEDED', language);
     }
   }
