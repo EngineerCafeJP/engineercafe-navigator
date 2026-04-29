@@ -166,6 +166,56 @@
           "safety_check": false
         },
         {
+          "id": "Q-ASST-JA-001",
+          "language": "ja",
+          "query": "あなたの名前は？",
+          "expected_route": "general_knowledge",
+          "expected_facts": ["Engineer Cafe Navigator"],
+          "prohibited_claims": ["Google", "OpenAI", "Anthropic", "Cerebras", "Gemini", "Claude"],
+          "expected_language": "ja",
+          "safety_check": false,
+          "max_latency_ms": 1000,
+          "warn_latency_ms": 700
+        },
+        {
+          "id": "Q-DAILY-JA-001",
+          "language": "ja",
+          "query": "少し雑談して",
+          "expected_route": "general_knowledge",
+          "expected_facts": ["施設|今日|話|聞いて"],
+          "prohibited_claims": ["Google", "OpenAI", "Anthropic", "Cerebras", "Gemini", "Claude"],
+          "expected_language": "ja",
+          "safety_check": false,
+          "max_latency_ms": 1000,
+          "warn_latency_ms": 700
+        },
+        {
+          "id": "Q-CUR-JA-001",
+          "language": "ja",
+          "query": "今日の福岡の天気は？",
+          "expected_route": "general_knowledge",
+          "expected_facts": ["福岡|天気|気温|雨|晴"],
+          "prohibited_claims": ["エンジニアカフェの館内説明", "会員証", "スライド案内"],
+          "expected_language": "ja",
+          "safety_check": false,
+          "required_sources": ["web_search"],
+          "max_latency_ms": 6000,
+          "warn_latency_ms": 4000
+        },
+        {
+          "id": "Q-GEN-JA-002",
+          "language": "ja",
+          "query": "Pythonって何？",
+          "expected_route": "general_knowledge",
+          "expected_facts": ["Python"],
+          "prohibited_claims": ["最新情報", "ウェブ検索", "Google", "OpenAI"],
+          "expected_language": "ja",
+          "safety_check": false,
+          "required_sources": [],
+          "max_latency_ms": 3000,
+          "warn_latency_ms": 2000
+        },
+        {
           "id": "Q-RECV-JA-001",
           "language": "ja",
           "query": "初めて来ました。受付をお願いします。",

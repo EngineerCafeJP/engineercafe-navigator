@@ -367,6 +367,22 @@ class OrchestratorAgent:
         """キーワードベースの高速ルーティング"""
         lower_query = query.lower()
 
+        if OrchestratorAgent._is_assistant_profile_question(lower_query):
+            return {
+                "agent": "general_knowledge",
+                "category": "assistant_profile",
+                "request_type": "assistant_profile",
+                "reasoning": "Assistant profile/capability question detected",
+            }
+
+        if OrchestratorAgent._is_daily_conversation_request(lower_query):
+            return {
+                "agent": "general_knowledge",
+                "category": "daily_conversation",
+                "request_type": "daily_conversation",
+                "reasoning": "Daily conversation request detected",
+            }
+
         # 緊急キーワード → facility（最優先）
         if match_keywords(lower_query, EMERGENCY_KEYWORDS):
             return {
@@ -456,6 +472,14 @@ class OrchestratorAgent:
                 "category": "events",
                 "request_type": "event",
                 "reasoning": "Event keyword detected",
+            }
+
+        if OrchestratorAgent._is_current_info_request(lower_query):
+            return {
+                "agent": "general_knowledge",
+                "category": "current_info",
+                "request_type": "current_info",
+                "reasoning": "Current-information small-talk request detected",
             }
 
         if match_keywords(lower_query, SLIDE_KEYWORDS):
@@ -615,6 +639,102 @@ class OrchestratorAgent:
             }
 
         return None
+
+    @staticmethod
+    def _is_assistant_profile_question(lower_query: str) -> bool:
+        """Detect questions about this kiosk assistant, not the visitor's name."""
+        visitor_name_markers = (
+            "私の名前",
+            "僕の名前",
+            "俺の名前",
+            "わたしの名前",
+            "my name",
+            "call me",
+        )
+        if any(marker in lower_query for marker in visitor_name_markers):
+            return False
+
+        identity_markers = (
+            "あなたの名前",
+            "君の名前",
+            "きみの名前",
+            "お名前は",
+            "名前は何",
+            "名前を教えて",
+            "あなたは誰",
+            "君は誰",
+            "何者",
+            "what is your name",
+            "what's your name",
+            "who are you",
+        )
+        capability_markers = (
+            "何ができます",
+            "なにができます",
+            "できること",
+            "何を手伝",
+            "ヘルプ",
+            "使い方を教えて",
+            "どんな案内",
+            "what can you do",
+            "how can you help",
+            "help me with",
+        )
+        return any(marker in lower_query for marker in (*identity_markers, *capability_markers))
+
+    @staticmethod
+    def _is_daily_conversation_request(lower_query: str) -> bool:
+        """Detect lightweight small-talk requests that should not invoke search."""
+        markers = (
+            "雑談",
+            "おしゃべり",
+            "少し話",
+            "ちょっと話",
+            "話し相手",
+            "元気",
+            "疲れた",
+            "ひま",
+            "暇",
+            "ありがとう",
+            "サンキュー",
+            "small talk",
+            "chat with me",
+            "talk with me",
+            "talk to me",
+            "how are you",
+            "i am tired",
+            "i'm tired",
+            "thanks",
+            "thank you",
+        )
+        return any(marker in lower_query for marker in markers)
+
+    @staticmethod
+    def _is_current_info_request(lower_query: str) -> bool:
+        """Detect daily receptionist questions that need current external facts."""
+        current_markers = (
+            "今日",
+            "明日",
+            "今朝",
+            "今夜",
+            "今週",
+            "最新",
+            "現在",
+            "ニュース",
+            "天気",
+            "気温",
+            "雨",
+            "today",
+            "tomorrow",
+            "this week",
+            "latest",
+            "current",
+            "news",
+            "weather",
+            "temperature",
+            "rain",
+        )
+        return any(marker in lower_query for marker in current_markers)
 
     def _is_memory_related_question(self, query: str) -> bool:
         """メモリ関連の質問かどうかを判定"""

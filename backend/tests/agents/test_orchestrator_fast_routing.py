@@ -259,6 +259,35 @@ class TestOrchestratorFastRouting:
             result is None or result["category"] != "greeting"
         ), "Compound query with greeting should not be routed to greeting"
 
+    def test_assistant_profile_name_question_routes_without_llm(self, orchestrator):
+        result = orchestrator._try_fast_routing("あなたの名前は？")
+
+        assert result is not None
+        assert result["agent"] == "general_knowledge"
+        assert result["category"] == "assistant_profile"
+        assert result["request_type"] == "assistant_profile"
+
+    def test_daily_conversation_routes_to_general_fast_path(self, orchestrator):
+        result = orchestrator._try_fast_routing("少し雑談して")
+
+        assert result is not None
+        assert result["agent"] == "general_knowledge"
+        assert result["category"] == "daily_conversation"
+        assert result["request_type"] == "daily_conversation"
+
+    def test_current_weather_routes_to_current_info(self, orchestrator):
+        result = orchestrator._try_fast_routing("今日の福岡の天気は？")
+
+        assert result is not None
+        assert result["agent"] == "general_knowledge"
+        assert result["category"] == "current_info"
+        assert result["request_type"] == "current_info"
+
+    def test_visitor_name_memory_write_not_assistant_profile(self, orchestrator):
+        result = orchestrator._try_fast_routing("私の名前は田中です。覚えて")
+
+        assert result is None or result["request_type"] != "assistant_profile"
+
     def test_no_false_positive_short_question_after_greeting_ja(self, orchestrator):
         """こんにちは + 質問は greeting にルーティングされないこと"""
         result = orchestrator._try_fast_routing("こんにちは 営業時間は？")

@@ -26,7 +26,7 @@ Alpha Phase 4 の最初の実装対象は、Welcome UX ではなく次の 2 件�
 - `あなたの名前は` 系は LLM に渡さない。
 - rank graph に入らないだけで web search しない。
 - lightweight model は env で provider / model を差し替え、公式 availability と live benchmark で決める。
-- Cerebras は `gpt-oss-120b` を短文 fast path 候補にする。
+- Cerebras は `gpt-oss-120b` を lightweight fast first pass にする。
 
 今回の docs/ADR で固定しないこと:
 
@@ -86,9 +86,9 @@ Alpha Phase 4 の最初の実装対象は、Welcome UX ではなく次の 2 件�
 実装内容:
 
 - GeneralKnowledgeAgent の fallback を次に分ける。
-  - `daily_conversation`: search なし、short answer
+  - `daily_conversation`: search なし、deterministic short answer
   - `general_light`: RAG context があれば使うが、RAG miss だけでは search しない
-  - `current_info`: 「今日」「明日」「最新」「今週」など live data が必要な時だけ search / calendar
+  - `current_info`: 「今日」「明日」「最新」「今週」「天気」など live data が必要な時だけ search / calendar
 - stale `request_type` を route decision に混ぜる場合は、current turn の intent confidence を必須にする。
 - previous route は memory context として扱い、強制 route にはしない。
 
@@ -96,6 +96,7 @@ Alpha Phase 4 の最初の実装対象は、Welcome UX ではなく次の 2 件�
 
 - `あなたの名前は` -> `assistant_profile`
 - `少し雑談して` -> `daily_conversation`
+- `今日の福岡の天気は` -> `current_info`, Tavily あり
 - `Pythonって何` -> `general_light`, Tavily なし
 - `明日のイベントを教えて` -> EventAgent / current-info route
 - 直前に basement / slide があっても `明日のイベント` が SlideAgent に行かない
@@ -118,6 +119,8 @@ Alpha Phase 4 の最初の実装対象は、Welcome UX ではなく次の 2 件�
 最小実装:
 
 - 既存 OpenRouter provider を壊さず、fast model resolver を追加する。
+- `FAST_LLM_PRIMARY_PROVIDER=cerebras` のときは Cerebras をOpenRouterより先に試す。
+- Cerebras が失敗した場合は OpenRouter Gemini primary/fallback に戻す。
 - Cerebras は OpenAI-compatible Chat Completions として provider を追加する。
 - `gpt-oss-120b` の場合は `reasoning_effort=low` を送れるようにする。
 
@@ -134,6 +137,7 @@ prompt set:
 - identity: `あなたの名前は`
 - help: `何ができますか`
 - daily: `少し雑談して`
+- daily-weather: `今日の福岡の天気は`
 - general: `Pythonって何`
 - current-info: `明日のイベントを教えて`
 - stale-context: `地下について教えて` の後に `明日のイベントを教えて`
@@ -165,7 +169,7 @@ prompt set:
 
 ```env
 FAST_LLM_ENABLED=true
-FAST_LLM_PRIMARY_PROVIDER=gemini
+FAST_LLM_PRIMARY_PROVIDER=cerebras
 FAST_LLM_PRIMARY_MODEL=google/gemini-3.1-flash-lite-preview
 FAST_LLM_FALLBACK_PROVIDER=gemini
 FAST_LLM_FALLBACK_MODEL=google/gemini-2.5-flash-lite

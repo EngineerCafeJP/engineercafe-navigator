@@ -52,12 +52,12 @@ async def my_agent_node(state):
 
 | モデル | ID | 推奨用途 |
 |--------|-----|----------|
-| Gemini 3.1 Flash Lite | `google/gemini-3.1-flash-lite-preview` | 低レイテンシ・日常会話・ルーティング |
+| Cerebras GPT OSS 120B | `gpt-oss-120b` | native Cerebras first pass、短文・軽量回答 |
+| Gemini 3.1 Flash Lite | `google/gemini-3.1-flash-lite-preview` | OpenRouter fallback、日常会話・ルーティング |
 | Gemini 2.5 Flash-Lite | `google/gemini-2.5-flash-lite` | 安定版 fallback |
 | Gemini 3.1 Pro | `google/gemini-3.1-pro-preview` | 高度な推論候補 |
 | Gemini 2.5 Pro | `google/gemini-2.5-pro` | 高度な推論の安定版 fallback |
 | GPT-5.4 Nano | `openai/gpt-5.4-nano` | OpenAI 側の高速・低コスト候補 |
-| Cerebras GPT OSS 120B | `gpt-oss-120b` | Cerebras の短文 tertiary fallback |
 
 ## モデル設定
 
