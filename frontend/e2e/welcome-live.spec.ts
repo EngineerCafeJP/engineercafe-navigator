@@ -121,7 +121,7 @@ async function triggerVoiceTurn(page: Page): Promise<void> {
   await expect(voiceStatus).toHaveAttribute('data-session-state', 'listening', {
     timeout: 15_000,
   });
-  await page.waitForTimeout(250);
+  await page.waitForTimeout(1_400);
   await voiceButton.click();
   await expect(voiceStatus).toHaveAttribute('data-session-state', /processing|speaking|idle/, {
     timeout: 15_000,
