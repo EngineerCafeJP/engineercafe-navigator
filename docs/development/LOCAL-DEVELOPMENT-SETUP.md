@@ -288,10 +288,12 @@ SUPABASE_SERVICE_ROLE_KEY=<supabase start で表示された service_role key>
 # Google Cloud（音声処理用）
 GOOGLE_CLOUD_PROJECT_ID=your-gcp-project-id
 GOOGLE_CLOUD_CREDENTIALS=./config/service-account-key.json
-GOOGLE_GENERATIVE_AI_API_KEY=your-gemini-api-key
 
-# OpenAI（埋め込み用）
+# AI / LLM
+OPENROUTER_API_KEY=your-openrouter-api-key
 OPENAI_API_KEY=your-openai-api-key
+FAST_LLM_PRIMARY_MODEL=google/gemini-3.1-flash-lite-preview
+FAST_LLM_FALLBACK_MODEL=google/gemini-2.5-flash-lite
 ```
 
 ### 3. サービスアカウントキーの設定
@@ -417,8 +419,8 @@ http://localhost:8000/docs で API ドキュメント（Swagger UI）にアク�
 | `NEXT_PUBLIC_SUPABASE_URL` | ✅ | Supabase API URL |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | ✅ | Supabase 匿名キー |
 | `SUPABASE_SERVICE_ROLE_KEY` | ✅ | Supabase サービスロールキー |
-| `OPENAI_API_KEY` | ✅ | OpenAI API キー |
-| `GOOGLE_GENERATIVE_AI_API_KEY` | ✅ | Gemini API キー |
+| `OPENROUTER_API_KEY` | ✅ | LLM API キー |
+| `OPENAI_API_KEY` | ✅ | OpenAI API キー（embeddings / evaluation） |
 | `GOOGLE_CLOUD_PROJECT_ID` | ⚠️ | GCP プロジェクトID（音声用） |
 | `GOOGLE_CLOUD_CREDENTIALS` | ⚠️ | サービスアカウントキーパス |
 | `CRON_SECRET` | ⚠️ | CRON ジョブ認証（本番用） |

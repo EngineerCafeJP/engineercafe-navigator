@@ -181,7 +181,7 @@ def invoke_workflow(workflow):
 def llm_judge() -> LLMJudgeEvaluator:
     """LLM Judge 評価器"""
     return LLMJudgeEvaluator(
-        model_name="gpt-4o-mini",
+        model_name="gpt-5.4-mini",
         temperature=0.0,
         thresholds={
             QualityDimension.ACCURACY: 0.7,

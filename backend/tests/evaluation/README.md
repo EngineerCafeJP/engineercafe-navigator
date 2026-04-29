@@ -72,7 +72,7 @@ for agent_name, agent_metrics in metrics.agent_metrics.items():
 ```python
 from tests.utils.evaluators.llm_judge import LLMJudgeEvaluator, QualityDimension
 
-evaluator = LLMJudgeEvaluator(model_name="gpt-4o-mini")
+evaluator = LLMJudgeEvaluator(model_name="gpt-5.4-mini")
 
 # 回答品質評価
 results = await evaluator.evaluate_answer_quality(

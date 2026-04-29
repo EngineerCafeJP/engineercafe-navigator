@@ -3,6 +3,8 @@ Model configuration and supported models registry.
 
 This module defines the available AI models through OpenRouter
 and their configurations for different use cases.
+
+Runtime IDs may be overridden via env (see model_resolve.py); defaults follow the 2026-04 naming.
 """
 
 from dataclasses import dataclass, field
@@ -17,42 +19,46 @@ class SupportedModel(str, Enum):
     These models are available via the unified OpenRouter API.
     See https://openrouter.ai/docs#models for full list.
 
-    Last updated: 2026-02-28
+    Last updated: 2026-04-30
     """
 
-    # Google Models (2026-02 latest)
-    GEMINI_3_1_PRO = "google/gemini-3.1-pro-preview"  # $2/$12, 1M ctx
-    GEMINI_3_FLASH = "google/gemini-3-flash-preview"  # $0.15/$0.6, 1M ctx
-    GEMINI_3_PRO = "google/gemini-3-pro-preview"  # Deprecated: shutdown 2026-03-09
-    GEMINI_2_5_FLASH = "google/gemini-2.5-flash-preview"
-    GEMINI_2_5_FLASH_IMAGE = "google/gemini-2.5-flash-image"
+    # Google — latency-optimized tier
+    GEMINI_3_1_FLASH_LITE = "google/gemini-3.1-flash-lite-preview"
+    GEMINI_3_FLASH = "google/gemini-3-flash-preview"  # comparison / benchmarks only
+    GEMINI_2_5_FLASH_LITE = "google/gemini-2.5-flash-lite"  # stable fallback
+    # Google — reasoning / multimodal
+    GEMINI_3_1_PRO = "google/gemini-3.1-pro-preview"
+    GEMINI_3_PRO = "google/gemini-3-pro-preview"  # legacy preview id; prefer GEMINI_3_1_PRO
+    GEMINI_2_5_PRO = "google/gemini-2.5-pro"  # stable fallback
 
-    # OpenAI Models (2026-02 latest)
-    GPT_5_2 = "openai/gpt-5.2"  # $1.75/$14, 400K ctx
-    GPT_5_MINI = "openai/gpt-5-mini"  # $0.25/$2, 400K ctx
+    # OpenAI Models (OpenRouter slug) — GPT-5.4/5.5 family (2026 Q1–Q2 on OpenRouter)
+    GPT_5_5 = "openai/gpt-5.5"  # Released 2026-04 (frontier; fallback for deep reasoning)
+    GPT_5_4 = "openai/gpt-5.4"  # 2026-03 general frontier
+    GPT_5_4_MINI = "openai/gpt-5.4-mini"  # High-throughput / mid cost
+    GPT_5_4_NANO = "openai/gpt-5.4-nano"  # Low-latency classification & sub-agent tasks
+    GPT_5_2 = "openai/gpt-5.2"
+    GPT_5_MINI = "openai/gpt-5-mini"  # Legacy; prefer GPT_5_4_NANO for fast fallbacks
     GPT_5_1 = "openai/gpt-5.1-chat"
-    GPT_4O = "openai/gpt-4o"  # Deprecated: retired from ChatGPT 2026-02-13
-    GPT_4O_MINI = "openai/gpt-4o-mini"  # Deprecated: retired from ChatGPT 2026-02-13
 
-    # Anthropic Models (2026-02 latest)
-    CLAUDE_SONNET_4_6 = "anthropic/claude-sonnet-4.6"  # $3/$15, 1M ctx
+    # Anthropic Models
+    CLAUDE_SONNET_4_6 = "anthropic/claude-sonnet-4.6"
     CLAUDE_OPUS_4_5 = "anthropic/claude-opus-4.5"
     CLAUDE_HAIKU_4_5 = "anthropic/claude-haiku-4.5"
-    CLAUDE_SONNET_4 = "anthropic/claude-sonnet-4"  # Superseded by 4.6
-    CLAUDE_3_5_SONNET = "anthropic/claude-3.5-sonnet"  # Legacy fallback
+    CLAUDE_SONNET_4 = "anthropic/claude-sonnet-4"
+    CLAUDE_3_5_SONNET = "anthropic/claude-3.5-sonnet"
 
     # Meta Models
     LLAMA_3_3_NEMOTRON = "nvidia/llama-3.3-nemotron-super-49b-v1.5"
     LLAMA_3_2_90B = "meta-llama/llama-3.2-90b-vision-instruct"
     LLAMA_3_1_70B = "meta-llama/llama-3.1-70b-instruct"
 
-    # Mistral Models (2025-12 latest)
+    # Mistral Models
     MISTRAL_LARGE = "mistralai/mistral-large-2512"
     MISTRAL_SMALL = "mistralai/mistral-small-creative"
     DEVSTRAL = "mistralai/devstral-2512"
 
-    # Vision Models (lightweight, tool-use capable)
-    GPT_4_1_NANO = "openai/gpt-4.1-nano"  # $0.10/$0.40, 1M ctx
+    # Vision (lightweight, tool-use capable)
+    GPT_4_1_NANO = "openai/gpt-4.1-nano"
 
 
 @dataclass
@@ -65,7 +71,7 @@ class ModelConfig:
         temperature: Sampling temperature (0.0-2.0), lower = more deterministic
         max_tokens: Maximum tokens to generate
         top_p: Nucleus sampling parameter
-        fallback_model: Backup model if primary fails
+        fallback_model: Backup model if primary fails (same OpenRouter API)
         timeout: Request timeout in seconds
     """
 
@@ -76,7 +82,6 @@ class ModelConfig:
     fallback_model: Optional[SupportedModel] = None
     timeout: float = 30.0
 
-    # Metadata for cost tracking (approximate, per 1K tokens)
     input_cost_per_1k: float = field(default=0.0, repr=False)
     output_cost_per_1k: float = field(default=0.0, repr=False)
 
@@ -90,73 +95,64 @@ class ModelConfig:
             raise ValueError(f"top_p must be between 0.0 and 1.0, got {self.top_p}")
 
 
-# Pre-configured model settings for common use cases
-# Updated: 2026-02-28 with latest OpenRouter models
+# Fast tier: Gemini 3.1 Flash-Lite preview -> Gemini 2.5 Flash-Lite stable.
+# Deep path: Gemini 3.1 Pro preview -> Gemini 2.5 Pro stable.
+# Optional tertiary hop: Cerebras gpt-oss-120b (model_resolve), enabled by env.
 MODEL_CONFIGS: dict[str, ModelConfig] = {
-    # Router Agent: Low temperature for consistent routing decisions
-    # Using Gemini 3 Flash for fastest routing
     "router": ModelConfig(
-        model_id=SupportedModel.GEMINI_3_FLASH,
+        model_id=SupportedModel.GEMINI_3_1_FLASH_LITE,
         temperature=0.3,
         max_tokens=256,
-        fallback_model=SupportedModel.GEMINI_2_5_FLASH,
-        input_cost_per_1k=0.00015,
-        output_cost_per_1k=0.0006,
+        fallback_model=SupportedModel.GEMINI_2_5_FLASH_LITE,
+        input_cost_per_1k=0.0001,
+        output_cost_per_1k=0.0004,
     ),
-    # Q&A Response: Balanced settings for informative responses
-    # Using Gemini 3 Flash with GPT-5 Mini fallback
     "qa_response": ModelConfig(
-        model_id=SupportedModel.GEMINI_3_FLASH,
+        model_id=SupportedModel.GEMINI_3_1_FLASH_LITE,
         temperature=0.7,
         max_tokens=1024,
-        fallback_model=SupportedModel.GPT_5_MINI,
-        input_cost_per_1k=0.00015,
-        output_cost_per_1k=0.0006,
+        fallback_model=SupportedModel.GEMINI_2_5_FLASH_LITE,
+        input_cost_per_1k=0.0001,
+        output_cost_per_1k=0.0004,
     ),
-    # Clarification: Helpful tone for disambiguation
     "clarification": ModelConfig(
-        model_id=SupportedModel.GEMINI_3_FLASH,
+        model_id=SupportedModel.GEMINI_3_1_FLASH_LITE,
         temperature=0.5,
         max_tokens=512,
-        fallback_model=SupportedModel.CLAUDE_HAIKU_4_5,
-        input_cost_per_1k=0.00015,
-        output_cost_per_1k=0.0006,
+        fallback_model=SupportedModel.GEMINI_2_5_FLASH_LITE,
+        input_cost_per_1k=0.0001,
+        output_cost_per_1k=0.0004,
     ),
-    # General Knowledge: Higher creativity for diverse topics
-    # Using Claude Sonnet 4.6 for frontier reasoning (1M context)
+    # Deep reasoning — Gemini 3.1 Pro preview on OpenRouter (override DEEP_REASONING_MODEL)
     "general_knowledge": ModelConfig(
-        model_id=SupportedModel.CLAUDE_SONNET_4_6,
-        temperature=0.8,
+        model_id=SupportedModel.GEMINI_3_1_PRO,
+        temperature=0.7,
         max_tokens=1024,
-        fallback_model=SupportedModel.GPT_5_MINI,
-        input_cost_per_1k=0.003,
-        output_cost_per_1k=0.015,
+        fallback_model=SupportedModel.GEMINI_2_5_PRO,
+        input_cost_per_1k=0.002,
+        output_cost_per_1k=0.012,
     ),
-    # Event Information: Factual, structured responses
     "event_info": ModelConfig(
-        model_id=SupportedModel.GEMINI_3_FLASH,
+        model_id=SupportedModel.GEMINI_3_1_FLASH_LITE,
         temperature=0.4,
         max_tokens=512,
-        fallback_model=SupportedModel.GPT_5_MINI,
-        input_cost_per_1k=0.00015,
-        output_cost_per_1k=0.0006,
+        fallback_model=SupportedModel.GEMINI_2_5_FLASH_LITE,
+        input_cost_per_1k=0.0001,
+        output_cost_per_1k=0.0004,
     ),
-    # Facility Information: Detailed, accurate responses
     "facility_info": ModelConfig(
-        model_id=SupportedModel.GEMINI_3_FLASH,
+        model_id=SupportedModel.GEMINI_3_1_FLASH_LITE,
         temperature=0.5,
         max_tokens=768,
-        fallback_model=SupportedModel.GPT_5_MINI,
-        input_cost_per_1k=0.00015,
-        output_cost_per_1k=0.0006,
+        fallback_model=SupportedModel.GEMINI_2_5_FLASH_LITE,
+        input_cost_per_1k=0.0001,
+        output_cost_per_1k=0.0004,
     ),
-    # Vision/OCR: Low temperature for deterministic recognition
-    # GPT-4.1-nano is lightweight and supports vision + tool-use
     "vision": ModelConfig(
         model_id=SupportedModel.GPT_4_1_NANO,
         temperature=0.0,
         max_tokens=512,
-        fallback_model=SupportedModel.GPT_5_MINI,
+        fallback_model=SupportedModel.GPT_5_4_NANO,
         input_cost_per_1k=0.0001,
         output_cost_per_1k=0.0004,
     ),
@@ -164,18 +160,7 @@ MODEL_CONFIGS: dict[str, ModelConfig] = {
 
 
 def get_model_config(use_case: str) -> ModelConfig:
-    """
-    Get the model configuration for a specific use case.
-
-    Args:
-        use_case: The use case key (e.g., "router", "qa_response")
-
-    Returns:
-        ModelConfig for the specified use case
-
-    Raises:
-        KeyError: If use case is not found
-    """
+    """Get the model configuration for a specific use case."""
     if use_case not in MODEL_CONFIGS:
         available = ", ".join(MODEL_CONFIGS.keys())
         raise KeyError(f"Unknown use case: {use_case}. Available: {available}")

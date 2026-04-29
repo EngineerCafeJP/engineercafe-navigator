@@ -52,11 +52,12 @@ async def my_agent_node(state):
 
 | モデル | ID | 推奨用途 |
 |--------|-----|----------|
-| Gemini 2.5 Flash | `google/gemini-2.5-flash-preview` | 高速応答、ルーティング |
-| GPT-4o | `openai/gpt-4o` | 複雑な推論 |
-| GPT-4o Mini | `openai/gpt-4o-mini` | コスト効率の良いフォールバック |
-| Claude 3.5 Sonnet | `anthropic/claude-3.5-sonnet` | 高品質応答 |
-| Llama 3.2 90B | `meta-llama/llama-3.2-90b-vision-instruct` | ビジョンタスク |
+| Gemini 3.1 Flash Lite | `google/gemini-3.1-flash-lite-preview` | 低レイテンシ・日常会話・ルーティング |
+| Gemini 2.5 Flash-Lite | `google/gemini-2.5-flash-lite` | 安定版 fallback |
+| Gemini 3.1 Pro | `google/gemini-3.1-pro-preview` | 高度な推論候補 |
+| Gemini 2.5 Pro | `google/gemini-2.5-pro` | 高度な推論の安定版 fallback |
+| GPT-5.4 Nano | `openai/gpt-5.4-nano` | OpenAI 側の高速・低コスト候補 |
+| Cerebras GPT OSS 120B | `gpt-oss-120b` | Cerebras の短文 tertiary fallback |
 
 ## モデル設定
 
@@ -95,10 +96,10 @@ from llm import get_llm_provider, ModelConfig, SupportedModel
 provider = get_llm_provider()
 
 my_config = ModelConfig(
-    model_id=SupportedModel.GPT_4O,
+    model_id=SupportedModel.GEMINI_3_1_FLASH_LITE,
     temperature=0.5,
     max_tokens=512,
-    fallback_model=SupportedModel.GPT_4O_MINI,
+    fallback_model=SupportedModel.GEMINI_2_5_FLASH_LITE,
 )
 
 llm = provider.get_langchain_llm(my_config)
@@ -133,8 +134,8 @@ async for chunk in provider.stream(messages):
 from llm import ModelConfig, SupportedModel
 
 config = ModelConfig(
-    model_id=SupportedModel.GEMINI_2_5_FLASH,  # プライマリ
-    fallback_model=SupportedModel.GPT_4O_MINI,  # フォールバック
+    model_id=SupportedModel.GEMINI_3_1_FLASH_LITE,  # プライマリ
+    fallback_model=SupportedModel.GEMINI_2_5_FLASH_LITE,  # 安定版フォールバック
     temperature=0.7,
 )
 ```
@@ -161,10 +162,10 @@ OpenRouterProviderは以下のエラーケースで自動的にフォールバ�
 ### フォールバックの例
 
 ```python
-# 例: Gemini 2.5 Flash → GPT-4o Mini フォールバック
+# 例: Gemini 3.1 Flash-Lite preview → Gemini 2.5 Flash-Lite stable（OpenRouter フォールバック）
 config = ModelConfig(
-    model_id=SupportedModel.GEMINI_2_5_FLASH,
-    fallback_model=SupportedModel.GPT_4O_MINI,
+    model_id=SupportedModel.GEMINI_3_1_FLASH_LITE,
+    fallback_model=SupportedModel.GEMINI_2_5_FLASH_LITE,
 )
 
 # プライマリモデル失敗時、自動的にフォールバックが試行される

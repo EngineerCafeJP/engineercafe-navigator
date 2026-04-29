@@ -276,10 +276,10 @@ class OrchestratorAgent:
             ]
 
             routing_config = ModelConfig(
-                model_id=SupportedModel.GEMINI_3_FLASH,
-                temperature=0.0,
+                model_id=SupportedModel.GEMINI_3_1_FLASH_LITE,
+                temperature=0.15,
                 max_tokens=200,
-                fallback_model=SupportedModel.GEMINI_2_5_FLASH,
+                fallback_model=SupportedModel.GEMINI_2_5_FLASH_LITE,
             )
 
             response_content = await self.provider.generate(

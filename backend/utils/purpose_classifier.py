@@ -177,9 +177,10 @@ async def classify_purpose(
 
         provider = OpenRouterProvider()
         config = ModelConfig(
-            model_id=SupportedModel.GEMINI_3_FLASH,
+            model_id=SupportedModel.GEMINI_3_1_FLASH_LITE,
             temperature=0.1,
             max_tokens=200,
+            fallback_model=SupportedModel.GEMINI_2_5_FLASH_LITE,
         )
 
         response = await provider.generate(

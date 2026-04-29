@@ -40,7 +40,7 @@ Engineer Cafe Navigator は、福岡市中央区天神にあるエンジニア�
 #### Backend (LangGraph)
 - **言語**: Python 3.12+
 - **AI Framework**: LangGraph (Supervisor Pattern)
-- **LLM Provider**: OpenRouter (google/gemini-2.0-flash-001)
+- **LLM Provider**: OpenRouter with ADR 018 fast model resolver
 - **テスト**: pytest（406件パス）+ LangChain Evaluation
 
 #### 共通
@@ -399,8 +399,10 @@ GOOGLE_CLOUD_PROJECT_ID=your-project-id
 GOOGLE_APPLICATION_CREDENTIALS=path/to/service-account.json
 
 # AI Models
-GOOGLE_GENERATIVE_AI_API_KEY=your-gemini-api-key
+OPENROUTER_API_KEY=your-openrouter-api-key
 OPENAI_API_KEY=your-openai-api-key
+FAST_LLM_PRIMARY_MODEL=google/gemini-3.1-flash-lite-preview
+FAST_LLM_FALLBACK_MODEL=google/gemini-2.5-flash-lite
 
 # Supabase
 NEXT_PUBLIC_SUPABASE_URL=your-supabase-url

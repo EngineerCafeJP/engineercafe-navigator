@@ -129,7 +129,7 @@ def facility_info_config():
     Returns:
         Dict[str, Any]: モデル設定
     """
-    return {"model": "google/gemini-pro", "temperature": 0.5, "max_tokens": 800}
+    return {"model": "google/gemini-3.1-flash-lite-preview", "temperature": 0.5, "max_tokens": 800}
 
 
 # ==============================================================================

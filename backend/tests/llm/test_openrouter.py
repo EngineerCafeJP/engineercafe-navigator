@@ -25,8 +25,8 @@ class TestOpenRouterProvider:
         """HTTPステータスエラー時のフォールバック動作テスト"""
         messages = [HumanMessage(content="Test message")]
         config = ModelConfig(
-            model_id=SupportedModel.GEMINI_2_5_FLASH,
-            fallback_model=SupportedModel.GPT_5_MINI,
+            model_id=SupportedModel.GEMINI_3_1_FLASH_LITE,
+            fallback_model=SupportedModel.GEMINI_2_5_FLASH_LITE,
         )
 
         # HTTPステータスエラーをシミュレート
@@ -66,8 +66,8 @@ class TestOpenRouterProvider:
         """ネットワークエラー時のフォールバック動作テスト"""
         messages = [HumanMessage(content="Test message")]
         config = ModelConfig(
-            model_id=SupportedModel.GEMINI_2_5_FLASH,
-            fallback_model=SupportedModel.GPT_5_MINI,
+            model_id=SupportedModel.GEMINI_3_1_FLASH_LITE,
+            fallback_model=SupportedModel.GEMINI_2_5_FLASH_LITE,
         )
 
         # ネットワークエラーをシミュレート
@@ -101,7 +101,7 @@ class TestOpenRouterProvider:
         """フォールバックモデルなしの場合、エラーが発生することを確認"""
         messages = [HumanMessage(content="Test message")]
         config = ModelConfig(
-            model_id=SupportedModel.GEMINI_2_5_FLASH,
+            model_id=SupportedModel.GEMINI_3_1_FLASH_LITE,
             fallback_model=None,  # フォールバックなし
         )
 
@@ -118,8 +118,8 @@ class TestOpenRouterProvider:
         """フォールバック回数制限のテスト（無限ループ防止）"""
         messages = [HumanMessage(content="Test message")]
         config = ModelConfig(
-            model_id=SupportedModel.GEMINI_2_5_FLASH,
-            fallback_model=SupportedModel.GPT_5_MINI,
+            model_id=SupportedModel.GEMINI_3_1_FLASH_LITE,
+            fallback_model=SupportedModel.GEMINI_2_5_FLASH_LITE,
         )
 
         # 常にネットワークエラーをシミュレート
@@ -138,8 +138,8 @@ class TestOpenRouterProvider:
         """プライマリモデルが成功する場合のテスト"""
         messages = [HumanMessage(content="Test message")]
         config = ModelConfig(
-            model_id=SupportedModel.GEMINI_2_5_FLASH,
-            fallback_model=SupportedModel.GPT_5_MINI,
+            model_id=SupportedModel.GEMINI_3_1_FLASH_LITE,
+            fallback_model=SupportedModel.GEMINI_2_5_FLASH_LITE,
         )
 
         mock_response = MagicMock()
@@ -163,8 +163,8 @@ class TestOpenRouterProvider:
         """特定のHTTPステータスコードでのフォールバック"""
         messages = [HumanMessage(content="Test message")]
         config = ModelConfig(
-            model_id=SupportedModel.GEMINI_2_5_FLASH,
-            fallback_model=SupportedModel.GPT_5_MINI,
+            model_id=SupportedModel.GEMINI_3_1_FLASH_LITE,
+            fallback_model=SupportedModel.GEMINI_2_5_FLASH_LITE,
         )
 
         # 503 Service Unavailableエラーをシミュレート

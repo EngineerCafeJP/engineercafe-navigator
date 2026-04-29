@@ -175,17 +175,14 @@ class WorkflowState(TypedDict):
 ```python
 # src/agents/business_info_agent.py
 from langgraph.graph import StateGraph, END
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import OpenAIEmbeddings
+from backend.llm import get_llm_provider, get_model_config
 
 from src.models.state import WorkflowState
 from src.tools.rag_search import search_knowledge_base
 
 # LLM の初期化
-llm = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash-preview-05-20",
-    temperature=0.7
-)
+llm = get_llm_provider().get_langchain_llm(get_model_config("qa_response"))
 
 embeddings = OpenAIEmbeddings(
     model="text-embedding-3-small"

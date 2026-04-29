@@ -83,7 +83,7 @@ async def _translate_llm_with_retry(
     backoff_base: float = 0.5,
 ) -> str:
     """Translate KO/ZH query to JA via OpenRouter with exponential backoff."""
-    _TRAG_MODEL = os.getenv("TRAG_TRANSLATION_MODEL", "google/gemini-2.0-flash-001")
+    _TRAG_MODEL = os.getenv("TRAG_TRANSLATION_MODEL", "google/gemini-3.1-flash-lite-preview")
     api_key = os.getenv("OPENROUTER_API_KEY", "")
     if not api_key:
         logger.warning("OPENROUTER_API_KEY not set, skipping %s->ja", language)

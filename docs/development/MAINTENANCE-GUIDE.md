@@ -79,7 +79,9 @@ pnpm tsx scripts/test-web-search-integration.ts
 
 Essential variables for production:
 - `OPENAI_API_KEY` - For embeddings (text-embedding-3-small)
-- `GOOGLE_GENERATIVE_AI_API_KEY` - For Gemini responses
+- `OPENROUTER_API_KEY` - For LLM responses through OpenRouter
+- `FAST_LLM_PRIMARY_MODEL` / `FAST_LLM_FALLBACK_MODEL` - For ADR 018 fast response routing
+- `CEREBRAS_API_KEY` - Optional tertiary fast fallback / filler
 - `GOOGLE_CALENDAR_ICAL_URL` - For calendar events
 - `SUPABASE_SERVICE_ROLE_KEY` - For database access
 
