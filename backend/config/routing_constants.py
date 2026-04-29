@@ -252,6 +252,8 @@ RECEPTION_KEYWORDS = [
     "check-in",
     "check in",
     "チェックイン",
+    "first-time",
+    "first time",
     "初めて",
     "はじめて",
     "returning visitor",

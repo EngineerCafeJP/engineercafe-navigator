@@ -80,6 +80,19 @@ class TestBusinessInfoAgent:
         assert "staff" in response["answer"].lower()
         assert "free" in response["answer"].lower()
 
+    def test_first_time_visitor_canonical_response(self):
+        """Hyphenated first-time visitor phrasing must not fall back."""
+        response = self.agent._get_canonical_response(
+            "I'm a first-time visitor. What should I do?", "reception", "en"
+        )
+
+        assert response is not None
+        assert response["metadata"]["confidence"] >= 0.7
+        assert response["metadata"]["sources"] == ["enhanced_rag"]
+        assert "1F reception" in response["answer"]
+        assert "free" in response["answer"].lower()
+        assert "5 to 10 minutes" in response["answer"]
+
     def test_opening_hours_canonical_response_japanese(self):
         """営業時間は開館時間と相談受付時間を分けて案内する"""
         response = self.agent._get_canonical_response(

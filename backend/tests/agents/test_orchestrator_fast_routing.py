@@ -151,6 +151,7 @@ class TestOrchestratorFastRouting:
         test_cases = [
             "初回利用の手続きは？",
             "利用方法を教えてください",
+            "I'm a first-time visitor. What should I do?",
         ]
         for query in test_cases:
             result = orchestrator._try_fast_routing(query)

@@ -144,6 +144,7 @@ class TestQueryExpansion:
             ("What is the membership like?", ["会員", "利用登録", "受付"]),
             ("Can I become a member?", ["会員", "利用登録", "初回"]),
             ("Are there member benefits?", ["無料", "利用料", "会員"]),
+            ("I'm a first-time visitor. What should I do?", ["初回", "利用登録", "受付"]),
         ],
     )
     def test_expand_query_membership_english_matches_kb_terms(
