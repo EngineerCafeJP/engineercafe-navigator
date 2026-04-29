@@ -341,8 +341,9 @@ export default function Home() {
             markAudioUserInteraction();
             sendSttWarmup({ language: voice.currentLanguage, sessionId: voice.sessionId });
             clearReturnToIdleTimer();
-            setWelcomeMemberOcrSessionKey((n) => n + 1);
-            setWelcomeMemberOcrOpen(true);
+            setWelcomeMemberOcrOpen(false);
+            setKioskPhaseSynced('voice');
+            setKioskVoiceLocked(micInputMode !== 'push_to_talk');
             try {
               const result = await startReception({
                 session_id: voice.sessionId,

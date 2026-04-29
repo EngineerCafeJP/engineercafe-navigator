@@ -139,6 +139,14 @@ const LOADING_LABELS = {
   },
 } as const;
 
+const FAST_FILLER_ENABLED =
+  process.env.NEXT_PUBLIC_FAST_FILLER_ENABLED !== 'false';
+const FAST_FILLER_DELAY_MS = 350;
+const FAST_FILLER_TEXT = {
+  ja: '確認しています。',
+  en: 'Let me check.',
+} as const;
+
 /** UUID v4 を生成する。crypto.randomUUID が無い環境（HTTP や古いブラウザ）用のフォールバック付き。 */
 const generateUuid = (): string => {
   if (typeof window !== 'undefined' && typeof window.crypto?.randomUUID === 'function') {
@@ -240,6 +248,8 @@ export default function VoiceInterface({
   const mobileAudioServiceRef = useRef<MobileAudioService | null>(null);
   const audioUrlRef = useRef<string | null>(null);
   const isRecordingRef = useRef(false);
+  const fastFillerTimerRef = useRef<number | null>(null);
+  const fastFillerUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
   useEffect(() => {
     visitorIdRef.current = getOrCreateVisitorId();
@@ -277,6 +287,52 @@ export default function VoiceInterface({
     requestAbortRef.current?.abort();
     requestAbortRef.current = null;
   }, []);
+
+  const cancelFastFiller = useCallback(() => {
+    if (fastFillerTimerRef.current !== null) {
+      window.clearTimeout(fastFillerTimerRef.current);
+      fastFillerTimerRef.current = null;
+    }
+    fastFillerUtteranceRef.current = null;
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+  }, []);
+
+  const scheduleFastFiller = useCallback(() => {
+    if (
+      !FAST_FILLER_ENABLED ||
+      isMuted ||
+      typeof window === 'undefined' ||
+      !('speechSynthesis' in window) ||
+      typeof SpeechSynthesisUtterance === 'undefined'
+    ) {
+      return;
+    }
+
+    if (fastFillerTimerRef.current !== null) {
+      window.clearTimeout(fastFillerTimerRef.current);
+    }
+
+    fastFillerTimerRef.current = window.setTimeout(() => {
+      fastFillerTimerRef.current = null;
+      const utterance = new SpeechSynthesisUtterance(
+        FAST_FILLER_TEXT[currentLanguage],
+      );
+      utterance.lang = toLocale(currentLanguage);
+      utterance.volume = Math.max(0, Math.min(1, volume));
+      utterance.rate = currentLanguage === 'ja' ? 1.08 : 1.0;
+      utterance.pitch = 1.0;
+      utterance.onend = () => {
+        if (fastFillerUtteranceRef.current === utterance) {
+          fastFillerUtteranceRef.current = null;
+        }
+      };
+      utterance.onerror = utterance.onend;
+      fastFillerUtteranceRef.current = utterance;
+      window.speechSynthesis.speak(utterance);
+    }, FAST_FILLER_DELAY_MS);
+  }, [currentLanguage, isMuted, volume]);
 
   const ensureAudioService = useCallback(() => {
     if (!mobileAudioServiceRef.current) {
@@ -374,6 +430,7 @@ export default function VoiceInterface({
 
   const stopPlayback = useCallback(
     (completeTurn: boolean) => {
+      cancelFastFiller();
       stopAudioPlayback(audioQueueRef, mobileAudioServiceRef, onVisemeControl);
       cleanupAudioPlayback();
 
@@ -381,11 +438,18 @@ export default function VoiceInterface({
         voiceController.notifySpeakingComplete(skipAssistantTurnAutoResume);
       }
     },
-    [cleanupAudioPlayback, onVisemeControl, skipAssistantTurnAutoResume, voiceController],
+    [
+      cancelFastFiller,
+      cleanupAudioPlayback,
+      onVisemeControl,
+      skipAssistantTurnAutoResume,
+      voiceController,
+    ],
   );
 
   const playAssistantAudio = useCallback(
     async (audioBase64: string, metadataForPlayback?: VoiceInterfaceMetadata | null) => {
+      cancelFastFiller();
       if (isMuted) {
         voiceController.notifySpeaking();
         onAssistantPlaybackStart?.({ metadata: metadataForPlayback ?? null });
@@ -456,6 +520,7 @@ export default function VoiceInterface({
     },
     [
       cleanupAudioPlayback,
+      cancelFastFiller,
       clearLipSyncTimers,
       currentLanguage,
       ensureAudioService,
@@ -484,6 +549,7 @@ export default function VoiceInterface({
       setLoadingMessage(LOADING_LABELS[currentLanguage].answer);
       setLoadingPhase('llm');
       voiceController.notifyProcessing();
+      scheduleFastFiller();
 
       const abortController = new AbortController();
       requestAbortRef.current = abortController;
@@ -559,6 +625,7 @@ export default function VoiceInterface({
         if (typeof ttsResult.audioResponse === 'string' && ttsResult.audioResponse.length > 0) {
           await playAssistantAudio(ttsResult.audioResponse, playbackMetadata);
         } else {
+          cancelFastFiller();
           voiceController.notifySpeaking();
           window.setTimeout(() => {
             voiceController.notifySpeakingComplete(skipAssistantTurnAutoResume);
@@ -569,6 +636,7 @@ export default function VoiceInterface({
           return;
         }
 
+        cancelFastFiller();
         setError(formatError(sendError, currentLanguage));
         voiceController.notifySpeakingComplete(true);
       } finally {
@@ -582,9 +650,11 @@ export default function VoiceInterface({
     },
     [
       cancelPendingRequest,
+      cancelFastFiller,
       currentLanguage,
       ensureVisitorId,
       playAssistantAudio,
+      scheduleFastFiller,
       skipAssistantTurnAutoResume,
       stopPlayback,
       voiceController,
@@ -656,7 +726,7 @@ export default function VoiceInterface({
         } else {
           voiceController.notifySpeaking();
           window.setTimeout(() => {
-            voiceController.notifySpeakingComplete();
+            voiceController.notifySpeakingComplete(skipAssistantTurnAutoResume);
           }, 240);
         }
       } catch (speakError) {
@@ -679,6 +749,7 @@ export default function VoiceInterface({
       cancelPendingRequest,
       currentLanguage,
       playAssistantAudio,
+      skipAssistantTurnAutoResume,
       stopPlayback,
       voiceController,
     ],
@@ -859,6 +930,7 @@ export default function VoiceInterface({
 
   const cancelSession = useCallback(() => {
     cancelSttWarmup();
+    cancelFastFiller();
     cancelPendingRequest();
     stopPlayback(false);
     shouldDiscardNextAudioRef.current = true;
@@ -867,7 +939,13 @@ export default function VoiceInterface({
     setLoadingMessage('');
     setLoadingPhase(null);
     voiceController.endManualSession();
-  }, [cancelPendingRequest, stopPlayback, stopRecorderCapture, voiceController]);
+  }, [
+    cancelFastFiller,
+    cancelPendingRequest,
+    stopPlayback,
+    stopRecorderCapture,
+    voiceController,
+  ]);
 
   const clearConversation = useCallback(() => {
     cancelSession();
@@ -910,13 +988,14 @@ export default function VoiceInterface({
 
   useEffect(() => {
     return () => {
+      cancelFastFiller();
       cancelPendingRequest();
       cleanupAudioPlayback();
       recorderRef.current?.cleanup();
       lipSyncAnalyzerRef.current?.dispose();
       mobileAudioServiceRef.current?.dispose();
     };
-  }, [cancelPendingRequest, cleanupAudioPlayback]);
+  }, [cancelFastFiller, cancelPendingRequest, cleanupAudioPlayback]);
 
   const renderProps = useMemo<VoiceInterfaceRenderProps>(
     () => ({

@@ -47,6 +47,13 @@ export function KioskBottomBar({
 }) {
   const isVoiceCaptureActive = kioskPhase === 'voice' && kioskVoiceLocked;
   const isPushToTalk = micInputMode === 'push_to_talk';
+  const voiceButtonLabel = isPushToTalk
+    ? isVoiceCaptureActive
+      ? labels.kioskVoicePushActive
+      : labels.kioskVoicePushIdle
+    : isVoiceCaptureActive
+      ? labels.kioskVoiceToggleActive
+      : labels.kioskVoice;
 
   const handleKioskVoiceStart = () => {
     markAudioUserInteraction();
@@ -164,7 +171,7 @@ export function KioskBottomBar({
             >
               <Mic className="size-6 shrink-0 sm:size-7" aria-hidden />
               <span className="text-center text-xs font-semibold leading-tight sm:text-sm">
-                {labels.kioskVoice}
+                {voiceButtonLabel}
               </span>
             </button>
             <button
