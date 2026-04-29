@@ -1,6 +1,6 @@
 'use client';
 
-import { markAudioUserInteraction } from '@/lib/audio/audio-user-interaction-gate';
+import { unlockAudioForUserGesture } from '@/lib/audio/audio-interaction-manager';
 import {
   initialSettingsModalLabels,
   kioskSettingsLabels,
@@ -104,16 +104,8 @@ export default function InitialSettingsModal({
       triggerMode,
       micMode,
     });
-    markAudioUserInteraction();
+    unlockAudioForUserGesture();
     onClose();
-    void (async () => {
-      try {
-        const { AudioInteractionManager } = await import('@/lib/audio/audio-interaction-manager');
-        await AudioInteractionManager.getInstance().ensureAudioContext();
-      } catch {
-        // Autoplay gate may still block until further gesture; kiosk flow continues.
-      }
-    })();
   }, [micMode, onClose, onPreferencesSaved, triggerMode, uiLanguage]);
 
   if (!open) {

@@ -1,6 +1,6 @@
 'use client';
 
-import { markAudioUserInteraction } from '@/lib/audio/audio-user-interaction-gate';
+import { unlockAudioForUserGesture } from '@/lib/audio/audio-interaction-manager';
 import { startSensorPolling, stopSensorPolling } from '@/lib/api/device-webhook';
 import { getStageBackgroundStyle } from '@/lib/get-stage-background-style';
 import { overlayLabels } from '@/lib/kiosk-labels';
@@ -258,6 +258,7 @@ export default function Home() {
 
   const startPresentation = useCallback(
     (language: 'ja' | 'en') => {
+      unlockAudioForUserGesture();
       clearReturnToIdleTimer();
       setCurrentLanguage(language);
       setPresentationAutoStartKey((key) => key + 1);
@@ -337,7 +338,7 @@ export default function Home() {
             if (!armWelcomeCooldown()) {
               return;
             }
-            markAudioUserInteraction();
+            unlockAudioForUserGesture();
             sendSttWarmup({ language: voice.currentLanguage, sessionId: voice.sessionId });
             clearReturnToIdleTimer();
             setWelcomeMemberOcrOpen(false);
@@ -364,10 +365,18 @@ export default function Home() {
           const stageBackgroundStyle = getStageBackgroundStyle(characterBackground);
 
           const screenPadding = {
-            paddingTop: 'max(1.5rem, env(safe-area-inset-top))',
-            paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom))',
-            paddingLeft: 'max(1.5rem, env(safe-area-inset-left))',
-            paddingRight: 'max(1.5rem, env(safe-area-inset-right))',
+            paddingTop: showSlideMode
+              ? 'max(0.25rem, env(safe-area-inset-top))'
+              : 'max(1.5rem, env(safe-area-inset-top))',
+            paddingBottom: showSlideMode
+              ? 'max(0.25rem, env(safe-area-inset-bottom))'
+              : 'max(1.5rem, env(safe-area-inset-bottom))',
+            paddingLeft: showSlideMode
+              ? 'max(0.25rem, env(safe-area-inset-left))'
+              : 'max(1.5rem, env(safe-area-inset-left))',
+            paddingRight: showSlideMode
+              ? 'max(0.25rem, env(safe-area-inset-right))'
+              : 'max(1.5rem, env(safe-area-inset-right))',
           } satisfies CSSProperties;
 
 
@@ -635,22 +644,22 @@ export default function Home() {
                       style={screenPadding}
                     >
                       <div
-                        className="pointer-events-auto relative flex h-full min-h-0 w-full flex-col overflow-hidden rounded-[32px] bg-white/95 shadow-2xl transition-all duration-300 ease-out"
+                        className="pointer-events-auto relative flex h-full min-h-0 w-full flex-col overflow-hidden rounded-2xl bg-white/95 shadow-2xl transition-all duration-300 ease-out sm:rounded-[28px]"
                         onPointerDownCapture={bumpUserActivity}
                       >
                         <button
                           type="button"
                           onClick={handleCloseSlides}
                           aria-label={labels.closeSlides}
-                          className="absolute right-3 top-3 z-20 inline-flex size-11 items-center justify-center rounded-full bg-black/70 text-white shadow-lg transition-transform duration-200 ease-out hover:scale-105"
+                          className="absolute right-2 top-2 z-30 inline-flex size-9 items-center justify-center rounded-full bg-black/70 text-white shadow-lg transition-transform duration-200 ease-out hover:scale-105 sm:right-3 sm:top-3 sm:size-10"
                         >
-                          <X className="size-5" />
+                          <X className="size-4 sm:size-5" />
                         </button>
                         <ReceptionPdfGuide
                           language={voice.currentLanguage}
                           rotateLandscapeHint={labels.slideRotateHint}
                           autoStartKey={presentationAutoStartKey}
-                          className="min-h-0 flex-1 pt-11"
+                          className="min-h-0 flex-1"
                           onVisemeControl={setVisemeFunction}
                           onExpressionControl={setExpressionFunction}
                           volume={Math.round(voice.volume * 100)}

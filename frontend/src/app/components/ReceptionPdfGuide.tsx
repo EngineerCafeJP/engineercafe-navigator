@@ -792,16 +792,16 @@ export default function ReceptionPdfGuide({
   return (
     <div
       data-testid="reception-pdf-guide"
-      className={cn('flex h-full min-h-0 flex-col', className)}
+      className={cn('relative flex h-full min-h-0 flex-col', className)}
     >
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b bg-gray-50 px-3 py-2.5">
+      <div className="absolute left-2 right-12 top-2 z-20 flex flex-wrap items-center justify-between gap-1.5 rounded-xl border border-white/70 bg-white/85 px-2 py-1.5 shadow-lg backdrop-blur-md sm:left-3 sm:right-14 sm:top-3 sm:gap-2 sm:px-3 sm:py-2">
         <div className="flex items-center gap-2">
           <button
             type="button"
             data-testid="reception-pdf-prev"
             onClick={previousSlide}
             disabled={currentPage === 1}
-            className="rounded bg-blue-500 p-2 text-white disabled:bg-gray-300"
+            className="rounded bg-blue-500 p-1.5 text-white disabled:bg-gray-300 sm:p-2"
           >
             <ChevronLeft className="h-4 w-4" />
           </button>
@@ -810,7 +810,7 @@ export default function ReceptionPdfGuide({
             data-testid="reception-pdf-next"
             onClick={nextSlide}
             disabled={currentPage >= totalPages}
-            className="rounded bg-blue-500 p-2 text-white disabled:bg-gray-300"
+            className="rounded bg-blue-500 p-1.5 text-white disabled:bg-gray-300 sm:p-2"
           >
             <ChevronRight className="h-4 w-4" />
           </button>
@@ -826,14 +826,14 @@ export default function ReceptionPdfGuide({
             aria-pressed={isPlaying}
             data-state={isPlaying ? 'playing' : 'paused'}
             className={cn(
-              'rounded p-2 text-white',
+              'rounded p-1.5 text-white sm:p-2',
               isPlaying ? 'bg-red-500' : 'bg-green-500'
             )}
           >
             {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
           </button>
           {isNarrating ? (
-            <span className="text-xs text-blue-700">
+            <span className="hidden text-xs text-blue-700 sm:inline">
               {language === 'ja' ? 'ナレーション中…' : 'Narrating…'}
             </span>
           ) : null}
@@ -841,7 +841,7 @@ export default function ReceptionPdfGuide({
             type="button"
             data-testid="reception-pdf-reset"
             onClick={() => gotoSlide(1)}
-            className="rounded bg-gray-500 p-2 text-white"
+            className="rounded bg-gray-500 p-1.5 text-white sm:p-2"
           >
             <RotateCcw className="h-4 w-4" />
           </button>
@@ -853,7 +853,7 @@ export default function ReceptionPdfGuide({
                 setSettings((s) => ({ ...s, enableLipSync: e.target.checked }))
               }
             />
-            {language === 'ja' ? 'リップ' : 'Lip'}
+            <span className="hidden sm:inline">{language === 'ja' ? 'リップ' : 'Lip'}</span>
           </label>
           <label className="flex items-center gap-1 text-xs text-gray-600">
             <input
@@ -863,14 +863,14 @@ export default function ReceptionPdfGuide({
                 setSettings((s) => ({ ...s, autoAdvance: e.target.checked }))
               }
             />
-            {language === 'ja' ? '自動送り' : 'Auto-advance'}
+            <span className="hidden sm:inline">{language === 'ja' ? '自動送り' : 'Auto-advance'}</span>
           </label>
         </div>
       </div>
       <div
         ref={wrapRef}
         data-testid="reception-pdf-landscape-panel"
-        className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-slate-100 p-2 sm:p-3"
+        className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-slate-100 p-0.5 sm:p-1"
       >
         <canvas ref={canvasRef} className="max-h-full max-w-full shadow-lg" data-testid="reception-pdf-canvas" />
       </div>
