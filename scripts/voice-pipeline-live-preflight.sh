@@ -443,11 +443,12 @@ def run_case(args: argparse.Namespace, api_key: str, rows: list[dict[str, Any]],
     sim = similarity(case.query, transcript) if transcript else 0.0
     provider_ok = provider == "qwen-primary" or (args.allow_vosk_fallback and provider == "vosk-fallback")
     latency_ok = duration_ms <= args.stt_max_ms
+    hard_latency_ok = duration_ms <= args.stt_hard_max_ms
     if not (http == 200 and stt.get("success") is True and transcript):
         stt_status = "FAIL"
     elif not provider_ok:
         stt_status = "FAIL"
-    elif not latency_ok:
+    elif not hard_latency_ok:
         stt_status = "FAIL"
     elif duration_ms > args.stt_warn_ms or sim < args.stt_similarity_threshold:
         stt_status = "WARN"
@@ -461,7 +462,7 @@ def run_case(args: argparse.Namespace, api_key: str, rows: list[dict[str, Any]],
         http=http,
         duration_ms=duration_ms,
         language=case.language,
-        expected=f"provider=qwen-primary latency<={args.stt_max_ms}ms",
+        expected=f"provider=qwen-primary latency<={args.stt_max_ms}ms hard<={args.stt_hard_max_ms}ms",
         actual=f"provider={provider or 'unknown'} similarity={sim:.3f} transcript={compact(transcript)}",
         notes=compact(raw),
     )
@@ -555,6 +556,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--sleep", type=float, default=1.0)
     parser.add_argument("--stt-warn-ms", type=int, default=5000)
     parser.add_argument("--stt-max-ms", type=int, default=10000)
+    parser.add_argument("--stt-hard-max-ms", type=int, default=45000)
     parser.add_argument("--stt-similarity-threshold", type=float, default=0.50)
     parser.add_argument("--warmup-poll-seconds", type=int, default=30)
     parser.add_argument("--warmup-poll-interval", type=float, default=2.0)

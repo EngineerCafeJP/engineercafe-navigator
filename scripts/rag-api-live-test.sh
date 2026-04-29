@@ -83,7 +83,19 @@ fetch_api_key_from_gcloud() {
   fi
 }
 
+fetch_secret_from_gcloud() {
+  secret_name="$1"
+  if command -v gcloud >/dev/null 2>&1; then
+    gcloud secrets versions access latest \
+      --secret="$secret_name" --project="$SECRET_PROJECT" 2>/dev/null || true
+  fi
+}
+
 require_ragas_judge_key() {
+  if [ -z "${OPENAI_API_KEY:-}" ] && [ -z "${OPENROUTER_API_KEY:-}" ]; then
+    OPENROUTER_API_KEY="$(fetch_secret_from_gcloud OPENROUTER_API_KEY)"
+    export OPENROUTER_API_KEY
+  fi
   if [ -n "${OPENAI_API_KEY:-}" ] || [ -n "${OPENROUTER_API_KEY:-}" ]; then
     return
   fi

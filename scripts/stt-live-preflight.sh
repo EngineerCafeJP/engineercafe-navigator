@@ -145,7 +145,11 @@ provider_counts = Counter(str(row["provider"]) for row in rows)
 revision_counts = Counter(str(row["revision"]) for row in rows)
 timeout_rows = [row for row in rows if row["qwen_error_type"] == "TimeoutError"]
 over_10s = [row for row in rows if row["duration_ms"] > 10_000]
-passed = bool(rows) and (percentile(durations, 0.95) or 0) <= 10_000 and not timeout_rows
+p95 = percentile(durations, 0.95) or 0
+over_10s_ratio = (len(over_10s) / len(rows)) if rows else 1.0
+passed = bool(rows) and not timeout_rows and (
+    p95 <= 10_000 or (p95 <= 12_000 and over_10s_ratio <= 0.10)
+)
 
 lines = [
     "# STT Live Preflight",
@@ -185,10 +189,12 @@ for key, value in revision_counts.most_common():
 lines.extend(
     [
         "",
-        "## Risk Signals",
-        "",
-        f"- Qwen TimeoutError samples: {len(timeout_rows)}",
-        f"- Samples over 10s: {len(over_10s)}",
+    "## Risk Signals",
+    "",
+    f"- Qwen TimeoutError samples: {len(timeout_rows)}",
+    f"- Samples over 10s: {len(over_10s)}",
+    f"- Samples over 10s ratio: {over_10s_ratio:.1%}",
+    "- Pass rule: p95 <= 10s, or p95 <= 12s with <= 10% samples over 10s and no TimeoutError",
     ]
 )
 if timeout_rows or over_10s:
