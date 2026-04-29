@@ -184,20 +184,16 @@ export class VoiceRecorder {
           return;
         }
 
-        const mimeType = this.getSupportedMimeType();
-        const recorderOptions: MediaRecorderOptions = mimeType ? { mimeType } : {};
-
-        try {
-          this.mediaRecorder = new MediaRecorder(this.stream, recorderOptions);
-        } catch (recorderError: any) {
-          console.error('MediaRecorder creation failed:', recorderError);
-          this.onError(
-            new Error(`Failed to create MediaRecorder: ${recorderError.message || 'Unknown error'}`),
-          );
+        const recorderResult = this.createMediaRecorder(this.stream);
+        if (!recorderResult.recorder) {
+          console.error('MediaRecorder creation failed:', recorderResult.error);
+          this.onError(new Error(recorderResult.error));
           this.stream.getTracks().forEach((track) => track.stop());
           this.stream = null;
           return;
         }
+
+        this.mediaRecorder = recorderResult.recorder;
       }
 
       this.mediaRecorder.ondataavailable = (event) => {
@@ -337,12 +333,10 @@ export class VoiceRecorder {
     return this.stream;
   }
 
-  private getSupportedMimeType(): string {
-    // Check if we're on iOS
+  private getCandidateMimeTypes(): string[] {
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
-    
-    // iOS Safari prefers mp4/aac
-    const mimeTypes = isIOS ? [
+
+    const preferredTypes = isIOS ? [
       'audio/mp4',
       'audio/aac',
       'audio/mpeg',
@@ -355,15 +349,49 @@ export class VoiceRecorder {
       'audio/wav',
     ];
 
-    for (const mimeType of mimeTypes) {
-      if (MediaRecorder.isTypeSupported(mimeType)) {
-        return mimeType;
+    if (typeof MediaRecorder.isTypeSupported !== 'function') {
+      return [];
+    }
+
+    return preferredTypes.filter((mimeType) => {
+      try {
+        return MediaRecorder.isTypeSupported(mimeType);
+      } catch {
+        return false;
+      }
+    });
+  }
+
+  private createMediaRecorder(stream: MediaStream): {
+    recorder: MediaRecorder | null;
+    error: string;
+  } {
+    const errors: string[] = [];
+
+    for (const mimeType of this.getCandidateMimeTypes()) {
+      try {
+        return {
+          recorder: new MediaRecorder(stream, { mimeType }),
+          error: '',
+        };
+      } catch (error: any) {
+        errors.push(`${mimeType}: ${error?.message || error?.name || 'failed'}`);
       }
     }
 
-    // Fallback - let the browser choose
-    console.warn('No supported mime type found, using default');
-    return '';
+    try {
+      return {
+        recorder: new MediaRecorder(stream),
+        error: '',
+      };
+    } catch (error: any) {
+      errors.push(`default: ${error?.message || error?.name || 'failed'}`);
+    }
+
+    return {
+      recorder: null,
+      error: `Microphone recording is not supported by this browser. MediaRecorder creation failed (${errors.join('; ') || 'no compatible format'}).`,
+    };
   }
 
   // Static utility methods
