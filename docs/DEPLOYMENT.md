@@ -1,7 +1,7 @@
 # デプロイガイド
 
 > Engineer Cafe Navigator の production deployment 運用ガイド
-> Last updated: 2026-04-19
+> Last updated: 2026-04-30
 
 ## インフラ構成
 
@@ -20,7 +20,9 @@ Cloud Run: engineer-cafe-backend (asia-northeast1)
      |
      +---> Supabase (PostgreSQL + pgvector)
      |
-     +---> Cloud Run: voicevox-proto (任意の TTS 経路)
+     +---> Cloud Run: piper-plus / voicevox-proto (TTS 経路)
+     |
+     +---> OpenRouter / Gemini / Cerebras (LLM 経路)
 ```
 
 ### Service Registry
@@ -29,8 +31,9 @@ Cloud Run: engineer-cafe-backend (asia-northeast1)
 | --- | --- | --- | --- |
 | Frontend | Vercel | Global CDN | Next.js UI + API proxy routes |
 | Backend | Cloud Run `engineer-cafe-backend` | `asia-northeast1` | FastAPI + LangGraph agents |
-| VoiceVox | Cloud Run `voicevox-proto` | `asia-northeast2` | 日本語 TTS 経路（利用時のみ） |
+| PiperPlus / VoiceVox | Cloud Run | `asia-northeast1` / `asia-northeast2` | TTS 経路（deploy 設定に従う） |
 | Database | Supabase (PostgreSQL + pgvector) | Managed | chat history, knowledge base, session data |
+| LLM providers | OpenRouter / Gemini / Cerebras | Managed | answer generation, fast fallback, filler |
 
 ### Frontend origin の source of truth
 
@@ -82,6 +85,14 @@ source of truth は `.github/workflows/ci.yml` の deploy job。
 | `API_SECRET_KEY` | Yes (production) | frontend -> backend 認証の正本 |
 | `ENVIRONMENT` | Yes | Cloud Run では `production` |
 | `OPENROUTER_API_KEY` | Yes | LLM provider |
+| `FAST_LLM_ENABLED` | If using fast path | identity 以外の daily/general light fast LLM を有効化 |
+| `FAST_LLM_PRIMARY_PROVIDER` / `FAST_LLM_PRIMARY_MODEL` | If using fast path | fast answer の primary provider / model |
+| `FAST_LLM_FALLBACK_PROVIDER` / `FAST_LLM_FALLBACK_MODEL` | If using fast path | fast answer の fallback provider / model |
+| `FAST_LLM_TERTIARY_PROVIDER` | If using Cerebras | OpenRouter primary/fallback 失敗後の tertiary provider |
+| `CEREBRAS_ENABLED` | If using Cerebras | Cerebras tertiary fallback / filler を有効化 |
+| `CEREBRAS_API_KEY` | If using Cerebras | Cerebras fast answer / filler provider |
+| `CEREBRAS_FAST_MODEL` | If using Cerebras | default: `gpt-oss-120b` |
+| `CEREBRAS_REASONING_EFFORT` | If using Cerebras GPT OSS | `low` / `medium` / `high`; alpha fast path は `low` |
 | `SUPABASE_URL` / `SUPABASE_KEY` / `SUPABASE_DB_URI` | Yes | Supabase / Postgres 接続 |
 | `ALLOWED_ORIGINS` | Yes | CORS origin |
 | `TTS_PROVIDER` / `STT_PROVIDER` | Per deploy | 音声経路設定 |
@@ -91,6 +102,8 @@ source of truth は `.github/workflows/ci.yml` の deploy job。
 
 - Cloud Run の env 更新は `--update-env-vars` を使う
 - `--set-env-vars` で既存値を消さない
+- 新しい secret provider を追加した場合は、GitHub Actions secret と Google Secret Manager の両方を更新する
+- Gemini preview model は deploy 前に実 API model id / region / quota を確認する。docs 上の marketing name をそのまま Cloud Run env に入れない
 
 ## デプロイ手順
 
@@ -120,6 +133,34 @@ manual deploy をする場合も、workflow と同じ前提に寄せる:
 - Artifact Registry push
 - `gcloud run deploy`
 - secret は `--update-secrets`
+
+### Cerebras secret setup
+
+Cerebras を有効化する場合は、local secret を chat や issue comment に貼らない。
+
+GitHub Actions:
+
+```bash
+gh secret set CEREBRAS_API_KEY --body "$CEREBRAS_API_KEY"
+```
+
+Google Secret Manager:
+
+```bash
+gcloud secrets create CEREBRAS_API_KEY --replication-policy=automatic
+printf "%s" "$CEREBRAS_API_KEY" | \
+  gcloud secrets versions add CEREBRAS_API_KEY --data-file=-
+```
+
+既に secret がある場合は `gcloud secrets create` は不要。
+
+Cloud Run deploy command では `--update-secrets` に次を追加する。
+
+```text
+CEREBRAS_API_KEY=CEREBRAS_API_KEY:latest
+```
+
+Terraform では `infra/terraform/secrets.tf` に runtime secret container を定義している。ただし既存 Secret Manager resource との衝突を避けるため、`manage_runtime_secrets` の default は `false` とする。Terraform 管理へ移す場合は、先に `google_secret_manager_secret.runtime["CEREBRAS_API_KEY"]` を import するか、未作成環境で `manage_runtime_secrets=true` を使う。secret version / 値は Terraform state に入れない。
 
 ## CI / CD
 
@@ -176,6 +217,9 @@ curl -sf "$(gcloud run services describe engineer-cafe-backend --region asia-nor
 - 新しい env var を追加した場合は docs を更新済み
 - schema change がある場合は Supabase migration 適用済み
 - Apple Silicon で build する場合は `--platform linux/amd64`
+- identity / help / capability route が provider self-disclosure を返さない
+- daily/general light route が RAG miss だけで Tavily / web search に落ちない
+- Gemini / Cerebras の model id は公式 API availability check と benchmark 結果で採用理由が残っている
 
 ### After deployment
 
@@ -188,6 +232,8 @@ curl -sf "$(gcloud run services describe engineer-cafe-backend --region asia-nor
 - production frontend 経由の `POST /api/character` が `200`
 - `frontend-latency-probe` workflow で `/api/qa` `/api/voice` `/api/character` の p50 / p95 / p99 を採取する
 - Cloud Run logs に immediate な `403` / `5xx` spike がない
+- Cloud Run logs で `assistant_profile` / `daily_conversation` / `general_light` / `current_info` の route 分布を確認する
+- `あなたの名前は`, `何ができますか`, `明日のイベントを教えて` を production frontend 経由で確認する
 
 ## Release Guardrails
 
@@ -238,6 +284,17 @@ python scripts/latency_probe.py \
 - `POST /api/character`
 
 field verification で iPad 系の音声停止が出たため、数値だけでなく実機再生も合わせて確認する。
+
+### Alpha fast response gate
+
+ADR 018 の実装後は、release 前に次の gate を通す。
+
+| Path | Gate |
+| --- | --- |
+| identity / help / capability | p95 1s 未満、LLM / RAG / web search 不使用、provider self-disclosure 0 件 |
+| daily/general light | p95 3s 未満、current-info でない限り Tavily / web search 不使用 |
+| current-info | calendar / web search を使う理由が route metadata に残る |
+| voice full turn | STT / chat / TTS の区間別 p50 / p95 を採取し、#613 に追記 |
 
 ## ロールバック
 

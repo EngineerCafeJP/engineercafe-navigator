@@ -21,7 +21,7 @@ class TestLLMJudgeEvaluator:
         """初期化テスト"""
         evaluator = LLMJudgeEvaluator()
 
-        assert evaluator.model_name == "gpt-4o-mini"
+        assert evaluator.model_name == "gpt-5.4-mini"
         assert evaluator.temperature == 0.0
         assert QualityDimension.ACCURACY in evaluator.thresholds
         assert QualityDimension.RELEVANCE in evaluator.thresholds
@@ -177,12 +177,12 @@ class TestCreateLLMJudge:
         """デフォルト設定で作成"""
         evaluator = create_llm_judge()
         assert isinstance(evaluator, LLMJudgeEvaluator)
-        assert evaluator.model_name == "gpt-4o-mini"
+        assert evaluator.model_name == "gpt-5.4-mini"
 
     def test_create_with_custom_model(self):
         """カスタムモデルで作成"""
-        evaluator = create_llm_judge(model_name="gpt-4o")
-        assert evaluator.model_name == "gpt-4o"
+        evaluator = create_llm_judge(model_name="gpt-5.4")
+        assert evaluator.model_name == "gpt-5.4"
 
     def test_create_with_custom_thresholds(self):
         """カスタム閾値で作成"""
@@ -240,7 +240,7 @@ class TestLLMJudgeOpenRouterFallback:
                 call_kwargs = mock_chat.call_args[1]
                 assert call_kwargs["api_key"] == "sk-or-test-key"
                 assert call_kwargs["openai_api_base"] == "https://openrouter.ai/api/v1"
-                assert call_kwargs["model"] == "openai/gpt-4o-mini"
+                assert call_kwargs["model"] == "openai/gpt-5.4-mini"
 
     def test_openrouter_model_name_mapping(self):
         """OpenRouter 使用時にモデル名がプロバイダープレフィックス付きに変換される"""
@@ -248,9 +248,9 @@ class TestLLMJudgeOpenRouterFallback:
         with patch.dict("os.environ", env, clear=True):
             with patch("backend.tests.utils.evaluators.llm_judge.ChatOpenAI") as mock_chat:
                 mock_chat.return_value = "mock_llm"
-                LLMJudgeEvaluator(model_name="gpt-4o")
+                LLMJudgeEvaluator(model_name="gpt-5.4")
                 call_kwargs = mock_chat.call_args[1]
-                assert call_kwargs["model"] == "openai/gpt-4o"
+                assert call_kwargs["model"] == "openai/gpt-5.4"
 
     def test_openai_key_takes_priority(self):
         """OPENAI_API_KEY と OPENROUTER_API_KEY の両方がある場合は OPENAI が優先"""

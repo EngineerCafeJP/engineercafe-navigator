@@ -63,7 +63,7 @@ class LLMJudgeEvaluator:
 
     def __init__(
         self,
-        model_name: str = "gpt-4o-mini",
+        model_name: str = "gpt-5.4-mini",
         temperature: float = 0.0,
         thresholds: Optional[Dict[QualityDimension, float]] = None,
     ):
@@ -106,8 +106,8 @@ class LLMJudgeEvaluator:
                 base_url = "https://openrouter.ai/api/v1"
                 # OpenRouter requires provider-prefixed model names
                 _openrouter_model_map = {
-                    "gpt-4o-mini": "openai/gpt-4o-mini",
-                    "gpt-4o": "openai/gpt-4o",
+                    "gpt-5.4-mini": "openai/gpt-5.4-mini",
+                    "gpt-5.4": "openai/gpt-5.4",
                     "gpt-4": "openai/gpt-4",
                 }
                 model_name = _openrouter_model_map.get(model_name, model_name)
@@ -476,7 +476,7 @@ class LLMJudgeEvaluator:
 
 
 def create_llm_judge(
-    model_name: str = "gpt-4o-mini",
+    model_name: str = "gpt-5.4-mini",
     thresholds: Optional[Dict[QualityDimension, float]] = None,
 ) -> LLMJudgeEvaluator:
     """

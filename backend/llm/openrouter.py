@@ -5,6 +5,8 @@ Provides flexible model switching through OpenRouter API,
 supporting multiple AI providers (OpenAI, Google, Anthropic, etc.)
 through a unified interface.
 
+Optional fast-path fallback after OpenRouter exhaustion: Cerebras (see model_resolve.py).
+
 See: https://openrouter.ai/docs
 """
 
@@ -23,10 +25,21 @@ from langchain_core.messages import (
 from langchain_openai import ChatOpenAI
 
 from .models import MODEL_CONFIGS, ModelConfig
+from .model_resolve import (
+    cerebras_fallback_enabled,
+    cerebras_model_slug,
+    cerebras_reasoning_effort,
+    merge_gemini_openrouter_extra,
+    resolved_openrouter_model_slug,
+)
 from .provider import LLMProvider
 from backend.utils.token_tracker import get_token_tracker
 
 logger = logging.getLogger(__name__)
+
+CEREBRAS_CHAT_URL = os.getenv(
+    "CEREBRAS_API_BASE_URL", "https://api.cerebras.ai/v1/chat/completions"
+).rstrip("/")
 
 
 class OpenRouterError(Exception):
@@ -132,11 +145,61 @@ class OpenRouterProvider(LLMProvider):
                 converted.append({"role": "user", "content": str(msg.content)})
         return converted
 
+    def _build_openrouter_payload(self, messages: List[BaseMessage], config: ModelConfig) -> Dict:
+        slug = resolved_openrouter_model_slug(config)
+        payload: Dict = {
+            "model": slug,
+            "messages": self._convert_messages(messages),
+            "temperature": config.temperature,
+            "max_tokens": config.max_tokens,
+            "top_p": config.top_p,
+        }
+        merge_gemini_openrouter_extra(payload)
+        return payload
+
+    async def _cerebras_generate(self, messages: List[BaseMessage], config: ModelConfig) -> str:
+        api_key = os.getenv("CEREBRAS_API_KEY", "").strip()
+        if not api_key:
+            raise OpenRouterError("CEREBRAS_API_KEY missing for fallback")
+        model_id = cerebras_model_slug()
+        body: Dict = {
+            "model": model_id,
+            "messages": self._convert_messages(messages),
+            "temperature": config.temperature,
+            "max_tokens": config.max_tokens,
+            "top_p": config.top_p,
+        }
+        effort = cerebras_reasoning_effort()
+        if effort:
+            body["reasoning_effort"] = effort
+        async with httpx.AsyncClient(
+            timeout=max(config.timeout, 60.0),
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        ) as cerebras_http:
+            response = await cerebras_http.post(CEREBRAS_CHAT_URL, json=body)
+            response.raise_for_status()
+            data = response.json()
+        if "choices" not in data or len(data["choices"]) == 0:
+            raise OpenRouterError("No choices in Cerebras response", response=data)
+        if "usage" in data:
+            try:
+                tracker = get_token_tracker()
+                tracker.record(
+                    model=model_id,
+                    prompt_tokens=data["usage"].get("prompt_tokens", 0),
+                    completion_tokens=data["usage"].get("completion_tokens", 0),
+                )
+            except Exception as e:
+                logger.debug("Token tracking failed (non-critical): %s", e)
+        return data["choices"][0]["message"]["content"]
+
     async def generate(
         self,
         messages: List[BaseMessage],
         config: Optional[ModelConfig] = None,
         _fallback_count: int = 0,
+        *,
+        _root_config: Optional[ModelConfig] = None,
     ) -> str:
         """
         Generate a response using OpenRouter API.
@@ -145,6 +208,7 @@ class OpenRouterProvider(LLMProvider):
             messages: List of conversation messages
             config: Model configuration (defaults to qa_response config)
             _fallback_count: Internal counter to prevent infinite fallback loops
+            _root_config: First config when recursing OpenRouter fallback (for Cerebras gate)
 
         Returns:
             Generated text response
@@ -153,14 +217,10 @@ class OpenRouterProvider(LLMProvider):
             OpenRouterError: On API errors after fallback attempts
         """
         config = config or MODEL_CONFIGS["qa_response"]
+        root_cfg = _root_config or config
 
-        payload = {
-            "model": config.model_id.value,
-            "messages": self._convert_messages(messages),
-            "temperature": config.temperature,
-            "max_tokens": config.max_tokens,
-            "top_p": config.top_p,
-        }
+        payload = self._build_openrouter_payload(messages, config)
+        primary_slug = payload["model"]
 
         try:
             response = await self._http_client.post("/chat/completions", json=payload)
@@ -170,12 +230,11 @@ class OpenRouterProvider(LLMProvider):
             if "choices" not in data or len(data["choices"]) == 0:
                 raise OpenRouterError("No choices in response", response=data)
 
-            # Capture token usage for cost tracking
             if "usage" in data:
                 try:
                     tracker = get_token_tracker()
                     tracker.record(
-                        model=config.model_id.value,
+                        model=primary_slug,
                         prompt_tokens=data["usage"].get("prompt_tokens", 0),
                         completion_tokens=data["usage"].get("completion_tokens", 0),
                     )
@@ -185,22 +244,37 @@ class OpenRouterProvider(LLMProvider):
             return data["choices"][0]["message"]["content"]
 
         except httpx.HTTPStatusError as e:
-            # Try fallback model if available (prevent infinite loop)
             if config.fallback_model and _fallback_count < 1:
+                fb_slug = config.fallback_model.value
                 logger.warning(
-                    "HTTP error (status %d), trying fallback: %s",
+                    "HTTP error (status %d), trying OpenRouter fallback: %s",
                     e.response.status_code,
-                    config.fallback_model.value,
+                    fb_slug,
                 )
                 fallback_config = ModelConfig(
                     model_id=config.fallback_model,
                     temperature=config.temperature,
                     max_tokens=config.max_tokens,
                     top_p=config.top_p,
+                    fallback_model=None,
                 )
                 return await self.generate(
-                    messages, fallback_config, _fallback_count=_fallback_count + 1
+                    messages,
+                    fallback_config,
+                    _fallback_count=_fallback_count + 1,
+                    _root_config=root_cfg,
                 )
+
+            if cerebras_fallback_enabled(root_cfg):
+                logger.warning(
+                    "OpenRouter failed (status=%s); trying Cerebras model=%s",
+                    getattr(e.response, "status_code", "?"),
+                    cerebras_model_slug(),
+                )
+                try:
+                    return await self._cerebras_generate(messages, root_cfg)
+                except Exception as ce:
+                    logger.warning("Cerebras fallback failed: %s", ce, exc_info=True)
 
             raise OpenRouterError(
                 f"API request failed: {e.response.text}",
@@ -208,7 +282,6 @@ class OpenRouterProvider(LLMProvider):
             ) from e
 
         except httpx.RequestError as e:
-            # Try fallback model for network errors (prevent infinite loop)
             if config.fallback_model and _fallback_count < 1:
                 logger.warning("Network error, trying fallback: %s", config.fallback_model.value)
                 fallback_config = ModelConfig(
@@ -216,10 +289,21 @@ class OpenRouterProvider(LLMProvider):
                     temperature=config.temperature,
                     max_tokens=config.max_tokens,
                     top_p=config.top_p,
+                    fallback_model=None,
                 )
                 return await self.generate(
-                    messages, fallback_config, _fallback_count=_fallback_count + 1
+                    messages,
+                    fallback_config,
+                    _fallback_count=_fallback_count + 1,
+                    _root_config=root_cfg,
                 )
+
+            if cerebras_fallback_enabled(root_cfg):
+                logger.warning("OpenRouter transport error; trying Cerebras: %s", e)
+                try:
+                    return await self._cerebras_generate(messages, root_cfg)
+                except Exception as ce:
+                    logger.warning("Cerebras fallback failed: %s", ce, exc_info=True)
 
             raise OpenRouterError(f"Network error: {str(e)}") from e
 
@@ -243,14 +327,8 @@ class OpenRouterProvider(LLMProvider):
         """
         config = config or MODEL_CONFIGS["qa_response"]
 
-        payload = {
-            "model": config.model_id.value,
-            "messages": self._convert_messages(messages),
-            "temperature": config.temperature,
-            "max_tokens": config.max_tokens,
-            "top_p": config.top_p,
-            "stream": True,
-        }
+        payload = self._build_openrouter_payload(messages, config)
+        payload["stream"] = True
 
         try:
             async with self._http_client.stream(
@@ -304,8 +382,10 @@ class OpenRouterProvider(LLMProvider):
         """
         config = config or MODEL_CONFIGS["qa_response"]
 
+        slug = resolved_openrouter_model_slug(config)
+
         return ChatOpenAI(
-            model=config.model_id.value,
+            model=slug,
             openai_api_key=self.api_key,
             openai_api_base=self.OPENROUTER_BASE_URL,
             temperature=config.temperature,

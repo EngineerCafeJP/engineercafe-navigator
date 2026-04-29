@@ -47,7 +47,7 @@ const testQueries = [
 export async function testRouterAgent() {
   console.log('🚀 Testing RouterAgent...\n');
   
-  const model = google('gemini-2.0-flash-exp', {
+  const model = google(process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite', {
     safetySettings: [
       { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
       { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },

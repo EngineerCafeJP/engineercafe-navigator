@@ -46,7 +46,7 @@ def pytest_addoption(parser):
 def llm_judge_evaluator() -> LLMJudgeEvaluator:
     """LLM Judge評価器フィクスチャ"""
     return LLMJudgeEvaluator(
-        model_name="gpt-4o-mini",
+        model_name="gpt-5.4-mini",
         temperature=0.0,
         thresholds={
             QualityDimension.ACCURACY: 0.7,

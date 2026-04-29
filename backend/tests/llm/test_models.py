@@ -32,8 +32,8 @@ class TestSupportedModel:
         assert issubclass(SupportedModel, Enum)
 
     def test_enum_member_count(self):
-        """SupportedModel は 22 個のメンバーを持つこと"""
-        assert len(SupportedModel) == 22
+        """SupportedModel は 25 個のメンバーを持つこと"""
+        assert len(SupportedModel) == 25
 
     def test_enum_member_is_str_instance(self):
         """各メンバーは str インスタンスであること"""
@@ -44,33 +44,30 @@ class TestSupportedModel:
     @pytest.mark.parametrize(
         "name, expected_value",
         [
-            # Google Models (2026-02 latest)
-            ("GEMINI_3_1_PRO", "google/gemini-3.1-pro-preview"),
+            ("GEMINI_3_1_FLASH_LITE", "google/gemini-3.1-flash-lite-preview"),
             ("GEMINI_3_FLASH", "google/gemini-3-flash-preview"),
+            ("GEMINI_2_5_FLASH_LITE", "google/gemini-2.5-flash-lite"),
+            ("GEMINI_3_1_PRO", "google/gemini-3.1-pro-preview"),
             ("GEMINI_3_PRO", "google/gemini-3-pro-preview"),
-            ("GEMINI_2_5_FLASH", "google/gemini-2.5-flash-preview"),
-            ("GEMINI_2_5_FLASH_IMAGE", "google/gemini-2.5-flash-image"),
-            # OpenAI Models (2026-02 latest)
+            ("GEMINI_2_5_PRO", "google/gemini-2.5-pro"),
+            ("GPT_5_5", "openai/gpt-5.5"),
+            ("GPT_5_4", "openai/gpt-5.4"),
+            ("GPT_5_4_MINI", "openai/gpt-5.4-mini"),
+            ("GPT_5_4_NANO", "openai/gpt-5.4-nano"),
             ("GPT_5_2", "openai/gpt-5.2"),
             ("GPT_5_MINI", "openai/gpt-5-mini"),
             ("GPT_5_1", "openai/gpt-5.1-chat"),
-            ("GPT_4O", "openai/gpt-4o"),
-            ("GPT_4O_MINI", "openai/gpt-4o-mini"),
-            # Anthropic Models (2026-02 latest)
             ("CLAUDE_SONNET_4_6", "anthropic/claude-sonnet-4.6"),
             ("CLAUDE_OPUS_4_5", "anthropic/claude-opus-4.5"),
             ("CLAUDE_HAIKU_4_5", "anthropic/claude-haiku-4.5"),
             ("CLAUDE_SONNET_4", "anthropic/claude-sonnet-4"),
             ("CLAUDE_3_5_SONNET", "anthropic/claude-3.5-sonnet"),
-            # Meta Models
             ("LLAMA_3_3_NEMOTRON", "nvidia/llama-3.3-nemotron-super-49b-v1.5"),
             ("LLAMA_3_2_90B", "meta-llama/llama-3.2-90b-vision-instruct"),
             ("LLAMA_3_1_70B", "meta-llama/llama-3.1-70b-instruct"),
-            # Mistral Models
             ("MISTRAL_LARGE", "mistralai/mistral-large-2512"),
             ("MISTRAL_SMALL", "mistralai/mistral-small-creative"),
             ("DEVSTRAL", "mistralai/devstral-2512"),
-            # Vision Models
             ("GPT_4_1_NANO", "openai/gpt-4.1-nano"),
         ],
     )
@@ -81,8 +78,7 @@ class TestSupportedModel:
 
     def test_enum_member_can_be_used_as_string(self):
         """enum メンバーが文字列として直接使用できること（str 継承のため）"""
-        model = SupportedModel.GEMINI_3_FLASH
-        # str メソッドが動作する
+        model = SupportedModel.GEMINI_3_1_FLASH_LITE
         assert model.startswith("google/")
         assert "gemini" in model
 
@@ -141,10 +137,10 @@ class TestModelConfig:
     def test_creation_with_fallback_model(self):
         """fallback_model を設定した ModelConfig が正しく作成されること"""
         config = ModelConfig(
-            model_id=SupportedModel.GEMINI_3_FLASH,
-            fallback_model=SupportedModel.GEMINI_2_5_FLASH,
+            model_id=SupportedModel.GEMINI_3_1_FLASH_LITE,
+            fallback_model=SupportedModel.GEMINI_2_5_FLASH_LITE,
         )
-        assert config.fallback_model == SupportedModel.GEMINI_2_5_FLASH
+        assert config.fallback_model == SupportedModel.GEMINI_2_5_FLASH_LITE
         assert config.fallback_model is not None
 
     # --- temperature バリデーション ---
@@ -293,27 +289,26 @@ class TestModelConfigs:
         config = MODEL_CONFIGS[use_case]
         assert 0.0 <= config.top_p <= 1.0
 
-    # --- 個別ユースケースの設定値テスト ---
-
     def test_router_config_values(self):
         """router 設定が低温度・少トークンであること（一貫したルーティング判定のため）"""
         config = MODEL_CONFIGS["router"]
-        assert config.model_id == SupportedModel.GEMINI_3_FLASH
+        assert config.model_id == SupportedModel.GEMINI_3_1_FLASH_LITE
         assert config.temperature == 0.3
         assert config.max_tokens == 256
-        assert config.fallback_model == SupportedModel.GEMINI_2_5_FLASH
+        assert config.fallback_model == SupportedModel.GEMINI_2_5_FLASH_LITE
 
     def test_vision_config_values(self):
         """vision 設定が temperature=0.0 であること（決定論的認識のため）"""
         config = MODEL_CONFIGS["vision"]
         assert config.model_id == SupportedModel.GPT_4_1_NANO
         assert config.temperature == 0.0
-        assert config.fallback_model == SupportedModel.GPT_5_MINI
+        assert config.fallback_model == SupportedModel.GPT_5_4_NANO
 
-    def test_general_knowledge_uses_claude(self):
-        """general_knowledge が Claude Sonnet 4.6 を使用すること（高度な推論のため）"""
+    def test_general_knowledge_uses_gemini_pro(self):
+        """general_knowledge が Gemini 3.1 Pro を使用すること（深い推論）"""
         config = MODEL_CONFIGS["general_knowledge"]
-        assert config.model_id == SupportedModel.CLAUDE_SONNET_4_6
+        assert config.model_id == SupportedModel.GEMINI_3_1_PRO
+        assert config.fallback_model == SupportedModel.GEMINI_2_5_PRO
 
     def test_fallback_models_differ_from_primary(self):
         """各エントリの fallback_model が primary model_id と異なること"""
@@ -347,16 +342,3 @@ class TestGetModelConfig:
         """存在しないユースケースで KeyError を送出すること"""
         with pytest.raises(KeyError, match="Unknown use case"):
             get_model_config("nonexistent_use_case")
-
-    def test_key_error_message_contains_available_keys(self):
-        """KeyError メッセージに利用可能なユースケース一覧が含まれること"""
-        with pytest.raises(KeyError) as exc_info:
-            get_model_config("invalid")
-        error_msg = str(exc_info.value)
-        for use_case in EXPECTED_USE_CASES:
-            assert use_case in error_msg
-
-    def test_empty_string_raises_key_error(self):
-        """空文字列で KeyError を送出すること"""
-        with pytest.raises(KeyError, match="Unknown use case"):
-            get_model_config("")

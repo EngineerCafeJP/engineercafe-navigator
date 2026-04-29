@@ -4,7 +4,10 @@
 
 Engineer Cafe Navigator is a multilingual AI navigation system for the Engineer Cafe facility in Fukuoka's Aka-Renga Cultural Center.
 
-## 🏗️ Architecture Layers
+> Status note: Alpha Phase 4 の会話 UX / fast response については
+> [ADR 018](../adr/018-alpha-fast-response-and-assistant-profile-routing.md) を優先する。
+
+## Architecture Layers
 
 ### 1. Frontend Layer
 - **Framework**: Next.js 15.3.2 with App Router
@@ -15,7 +18,7 @@ Engineer Cafe Navigator is a multilingual AI navigation system for the Engineer 
 ### 2. Backend AI Agent Layer (Python)
 - **Framework**: LangGraph 1.0.8 (StateGraph with Supervisor Pattern)
 - **API**: FastAPI with async/await support
-- **LLM Provider**: OpenRouter API (unified access to Google Gemini, OpenAI, Anthropic, etc.)
+- **LLM Provider**: OpenRouter API plus optional native fast providers (Gemini / Cerebras) behind env flags
 - **Embedding Model**: OpenAI text-embedding-3-small (1536 dims) via Supabase
 - **Orchestration**: OrchestratorAgent (Supervisor Pattern with LLM dynamic routing)
 - **Checkpointer**: LangGraph AsyncPostgresSaver (PostgreSQL-based state management)
@@ -33,12 +36,12 @@ Engineer Cafe Navigator is a multilingual AI navigation system for the Engineer 
 
 ### 4. Integration Layer
 - **Calendar**: Google Calendar (public ICS feed) + Connpass API v2 (Fukuoka events)
-- **Web Search**: Gemini grounding + Tavily API
-- **Voice TTS**: VoiceVox (local Docker) + Google Cloud fallback
-- **Voice STT**: Vosk (local) + Google Cloud fallback
+- **Web Search**: Tavily API and provider-specific grounding only for current-info intents
+- **Voice TTS**: PiperPlus / VoiceVox / Google Cloud fallback depending on deploy env
+- **Voice STT**: Qwen primary / Vosk / Google Cloud fallback depending on deploy env
 - **OCR**: OCR processing capabilities
 
-## 🔑 Key Components
+## Key Components
 
 ### Enhanced RAG System
 - **Knowledge Base**: YAML-based with schema validation, bilingual (JA/EN)
@@ -145,17 +148,18 @@ Device integration (M5Stack, physical sensors) sends events to `frontend/src/lib
    - **External API Integration** (EventAgent):
      - Google Calendar ICS feed parsing
      - Connpass API v2 for Fukuoka events
-   - **Web Search** (GeneralKnowledgeAgent):
-     - Gemini grounding search
-     - Tavily API fallback
+   - **Fast General / Identity** (GeneralKnowledgeAgent):
+     - assistant profile / help / capability は deterministic response
+     - daily conversation / general light は fast LLM、search なし
+     - current-info intent のみ Tavily / calendar / provider grounding を使用
    - **Clarification Dialog** (ClarificationAgent):
      - Context-aware disambiguation
      - Multi-turn conversation support
-5. **Response Generation**: OpenRouter LLM (Gemini, GPT, Claude, etc.)
-6. **TTS Synthesis**: VoiceVox (local Docker) / Google Cloud fallback
+5. **Response Generation**: deterministic fast path, fast LLM, or domain-specific OpenRouter LLM
+6. **TTS Synthesis**: PiperPlus / VoiceVox / Google Cloud fallback
 7. **Character Animation**: VRM avatar sync with lip-sync
 
-## 🎯 Critical Features
+## Critical Features
 
 ### Multi-language Support
 - Japanese and English UI
@@ -169,6 +173,16 @@ Device integration (M5Stack, physical sensors) sends events to `frontend/src/lib
 - Memory-aware responses (3-minute conversation window)
 - Request type tracking across turns
 - Ambiguity resolution with ClarificationAgent
+
+### Alpha Fast Response Contract
+
+ADR 018 adds a strict contract for kiosk UX:
+
+- `あなたの名前は`, `あなたは誰`, `何ができますか`, `help` は LLM / RAG / web search に渡さない。
+- rank graph に入らないだけで Tavily / web search に落とさない。
+- `daily_conversation` と `general_light` は lightweight model を使うが、model id は env と benchmark で決める。
+- `current_info` だけが calendar / web search を使う。
+- previous `request_type` は context として扱い、current turn の high-confidence intent なしに route を固定しない。
 
 ### 12-Agent Architecture Details
 
@@ -185,7 +199,7 @@ Device integration (M5Stack, physical sensors) sends events to `frontend/src/lib
 3. **FacilityAgent**: Physical facilities and equipment queries with basement focus (category-specific strategies)
 4. **EventAgent**: Real-time calendar integration (Google Calendar ICS + Connpass API v2)
 5. **SlideAgent**: Slide display and narration
-6. **GeneralKnowledgeAgent**: Web search (Gemini grounding + Tavily) + memory queries (merged from MemoryAgent)
+6. **GeneralKnowledgeAgent**: assistant profile / daily conversation / general light / current-info search + memory queries (MemoryAgent統合済み)
 7. **ClarificationAgent**: Context-aware ambiguity resolution
 8. **VoiceAgent**: TTS (VoiceVox local / Google Cloud fallback)
 9. **STTAgent**: STT (Vosk local / Google Cloud fallback)
@@ -203,8 +217,9 @@ Device integration (M5Stack, physical sensors) sends events to `frontend/src/lib
 ### Integration Features
 - **Google Calendar**: Public ICS feed parsing
 - **Connpass API v2**: Fukuoka event listings
-- **Web Search**: Gemini grounding + Tavily API
-- **Voice Services**: VoiceVox (local Docker) + Vosk (local) + Google Cloud (fallback)
+- **Web Search**: Tavily / provider grounding only for current-info route
+- **Voice Services**: PiperPlus / VoiceVox / Qwen / Vosk / Google Cloud depending on deploy env
+- **Fast LLM**: Gemini Flash-Lite candidates and Cerebras `gpt-oss-120b` behind env-gated resolver
 - **LangGraph Checkpointer**: PostgreSQL-based state persistence
 
 ### Quality Assurance
@@ -227,6 +242,16 @@ SUPABASE_DB_URI=              # LangGraph AsyncPostgresSaver checkpointer
 # Optional AI Services
 OPENAI_API_KEY=               # Embeddings (text-embedding-3-small) & RAGAS evaluation
 GOOGLE_API_KEY=               # Gemini grounding search (fallback)
+CEREBRAS_API_KEY=             # Cerebras fast response / filler, if enabled
+FAST_LLM_ENABLED=             # Enable daily/general light fast route
+FAST_LLM_PRIMARY_PROVIDER=    # gemini / openrouter / cerebras
+FAST_LLM_PRIMARY_MODEL=       # Verified model id only
+FAST_LLM_FALLBACK_PROVIDER=   # fallback provider
+FAST_LLM_FALLBACK_MODEL=      # fallback model
+FAST_LLM_TERTIARY_PROVIDER=   # cerebras, if enabled
+CEREBRAS_ENABLED=             # Enable Cerebras tertiary fallback / filler
+CEREBRAS_FAST_MODEL=          # gpt-oss-120b candidate
+CEREBRAS_REASONING_EFFORT=    # low for alpha fast path
 
 # External Integrations
 GOOGLE_CALENDAR_ICAL_URL=     # Public calendar ICS feed
@@ -253,16 +278,16 @@ GOOGLE_CLOUD_PROJECT_ID=      # Google Cloud fallback for TTS/STT
 - **Embedding Caching**: Cached similarity searches in Supabase
 - **Adaptive Thresholds**: Category-specific similarity thresholds (0.35-0.70)
 - **Context Priority**: Weighted merging (knowledge: 0.85, conversation: 0.15)
-- **Local Voice Services**: VoiceVox (Docker) + Vosk (local) for reduced latency
+- **Voice Provider Selection**: PiperPlus / VoiceVox / Qwen / Vosk / Google Cloud are selected by deploy env
 - **RetryPolicy**: Automatic retry on LLM failures (max_attempts=3)
 - **Structured Logging**: exc_info=True on all error paths for debugging
 
 ### Monitoring
 - **RAG Metrics**: Section chunking effectiveness, parent context expansion impact
 - **RAGAS Evaluation**: Faithfulness, answer correctness, context relevance (CI/CD pipeline)
-- **LLM Usage**: OpenRouter API call patterns and retry rates
+- **LLM Usage**: OpenRouter / Gemini / Cerebras call patterns, retry rates, fallback source
 - **External API**: Google Calendar ICS, Connpass API v2, Tavily web search
-- **Voice Services**: VoiceVox/Vosk local vs. Google Cloud fallback usage
+- **Voice Services**: STT / chat / TTS section latency and provider usage
 
 ## 🧪 Testing
 
@@ -284,7 +309,7 @@ GOOGLE_CLOUD_PROJECT_ID=      # Google Cloud fallback for TTS/STT
 - **Frontend**: Node.js 20+ (Next.js 15)
 - **Backend**: Python 3.11+ (FastAPI + LangGraph)
 - **Database**: PostgreSQL 15+ with pgvector extension
-- **Voice Services**: VoiceVox (Docker) + Vosk (local)
+- **Voice Services**: PiperPlus / VoiceVox / Qwen / Vosk / Google Cloud depending on deploy env
 - **RAM**: 4GB+ recommended (LangGraph + local voice models)
 - **HTTPS**: Required for audio APIs
 

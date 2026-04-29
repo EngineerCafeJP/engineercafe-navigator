@@ -158,7 +158,7 @@ async def test_business_info_agent_hours_query():
 
 ```python
 evaluator = LLMJudge({
-    "model": "gpt-4o",
+    "model": "gpt-5.4-mini",
     "criteria": {
         "accuracy": "回答は質問に正確に答えているか？",
         "relevance": "回答は質問に焦点を当てているか？",

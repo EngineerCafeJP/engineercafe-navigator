@@ -1,6 +1,6 @@
 # Environment Variables Guide
 
-> 注意: この文書には deprecated agent 前提や古い env 依存が残っています。現行の env 判断は `docs/STATUS.md` と実装コードを優先してください。
+> 注意: この文書には deprecated agent 前提や古い env 依存が残っています。現行の env 判断は `docs/STATUS.md`、`docs/adr/018-alpha-fast-response-and-assistant-profile-routing.md`、実装コードを優先してください。
 
 このドキュメントでは、Engineer Cafe Navigator のバックエンドで使用される環境変数について説明します。
 
@@ -37,6 +37,41 @@
 | `APP_URL` | オプション | アプリケーションURL | デフォルト: http://localhost:3000 |
 | `LOG_LEVEL` | オプション | ログレベル | デフォルト: INFO |
 
+### Alpha fast response / model routing
+
+ADR 018 以降、identity / help / capability はモデルを呼ばない deterministic fast path にする。daily conversation や general light answer だけ、次の env で軽量 model を選ぶ。
+
+| 環境変数 | 必須/オプション | 用途 | 備考 |
+|----------|----------------|------|------|
+| `ASSISTANT_PROFILE_FAST_PATH` | オプション | identity / help / capability の deterministic response | default: `true` 推奨 |
+| `FAST_LLM_ENABLED` | オプション | daily/general light の fast LLM route | default: `false` から段階導入 |
+| `FAST_LLM_PRIMARY_PROVIDER` | オプション | fast route の primary provider | `gemini`, `openrouter`, `cerebras` など |
+| `FAST_LLM_PRIMARY_MODEL` | オプション | fast route の primary model id | model id は公式 API で確認してから設定 |
+| `FAST_LLM_FALLBACK_PROVIDER` | オプション | fast route の fallback provider | primary failure 時 |
+| `FAST_LLM_FALLBACK_MODEL` | オプション | fast route の fallback model id | stable model を推奨 |
+| `FAST_LLM_TERTIARY_PROVIDER` | オプション | OpenRouter primary/fallback 失敗後の tertiary provider | Cerebras 使用時は `cerebras` |
+| `CEREBRAS_ENABLED` | オプション | Cerebras provider / filler の有効化 | default: `false` |
+| `CEREBRAS_API_KEY` | オプション | Cerebras API key | GitHub Secret / Google Secret Manager で管理 |
+| `CEREBRAS_FAST_MODEL` | オプション | Cerebras fast model | alpha 候補: `gpt-oss-120b` |
+| `CEREBRAS_REASONING_EFFORT` | オプション | GPT OSS reasoning 制御 | alpha fast path は `low` |
+
+ローカル例:
+
+```bash
+FAST_LLM_ENABLED=true
+FAST_LLM_PRIMARY_PROVIDER=gemini
+FAST_LLM_PRIMARY_MODEL=google/gemini-3.1-flash-lite-preview
+FAST_LLM_FALLBACK_PROVIDER=gemini
+FAST_LLM_FALLBACK_MODEL=google/gemini-2.5-flash-lite
+FAST_LLM_TERTIARY_PROVIDER=cerebras
+CEREBRAS_ENABLED=true
+CEREBRAS_API_KEY=your-cerebras-key
+CEREBRAS_FAST_MODEL=gpt-oss-120b
+CEREBRAS_REASONING_EFFORT=low
+```
+
+`gemini-3.1-flash-lite-preview` は計画上の placeholder として扱う。実装時は Gemini API / Vertex AI の `models.list` または model catalog で実際の model id、region、quota を確認する。
+
 ---
 
 ## エージェント別環境変数マトリクス
@@ -71,6 +106,29 @@ SUPABASE_KEY=your-service-role-key
 OPENAI_API_KEY=sk-xxx
 ```
 
+#### Alpha fast response 追加
+
+```bash
+# 基本機能 + 以下を追加
+ASSISTANT_PROFILE_FAST_PATH=true
+FAST_LLM_ENABLED=true
+FAST_LLM_PRIMARY_PROVIDER=gemini
+FAST_LLM_PRIMARY_MODEL=<verified-gemini-fast-model-id>
+FAST_LLM_FALLBACK_PROVIDER=gemini
+FAST_LLM_FALLBACK_MODEL=google/gemini-2.5-flash-lite
+```
+
+#### Cerebras fast path / filler 追加
+
+```bash
+# Alpha fast response + 以下を追加
+CEREBRAS_ENABLED=true
+FAST_LLM_TERTIARY_PROVIDER=cerebras
+CEREBRAS_API_KEY=<secret>
+CEREBRAS_FAST_MODEL=gpt-oss-120b
+CEREBRAS_REASONING_EFFORT=low
+```
+
 #### イベント機能追加
 
 ```bash
@@ -101,6 +159,16 @@ OpenRouterは400以上のLLMモデル（OpenAI, Google, Anthropic, Meta等）に
 5. 生成されたキーをコピー（`sk-or-v1-` で始まる）
 
 **注意**: 無料クレジットが付与されますが、本番運用には有料プランが必要です。
+
+### 1.5. Cerebras API Key
+
+Cerebras は ADR 018 では short answer / filler / fast fallback の候補として扱う。施設情報の authoritative answer を全面移行するものではない。
+
+1. Cerebras Cloud の API key を発行する
+2. local では backend app が確実に読む `backend/.env` に `CEREBRAS_API_KEY` を置く。`.env.local` はテストや補助 loader が明示的に読む場合だけ使う
+3. GitHub Actions には `gh secret set CEREBRAS_API_KEY --body "$CEREBRAS_API_KEY"` で登録する
+4. Google Secret Manager には `CEREBRAS_API_KEY` secret version として登録する
+5. Cloud Run deploy の `--update-secrets` に `CEREBRAS_API_KEY=CEREBRAS_API_KEY:latest` を追加する
 
 ### 2. Supabase設定
 

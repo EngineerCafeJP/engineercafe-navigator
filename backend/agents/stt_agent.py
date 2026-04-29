@@ -160,7 +160,7 @@ async def _qwen_llm_post_process(transcript: str, language: str) -> str:
 
     vocab = _load_qwen_vocab()
     vocab_hint = ", ".join(vocab[:15]) if vocab else ""
-    model = os.getenv("STT_POSTPROCESS_MODEL", "google/gemini-2.0-flash-001")
+    model = os.getenv("STT_POSTPROCESS_MODEL", "google/gemini-3.1-flash-lite-preview")
 
     system_prompt = (
         "You correct Japanese speech-to-text transcription errors for "
@@ -1233,7 +1233,7 @@ class STTAgent:
 
         model = os.getenv(
             "STT_POSTPROCESS_MODEL",
-            "google/gemini-2.0-flash-001",
+            "google/gemini-3.1-flash-lite-preview",
         )
 
         try:

@@ -1,6 +1,6 @@
 # Documentation Map
 
-> 2026-04-19 時点での現役ドキュメント案内です。まずこのページから参照してください。
+> 2026-04-30 時点での現役ドキュメント案内です。まずこのページから参照してください。
 
 ## まず読む文書
 
@@ -8,7 +8,9 @@
 - [STATUS.md](STATUS.md): 実装済み事項と、いま残っている本当の運用リスク
 - [SECURITY.md](SECURITY.md): 現在の auth 連鎖と残課題
 - [DEPLOYMENT.md](DEPLOYMENT.md): Vercel + Cloud Run の現行デプロイ運用
-- [plans/production-readiness-followup-2026-04-19.md](plans/production-readiness-followup-2026-04-19.md): 直近の実装計画
+- [plans/alpha-fast-response-implementation-2026-04-30.md](plans/alpha-fast-response-implementation-2026-04-30.md): Alpha Phase 4 の高速応答 / identity routing 実装計画
+- [adr/018-alpha-fast-response-and-assistant-profile-routing.md](adr/018-alpha-fast-response-and-assistant-profile-routing.md): identity / general fallback / fast model 選定の現行 ADR
+- [plans/production-readiness-followup-2026-04-19.md](plans/production-readiness-followup-2026-04-19.md): 2026-04-19 時点の production readiness follow-up
 - [adr/008-operational-verification-and-deployment-guardrails.md](adr/008-operational-verification-and-deployment-guardrails.md): 2026-04-19 監査を踏まえた運用上の意思決定
 
 ## 現役ドキュメント
@@ -19,6 +21,7 @@
 - [SECURITY.md](SECURITY.md)
 - [DEPLOYMENT.md](DEPLOYMENT.md)
 - [CHANGELOG.md](CHANGELOG.md)
+- [plans/alpha-fast-response-implementation-2026-04-30.md](plans/alpha-fast-response-implementation-2026-04-30.md)
 - [plans/production-readiness-followup-2026-04-19.md](plans/production-readiness-followup-2026-04-19.md)
 
 ### 実装と開発導線
@@ -34,6 +37,7 @@
 - [adr/006-langgraph-workflow-redesign.md](adr/006-langgraph-workflow-redesign.md)
 - [adr/007-stt-parallel-architecture.md](adr/007-stt-parallel-architecture.md)
 - [adr/008-operational-verification-and-deployment-guardrails.md](adr/008-operational-verification-and-deployment-guardrails.md)
+- [adr/018-alpha-fast-response-and-assistant-profile-routing.md](adr/018-alpha-fast-response-and-assistant-profile-routing.md)
 
 ## 歴史資料として読む文書
 
@@ -43,6 +47,7 @@
 - `docs/plans/production-hardening-session-2026-03-14.md`
 - `docs/plans/alpha-trial-p1-remediation-2026-04-13.md`
 - `docs/plans/deployment-readiness-2026-03-15.md`
+- `docs/plans/production-readiness-followup-2026-04-19.md` は履歴ではないが、2026-04-30 以降の alpha blocker 判断では `alpha-fast-response-implementation-2026-04-30.md` を優先する
 
 ## 読むときに注意が必要な文書
 
@@ -68,6 +73,8 @@
 
 ## 直近の次アクション
 
-- deploy smoke gate を実装し、`docs/DEPLOYMENT.md` の手順を自動化へ寄せる
+- ADR 018 に従い、identity / help / capability を deterministic fast path にする
+- General fallback を daily/general light と current-info search path に分ける
+- Gemini / Cerebras の model id と latency を公式 API + live benchmark で確認してから Cloud Run env に反映する
 - API / architecture / development 文書の stale 記述を段階的に更新または archive に移す
 - Supabase の運用ログ確認手順を別途整備する

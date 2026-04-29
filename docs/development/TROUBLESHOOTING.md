@@ -498,8 +498,10 @@ cat backend/llm/models.py | grep -A5 "MODEL_CONFIGS"
 **Step 3: .env でモデルをオーバーライド (オプション)**
 ```bash
 # backend/.env
-DEFAULT_ROUTER_MODEL=google/gemini-2.0-flash-exp
-DEFAULT_QA_MODEL=google/gemini-2.0-flash-exp
+FAST_LLM_PRIMARY_MODEL=google/gemini-3.1-flash-lite-preview
+FAST_LLM_FALLBACK_MODEL=google/gemini-2.5-flash-lite
+DEEP_REASONING_MODEL=google/gemini-3.1-pro-preview
+DEEP_REASONING_FALLBACK_MODEL=google/gemini-2.5-pro
 ```
 
 #### 参考資料
@@ -876,10 +878,12 @@ prompt = f"""提供された情報を使って質問に答えてください。
 
 backend/llm/models.py:
 ```python
+from backend.llm.models import ModelConfig, SupportedModel
+
 MODEL_CONFIGS = {
     "qa_response": ModelConfig(
-        provider="openrouter",
-        model_name="google/gemini-2.5-flash-preview",
+        model_id=SupportedModel.GEMINI_3_1_FLASH_LITE,
+        fallback_model=SupportedModel.GEMINI_2_5_FLASH_LITE,
         temperature=0.3,  # 低い値 = 一貫性重視、高い値 = 創造性重視
         max_tokens=300,   # 応答の最大長
         top_p=0.9,
@@ -961,8 +965,8 @@ async def answer_query_with_timeout(self, query: str, timeout: int = 10):
 
 ```python
 config = ModelConfig(
-    provider="openrouter",
-    model_name="google/gemini-2.5-flash-preview",  # Fast model
+    model_id=SupportedModel.GEMINI_3_1_FLASH_LITE,
+    fallback_model=SupportedModel.GEMINI_2_5_FLASH_LITE,
     temperature=0.3,
     max_tokens=200,  # 短い応答で高速化
     top_p=0.9,

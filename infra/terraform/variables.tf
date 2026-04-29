@@ -28,3 +28,16 @@ variable "alert_enabled" {
   default     = true
 }
 
+variable "manage_runtime_secrets" {
+  description = "Whether Terraform should manage Secret Manager secret containers for runtime API keys. Keep false unless secrets are imported or created through Terraform."
+  type        = bool
+  default     = false
+}
+
+variable "runtime_secret_ids" {
+  description = "Secret Manager secret IDs required by the Cloud Run runtime. Terraform manages only secret containers, never secret versions or values."
+  type        = set(string)
+  default = [
+    "CEREBRAS_API_KEY",
+  ]
+}
