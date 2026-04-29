@@ -141,6 +141,8 @@ export function KioskVoiceStatusStack({
   }
 
   const isSttLoading = isLoading && loadingPhase === 'stt';
+  const isListeningVisible = phase === 'voice' && sessionState === 'listening';
+  const isAnswerLoading = isLoading && loadingPhase === 'llm';
   const isTtsSynthesizing =
     isLoading && response.length > 0 && sessionState !== 'speaking';
   const isErrorVisible = Boolean(error) && errorVisibleUntil > now;
@@ -159,6 +161,8 @@ export function KioskVoiceStatusStack({
 
   const hasVisibleContent =
     isSttLoading ||
+    isListeningVisible ||
+    isAnswerLoading ||
     isTtsSynthesizing ||
     isTranscriptVisible ||
     isResponseVisible ||
@@ -202,6 +206,18 @@ export function KioskVoiceStatusStack({
         <div className="flex w-full items-center gap-2 rounded-xl border border-white/30 bg-black/35 px-4 py-2 text-sm font-medium text-white/95 shadow-sm backdrop-blur-sm">
           <Loader2 className="size-4 shrink-0 animate-spin" />
           <span>{labels.sttReading}</span>
+        </div>
+      ) : null}
+      {isListeningVisible ? (
+        <div className="flex w-full items-center gap-2 rounded-xl border border-emerald-300/45 bg-emerald-700/35 px-4 py-2 text-sm font-medium text-emerald-50 shadow-sm backdrop-blur-sm">
+          <Volume2 className="size-4 shrink-0" />
+          <span>{labels.listeningNow}</span>
+        </div>
+      ) : null}
+      {isAnswerLoading ? (
+        <div className="flex w-full items-center gap-2 rounded-xl border border-white/30 bg-black/35 px-4 py-2 text-sm font-medium text-white/95 shadow-sm backdrop-blur-sm">
+          <Loader2 className="size-4 shrink-0 animate-spin" />
+          <span>{labels.preparingAnswer}</span>
         </div>
       ) : null}
       {isTranscriptVisible ? (

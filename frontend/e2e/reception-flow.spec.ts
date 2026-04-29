@@ -9,7 +9,7 @@ import { expect, test } from '@playwright/test';
  *   notice  -> idle  -> voice / ocr / slides
  *
  * Welcome triggers (button press or device-detection custom event) call
- * `startReception` and play a greeting, then open a member-card OCR overlay.
+ * `startReception` and play a greeting, then enter the voice-first reception flow.
  *
  * Backend APIs are mocked via route intercepts so these tests can run
  * without a live backend.
@@ -17,6 +17,11 @@ import { expect, test } from '@playwright/test';
 
 const RECEPTION_START_URL = '/api/reception/start';
 const QA_CHAT_URL = '/api/qa';
+
+// These tests exercise one kiosk app shell and are sensitive to browser
+// hydration / WebGL startup timing on CI runners. Keep this spec serial so
+// modal dismissal and localStorage state cannot compete across workers.
+test.describe.configure({ mode: 'serial' });
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -27,8 +32,23 @@ async function dismissInitialModal(page: import('@playwright/test').Page) {
   const modal = page.getByRole('dialog');
   const closeButton = page.getByTestId('initial-settings-close');
   if (await closeButton.isVisible({ timeout: 3_000 }).catch(() => false)) {
-    await closeButton.click();
-    await expect(modal).toBeHidden({ timeout: 5_000 });
+    // The page can reach DOMContentLoaded before the app is fully hydrated.
+    // Clicking the modal button too early is a no-op, so give React a moment
+    // before starting the retry loop.
+    await page.waitForTimeout(1_500);
+    const deadline = Date.now() + 30_000;
+    while (Date.now() < deadline && !(await modal.isHidden().catch(() => false))) {
+      await closeButton.click({ timeout: 1_000, force: true }).catch(() => {});
+      if (!(await modal.isHidden().catch(() => false))) {
+        await closeButton.evaluate((button) => {
+          if (button instanceof HTMLButtonElement) {
+            button.click();
+          }
+        }).catch(() => {});
+      }
+      await page.waitForTimeout(250);
+    }
+    await expect(modal).toBeHidden({ timeout: 10_000 });
   }
   // Wait for the idle phase — the Welcome button should be visible.
   await expect(page.getByRole('button', { name: 'Welcome' })).toBeVisible({ timeout: 5_000 });
@@ -83,10 +103,14 @@ test.describe('Reception flow — Welcome button', () => {
     });
     // Stub TTS/voice endpoints to prevent audio errors.
     await page.route('**/api/voice', async (route) => {
-      await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true }),
+      });
     });
 
-    await page.goto('/');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await dismissInitialModal(page);
   });
 
@@ -96,12 +120,16 @@ test.describe('Reception flow — Welcome button', () => {
     await expect(welcomeButton).toBeEnabled();
   });
 
-  test('clicking Welcome button triggers reception greeting flow', async ({ page }) => {
+  test('clicking Welcome button triggers voice-first reception greeting flow', async ({ page }) => {
     const welcomeButton = page.getByRole('button', { name: 'Welcome' });
     await welcomeButton.click();
 
-    // After clicking Welcome, the compact member-card OCR overlay should appear.
-    await expect(page.getByTestId('kiosk-welcome-ocr-overlay')).toBeVisible({ timeout: 5_000 });
+    // Welcome must not open camera/OCR. It should greet and move into the voice lane.
+    await expect(page.getByTestId('kiosk-welcome-ocr-overlay')).toBeHidden({ timeout: 5_000 });
+    await expect(page.getByTestId('response-text')).toContainText(
+      'エンジニアカフェへようこそ',
+      { timeout: 5_000 },
+    );
   });
 
   test('kiosk phase buttons are all present on idle screen', async ({ page }) => {
@@ -123,9 +151,13 @@ test.describe('Reception flow — device sensor trigger', () => {
     await keepOcrCameraPending(page);
     await mockReceptionStart(page);
     await page.route('**/api/voice', async (route) => {
-      await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true }),
+      });
     });
-    await page.goto('/');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await dismissInitialModal(page);
   });
 
@@ -145,8 +177,12 @@ test.describe('Reception flow — device sensor trigger', () => {
       );
     });
 
-    // The welcome flow should activate — member-card OCR overlay appears.
-    await expect(page.getByTestId('kiosk-welcome-ocr-overlay')).toBeVisible({ timeout: 5_000 });
+    // The welcome flow should activate without opening camera/OCR.
+    await expect(page.getByTestId('kiosk-welcome-ocr-overlay')).toBeHidden({ timeout: 5_000 });
+    await expect(page.getByTestId('response-text')).toContainText(
+      'エンジニアカフェへようこそ',
+      { timeout: 5_000 },
+    );
   });
 
   test('device-detection is ignored when kiosk is not in idle phase', async ({ page }) => {
@@ -168,12 +204,12 @@ test.describe('Reception flow — device sensor trigger', () => {
     });
 
     // The kiosk should still be in voice mode, not welcome.
-    // Voice mode shows the voice button in active state (green border).
     // A short wait confirms no unexpected transition happened.
     await page.waitForTimeout(1_000);
     // The Welcome button should not have been re-triggered (no new OCR overlay).
-    // The voice button should still be visible and in active state.
-    await expect(voiceButton).toBeVisible();
+    // The voice button label changes while recording, so assert via the stable test id.
+    await expect(page.getByTestId('kiosk-voice-button')).toBeVisible();
+    await expect(page.getByTestId('kiosk-voice-button')).toContainText(/録音中|Recording/);
   });
 });
 
@@ -186,16 +222,24 @@ test.describe('Reception flow — member card OCR', () => {
     await keepOcrCameraPending(page);
     await mockReceptionStart(page);
     await page.route('**/api/voice', async (route) => {
-      await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true }),
+      });
     });
-    await page.goto('/');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await dismissInitialModal(page);
   });
 
-  test('member card OCR overlay appears after Welcome click', async ({ page }) => {
+  test('member card OCR overlay does not appear after Welcome click', async ({ page }) => {
     await page.getByRole('button', { name: 'Welcome' }).click();
 
-    await expect(page.getByTestId('kiosk-welcome-ocr-overlay')).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByTestId('kiosk-welcome-ocr-overlay')).toBeHidden({ timeout: 5_000 });
+    await expect(page.getByTestId('response-text')).toContainText(
+      'エンジニアカフェへようこそ',
+      { timeout: 5_000 },
+    );
   });
 
   test('dedicated member card button opens full OCR view', async ({ page }) => {
@@ -257,9 +301,13 @@ test.describe('Reception flow — voice mode', () => {
       });
     });
     await page.route('**/api/voice', async (route) => {
-      await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true }),
+      });
     });
-    await page.goto('/');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await dismissInitialModal(page);
   });
 
@@ -267,11 +315,9 @@ test.describe('Reception flow — voice mode', () => {
     const voiceButton = page.getByRole('button', { name: /音声応対|Voice chat/ });
     await voiceButton.click();
 
-    // In voice mode the button should show active state (green styling).
-    // The kiosk is in voice phase when the voice button has the active class.
-    // We verify by checking that the button is still visible (voice phase
-    // keeps showing idle+voice button bar).
-    await expect(voiceButton).toBeVisible();
+    // In voice mode the button remains visible but its label changes to recording.
+    await expect(page.getByTestId('kiosk-voice-button')).toBeVisible();
+    await expect(page.getByTestId('kiosk-voice-button')).toContainText(/録音中|Recording/);
   });
 });
 
@@ -283,9 +329,13 @@ test.describe('Reception flow — welcome cooldown', () => {
   test.beforeEach(async ({ page }) => {
     await mockReceptionStart(page);
     await page.route('**/api/voice', async (route) => {
-      await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true }),
+      });
     });
-    await page.goto('/');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await dismissInitialModal(page);
   });
 
@@ -308,7 +358,7 @@ test.describe('Reception flow — welcome cooldown', () => {
 
 test.describe('Reception flow — settings', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await dismissInitialModal(page);
   });
 
@@ -339,9 +389,13 @@ test.describe('Reception flow — STT warmup', () => {
       });
     });
     await page.route('**/api/voice', async (route) => {
-      await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true }),
+      });
     });
-    await page.goto('/');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await dismissInitialModal(page);
   });
 
@@ -352,7 +406,11 @@ test.describe('Reception flow — STT warmup', () => {
       if (body && body.action === 'warmup') {
         warmupRequests.push(body);
       }
-      await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true }),
+      });
     });
 
     await page.getByRole('button', { name: 'Welcome' }).click();
@@ -371,7 +429,11 @@ test.describe('Reception flow — STT warmup', () => {
       if (body && body.action === 'warmup') {
         warmupRequests.push(body);
       }
-      await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true }),
+      });
     });
 
     await page.getByRole('button', { name: /音声応対|Voice chat/ }).click();
@@ -383,10 +445,13 @@ test.describe('Reception flow — STT warmup', () => {
     expect(typeof warmupRequests[0]!.sessionId).toBe('string');
   });
 
-  test('OCR overlay is visible during welcome flow', async ({ page }) => {
+  test('OCR overlay is not opened during welcome flow', async ({ page }) => {
     await page.getByRole('button', { name: 'Welcome' }).click();
-    await expect(page.getByTestId('kiosk-welcome-ocr-overlay')).toBeVisible({ timeout: 5_000 });
-    await expect(page.getByTestId('kiosk-welcome-ocr-title')).toBeVisible();
+    await expect(page.getByTestId('kiosk-welcome-ocr-overlay')).toBeHidden({ timeout: 5_000 });
+    await expect(page.getByTestId('response-text')).toContainText(
+      'エンジニアカフェへようこそ',
+      { timeout: 5_000 },
+    );
   });
 
   test('warmup does not block greeting TTS playback', async ({ page }) => {
@@ -419,7 +484,7 @@ test.describe('Reception flow — STT warmup', () => {
 
     await page.getByRole('button', { name: 'Welcome' }).click();
 
-    await expect(page.getByTestId('kiosk-welcome-ocr-overlay')).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByTestId('kiosk-welcome-ocr-overlay')).toBeHidden({ timeout: 5_000 });
     await expect
       .poll(() => warmupStarted, { timeout: 5_000 })
       .toBe(true);

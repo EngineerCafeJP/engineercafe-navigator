@@ -122,7 +122,7 @@ const getSessionPoseOffsets = (sessionState: 'idle' | 'listening' | 'processing'
         position: { x: 0.02, y: 0, z: 0.04 },
         rotation: { x: -0.03, y: 0.08, z: 0.03 },
         expression: 'thinking',
-        animation: 'idle',
+        animation: 'thinking',
       };
     case 'speaking':
       return {
@@ -1285,8 +1285,8 @@ export default function CharacterAvatar({
       const result = await response.json();
 
       if (result.success) {
-        // TODO: Implement animation system for VRM
-        // This would typically involve loading and playing animation clips
+        const animationUrl = `/animations/${animation}.vrma`;
+        await loadVRMAnimation(animationUrl, charactersRef.current, true, animation === 'idle');
 
         setCharacterState(prev => ({ ...prev, animation }));
         onStateChange?.({ ...characterState, animation });
