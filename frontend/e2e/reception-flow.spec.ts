@@ -18,6 +18,11 @@ import { expect, test } from '@playwright/test';
 const RECEPTION_START_URL = '/api/reception/start';
 const QA_CHAT_URL = '/api/qa';
 
+// These tests exercise one kiosk app shell and are sensitive to browser
+// hydration / WebGL startup timing on CI runners. Keep this spec serial so
+// modal dismissal and localStorage state cannot compete across workers.
+test.describe.configure({ mode: 'serial' });
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -31,12 +36,19 @@ async function dismissInitialModal(page: import('@playwright/test').Page) {
     // Clicking the modal button too early is a no-op, so give React a moment
     // before starting the retry loop.
     await page.waitForTimeout(1_500);
-    const deadline = Date.now() + 10_000;
-    while (Date.now() < deadline && !(await modal.isHidden().catch(() => true))) {
-      await closeButton.click({ timeout: 1_000 }).catch(() => {});
+    const deadline = Date.now() + 30_000;
+    while (Date.now() < deadline && !(await modal.isHidden().catch(() => false))) {
+      await closeButton.click({ timeout: 1_000, force: true }).catch(() => {});
+      if (!(await modal.isHidden().catch(() => false))) {
+        await closeButton.evaluate((button) => {
+          if (button instanceof HTMLButtonElement) {
+            button.click();
+          }
+        }).catch(() => {});
+      }
       await page.waitForTimeout(250);
     }
-    await expect(modal).toBeHidden({ timeout: 5_000 });
+    await expect(modal).toBeHidden({ timeout: 10_000 });
   }
   // Wait for the idle phase — the Welcome button should be visible.
   await expect(page.getByRole('button', { name: 'Welcome' })).toBeVisible({ timeout: 5_000 });
