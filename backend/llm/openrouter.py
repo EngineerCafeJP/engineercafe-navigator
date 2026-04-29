@@ -5,7 +5,7 @@ Provides flexible model switching through OpenRouter API,
 supporting multiple AI providers (OpenAI, Google, Anthropic, etc.)
 through a unified interface.
 
-Optional fast-path fallback after OpenRouter exhaustion: Cerebras (see model_resolve.py).
+Optional fast-path primary/fallback via Cerebras (see model_resolve.py).
 
 See: https://openrouter.ai/docs
 """
@@ -28,6 +28,7 @@ from .models import MODEL_CONFIGS, ModelConfig
 from .model_resolve import (
     cerebras_fallback_enabled,
     cerebras_model_slug,
+    cerebras_primary_enabled,
     cerebras_reasoning_effort,
     merge_gemini_openrouter_extra,
     resolved_openrouter_model_slug,
@@ -200,6 +201,7 @@ class OpenRouterProvider(LLMProvider):
         _fallback_count: int = 0,
         *,
         _root_config: Optional[ModelConfig] = None,
+        _cerebras_tried: bool = False,
     ) -> str:
         """
         Generate a response using OpenRouter API.
@@ -209,6 +211,7 @@ class OpenRouterProvider(LLMProvider):
             config: Model configuration (defaults to qa_response config)
             _fallback_count: Internal counter to prevent infinite fallback loops
             _root_config: First config when recursing OpenRouter fallback (for Cerebras gate)
+            _cerebras_tried: Whether Cerebras has already been attempted for this request
 
         Returns:
             Generated text response
@@ -218,6 +221,14 @@ class OpenRouterProvider(LLMProvider):
         """
         config = config or MODEL_CONFIGS["qa_response"]
         root_cfg = _root_config or config
+
+        if cerebras_primary_enabled(root_cfg) and _fallback_count == 0 and not _cerebras_tried:
+            logger.info("Trying Cerebras fast primary model=%s", cerebras_model_slug())
+            try:
+                return await self._cerebras_generate(messages, root_cfg)
+            except Exception as ce:
+                _cerebras_tried = True
+                logger.warning("Cerebras primary failed; falling back to OpenRouter: %s", ce)
 
         payload = self._build_openrouter_payload(messages, config)
         primary_slug = payload["model"]
@@ -263,9 +274,10 @@ class OpenRouterProvider(LLMProvider):
                     fallback_config,
                     _fallback_count=_fallback_count + 1,
                     _root_config=root_cfg,
+                    _cerebras_tried=_cerebras_tried,
                 )
 
-            if cerebras_fallback_enabled(root_cfg):
+            if cerebras_fallback_enabled(root_cfg) and not _cerebras_tried:
                 logger.warning(
                     "OpenRouter failed (status=%s); trying Cerebras model=%s",
                     getattr(e.response, "status_code", "?"),
@@ -296,9 +308,10 @@ class OpenRouterProvider(LLMProvider):
                     fallback_config,
                     _fallback_count=_fallback_count + 1,
                     _root_config=root_cfg,
+                    _cerebras_tried=_cerebras_tried,
                 )
 
-            if cerebras_fallback_enabled(root_cfg):
+            if cerebras_fallback_enabled(root_cfg) and not _cerebras_tried:
                 logger.warning("OpenRouter transport error; trying Cerebras: %s", e)
                 try:
                     return await self._cerebras_generate(messages, root_cfg)

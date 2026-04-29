@@ -4,7 +4,7 @@ OpenRouterProvider のユニットテスト
 
 import os
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 from langchain_core.messages import HumanMessage
 
@@ -157,6 +157,122 @@ class TestOpenRouterProvider:
             assert response == "Primary model response"
             # 1回だけ呼び出されることを確認（フォールバック不要）
             assert mock.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_cerebras_fast_primary_before_openrouter(self):
+        """FAST_LLM_PRIMARY_PROVIDER=cerebras の場合、OpenRouterより先にCerebrasを使う"""
+        messages = [HumanMessage(content="Test message")]
+        config = ModelConfig(
+            model_id=SupportedModel.GEMINI_3_1_FLASH_LITE,
+            fallback_model=SupportedModel.GEMINI_2_5_FLASH_LITE,
+            allow_cerebras_primary=True,
+        )
+
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "FAST_LLM_ENABLED": "true",
+                    "FAST_LLM_PRIMARY_PROVIDER": "cerebras",
+                    "CEREBRAS_API_KEY": "test_cerebras_key",
+                    "CEREBRAS_FAST_MODEL": "gpt-oss-120b",
+                },
+            ),
+            patch.object(
+                self.provider,
+                "_cerebras_generate",
+                new=AsyncMock(return_value="Cerebras fast response"),
+            ) as cerebras_mock,
+            patch.object(self.provider._http_client, "post", new=AsyncMock()) as openrouter_mock,
+        ):
+            response = await self.provider.generate(messages, config)
+
+        assert response == "Cerebras fast response"
+        cerebras_mock.assert_awaited_once()
+        openrouter_mock.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_cerebras_fast_primary_falls_back_to_openrouter(self):
+        """Cerebras first pass が失敗した場合は既存のOpenRouter primaryへ戻る"""
+        messages = [HumanMessage(content="Test message")]
+        config = ModelConfig(
+            model_id=SupportedModel.GEMINI_3_1_FLASH_LITE,
+            fallback_model=SupportedModel.GEMINI_2_5_FLASH_LITE,
+            allow_cerebras_primary=True,
+        )
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "choices": [{"message": {"content": "OpenRouter fallback response"}}]
+        }
+
+        async def mock_post(*args, **kwargs):
+            return mock_response
+
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "FAST_LLM_ENABLED": "true",
+                    "FAST_LLM_PRIMARY_PROVIDER": "cerebras",
+                    "CEREBRAS_API_KEY": "test_cerebras_key",
+                },
+            ),
+            patch.object(
+                self.provider,
+                "_cerebras_generate",
+                new=AsyncMock(side_effect=OpenRouterError("Cerebras unavailable")),
+            ) as cerebras_mock,
+            patch.object(
+                self.provider._http_client, "post", side_effect=mock_post
+            ) as openrouter_mock,
+        ):
+            response = await self.provider.generate(messages, config)
+
+        assert response == "OpenRouter fallback response"
+        cerebras_mock.assert_awaited_once()
+        assert openrouter_mock.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_cerebras_fast_primary_requires_config_opt_in(self):
+        """施設・イベント系のfast configへCerebras primaryが波及しないこと"""
+        messages = [HumanMessage(content="Test message")]
+        config = ModelConfig(
+            model_id=SupportedModel.GEMINI_3_1_FLASH_LITE,
+            fallback_model=SupportedModel.GEMINI_2_5_FLASH_LITE,
+        )
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "choices": [{"message": {"content": "OpenRouter primary response"}}]
+        }
+
+        async def mock_post(*args, **kwargs):
+            return mock_response
+
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "FAST_LLM_ENABLED": "true",
+                    "FAST_LLM_PRIMARY_PROVIDER": "cerebras",
+                    "CEREBRAS_API_KEY": "test_cerebras_key",
+                },
+            ),
+            patch.object(
+                self.provider,
+                "_cerebras_generate",
+                new=AsyncMock(return_value="Unexpected Cerebras response"),
+            ) as cerebras_mock,
+            patch.object(
+                self.provider._http_client, "post", side_effect=mock_post
+            ) as openrouter_mock,
+        ):
+            response = await self.provider.generate(messages, config)
+
+        assert response == "OpenRouter primary response"
+        cerebras_mock.assert_not_called()
+        assert openrouter_mock.call_count == 1
 
     @pytest.mark.asyncio
     async def test_http_error_with_status_code(self):

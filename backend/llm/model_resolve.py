@@ -1,8 +1,8 @@
 """
 Resolve OpenRouter / Cerebras model identifiers from env (no hardcoded production IDs).
 
-Fast path: Gemini 3.1 Flash-Lite preview on OpenRouter with Gemini 2.5 Flash-Lite stable fallback.
-Cerebras gpt-oss-120b is an optional tertiary fallback, not the primary OpenRouter fallback.
+Fast path: Cerebras can be used as the native first pass, with Gemini 3.1 Flash-Lite
+preview on OpenRouter and Gemini 2.5 Flash-Lite as fallbacks.
 Deep reasoning: override via DEEP_REASONING_MODEL (OpenRouter slug).
 """
 
@@ -70,12 +70,36 @@ def is_fast_primary_config(config: "ModelConfig") -> bool:
     return config.model_id == SupportedModel.GEMINI_3_1_FLASH_LITE
 
 
+def fast_llm_enabled() -> bool:
+    """Feature flag for fast LLM provider routing."""
+    raw = os.getenv("FAST_LLM_ENABLED", "true").strip().lower()
+    return raw not in {"0", "false", "no", "off"}
+
+
+def cerebras_primary_enabled(config: "ModelConfig") -> bool:
+    """Whether direct Cerebras should be attempted before OpenRouter for fast configs."""
+    provider = os.getenv("FAST_LLM_PRIMARY_PROVIDER", "").strip().lower()
+    key = os.getenv("CEREBRAS_API_KEY", "").strip()
+    return (
+        fast_llm_enabled()
+        and provider == "cerebras"
+        and bool(key)
+        and bool(getattr(config, "allow_cerebras_primary", False))
+        and is_fast_primary_config(config)
+    )
+
+
 def cerebras_fallback_enabled(config: "ModelConfig") -> bool:
     """After OpenRouter primary+fallback exhaustion, optionally call Cerebras."""
     provider = os.getenv("FAST_LLM_TERTIARY_PROVIDER", "").strip().lower()
     enabled = os.getenv("CEREBRAS_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"}
     key = os.getenv("CEREBRAS_API_KEY", "").strip()
-    return (enabled or provider == "cerebras") and bool(key) and is_fast_primary_config(config)
+    return (
+        fast_llm_enabled()
+        and (enabled or provider == "cerebras")
+        and bool(key)
+        and is_fast_primary_config(config)
+    )
 
 
 def cerebras_model_slug() -> str:

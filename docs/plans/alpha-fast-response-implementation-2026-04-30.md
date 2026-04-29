@@ -26,7 +26,7 @@ Alpha Phase 4 の最初の実装対象は、Welcome UX ではなく次の 2 件�
 - `あなたの名前は` 系は LLM に渡さない。
 - rank graph に入らないだけで web search しない。
 - lightweight model は env で provider / model を差し替え、公式 availability と live benchmark で決める。
-- Cerebras は `gpt-oss-120b` を短文 fast path 候補にする。
+- Cerebras は `gpt-oss-120b` を lightweight fast first pass にする。
 
 今回の docs/ADR で固定しないこと:
 
@@ -119,6 +119,8 @@ Alpha Phase 4 の最初の実装対象は、Welcome UX ではなく次の 2 件�
 最小実装:
 
 - 既存 OpenRouter provider を壊さず、fast model resolver を追加する。
+- `FAST_LLM_PRIMARY_PROVIDER=cerebras` のときは Cerebras をOpenRouterより先に試す。
+- Cerebras が失敗した場合は OpenRouter Gemini primary/fallback に戻す。
 - Cerebras は OpenAI-compatible Chat Completions として provider を追加する。
 - `gpt-oss-120b` の場合は `reasoning_effort=low` を送れるようにする。
 
@@ -167,7 +169,7 @@ prompt set:
 
 ```env
 FAST_LLM_ENABLED=true
-FAST_LLM_PRIMARY_PROVIDER=gemini
+FAST_LLM_PRIMARY_PROVIDER=cerebras
 FAST_LLM_PRIMARY_MODEL=google/gemini-3.1-flash-lite-preview
 FAST_LLM_FALLBACK_PROVIDER=gemini
 FAST_LLM_FALLBACK_MODEL=google/gemini-2.5-flash-lite

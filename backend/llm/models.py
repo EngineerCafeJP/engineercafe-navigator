@@ -73,6 +73,7 @@ class ModelConfig:
         top_p: Nucleus sampling parameter
         fallback_model: Backup model if primary fails (same OpenRouter API)
         timeout: Request timeout in seconds
+        allow_cerebras_primary: Allow direct Cerebras before OpenRouter for lightweight answers
     """
 
     model_id: SupportedModel
@@ -81,6 +82,7 @@ class ModelConfig:
     top_p: float = 0.9
     fallback_model: Optional[SupportedModel] = None
     timeout: float = 30.0
+    allow_cerebras_primary: bool = False
 
     input_cost_per_1k: float = field(default=0.0, repr=False)
     output_cost_per_1k: float = field(default=0.0, repr=False)
@@ -95,9 +97,10 @@ class ModelConfig:
             raise ValueError(f"top_p must be between 0.0 and 1.0, got {self.top_p}")
 
 
-# Fast tier: Gemini 3.1 Flash-Lite preview -> Gemini 2.5 Flash-Lite stable.
+# Fast tier: optional direct Cerebras first pass, then Gemini 3.1 Flash-Lite preview
+# -> Gemini 2.5 Flash-Lite stable through OpenRouter.
 # Deep path: Gemini 3.1 Pro preview -> Gemini 2.5 Pro stable.
-# Optional tertiary hop: Cerebras gpt-oss-120b (model_resolve), enabled by env.
+# Optional Cerebras direct hop: gpt-oss-120b (model_resolve), enabled by env.
 MODEL_CONFIGS: dict[str, ModelConfig] = {
     "router": ModelConfig(
         model_id=SupportedModel.GEMINI_3_1_FLASH_LITE,
@@ -112,6 +115,7 @@ MODEL_CONFIGS: dict[str, ModelConfig] = {
         temperature=0.7,
         max_tokens=1024,
         fallback_model=SupportedModel.GEMINI_2_5_FLASH_LITE,
+        allow_cerebras_primary=True,
         input_cost_per_1k=0.0001,
         output_cost_per_1k=0.0004,
     ),

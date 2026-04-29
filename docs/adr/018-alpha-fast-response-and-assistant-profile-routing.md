@@ -71,28 +71,28 @@ default candidate は固定せず、release 前 benchmark で決める。
 推奨 env:
 
 ```env
-FAST_LLM_PRIMARY_PROVIDER=gemini
+FAST_LLM_PRIMARY_PROVIDER=cerebras
 FAST_LLM_PRIMARY_MODEL=google/gemini-3.1-flash-lite-preview
 FAST_LLM_FALLBACK_PROVIDER=gemini
 FAST_LLM_FALLBACK_MODEL=google/gemini-2.5-flash-lite
 FAST_LLM_TERTIARY_PROVIDER=cerebras
-CEREBRAS_ENABLED=false
+CEREBRAS_ENABLED=true
 CEREBRAS_API_KEY=
 CEREBRAS_FAST_MODEL=gpt-oss-120b
 CEREBRAS_REASONING_EFFORT=low
 ```
 
-`FAST_LLM_PRIMARY_MODEL` は placeholder であり、実装時に Google API / Vertex AI の実 model id を検証してから本番 secret / env に反映する。
+`FAST_LLM_PRIMARY_PROVIDER=cerebras` の場合、`CEREBRAS_FAST_MODEL` を native Cerebras Chat Completions に投げる。Cerebras が失敗した場合は `FAST_LLM_PRIMARY_MODEL` / `FAST_LLM_FALLBACK_MODEL` を OpenRouter 経由の Gemini fallback として使う。
 
-### 4. Cerebras は dynamic filler と fast fallback の候補にする
+### 4. Cerebras は lightweight fast first pass にする
 
-Cerebras は `gpt-oss-120b` の throughput が非常に高いため、次の用途に限定して導入する。
+Cerebras は `gpt-oss-120b` の throughput が非常に高いため、軽量回答では OpenRouter より先に native API を試す。
 
 - first response / filler の短文生成
 - daily conversation の fallback
 - short answer rewrite
 
-RAG grounded answer や施設情報の authoritative answer は、出典・文脈の取り扱いを確認するまで既存 route の品質 gate を通す。
+RAG grounded answer や施設情報の authoritative answer は、出典・文脈の取り扱いを確認するまで既存 route の品質 gate を通す。Cerebras primary が失敗した場合は OpenRouter Gemini fallback に戻し、alpha の可用性を維持する。
 
 ### 5. Alpha release gate は「平均」ではなく p95 と禁止語で見る
 
