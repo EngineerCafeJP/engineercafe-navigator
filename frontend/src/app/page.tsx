@@ -381,7 +381,9 @@ export default function Home() {
 
 
           const characterCameraOffset = { x: 0, y: 0, z: 0 };
-          const characterModelOffset = { x: 0, y: 0, z: 0 };
+          // Sakura's neutral VRM root renders slightly left at x=0. Keep this
+          // single parent offset so every session state and animation stays centered.
+          const characterModelOffset = { x: 0.15, y: 0, z: 0 };
           const characterRotationOffset = { x: 0, y: -0.2, z: 0 };
 
           const setOcrStatusMessage = (

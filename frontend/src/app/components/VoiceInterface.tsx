@@ -69,7 +69,7 @@ export interface VoiceInterfaceRenderProps {
     error: string | null;
     lastMatch: WakeWordMatch | null;
   };
-  startListening: () => void;
+  startListening: () => Promise<boolean>;
   stopListening: () => void;
   cancelSession: () => void;
   clearConversation: () => void;
@@ -241,6 +241,7 @@ export default function VoiceInterface({
   const sessionIdRef = useRef(createSessionId());
   const visitorIdRef = useRef<string>('anonymous');
   const recorderRef = useRef<VoiceRecorder | null>(null);
+  const lastRecorderInitErrorRef = useRef<Error | null>(null);
   const shouldDiscardNextAudioRef = useRef(false);
   const requestAbortRef = useRef<AbortController | null>(null);
   const lipSyncAnalyzerRef = useRef<LipSyncAnalyzer | null>(null);
@@ -831,16 +832,19 @@ export default function VoiceInterface({
       return existingRecorder;
     }
 
+    lastRecorderInitErrorRef.current = null;
     const recorder = new VoiceRecorder(
       (audioBlob) => {
         void handleRecordedAudio(audioBlob);
       },
       (recorderError) => {
+        lastRecorderInitErrorRef.current = recorderError;
         setError(formatError(recorderError, currentLanguage));
         setIsLoading(false);
         setLoadingMessage('');
         setLoadingPhase(null);
         isRecordingRef.current = false;
+        shouldListenRef.current = false;
       },
       () => {
         if (recorderRef.current !== recorder) {
@@ -861,7 +865,10 @@ export default function VoiceInterface({
       setIsLoading(false);
       setLoadingMessage('');
       setLoadingPhase(null);
-      throw new Error(currentLanguage === 'ja' ? 'マイクを初期化できませんでした' : 'Unable to initialize the microphone');
+      throw (
+        lastRecorderInitErrorRef.current ??
+        new Error(currentLanguage === 'ja' ? 'マイクを初期化できませんでした' : 'Unable to initialize the microphone')
+      );
     }
 
     recorderRef.current = recorder;
@@ -873,35 +880,48 @@ export default function VoiceInterface({
     return recorder;
   }, [currentLanguage, handleRecordedAudio]);
 
-  const startRecorderCapture = useCallback(async () => {
-    if (isRecordingRef.current || isStartingRecorderRef.current) {
-      return;
+  const startRecorderCapture = useCallback(async (): Promise<boolean> => {
+    if (isRecordingRef.current) {
+      return true;
+    }
+    if (isStartingRecorderRef.current) {
+      return false;
     }
 
     isStartingRecorderRef.current = true;
     try {
       const recorder = await ensureRecorder();
-      await new Promise<void>((resolve) => {
-        queueMicrotask(() => resolve());
-      });
       if (!shouldListenRef.current) {
         recorder.cleanup();
         if (recorderRef.current === recorder) {
           recorderRef.current = null;
           setMediaStream(null);
         }
-        return;
+        return false;
       }
       if (recorder.getState() === 'recording') {
-        return;
+        return true;
       }
 
       recorder.start();
+      if (!recorder.isCurrentlyRecording()) {
+        shouldListenRef.current = false;
+        isRecordingRef.current = false;
+        voiceController.endManualSession();
+        return false;
+      }
       isRecordingRef.current = true;
       shouldDiscardNextAudioRef.current = false;
+      return true;
     } catch (startError) {
+      shouldListenRef.current = false;
+      isRecordingRef.current = false;
+      setIsLoading(false);
+      setLoadingMessage('');
+      setLoadingPhase(null);
       setError(formatError(startError, currentLanguage));
       voiceController.endManualSession();
+      return false;
     } finally {
       isStartingRecorderRef.current = false;
     }
@@ -929,15 +949,20 @@ export default function VoiceInterface({
     }
   }, [sessionState, startRecorderCapture, stopRecorderCapture, voiceController.shouldListen]);
 
-  const startListening = useCallback(() => {
+  const startListening = useCallback(async (): Promise<boolean> => {
     unlockAudioForUserGesture();
     shouldListenRef.current = true;
-    sendSttWarmup({ language: currentLanguage, sessionId: sessionIdRef.current });
     cancelPendingRequest();
     stopPlayback(false);
     setError(null);
+    const started = await startRecorderCapture();
+    if (!started) {
+      shouldListenRef.current = false;
+      return false;
+    }
     voiceController.startManualSession();
-    void startRecorderCapture();
+    sendSttWarmup({ language: currentLanguage, sessionId: sessionIdRef.current });
+    return true;
   }, [cancelPendingRequest, currentLanguage, startRecorderCapture, stopPlayback, voiceController]);
 
   const stopListening = useCallback(() => {

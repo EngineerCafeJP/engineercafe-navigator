@@ -57,13 +57,16 @@ export function KioskBottomBar({
       ? labels.kioskVoiceToggleActive
       : labels.kioskVoice;
 
-  const handleKioskVoiceStart = () => {
+  const handleKioskVoiceStart = async () => {
     unlockAudioForUserGesture();
     clearReturnToIdleTimer();
     setWelcomeMemberOcrOpen(false);
     setKioskPhase('voice');
     setKioskVoiceLocked(true);
-    void voice.startListening();
+    const started = await voice.startListening();
+    if (!started) {
+      setKioskVoiceLocked(false);
+    }
   };
 
   const handleKioskVoiceStop = () => {
@@ -130,7 +133,7 @@ export function KioskBottomBar({
                 event.currentTarget.setPointerCapture(event.pointerId);
                 pushToTalkPointerActiveRef.current = true;
                 if (!isVoiceCaptureActive) {
-                  handleKioskVoiceStart();
+                  void handleKioskVoiceStart();
                 }
               }}
               onPointerUp={(event) => {
@@ -166,7 +169,7 @@ export function KioskBottomBar({
                   handleKioskVoiceStop();
                   return;
                 }
-                handleKioskVoiceStart();
+                void handleKioskVoiceStart();
               }}
               className={cn(
                 'flex min-h-[72px] min-w-[min(100%,7rem)] flex-1 flex-col items-center justify-center gap-1 rounded-2xl px-3 py-3 shadow-md backdrop-blur-sm transition-transform sm:min-h-[80px] sm:flex-initial sm:px-5',

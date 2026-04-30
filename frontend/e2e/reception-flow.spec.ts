@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import path from 'node:path';
+
 import { expect, test } from '@playwright/test';
 
 /**
@@ -85,6 +88,32 @@ async function keepOcrCameraPending(page: import('@playwright/test').Page) {
   });
 }
 
+async function installDeterministicVoiceRecorder(page: import('@playwright/test').Page) {
+  const sampleAudioBase64 = fs
+    .readFileSync(path.resolve(__dirname, 'fixtures/voice/sample.wav'))
+    .toString('base64');
+
+  await page.addInitScript(({ audioBase64 }) => {
+    (window as Window & { __PLAYWRIGHT_VOICE_AUDIO_BASE64__?: string }).__PLAYWRIGHT_VOICE_AUDIO_BASE64__ =
+      audioBase64;
+  }, { audioBase64: sampleAudioBase64 });
+}
+
+async function rejectMicrophonePermission(page: import('@playwright/test').Page) {
+  await page.addInitScript(() => {
+    const existingMediaDevices = navigator.mediaDevices ?? {};
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: {
+        ...existingMediaDevices,
+        getUserMedia: async () => {
+          throw new DOMException('Permission denied', 'NotAllowedError');
+        },
+      },
+    });
+  });
+}
+
 // ---------------------------------------------------------------------------
 // A. Welcome button triggers reception greeting
 // ---------------------------------------------------------------------------
@@ -148,6 +177,7 @@ test.describe('Reception flow — Welcome button', () => {
 
 test.describe('Reception flow — device sensor trigger', () => {
   test.beforeEach(async ({ page }) => {
+    await installDeterministicVoiceRecorder(page);
     await keepOcrCameraPending(page);
     await mockReceptionStart(page);
     await page.route('**/api/voice', async (route) => {
@@ -292,6 +322,7 @@ test.describe('Reception flow — member card OCR', () => {
 
 test.describe('Reception flow — voice mode', () => {
   test.beforeEach(async ({ page }) => {
+    await installDeterministicVoiceRecorder(page);
     await mockReceptionStart(page);
     await page.route(`**${QA_CHAT_URL}`, async (route) => {
       await route.fulfill({
@@ -318,6 +349,38 @@ test.describe('Reception flow — voice mode', () => {
     // In voice mode the button remains visible but its label changes to recording.
     await expect(page.getByTestId('kiosk-voice-button')).toBeVisible();
     await expect(page.getByTestId('kiosk-voice-button')).toContainText(/録音中|Recording/);
+  });
+});
+
+test.describe('Reception flow — microphone errors', () => {
+  test.beforeEach(async ({ page }) => {
+    await rejectMicrophonePermission(page);
+    await mockReceptionStart(page);
+    await page.route(`**${QA_CHAT_URL}`, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ answer: 'テスト応答', emotion: 'neutral', metadata: {} }),
+      });
+    });
+    await page.route('**/api/voice', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true }),
+      });
+    });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await dismissInitialModal(page);
+  });
+
+  test('permission denial shows a microphone error and does not stay recording', async ({ page }) => {
+    await page.getByRole('button', { name: /音声応対|Voice chat/ }).click();
+
+    await expect(page.getByTestId('kiosk-voice-status')).toContainText(/マイク.*拒否|Microphone access/, {
+      timeout: 5_000,
+    });
+    await expect(page.getByTestId('kiosk-voice-button')).not.toContainText(/録音中|Recording/);
   });
 });
 
@@ -379,6 +442,7 @@ test.describe('Reception flow — settings', () => {
 
 test.describe('Reception flow — STT warmup', () => {
   test.beforeEach(async ({ page }) => {
+    await installDeterministicVoiceRecorder(page);
     await keepOcrCameraPending(page);
     await mockReceptionStart(page);
     await page.route(`**${QA_CHAT_URL}`, async (route) => {
