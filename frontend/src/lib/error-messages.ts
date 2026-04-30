@@ -17,6 +17,14 @@ export const ERROR_MESSAGES: Record<string, ErrorMessage> = {
     ja: 'マイクが検出されませんでした。マイクが正しく接続されているか確認してください。',
     en: 'No microphone was detected. Please check that your microphone is properly connected.',
   },
+  MICROPHONE_IN_USE: {
+    ja: 'マイクが他のアプリに使用されています。他のアプリを閉じてからもう一度お試しください。',
+    en: 'The microphone is being used by another app. Please close other apps and try again.',
+  },
+  MICROPHONE_START_FAILED: {
+    ja: 'マイクの起動に失敗しました。もう一度ボタンをタップしてください。',
+    en: 'Failed to start the microphone. Please tap the button again.',
+  },
   VOICE_PROCESSING_ERROR: {
     ja: '音声の処理中にエラーが発生しました。もう一度お試しください。',
     en: 'An error occurred while processing your voice. Please try again.',
@@ -128,6 +136,25 @@ export function formatError(
   error: any,
   language: 'ja' | 'en' = 'ja'
 ): string {
+  const errorName = String(error?.originalName ?? error?.name ?? '').toLowerCase();
+  if (errorName) {
+    switch (errorName) {
+      case 'notallowederror':
+      case 'permissiondeniederror':
+      case 'securityerror':
+        return getErrorMessage('MICROPHONE_PERMISSION_DENIED', language);
+      case 'notfounderror':
+      case 'devicesnotfounderror':
+      case 'overconstrainederror':
+        return getErrorMessage('MICROPHONE_NOT_FOUND', language);
+      case 'notreadableerror':
+      case 'trackstarterror':
+        return getErrorMessage('MICROPHONE_IN_USE', language);
+      case 'invalidstateerror':
+        return getErrorMessage('MICROPHONE_START_FAILED', language);
+    }
+  }
+
   // Check for known error codes
   if (error.code && ERROR_MESSAGES[error.code]) {
     return getErrorMessage(error.code, language);
@@ -175,6 +202,23 @@ export function formatError(
       message.includes('mediarecorder') ||
       message.includes('recorder')
     ) {
+      if (
+        message.includes('not found') ||
+        message.includes('no microphone') ||
+        message.includes('unavailable')
+      ) {
+        return getErrorMessage('MICROPHONE_NOT_FOUND', language);
+      }
+      if (message.includes('in use') || message.includes('not readable')) {
+        return getErrorMessage('MICROPHONE_IN_USE', language);
+      }
+      if (
+        message.includes('invalidstate') ||
+        message.includes('already recording') ||
+        message.includes('failed to start')
+      ) {
+        return getErrorMessage('MICROPHONE_START_FAILED', language);
+      }
       return getErrorMessage('MICROPHONE_PERMISSION_DENIED', language);
     }
     if (message.includes('network') || message.includes('fetch')) {

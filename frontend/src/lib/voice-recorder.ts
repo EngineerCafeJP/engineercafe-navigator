@@ -17,6 +17,25 @@ export class VoiceRecorder {
     private onHardwareReleased?: () => void,
   ) {}
 
+  private createRecorderError(message: string, source?: unknown): Error & { originalName?: string } {
+    const originalName =
+      source && typeof source === 'object' && 'name' in source
+        ? String((source as { name?: unknown }).name ?? '')
+        : '';
+    const originalMessage =
+      source && typeof source === 'object' && 'message' in source
+        ? String((source as { message?: unknown }).message ?? '')
+        : '';
+    const error = new Error(originalMessage ? `${message}: ${originalMessage}` : message) as Error & {
+      originalName?: string;
+    };
+    if (originalName) {
+      error.name = originalName;
+      error.originalName = originalName;
+    }
+    return error;
+  }
+
   private createDeterministicMediaRecorder(audioBase64: string): MediaRecorder {
     const bytes = Uint8Array.from(atob(audioBase64), (char) => char.charCodeAt(0));
 
@@ -81,8 +100,9 @@ export class VoiceRecorder {
         // Check if we're on HTTPS (required for getUserMedia outside local development).
         if (window.location.protocol !== 'https:' && !isLocalDevHost) {
           this.onError(
-            new Error(
+            this.createRecorderError(
               'Microphone access requires HTTPS connection. Please use HTTPS or localhost.',
+              { name: 'SecurityError' },
             ),
           );
           return;
@@ -152,22 +172,24 @@ export class VoiceRecorder {
           // Handle specific error cases
           if (error.name === 'NotAllowedError') {
             this.onError(
-              new Error(
+              this.createRecorderError(
                 'Microphone permission denied. Please allow microphone access and try again.',
+                error,
               ),
             );
           } else if (error.name === 'NotFoundError') {
-            this.onError(new Error('No microphone found. Please connect a microphone and try again.'));
+            this.onError(this.createRecorderError('No microphone found. Please connect a microphone and try again.', error));
           } else if (error.name === 'NotReadableError') {
             this.onError(
-              new Error(
+              this.createRecorderError(
                 'Microphone is in use by another application. Please close other apps using the microphone.',
+                error,
               ),
             );
           } else if (error.name === 'OverconstrainedError') {
-            this.onError(new Error('Selected microphone is unavailable. Please choose another microphone.'));
+            this.onError(this.createRecorderError('Selected microphone is unavailable. Please choose another microphone.', error));
           } else {
-            this.onError(new Error(`Failed to access microphone: ${error.message || error.name}`));
+            this.onError(this.createRecorderError('Failed to access microphone', error));
           }
           return;
         }
@@ -187,7 +209,7 @@ export class VoiceRecorder {
         const recorderResult = this.createMediaRecorder(this.stream);
         if (!recorderResult.recorder) {
           console.error('MediaRecorder creation failed:', recorderResult.error);
-          this.onError(new Error(recorderResult.error));
+          this.onError(this.createRecorderError(recorderResult.error, { name: 'NotSupportedError' }));
           this.stream.getTracks().forEach((track) => track.stop());
           this.stream = null;
           return;
@@ -217,10 +239,11 @@ export class VoiceRecorder {
       };
 
       this.mediaRecorder.onerror = (event) => {
-        this.onError(new Error(`MediaRecorder error: ${event}`));
+        const errorEvent = event as Event & { error?: unknown };
+        this.onError(this.createRecorderError('MediaRecorder error', errorEvent.error ?? event));
       };
     } catch (error) {
-      this.onError(new Error(`Failed to initialize recorder: ${error}`));
+      this.onError(this.createRecorderError('Failed to initialize recorder', error));
     }
   }
 
@@ -247,7 +270,7 @@ export class VoiceRecorder {
       this.isRecording = true;
     } catch (error) {
       this.isRecording = false;
-      this.onError(new Error(`Failed to start recording: ${error}`));
+      this.onError(this.createRecorderError('Failed to start recording', error));
     }
   }
 
@@ -260,7 +283,7 @@ export class VoiceRecorder {
       this.mediaRecorder.stop();
       this.isRecording = false;
     } catch (error) {
-      this.onError(new Error(`Failed to stop recording: ${error}`));
+      this.onError(this.createRecorderError('Failed to stop recording', error));
     }
   }
 
@@ -281,7 +304,7 @@ export class VoiceRecorder {
     try {
       this.mediaRecorder.pause();
     } catch (error) {
-      this.onError(new Error(`Failed to pause recording: ${error}`));
+      this.onError(this.createRecorderError('Failed to pause recording', error));
     }
   }
 
@@ -293,7 +316,7 @@ export class VoiceRecorder {
     try {
       this.mediaRecorder.resume();
     } catch (error) {
-      this.onError(new Error(`Failed to resume recording: ${error}`));
+      this.onError(this.createRecorderError('Failed to resume recording', error));
     }
   }
 
