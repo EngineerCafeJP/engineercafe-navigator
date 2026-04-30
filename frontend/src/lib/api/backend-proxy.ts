@@ -60,10 +60,9 @@ export async function backendFetch<T = unknown>(
     mergedHeaders["X-API-Key"] = apiKey;
   }
 
-  // Default to 35s so the backend can return its graceful timeout response
-  // before the frontend aborts. Some voice endpoints need a higher ceiling
-  // to absorb cold starts and TTS/STT latency during live verification.
-  const effectiveSignal = signal ?? AbortSignal.timeout(timeoutMs ?? 35_000);
+  // Keep this below the Vercel route maxDuration (60s) so proxy requests fail
+  // with a controlled backend timeout response before the platform returns 504.
+  const effectiveSignal = signal ?? AbortSignal.timeout(timeoutMs ?? 55_000);
 
   const fetchInit: RequestInit = {
     method,

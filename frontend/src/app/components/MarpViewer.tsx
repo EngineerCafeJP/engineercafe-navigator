@@ -2,6 +2,10 @@
 
 import { useKeyboardControls } from '@/app/hooks/useKeyboardControls';
 import { audioStateManager } from '@/lib/audio-state-manager';
+import {
+  AudioInteractionManager,
+  unlockAudioForUserGesture,
+} from '@/lib/audio/audio-interaction-manager';
 import DOMPurify from 'dompurify';
 import { ChevronLeft, Keyboard, MessageCircle, Pause, Play, RotateCcw, Settings } from 'lucide-react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -959,8 +963,12 @@ export default function MarpViewer({
   const playAudioFast = async (audioBase64: string): Promise<void> => {
     try {
       const { AudioPlaybackService } = await import('@/lib/audio/audio-playback-service');
+      await AudioInteractionManager.getInstance().ensureAudioContext();
       
-      await AudioPlaybackService.playAudioFast(audioBase64, volume / 100);
+      const result = await AudioPlaybackService.playAudioFast(audioBase64, volume / 100);
+      if (!result.success) {
+        throw result.error ?? new Error('Fast audio playback failed');
+      }
     } catch (error) {
       console.error('[MarpViewer] Error playing fast audio:', error);
       throw error;
@@ -977,13 +985,14 @@ export default function MarpViewer({
     try {
       const { AudioPlaybackService } = await import('@/lib/audio/audio-playback-service');
       const { LipSyncAnalyzer } = await import('@/lib/lip-sync-analyzer');
+      await AudioInteractionManager.getInstance().ensureAudioContext();
       
       // Update cache stats for UI
       const analyzer = new LipSyncAnalyzer();
       setLipSyncCacheStats(analyzer.getCacheStats());
       analyzer.dispose();
 
-      await AudioPlaybackService.playAudioWithLipSync(audioBase64, {
+      const result = await AudioPlaybackService.playAudioWithLipSync(audioBase64, {
         volume: volume / 100,
         enableLipSync: true,
         onVisemeUpdate: onVisemeControl || undefined,
@@ -991,33 +1000,14 @@ export default function MarpViewer({
           console.error('[MarpViewer] Audio play failed:', error);
         }
       });
+      if (!result.success) {
+        throw result.error ?? new Error('Audio playback failed');
+      }
     } catch (error) {
       console.error('[MarpViewer] Error playing audio with lip-sync:', error);
       throw error;
     }
   };
-
-  const updateCharacterAction = async (action: string) => {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
-    try {
-      await fetch('/api/character', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'playAnimation',
-          animation: action,
-          transition: true,
-        }),
-        signal: controller.signal,
-      });
-    } catch {
-      // Character action failed or timed out - non-blocking, continue presentation
-    } finally {
-      clearTimeout(timeoutId);
-    }
-  };
-
 
   const stopAutoPlay = () => {
     invalidatePlaybackSession();
@@ -1135,11 +1125,8 @@ export default function MarpViewer({
     
     // Initialize audio context and mark user interaction
     try {
-      const { AudioInteractionManager } = await import('@/lib/audio/audio-interaction-manager');
-      const manager = AudioInteractionManager.getInstance();
-      
-      // Force initialize to mark this as a user interaction (button click)
-      await manager.forceInitialize();
+      unlockAudioForUserGesture();
+      await AudioInteractionManager.getInstance().forceInitialize();
       
       startPlaybackSession();
       setIsPlaying(true);
@@ -1152,9 +1139,8 @@ export default function MarpViewer({
   const enableAudioAndStartPresentation = async () => {
     try {
       // Initialize audio context with user interaction
-      const { AudioInteractionManager } = await import('@/lib/audio/audio-interaction-manager');
-      const manager = AudioInteractionManager.getInstance();
-      await manager.forceInitialize();
+      unlockAudioForUserGesture();
+      await AudioInteractionManager.getInstance().forceInitialize();
       
       
       // Set character to neutral expression for slide presentation
@@ -1167,10 +1153,8 @@ export default function MarpViewer({
       setIsPlaying(true);
     } catch (error) {
       console.error('[MarpViewer] Failed to initialize audio context:', error);
-      // Continue anyway - some audio might still work
-      setShowAudioPermissionPrompt(false);
-      startPlaybackSession();
-      setIsPlaying(true);
+      setShowAudioPermissionPrompt(true);
+      setIsPlaying(false);
     }
   };
 

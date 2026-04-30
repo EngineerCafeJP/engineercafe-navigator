@@ -640,7 +640,7 @@ export default function Home() {
                 {showSlideMode ? (
                   kioskReceptionSlidesUsePdf ? (
                     <div
-                      className="pointer-events-none absolute inset-0 z-30 flex h-full w-full flex-col"
+                      className="pointer-events-none absolute inset-0 z-50 flex h-full w-full flex-col"
                       style={screenPadding}
                     >
                       <div
@@ -673,7 +673,7 @@ export default function Home() {
                     </div>
                   ) : (
                     <div
-                      className="pointer-events-none absolute inset-y-0 right-0 z-30 flex w-full justify-end"
+                      className="pointer-events-none absolute inset-y-0 right-0 z-50 flex w-full justify-end"
                       style={screenPadding}
                     >
                       <div

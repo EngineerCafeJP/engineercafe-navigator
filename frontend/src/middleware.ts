@@ -23,6 +23,38 @@ function isAdminRoute(pathname: string): boolean {
   return pathname.startsWith('/api/admin/') || pathname === '/api/admin';
 }
 
+function isProtectedOperationalRoute(pathname: string): boolean {
+  return (
+    isAdminRoute(pathname) ||
+    pathname.startsWith('/api/cron/') ||
+    pathname === '/api/cron' ||
+    pathname.startsWith('/api/monitoring/') ||
+    pathname === '/api/monitoring'
+  );
+}
+
+function shouldTraceUserAgent(pathname: string): boolean {
+  return (
+    pathname === '/api/voice' ||
+    pathname === '/api/qa' ||
+    pathname === '/api/character' ||
+    pathname === '/api/slides' ||
+    pathname === '/api/marp' ||
+    pathname.startsWith('/api/reception/')
+  );
+}
+
+function traceUserAgent(request: NextRequest): void {
+  if (!shouldTraceUserAgent(request.nextUrl.pathname)) {
+    return;
+  }
+
+  const ua = request.headers.get('user-agent') ?? 'unknown';
+  console.log(
+    `[ua-trace] ${request.method} ${request.nextUrl.pathname} ua=${JSON.stringify(ua)}`
+  );
+}
+
 /**
  * Detect same-origin browser requests via the Sec-Fetch-Site header.
  * Modern browsers set this automatically; non-browser clients (curl, etc.)
@@ -33,6 +65,12 @@ function isSameOriginBrowserRequest(request: NextRequest): boolean {
 }
 
 export async function middleware(request: NextRequest): Promise<NextResponse> {
+  traceUserAgent(request);
+
+  if (!isProtectedOperationalRoute(request.nextUrl.pathname)) {
+    return NextResponse.next();
+  }
+
   // Allow same-origin browser requests to admin routes without Bearer token.
   // The underlying API routes still enforce backend auth via X-API-Key.
   if (isAdminRoute(request.nextUrl.pathname) && isSameOriginBrowserRequest(request)) {
@@ -64,5 +102,11 @@ export const config = {
     '/api/admin/:path*',
     '/api/cron/:path*',
     '/api/monitoring/:path*',
+    '/api/voice',
+    '/api/qa',
+    '/api/character',
+    '/api/slides',
+    '/api/marp',
+    '/api/reception/:path*',
   ],
 };
