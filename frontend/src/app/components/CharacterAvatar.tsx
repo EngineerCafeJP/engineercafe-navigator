@@ -141,6 +141,19 @@ const getSessionPoseOffsets = (sessionState: 'idle' | 'listening' | 'processing'
   }
 };
 
+const getRootScenePosition = (
+  modelPositionOffset: { x: number; y: number; z: number },
+  sessionState: 'idle' | 'listening' | 'processing' | 'speaking',
+) => {
+  const sessionPose = getSessionPoseOffsets(sessionState);
+
+  return {
+    x: modelPositionOffset.x + sessionPose.position.x,
+    y: modelPositionOffset.y + sessionPose.position.y,
+    z: modelPositionOffset.z + sessionPose.position.z,
+  };
+};
+
 const asRecord = (value: unknown): JsonRecord | null => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return null;
@@ -215,8 +228,6 @@ export default function CharacterAvatar({
   const mixerRef = useRef<THREE.AnimationMixer | null>(null);
   const currentActionRef = useRef<THREE.AnimationAction | null>(null);
   const isPlayingSequence = useRef(false);
-  const isIdleAnimationActive = useRef(false);
-  const currentAnimationUrlRef = useRef<string | null>(null);
   const blendShapeControllerRef = useRef<VRMBlendShapeController | null>(null);
   const lipSyncAnalyzerRef = useRef<LipSyncAnalyzer | null>(null);
   const expressionControllerRef = useRef<ExpressionController | null>(null);
@@ -250,6 +261,14 @@ export default function CharacterAvatar({
   const updateSceneBackgroundRef = useRef<(options: BackgroundOption) => void>(() => {});
   const loadedModelPathRef = useRef(modelPath);
   const loadedVrmSpecVersionRef = useRef<string | null>(null);
+
+  const applyRootScenePosition = useCallback((vrm?: VRM | null) => {
+    const targetVrm = vrm ?? charactersRef.current;
+    if (!targetVrm) return;
+
+    const position = getRootScenePosition(modelPositionOffset, sessionState);
+    targetVrm.scene.position.set(position.x, position.y, position.z);
+  }, [modelPositionOffset, sessionState]);
 
   const [isLoading, setIsLoading] = useState(true);
   const [avatarRenderMode, setAvatarRenderMode] = useState<'webgl' | 'fallback'>('webgl');
@@ -313,27 +332,8 @@ export default function CharacterAvatar({
 
   // Update model position when offset changes
   useEffect(() => {
-    if (charactersRef.current) {
-      // Check if current animation is idle
-      const isCurrentlyIdle = currentAnimationUrlRef.current === '/animations/idle.vrma' || isIdleAnimationActive.current;
-      const sessionPose = getSessionPoseOffsets(sessionState);
-      
-      if (isCurrentlyIdle) {
-        // Apply idle animation position adjustment
-        charactersRef.current.scene.position.set(
-          modelPositionOffset.x + 0.15 + sessionPose.position.x,
-          modelPositionOffset.y + sessionPose.position.y,
-          modelPositionOffset.z + sessionPose.position.z
-        );
-      } else {
-        charactersRef.current.scene.position.set(
-          modelPositionOffset.x + sessionPose.position.x,
-          modelPositionOffset.y + sessionPose.position.y,
-          modelPositionOffset.z + sessionPose.position.z
-        );
-      }
-    }
-  }, [modelPositionOffset, sessionState]);
+    applyRootScenePosition();
+  }, [applyRootScenePosition]);
 
   // Update model rotation when offset changes
   useEffect(() => {
@@ -650,8 +650,11 @@ export default function CharacterAvatar({
     };
   };
 
-  const loadVRMAnimation = async (animationUrl: string, vrm: VRM, loop: boolean = true, isIdleAnimation: boolean = false) => {
-    currentAnimationUrlRef.current = animationUrl;
+  const loadVRMAnimation = async (
+    animationUrl: string,
+    vrm: VRM,
+    loop: boolean = true,
+  ) => {
     const loader = new GLTFLoader();
     loader.crossOrigin = 'anonymous';
     
@@ -707,24 +710,8 @@ export default function CharacterAvatar({
         action.play();
         currentActionRef.current = action;
         
-        // Set animation state flag and position
-        isIdleAnimationActive.current = isIdleAnimation;
-        
-        // Ensure position offset is maintained during animation
-        if (isIdleAnimation) {
-          // For idle animation, apply a small adjustment to center it better
-          vrm.scene.position.set(
-            modelPositionOffset.x + 0.15, // Slight adjustment to the right
-            modelPositionOffset.y,
-            modelPositionOffset.z
-          );
-        } else {
-          vrm.scene.position.set(
-            modelPositionOffset.x,
-            modelPositionOffset.y,
-            modelPositionOffset.z
-          );
-        }
+        // Keep root position centralized across animation changes.
+        applyRootScenePosition(vrm);
         
         
         return { success: true, duration: clip.duration };
@@ -748,24 +735,8 @@ export default function CharacterAvatar({
           action.play();
           currentActionRef.current = action;
           
-          // Set animation state flag and position
-          isIdleAnimationActive.current = isIdleAnimation;
-          
-          // Ensure position offset is maintained during animation
-          if (isIdleAnimation) {
-            // For idle animation, apply a small adjustment to center it better
-            vrm.scene.position.set(
-              modelPositionOffset.x + 0.15, // Slight adjustment to the right
-              modelPositionOffset.y,
-              modelPositionOffset.z
-            );
-          } else {
-            vrm.scene.position.set(
-              modelPositionOffset.x,
-              modelPositionOffset.y,
-              modelPositionOffset.z
-            );
-          }
+          // Keep root position centralized across animation changes.
+          applyRootScenePosition(vrm);
           
           
           return { success: true, duration: clip.duration };
@@ -807,7 +778,7 @@ export default function CharacterAvatar({
     }
     
     // Return to idle animation
-    await loadVRMAnimation('/animations/idle.vrma', vrm, true, true);
+    await loadVRMAnimation('/animations/idle.vrma', vrm, true);
     isPlayingSequence.current = false;
   };
 
@@ -872,11 +843,7 @@ export default function CharacterAvatar({
         );
 
         // Set initial position
-        vrm.scene.position.set(
-          modelPositionOffset.x,
-          modelPositionOffset.y,
-          modelPositionOffset.z
-        );
+        applyRootScenePosition(vrm);
 
         // Initialize lip-sync and expression controllers
         blendShapeControllerRef.current = new VRMBlendShapeController(vrm);
@@ -920,7 +887,7 @@ export default function CharacterAvatar({
 
         // Load default idle animation
         try {
-          await loadVRMAnimation('/animations/idle.vrma', vrm, true, true);
+          await loadVRMAnimation('/animations/idle.vrma', vrm, true);
         } catch (animationError) {
           console.error('[CharacterAvatar] Failed to load default idle animation:', animationError);
         }
@@ -1140,8 +1107,7 @@ export default function CharacterAvatar({
   const handle_play_vrm_animation = async (url: string, loop: boolean) => {
     const vrm = charactersRef.current;
     if (!vrm) return;
-    const is_idle = url.includes('idle');
-    await loadVRMAnimation(url, vrm, loop, is_idle);
+    await loadVRMAnimation(url, vrm, loop);
   };
 
   const handle_expression_weight_change = (name: string, weight: number) => {
@@ -1178,65 +1144,34 @@ export default function CharacterAvatar({
     if (!charactersRef.current || !expression) return;
 
     try {
-      const requestBody = {
-        action: 'setExpression',
-        expression,
-        transition: true,
-      };
+      const expressionManager = charactersRef.current.expressionManager;
+      if (expressionManager) {
+        const availableExpressions = Object.keys(expressionManager.expressionMap);
 
+        Object.keys(expressionManager.expressionMap).forEach(name => {
+          const currentValue = expressionManager.getValue(name) || 0;
+          if (currentValue > 0 && name !== expression) {
+            expressionManager.setValue(name, 0);
+          }
+        });
 
-      const response = await fetch('/api/character', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const result = await response.json();
-
-      if (result.success) {
-        // Apply expression to VRM model
-        const expressionManager = charactersRef.current.expressionManager;
-        if (expressionManager) {
-          // Get available expressions for debugging
-          const availableExpressions = Object.keys(expressionManager.expressionMap);
-          
-          // Reset all expressions with gradual transition
-          Object.keys(expressionManager.expressionMap).forEach(name => {
-            const currentValue = expressionManager.getValue(name) || 0;
-            if (currentValue > 0 && name !== expression) {
-              // Gradual fade out for smooth transition
-              expressionManager.setValue(name, 0);
-            }
-          });
-
-          // Set new expression with full intensity
-          if (expressionManager.expressionMap[expression]) {
-            expressionManager.setValue(expression, 1);
-            // Store current expression for restoration after lip-sync
-            currentExpressionRef.current = { expression, weight: 1.0 };
-          } else {
-            // Try to find a similar expression
-            const similarExpression = availableExpressions.find(expr => 
-              expr.toLowerCase().includes(expression.toLowerCase()) ||
-              expression.toLowerCase().includes(expr.toLowerCase())
-            );
-            if (similarExpression) {
-              expressionManager.setValue(similarExpression, 1);
-              // Store current expression for restoration after lip-sync
-              currentExpressionRef.current = { expression: similarExpression, weight: 1.0 };
-            }
+        if (expressionManager.expressionMap[expression]) {
+          expressionManager.setValue(expression, 1);
+          currentExpressionRef.current = { expression, weight: 1.0 };
+        } else {
+          const similarExpression = availableExpressions.find(expr =>
+            expr.toLowerCase().includes(expression.toLowerCase()) ||
+            expression.toLowerCase().includes(expr.toLowerCase())
+          );
+          if (similarExpression) {
+            expressionManager.setValue(similarExpression, 1);
+            currentExpressionRef.current = { expression: similarExpression, weight: 1.0 };
           }
         }
-
-        setCharacterState(prev => ({ ...prev, expression }));
-        onStateChange?.({ ...characterState, expression });
       }
+
+      setCharacterState(prev => ({ ...prev, expression }));
+      onStateChange?.({ ...characterState, expression });
     } catch (error) {
       console.error('Error updating expression:', error);
     }
@@ -1263,34 +1198,11 @@ export default function CharacterAvatar({
     if (!charactersRef.current || !animation) return;
 
     try {
-      const requestBody = {
-        action: 'playAnimation',
-        animation,
-        transition: true,
-      };
+      const animationUrl = `/animations/${animation}.vrma`;
+      await loadVRMAnimation(animationUrl, charactersRef.current, true);
 
-
-      const response = await fetch('/api/character', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const result = await response.json();
-
-      if (result.success) {
-        const animationUrl = `/animations/${animation}.vrma`;
-        await loadVRMAnimation(animationUrl, charactersRef.current, true, animation === 'idle');
-
-        setCharacterState(prev => ({ ...prev, animation }));
-        onStateChange?.({ ...characterState, animation });
-      }
+      setCharacterState(prev => ({ ...prev, animation }));
+      onStateChange?.({ ...characterState, animation });
     } catch (error) {
       console.error('Error updating animation:', error);
     }
@@ -1316,28 +1228,8 @@ export default function CharacterAvatar({
     if (!charactersRef.current) return;
 
     try {
-      const requestBody = {
-        action: 'resetPose',
-        transition: true,
-      };
-
-
-      const response = await fetch('/api/character', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const result = await response.json();
-
-      if (result.success && charactersRef.current) {
-        charactersRef.current.scene.position.set(0, 0, 0);
+      if (charactersRef.current) {
+        applyRootScenePosition();
         charactersRef.current.scene.rotation.set(0, 0, 0);
         
         await updateCharacterExpression('neutral');
@@ -1441,14 +1333,6 @@ export default function CharacterAvatar({
         }
       }
 
-      // Ensure position offset is maintained every frame during animation
-      if (isPlayingSequence.current) {
-        charactersRef.current.scene.position.set(
-          modelPositionOffset.x,
-          modelPositionOffset.y,
-          modelPositionOffset.z
-        );
-      }
     }
 
     // Auto-rotate

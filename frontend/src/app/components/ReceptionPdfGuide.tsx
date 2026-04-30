@@ -10,6 +10,10 @@ import { audioStateManager } from '@/lib/audio-state-manager';
 import type { LipSyncData } from '@/lib/audio/audio-playback-service';
 import { AudioPlaybackService } from '@/lib/audio/audio-playback-service';
 import {
+  AudioInteractionManager,
+  unlockAudioForUserGesture,
+} from '@/lib/audio/audio-interaction-manager';
+import {
   RECEPTION_GUIDE_AUDIO_EXT,
   receptionGuideAudioPrefix,
   receptionGuideLipsyncPrefix,
@@ -161,6 +165,7 @@ export default function ReceptionPdfGuide({
   const [isNarrationInProgress, setIsNarrationInProgress] = useState(false);
   const [containerBounds, setContainerBounds] = useState({ width: 800, height: 600 });
   const [narrationTexts, setNarrationTexts] = useState<string[]>([]);
+  const [audioPermissionRequired, setAudioPermissionRequired] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -339,6 +344,7 @@ export default function ReceptionPdfGuide({
     pendingAutoStartRef.current = false;
     playbackSessionRef.current += 1;
     isPlayingRef.current = true;
+    setAudioPermissionRequired(false);
     setIsPlaying(true);
   }, [isLoading, landscapeReady, totalPages]);
 
@@ -559,12 +565,16 @@ export default function ReceptionPdfGuide({
         setIsNarrationInProgress(true);
         setIsNarrating(true);
         try {
-          await AudioPlaybackService.playAudioWithLipSync(buf, {
+          await AudioInteractionManager.getInstance().ensureAudioContext();
+          const result = await AudioPlaybackService.playAudioWithLipSync(buf, {
             volume: volume / 100,
             enableLipSync: settings.enableLipSync,
             precomputedLipSync: precomputed,
             onVisemeUpdate: onVisemeControl || undefined,
           });
+          if (!result.success) {
+            throw result.error ?? new Error('Audio playback failed');
+          }
           if (!isActiveSession(sid) || currentPageRef.current !== pageAtStart) {
             return;
           }
@@ -578,6 +588,7 @@ export default function ReceptionPdfGuide({
             e?.requiresUserInteraction ||
             e?.message?.includes('interaction')
           ) {
+            setAudioPermissionRequired(true);
             setIsPlaying(false);
             onPresentationComplete?.('stopped');
             return;
@@ -696,9 +707,30 @@ export default function ReceptionPdfGuide({
       if (!landscapeReady) {
         return;
       }
+      unlockAudioForUserGesture();
+      setAudioPermissionRequired(false);
       startPlaybackSession();
       setIsPlaying(true);
     }
+  };
+
+  const enableAudioAndResume = async () => {
+    unlockAudioForUserGesture();
+    try {
+      await AudioInteractionManager.getInstance().forceInitialize();
+    } catch (error) {
+      console.warn('[ReceptionPdfGuide] Failed to initialize audio context:', error);
+      setAudioPermissionRequired(true);
+      setIsPlaying(false);
+      onPresentationComplete?.('stopped');
+      return;
+    }
+    if (!landscapeReady) {
+      return;
+    }
+    setAudioPermissionRequired(false);
+    startPlaybackSession();
+    setIsPlaying(true);
   };
 
   const previousSlide = () => {
@@ -874,6 +906,24 @@ export default function ReceptionPdfGuide({
       >
         <canvas ref={canvasRef} className="max-h-full max-w-full shadow-lg" data-testid="reception-pdf-canvas" />
       </div>
+      {audioPermissionRequired ? (
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/45 p-4">
+          <div className="max-w-sm rounded-lg bg-white p-5 text-center shadow-xl">
+            <p className="mb-4 text-sm font-medium text-gray-800">
+              {language === 'ja'
+                ? '音声再生を有効にしてください。'
+                : 'Enable audio playback to continue.'}
+            </p>
+            <button
+              type="button"
+              onClick={enableAudioAndResume}
+              className="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700"
+            >
+              {language === 'ja' ? '音声を有効化' : 'Enable audio'}
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

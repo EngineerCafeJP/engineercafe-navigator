@@ -103,11 +103,27 @@ test('allows requests in development when ADMIN_API_SECRET is not set', async ()
   assert.equal(response.headers.get('x-middleware-next'), '1');
 });
 
+test('allows traced public API routes without admin bearer token', async () => {
+  process.env.ADMIN_API_SECRET = 'test-secret';
+  env.NODE_ENV = 'production';
+
+  const response = await middleware(createRequest('/api/voice'));
+
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('x-middleware-next'), '1');
+});
+
 test('/api/alerts/webhook is not matched by middleware config', () => {
   assert.deepEqual(config.matcher, [
     '/api/admin/:path*',
     '/api/cron/:path*',
     '/api/monitoring/:path*',
+    '/api/voice',
+    '/api/qa',
+    '/api/character',
+    '/api/slides',
+    '/api/marp',
+    '/api/reception/:path*',
   ]);
   assert.equal(config.matcher.includes('/api/alerts/webhook'), false);
 });

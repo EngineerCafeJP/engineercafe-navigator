@@ -420,16 +420,60 @@ export class GlobalAudioManager {
     }
 
     try {
-      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-      this.audioContext = new AudioContextClass();
-      registerAudioContextResumeOnInteraction(this.audioContext);
+      const context = this.createContext();
       await this.ensureResumed();
 
       this.isInitialized = true;
-      return this.audioContext;
+      return context;
     } catch (error) {
       console.error('Failed to initialize global AudioContext:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Create/resume/warm a context synchronously from a trusted user gesture.
+   * iOS Safari is stricter than desktop browsers: constructing the context and
+   * starting at least one source in the click/touch call stack avoids later
+   * silent playback after async TTS work completes.
+   */
+  public initializeFromUserGesture(): AudioContext {
+    const context = this.createContext();
+
+    if (context.state !== 'running' && context.state !== 'closed') {
+      void context.resume().catch((error) => {
+        console.warn('[GlobalAudioManager] AudioContext resume failed:', error);
+      });
+    }
+
+    this.playSilentWarmupBuffer(context);
+    this.isInitialized = true;
+
+    return context;
+  }
+
+  private createContext(): AudioContext {
+    if (this.audioContext && this.audioContext.state !== 'closed') {
+      return this.audioContext;
+    }
+
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    const context = new AudioContextClass();
+    this.audioContext = context;
+    registerAudioContextResumeOnInteraction(context);
+    return context;
+  }
+
+  private playSilentWarmupBuffer(context: AudioContext): void {
+    try {
+      const sampleRate = context.sampleRate || 22050;
+      const buffer = context.createBuffer(1, 1, sampleRate);
+      const source = context.createBufferSource();
+      source.buffer = buffer;
+      source.connect(context.destination);
+      source.start(0);
+    } catch (error) {
+      console.warn('[GlobalAudioManager] Silent audio warmup failed:', error);
     }
   }
 

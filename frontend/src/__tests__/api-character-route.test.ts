@@ -52,7 +52,7 @@ test('returns manifest animations when a character animation manifest exists', a
   assert.deepEqual(await response.json(), {
     success: true,
     expressions: ['neutral', 'happy', 'sad', 'angry', 'relaxed', 'surprised'],
-    animations: ['idle', 'bowing', 'greeting', 'looking', 'talking', 'thinking'],
+    animations: ['wave', 'bow'],
   });
 });
 

@@ -249,6 +249,7 @@ export default function VoiceInterface({
   const mobileAudioServiceRef = useRef<MobileAudioService | null>(null);
   const audioUrlRef = useRef<string | null>(null);
   const isRecordingRef = useRef(false);
+  const isStartingRecorderRef = useRef(false);
   const shouldListenRef = useRef(false);
   const fastFillerTimerRef = useRef<number | null>(null);
   const fastFillerUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
@@ -873,10 +874,11 @@ export default function VoiceInterface({
   }, [currentLanguage, handleRecordedAudio]);
 
   const startRecorderCapture = useCallback(async () => {
-    if (isRecordingRef.current) {
+    if (isRecordingRef.current || isStartingRecorderRef.current) {
       return;
     }
 
+    isStartingRecorderRef.current = true;
     try {
       const recorder = await ensureRecorder();
       await new Promise<void>((resolve) => {
@@ -900,6 +902,8 @@ export default function VoiceInterface({
     } catch (startError) {
       setError(formatError(startError, currentLanguage));
       voiceController.endManualSession();
+    } finally {
+      isStartingRecorderRef.current = false;
     }
   }, [currentLanguage, ensureRecorder, voiceController]);
 
@@ -927,14 +931,17 @@ export default function VoiceInterface({
 
   const startListening = useCallback(() => {
     unlockAudioForUserGesture();
+    shouldListenRef.current = true;
     sendSttWarmup({ language: currentLanguage, sessionId: sessionIdRef.current });
     cancelPendingRequest();
     stopPlayback(false);
     setError(null);
     voiceController.startManualSession();
-  }, [cancelPendingRequest, currentLanguage, stopPlayback, voiceController]);
+    void startRecorderCapture();
+  }, [cancelPendingRequest, currentLanguage, startRecorderCapture, stopPlayback, voiceController]);
 
   const stopListening = useCallback(() => {
+    shouldListenRef.current = false;
     voiceController.notifyProcessing();
   }, [voiceController]);
 

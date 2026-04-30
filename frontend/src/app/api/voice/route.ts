@@ -6,6 +6,8 @@ import {
 } from '@/app/api/_shared/backend-error-response';
 import { backendFetch } from '@/lib/api/backend-proxy';
 
+const VOICE_PROXY_TIMEOUT_MS = 55_000;
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -43,7 +45,7 @@ export async function POST(request: NextRequest) {
         ...(typeof ttsProvider === 'string' && ttsProvider.length > 0 ? { ttsProvider } : {}),
         ...(includeVrmControl === true ? { includeVrmControl: true } : {}),
       },
-      timeoutMs: 75_000,
+      timeoutMs: VOICE_PROXY_TIMEOUT_MS,
     });
 
     if (!response.ok) {
@@ -65,7 +67,7 @@ export async function GET(request: NextRequest) {
     const response = await backendFetch('/api/voice', {
       method: 'GET',
       params: action ? { action } : undefined,
-      timeoutMs: 75_000,
+      timeoutMs: VOICE_PROXY_TIMEOUT_MS,
     });
 
     if (!response.ok) {
