@@ -69,3 +69,48 @@ async def test_voice_filler_static_lookup_under_100ms(monkeypatch):
     assert response.intent == "event"
     assert response.audioResponse
     assert elapsed_ms < 100
+
+
+async def test_voice_filler_rejects_undersized_wav(monkeypatch, tmp_path):
+    monkeypatch.setattr(main_mod, "_API_SECRET_KEY", "expected-key")
+    monkeypatch.setattr(main_mod, "_FILLER_DIR", tmp_path)
+    main_mod._filler_audio_cache.clear()
+
+    tiny = tmp_path / "wifi_ja.wav"
+    tiny.write_bytes(bytes(4096))
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/api/voice/filler",
+            headers={"X-API-Key": "expected-key"},
+            json={"query": "WiFiのパスワードは？", "language": "ja"},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["intent"] == "wifi"
+    assert body["audioResponse"] == ""
+    assert body["upstreamStatus"]["ok"] is False
+
+
+async def test_voice_filler_accepts_wav_meeting_minimum_size(monkeypatch, tmp_path):
+    monkeypatch.setattr(main_mod, "_API_SECRET_KEY", "expected-key")
+    monkeypatch.setattr(main_mod, "_FILLER_DIR", tmp_path)
+    main_mod._filler_audio_cache.clear()
+
+    ok_file = tmp_path / "wifi_ja.wav"
+    ok_file.write_bytes(bytes([255]) * 9000)
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/api/voice/filler",
+            headers={"X-API-Key": "expected-key"},
+            json={"query": "WiFiのパスワードは？", "language": "ja"},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["upstreamStatus"]["ok"] is True
+    assert len(body["audioResponse"]) > 0
