@@ -166,10 +166,21 @@ class SimplifiedMemoryHelper:
         if recent_messages:
             recent_messages = self._rank_messages(recent_messages, query)
 
-        # リクエストタイプの継承
+        # リクエストタイプの継承。現在の発話から明示 intent が取れる場合は、
+        # 前ターンの request_type を持ち越さない。
         inherited_request_type: Optional[str] = None
+        query_request_type = extract_request_type(query)
+        query_intent_override = False
         if inherit_context:
             inherited_request_type = await self.get_previous_request_type(session_id)
+            if query_request_type:
+                query_intent_override = inherited_request_type is not None
+                inherited_request_type = query_request_type
+            logger.info(
+                "Found previous request type: %s",
+                inherited_request_type,
+                extra={"query_intent_override": query_intent_override},
+            )
 
         # ナレッジベース検索
         include_knowledge_base = options.get("include_knowledge_base", True)
@@ -211,6 +222,7 @@ class SimplifiedMemoryHelper:
             "knowledge_results": knowledge_results,
             "context_string": context_string,
             "inherited_request_type": inherited_request_type,
+            "query_intent_override": query_intent_override,
         }
 
     async def _get_recent_messages(self, session_id: str) -> List[Dict]:
