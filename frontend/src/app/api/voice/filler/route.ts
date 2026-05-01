@@ -5,14 +5,25 @@ import {
   createInternalServerErrorResponse,
 } from '@/app/api/_shared/backend-error-response';
 import { backendFetch } from '@/lib/api/backend-proxy';
+import { fillerRequestSchema } from '@/lib/schemas/voice-filler';
 
 const FILLER_PROXY_TIMEOUT_MS = 15_000;
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
+    const raw = await request.json().catch(() => null);
+    const parsed = fillerRequestSchema.safeParse(raw);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: 'INVALID_REQUEST', details: parsed.error.flatten() },
+        { status: 400 },
+      );
+    }
+
+    const { query, language } = parsed.data;
+
     const response = await backendFetch('/api/voice/filler', {
-      body,
+      body: { query, language },
       timeoutMs: FILLER_PROXY_TIMEOUT_MS,
     });
 
