@@ -21,6 +21,7 @@ import {
   receptionGuidePdfUrl,
 } from '@/lib/reception/reception-pdf-constants';
 import { parseReceptionNarrationMarkdown } from '@/lib/reception/parse-reception-narration-md';
+import { preprocessTTS } from '@/utils/tts-preprocess';
 import { cn } from '@/lib/cn';
 import { ChevronLeft, ChevronRight, Pause, Play, RotateCw, RotateCcw } from 'lucide-react';
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
@@ -132,6 +133,8 @@ interface ReceptionPdfGuideProps {
   rotateLandscapeHint: string;
   autoStartKey?: number;
   className?: string;
+  /** Passed to PiperPlus `/api/voice` narration (optional Web Speech fallback). */
+  sessionId?: string;
   onVisemeControl?: ((viseme: string, intensity: number) => void) | null;
   onExpressionControl?: ((expression: string, weight: number) => void) | null;
   volume?: number;
@@ -143,6 +146,7 @@ export default function ReceptionPdfGuide({
   rotateLandscapeHint,
   autoStartKey,
   className,
+  sessionId = '',
   onVisemeControl,
   onExpressionControl,
   volume = 80,
@@ -617,7 +621,48 @@ export default function ReceptionPdfGuide({
       setIsNarrationInProgress(true);
       setIsNarrating(true);
       try {
-        await speakNarrationText(text, language, signal);
+        let playedPiper = false;
+        const sidTrim = sessionId.trim();
+        if (sidTrim.length > 0) {
+          try {
+            const res = await fetch('/api/voice', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                action: 'text_to_speech',
+                text: preprocessTTS(text, language),
+                language,
+                sessionId: sidTrim,
+                includeVrmControl: false,
+              }),
+              signal,
+            });
+            const data = (await res.json()) as Record<string, unknown>;
+            if (
+              res.ok &&
+              data.success &&
+              typeof data.audioResponse === 'string' &&
+              data.audioResponse.length > 0
+            ) {
+              const raw = Uint8Array.from(atob(data.audioResponse), (c) => c.charCodeAt(0));
+              const buf = raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength);
+              await AudioInteractionManager.getInstance().ensureAudioContext();
+              const result = await AudioPlaybackService.playAudioWithLipSync(buf, {
+                volume: volume / 100,
+                enableLipSync: settings.enableLipSync,
+                onVisemeUpdate: onVisemeControl || undefined,
+              });
+              playedPiper = result.success;
+            }
+          } catch {
+            playedPiper = false;
+          }
+        }
+        if (!playedPiper) {
+          await speakNarrationText(text, language, signal);
+        }
         if (!isActiveSession(sid) || currentPageRef.current !== pageAtStart) {
           return;
         }
@@ -642,6 +687,7 @@ export default function ReceptionPdfGuide({
     narrationTexts,
     onPresentationComplete,
     onVisemeControl,
+    sessionId,
     settings.autoAdvance,
     settings.enableLipSync,
     volume,
@@ -806,7 +852,7 @@ export default function ReceptionPdfGuide({
       <div
         data-testid="reception-pdf-guide"
         className={cn(
-          'flex h-full min-h-0 flex-col items-center justify-center gap-6 bg-slate-900/95 p-8 text-center text-white',
+          'fixed inset-0 z-[100] flex min-h-[100dvh] flex-col items-center justify-center gap-6 bg-slate-950 p-8 text-center text-white',
           className,
         )}
       >

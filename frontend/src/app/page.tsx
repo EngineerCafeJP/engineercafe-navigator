@@ -5,6 +5,10 @@ import { startSensorPolling, stopSensorPolling } from '@/lib/api/device-webhook'
 import { getStageBackgroundStyle } from '@/lib/get-stage-background-style';
 import { overlayLabels } from '@/lib/kiosk-labels';
 import {
+  applyVrmAssistantSpeakingPose,
+  applyVrmThinkingPose,
+} from '@/lib/emotion-manager';
+import {
   KIOSK_IDLE_MS,
   KIOSK_WELCOME_COOLDOWN_MS,
   type KioskMicMode,
@@ -37,6 +41,7 @@ import SettingsPanel, {
 } from './components/SettingsPanel';
 import VoiceInterface, {
   type VoiceInterfaceMetadata,
+  type VoiceInterfaceRenderProps,
 } from './components/VoiceInterface';
 import type { OcrResponse } from '@/lib/api/ocr-api';
 import { startReception } from '@/lib/reception-api';
@@ -44,6 +49,36 @@ import { cancelSttWarmup, sendSttWarmup } from '@/lib/stt-warmup';
 
 const kioskReceptionSlidesUsePdf =
   process.env.NEXT_PUBLIC_RECEPTION_SLIDE_RENDERER !== 'marp';
+
+
+function kioskVoiceModeBadgeLabel(
+  voice: VoiceInterfaceRenderProps,
+  labels: (typeof overlayLabels)['ja'] | (typeof overlayLabels)['en'],
+): string {
+  if (voice.sessionState === 'listening') {
+    return labels.voiceModeListening;
+  }
+  if (voice.loadingPhase === 'stt') {
+    return labels.voiceModeStt;
+  }
+  if (voice.loadingPhase === 'tts') {
+    return labels.voiceModeTts;
+  }
+  if (voice.sessionState === 'speaking') {
+    return labels.voiceModeSpeaking;
+  }
+  if (voice.loadingPhase === 'llm') {
+    return labels.voiceModeLlm;
+  }
+  if (voice.sessionState === 'processing') {
+    return labels.voiceModeLlm;
+  }
+  if (voice.isLoading && voice.loadingPhase === 'mic') {
+    return labels.voiceModeStt;
+  }
+  return labels.voiceModeIdle;
+}
+
 
 export default function Home() {
   const [kioskPhase, setKioskPhase] = useState<KioskPhase>('notice');
@@ -321,6 +356,12 @@ export default function Home() {
             pendingVrmPlaybackRef.current = vc;
           }
         }}
+        onVoiceTurnThinkingVisual={() => {
+          applyVrmThinkingPose(setExpressionFunction ?? undefined);
+        }}
+        onVoiceTurnAssistantSpeakingVisual={() => {
+          applyVrmAssistantSpeakingPose(setExpressionFunction ?? undefined);
+        }}
       >
         {(voice) => {
           kioskVisitCleanupRef.current = () => {
@@ -443,6 +484,14 @@ export default function Home() {
                 setConversationHistory={setConversationHistory}
               />
               <main className="relative h-[100svh] w-screen overflow-hidden">
+                {(kioskPhase === 'voice' || kioskPhase === 'idle') && (
+                  <div
+                    className="pointer-events-none absolute left-1/2 top-[max(0.5rem,env(safe-area-inset-top))] z-[38] max-w-[92vw] -translate-x-1/2 truncate rounded-full border border-white/25 bg-black/55 px-4 py-1.5 text-center text-[11px] font-semibold text-white shadow-md backdrop-blur-md sm:text-xs"
+                    data-testid="kiosk-voice-mode-badge"
+                  >
+                    {kioskVoiceModeBadgeLabel(voice, labels)}
+                  </div>
+                )}
                 <div className="absolute inset-0 -z-10" style={stageBackgroundStyle}>
                   <CharacterAvatar
                     modelPath="/characters/models/sakura.vrm"
@@ -662,6 +711,7 @@ export default function Home() {
                           rotateLandscapeHint={labels.slideRotateHint}
                           autoStartKey={presentationAutoStartKey}
                           className="min-h-0 flex-1"
+                          sessionId={voice.sessionId}
                           onVisemeControl={setVisemeFunction}
                           onExpressionControl={setExpressionFunction}
                           volume={Math.round(voice.volume * 100)}

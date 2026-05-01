@@ -398,3 +398,14 @@ export class EmotionManager {
     return emotion in this.VRM_EXPRESSION_MAP;
   }
 }
+export type VrmExpressionSetter = (expression: string, weight: number) => void;
+
+/** Alpha #610 — thinking expression while filler/QA runs after STT */
+export function applyVrmThinkingPose(setExpression?: VrmExpressionSetter | null): void {
+  setExpression?.('thinking', 1);
+}
+
+/** Baseline before assistant TTS clip plays */
+export function applyVrmAssistantSpeakingPose(setExpression?: VrmExpressionSetter | null): void {
+  setExpression?.('neutral', 1);
+}

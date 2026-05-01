@@ -377,9 +377,13 @@ test.describe('Reception flow — microphone errors', () => {
   test('permission denial shows a microphone error and does not stay recording', async ({ page }) => {
     await page.getByRole('button', { name: /音声応対|Voice chat/ }).click();
 
-    await expect(page.getByTestId('kiosk-voice-status')).toContainText(/マイク.*拒否|Microphone access/, {
-      timeout: 5_000,
-    });
+    // Anchor on actual error strings from error-messages.ts (MIC_PERMISSION_DENIED /
+    // MICROPHONE_PERMISSION_DENIED / MIC_SECURITY_ERROR) so the assertion still falsifies
+    // when the denial UI is silently swallowed and only the default prompt is shown.
+    await expect(page.getByTestId('kiosk-voice-status')).toContainText(
+      /マイクの許可|マイクへのアクセス|Microphone permission|HTTPS/i,
+      { timeout: 5_000 },
+    );
     await expect(page.getByTestId('kiosk-voice-button')).not.toContainText(/録音中|Recording/);
   });
 });

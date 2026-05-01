@@ -105,6 +105,10 @@ interface VoiceInterfaceProps {
   onAssistantPlaybackStart?: (payload: { metadata: VoiceInterfaceMetadata | null }) => void;
   /** Fired when assistant TTS finishes (session goes from speaking to idle). */
   onAssistantPlaybackEnd?: () => void;
+  /** Optional VRM hook while parallel filler / QA runs after STT. */
+  onVoiceTurnThinkingVisual?: () => void;
+  /** Optional VRM hook when assistant audio is about to play (after filler). */
+  onVoiceTurnAssistantSpeakingVisual?: () => void;
 }
 
 const DEFAULT_WAKE_WORDS = ['すみません', 'hello'];
@@ -142,6 +146,8 @@ const LOADING_LABELS = {
 
 const FAST_FILLER_ENABLED =
   process.env.NEXT_PUBLIC_FAST_FILLER_ENABLED !== 'false';
+const PARALLEL_VOICE_FILLER_ENABLED =
+  process.env.NEXT_PUBLIC_PARALLEL_VOICE_FILLER !== 'false';
 const FAST_FILLER_DELAY_MS = 350;
 const FAST_FILLER_TEXT = {
   ja: '確認しています。',
@@ -224,6 +230,8 @@ export default function VoiceInterface({
   onMetadataChange,
   onAssistantPlaybackStart,
   onAssistantPlaybackEnd,
+  onVoiceTurnThinkingVisual,
+  onVoiceTurnAssistantSpeakingVisual,
 }: VoiceInterfaceProps) {
   const skipAssistantTurnAutoResume = !autoResumeListeningAfterAssistant;
   const [currentLanguage, setCurrentLanguage] = useState<'ja' | 'en'>(language);
@@ -257,6 +265,17 @@ export default function VoiceInterface({
 
   useEffect(() => {
     visitorIdRef.current = getOrCreateVisitorId();
+  }, []);
+
+  useEffect(() => {
+    const q = new AudioQueue();
+    audioQueueRef.current = q;
+    q.setVolume(isMuted ? 0 : volume);
+    return () => {
+      q.clear();
+      audioQueueRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount bootstrap only
   }, []);
 
   useEffect(() => {
@@ -542,6 +561,233 @@ export default function VoiceInterface({
     ],
   );
 
+  const processVoiceTurnWithParallelFiller = useCallback(
+    async (trimmed: string, abortController: AbortController) => {
+      const signal = abortController.signal;
+      const visitorId = ensureVisitorId();
+
+      cancelFastFiller();
+      stopPlayback(false);
+      setError(null);
+      setIsLoading(true);
+      setLoadingMessage(LOADING_LABELS[currentLanguage].answer);
+      setLoadingPhase('llm');
+      voiceController.notifyProcessing();
+
+      const fillerTask =
+        PARALLEL_VOICE_FILLER_ENABLED && trimmed.length > 0
+          ? (async () => {
+              try {
+                const res = await fetch('/api/voice/filler', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({
+                    query: trimmed,
+                    language: currentLanguage,
+                    sessionId: sessionIdRef.current,
+                  }),
+                  signal,
+                });
+                if (!res.ok) {
+                  return;
+                }
+                const data = (await res.json()) as Record<string, unknown>;
+                const audio =
+                  typeof data.audioResponse === 'string' && data.audioResponse.length > 0
+                    ? data.audioResponse
+                    : null;
+                if (!audio || signal.aborted) {
+                  return;
+                }
+                const q = audioQueueRef.current;
+                if (!q) {
+                  return;
+                }
+                q.setVolume(isMuted ? 0 : volume);
+                onVoiceTurnThinkingVisual?.();
+                q.add({
+                  id: `filler-${Date.now()}`,
+                  priority: 10,
+                  audioData: audio,
+                });
+              } catch {
+                /* degrade silently */
+              }
+            })()
+          : Promise.resolve();
+
+      try {
+        const qaResponse = await fetch('/api/qa', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            action: 'ask',
+            question: trimmed,
+            text: trimmed,
+            sessionId: sessionIdRef.current,
+            language: currentLanguage,
+            visitorId,
+          }),
+          signal,
+        });
+
+        const qaResult = await qaResponse.json();
+        if (!qaResponse.ok || !qaResult.success) {
+          const qaError: Error & { status?: number } = new Error(
+            qaResult.error || '質問の送信に失敗しました',
+          );
+          qaError.status = qaResponse.status;
+          throw qaError;
+        }
+
+        const parsedAnswer = EmotionTagParser.parseEmotionTags(
+          typeof qaResult.answer === 'string' ? qaResult.answer : '',
+        );
+        const cleanAnswer = parsedAnswer.cleanText;
+
+        setResponse(cleanAnswer);
+        setMetadata((qaResult.metadata as VoiceInterfaceMetadata | null) ?? null);
+
+        const ttsBody: Record<string, unknown> = {
+          action: 'text_to_speech',
+          text: preprocessTTS(cleanAnswer, currentLanguage),
+          language: currentLanguage,
+          sessionId: sessionIdRef.current,
+          includeVrmControl: true,
+        };
+        if (typeof qaResult.emotion === 'string' && qaResult.emotion.trim()) {
+          ttsBody.emotion = qaResult.emotion.trim();
+        }
+
+        const ttsResponse = await fetch('/api/voice', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(ttsBody),
+          signal,
+        });
+
+        const ttsResult = (await ttsResponse.json()) as Record<string, unknown>;
+        if (!ttsResponse.ok || !ttsResult.success) {
+          const ttsError: Error & { status?: number } = new Error(
+            (typeof ttsResult.error === 'string' ? ttsResult.error : null) ||
+              '音声の生成に失敗しました',
+          );
+          ttsError.status = ttsResponse.status;
+          throw ttsError;
+        }
+
+        // Filler runs in parallel; do not await — slow filler must not delay main TTS enqueue.
+        void fillerTask.catch(() => {});
+
+        const qaMeta = (qaResult.metadata as VoiceInterfaceMetadata | null) ?? null;
+        const playbackMetadata = mergePlaybackMetadataWithTtsVrmControl(qaMeta, ttsResult);
+
+        if (isMuted) {
+          cancelFastFiller();
+          voiceController.notifySpeaking();
+          onAssistantPlaybackStart?.({ metadata: playbackMetadata ?? null });
+          window.setTimeout(() => {
+            voiceController.notifySpeakingComplete(skipAssistantTurnAutoResume);
+          }, 240);
+          return;
+        }
+
+        if (typeof ttsResult.audioResponse === 'string' && ttsResult.audioResponse.length > 0) {
+          cancelFastFiller();
+          onVoiceTurnAssistantSpeakingVisual?.();
+
+          let audioBytes: Uint8Array;
+          try {
+            audioBytes = Uint8Array.from(atob(ttsResult.audioResponse), (char) => char.charCodeAt(0));
+          } catch (decodeError) {
+            console.error('Audio decode failed:', decodeError);
+            voiceController.notifySpeakingComplete(true);
+            return;
+          }
+          const detectedFormat = AudioDataProcessor.detectAudioFormat(audioBytes.buffer as ArrayBuffer);
+          const responseBlob = new Blob([audioBytes], { type: detectedFormat });
+
+          let lipSyncFrames: LipSyncFrame[] | null = null;
+          if (!playbackMetadata?.vrm_control && onVisemeControl) {
+            try {
+              if (!lipSyncAnalyzerRef.current) {
+                lipSyncAnalyzerRef.current = new LipSyncAnalyzer();
+              }
+              const lipSyncData = await lipSyncAnalyzerRef.current.analyzeLipSync(responseBlob);
+              lipSyncFrames = lipSyncData.frames;
+            } catch {
+              clearLipSyncTimers();
+              lipSyncFrames = null;
+            }
+          }
+
+          const q = audioQueueRef.current;
+          if (!q) {
+            await playAssistantAudio(ttsResult.audioResponse, playbackMetadata);
+            return;
+          }
+          q.setVolume(isMuted ? 0 : volume);
+          q.add({
+            id: `assistant-${Date.now()}`,
+            priority: 5,
+            audioData: ttsResult.audioResponse,
+            onPlaybackStart: () => {
+              cancelFastFiller();
+              setLoadingMessage(LOADING_LABELS[currentLanguage].speaking);
+              setLoadingPhase('tts');
+              voiceController.notifySpeaking();
+              onAssistantPlaybackStart?.({ metadata: playbackMetadata ?? null });
+              if (lipSyncFrames && lipSyncFrames.length > 0) {
+                scheduleLipSyncFrames(lipSyncFrames);
+              }
+            },
+            onPlaybackEnd: () => {
+              cleanupAudioPlayback();
+              voiceController.notifySpeakingComplete(skipAssistantTurnAutoResume);
+            },
+          });
+        } else {
+          cancelFastFiller();
+          voiceController.notifySpeaking();
+          window.setTimeout(() => {
+            voiceController.notifySpeakingComplete(skipAssistantTurnAutoResume);
+          }, 240);
+        }
+      } catch (voiceError) {
+        if (voiceError instanceof DOMException && voiceError.name === 'AbortError') {
+          return;
+        }
+        cancelFastFiller();
+        setError(formatError(voiceError, currentLanguage));
+        voiceController.notifySpeakingComplete(true);
+      }
+    },
+    [
+      cancelFastFiller,
+      cleanupAudioPlayback,
+      clearLipSyncTimers,
+      currentLanguage,
+      ensureVisitorId,
+      isMuted,
+      onAssistantPlaybackStart,
+      onVisemeControl,
+      onVoiceTurnAssistantSpeakingVisual,
+      onVoiceTurnThinkingVisual,
+      playAssistantAudio,
+      scheduleLipSyncFrames,
+      skipAssistantTurnAutoResume,
+      stopPlayback,
+      volume,
+      voiceController,
+    ],
+  );
+
   const sendMessage = useCallback(
     async (message: string) => {
       const trimmed = message.trim();
@@ -803,10 +1049,7 @@ export default function VoiceInterface({
         }
 
         setTranscript(sttResult.transcript);
-        setIsLoading(false);
-        setLoadingMessage('');
-        setLoadingPhase(null);
-        await sendMessage(sttResult.transcript);
+        await processVoiceTurnWithParallelFiller(sttResult.transcript.trim(), abortController);
       } catch (recordingError) {
         if (recordingError instanceof DOMException && recordingError.name === 'AbortError') {
           return;
@@ -823,7 +1066,7 @@ export default function VoiceInterface({
         setLoadingPhase(null);
       }
     },
-    [cancelPendingRequest, currentLanguage, sendMessage, voiceController],
+    [cancelPendingRequest, currentLanguage, processVoiceTurnWithParallelFiller, voiceController],
   );
 
   const ensureRecorder = useCallback(async () => {
@@ -845,6 +1088,7 @@ export default function VoiceInterface({
         setLoadingPhase(null);
         isRecordingRef.current = false;
         shouldListenRef.current = false;
+        voiceController.endManualSession();
       },
       () => {
         if (recorderRef.current !== recorder) {
@@ -878,7 +1122,7 @@ export default function VoiceInterface({
     setLoadingPhase(null);
 
     return recorder;
-  }, [currentLanguage, handleRecordedAudio]);
+  }, [currentLanguage, handleRecordedAudio, voiceController]);
 
   const startRecorderCapture = useCallback(async (): Promise<boolean> => {
     if (isRecordingRef.current) {

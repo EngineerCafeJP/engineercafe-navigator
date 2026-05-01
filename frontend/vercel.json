@@ -12,6 +12,9 @@
     "src/app/api/voice/route.ts": {
       "maxDuration": 60
     },
+    "src/app/api/voice/filler/route.ts": {
+      "maxDuration": 60
+    },
     "src/app/api/qa/route.ts": {
       "maxDuration": 60
     },

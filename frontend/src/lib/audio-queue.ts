@@ -12,6 +12,10 @@ export interface AudioQueueItem {
   text?: string;
   priority?: number;
   emotion?: string;
+  /** Fired when underlying playback actually starts (after decode). */
+  onPlaybackStart?: () => void;
+  /** Fired when this clip ends or errors. */
+  onPlaybackEnd?: () => void;
 }
 
 export class AudioQueue {
@@ -63,6 +67,7 @@ export class AudioQueue {
   clear(): void {
     this.queue = [];
     if (this.currentAudioService) {
+      this.currentAudioService.stop();
       this.currentAudioService = null;
     }
     this.isPlaying = false;
@@ -137,37 +142,43 @@ export class AudioQueue {
    * Play a single audio item using Web Audio API
    */
   private async playAudio(item: AudioQueueItem): Promise<void> {
-    // Create audio service with current volume
     const audioService = new MobileAudioService({
       volume: this.volume,
+      onPlay: () => {
+        item.onPlaybackStart?.();
+      },
       onEnded: () => {
         this.currentAudioService = null;
       },
       onError: (error) => {
         this.currentAudioService = null;
         throw error;
-      }
+      },
     });
-    
+
     this.currentAudioService = audioService;
-    
-    // Play the audio using Web Audio API
+
     const result = await audioService.playAudio(item.audioData);
     if (!result.success) {
+      item.onPlaybackEnd?.();
       throw result.error || new AudioError(AudioErrorType.PLAYBACK_FAILED, 'Audio playback failed');
     }
-    
-    // Wait for audio to complete
+
     return new Promise((resolve, reject) => {
       audioService.updateEventHandlers({
+        onPlay: () => {
+          item.onPlaybackStart?.();
+        },
         onEnded: () => {
           this.currentAudioService = null;
+          item.onPlaybackEnd?.();
           resolve();
         },
         onError: (error) => {
           this.currentAudioService = null;
+          item.onPlaybackEnd?.();
           reject(error);
-        }
+        },
       });
     });
   }
