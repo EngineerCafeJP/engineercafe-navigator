@@ -15,12 +15,13 @@ import time
 import wave
 from contextlib import asynccontextmanager
 from io import BytesIO
+from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from typing import Optional, Dict, Any, cast
+from typing import Optional, Dict, Any, Literal, cast
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -35,6 +36,8 @@ from backend.utils.structured_logging import (
     setup_structured_logging,
 )
 from backend.utils.session_task_manager import get_session_task_manager
+from backend.utils.intent_classifier import FILLER_INTENTS, filler_intent_for_query
+from backend.utils.filler_catalog import FILLER_TEXTS
 
 logger = logging.getLogger(__name__)
 
@@ -314,6 +317,9 @@ class ChatResponse(BaseModel):
     emotion: str
     metadata: Dict[str, Any]
     vrm_control: Optional[Dict[str, Any]] = None
+    requestId: Optional[str] = None
+    phase: Optional[str] = None
+    upstreamStatus: Optional[Dict[str, Any]] = None
 
 
 class InterruptRequest(BaseModel):
@@ -359,6 +365,14 @@ def _build_workflow_payload(body: ChatRequest, session_id: str) -> Dict[str, Any
     return payload
 
 
+def _request_id_from_request(request: Request) -> str:
+    return get_request_id() or request.headers.get("X-Request-ID") or generate_request_id()
+
+
+def _upstream_status(phase: str, ok: bool = True, **extra: Any) -> Dict[str, Any]:
+    return {"phase": phase, "ok": ok, **extra}
+
+
 @app.get("/health")
 @_rate_limit("60/minute")
 async def health_check(request: Request):
@@ -401,6 +415,9 @@ async def chat(request: Request, body: ChatRequest):
     """
     チャットエンドポイント
     LangGraphエージェントを使用してクエリを処理します
+
+    Frontend proxy note: `/api/chat` responses include requestId, phase, and
+    upstreamStatus so `frontend/src/app/api/qa` can surface traceable failures.
     """
     import uuid as _uuid
 
@@ -413,6 +430,7 @@ async def chat(request: Request, body: ChatRequest):
 
     started_at = time.perf_counter()
     session_id = body.session_id or str(_uuid.uuid4())
+    request_id = _request_id_from_request(request)
 
     get_interrupt_manager().clear_interrupt(session_id)
 
@@ -431,7 +449,7 @@ async def chat(request: Request, body: ChatRequest):
             }
             latency_ms = int((time.perf_counter() - started_at) * 1000)
             log_chat_response(
-                request_id=get_request_id() or request.headers.get("X-Request-ID"),
+                request_id=request_id,
                 language=body.language,
                 metadata=metadata,
                 latency_ms=latency_ms,
@@ -440,6 +458,9 @@ async def chat(request: Request, body: ChatRequest):
                 answer=prompt_injection_refusal(body.language),
                 emotion="neutral",
                 metadata=metadata,
+                requestId=request_id,
+                phase="chat",
+                upstreamStatus=_upstream_status("safety_guard"),
             )
 
         body = body.copy(update={"query": sanitize_input(body.query)})
@@ -470,11 +491,12 @@ async def chat(request: Request, body: ChatRequest):
             logger.debug("PII scan skipped (non-critical): %s", e)
 
         metadata = result.get("metadata", {"query": body.query, "session_id": session_id})
+        metadata_dict = metadata if isinstance(metadata, dict) else {}
         latency_ms = int((time.perf_counter() - started_at) * 1000)
         log_chat_response(
-            request_id=get_request_id() or request.headers.get("X-Request-ID"),
+            request_id=request_id,
             language=body.language,
-            metadata=metadata if isinstance(metadata, dict) else {},
+            metadata=metadata_dict,
             latency_ms=latency_ms,
         )
 
@@ -482,7 +504,15 @@ async def chat(request: Request, body: ChatRequest):
             answer=answer,
             emotion=result.get("emotion", "neutral"),
             metadata=metadata,
-            vrm_control=metadata.get("vrm_control"),
+            vrm_control=metadata_dict.get("vrm_control"),
+            requestId=request_id,
+            phase="chat",
+            upstreamStatus=_upstream_status(
+                "workflow",
+                route=metadata_dict.get("route")
+                or metadata_dict.get("category")
+                or metadata_dict.get("agent"),
+            ),
         )
     except Exception as e:
         logger.exception("Endpoint error: %s", e)
@@ -604,6 +634,89 @@ class VoiceResponse(BaseModel):
     cleanText: Optional[str] = None  # TTS 前処理後（includeVrmControl 時）
     # CharacterControlAgent.process（チャット metadata 相当）
     vrmControl: Optional[Dict[str, Any]] = None
+    requestId: Optional[str] = None
+    phase: Optional[str] = None
+    upstreamStatus: Optional[Dict[str, Any]] = None
+
+
+class FillerRequest(BaseModel):
+    query: str = Field(max_length=2000)
+    language: Literal["ja", "en", "zh", "ko"] = "ja"
+
+
+class FillerResponse(BaseModel):
+    audioResponse: str
+    intent: str
+    audioFormat: str = "audio/wav"
+    fillerText: str
+    source: str = "static"
+    requestId: Optional[str] = None
+    phase: Optional[str] = "filler"
+    upstreamStatus: Optional[Dict[str, Any]] = None
+
+
+_FILLER_DIR = Path(__file__).resolve().parent / "static" / "fillers"
+_filler_audio_cache: dict[tuple[str, str], str] = {}
+
+
+def _read_filler_audio(intent: str, language: str) -> str:
+    cache_key = (intent, language)
+    cached = _filler_audio_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    path = _FILLER_DIR / f"{intent}_{language}.wav"
+    with path.open("rb") as file:
+        encoded = base64.b64encode(file.read()).decode("ascii")
+    _filler_audio_cache[cache_key] = encoded
+    return encoded
+
+
+def _filler_text(intent: str, language: str) -> str:
+    fallback = FILLER_TEXTS["fallback"]["ja"]
+    return FILLER_TEXTS.get(intent, FILLER_TEXTS["fallback"]).get(language, fallback)
+
+
+@app.post(
+    "/api/voice/filler",
+    response_model=FillerResponse,
+    dependencies=[Depends(verify_api_key)],
+)
+@_rate_limit("60/minute")
+async def voice_filler_api(request: Request, body: FillerRequest):
+    """
+    Return a pre-recorded filler clip for frontend parallel playback.
+
+    Frontend proxy note: `frontend/src/app/api/voice/filler` can safely degrade
+    when audioResponse is empty; this endpoint keeps HTTP 200 for asset misses.
+    """
+    request_id = _request_id_from_request(request)
+    started_at = time.perf_counter()
+    intent = filler_intent_for_query(body.query)
+    if intent not in FILLER_INTENTS:
+        intent = "fallback"
+
+    try:
+        audio = _read_filler_audio(intent, body.language)
+        ok = bool(audio)
+    except Exception as exc:
+        logger.warning(
+            "Filler audio unavailable: intent=%s language=%s error=%s",
+            intent,
+            body.language,
+            exc,
+        )
+        audio = ""
+        ok = False
+
+    latency_ms = int((time.perf_counter() - started_at) * 1000)
+    return FillerResponse(
+        audioResponse=audio,
+        intent=intent,
+        fillerText=_filler_text(intent, body.language),
+        requestId=request_id,
+        upstreamStatus=_upstream_status("filler", ok=ok, latencyMs=latency_ms),
+    )
 
 
 _voice_agent: Optional[Any] = None  # VoiceAgent (lazy-loaded)
@@ -711,7 +824,7 @@ async def _generate_vrm_control_for_lab_tts(
         return None
 
 
-async def _handle_stt(body: VoiceRequest) -> VoiceResponse:
+async def _handle_stt(body: VoiceRequest, request_id: str) -> VoiceResponse:
     """Shared STT processing for speech_to_text action."""
     if not body.audioData:
         raise HTTPException(status_code=400, detail="Missing audioData")
@@ -729,6 +842,14 @@ async def _handle_stt(body: VoiceRequest) -> VoiceResponse:
             success=False,
             error=stt_result.get("error", "STT failed"),
             sessionId=body.sessionId,
+            requestId=request_id,
+            phase="speech_to_text",
+            upstreamStatus=_upstream_status(
+                "stt",
+                ok=False,
+                provider=stt_result.get("provider"),
+                error=stt_result.get("error", "STT failed"),
+            ),
         )
 
     return VoiceResponse(
@@ -740,10 +861,13 @@ async def _handle_stt(body: VoiceRequest) -> VoiceResponse:
         sttProvider=stt_result.get("provider"),
         sttPostprocessed=stt_result.get("postprocessed"),
         sessionId=body.sessionId,
+        requestId=request_id,
+        phase="speech_to_text",
+        upstreamStatus=_upstream_status("stt", provider=stt_result.get("provider")),
     )
 
 
-async def _handle_stt_warmup(body: VoiceRequest) -> VoiceResponse:
+async def _handle_stt_warmup(body: VoiceRequest, request_id: str) -> VoiceResponse:
     """Start STT model warmup without tying it to the user audio request."""
     snapshot = await get_stt_warmup_service().warmup(
         provider=os.getenv("STT_PROVIDER"),
@@ -758,6 +882,14 @@ async def _handle_stt_warmup(body: VoiceRequest) -> VoiceResponse:
         sttWarmupProvider=snapshot.provider,
         sttWarmupError=snapshot.error,
         sttWarmupDurationMs=snapshot.duration_ms,
+        requestId=request_id,
+        phase="warmup",
+        upstreamStatus=_upstream_status(
+            "stt_warmup",
+            ok=snapshot.error is None,
+            provider=snapshot.provider,
+            status=snapshot.status,
+        ),
     )
 
 
@@ -773,7 +905,13 @@ async def voice_get_api(action: str = ""):
     default_tts = (os.getenv("TTS_PROVIDER", "voicevox") or "voicevox").strip().lower()
     return {
         "status": "ok",
-        "actions": ["speech_to_text", "text_to_speech", "warmup", "supported_languages"],
+        "actions": [
+            "speech_to_text",
+            "text_to_speech",
+            "warmup",
+            "supported_languages",
+            "filler",
+        ],
         "defaultTtsProvider": default_tts,
         "ttsProviders": [
             {"id": "voicevox", "label": "VoiceVox"},
@@ -806,6 +944,13 @@ async def calendar_api(request: Request, timeRange: str = "thisWeek"):
 @app.post("/api/voice", response_model=VoiceResponse, dependencies=[Depends(verify_api_key)])
 @_rate_limit("20/minute")
 async def voice_api(request: Request, body: VoiceRequest):
+    """
+    Voice endpoint.
+
+    Frontend proxy note: `/api/voice` responses include requestId, phase, and
+    upstreamStatus for `frontend/src/app/api/voice` error display and tracing.
+    """
+    request_id = _request_id_from_request(request)
     try:
         if body.action == "text_to_speech":
             if not body.text or not body.text.strip():
@@ -833,6 +978,14 @@ async def voice_api(request: Request, body: VoiceRequest):
                     emotion=result.get("emotion"),
                     audioFormat=result.get("format"),
                     sessionId=body.sessionId,
+                    requestId=request_id,
+                    phase="text_to_speech",
+                    upstreamStatus=_upstream_status(
+                        "tts",
+                        ok=False,
+                        provider=body.ttsProvider or os.getenv("TTS_PROVIDER", "voicevox"),
+                        error=result.get("error", "TTS failed"),
+                    ),
                 )
 
             audio_b64 = result.get("audioResponse")
@@ -889,16 +1042,30 @@ async def voice_api(request: Request, body: VoiceRequest):
                 sessionId=body.sessionId,
                 cleanText=clean_txt if body.includeVrmControl else None,
                 vrmControl=vrm_out if body.includeVrmControl else None,
+                requestId=request_id,
+                phase="text_to_speech",
+                upstreamStatus=_upstream_status(
+                    "tts",
+                    provider=body.ttsProvider or os.getenv("TTS_PROVIDER", "voicevox"),
+                    format=audio_format,
+                    cacheHit=result.get("tts_cache_hit"),
+                ),
             )
 
         elif body.action == "set_language":
-            return VoiceResponse(success=True, sessionId=body.sessionId)
+            return VoiceResponse(
+                success=True,
+                sessionId=body.sessionId,
+                requestId=request_id,
+                phase="set_language",
+                upstreamStatus=_upstream_status("set_language"),
+            )
 
         elif body.action == "speech_to_text":
-            return await _handle_stt(body)
+            return await _handle_stt(body, request_id)
 
         elif body.action == "warmup":
-            return await _handle_stt_warmup(body)
+            return await _handle_stt_warmup(body, request_id)
 
         elif body.action == "interrupt":
             if not body.sessionId:
@@ -909,6 +1076,9 @@ async def voice_api(request: Request, body: VoiceRequest):
                 success=True,
                 sessionId=body.sessionId,
                 interruptStatus="cancelled" if cancelled else "no_active_task",
+                requestId=request_id,
+                phase="interrupt",
+                upstreamStatus=_upstream_status("interrupt", cancelled=cancelled),
             )
 
         else:

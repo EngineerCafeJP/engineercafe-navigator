@@ -228,6 +228,7 @@ EXPECTED_USE_CASES = [
     "qa_response",
     "clarification",
     "general_knowledge",
+    "deep_reasoning",
     "event_info",
     "facility_info",
     "vision",
@@ -238,12 +239,12 @@ class TestModelConfigs:
     """MODEL_CONFIGS 辞書のテストクラス"""
 
     def test_model_configs_has_expected_keys(self):
-        """MODEL_CONFIGS が期待される 7 つのユースケースキーを持つこと"""
+        """MODEL_CONFIGS が期待されるユースケースキーを持つこと"""
         assert set(MODEL_CONFIGS.keys()) == set(EXPECTED_USE_CASES)
 
     def test_model_configs_count(self):
-        """MODEL_CONFIGS に 7 エントリがあること"""
-        assert len(MODEL_CONFIGS) == 7
+        """MODEL_CONFIGS に期待するエントリ数があること"""
+        assert len(MODEL_CONFIGS) == len(EXPECTED_USE_CASES)
 
     @pytest.mark.parametrize("use_case", EXPECTED_USE_CASES)
     def test_each_config_is_model_config_instance(self, use_case: str):
@@ -304,9 +305,15 @@ class TestModelConfigs:
         assert config.temperature == 0.0
         assert config.fallback_model == SupportedModel.GPT_5_4_NANO
 
-    def test_general_knowledge_uses_gemini_pro(self):
-        """general_knowledge が Gemini 3.1 Pro を使用すること（深い推論）"""
+    def test_general_knowledge_uses_flash_lite(self):
+        """general_knowledge は低遅延モデルを使用すること"""
         config = MODEL_CONFIGS["general_knowledge"]
+        assert config.model_id == SupportedModel.GEMINI_3_1_FLASH_LITE
+        assert config.fallback_model == SupportedModel.GEMINI_2_5_FLASH_LITE
+
+    def test_deep_reasoning_keeps_gemini_pro(self):
+        """deep_reasoning は明示 keyword 用に Pro モデルを保持すること"""
+        config = MODEL_CONFIGS["deep_reasoning"]
         assert config.model_id == SupportedModel.GEMINI_3_1_PRO
         assert config.fallback_model == SupportedModel.GEMINI_2_5_PRO
 

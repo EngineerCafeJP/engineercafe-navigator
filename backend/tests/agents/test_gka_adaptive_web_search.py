@@ -30,16 +30,19 @@ class TestAdaptiveWebSearch:
         result = agent._should_use_web_search_adaptive("エンジニアカフェの営業時間", signals)
         assert result is False
 
-    def test_low_rag_shallow_conversation_web(self):
-        """RAGスコア低い + 会話浅い → Web検索推奨"""
+    def test_low_rag_shallow_conversation_requires_current_info_marker(self):
+        """RAGスコア低い + 会話浅いだけでは Web検索しない"""
         agent = _make_agent()
         signals = ContextSignals(
             rag_cache_top_score=0.3,
             request_specificity=0.5,
             conversation_depth=1,
         )
-        result = agent._should_use_web_search_adaptive("最新のAIトレンド", signals)
-        assert result is True
+        result = agent._should_use_web_search_adaptive("AIとは何ですか", signals)
+        assert result is False
+
+        current_result = agent._should_use_web_search_adaptive("最新のAIニュース", signals)
+        assert current_result is True
 
     def test_none_signals_fallback(self):
         """context_signals=None → 静的判定にフォールバック"""

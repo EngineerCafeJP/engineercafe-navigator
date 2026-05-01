@@ -24,38 +24,11 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import END
 
 from backend.config.routing_constants import (
-    ACCESSIBILITY_KEYWORDS,
     AGENT_DESCRIPTIONS,
     CATEGORY_TO_AGENT_MAP,
-    ACCESS_DIRECTION_KEYWORDS,
-    BASEMENT_KEYWORDS,
-    BICYCLE_KEYWORDS,
-    BUILDING_KEYWORDS,
-    BUSINESS_HOURS_KEYWORDS,
-    CHILDREN_NOISE_KEYWORDS,
-    COMMUNITY_KEYWORDS,
-    CONSULTATION_KEYWORDS,
-    EMERGENCY_KEYWORDS,
-    EXCLUSIVE_RENTAL_KEYWORDS,
-    EVENT_KEYWORDS,
-    GREETING_KEYWORDS,
-    FACILITY_EQUIPMENT_KEYWORDS,
-    FLOOR_KEYWORDS,
-    FLOOR_LAYOUT_KEYWORDS,
-    FOOD_DRINK_KEYWORDS,
-    FOOD_DRINK_VERBS,
-    MEETING_ROOM_KEYWORDS,
     MEMORY_EXCLUSION_BUSINESS,
     MEMORY_EXCLUSION_FACILITY,
     MEMORY_KEYWORDS,
-    PARKING_KEYWORDS,
-    PHOTOGRAPHY_KEYWORDS,
-    PRICING_KEYWORDS,
-    RECEPTION_KEYWORDS,
-    SLIDE_KEYWORDS,
-    SMOKING_KEYWORDS,
-    TOILET_KEYWORDS,
-    WIFI_KEYWORDS,
     RoutingTarget,
     extract_request_type,
     match_keywords,
@@ -69,6 +42,12 @@ from backend.utils.input_sanitizer import (
 )
 from backend.utils.language_processor import LanguageProcessor, SupportedLanguage
 from backend.utils.query_classifier import QueryClassifier
+from backend.utils.intent_classifier import (
+    classify_fast_intent,
+    is_assistant_profile_question,
+    is_current_info_request,
+    is_daily_conversation_request,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -365,376 +344,23 @@ class OrchestratorAgent:
 
     def _try_fast_routing(self, query: str) -> Optional[dict]:
         """キーワードベースの高速ルーティング"""
-        lower_query = query.lower()
-
-        if OrchestratorAgent._is_assistant_profile_question(lower_query):
-            return {
-                "agent": "general_knowledge",
-                "category": "assistant_profile",
-                "request_type": "assistant_profile",
-                "reasoning": "Assistant profile/capability question detected",
-            }
-
-        if OrchestratorAgent._is_daily_conversation_request(lower_query):
-            return {
-                "agent": "general_knowledge",
-                "category": "daily_conversation",
-                "request_type": "daily_conversation",
-                "reasoning": "Daily conversation request detected",
-            }
-
-        # 緊急キーワード → facility（最優先）
-        if match_keywords(lower_query, EMERGENCY_KEYWORDS):
-            return {
-                "agent": "facility",
-                "category": "emergency",
-                "request_type": "emergency",
-                "reasoning": "Emergency keyword detected",
-            }
-
-        # 挨拶キーワード → greeting（インライン処理）
-        # Strip matched greeting keyword and check if meaningful content remains.
-        # This prevents false positives like "こんにちは 営業時間は？" or "hello wifi?".
-        if match_keywords(lower_query, GREETING_KEYWORDS):
-            stripped = lower_query.strip()
-            remaining = stripped
-            for kw in sorted(GREETING_KEYWORDS, key=len, reverse=True):
-                remaining = remaining.replace(kw.lower(), "").strip()
-            # Remove common punctuation
-            remaining = remaining.strip("!！?？。、.,  ")
-            # Only route as greeting if no meaningful content remains
-            if len(remaining) <= 3:
-                return {
-                    "agent": "business_info",
-                    "category": "greeting",
-                    "request_type": "greeting",
-                    "reasoning": f"Greeting keyword detected: {stripped[:30]}",
-                }
-
-        # カフェ曖昧性: "カフェ" + "どっち/どちら/which" → clarification
-        # (orchestrator_node がcategory基準でインライン処理する)
-        if any(kw in lower_query for kw in ["カフェ", "cafe"]) and any(
-            kw in lower_query for kw in ["どっち", "どちら", "which"]
-        ):
-            return {
-                "agent": "general_knowledge",
-                "category": "cafe-clarification-needed",
-                "request_type": "clarification",
-                "reasoning": "Ambiguous cafe reference detected",
-            }
-
-        if match_keywords(lower_query, WIFI_KEYWORDS):
-            return {
-                "agent": "facility",
-                "category": "facility-info",
-                "request_type": "wifi",
-                "reasoning": "Wi-Fi keyword detected",
-            }
-
-        if match_keywords(lower_query, BUSINESS_HOURS_KEYWORDS):
-            return {
-                "agent": "business_info",
-                "category": "business-hours",
-                "request_type": "hours",
-                "reasoning": "Business hours keyword detected",
-            }
-
-        # 会議室 + 料金 → facility（会議室の料金情報はfacilityが保持）
-        if any(kw in lower_query for kw in MEETING_ROOM_KEYWORDS) and match_keywords(
-            lower_query, PRICING_KEYWORDS
-        ):
-            return {
-                "agent": "facility",
-                "category": "facility-info",
-                "request_type": "meeting_room",
-                "reasoning": "Meeting room pricing query detected",
-            }
-
-        if match_keywords(lower_query, PRICING_KEYWORDS):
-            return {
-                "agent": "business_info",
-                "category": "pricing",
-                "request_type": "price",
-                "reasoning": "Pricing keyword detected",
-            }
-
-        if match_keywords(lower_query, BASEMENT_KEYWORDS):
-            return {
-                "agent": "facility",
-                "category": "basement-facility",
-                "request_type": "basement",
-                "reasoning": "Basement facility keyword detected",
-            }
-
-        if match_keywords(lower_query, EVENT_KEYWORDS):
-            return {
-                "agent": "event",
-                "category": "events",
-                "request_type": "event",
-                "reasoning": "Event keyword detected",
-            }
-
-        if OrchestratorAgent._is_current_info_request(lower_query):
-            return {
-                "agent": "general_knowledge",
-                "category": "current_info",
-                "request_type": "current_info",
-                "reasoning": "Current-information small-talk request detected",
-            }
-
-        if match_keywords(lower_query, SLIDE_KEYWORDS):
-            return {
-                "agent": "slide",
-                "category": "slide",
-                "request_type": "slide",
-                "reasoning": "Slide keyword detected",
-            }
-
-        if match_keywords(lower_query, COMMUNITY_KEYWORDS):
-            return {
-                "agent": "business_info",
-                "category": "community",
-                "request_type": "community",
-                "reasoning": "Community/program keyword detected",
-            }
-
-        if match_keywords(lower_query, CONSULTATION_KEYWORDS):
-            return {
-                "agent": "business_info",
-                "category": "consultation",
-                "request_type": "consultation",
-                "reasoning": "Consultation keyword detected",
-            }
-
-        if match_keywords(lower_query, ACCESS_DIRECTION_KEYWORDS):
-            return {
-                "agent": "facility",
-                "category": "facility-info",
-                "request_type": "access",
-                "reasoning": "Access/direction keyword detected",
-            }
-
-        if match_keywords(lower_query, BUILDING_KEYWORDS):
-            return {
-                "agent": "facility",
-                "category": "facility-info",
-                "request_type": "building",
-                "reasoning": "Building keyword detected",
-            }
-
-        if match_keywords(lower_query, PARKING_KEYWORDS):
-            return {
-                "agent": "facility",
-                "category": "facility-info",
-                "request_type": "parking",
-                "reasoning": "Parking keyword detected",
-            }
-
-        if match_keywords(lower_query, BICYCLE_KEYWORDS):
-            return {
-                "agent": "facility",
-                "category": "facility-info",
-                "request_type": "bicycle",
-                "reasoning": "Bicycle parking keyword detected",
-            }
-
-        if match_keywords(lower_query, SMOKING_KEYWORDS):
-            return {
-                "agent": "facility",
-                "category": "facility-info",
-                "request_type": "smoking",
-                "reasoning": "Smoking policy keyword detected",
-            }
-
-        if match_keywords(lower_query, EXCLUSIVE_RENTAL_KEYWORDS):
-            return {
-                "agent": "facility",
-                "category": "facility-info",
-                "request_type": "exclusive_rental",
-                "reasoning": "Exclusive rental keyword detected",
-            }
-
-        if match_keywords(lower_query, TOILET_KEYWORDS):
-            return {
-                "agent": "facility",
-                "category": "facility-info",
-                "request_type": "toilet",
-                "reasoning": "Toilet/restroom keyword detected",
-            }
-
-        if match_keywords(lower_query, ACCESSIBILITY_KEYWORDS):
-            return {
-                "agent": "facility",
-                "category": "facility-info",
-                "request_type": "accessibility",
-                "reasoning": "Accessibility/wheelchair keyword detected",
-            }
-
-        if match_keywords(lower_query, PHOTOGRAPHY_KEYWORDS):
-            return {
-                "agent": "facility",
-                "category": "facility-info",
-                "request_type": "photography",
-                "reasoning": "Photography policy keyword detected",
-            }
-
-        if match_keywords(lower_query, CHILDREN_NOISE_KEYWORDS):
-            return {
-                "agent": "facility",
-                "category": "facility-info",
-                "request_type": "children_noise",
-                "reasoning": "Children/noise policy keyword detected",
-            }
-
-        if match_keywords(lower_query, FACILITY_EQUIPMENT_KEYWORDS):
-            return {
-                "agent": "facility",
-                "category": "facility-info",
-                "request_type": "facility",
-                "reasoning": "Facility equipment keyword detected",
-            }
-
-        if match_keywords(lower_query, RECEPTION_KEYWORDS):
-            return {
-                "agent": "business_info",
-                "category": "reception",
-                "request_type": "reception",
-                "reasoning": "Reception/check-in keyword detected",
-            }
-
-        if match_keywords(lower_query, FLOOR_LAYOUT_KEYWORDS):
-            return {
-                "agent": "facility",
-                "category": "facility-info",
-                "request_type": "floor_layout",
-                "reasoning": "Floor layout/map keyword detected",
-            }
-
-        # 会議室 + 階情報 → facility（具体的な質問なのでclarificationスキップ）
-        if any(kw in lower_query for kw in MEETING_ROOM_KEYWORDS) and any(
-            kw in lower_query for kw in FLOOR_KEYWORDS
-        ):
-            return {
-                "agent": "facility",
-                "category": "facility-info",
-                "request_type": "meeting_room",
-                "reasoning": "Meeting room with floor info detected",
-            }
-
-        # 飲食動詞（「飲めますか」「食べられますか」等）→ facility
-        if any(kw in lower_query for kw in FOOD_DRINK_VERBS):
-            return {
-                "agent": "facility",
-                "category": "facility-info",
-                "request_type": "food_drink",
-                "reasoning": "Food/drink verb detected",
-            }
-
-        if match_keywords(lower_query, FOOD_DRINK_KEYWORDS):
-            return {
-                "agent": "facility",
-                "category": "facility-info",
-                "request_type": "food_drink",
-                "reasoning": "Food/drink policy keyword detected",
-            }
-
-        return None
+        route = classify_fast_intent(query)
+        return route.as_route() if route else None
 
     @staticmethod
     def _is_assistant_profile_question(lower_query: str) -> bool:
         """Detect questions about this kiosk assistant, not the visitor's name."""
-        visitor_name_markers = (
-            "私の名前",
-            "僕の名前",
-            "俺の名前",
-            "わたしの名前",
-            "my name",
-            "call me",
-        )
-        if any(marker in lower_query for marker in visitor_name_markers):
-            return False
-
-        identity_markers = (
-            "あなたの名前",
-            "君の名前",
-            "きみの名前",
-            "お名前は",
-            "名前は何",
-            "名前を教えて",
-            "あなたは誰",
-            "君は誰",
-            "何者",
-            "what is your name",
-            "what's your name",
-            "who are you",
-        )
-        capability_markers = (
-            "何ができます",
-            "なにができます",
-            "できること",
-            "何を手伝",
-            "ヘルプ",
-            "使い方を教えて",
-            "どんな案内",
-            "what can you do",
-            "how can you help",
-            "help me with",
-        )
-        return any(marker in lower_query for marker in (*identity_markers, *capability_markers))
+        return is_assistant_profile_question(lower_query)
 
     @staticmethod
     def _is_daily_conversation_request(lower_query: str) -> bool:
         """Detect lightweight small-talk requests that should not invoke search."""
-        markers = (
-            "雑談",
-            "おしゃべり",
-            "少し話",
-            "ちょっと話",
-            "話し相手",
-            "元気",
-            "疲れた",
-            "ひま",
-            "暇",
-            "ありがとう",
-            "サンキュー",
-            "small talk",
-            "chat with me",
-            "talk with me",
-            "talk to me",
-            "how are you",
-            "i am tired",
-            "i'm tired",
-            "thanks",
-            "thank you",
-        )
-        return any(marker in lower_query for marker in markers)
+        return is_daily_conversation_request(lower_query)
 
     @staticmethod
     def _is_current_info_request(lower_query: str) -> bool:
         """Detect daily receptionist questions that need current external facts."""
-        current_markers = (
-            "今日",
-            "明日",
-            "今朝",
-            "今夜",
-            "今週",
-            "最新",
-            "現在",
-            "ニュース",
-            "天気",
-            "気温",
-            "雨",
-            "today",
-            "tomorrow",
-            "this week",
-            "latest",
-            "current",
-            "news",
-            "weather",
-            "temperature",
-            "rain",
-        )
-        return any(marker in lower_query for marker in current_markers)
+        return is_current_info_request(lower_query)
 
     def _is_memory_related_question(self, query: str) -> bool:
         """メモリ関連の質問かどうかを判定"""

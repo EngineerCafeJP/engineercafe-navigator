@@ -1429,6 +1429,29 @@ class TestGetContext:
             assert result["inherited_request_type"] is None
 
     @pytest.mark.asyncio
+    async def test_current_query_intent_overrides_stale_inherited_request_type(self):
+        with patch.dict(os.environ, {"SUPABASE_URL": "", "SUPABASE_KEY": ""}):
+            helper = SimplifiedMemoryHelper()
+
+        with (
+            patch.object(helper, "_get_recent_messages", new_callable=AsyncMock, return_value=[]),
+            patch.object(
+                helper,
+                "get_previous_request_type",
+                new_callable=AsyncMock,
+                return_value="basement",
+            ),
+        ):
+            result = await helper.get_context(
+                "明日のイベントは？",
+                "sess-1",
+                {"include_knowledge_base": False, "inherit_context": True},
+            )
+
+        assert result["inherited_request_type"] == "event"
+        assert result["query_intent_override"] is True
+
+    @pytest.mark.asyncio
     async def test_default_options(self):
         """options が None の場合はデフォルト値が使用される"""
         with patch.dict(os.environ, {"SUPABASE_URL": "", "SUPABASE_KEY": ""}):

@@ -342,6 +342,9 @@ class TestVoiceEndpoint:
         assert response.transcript == "営業時間を教えてください"
         assert response.sttProvider == "qwen-primary"
         assert response.sttPostprocessed is False
+        assert response.requestId
+        assert response.phase == "speech_to_text"
+        assert response.upstreamStatus["phase"] == "stt"
 
     @pytest.mark.asyncio
     async def test_voice_invalid_tts_provider_returns_400(self):
@@ -378,6 +381,9 @@ class TestVoiceEndpoint:
                 get_default.assert_not_called()
                 assert resp.success is True
                 assert resp.audioResponse == "d2F2"
+                assert resp.requestId
+                assert resp.phase == "text_to_speech"
+                assert resp.upstreamStatus["provider"] == "piper"
 
 
 class TestSlidesEndpoint:

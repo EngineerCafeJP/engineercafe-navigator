@@ -127,11 +127,20 @@ MODEL_CONFIGS: dict[str, ModelConfig] = {
         input_cost_per_1k=0.0001,
         output_cost_per_1k=0.0004,
     ),
-    # Deep reasoning — Gemini 3.1 Pro preview on OpenRouter (override DEEP_REASONING_MODEL)
     "general_knowledge": ModelConfig(
-        model_id=SupportedModel.GEMINI_3_1_PRO,
+        model_id=SupportedModel.GEMINI_3_1_FLASH_LITE,
         temperature=0.7,
         max_tokens=1024,
+        fallback_model=SupportedModel.GEMINI_2_5_FLASH_LITE,
+        allow_cerebras_primary=True,
+        input_cost_per_1k=0.0001,
+        output_cost_per_1k=0.0004,
+    ),
+    # Deep reasoning — explicit keyword-gated path for complex reasoning only.
+    "deep_reasoning": ModelConfig(
+        model_id=SupportedModel.GEMINI_3_1_PRO,
+        temperature=0.5,
+        max_tokens=1536,
         fallback_model=SupportedModel.GEMINI_2_5_PRO,
         input_cost_per_1k=0.002,
         output_cost_per_1k=0.012,

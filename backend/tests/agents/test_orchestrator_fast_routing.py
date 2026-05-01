@@ -4,6 +4,7 @@ Test fast routing logic for orchestrator_agent
 
 import pytest
 from backend.agents.orchestrator_agent import OrchestratorAgent
+from backend.utils.intent_classifier import filler_intent_for_query
 
 
 class TestOrchestratorFastRouting:
@@ -94,6 +95,39 @@ class TestOrchestratorFastRouting:
         if result is not None and result["request_type"] == "meeting_room":
             # If it matches, it should be via a different path
             assert result["reasoning"] != "Meeting room with floor info detected"
+
+    @pytest.mark.parametrize(
+        ("previous_type", "query", "expected_agent", "expected_type"),
+        [
+            ("basement", "明日のイベントは？", "event", "event"),
+            ("wifi", "営業時間は？", "business_info", "hours"),
+            ("facility", "今週のイベントを教えて", "event", "event"),
+            ("slide", "明日のイベントは？", "event", "event"),
+            ("reception", "Pythonって何ですか？", None, None),
+            ("event", "スライドを見せて", "slide", "slide"),
+        ],
+    )
+    def test_current_query_fast_intent_is_independent_of_stale_request_type(
+        self,
+        orchestrator,
+        previous_type,
+        query,
+        expected_agent,
+        expected_type,
+    ):
+        del previous_type
+        result = orchestrator._try_fast_routing(query)
+        if expected_agent is None:
+            assert result is None
+        else:
+            assert result is not None
+            assert result["agent"] == expected_agent
+            assert result["request_type"] == expected_type
+
+    def test_filler_intent_reuses_fast_classifier(self):
+        assert filler_intent_for_query("WiFiのパスワードは？") == "wifi"
+        assert filler_intent_for_query("明日のイベントは？") == "event"
+        assert filler_intent_for_query("スライドを見せて") == "slide"
 
     # --- Phase 1A: 新規キーワードパターンテスト ---
 
