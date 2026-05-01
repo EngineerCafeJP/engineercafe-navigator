@@ -3,8 +3,6 @@ import path from 'node:path';
 
 import { expect, test } from '@playwright/test';
 
-const QA_CHAT_URL = '/api/qa';
-
 async function dismissInitialModal(page: import('@playwright/test').Page) {
   const modal = page.getByRole('dialog');
   const closeButton = page.getByTestId('initial-settings-close');
@@ -28,10 +26,7 @@ async function installDeterministicVoiceRecorder(page: import('@playwright/test'
 
 test.describe('Parallel voice filler (#610 FE)', () => {
   test('STT completion hits /api/voice/filler while QA runs', async ({ page }) => {
-    await page.addInitScript(() => {
-      window.localStorage.setItem('engineer_cafe_kiosk_mic_mode', 'push_to_talk');
-    });
-
+    let ttsHits = 0;
     await installDeterministicVoiceRecorder(page);
 
     await page.route('**/api/reception/start', async (route) => {
@@ -46,19 +41,22 @@ test.describe('Parallel voice filler (#610 FE)', () => {
       });
     });
 
-    await page.route(`**${QA_CHAT_URL}`, async (route) => {
-      await new Promise((r) => setTimeout(r, 120));
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          success: true,
-          answer: 'テスト応答です。',
-          emotion: 'neutral',
-          metadata: {},
-        }),
-      });
-    });
+    await page.route(
+      (url) => url.pathname === '/api/qa',
+      async (route) => {
+        await new Promise((r) => setTimeout(r, 120));
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            answer: 'テスト応答です。',
+            emotion: 'neutral',
+            metadata: {},
+          }),
+        });
+      },
+    );
 
     const wavB64 = fs.readFileSync(path.resolve(__dirname, 'fixtures/voice/sample.wav')).toString('base64');
 
@@ -99,6 +97,7 @@ test.describe('Parallel voice filler (#610 FE)', () => {
         return;
       }
       if (body.action === 'text_to_speech') {
+        ttsHits++;
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
@@ -116,20 +115,13 @@ test.describe('Parallel voice filler (#610 FE)', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await dismissInitialModal(page);
 
-    await page.getByRole('button', { name: /音声応対|Voice chat/ }).click();
-
     const voiceBtn = page.getByTestId('kiosk-voice-button');
-    const box = await voiceBtn.boundingBox();
-    expect(box).toBeTruthy();
-
-    await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
-    await page.mouse.down();
-    await page.mouse.up();
+    await expect(voiceBtn).toBeVisible({ timeout: 15_000 });
+    await voiceBtn.click();
+    await page.waitForTimeout(1200);
+    await voiceBtn.click();
 
     await expect.poll(() => fillerHits, { timeout: 20_000 }).toBeGreaterThan(0);
-
-    await expect(page.getByTestId('response-text')).toContainText('テスト応答', {
-      timeout: 25_000,
-    });
+    await expect.poll(() => ttsHits, { timeout: 25_000 }).toBeGreaterThan(0);
   });
 });

@@ -682,7 +682,8 @@ export default function VoiceInterface({
           throw ttsError;
         }
 
-        await fillerTask.catch(() => {});
+        // Filler runs in parallel; do not await — slow filler must not delay main TTS enqueue.
+        void fillerTask.catch(() => {});
 
         const qaMeta = (qaResult.metadata as VoiceInterfaceMetadata | null) ?? null;
         const playbackMetadata = mergePlaybackMetadataWithTtsVrmControl(qaMeta, ttsResult);

@@ -67,6 +67,7 @@ export class AudioQueue {
   clear(): void {
     this.queue = [];
     if (this.currentAudioService) {
+      this.currentAudioService.stop();
       this.currentAudioService = null;
     }
     this.isPlaying = false;
