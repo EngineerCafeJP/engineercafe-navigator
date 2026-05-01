@@ -60,7 +60,7 @@ class GeneralKnowledgeAgent:
         logger.info("GeneralKnowledgeAgent初期化")
 
         self.provider = OpenRouterProvider()
-        self.model_config = get_model_config("qa_response")
+        self.model_config = get_model_config("general_knowledge")
         self.web_search = TavilySearchTool()
         self.rag_search = EnhancedRAGSearch()
         self.memory_system = memory_system
@@ -121,7 +121,7 @@ class GeneralKnowledgeAgent:
         state_context: Optional[Dict] = None,
         context_signals=None,
         long_term_memory: Optional[list] = None,
-        query_type: str = "general_light",
+        query_type: str = "general",
     ) -> Dict[str, Any]:
         """
         一般的な質問に回答
@@ -210,9 +210,12 @@ class GeneralKnowledgeAgent:
             from langchain_core.messages import HumanMessage
 
             messages = [HumanMessage(content=prompt)]
-            response_text = await self.provider.generate(
-                messages=messages, config=self.model_config
+            model_config = (
+                get_model_config("deep_reasoning")
+                if mode == "deep_reasoning"
+                else self.model_config
             )
+            response_text = await self.provider.generate(messages=messages, config=model_config)
 
             # 7. 感情・信頼度抽出
             emotion = self._extract_emotion(response_text)
@@ -229,6 +232,9 @@ class GeneralKnowledgeAgent:
                     "confidence": confidence,
                     "category": "general_knowledge",
                     "query_type": mode,
+                    "model_use_case": (
+                        "deep_reasoning" if mode == "deep_reasoning" else "general_knowledge"
+                    ),
                     "sources": sources,
                     "web_search_used": "web_search" in sources,
                     "rag_used": any(source.startswith("knowledge_base") for source in sources),
@@ -516,18 +522,8 @@ class GeneralKnowledgeAgent:
         RAGキャッシュスコア高い + 具体性高い → Web検索不要
         RAGキャッシュスコア低い + 会話浅い → Web検索推奨
         """
-        if context_signals is None:
-            return self._should_use_web_search(query)
-
-        # High confidence RAG + specific query → skip web
-        if context_signals.rag_cache_top_score > 0.8 and context_signals.request_specificity > 0.7:
-            return False
-
-        # Low confidence + shallow conversation → try web
-        if context_signals.rag_cache_top_score < 0.5 and context_signals.conversation_depth < 3:
-            return True
-
-        # Otherwise fall back to static heuristic
+        # Alpha strict mode: context quality alone must not enable web search.
+        # Only explicit current-info markers may do so.
         return self._should_use_web_search(query)
 
     def _should_use_web_search(self, query: str) -> bool:
@@ -540,9 +536,12 @@ class GeneralKnowledgeAgent:
             "daily_conversation",
             "general_light",
             "current_info",
+            "deep_reasoning",
         }:
             return query_type
         lower_query = query.lower()
+        if self._is_deep_reasoning_query(lower_query):
+            return "deep_reasoning"
         if self._is_current_info_query(lower_query):
             return "current_info"
         if self._is_daily_conversation_query(lower_query):
@@ -572,6 +571,23 @@ class GeneralKnowledgeAgent:
             "weather",
             "temperature",
             "rain",
+        )
+        return any(marker in lower_query for marker in markers)
+
+    @staticmethod
+    def _is_deep_reasoning_query(lower_query: str) -> bool:
+        markers = (
+            "弁証法",
+            "複雑推論",
+            "比較分析",
+            "多面的に分析",
+            "深く考察",
+            "詳細に考察",
+            "dialectical",
+            "complex reasoning",
+            "comparative analysis",
+            "analyze in depth",
+            "deep reasoning",
         )
         return any(marker in lower_query for marker in markers)
 

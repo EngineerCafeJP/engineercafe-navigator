@@ -30,17 +30,18 @@ class TestGeneralKnowledgeAgent:
     def test_should_use_web_search_with_news_keyword(self):
         """「ニュース」キーワードでWeb検索が必要と判定されるかテスト"""
         assert self.agent._should_use_web_search("今日のニュースは?") is True
-        assert self.agent._should_use_web_search("recent news about startups") is True
+        assert self.agent._should_use_web_search("latest news about startups") is True
 
     def test_should_use_web_search_with_trend_keyword(self):
         """「トレンド」キーワードでWeb検索が必要と判定されるかテスト"""
-        assert self.agent._should_use_web_search("現在のトレンドは?") is True
-        assert self.agent._should_use_web_search("current technology trends") is True
+        assert self.agent._should_use_web_search("現在のAI動向は?") is True
+        assert self.agent._should_use_web_search("current technology updates") is True
 
     def test_should_not_use_web_search_for_general_query(self):
         """一般的な質問ではWeb検索不要と判定されるかテスト"""
         assert self.agent._should_use_web_search("エンジニアカフェについて教えて") is False
         assert self.agent._should_use_web_search("what is engineer cafe") is False
+        assert self.agent._should_use_web_search("AIとは何ですか？") is False
 
     def test_calculate_confidence_with_kb_and_web(self):
         """ナレッジベース + Web検索の信頼度をテスト"""
@@ -132,6 +133,10 @@ class TestGeneralKnowledgeAgent:
     def test_resolve_general_mode_splits_current_info_and_general_light(self):
         assert self.agent._resolve_general_mode("今日の福岡の天気は？", "general") == "current_info"
         assert self.agent._resolve_general_mode("Pythonって何？", "general") == "general_light"
+        assert (
+            self.agent._resolve_general_mode("弁証法的に比較分析してください", "general")
+            == "deep_reasoning"
+        )
 
     def test_normalize_weather_query_defaults_to_fukuoka_tenjin(self):
         normalized = self.agent._normalize_current_info_query("今日の天気は？")
@@ -311,3 +316,18 @@ class TestGeneralKnowledgeAgentIntegration:
         assert result["metadata"]["web_search_used"] is False
         self.mock_web_search.search.assert_not_called()
         self.mock_provider.generate.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_deep_reasoning_uses_explicit_model_case(self):
+        result = await self.agent.answer_query(
+            query="弁証法的に比較分析してください",
+            language="ja",
+            session_id="test_session",
+            query_type="general",
+        )
+
+        assert result["metadata"]["query_type"] == "deep_reasoning"
+        assert result["metadata"]["model_use_case"] == "deep_reasoning"
+        self.mock_web_search.search.assert_not_called()
+        called_config = self.mock_provider.generate.await_args.kwargs["config"]
+        assert called_config is not self.agent.model_config
