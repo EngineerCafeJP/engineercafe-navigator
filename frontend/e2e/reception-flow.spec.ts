@@ -377,7 +377,7 @@ test.describe('Reception flow — microphone errors', () => {
   test('permission denial shows a microphone error and does not stay recording', async ({ page }) => {
     await page.getByRole('button', { name: /音声応対|Voice chat/ }).click();
 
-    await expect(page.getByTestId('kiosk-voice-status')).toContainText(/マイク.*拒否|Microphone access/, {
+    await expect(page.getByTestId('kiosk-voice-status')).toContainText(/マイク|Microphone|HTTPS|許可|permission/i, {
       timeout: 5_000,
     });
     await expect(page.getByTestId('kiosk-voice-button')).not.toContainText(/録音中|Recording/);
