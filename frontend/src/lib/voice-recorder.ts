@@ -188,6 +188,8 @@ export class VoiceRecorder {
             );
           } else if (error.name === 'OverconstrainedError') {
             this.onError(this.createRecorderError('Selected microphone is unavailable. Please choose another microphone.', error));
+          } else if (error.name === 'InvalidStateError') {
+            this.onError(this.createRecorderError('Microphone is in an invalid state. Try reloading the page.', error));
           } else {
             this.onError(this.createRecorderError('Failed to access microphone', error));
           }

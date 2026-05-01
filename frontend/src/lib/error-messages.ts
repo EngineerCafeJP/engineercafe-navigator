@@ -13,6 +13,30 @@ export const ERROR_MESSAGES: Record<string, ErrorMessage> = {
     ja: 'マイクへのアクセスが拒否されました。ブラウザの設定でマイクへのアクセスを許可してください。',
     en: 'Microphone access was denied. Please allow microphone access in your browser settings.',
   },
+  MIC_PERMISSION_DENIED: {
+    ja:
+      'マイクの許可が必要です。ブラウザのアドレスバー付近の鍵／許可アイコンからマイクを「許可」に変更するか、設定でこのサイトのマイクをオンにしてください。変更後はもう一度マイクボタンを押してください。',
+    en:
+      'Microphone permission is required. Use the lock or site-settings icon in the address bar to allow the microphone for this site, then tap the mic button again.',
+  },
+  MIC_NOT_FOUND: {
+    ja:
+      'マイクが見つかりません。ケーブルやBluetoothの接続を確認し、他のアプリがマイクを占有していないか確認してから、もう一度お試しください。',
+    en:
+      'No microphone was found. Check your cable or Bluetooth connection, make sure no other app is using the mic, then try again.',
+  },
+  MIC_INVALID_STATE: {
+    ja:
+      'マイクの状態が不正です（録音パイプラインの競合など）。タブを開き直すかページを再読み込みしてから、もう一度マイクボタンを押してください。',
+    en:
+      'The microphone is in an invalid state (recording pipeline conflict). Reload the page or reopen the tab, then press the mic button again.',
+  },
+  MIC_SECURITY_ERROR: {
+    ja:
+      'セキュリティ制限によりマイクにアクセスできません。HTTPS または localhost で開いているか確認してください。',
+    en:
+      'Microphone access is blocked for security reasons. Open this page over HTTPS or on localhost.',
+  },
   MICROPHONE_NOT_FOUND: {
     ja: 'マイクが検出されませんでした。マイクが正しく接続されているか確認してください。',
     en: 'No microphone was detected. Please check that your microphone is properly connected.',
@@ -141,17 +165,18 @@ export function formatError(
     switch (errorName) {
       case 'notallowederror':
       case 'permissiondeniederror':
+        return getErrorMessage('MIC_PERMISSION_DENIED', language);
       case 'securityerror':
-        return getErrorMessage('MICROPHONE_PERMISSION_DENIED', language);
+        return getErrorMessage('MIC_SECURITY_ERROR', language);
       case 'notfounderror':
       case 'devicesnotfounderror':
       case 'overconstrainederror':
-        return getErrorMessage('MICROPHONE_NOT_FOUND', language);
+        return getErrorMessage('MIC_NOT_FOUND', language);
       case 'notreadableerror':
       case 'trackstarterror':
         return getErrorMessage('MICROPHONE_IN_USE', language);
       case 'invalidstateerror':
-        return getErrorMessage('MICROPHONE_START_FAILED', language);
+        return getErrorMessage('MIC_INVALID_STATE', language);
     }
   }
 

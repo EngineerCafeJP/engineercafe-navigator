@@ -26,7 +26,7 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      testIgnore: /(voice-live|welcome-live)\.spec\.ts/,
+      testIgnore: /(voice-live|welcome-live|voice-permission-denial)\.spec\.ts/,
       use: {
         ...devices['Desktop Chrome'],
         launchOptions: {
@@ -47,6 +47,13 @@ export default defineConfig({
             `--use-file-for-fake-audio-capture=${path.resolve(__dirname, 'e2e/fixtures/voice/sample.wav')}`,
           ],
         },
+      },
+    },
+    {
+      name: 'webkit-permissions',
+      testMatch: /voice-permission-denial\.spec\.ts/,
+      use: {
+        ...devices['Desktop Safari'],
       },
     },
   ],
