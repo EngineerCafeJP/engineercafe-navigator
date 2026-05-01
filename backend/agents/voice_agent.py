@@ -29,7 +29,7 @@ from typing import Any, Dict, List, Optional
 import httpx
 from cachetools import TTLCache
 
-from backend.observability.structured_logger import log_tts_cache_event
+from backend.observability.structured_logger import log_tts_cache_event, log_tts_event
 from backend.utils.clarification_templates import ClarificationCategory
 from backend.utils.language_processor import LanguageProcessor
 
@@ -802,6 +802,8 @@ class VoiceAgent:
                 - ambiguity_resolved (bool): Always False. Kept for response compatibility.
                 - error (str): Error message if failed. Optional.
         """
+        tts_started_at = time.perf_counter()
+
         # ステップ1: 言語自動検出（未指定時）
         if language is None:
             try:
@@ -835,6 +837,14 @@ class VoiceAgent:
         cached_audio = cache_store.get(cache_key)
         if cached_audio is not None:
             log_tts_cache_event(hit=True, cache_key=cache_key, language=language)
+            log_tts_event(
+                event="tts_complete",
+                provider=self.tts_provider,
+                language=language,
+                success=True,
+                tts_cache_hit=True,
+                tts_overall_duration_ms=int((time.perf_counter() - tts_started_at) * 1000),
+            )
             return {
                 "success": True,
                 "audioResponse": cached_audio,
@@ -877,6 +887,14 @@ class VoiceAgent:
             if audio_b64 and len(audio_b64) > 100:
                 cache_store[cache_key] = audio_b64
 
+            log_tts_event(
+                event="tts_complete",
+                provider=self.tts_provider,
+                language=language,
+                success=True,
+                tts_cache_hit=False,
+                tts_overall_duration_ms=int((time.perf_counter() - tts_started_at) * 1000),
+            )
             return {
                 "success": True,
                 "audioResponse": audio_b64,
@@ -941,6 +959,16 @@ class VoiceAgent:
                     )
                     audio_format = "audio/mpeg"
 
+                log_tts_event(
+                    event="tts_complete",
+                    provider=self.tts_provider,
+                    language=language,
+                    success=True,
+                    tts_cache_hit=False,
+                    tts_overall_duration_ms=int((time.perf_counter() - tts_started_at) * 1000),
+                    fallback_used=True,
+                    error_type=type(e).__name__,
+                )
                 return {
                     "success": True,
                     "audioResponse": audio_b64,
@@ -952,6 +980,15 @@ class VoiceAgent:
                 }
             except Exception as fallback_error:
                 logger.error("Fallback TTS also failed: %s", fallback_error)
+                log_tts_event(
+                    event="tts_complete",
+                    provider=self.tts_provider,
+                    language=language,
+                    success=False,
+                    tts_cache_hit=False,
+                    tts_overall_duration_ms=int((time.perf_counter() - tts_started_at) * 1000),
+                    error_type=type(fallback_error).__name__,
+                )
                 return {
                     "success": False,
                     "error": f"Failed to generate speech: {str(e)}",
