@@ -41,6 +41,10 @@ async def test_chat_emits_structured_observability_log(caplog, monkeypatch):
             )
 
     assert response.status_code == 200
+    body = response.json()
+    assert body["requestId"] == "req-obs-513"
+    assert body["phase"] == "chat"
+    assert body["upstreamStatus"]["phase"] == "workflow"
     records = [
         record
         for record in caplog.records
