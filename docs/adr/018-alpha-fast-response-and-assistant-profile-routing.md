@@ -157,6 +157,23 @@ fast path は env flag と route condition で無効化できる構成にする�
 5. benchmark: Gemini 3.1 Flash-Lite, Gemini 2.5 Flash-Lite, Cerebras `gpt-oss-120b` を同一 prompt set で p50 / p95 比較すること
 6. live: Cloud Run logs の `chat_response.latency_ms`, `stt_overall_duration_ms`, TTS duration を issue #613 に追記すること
 
+## 2026-05-02 検証結果
+
+`alpha-live-verification` full run `25244933308` で、Cerebras fast path は live log 上で
+`gpt-oss-120b` を使っていることを確認した。ただし alpha GO はまだ不可。
+
+残る優先課題:
+
+- #658: STT preflight latency
+- #660: H-UI Welcome OCR overlay
+- #659: B routing `B1-BIZ-002`
+- #653 / #672: Q/C answer quality
+- #662: Supabase UUID/log hygiene
+
+また、RAGAS は fast response の product path ではなく evaluation path だが、alpha gate の信頼性に直結する。
+2026-05-02 に GitHub Actions `OPENAI_API_KEY` を更新し、run `25247945549` で direct OpenAI
+`gpt-5.2-2025-12-11` が使われることを確認した。OpenRouter fallback は GO 証跡として使わない。
+
 ## 参照
 
 - https://blog.google/innovation-and-ai/models-and-research/gemini-models/gemini-3-1-flash-lite/

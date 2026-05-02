@@ -11,3 +11,10 @@ verification.
 - Expected validation: `backend-deploy-staging` builds and deploys an image
   tagged with the merge commit SHA, then Cloud Run health and alpha suites can
   be verified against that exact commit.
+- Result:
+  - PR #667 merged to `develop`.
+  - Cloud Run revision `engineer-cafe-backend-00144-q85` deployed.
+  - Image tag matched `fa7745b7420c0709fcff950ed3bf4c090f0dfc55`.
+  - Full alpha run `25244933308` executed and ended failure.
+  - Targeted C/RAGAS run `25247945549` verified direct OpenAI after syncing
+    GitHub Actions `OPENAI_API_KEY`.
