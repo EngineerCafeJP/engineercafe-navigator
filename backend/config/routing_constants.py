@@ -219,6 +219,12 @@ ACCESS_DIRECTION_KEYWORDS = [
     "nearest station from here",
     "way to the station",
     "exit",
+    "空港",
+    "福岡空港",
+    "博多駅",
+    "airport",
+    "fukuoka airport",
+    "hakata station",
 ]
 
 BUILDING_KEYWORDS = [
@@ -241,7 +247,9 @@ COMMUNITY_KEYWORDS = [
     "engineer cafe lab",
     "エンジニアカフェlab",
     "エンジニアカフェラボ",
+    "engineer ignition camp",
     "eic",
+    "devday",
     "会員制コミュニティ",
 ]
 
@@ -493,6 +501,13 @@ FOOD_DRINK_KEYWORDS = [
     "bring food",
     "menu",
     "saino",
+    "食物",
+    "自带食物",
+    "带食物",
+    "带吃的",
+    "外带食物",
+    "饮料",
+    "餐饮",
 ]
 
 BOOKING_KEYWORDS = [
@@ -520,6 +535,17 @@ FACILITY_EQUIPMENT_KEYWORDS = [
     "outlet",
     "printer",
     "monitor",
+    "オンライン会議",
+    "オンラインミーティング",
+    "web会議",
+    "通話",
+    "電話できる場所",
+    "電話したい",
+    "防音室",
+    "phone booth",
+    "online meeting",
+    "video call",
+    "take a call",
 ]
 
 EXCLUSIVE_RENTAL_KEYWORDS = [

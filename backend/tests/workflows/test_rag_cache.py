@@ -256,7 +256,7 @@ class TestAgentCacheUsage:
             agent = BusinessInfoAgent()
 
             mock_provider = AsyncMock()
-            mock_provider.generate = AsyncMock(return_value="[relaxed]料金は無料です")
+            mock_provider.generate = AsyncMock(return_value="[relaxed]相談できます")
             agent.llm_provider = mock_provider
 
             agent.enhanced_rag.search = AsyncMock(
@@ -266,7 +266,7 @@ class TestAgentCacheUsage:
                 }
             )
 
-            # カテゴリ不一致: キャッシュはgeneral、実際はpricing
+            # カテゴリ不一致: キャッシュはgeneral、実際はconsultation
             state_context = {
                 "success": True,
                 "category": "general",
@@ -276,8 +276,8 @@ class TestAgentCacheUsage:
             }
 
             await agent.answer_business_query(
-                query="料金は？",
-                request_type="price",
+                query="コミュニティマネージャーに相談できることは？",
+                request_type="consultation",
                 language="ja",
                 state_context=state_context,
             )
@@ -310,15 +310,15 @@ class TestAgentCacheUsage:
             # キャッシュが失敗状態
             state_context = {
                 "success": False,
-                "category": "hours",
+                "category": "consultation",
                 "context_string": "",
                 "results": [],
                 "query": "テスト",
             }
 
             await agent.answer_business_query(
-                query="営業時間は？",
-                request_type="hours",
+                query="コミュニティマネージャーに相談できることは？",
+                request_type="consultation",
                 language="ja",
                 state_context=state_context,
             )

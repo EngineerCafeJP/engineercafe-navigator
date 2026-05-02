@@ -2,6 +2,8 @@
 BusinessInfoAgent のユニットテスト
 """
 
+import pytest
+
 from backend.agents.business_info_agent import BusinessInfoAgent
 
 
@@ -162,3 +164,41 @@ class TestBusinessInfoAgent:
         assert response is not None
         assert "080-6742-7231" in response["answer"]
         assert "13時から21時" in response["answer"]
+
+    def test_closed_days_canonical_precedes_hours(self):
+        """休館日は営業時間の広い回答に倒さない"""
+        response = self.agent._get_canonical_response(
+            "エンジニアカフェの休館日はいつですか？",
+            "hours",
+            "ja",
+        )
+
+        assert response is not None
+        assert "毎月最終月曜日" in response["answer"]
+        assert "12月29日から1月3日" in response["answer"]
+        assert "朝9時から夜22時" not in response["answer"]
+
+    def test_community_program_canonical_static_devday(self):
+        """DevDayはlive eventではなくEICの静的情報として回答する"""
+        response = self.agent._get_canonical_response(
+            "DevDayはいつ開催されますか？",
+            "community",
+            "ja",
+        )
+
+        assert response is not None
+        assert "2026年2月23日18:00" in response["answer"]
+        assert "展示形式" in response["answer"]
+
+    @pytest.mark.asyncio
+    async def test_chinese_canonical_ignores_stale_state_context(self):
+        """ZH canonical は stale cache があっても fallback/RAG に進まない"""
+        response = await self.agent.answer_business_query(
+            query="工程师咖啡是什么？",
+            request_type="general",
+            language="zh",
+            state_context={"success": True, "category": "general", "context_string": ""},
+        )
+
+        assert "免费共享办公" in response["answer"]
+        assert response["metadata"]["sources"] == ["enhanced_rag"]

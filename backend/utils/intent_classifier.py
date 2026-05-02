@@ -26,6 +26,7 @@ from backend.config.routing_constants import (
     FOOD_DRINK_KEYWORDS,
     FOOD_DRINK_VERBS,
     GREETING_KEYWORDS,
+    LOST_FOUND_KEYWORDS,
     MEETING_ROOM_KEYWORDS,
     PARKING_KEYWORDS,
     PHOTOGRAPHY_KEYWORDS,
@@ -319,6 +320,11 @@ def classify_fast_intent(query: str) -> Optional[FastIntent]:
     if has_emergency:
         return FastIntent("facility", "emergency", "emergency", "Emergency keyword detected")
 
+    if match_keywords(lower_query, LOST_FOUND_KEYWORDS):
+        return FastIntent(
+            "facility", "facility-info", "lost_found", "Lost-and-found keyword detected"
+        )
+
     if match_keywords(lower_query, GREETING_KEYWORDS):
         stripped = lower_query.strip()
         remaining = stripped
@@ -349,6 +355,8 @@ def classify_fast_intent(query: str) -> Optional[FastIntent]:
         return FastIntent(
             "business_info", "business-hours", "hours", "Business hours keyword detected"
         )
+    if self_or_static_community := _static_community_program_route(lower_query):
+        return self_or_static_community
     if any(kw in lower_query for kw in MEETING_ROOM_KEYWORDS) and match_keywords(
         lower_query, PRICING_KEYWORDS
     ):
@@ -357,6 +365,13 @@ def classify_fast_intent(query: str) -> Optional[FastIntent]:
             "facility-info",
             "meeting_room",
             "Meeting room pricing query detected",
+        )
+    if _is_3d_printer_price_query(lower_query):
+        return FastIntent(
+            "facility",
+            "facility-info",
+            "facility",
+            "3D printer filament pricing query detected",
         )
     if match_keywords(lower_query, PRICING_KEYWORDS):
         return FastIntent("business_info", "pricing", "price", "Pricing keyword detected")
@@ -454,6 +469,55 @@ def classify_fast_intent(query: str) -> Optional[FastIntent]:
         )
 
     return None
+
+
+def _static_community_program_route(lower_query: str) -> Optional[FastIntent]:
+    """Keep EIC/DevDay ground-truth questions on static community knowledge."""
+    program_markers = ("engineer ignition camp", "eic", "devday")
+    if not any(marker in lower_query for marker in program_markers):
+        return None
+
+    static_question_markers = (
+        "とは",
+        "何",
+        "なに",
+        "いつ",
+        "when",
+        "what",
+        "修了",
+        "条件",
+        "開催",
+        "about",
+    )
+    if any(marker in lower_query for marker in static_question_markers):
+        return FastIntent(
+            "business_info",
+            "community",
+            "community",
+            "Static community/program keyword detected",
+        )
+    return None
+
+
+def _is_3d_printer_price_query(lower_query: str) -> bool:
+    printer_markers = ("3dプリンター", "3d printer", "3d打印", "3d 프린터")
+    material_markers = ("フィラメント", "filament", "材料", "素材", "耗材")
+    price_markers = (
+        "料金",
+        "価格",
+        "費用",
+        "値段",
+        "いくら",
+        "price",
+        "fee",
+        "cost",
+        "收费",
+        "费用",
+    )
+    has_printer_or_material = any(marker in lower_query for marker in printer_markers) or any(
+        marker in lower_query for marker in material_markers
+    )
+    return has_printer_or_material and any(marker in lower_query for marker in price_markers)
 
 
 def filler_intent_for_query(query: str) -> str:

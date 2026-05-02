@@ -134,6 +134,30 @@ class TestFastPathAccuracy:
         assert result["agent"] == "facility"
         assert result["request_type"] == "meeting_room"
 
+    def test_alpha_lost_found_routes_to_facility(self, orchestrator):
+        """gt-047: 忘れ物は一般応答ではなく facility/lost_found に固定する"""
+        result = orchestrator._try_fast_routing("忘れ物をしたのですが")
+
+        assert result is not None
+        assert result["agent"] == "facility"
+        assert result["request_type"] == "lost_found"
+
+    def test_alpha_devday_routes_to_static_community(self, orchestrator):
+        """gt-024: DevDay は live EventAgent ではなく静的 community 情報へ送る"""
+        result = orchestrator._try_fast_routing("DevDayはいつ開催されますか？")
+
+        assert result is not None
+        assert result["agent"] == "business_info"
+        assert result["request_type"] == "community"
+
+    def test_alpha_chinese_food_policy_routes_to_facility(self, orchestrator):
+        """gt-103: 中国語の自带食物は food_drink として扱う"""
+        result = orchestrator._try_fast_routing("可以自己带食物进去吗？")
+
+        assert result is not None
+        assert result["agent"] == "facility"
+        assert result["request_type"] == "food_drink"
+
     def test_memory_cases_detected(self, orchestrator, golden_cases):
         """日本語メモリケース(rt-002, rt-010, rt-015)がすべて検出される
 

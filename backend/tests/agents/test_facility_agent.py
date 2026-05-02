@@ -230,6 +230,38 @@ class TestFacilityAgent:
         assert "akarenga-112years" in response["answer"]
         assert "테라스" in response["answer"]
 
+    def test_3d_printer_filament_price_canonical_precedes_general_printer(self):
+        """3Dプリンターのフィラメント料金は一般プリンター回答に倒さない"""
+        agent = FacilityAgent()
+        response = agent._get_canonical_response(
+            "3Dプリンターのフィラメント料金を教えてください",
+            "facility",
+            "ja",
+        )
+
+        assert response is not None
+        assert "2円/g" in response["answer"]
+        assert "福岡市在住の学生は無料" in response["answer"]
+        assert "紙の印刷" not in response["answer"]
+
+    def test_lost_found_canonical_response(self):
+        """忘れ物は受付・電話番号案内に固定する"""
+        agent = FacilityAgent()
+        response = agent._get_canonical_response("忘れ物をしたのですが", "lost_found", "ja")
+
+        assert response is not None
+        assert "1階のエンジニアカフェ受付" in response["answer"]
+        assert "080-6742-7231" in response["answer"]
+
+    def test_chinese_food_policy_canonical(self):
+        """中国語の持ち込み食物質問を food policy として扱う"""
+        agent = FacilityAgent()
+        response = agent._get_canonical_response("可以自己带食物进去吗？", "food_drink", "zh")
+
+        assert response is not None
+        assert "外带食物原则上不允许" in response["answer"]
+        assert "cafe&bar saino" in response["answer"]
+
     def test_access_canonical_response_english(self):
         """アクセス案内は施設名と最寄り駅を含める"""
         agent = FacilityAgent()
