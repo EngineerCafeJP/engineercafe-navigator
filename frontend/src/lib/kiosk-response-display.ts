@@ -23,7 +23,8 @@ export function getKioskResponseDisplayState({
 } {
   const isLiveResponse =
     response.length > 0 &&
-    (sessionState === 'speaking' ||
+    (sessionState === 'processing' ||
+      sessionState === 'speaking' ||
       responsePendingPlayback ||
       responseVisibleUntil > now);
   const isDefaultPrompt =
