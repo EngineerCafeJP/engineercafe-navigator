@@ -51,6 +51,19 @@ function parseAction(request: Request): string | undefined {
   }
 }
 
+async function readResponseText(page: Page): Promise<string> {
+  const responseText = page.getByTestId('response-text');
+  if ((await responseText.count()) === 0) {
+    return '';
+  }
+
+  try {
+    return ((await responseText.first().textContent({ timeout: 1_000 })) ?? '').trim();
+  } catch {
+    return '';
+  }
+}
+
 const ENGINEER_CAFE_PATTERN = /engineer\s*cafe|エンジニア\s*カフェ/i;
 
 test.describe('Voice live (browser voice round-trip against live backend)', () => {
@@ -83,9 +96,8 @@ test.describe('Voice live (browser voice round-trip against live backend)', () =
     await expect(voiceButton).toBeVisible({ timeout: 15_000 });
     await expect(voiceButton).toBeEnabled();
 
-    const responseText = page.getByTestId('response-text');
-    await expect(responseText).toBeVisible();
-    const baselineText = ((await responseText.textContent()) ?? '').trim();
+    await expect(page.getByTestId('response-text')).toBeVisible();
+    const baselineText = await readResponseText(page);
 
     // Pre-arm the response waiters BEFORE clicking so fast backends can't race
     // us to the timeout threshold. Each promise resolves on the first matching
@@ -162,13 +174,18 @@ test.describe('Voice live (browser voice round-trip against live backend)', () =
       typeof audioResponse === 'string' && audioResponse.length > 0,
     ).toBe(true);
 
+    let finalText = '';
     await expect
-      .poll(async () => ((await responseText.textContent()) ?? '').trim(), {
-        timeout: 60_000,
-      })
-      .not.toBe(baselineText);
+      .poll(
+        async () => {
+          const currentText = await readResponseText(page);
+          finalText = normalizeText(currentText);
+          return currentText && currentText !== baselineText ? finalText : '';
+        },
+        { timeout: 90_000 },
+      )
+      .toBe(qaAnswer);
 
-    const finalText = normalizeText((await responseText.textContent()) ?? '');
     expect(finalText.length).toBeGreaterThan(20);
     expect(finalText).toMatch(/[A-Za-z\u3040-\u30ff\u4e00-\u9fff]/);
     expect(finalText.toLowerCase()).not.toContain('internal server error');
