@@ -19,9 +19,13 @@ on:
         default: ''
         type: string
       require_deployed_sha_match:
-        description: 'Fail unless the live Cloud Run image tag contains this workflow SHA. Keep true for GO proof.'
+        description: 'Fail unless the live Cloud Run image tag contains the expected backend SHA. Keep true for GO proof.'
         default: true
         type: boolean
+      expected_backend_sha:
+        description: 'Optional deployed backend SHA to require in the live Cloud Run image. Empty defaults to workflow SHA.'
+        default: ''
+        type: string
 
 permissions:
   contents: read
@@ -66,35 +70,49 @@ jobs:
 
       - name: Resolve live target
         shell: bash
+        env:
+          INPUT_EXPECTED_BACKEND_SHA: ${{ inputs.expected_backend_sha }}
+          INPUT_REQUIRE_DEPLOYED_SHA_MATCH: ${{ inputs.require_deployed_sha_match }}
+          INPUT_TIMESTAMP: ${{ inputs.timestamp }}
         run: |
           set -euo pipefail
-          ts="${{ inputs.timestamp }}"
+          ts="$INPUT_TIMESTAMP"
           if [[ -z "$ts" ]]; then
             ts="$(date -u +%Y%m%d_%H%M%S)"
           fi
           service_url="$(gcloud run services describe "$SERVICE_NAME" --project "$PROJECT_ID" --region "$REGION" --format='value(status.url)')"
           revision="$(gcloud run services describe "$SERVICE_NAME" --project "$PROJECT_ID" --region "$REGION" --format='value(status.latestReadyRevisionName)')"
           image="$(gcloud run services describe "$SERVICE_NAME" --project "$PROJECT_ID" --region "$REGION" --format='value(spec.template.spec.containers[0].image)')"
+          expected_backend_sha="$INPUT_EXPECTED_BACKEND_SHA"
+          if [[ -z "$expected_backend_sha" ]]; then
+            expected_backend_sha="$GITHUB_SHA"
+          fi
+          if [[ ! "$expected_backend_sha" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "Error: expected_backend_sha must be a full 40-character commit SHA, got: $expected_backend_sha" >&2
+            exit 2
+          fi
           sha_match=false
-          if [[ "$image" == *"${GITHUB_SHA}"* ]]; then
+          if [[ "$image" == *"$expected_backend_sha"* ]]; then
             sha_match=true
           fi
           echo "ALPHA_TIMESTAMP=$ts" >> "$GITHUB_ENV"
           echo "ALPHA_SMOKE_BASE_URL=${service_url:-$DEFAULT_BACKEND_URL}" >> "$GITHUB_ENV"
           echo "RAG_API_LIVE_BASE_URL=${service_url:-$DEFAULT_BACKEND_URL}" >> "$GITHUB_ENV"
           echo "ALPHA_SMOKE_CLOUD_RUN_REVISION=$revision" >> "$GITHUB_ENV"
-          echo "ALPHA_SMOKE_BACKEND_SHA=${GITHUB_SHA}" >> "$GITHUB_ENV"
+          echo "ALPHA_SMOKE_BACKEND_SHA=$expected_backend_sha" >> "$GITHUB_ENV"
+          echo "ALPHA_SMOKE_WORKFLOW_SHA=${GITHUB_SHA}" >> "$GITHUB_ENV"
           echo "ALPHA_SMOKE_BACKEND_IMAGE=$image" >> "$GITHUB_ENV"
           echo "ALPHA_SMOKE_BACKEND_SHA_MATCH=$sha_match" >> "$GITHUB_ENV"
           echo "Live target: ${service_url:-$DEFAULT_BACKEND_URL}"
           echo "Revision: $revision"
-          echo "SHA: ${GITHUB_SHA}"
+          echo "Workflow SHA: ${GITHUB_SHA}"
+          echo "Expected backend SHA: $expected_backend_sha"
           echo "Image: $image"
-          echo "Image contains workflow SHA: $sha_match"
+          echo "Image contains expected backend SHA: $sha_match"
 
-          if [[ "${{ inputs.require_deployed_sha_match }}" == "true" && "$sha_match" != "true" ]]; then
-            echo "Error: live Cloud Run image does not contain workflow SHA ${GITHUB_SHA}." >&2
-            echo "For #571 GO proof, dispatch this workflow from the deployed commit or set require_deployed_sha_match=false only for harness debugging." >&2
+          if [[ "$INPUT_REQUIRE_DEPLOYED_SHA_MATCH" == "true" && "$sha_match" != "true" ]]; then
+            echo "Error: live Cloud Run image does not contain expected backend SHA $expected_backend_sha." >&2
+            echo "For #571 GO proof, dispatch this workflow from the deployed backend commit, pass expected_backend_sha for harness-only reruns, or set require_deployed_sha_match=false only for harness debugging." >&2
             exit 2
           fi
 
@@ -279,9 +297,10 @@ jobs:
           - timestamp: ${ALPHA_TIMESTAMP:-unknown}
           - backend: ${ALPHA_SMOKE_BASE_URL:-unknown}
           - revision: ${ALPHA_SMOKE_CLOUD_RUN_REVISION:-unknown}
-          - sha: ${ALPHA_SMOKE_BACKEND_SHA:-unknown}
+          - workflow_sha: ${ALPHA_SMOKE_WORKFLOW_SHA:-unknown}
+          - expected_backend_sha: ${ALPHA_SMOKE_BACKEND_SHA:-unknown}
           - image: ${ALPHA_SMOKE_BACKEND_IMAGE:-unknown}
-          - image_sha_match: ${ALPHA_SMOKE_BACKEND_SHA_MATCH:-unknown}
+          - image_expected_backend_sha_match: ${ALPHA_SMOKE_BACKEND_SHA_MATCH:-unknown}
 
           | Step | Outcome |
           | --- | --- |
