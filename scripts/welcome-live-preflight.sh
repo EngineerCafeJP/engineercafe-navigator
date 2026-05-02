@@ -78,7 +78,7 @@ if [ "$DRY_RUN" = "1" ]; then
   echo "Delays: $DELAYS"
   echo "Output: $OUTPUT_DIR/welcome-live-preflight-$TIMESTAMP.md"
   echo "Audio source: frontend/e2e/fixtures/voice/sample.wav (fixture, not on-site microphone)"
-  echo "Command: PLAYWRIGHT_WELCOME_LIVE=1 BACKEND_API_URL=$BASE_URL BACKEND_API_KEY=<redacted> PLAYWRIGHT_WELCOME_VOICE_DELAYS=$DELAYS pnpm --dir frontend exec playwright test --config=playwright.config.ts e2e/welcome-live.spec.ts --project=chromium-voice-live --workers=1"
+  echo "Command: PLAYWRIGHT_WELCOME_LIVE=1 BACKEND_API_URL=$BASE_URL BACKEND_API_KEY=<redacted> PLAYWRIGHT_WELCOME_VOICE_DELAYS=$DELAYS PLAYWRIGHT_VIDEO=\${PLAYWRIGHT_VIDEO:-off} pnpm --dir frontend exec playwright test --config=playwright.config.ts e2e/welcome-live.spec.ts --project=chromium-voice-live --workers=1"
   exit 0
 fi
 
@@ -92,6 +92,7 @@ BACKEND_API_KEY="$API_KEY" \
 PLAYWRIGHT_WELCOME_LIVE=1 \
 PLAYWRIGHT_WELCOME_TIMESTAMP="$TIMESTAMP" \
 PLAYWRIGHT_WELCOME_VOICE_DELAYS="$DELAYS" \
+PLAYWRIGHT_VIDEO="${PLAYWRIGHT_VIDEO:-off}" \
 pnpm --dir "$ROOT_DIR/frontend" exec playwright test \
   --config=playwright.config.ts \
   e2e/welcome-live.spec.ts \

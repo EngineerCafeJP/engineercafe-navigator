@@ -7,6 +7,7 @@ loadEnv({ path: '.env.local' });
 loadEnv({ path: '.env' });
 
 const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://127.0.0.1:3000';
+const videoMode = process.env.PLAYWRIGHT_VIDEO === 'off' ? 'off' : 'retain-on-failure';
 
 export default defineConfig({
   testDir: './e2e',
@@ -19,7 +20,7 @@ export default defineConfig({
     baseURL,
     trace: process.env.CI ? 'retain-on-failure' : 'on-first-retry',
     screenshot: 'only-on-failure',
-    video: 'retain-on-failure',
+    video: videoMode,
     actionTimeout: 15_000,
     navigationTimeout: 30_000,
   },

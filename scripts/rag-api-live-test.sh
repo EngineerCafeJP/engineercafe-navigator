@@ -13,6 +13,7 @@ set -euo pipefail
 #   RAG_API_LIVE_SECRET_PROJECT    Overrides Secret Manager project.
 #   RAG_API_LIVE_METRICS           Comma-separated RAGAS metrics.
 #   OPENAI_API_KEY / OPENROUTER_API_KEY are required by the RAGAS evaluator.
+#   If neither is set, this script tries Secret Manager. Direct OpenAI is preferred.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RUNNER="$ROOT_DIR/backend/evaluation/run_live_api_eval.py"
@@ -21,6 +22,8 @@ BASE_URL="${RAG_API_LIVE_BASE_URL:-$DEFAULT_URL}"
 API_KEY="${API_SECRET_KEY:-}"
 SECRET_PROJECT="${RAG_API_LIVE_SECRET_PROJECT:-aipartner-426616}"
 SECRET_NAME="API_SECRET_KEY"
+OPENAI_SECRET_NAMES="${RAG_API_LIVE_OPENAI_SECRET_NAMES:-OPENAI_API_KEY,openai-api-key}"
+OPENROUTER_SECRET_NAMES="${RAG_API_LIVE_OPENROUTER_SECRET_NAMES:-OPENROUTER_API_KEY}"
 OUTPUT_DIR="$ROOT_DIR/backend/tests/evaluation/reports"
 LANGUAGES="ja,en,zh,ko"
 METRICS="${RAG_API_LIVE_METRICS:-answer_correctness}"
@@ -37,6 +40,9 @@ Options:
   --key VALUE            API key; skips Secret Manager lookup
   --secret-project ID    GCP project for Secret Manager (default: aipartner-426616)
   --secret-name NAME     Secret Manager secret name (default: API_SECRET_KEY)
+  --openai-secret-names  Comma-separated OpenAI judge secret names (default: OPENAI_API_KEY,openai-api-key)
+  --openrouter-secret-names
+                         Comma-separated OpenRouter fallback secret names (default: OPENROUTER_API_KEY)
   --languages LIST       Comma-separated languages (default: ja,en,zh,ko)
   --metrics LIST         Comma-separated RAGAS metrics (default: answer_correctness)
   --output-dir DIR       Report directory (default: backend/tests/evaluation/reports)
@@ -58,6 +64,8 @@ while [ "$#" -gt 0 ]; do
     --key) API_KEY="$2"; shift 2 ;;
     --secret-project) SECRET_PROJECT="$2"; shift 2 ;;
     --secret-name) SECRET_NAME="$2"; shift 2 ;;
+    --openai-secret-names) OPENAI_SECRET_NAMES="$2"; shift 2 ;;
+    --openrouter-secret-names) OPENROUTER_SECRET_NAMES="$2"; shift 2 ;;
     --languages) LANGUAGES="$2"; shift 2 ;;
     --metrics) METRICS="$2"; shift 2 ;;
     --output-dir) OUTPUT_DIR="$2"; shift 2 ;;
@@ -91,12 +99,38 @@ fetch_secret_from_gcloud() {
   fi
 }
 
+fetch_first_secret_from_gcloud() {
+  local names_csv="$1"
+  local value
+  IFS=',' read -r -a names <<< "$names_csv"
+  for secret_name in "${names[@]}"; do
+    secret_name="$(printf '%s' "$secret_name" | xargs)"
+    if [ -z "$secret_name" ]; then
+      continue
+    fi
+    value="$(fetch_secret_from_gcloud "$secret_name")"
+    if [ -n "$value" ]; then
+      printf '%s' "$value"
+      return 0
+    fi
+  done
+}
+
 require_ragas_judge_key() {
+  if [ -z "${OPENAI_API_KEY:-}" ]; then
+    OPENAI_API_KEY="$(fetch_first_secret_from_gcloud "$OPENAI_SECRET_NAMES")"
+    export OPENAI_API_KEY
+  fi
   if [ -z "${OPENAI_API_KEY:-}" ] && [ -z "${OPENROUTER_API_KEY:-}" ]; then
-    OPENROUTER_API_KEY="$(fetch_secret_from_gcloud OPENROUTER_API_KEY)"
+    OPENROUTER_API_KEY="$(fetch_first_secret_from_gcloud "$OPENROUTER_SECRET_NAMES")"
     export OPENROUTER_API_KEY
   fi
-  if [ -n "${OPENAI_API_KEY:-}" ] || [ -n "${OPENROUTER_API_KEY:-}" ]; then
+  if [ -n "${OPENAI_API_KEY:-}" ]; then
+    echo "RAGAS judge provider: direct OpenAI"
+    return
+  fi
+  if [ -n "${OPENROUTER_API_KEY:-}" ]; then
+    echo "RAGAS judge provider: OpenRouter fallback"
     return
   fi
 
