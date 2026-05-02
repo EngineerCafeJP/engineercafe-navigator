@@ -40,6 +40,26 @@ test('keeps showing the response while its visibility window is still active', (
   });
 });
 
+test('shows the response while playback is pending', () => {
+  const now = 10_000;
+
+  const result = getKioskResponseDisplayState({
+    response: 'Thanks for visiting.',
+    sessionState: 'processing',
+    responseVisibleUntil: now - 1,
+    responsePendingPlayback: true,
+    defaultPromptVisibleUntil: now + 5_000,
+    now,
+    defaultPrompt: 'Ask a question to get started.',
+  });
+
+  assert.deepEqual(result, {
+    text: 'Thanks for visiting.',
+    showBubble: true,
+    isLiveResponse: true,
+  });
+});
+
 test('hides the bubble when neither a live response nor the default prompt should be visible', () => {
   const now = 10_000;
 
