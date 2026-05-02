@@ -125,7 +125,7 @@ class BusinessInfoAgent:
         )
 
         canonical = self._get_canonical_response(query, request_type, language)
-        if canonical and state_context is None:
+        if canonical:
             return canonical
 
         # requestTypeをcategoryにマッピング
@@ -155,9 +155,6 @@ class BusinessInfoAgent:
 
         if not context:
             return self._get_default_response(language, request_type)
-
-        if canonical:
-            return canonical
 
         # プロンプト構築
         prompt = self._build_prompt(query, context, request_type, language)
@@ -442,6 +439,82 @@ Information: {context}
     ) -> Optional[Dict]:
         """Return complete answers for common visitor-critical business questions."""
         normalized = query.lower()
+        if self._asks_closed_days(normalized):
+            answers = {
+                "ja": (
+                    "[relaxed]エンジニアカフェの休館日は毎月最終月曜日です。"
+                    "その日が祝休日の場合は翌平日が休館日になり、年末年始は"
+                    "12月29日から1月3日まで休館です。"
+                ),
+                "en": (
+                    "[relaxed]Engineer Cafe is closed on the last Monday of each month. "
+                    "If that day is a public holiday, the next weekday is closed instead. "
+                    "It is also closed from December 29 to January 3."
+                ),
+                "zh": (
+                    "[relaxed]工程师咖啡每月最后一个星期一闭馆。"
+                    "如果当天是节假日，则顺延到下一个工作日闭馆；"
+                    "年末年初12月29日至1月3日也闭馆。"
+                ),
+                "ko": (
+                    "[relaxed]엔지니어 카페는 매월 마지막 월요일에 휴관합니다. "
+                    "그날이 공휴일이면 다음 평일이 휴관일이며, 연말연시에는 "
+                    "12월 29일부터 1월 3일까지 휴관합니다."
+                ),
+            }
+            return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
+        if self._asks_community_program(normalized, request_type):
+            if "devday" in normalized:
+                answers = {
+                    "ja": (
+                        "[relaxed]DevDayはENGINEER IGNITION CAMP（EIC）の"
+                        "最終展示会で、2026年2月23日18:00から開催されます。"
+                        "ピッチではなく展示形式で実施されます。"
+                    ),
+                    "en": (
+                        "[relaxed]DevDay is the final exhibition for ENGINEER IGNITION "
+                        "CAMP (EIC). It is scheduled for February 23, 2026 at 18:00, "
+                        "and is held as an exhibition rather than a pitch event."
+                    ),
+                    "zh": (
+                        "[relaxed]DevDay是ENGINEER IGNITION CAMP（EIC）的最终展示会，"
+                        "预定于2026年2月23日18:00举行。形式是展示，不是路演。"
+                    ),
+                    "ko": (
+                        "[relaxed]DevDay는 ENGINEER IGNITION CAMP(EIC)의 최종 전시회로, "
+                        "2026년 2월 23일 18:00에 열릴 예정입니다. 피치가 아니라 "
+                        "전시 형식으로 진행됩니다."
+                    ),
+                }
+                return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
+            answers = {
+                "ja": (
+                    "[relaxed]ENGINEER IGNITION CAMP（EIC）は、エンジニアカフェが"
+                    "主催する短期集中・実践型プログラムです。参加費は無料で、"
+                    "「つくりたい物をつくる」をコンセプトに、事業化や対価を得ることを"
+                    "目指します。"
+                ),
+                "en": (
+                    "[relaxed]ENGINEER IGNITION CAMP (EIC) is a short, intensive, "
+                    "hands-on program hosted by Engineer Cafe. Participation is free, "
+                    "and the concept is to build what you want to build while aiming "
+                    "toward commercialization or earning value from it."
+                ),
+                "zh": (
+                    "[relaxed]ENGINEER IGNITION CAMP（EIC）是工程师咖啡主办的"
+                    "短期集中实践型项目，参加免费。理念是“制作自己想做的东西”，"
+                    "并以事业化或获得对价为目标。"
+                ),
+                "ko": (
+                    "[relaxed]ENGINEER IGNITION CAMP(EIC)는 엔지니어 카페가 주최하는 "
+                    "단기 집중 실천형 프로그램입니다. 참가비는 무료이며, "
+                    "'만들고 싶은 것을 만든다'는 콘셉트로 사업화나 가치 창출을 목표로 합니다."
+                ),
+            }
+            return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
         if self._asks_opening_hours(normalized, request_type):
             answers = {
                 "ja": (
@@ -646,6 +719,36 @@ Information: {context}
             "운영 시간",
             "이용 시간",
         )
+        return any(keyword in query for keyword in keywords)
+
+    @staticmethod
+    def _asks_closed_days(query: str) -> bool:
+        keywords = (
+            "休館日",
+            "休業日",
+            "定休日",
+            "休みの日",
+            "お休みの日",
+            "閉まっている日",
+            "閉まってる日",
+            "closed day",
+            "closed days",
+            "holiday",
+            "holidays",
+            "闭馆",
+            "休馆",
+            "闭馆日",
+            "休馆日",
+            "휴관일",
+            "쉬는 날",
+        )
+        return any(keyword in query for keyword in keywords)
+
+    @staticmethod
+    def _asks_community_program(query: str, request_type: Optional[str]) -> bool:
+        if request_type != "community":
+            return False
+        keywords = ("engineer ignition camp", "eic", "devday")
         return any(keyword in query for keyword in keywords)
 
     @staticmethod

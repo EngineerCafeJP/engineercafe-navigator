@@ -333,6 +333,161 @@ class FacilityAgent:
     ) -> Optional[Dict]:
         """Return complete answers for common visitor-critical facility questions."""
         normalized = query.lower()
+        if self._asks_3d_printer_filament_price(normalized):
+            answers = {
+                "ja": (
+                    "[relaxed]MAKER'sスペースの3Dプリンター用フィラメントは"
+                    "使用分を買い取り方式で精算します。Bambu Lab P1S用の"
+                    "PLA白・黒とABS白・黒は2円/gで、使用量に単価をかけて"
+                    "10円未満は切り捨てです。福岡市在住の学生は無料です。"
+                ),
+                "en": (
+                    "[relaxed]3D printer filament in MAKER's Space is charged by "
+                    "the amount used. Standard PLA and ABS for the Bambu Lab P1S are "
+                    "2 yen per gram, with amounts under 10 yen rounded down. Students "
+                    "living in Fukuoka City can use filament for free."
+                ),
+                "zh": (
+                    "[relaxed]MAKER's Space的3D打印机耗材按实际使用量结算。"
+                    "Bambu Lab P1S用的PLA白色、黑色和ABS白色、黑色都是2日元/g，"
+                    "不足10日元会舍去。福冈市在住学生免费。"
+                ),
+                "ko": (
+                    "[relaxed]MAKER's Space의 3D 프린터 필라멘트는 사용량만큼 "
+                    "정산합니다. Bambu Lab P1S용 PLA 흰색・검정색과 ABS 흰색・검정색은 "
+                    "2엔/g이며, 10엔 미만은 절사됩니다. 후쿠오카시 거주 학생은 무료입니다."
+                ),
+            }
+            return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
+        if self._asks_3d_printer_use(normalized):
+            answers = {
+                "ja": (
+                    "[relaxed]3Dプリンターは地下1階のMAKER'sスペースで利用できます。"
+                    "初回は約1時間の無料講習が必要で、講習後はWeb予約優先制です。"
+                    "予約は前日まで受け付けています。"
+                ),
+                "en": (
+                    "[relaxed]You can use 3D printers in MAKER's Space on B1F. "
+                    "First-time users need a free training session of about one hour; "
+                    "after that, use is prioritized by web reservation, accepted until "
+                    "the day before."
+                ),
+                "zh": (
+                    "[relaxed]3D打印机可在地下一层MAKER's Space使用。"
+                    "首次使用需要参加约1小时的免费讲习；讲习后采用网页预约优先制，"
+                    "预约受理到前一天为止。"
+                ),
+                "ko": (
+                    "[relaxed]3D 프린터는 지하 1층 MAKER's Space에서 이용할 수 있습니다. "
+                    "처음 이용할 때는 약 1시간의 무료 강습이 필요하며, 이후에는 "
+                    "웹 예약 우선제로 전날까지 예약할 수 있습니다."
+                ),
+            }
+            return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
+        if request_type == "toilet" or self._asks_toilet(normalized):
+            answers = {
+                "ja": (
+                    "[relaxed]トイレは1階テラスの奥にあります。館内から直接は"
+                    "行けないため、受付奥の通路からテラスに出て、テラス奥へ"
+                    "進んでください。"
+                ),
+                "en": (
+                    "[relaxed]The restroom is at the back of the 1F terrace. "
+                    "You cannot access it directly from inside the building, so go "
+                    "through the passage behind reception to the terrace, then continue "
+                    "to the back."
+                ),
+                "zh": (
+                    "[relaxed]洗手间在一楼露台深处。馆内不能直接过去，"
+                    "请从前台后方通道到露台，再往露台里面走。"
+                ),
+                "ko": (
+                    "[relaxed]화장실은 1층 테라스 안쪽에 있습니다. 건물 안에서는 "
+                    "바로 갈 수 없으니, 접수대 안쪽 통로로 테라스에 나간 뒤 "
+                    "안쪽으로 이동해 주세요."
+                ),
+            }
+            return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
+        if self._asks_online_meeting_place(normalized):
+            answers = {
+                "ja": (
+                    "[relaxed]電話やオンラインミーティングは、1階メインホール、"
+                    "談話室、テラス、cafe&bar sainoで可能です。地下1階には"
+                    "1回1時間まで使える防音室が1室あり、オンラインミーティングや"
+                    "電話に向いています。集中スペースは会話・電話禁止です。"
+                ),
+                "en": (
+                    "[relaxed]For calls or online meetings, you can use the 1F main "
+                    "hall, lounge, terrace, or cafe&bar saino. There is also one "
+                    "soundproof room on B1F for up to one hour at a time. The B1F "
+                    "Focus Space does not allow talking or phone calls."
+                ),
+                "zh": (
+                    "[relaxed]电话或线上会议可以在一楼主厅、谈话室、露台或"
+                    "cafe&bar saino进行。地下一层有一间防音室，每次最多可用1小时，"
+                    "适合线上会议和电话。集中空间禁止交谈和通话。"
+                ),
+                "ko": (
+                    "[relaxed]전화나 온라인 미팅은 1층 메인 홀, 담화실, 테라스, "
+                    "cafe&bar saino에서 가능합니다. 지하 1층에는 1회 1시간까지 "
+                    "쓸 수 있는 방음실이 1개 있으며, 집중 스페이스에서는 대화와 전화가 금지됩니다."
+                ),
+            }
+            return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
+        if self._asks_focus_space(normalized):
+            answers = {
+                "ja": (
+                    "[relaxed]集中スペースは地下1階にある静かなブース型スペースです。"
+                    "6席あり、座席指定制・先着順で予約はできません。会話や電話は"
+                    "できないので、静かに作業したい方向けです。"
+                ),
+                "en": (
+                    "[relaxed]The Focus Space is a quiet booth-style work area on B1F. "
+                    "It has six seats, is first-come first-served with assigned seating, "
+                    "and cannot be reserved. Talking and phone calls are not allowed."
+                ),
+                "zh": (
+                    "[relaxed]集中空间位于地下一层，是安静的隔间式工作区。"
+                    "共有6个座位，指定座位、先到先用，不能预约。这里禁止交谈和通话。"
+                ),
+                "ko": (
+                    "[relaxed]집중 스페이스는 지하 1층의 조용한 부스형 작업 공간입니다. "
+                    "6석이 있으며 좌석 지정제와 선착순으로 운영되고 예약은 불가합니다. "
+                    "대화와 전화는 할 수 없습니다."
+                ),
+            }
+            return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
+        if request_type == "lost_found" or self._asks_lost_found(normalized):
+            answers = {
+                "ja": (
+                    "[relaxed]忘れ物や落とし物は、まず1階のエンジニアカフェ受付に"
+                    "お声がけください。2階会議室やトイレなど共用部の忘れ物は、"
+                    "赤煉瓦文化館受付で保管される場合もあります。電話は080-6742-7231です。"
+                ),
+                "en": (
+                    "[relaxed]For lost items, please ask the 1F Engineer Cafe reception "
+                    "first. Items found in shared areas such as the 2F meeting rooms or "
+                    "restrooms may be kept at the Red Brick Culture Hall reception. "
+                    "You can also call 080-6742-7231."
+                ),
+                "zh": (
+                    "[relaxed]遗失物请先询问一楼工程师咖啡前台。"
+                    "二楼会议室或洗手间等公共区域的遗失物，也可能由赤炼瓦文化馆前台保管。"
+                    "电话是080-6742-7231。"
+                ),
+                "ko": (
+                    "[relaxed]분실물은 먼저 1층 엔지니어 카페 접수에 문의해 주세요. "
+                    "2층 회의실이나 화장실 같은 공용부의 분실물은 아카렌가 문화관 접수에서 "
+                    "보관하는 경우도 있습니다. 전화번호는 080-6742-7231입니다."
+                ),
+            }
+            return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
         if self._asks_power_outlet(normalized):
             answers = {
                 "ja": (
@@ -520,9 +675,130 @@ class FacilityAgent:
             "飲み物",
             "飲食",
             "食物",
+            "自带食物",
+            "带食物",
+            "带吃的",
+            "外带食物",
             "饮料",
+            "餐饮",
             "음식",
             "음료",
+        )
+        return any(keyword in query for keyword in keywords)
+
+    @staticmethod
+    def _asks_3d_printer_filament_price(query: str) -> bool:
+        printer_markers = ("3dプリンター", "3d printer", "3d打印", "3d 프린터")
+        material_markers = ("フィラメント", "filament", "材料", "素材", "耗材")
+        price_markers = (
+            "料金",
+            "価格",
+            "費用",
+            "値段",
+            "いくら",
+            "price",
+            "fee",
+            "cost",
+            "收费",
+            "费用",
+        )
+        has_printer_or_material = any(marker in query for marker in printer_markers) or any(
+            marker in query for marker in material_markers
+        )
+        return has_printer_or_material and any(marker in query for marker in price_markers)
+
+    @staticmethod
+    def _asks_3d_printer_use(query: str) -> bool:
+        printer_markers = ("3dプリンター", "3d printer", "3d打印", "3d 프린터")
+        use_markers = (
+            "使い方",
+            "使いたい",
+            "使えますか",
+            "利用",
+            "予約",
+            "講習",
+            "use",
+            "reservation",
+            "reserve",
+            "training",
+            "使用",
+            "预约",
+            "사용",
+            "예약",
+        )
+        return any(marker in query for marker in printer_markers) and any(
+            marker in query for marker in use_markers
+        )
+
+    @staticmethod
+    def _asks_toilet(query: str) -> bool:
+        keywords = (
+            "トイレ",
+            "お手洗い",
+            "おてあらい",
+            "化粧室",
+            "toilet",
+            "restroom",
+            "bathroom",
+            "洗手间",
+            "厕所",
+            "화장실",
+        )
+        return any(keyword in query for keyword in keywords)
+
+    @staticmethod
+    def _asks_online_meeting_place(query: str) -> bool:
+        keywords = (
+            "オンライン会議",
+            "オンラインミーティング",
+            "web会議",
+            "通話",
+            "電話できる場所",
+            "電話したい",
+            "防音室",
+            "phone booth",
+            "online meeting",
+            "video call",
+            "take a call",
+            "线上会议",
+            "在线会议",
+            "通话",
+            "화상 회의",
+            "온라인 미팅",
+            "통화",
+        )
+        return any(keyword in query for keyword in keywords)
+
+    @staticmethod
+    def _asks_focus_space(query: str) -> bool:
+        keywords = (
+            "集中スペース",
+            "focus space",
+            "静かに作業",
+            "静かな作業",
+            "集中できる",
+            "集中空间",
+            "집중 스페이스",
+        )
+        return any(keyword in query for keyword in keywords)
+
+    @staticmethod
+    def _asks_lost_found(query: str) -> bool:
+        keywords = (
+            "忘れ物",
+            "落とし物",
+            "なくした",
+            "失くした",
+            "置き忘れ",
+            "紛失",
+            "lost",
+            "missing",
+            "left behind",
+            "left my",
+            "forgot",
+            "遗失",
+            "丢失",
+            "분실",
         )
         return any(keyword in query for keyword in keywords)
 
