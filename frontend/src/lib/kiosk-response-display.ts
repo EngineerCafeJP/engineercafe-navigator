@@ -4,6 +4,7 @@ export function getKioskResponseDisplayState({
   response,
   sessionState,
   responseVisibleUntil,
+  responsePendingPlayback = false,
   defaultPromptVisibleUntil,
   now,
   defaultPrompt,
@@ -11,6 +12,7 @@ export function getKioskResponseDisplayState({
   response: string;
   sessionState: KioskResponseSessionState;
   responseVisibleUntil: number;
+  responsePendingPlayback?: boolean;
   defaultPromptVisibleUntil: number;
   now: number;
   defaultPrompt: string;
@@ -21,7 +23,9 @@ export function getKioskResponseDisplayState({
 } {
   const isLiveResponse =
     response.length > 0 &&
-    (sessionState === 'speaking' || responseVisibleUntil > now);
+    (sessionState === 'speaking' ||
+      responsePendingPlayback ||
+      responseVisibleUntil > now);
   const isDefaultPrompt =
     sessionState === 'idle' &&
     defaultPromptVisibleUntil > now &&

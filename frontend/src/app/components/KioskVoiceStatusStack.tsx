@@ -151,6 +151,7 @@ export function KioskVoiceStatusStack({
     response,
     sessionState,
     responseVisibleUntil,
+    responsePendingPlayback: isTtsSynthesizing,
     defaultPromptVisibleUntil,
     now,
     defaultPrompt: labels.defaultPrompt,
