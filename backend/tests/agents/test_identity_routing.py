@@ -71,6 +71,19 @@ VISITOR_NAME_QUERIES = [
     "我叫李华",
 ]
 
+# These must NOT trigger the identity fast-path — they're domain queries that
+# happen to contain ambiguous tokens (貴方 as 2nd-person pronoun, "AI" as a
+# topic label, Chinese 能帮我 as a generic capability ask).
+# Per Codex CLI 経路A review on PR #648 (#615 follow-up).
+NON_IDENTITY_AMBIGUOUS_QUERIES = [
+    # 貴方 used as 2nd-person pronoun in a Wi-Fi question (not asking about bot)
+    "貴方にWi-Fiの設定を聞きたい",
+    # "AI" as topic of an event lookup, not asking which AI the bot is
+    "which AI events are held here?",
+    # Chinese capability marker without self-referential identity token
+    "能帮我连接 Wi-Fi 吗",
+]
+
 # LLM-provider tokens that must NEVER appear in a hardcoded identity response.
 FORBIDDEN_PROVIDER_TOKENS = (
     "google",
@@ -98,6 +111,29 @@ class TestIdentityIntentDetection:
         assert not is_assistant_profile_question(
             query.lower()
         ), f"visitor self-intro misrouted to assistant_profile: {query!r}"
+
+    @pytest.mark.parametrize("query", NON_IDENTITY_AMBIGUOUS_QUERIES)
+    def test_ambiguous_tokens_do_not_misroute(self, query: str) -> None:
+        """Regression: PR #648 false positives from Codex CLI 経路A review.
+
+        - 貴方 alone (used as 2nd-person pronoun, not identity subject)
+        - bare 'AI' substring inside an event query
+        - bare Chinese 能 capability marker inside a Wi-Fi help request
+
+        These must NOT route to the assistant_profile fast-path.
+        """
+        assert not is_assistant_profile_question(
+            query.lower()
+        ), f"ambiguous-token query misrouted to assistant_profile: {query!r}"
+
+        # Also verify they don't get a fast assistant_profile route from the
+        # higher-level classifier (defense in depth — the orchestrator path).
+        route = classify_fast_intent(query)
+        if route is not None:
+            assert route.request_type != "assistant_profile", (
+                f"classify_fast_intent misrouted ambiguous query to "
+                f"assistant_profile: {query!r}"
+            )
 
 
 class TestIdentityFastRoute:
