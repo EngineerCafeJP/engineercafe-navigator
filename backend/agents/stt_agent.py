@@ -367,7 +367,18 @@ def _normalize_vosk_route_transcript(transcript: str, language: Optional[str]) -
         return transcript
 
     normalized = "".join(transcript.lower().split())
-    if not normalized or "時間" not in normalized:
+    if not normalized:
+        return transcript
+
+    is_wifi_connection_confusion = (
+        "セット" in normalized
+        and "逆方法" in normalized
+        and ("はいはい" in normalized or "ハイハイ" in normalized)
+    )
+    if is_wifi_connection_confusion:
+        return "Wi-Fiの接続方法を教えてください。"
+
+    if "時間" not in normalized:
         return transcript
 
     asks_for_time = any(
