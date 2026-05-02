@@ -38,6 +38,9 @@ from backend.config.routing_constants import (
     match_keywords,
 )
 
+_MATA_KIMASU_FAREWELL_RE = re.compile(r"また\s*来(ます|る|ました|るね|ますね)\s*[。!！?？\.]?\s*$")
+_SERVICE_INTENT_RE = re.compile(r"(受付|予約|会員|問合せ|問い合わせ)")
+
 FILLER_INTENTS = frozenset(
     {
         "greeting",
@@ -286,8 +289,18 @@ def classify_fast_intent(query: str) -> Optional[FastIntent]:
             reasoning="Assistant profile/capability question detected",
         )
 
+    farewell_substring_hit = match_keywords(lower_query, FAREWELL_KEYWORDS)
+    farewell_anchored_hit = bool(_MATA_KIMASU_FAREWELL_RE.search(query))
+    has_service_intent = bool(_SERVICE_INTENT_RE.search(query))
+    has_emergency = match_keywords(lower_query, EMERGENCY_KEYWORDS)
+
     # Farewell before daily_conversation so thanks + また来ます routes out (Q-FAREWELL-JA-001).
-    if match_keywords(lower_query, FAREWELL_KEYWORDS):
+    # Emergency and service-intent tokens must keep their more specific routing flows.
+    if (
+        (farewell_substring_hit or farewell_anchored_hit)
+        and not has_emergency
+        and not has_service_intent
+    ):
         return FastIntent(
             "farewell",
             "farewell",
@@ -303,7 +316,7 @@ def classify_fast_intent(query: str) -> Optional[FastIntent]:
             reasoning="Daily conversation request detected",
         )
 
-    if match_keywords(lower_query, EMERGENCY_KEYWORDS):
+    if has_emergency:
         return FastIntent("facility", "emergency", "emergency", "Emergency keyword detected")
 
     if match_keywords(lower_query, GREETING_KEYWORDS):
