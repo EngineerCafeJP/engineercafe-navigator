@@ -656,6 +656,8 @@ class FillerResponse(BaseModel):
 
 
 _FILLER_DIR = Path(__file__).resolve().parent / "static" / "fillers"
+# Piper filler clips exceed ~8KiB; silent placeholder (~5804 B) stays below this floor.
+MIN_FILLER_WAV_BYTES = 8192
 _filler_audio_cache: dict[tuple[str, str], str] = {}
 
 
@@ -666,6 +668,19 @@ def _read_filler_audio(intent: str, language: str) -> str:
         return cached
 
     path = _FILLER_DIR / f"{intent}_{language}.wav"
+    if not path.is_file():
+        raise FileNotFoundError(path)
+    size = path.stat().st_size
+    if size < MIN_FILLER_WAV_BYTES:
+        logger.warning(
+            "Filler WAV too small (silent/corrupt?): intent=%s language=%s bytes=%s min=%s",
+            intent,
+            language,
+            size,
+            MIN_FILLER_WAV_BYTES,
+        )
+        raise ValueError("filler wav below minimum size")
+
     with path.open("rb") as file:
         encoded = base64.b64encode(file.read()).decode("ascii")
     _filler_audio_cache[cache_key] = encoded

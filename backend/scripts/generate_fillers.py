@@ -1,8 +1,9 @@
 """Generate static filler WAV files for `/api/voice/filler`.
 
 The script prefers PiperPlus through `VoiceAgent(tts_provider="piper")`.
-When PiperPlus is unavailable in local/CI environments, it writes a short
-valid silent WAV so the endpoint can still degrade without runtime synthesis.
+With `--piper`, Piper failures skip writing that clip (no silent placeholder),
+so Korean/other fillers are never shipped as bogus silence (#642 B-1).
+Without `--piper`, it writes a short placeholder WAV for offline / CI catalogs.
 """
 
 from __future__ import annotations
@@ -10,6 +11,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import base64
+import logging
 import math
 import struct
 import sys
@@ -23,6 +25,8 @@ if str(REPO_ROOT) not in sys.path:
 OUT_DIR = Path(__file__).resolve().parents[1] / "static" / "fillers"
 SAMPLE_RATE = 16_000
 SILENCE_SECONDS = 0.18
+
+logger = logging.getLogger(__name__)
 
 
 def _silent_wav() -> bytes:
@@ -67,8 +71,21 @@ async def generate_fillers(*, use_piper: bool) -> list[Path]:
 
     for intent, by_language in FILLER_TEXTS.items():
         for language, text in by_language.items():
-            audio = await _try_piper(text, language) if use_piper else None
             path = OUT_DIR / f"{intent}_{language}.wav"
+            if use_piper:
+                audio = await _try_piper(text, language)
+                if not audio:
+                    logger.error(
+                        "piper failed for filler intent=%s language=%s — skipping write",
+                        intent,
+                        language,
+                    )
+                    continue
+                path.write_bytes(audio)
+                written.append(path)
+                continue
+
+            audio = None
             path.write_bytes(audio or fallback_audio)
             written.append(path)
     return written
