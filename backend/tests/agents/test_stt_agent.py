@@ -23,6 +23,7 @@ from backend.agents.stt_agent import (
     ENGINEER_CAFE_GRAMMAR,
     STAGE_GRAMMARS,
     VALID_STAGES,
+    _normalize_vosk_route_transcript,
     _vosk_transcript_trusted_for_early_return,
 )
 
@@ -1043,9 +1044,31 @@ class TestSTTAgent:
             "Wi-Fiの接続方法を教えてください",
             "ja",
         )
+        assert _vosk_transcript_trusted_for_early_return(
+            "元気 に 赤毛 の アン は 時間 教え 結果 が はい",
+            "ja",
+        )
         assert not _vosk_transcript_trusted_for_early_return(
             "はい 母 の 選挙 接客 方法 教え て ください",
             "ja",
+        )
+        assert not _vosk_transcript_trusted_for_early_return(
+            "今の時間を教えてください",
+            "ja",
+        )
+
+    def test_vosk_route_transcript_normalizes_hours_confusion(self):
+        """Known Vosk brand/hour confusions become route-stable hours queries."""
+        assert (
+            _normalize_vosk_route_transcript(
+                "元気 に 赤毛 の アン は 時間 教え 結果 が はい",
+                "ja",
+            )
+            == "エンジニアカフェの営業時間を教えてください。"
+        )
+        assert (
+            _normalize_vosk_route_transcript("今の時間を教えてください", "ja")
+            == "今の時間を教えてください"
         )
 
     def test_init_qwen_primary_hedge_delay_zero_disables_hedge(self, monkeypatch):
@@ -2384,6 +2407,48 @@ class TestQwenPrimaryFallback:
             for record in caplog.records
             if record.name == "backend.observability.stt"
         ]
+        assert "stt_vosk_early_accept" in events
+        assert "stt_qwen_hedge_grace_start" not in events
+
+    @pytest.mark.asyncio
+    async def test_vosk_hours_confusion_normalizes_and_skips_grace(self, caplog):
+        """Mangled Engineer Cafe hours Vosk output is normalized before routing."""
+        caplog.set_level(logging.INFO, logger="backend.observability.stt")
+
+        async def slow_qwen(*args, **kwargs):
+            await asyncio.sleep(0.30)
+            return TranscriptionResult(text="late qwen", confidence=0.9, language="ja")
+
+        async def confused_vosk(*args, **kwargs):
+            await asyncio.sleep(0.01)
+            return TranscriptionResult(
+                text="元気 に 赤毛 の アン は 時間 教え 結果 が はい",
+                confidence=0.8,
+                language="ja",
+            )
+
+        mock_qwen = MagicMock()
+        mock_qwen.transcribe = slow_qwen
+        mock_vosk = MagicMock(spec=LocalSTTClient)
+        mock_vosk.transcribe = AsyncMock(side_effect=confused_vosk)
+
+        agent = self._make_agent(mock_qwen, mock_vosk)
+        agent._qwen_timeout = 10.0
+        agent._qwen_hedge_delay = 0.01
+        agent._qwen_hedge_grace = 0.20
+
+        result = await agent.speech_to_text(b"audio", language="ja")
+
+        assert result["success"] is True
+        assert result["provider"] == "vosk-fallback"
+        assert result["transcript"] == "エンジニアカフェの営業時間を教えてください。"
+
+        events = [
+            getattr(record, "event", None)
+            for record in caplog.records
+            if record.name == "backend.observability.stt"
+        ]
+        assert "stt_vosk_route_normalize" in events
         assert "stt_vosk_early_accept" in events
         assert "stt_qwen_hedge_grace_start" not in events
 
