@@ -1045,6 +1045,10 @@ class TestSTTAgent:
             "ja",
         )
         assert _vosk_transcript_trusted_for_early_return(
+            "はい はい な セット 逆 方法 を 教え て ください",
+            "ja",
+        )
+        assert _vosk_transcript_trusted_for_early_return(
             "元気 に 赤毛 の アン は 時間 教え 結果 が はい",
             "ja",
         )
@@ -1069,6 +1073,16 @@ class TestSTTAgent:
         assert (
             _normalize_vosk_route_transcript("今の時間を教えてください", "ja")
             == "今の時間を教えてください"
+        )
+
+    def test_vosk_route_transcript_normalizes_wifi_connection_confusion(self):
+        """Known Vosk Wi-Fi wording confusion becomes a route-stable facility query."""
+        assert (
+            _normalize_vosk_route_transcript(
+                "はい はい な セット 逆 方法 を 教え て ください",
+                "ja",
+            )
+            == "Wi-Fiの接続方法を教えてください。"
         )
 
     def test_init_qwen_primary_hedge_delay_zero_disables_hedge(self, monkeypatch):
