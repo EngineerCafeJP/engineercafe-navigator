@@ -354,6 +354,41 @@ def _parse_qwen_stt_hedge_grace(
     return timeout
 
 
+def _vosk_transcript_trusted_for_early_return(transcript: str, language: Optional[str]) -> bool:
+    """Return true when Vosk output contains route-stable alpha keywords."""
+
+    if language not in {None, "ja", "en"}:
+        return False
+    normalized = "".join(transcript.lower().split())
+    if not normalized:
+        return False
+
+    trusted_terms = (
+        "営業時間",
+        "開館時間",
+        "営業日",
+        "予約",
+        "料金",
+        "wi-fi",
+        "wifi",
+        "接続",
+        "パスワード",
+        "イベント",
+        "開催",
+        "python",
+        "パイソン",
+        "仮想環境",
+        "api",
+        "sdk",
+    )
+    if any(term in normalized for term in trusted_terms):
+        return True
+
+    return ("営業" in normalized and "時間" in normalized) or (
+        "開館" in normalized and "時間" in normalized
+    )
+
+
 def _env_flag(name: str, default: bool = False) -> bool:
     raw_value = os.getenv(name)
     if raw_value is None:
@@ -1587,10 +1622,29 @@ class STTAgent:
                             vosk_result = await vosk_task
                         except Exception as exc:
                             vosk_result = exc
+                        vosk_trusted = isinstance(
+                            vosk_result, TranscriptionResult
+                        ) and _vosk_transcript_trusted_for_early_return(
+                            vosk_result.text,
+                            vosk_result.language,
+                        )
+                        if vosk_trusted:
+                            log_stt_event(
+                                event="stt_vosk_early_accept",
+                                stt_trace_id=stt_trace_id,
+                                provider="vosk-fallback",
+                                language=vosk_result.language,
+                                success=True,
+                                transcript_chars=len(vosk_result.text),
+                                confidence=vosk_result.confidence,
+                                hedge_grace_s=self._qwen_hedge_grace,
+                                stt_overall_duration_ms=_duration_ms(overall_started_at),
+                            )
                         if (
                             isinstance(vosk_result, TranscriptionResult)
                             and self._qwen_hedge_grace > 0
                             and not qwen_task.done()
+                            and not vosk_trusted
                         ):
                             log_stt_event(
                                 event="stt_qwen_hedge_grace_start",
