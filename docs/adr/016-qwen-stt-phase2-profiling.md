@@ -141,6 +141,8 @@ Alpha voice pipeline の合成音声 round-trip で、Vosk fallback が先に完
 - Qwen を先行開始し、`QWEN_STT_HEDGE_DELAY_SECONDS` を超えたら Vosk fallback を開始する。
 - Vosk が先に完了しても `QWEN_STT_HEDGE_GRACE_SECONDS` の範囲で Qwen 完了を待つ。
 - Qwen が grace 内に成功すれば Qwen を返し、間に合わなければ Vosk を返す。
+- ただし Vosk transcript が `営業 時間`、`Wi-Fi 接続` など route-stable な alpha keyword を
+  含む場合は、grace を待たず早期採用して long-tail latency を抑える。
 
 Cloud Run deploy は `QWEN_STT_TIMEOUT=45`、`QWEN_STT_HEDGE_DELAY_SECONDS=4`、
 `QWEN_STT_HEDGE_GRACE_SECONDS=6` を明示する。

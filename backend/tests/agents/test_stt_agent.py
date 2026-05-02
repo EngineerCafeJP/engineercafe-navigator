@@ -23,6 +23,7 @@ from backend.agents.stt_agent import (
     ENGINEER_CAFE_GRAMMAR,
     STAGE_GRAMMARS,
     VALID_STAGES,
+    _vosk_transcript_trusted_for_early_return,
 )
 
 # ==============================================================================
@@ -1031,6 +1032,21 @@ class TestSTTAgent:
         assert agent._qwen_timeout == pytest.approx(24.0)
         assert agent._qwen_hedge_delay == pytest.approx(3.5)
         assert agent._qwen_hedge_grace == pytest.approx(2.5)
+
+    def test_vosk_transcript_trusted_for_alpha_route_keywords(self):
+        """Route-stable Vosk transcripts can skip the Qwen grace wait."""
+        assert _vosk_transcript_trusted_for_early_return(
+            "エンジニア カフェ の 営業 時間 教え て ください",
+            "ja",
+        )
+        assert _vosk_transcript_trusted_for_early_return(
+            "Wi-Fiの接続方法を教えてください",
+            "ja",
+        )
+        assert not _vosk_transcript_trusted_for_early_return(
+            "はい 母 の 選挙 接客 方法 教え て ください",
+            "ja",
+        )
 
     def test_init_qwen_primary_hedge_delay_zero_disables_hedge(self, monkeypatch):
         """QWEN_STT_HEDGE_DELAY_SECONDS=0 restores hard-timeout-only behavior."""
@@ -2325,6 +2341,51 @@ class TestQwenPrimaryFallback:
             if record.name == "backend.observability.stt"
         ]
         assert "stt_qwen_hedge_grace_start" in events
+
+    @pytest.mark.asyncio
+    async def test_trusted_vosk_skips_grace_wait(self, caplog):
+        """Trusted route keywords let Vosk return without waiting for Qwen grace."""
+        caplog.set_level(logging.INFO, logger="backend.observability.stt")
+
+        async def slow_qwen(*args, **kwargs):
+            await asyncio.sleep(0.30)
+            return TranscriptionResult(text="late qwen", confidence=0.9, language="ja")
+
+        async def trusted_vosk(*args, **kwargs):
+            await asyncio.sleep(0.01)
+            return TranscriptionResult(
+                text="エンジニア カフェ の 営業 時間 教え て ください",
+                confidence=0.8,
+                language="ja",
+            )
+
+        mock_qwen = MagicMock()
+        mock_qwen.transcribe = slow_qwen
+        mock_vosk = MagicMock(spec=LocalSTTClient)
+        mock_vosk.transcribe = AsyncMock(side_effect=trusted_vosk)
+
+        agent = self._make_agent(mock_qwen, mock_vosk)
+        agent._qwen_timeout = 10.0
+        agent._qwen_hedge_delay = 0.01
+        agent._qwen_hedge_grace = 0.20
+
+        loop = asyncio.get_running_loop()
+        started_at = loop.time()
+        result = await agent.speech_to_text(b"audio", language="ja")
+        elapsed = loop.time() - started_at
+
+        assert result["success"] is True
+        assert result["provider"] == "vosk-fallback"
+        assert "営業" in result["transcript"]
+        assert elapsed < 0.10
+
+        events = [
+            getattr(record, "event", None)
+            for record in caplog.records
+            if record.name == "backend.observability.stt"
+        ]
+        assert "stt_vosk_early_accept" in events
+        assert "stt_qwen_hedge_grace_start" not in events
 
     @pytest.mark.asyncio
     async def test_qwen_grace_expires_then_vosk_wins(self, caplog):
