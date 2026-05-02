@@ -29,6 +29,10 @@ Current confirmed target:
 - RAGAS は direct RAG 評価と `/api/chat` live API 評価を分離します。`scripts/rag-live-test.sh` は `EnhancedRAGSearch` 直評価、`scripts/rag-api-live-test.sh` は `/api/chat` 経由評価です。
 - A 系の音声本実行前に `scripts/stt-live-preflight.sh` で直近の `stt_winner` latency / timeout 分布を確認します。
 - Alpha GO proof の C/RAGAS は direct OpenAI を必須にします。`RAGAS judge provider: direct OpenAI` が出ない run は diagnostic として扱い、GO 証跡にしません。
+- C/RAGAS の 29-case path は diagnostic only です。Alpha GO proof では
+  `scripts/rag-api-live-test.sh --case-suite alpha-127 --languages ja,en,zh,ko`、または
+  `alpha-live-verification.yml` の `suites=c-127` / `c_ragas_suite=alpha-127` を使います。
+  Report の `case_suite=alpha-127` と `suite_coverage` が 127/127 PASS になっていることを確認してください。
 - GitHub step conclusion だけで suite の成否を判断しないでください。`continue-on-error` のため、summary / artifact の suite outcome を正本にします。
 
 ## A-1 Japanese Realistic Utterances

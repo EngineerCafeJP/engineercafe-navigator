@@ -4,9 +4,16 @@ on:
   workflow_dispatch:
     inputs:
       suites:
-        description: 'Comma-separated suites: stt,v,a,b,c,d,e,h-ui,h,q,m,t,all (h is a compatibility alias for h-ui)'
+        description: 'Comma-separated suites: stt,v,a,b,c,c-diag,c-127,d,e,h-ui,h,q,m,t,all (h is a compatibility alias for h-ui; c is c-diag)'
         default: 'stt,v,b,c,q,h-ui'
         type: string
+      c_ragas_suite:
+        description: 'C/RAGAS case suite when suites contains c or all: diagnostic-29 or alpha-127. Explicit c-diag/c-127 suite aliases override this input.'
+        default: 'diagnostic-29'
+        type: choice
+        options:
+          - diagnostic-29
+          - alpha-127
       timestamp:
         description: 'Stable timestamp marker. Empty uses current UTC time.'
         default: ''
@@ -129,7 +136,7 @@ jobs:
 
       - name: C live API RAGAS
         id: rag_api_live
-        if: contains(format(',{0},', inputs.suites), ',c,') || contains(format(',{0},', inputs.suites), ',all,')
+        if: contains(format(',{0},', inputs.suites), ',c,') || contains(format(',{0},', inputs.suites), ',c-diag,') || contains(format(',{0},', inputs.suites), ',c-127,') || contains(format(',{0},', inputs.suites), ',all,')
         continue-on-error: true
         env:
           API_SECRET_KEY: ${{ secrets.BACKEND_API_KEY }}
@@ -138,7 +145,17 @@ jobs:
           RAG_API_LIVE_OPENAI_SECRET_NAMES: OPENAI_API_KEY,openai-api-key
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-        run: scripts/rag-api-live-test.sh --timestamp "${ALPHA_TIMESTAMP}-c" --languages ja,en,zh,ko
+        shell: bash
+        run: |
+          set -euo pipefail
+          c_suite="${{ inputs.c_ragas_suite }}"
+          if [[ ",${{ inputs.suites }}," == *",c-diag," ]]; then
+            c_suite="diagnostic-29"
+          fi
+          if [[ ",${{ inputs.suites }}," == *",c-127," ]]; then
+            c_suite="alpha-127"
+          fi
+          scripts/rag-api-live-test.sh --timestamp "${ALPHA_TIMESTAMP}-c" --case-suite "$c_suite" --languages ja,en,zh,ko
 
       - name: D memory and state durability smoke
         id: alpha_d
@@ -258,6 +275,7 @@ jobs:
           # Alpha Live Verification
 
           - suites: ${{ inputs.suites }}
+          - c_ragas_suite_input: ${{ inputs.c_ragas_suite }}
           - timestamp: ${ALPHA_TIMESTAMP:-unknown}
           - backend: ${ALPHA_SMOKE_BASE_URL:-unknown}
           - revision: ${ALPHA_SMOKE_CLOUD_RUN_REVISION:-unknown}

@@ -27,9 +27,19 @@ logger = logging.getLogger(__name__)
 
 DATASETS_DIR = Path(__file__).parent / "datasets"
 MULTILINGUAL_QUERIES_PATH = DATASETS_DIR / "multilingual_queries.json"
+GROUND_TRUTH_PATH = (
+    Path(__file__).parent.parent / "tests" / "fixtures" / "golden_datasets" / "ground_truth.json"
+)
 DEFAULT_REPORTS_DIR = Path(__file__).parent.parent / "tests" / "evaluation" / "reports"
 
 ALL_LANGUAGES = ("ja", "en", "zh", "ko")
+CASE_SUITE_DIAGNOSTIC_29 = "diagnostic-29"
+CASE_SUITE_ALPHA_127 = "alpha-127"
+CASE_SUITES = (CASE_SUITE_DIAGNOSTIC_29, CASE_SUITE_ALPHA_127)
+CASE_SUITE_EXPECTED_TOTALS = {
+    CASE_SUITE_DIAGNOSTIC_29: 29,
+    CASE_SUITE_ALPHA_127: 127,
+}
 TRACKED_METRICS = (
     "context_precision",
     "answer_correctness",
@@ -86,16 +96,73 @@ def _load_multilingual_config() -> Dict[str, Any]:
 
 def _load_ground_truth_lookup() -> Dict[str, Dict[str, Any]]:
     """Load ground truth cases indexed by id."""
-    gt_path = (
-        Path(__file__).parent.parent
-        / "tests"
-        / "fixtures"
-        / "golden_datasets"
-        / "ground_truth.json"
-    )
-    with open(gt_path, "r", encoding="utf-8") as f:
+    with open(GROUND_TRUTH_PATH, "r", encoding="utf-8") as f:
         data = json.load(f)
     return {case["id"]: case for case in data.get("test_cases", [])}
+
+
+def _load_ground_truth_cases() -> List[Dict[str, Any]]:
+    """Load ground truth cases in file order."""
+    with open(GROUND_TRUTH_PATH, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    return list(data.get("test_cases", []))
+
+
+def _query_from_ground_truth(case: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert a ground-truth entry to the live API query manifest shape."""
+    category = case.get("category", "")
+    return {
+        "id": case["id"],
+        "language": case.get("language", "ja"),
+        "question": case["question"],
+        "category": category,
+        "ground_truth_id": case["id"],
+        "metadata": {
+            "difficulty": "release",
+            "intent": category,
+            "source": "ground_truth_127",
+        },
+    }
+
+
+def _load_case_suite_config(case_suite: str) -> Dict[str, Any]:
+    """Load query manifest for a named C/RAGAS live suite."""
+    if case_suite == CASE_SUITE_DIAGNOSTIC_29:
+        config = _load_multilingual_config()
+        config["case_suite"] = CASE_SUITE_DIAGNOSTIC_29
+        config["expected_total_cases"] = CASE_SUITE_EXPECTED_TOTALS[CASE_SUITE_DIAGNOSTIC_29]
+        return config
+    if case_suite == CASE_SUITE_ALPHA_127:
+        cases = _load_ground_truth_cases()
+        return {
+            "version": "1.0.0",
+            "description": "Alpha release-blocking 127-case live API RAGAS suite.",
+            "case_suite": CASE_SUITE_ALPHA_127,
+            "expected_total_cases": CASE_SUITE_EXPECTED_TOTALS[CASE_SUITE_ALPHA_127],
+            "queries": [_query_from_ground_truth(case) for case in cases],
+        }
+    raise ValueError(f"Unknown case suite: {case_suite}")
+
+
+def _suite_coverage(
+    *,
+    case_suite: str,
+    selected_languages: Sequence[str],
+    requested_total: int,
+) -> Dict[str, Any]:
+    """Return artifact metadata that prevents partial suites from looking release-complete."""
+    expected_total = CASE_SUITE_EXPECTED_TOTALS[case_suite]
+    all_languages_selected = tuple(selected_languages) == ALL_LANGUAGES
+    release_blocking = case_suite == CASE_SUITE_ALPHA_127
+    passed = requested_total == expected_total and (not release_blocking or all_languages_selected)
+    return {
+        "case_suite": case_suite,
+        "release_blocking": release_blocking,
+        "expected_total_cases": expected_total,
+        "requested_total_cases": requested_total,
+        "all_languages_selected": all_languages_selected,
+        "passed": passed,
+    }
 
 
 async def _call_chat_api(
@@ -130,6 +197,7 @@ async def run_live_api_evaluation(
     output_dir: Optional[Path] = None,
     check_live_sources: bool = True,
     metrics: Optional[Sequence[str]] = None,
+    case_suite: str = CASE_SUITE_DIAGNOSTIC_29,
 ) -> Dict[str, Any]:
     """Run RAGAS evaluation against the live API.
 
@@ -142,7 +210,7 @@ async def run_live_api_evaluation(
     Returns:
         Evaluation result dictionary with per-language metrics.
     """
-    config = _load_multilingual_config()
+    config = _load_case_suite_config(case_suite)
     gt_lookup = _load_ground_truth_lookup()
     selected_languages = list(languages or ALL_LANGUAGES)
     selected_metrics = tuple(metrics or TRACKED_METRICS)
@@ -309,19 +377,36 @@ async def run_live_api_evaluation(
         }
 
     # Phase 3: Compare with targets
+    requested_total = sum(
+        int(result.get("requested_case_count", 0) or 0) for result in per_language_results.values()
+    )
+    suite_coverage = _suite_coverage(
+        case_suite=case_suite,
+        selected_languages=selected_languages,
+        requested_total=requested_total,
+    )
     comparison = _compare_targets(
         per_language_results, selected_languages, check_live_sources=check_live_sources
+    )
+    comparison["suite_coverage"] = suite_coverage
+    comparison["alpha_release_gate_met"] = (
+        comparison["all_targets_met"]
+        and suite_coverage["release_blocking"]
+        and suite_coverage["passed"]
     )
     report_text = _format_report(
         per_language_results,
         comparison,
         selected_languages,
         check_live_sources=check_live_sources,
+        case_suite=case_suite,
     )
 
     result = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "mode": "live-api",
+        "case_suite": case_suite,
+        "suite_coverage": suite_coverage,
         "base_url": base_url,
         "languages": selected_languages,
         "metrics": list(selected_metrics),
@@ -440,6 +525,7 @@ def _format_report(
     languages: Sequence[str],
     *,
     check_live_sources: bool,
+    case_suite: str,
 ) -> str:
     """Format a human-readable report."""
     lines = [
@@ -448,11 +534,25 @@ def _format_report(
         f"Generated: {datetime.now(timezone.utc).isoformat()}",
         "=" * 60,
         "",
+        f"Case suite: {case_suite}",
         "Targets: ja >= 0.85, en >= 0.75, zh >= 0.65, ko >= 0.65",
         "RAGAS contexts: golden_dataset references, not live retrieved chunks",
         f"Live source metadata gate: {'enabled' if check_live_sources else 'disabled'}",
         "",
     ]
+    suite_coverage = comparison.get("suite_coverage", {})
+    if suite_coverage:
+        status = "PASS" if suite_coverage.get("passed") else "FAIL"
+        lines.extend(
+            [
+                "Suite coverage:",
+                f"  release_blocking: {suite_coverage.get('release_blocking')}",
+                "  cases: "
+                f"requested={suite_coverage.get('requested_total_cases')} "
+                f"expected={suite_coverage.get('expected_total_cases')} [{status}]",
+                "",
+            ]
+        )
 
     for lang in languages:
         result = lang_results.get(lang, {})
@@ -527,6 +627,18 @@ def _format_report(
     lines.append("=" * 60)
     all_met = comparison.get("all_targets_met", False)
     lines.append(f"All targets met: {'YES' if all_met else 'NO'}")
+    lines.append(
+        "Alpha release gate met: "
+        f"{'YES' if comparison.get('alpha_release_gate_met', False) else 'NO'}"
+    )
+    if suite_coverage and not suite_coverage.get("passed"):
+        lines.append(
+            "Suite coverage failed: "
+            f"case_suite={suite_coverage.get('case_suite')} "
+            f"requested={suite_coverage.get('requested_total_cases')} "
+            f"expected={suite_coverage.get('expected_total_cases')} "
+            f"all_languages_selected={suite_coverage.get('all_languages_selected')}"
+        )
 
     if not all_met:
         lines.append("Failed targets:")
@@ -595,6 +707,15 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--case-suite",
+        choices=CASE_SUITES,
+        default=CASE_SUITE_DIAGNOSTIC_29,
+        help=(
+            "C/RAGAS live case suite. diagnostic-29 is the existing fast diagnostic path; "
+            "alpha-127 is the release-blocking full dataset."
+        ),
+    )
+    parser.add_argument(
         "--no-check-live-sources",
         action="store_true",
         help=(
@@ -619,10 +740,14 @@ def main() -> None:
             output_dir=output_dir,
             check_live_sources=not args.no_check_live_sources,
             metrics=args.metrics,
+            case_suite=args.case_suite,
         )
     )
 
-    if args.check_targets and not result["comparison"]["all_targets_met"]:
+    target_key = (
+        "alpha_release_gate_met" if args.case_suite == CASE_SUITE_ALPHA_127 else "all_targets_met"
+    )
+    if args.check_targets and not result["comparison"][target_key]:
         logger.error("One or more evaluation targets were missed.")
         sys.exit(1)
 
