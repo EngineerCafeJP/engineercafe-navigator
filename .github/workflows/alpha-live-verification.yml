@@ -97,12 +97,6 @@ jobs:
           set -euo pipefail
           curl -fsS --max-time 60 "$ALPHA_SMOKE_BASE_URL/health"
 
-      - name: STT live preflight
-        id: stt_preflight
-        if: contains(format(',{0},', inputs.suites), ',stt,') || contains(format(',{0},', inputs.suites), ',all,')
-        continue-on-error: true
-        run: scripts/stt-live-preflight.sh --timestamp "${ALPHA_TIMESTAMP}-stt" --revision "$ALPHA_SMOKE_CLOUD_RUN_REVISION" --minutes 1440 --limit 1000
-
       - name: V voice pipeline live preflight
         id: voice_pipeline
         if: contains(format(',{0},', inputs.suites), ',v,') || contains(format(',{0},', inputs.suites), ',all,')
@@ -110,6 +104,12 @@ jobs:
         env:
           API_SECRET_KEY: ${{ secrets.BACKEND_API_KEY }}
         run: scripts/voice-pipeline-live-preflight.sh --timestamp "${ALPHA_TIMESTAMP}-v" --host "$ALPHA_SMOKE_BASE_URL" --case-set smoke --allow-vosk-fallback
+
+      - name: STT live preflight
+        id: stt_preflight
+        if: contains(format(',{0},', inputs.suites), ',stt,') || contains(format(',{0},', inputs.suites), ',all,')
+        continue-on-error: true
+        run: scripts/stt-live-preflight.sh --timestamp "${ALPHA_TIMESTAMP}-stt" --revision "$ALPHA_SMOKE_CLOUD_RUN_REVISION" --minutes 1440 --limit 1000
 
       - name: A voice round-trip smoke
         id: alpha_a

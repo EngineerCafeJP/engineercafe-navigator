@@ -132,6 +132,19 @@ p50 は **2827ms** となり、期待値 3.1 秒を上回る改善 (-34%、Phase
 `stt_overall - qwen_inference` 差は 1ms に収束し、Qwen 勝利時の Vosk 完了待ちが完全に
 解消されていることを実証。詳細は「Profile 結果 > Phase B-1 results」セクション参照。
 
+### 2026-05-03 #658 hedge grace update
+
+Alpha voice pipeline の合成音声 round-trip で、Vosk fallback が先に完了した場合に日本語 transcript
+品質が落ち、後続 route が `unknown` / 誤 route になるケースを確認した。速度だけで Vosk を winner
+にすると alpha gate の route correctness を壊すため、`qwen-primary` は次の soft fallback に変更する。
+
+- Qwen を先行開始し、`QWEN_STT_HEDGE_DELAY_SECONDS` を超えたら Vosk fallback を開始する。
+- Vosk が先に完了しても `QWEN_STT_HEDGE_GRACE_SECONDS` の範囲で Qwen 完了を待つ。
+- Qwen が grace 内に成功すれば Qwen を返し、間に合わなければ Vosk を返す。
+
+Cloud Run deploy は `QWEN_STT_TIMEOUT=45`、`QWEN_STT_HEDGE_DELAY_SECONDS=4`、
+`QWEN_STT_HEDGE_GRACE_SECONDS=6` を明示する。
+
 ## 互換性
 
 - API response schema は変更しない。

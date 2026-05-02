@@ -985,6 +985,7 @@ class TestSTTAgent:
 
         assert agent._qwen_timeout == pytest.approx(24.0)
         assert agent._qwen_hedge_delay == pytest.approx(4.0)
+        assert agent._qwen_hedge_grace == pytest.approx(6.0)
 
     def test_init_qwen_primary_timeout_env_numeric(self, monkeypatch):
         """qwen-primary accepts numeric QWEN_STT_TIMEOUT values."""
@@ -998,6 +999,7 @@ class TestSTTAgent:
 
         assert agent._qwen_timeout == pytest.approx(2.5)
         assert agent._qwen_hedge_delay == pytest.approx(2.0)
+        assert agent._qwen_hedge_grace == pytest.approx(0.4)
 
     def test_init_qwen_primary_hedge_delay_env_numeric(self, monkeypatch):
         """qwen-primary accepts numeric QWEN_STT_HEDGE_DELAY_SECONDS values."""
@@ -1012,6 +1014,23 @@ class TestSTTAgent:
 
         assert agent._qwen_timeout == pytest.approx(24.0)
         assert agent._qwen_hedge_delay == pytest.approx(3.5)
+        assert agent._qwen_hedge_grace == pytest.approx(6.0)
+
+    def test_init_qwen_primary_hedge_grace_env_numeric(self, monkeypatch):
+        """qwen-primary accepts numeric QWEN_STT_HEDGE_GRACE_SECONDS values."""
+        monkeypatch.setenv("QWEN_STT_TIMEOUT", "24")
+        monkeypatch.setenv("QWEN_STT_HEDGE_DELAY_SECONDS", "3.5")
+        monkeypatch.setenv("QWEN_STT_HEDGE_GRACE_SECONDS", "2.5")
+
+        with (
+            patch("backend.agents.stt_agent.Qwen06BCpuSTTClient"),
+            patch("backend.agents.stt_agent.LocalSTTClient"),
+        ):
+            agent = STTAgent(stt_provider="qwen-primary")
+
+        assert agent._qwen_timeout == pytest.approx(24.0)
+        assert agent._qwen_hedge_delay == pytest.approx(3.5)
+        assert agent._qwen_hedge_grace == pytest.approx(2.5)
 
     def test_init_qwen_primary_hedge_delay_zero_disables_hedge(self, monkeypatch):
         """QWEN_STT_HEDGE_DELAY_SECONDS=0 restores hard-timeout-only behavior."""
@@ -1025,6 +1044,7 @@ class TestSTTAgent:
             agent = STTAgent(stt_provider="qwen-primary")
 
         assert agent._qwen_hedge_delay is None
+        assert agent._qwen_hedge_grace == pytest.approx(0.0)
 
     def test_qwen_primary_preloads_vosk_fallback_in_production(self, monkeypatch):
         """Production qwen-primary preloads fallback models to avoid first-request latency."""
@@ -2056,6 +2076,7 @@ class TestQwenPrimaryFallback:
         agent._vosk_fallback_client = mock_vosk
         agent._qwen_timeout = 10.0
         agent._qwen_hedge_delay = None
+        agent._qwen_hedge_grace = 0.0
         return agent
 
     @pytest.mark.asyncio
@@ -2269,6 +2290,76 @@ class TestQwenPrimaryFallback:
         assert result["success"] is True
         assert result["provider"] == "qwen-primary"
         assert result["transcript"] == "qwen still wins"
+
+    @pytest.mark.asyncio
+    async def test_qwen_grace_after_vosk_can_still_win(self, caplog):
+        """A ready Vosk fallback waits briefly so late Qwen quality can win."""
+        caplog.set_level(logging.INFO, logger="backend.observability.stt")
+
+        async def late_qwen(*args, **kwargs):
+            await asyncio.sleep(0.04)
+            return TranscriptionResult(text="qwen quality wins", confidence=0.9, language="ja")
+
+        async def fast_vosk(*args, **kwargs):
+            await asyncio.sleep(0.01)
+            return TranscriptionResult(text="fast fallback", confidence=0.8, language="ja")
+
+        mock_qwen = MagicMock()
+        mock_qwen.transcribe = late_qwen
+        mock_vosk = MagicMock(spec=LocalSTTClient)
+        mock_vosk.transcribe = AsyncMock(side_effect=fast_vosk)
+
+        agent = self._make_agent(mock_qwen, mock_vosk)
+        agent._qwen_timeout = 10.0
+        agent._qwen_hedge_delay = 0.01
+        agent._qwen_hedge_grace = 0.10
+        result = await agent.speech_to_text(b"audio", language="ja")
+
+        assert result["success"] is True
+        assert result["provider"] == "qwen-primary"
+        assert result["transcript"] == "qwen quality wins"
+
+        events = [
+            getattr(record, "event", None)
+            for record in caplog.records
+            if record.name == "backend.observability.stt"
+        ]
+        assert "stt_qwen_hedge_grace_start" in events
+
+    @pytest.mark.asyncio
+    async def test_qwen_grace_expires_then_vosk_wins(self, caplog):
+        """Vosk remains the fallback if Qwen misses the grace window."""
+        caplog.set_level(logging.INFO, logger="backend.observability.stt")
+
+        async def too_late_qwen(*args, **kwargs):
+            await asyncio.sleep(0.30)
+            return TranscriptionResult(text="too late", confidence=0.9, language="ja")
+
+        async def fast_vosk(*args, **kwargs):
+            await asyncio.sleep(0.01)
+            return TranscriptionResult(text="fast fallback", confidence=0.8, language="ja")
+
+        mock_qwen = MagicMock()
+        mock_qwen.transcribe = too_late_qwen
+        mock_vosk = MagicMock(spec=LocalSTTClient)
+        mock_vosk.transcribe = AsyncMock(side_effect=fast_vosk)
+
+        agent = self._make_agent(mock_qwen, mock_vosk)
+        agent._qwen_timeout = 10.0
+        agent._qwen_hedge_delay = 0.01
+        agent._qwen_hedge_grace = 0.02
+        result = await agent.speech_to_text(b"audio", language="ja")
+
+        assert result["success"] is True
+        assert result["provider"] == "vosk-fallback"
+        assert result["transcript"] == "fast fallback"
+
+        events = [
+            getattr(record, "event", None)
+            for record in caplog.records
+            if record.name == "backend.observability.stt"
+        ]
+        assert "stt_qwen_hedge_grace_complete" in events
 
     @pytest.mark.asyncio
     async def test_qwen_error_vosk_fallback(self):
