@@ -109,7 +109,7 @@ jobs:
         continue-on-error: true
         env:
           API_SECRET_KEY: ${{ secrets.BACKEND_API_KEY }}
-        run: scripts/voice-pipeline-live-preflight.sh --timestamp "${ALPHA_TIMESTAMP}-v" --host "$ALPHA_SMOKE_BASE_URL" --case-set smoke
+        run: scripts/voice-pipeline-live-preflight.sh --timestamp "${ALPHA_TIMESTAMP}-v" --host "$ALPHA_SMOKE_BASE_URL" --case-set smoke --allow-vosk-fallback
 
       - name: A voice round-trip smoke
         id: alpha_a

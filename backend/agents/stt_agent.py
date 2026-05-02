@@ -255,6 +255,56 @@ def _parse_qwen_stt_timeout(raw_value: Optional[str], default: float = 24.0) -> 
     return timeout
 
 
+class HedgedFallback(Exception):
+    """Qwen exceeded the latency budget, so Vosk was allowed to race it."""
+
+
+def _parse_qwen_stt_hedge_delay(
+    raw_value: Optional[str],
+    *,
+    hard_timeout: float,
+) -> float | None:
+    """Parse the latency budget before Vosk fallback starts racing Qwen."""
+
+    default = 4.0
+    if raw_value is None or raw_value.strip() == "":
+        timeout = default
+    else:
+        try:
+            timeout = float(raw_value)
+        except (TypeError, ValueError):
+            logger.warning(
+                "Invalid QWEN_STT_HEDGE_DELAY_SECONDS=%r; falling back to %.1fs",
+                raw_value,
+                default,
+            )
+            timeout = default
+
+    if not math.isfinite(timeout):
+        logger.warning(
+            "Invalid QWEN_STT_HEDGE_DELAY_SECONDS=%r; falling back to %.1fs",
+            raw_value,
+            default,
+        )
+        timeout = default
+
+    if timeout <= 0:
+        return None
+
+    if timeout >= hard_timeout:
+        adjusted = max(0.05, hard_timeout * 0.8)
+        logger.warning(
+            "QWEN_STT_HEDGE_DELAY_SECONDS %.2fs must be less than QWEN_STT_TIMEOUT %.2fs; "
+            "using %.2fs",
+            timeout,
+            hard_timeout,
+            adjusted,
+        )
+        return adjusted
+
+    return timeout
+
+
 def _env_flag(name: str, default: bool = False) -> bool:
     raw_value = os.getenv(name)
     if raw_value is None:
@@ -1043,6 +1093,7 @@ class STTAgent:
         self.confidence_threshold = confidence_threshold
         self._vosk_fallback_client = None
         self._qwen_timeout = None
+        self._qwen_hedge_delay = None
         if stt_client:
             self.stt_client = stt_client
         elif self.stt_provider == "vosk":
@@ -1065,6 +1116,10 @@ class STTAgent:
             )
             self._vosk_fallback_client = LocalSTTClient()
             self._qwen_timeout = _parse_qwen_stt_timeout(os.getenv("QWEN_STT_TIMEOUT"))
+            self._qwen_hedge_delay = _parse_qwen_stt_hedge_delay(
+                os.getenv("QWEN_STT_HEDGE_DELAY_SECONDS"),
+                hard_timeout=self._qwen_timeout,
+            )
             if _stt_preload_vosk_fallback_enabled():
                 self._vosk_fallback_client.preload_models()
         else:
@@ -1304,9 +1359,9 @@ class STTAgent:
     ) -> Dict[str, Any]:
         """Qwen primary + Vosk fallback-only path (ADR-007/016).
 
-        Qwen が ``QWEN_STT_TIMEOUT`` 秒以内に成功すれば Vosk の fallback task を
-        cancel して即座に返す。タイムアウトまたはエラー時だけ Vosk inference を
-        sequential に起動してフォールバックする。
+        Qwen が ``QWEN_STT_HEDGE_DELAY_SECONDS`` 秒以内に成功すれば即座に返す。
+        hedge delay を超えたら Qwen は継続しつつ Vosk fallback と race し、
+        先に成功した結果を返す。Qwen の hard timeout / error 時も Vosk を使う。
         """
 
         stt_trace_id = f"stt-{uuid.uuid4().hex[:12]}"
@@ -1321,6 +1376,7 @@ class STTAgent:
                 provider="qwen-primary",
                 language=language,
                 timeout_s=self._qwen_timeout,
+                hedge_delay_s=self._qwen_hedge_delay,
                 audio_bytes=len(audio_data),
                 qwen_postprocess_enabled=qwen_postprocess_enabled,
             )
@@ -1429,13 +1485,55 @@ class STTAgent:
         vosk_task = asyncio.create_task(_run_vosk_after_qwen_failure())
 
         try:
-            qwen_result: TranscriptionResult | Exception
-            try:
-                qwen_result = await qwen_task
-            except Exception as exc:
-                qwen_result = exc
+            qwen_result: TranscriptionResult | Exception | None = None
+            vosk_result: TranscriptionResult | Exception | None = None
+            qwen_error_for_log: Exception | None = None
 
-            # Qwen success
+            if self._qwen_hedge_delay is None:
+                try:
+                    qwen_result = await qwen_task
+                except Exception as exc:
+                    qwen_result = exc
+                    qwen_error_for_log = exc
+            else:
+                try:
+                    qwen_result = await asyncio.wait_for(
+                        asyncio.shield(qwen_task),
+                        timeout=self._qwen_hedge_delay,
+                    )
+                except asyncio.TimeoutError:
+                    qwen_error_for_log = HedgedFallback(
+                        f"Qwen exceeded hedge delay {self._qwen_hedge_delay:.2f}s"
+                    )
+                    log_stt_event(
+                        event="stt_qwen_hedge_start",
+                        stt_trace_id=stt_trace_id,
+                        provider="qwen-primary",
+                        language=language,
+                        success=False,
+                        stt_qwen_duration_ms=_duration_ms(overall_started_at),
+                        hedge_delay_s=self._qwen_hedge_delay,
+                    )
+                    vosk_fallback_allowed.set()
+                    done, _pending = await asyncio.wait(
+                        {qwen_task, vosk_task},
+                        return_when=asyncio.FIRST_COMPLETED,
+                    )
+                    if qwen_task in done:
+                        try:
+                            qwen_result = await qwen_task
+                        except Exception as exc:
+                            qwen_result = exc
+                            qwen_error_for_log = exc
+                    elif vosk_task in done:
+                        try:
+                            vosk_result = await vosk_task
+                        except Exception as exc:
+                            vosk_result = exc
+                except Exception as exc:
+                    qwen_result = exc
+                    qwen_error_for_log = exc
+
             if isinstance(qwen_result, TranscriptionResult):
                 if not vosk_task.done():
                     vosk_task.cancel()
@@ -1458,16 +1556,51 @@ class STTAgent:
                     "provider": "qwen-primary",
                 }
 
-            # Qwen failed -> Vosk fallback
+            # Qwen failed or exceeded the hedge latency budget -> Vosk fallback
+            if qwen_error_for_log is None:
+                qwen_error_for_log = (
+                    qwen_result if isinstance(qwen_result, Exception) else HedgedFallback()
+                )
             logger.warning(
-                "Qwen STT failed, using Vosk fallback: %s",
-                qwen_result,
+                "Qwen STT failed or exceeded hedge delay, using Vosk fallback: %s",
+                qwen_error_for_log,
             )
             vosk_fallback_allowed.set()
-            try:
-                vosk_result: TranscriptionResult | Exception = await vosk_task
-            except Exception as exc:
-                vosk_result = exc
+            if vosk_result is None:
+                try:
+                    vosk_result = await vosk_task
+                except Exception as exc:
+                    vosk_result = exc
+
+            if (
+                isinstance(vosk_result, Exception)
+                and self._qwen_hedge_delay is not None
+                and not qwen_task.done()
+            ):
+                try:
+                    qwen_result = await qwen_task
+                except Exception as exc:
+                    qwen_result = exc
+                    qwen_error_for_log = exc
+                if isinstance(qwen_result, TranscriptionResult):
+                    log_stt_event(
+                        event="stt_winner",
+                        stt_trace_id=stt_trace_id,
+                        stt_winner="qwen",
+                        provider="qwen-primary",
+                        language=qwen_result.language,
+                        success=True,
+                        stt_overall_duration_ms=_duration_ms(overall_started_at),
+                        qwen_postprocess_enabled=qwen_postprocess_enabled,
+                        vosk_error_type=type(vosk_result).__name__,
+                    )
+                    return {
+                        "success": True,
+                        "transcript": qwen_result.text,
+                        "confidence": qwen_result.confidence,
+                        "language": qwen_result.language,
+                        "provider": "qwen-primary",
+                    }
 
             if isinstance(vosk_result, TranscriptionResult):
                 transcript = vosk_result.text
@@ -1486,7 +1619,7 @@ class STTAgent:
                     success=True,
                     stt_overall_duration_ms=_duration_ms(overall_started_at),
                     vosk_postprocessed=postprocessed,
-                    qwen_error_type=type(qwen_result).__name__,
+                    qwen_error_type=type(qwen_error_for_log).__name__,
                 )
                 return {
                     "success": True,
@@ -1504,7 +1637,7 @@ class STTAgent:
                 stt_winner="none",
                 success=False,
                 stt_overall_duration_ms=_duration_ms(overall_started_at),
-                qwen_error_type=type(qwen_result).__name__,
+                qwen_error_type=type(qwen_error_for_log).__name__,
                 vosk_error_type=type(vosk_result).__name__,
             )
             raise RuntimeError(
