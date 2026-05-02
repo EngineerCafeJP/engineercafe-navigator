@@ -65,6 +65,12 @@ class SimplifiedMemoryHelper:
             return False
 
         try:
+            uuid.UUID(session_id)
+        except (TypeError, ValueError):
+            logger.debug("Skipping conversation_sessions UUID lookup for non-UUID session_id")
+            return True
+
+        try:
             response = (
                 self.supabase.table("conversation_sessions")
                 .select("id, status")

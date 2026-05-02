@@ -52,6 +52,8 @@ WIFI_KEYWORDS = ["wi-fi", "wifi", "ワイファイ", "インターネット", "i
 
 BUSINESS_HOURS_KEYWORDS = [
     "営業時間",
+    "最終受付",
+    "受付時間",
     "何時まで",
     "何時から",
     "開いて",
@@ -64,6 +66,8 @@ BUSINESS_HOURS_KEYWORDS = [
     "閉館",
     "opening hours",
     "business hours",
+    "last reception",
+    "reception hours",
     "hours",
     "open",
     "close",

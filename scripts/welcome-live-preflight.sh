@@ -115,7 +115,7 @@ set -e
   echo
   echo "## Scope"
   echo
-  echo "- H-1: Welcome 起動 → greeting TTS → OCR sidecar → STT warmup"
+  echo "- H-1: Welcome 起動 → greeting TTS → STT warmup（voice-first; OCR overlay は開かない）"
   echo "- H-2/H-3: Welcome 後 0秒/5秒/10秒の初回発話"
   echo "- H-6/H-7: frontend cleanup / stale warmup の回帰は mocked E2E と合わせて確認"
   echo

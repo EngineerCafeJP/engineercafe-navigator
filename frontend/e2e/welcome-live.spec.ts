@@ -137,13 +137,13 @@ async function triggerVoiceTurn(page: Page): Promise<void> {
   });
 }
 
-test.describe('Welcome live (Welcome → OCR → STT warmup → first voice)', () => {
+test.describe('Welcome live (Welcome → STT warmup → first voice)', () => {
   test.skip(
     !welcomeLive || !process.env.BACKEND_API_URL || !process.env.BACKEND_API_KEY,
     'Set PLAYWRIGHT_WELCOME_LIVE=1 + BACKEND_API_URL + BACKEND_API_KEY to run welcome live E2E.',
   );
 
-  test('Welcome starts STT warmup while greeting TTS and OCR sidecar are active', async ({
+  test('Welcome starts STT warmup while greeting TTS is active without OCR overlay', async ({
     page,
   }) => {
     test.setTimeout(180_000);
@@ -176,9 +176,8 @@ test.describe('Welcome live (Welcome → OCR → STT warmup → first voice)', (
     expect(warmup.ok(), 'warmup response').toBeTruthy();
     expect(reception.ok(), 'reception start response').toBeTruthy();
     expect(tts.ok(), 'greeting TTS response').toBeTruthy();
-    await expect(page.getByTestId('kiosk-welcome-ocr-overlay')).toBeVisible({
-      timeout: 15_000,
-    });
+    await expect(page.getByTestId('kiosk-welcome-ocr-overlay')).toBeHidden({ timeout: 5_000 });
+    await expect(page.getByTestId('kiosk-voice-mode-badge')).toBeVisible({ timeout: 15_000 });
 
     const warmupCall = firstCall(calls, (call) => call.action === 'warmup');
     const ttsCall = firstCall(calls, (call) => call.action === 'text_to_speech');
@@ -222,9 +221,8 @@ test.describe('Welcome live (Welcome → OCR → STT warmup → first voice)', (
       expect(warmup.ok(), 'warmup response').toBeTruthy();
       expect(reception.ok(), 'reception start response').toBeTruthy();
       expect(greetingTts.ok(), 'greeting TTS response').toBeTruthy();
-      await expect(page.getByTestId('kiosk-welcome-ocr-overlay')).toBeVisible({
-        timeout: 15_000,
-      });
+      await expect(page.getByTestId('kiosk-welcome-ocr-overlay')).toBeHidden({ timeout: 5_000 });
+      await expect(page.getByTestId('kiosk-voice-mode-badge')).toBeVisible({ timeout: 15_000 });
 
       if (delaySeconds > 0) {
         await page.waitForTimeout(delaySeconds * 1000);

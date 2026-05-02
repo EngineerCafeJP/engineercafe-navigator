@@ -127,10 +127,12 @@ require_ragas_judge_key() {
   fi
   if [ -n "${OPENAI_API_KEY:-}" ]; then
     echo "RAGAS judge provider: direct OpenAI"
+    echo "RAGAS judge model: ${RAGAS_EVAL_MODEL:-gpt-5.2-2025-12-11}"
     return
   fi
   if [ -n "${OPENROUTER_API_KEY:-}" ]; then
     echo "RAGAS judge provider: OpenRouter fallback"
+    echo "RAGAS judge model: ${RAGAS_OPENROUTER_MODEL:-openai/gpt-5-mini}"
     return
   fi
 
@@ -214,6 +216,8 @@ main() {
   echo "Base URL: $BASE_URL"
   echo "Languages: ${LANG_ARGS[*]}"
   echo "Metrics: ${METRIC_ARGS[*]}"
+  echo "RAGAS batch strategy: ${RAGAS_BATCH_STRATEGY:-single}"
+  echo "RAGAS per-case timeout: ${RAGAS_OUTER_SINGLE_TIMEOUT:-300}s"
 
   cmd=(python evaluation/run_live_api_eval.py --base-url "$BASE_URL" --languages "${LANG_ARGS[@]}" --metrics "${METRIC_ARGS[@]}" --output-dir "$OUTPUT_DIR")
   if [ "$CHECK_TARGETS" = "1" ]; then

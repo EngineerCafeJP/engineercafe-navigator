@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Optional, TypeVar
 
@@ -23,6 +24,14 @@ def _db_timeout_seconds() -> float:
     except ValueError:
         return 3.0
     return value if value > 0 else 3.0
+
+
+def _is_uuid(value: str) -> bool:
+    try:
+        uuid.UUID(value)
+    except (TypeError, ValueError):
+        return False
+    return True
 
 
 async def _run_db_call(call: Callable[[], _T]) -> _T:
@@ -75,6 +84,9 @@ class ReceptionRepository:
     async def get_session_record(
         self, session_id: str, *, include_completed: bool = False
     ) -> dict[str, Any] | None:
+        if not _is_uuid(session_id):
+            logger.debug("Skipping reception_sessions UUID lookup for non-UUID session_id")
+            return None
         client = await self._get_client()
         query = client.table("reception_sessions").select("*").eq("id", session_id)
         if include_completed:
@@ -130,6 +142,9 @@ class ReceptionRepository:
         return await self.get_session_by_conversation_id(session_id)
 
     async def complete_session(self, session_id: str) -> None:
+        if not _is_uuid(session_id):
+            logger.debug("Skipping reception_sessions completion for non-UUID session_id")
+            return
         client = await self._get_client()
         await _run_db_call(
             lambda: client.table("reception_sessions")
