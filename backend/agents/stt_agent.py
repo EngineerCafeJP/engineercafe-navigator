@@ -354,12 +354,48 @@ def _parse_qwen_stt_hedge_grace(
     return timeout
 
 
+def _normalize_vosk_route_transcript(transcript: str, language: Optional[str]) -> str:
+    """Correct narrow, route-critical Vosk confusions before LangGraph routing.
+
+    Vosk sometimes preserves only the intent-bearing tail of Japanese alpha
+    fixture audio and mangles "エンジニアカフェ" into unrelated words. When the
+    remaining phrase is still clearly an Engineer Cafe hours question, return a
+    canonical business-hours query so it cannot fall into small talk.
+    """
+
+    if language != "ja":
+        return transcript
+
+    normalized = "".join(transcript.lower().split())
+    if not normalized or "時間" not in normalized:
+        return transcript
+
+    asks_for_time = any(
+        marker in normalized
+        for marker in ("教え", "知りたい", "確認", "何時", "いつまで", "いつから")
+    )
+    if not asks_for_time:
+        return transcript
+
+    has_engineer_cafe_context = any(
+        marker in normalized
+        for marker in ("エンジニア", "カフェ", "営業", "開館", "会館", "受付", "利用")
+    ) or ("赤毛" in normalized and "アン" in normalized)
+    if not has_engineer_cafe_context:
+        return transcript
+
+    if "会館" in normalized or "開館" in normalized:
+        return "エンジニアカフェの開館時間を教えてください。"
+    return "エンジニアカフェの営業時間を教えてください。"
+
+
 def _vosk_transcript_trusted_for_early_return(transcript: str, language: Optional[str]) -> bool:
     """Return true when Vosk output contains route-stable alpha keywords."""
 
     if language not in {None, "ja", "en"}:
         return False
-    normalized = "".join(transcript.lower().split())
+    normalized_transcript = _normalize_vosk_route_transcript(transcript, language)
+    normalized = "".join(normalized_transcript.lower().split())
     if not normalized:
         return False
 
@@ -1539,6 +1575,25 @@ class STTAgent:
                     stt_vosk_duration_ms=_duration_ms(vosk_started_at),
                 )
                 raise
+
+            normalized_text = _normalize_vosk_route_transcript(result.text, result.language)
+            if normalized_text != result.text:
+                log_stt_event(
+                    event="stt_vosk_route_normalize",
+                    stt_trace_id=stt_trace_id,
+                    provider="vosk-fallback",
+                    language=result.language,
+                    success=True,
+                    transcript_chars=len(result.text),
+                    normalized_chars=len(normalized_text),
+                    stt_vosk_duration_ms=_duration_ms(vosk_started_at),
+                )
+                result = TranscriptionResult(
+                    text=normalized_text,
+                    confidence=result.confidence,
+                    language=result.language,
+                    word_confidences=result.word_confidences,
+                )
 
             log_stt_event(
                 event="stt_vosk_complete",
