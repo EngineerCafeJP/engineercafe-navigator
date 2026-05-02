@@ -57,7 +57,12 @@ Tasks:
 
 - Define release-blocking cases versus diagnostic/soak cases.
 - Add explicit workflow inputs for diagnostic C and full C-127.
+  - Implemented harness selection: `c` / `c-diag` run `diagnostic-29`; `c-127` runs
+    `alpha-127`; the `c_ragas_suite` workflow input can also select either suite for `c` or
+    `all`.
 - Ensure reports cannot imply that 29 cases satisfy the 127-case requirement.
+  - `live_api_eval` reports now include `case_suite` and `suite_coverage` metadata. Only
+    `alpha-127` with all four languages and 127 requested cases is release-blocking coverage.
 
 ### 3. #653 / #672 answer quality
 

@@ -6,6 +6,7 @@ set -euo pipefail
 # Usage:
 #   scripts/rag-api-live-test.sh
 #   scripts/rag-api-live-test.sh --languages ja,en --dry-run
+#   scripts/rag-api-live-test.sh --case-suite alpha-127
 #
 # Env:
 #   API_SECRET_KEY                 Required unless --key is provided or gcloud can read it.
@@ -27,6 +28,7 @@ OPENROUTER_SECRET_NAMES="${RAG_API_LIVE_OPENROUTER_SECRET_NAMES:-OPENROUTER_API_
 OUTPUT_DIR="$ROOT_DIR/backend/tests/evaluation/reports"
 LANGUAGES="ja,en,zh,ko"
 METRICS="${RAG_API_LIVE_METRICS:-answer_correctness}"
+CASE_SUITE="${RAG_API_LIVE_CASE_SUITE:-diagnostic-29}"
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 DRY_RUN=0
 CHECK_TARGETS=1
@@ -45,6 +47,7 @@ Options:
                          Comma-separated OpenRouter fallback secret names (default: OPENROUTER_API_KEY)
   --languages LIST       Comma-separated languages (default: ja,en,zh,ko)
   --metrics LIST         Comma-separated RAGAS metrics (default: answer_correctness)
+  --case-suite NAME      diagnostic-29 (fast path) or alpha-127 (release gate)
   --output-dir DIR       Report directory (default: backend/tests/evaluation/reports)
   --timestamp VALUE      Stable timestamp marker printed for operator correlation
   --no-check-targets     Do not fail when configured answer_correctness targets are missed
@@ -68,6 +71,7 @@ while [ "$#" -gt 0 ]; do
     --openrouter-secret-names) OPENROUTER_SECRET_NAMES="$2"; shift 2 ;;
     --languages) LANGUAGES="$2"; shift 2 ;;
     --metrics) METRICS="$2"; shift 2 ;;
+    --case-suite) CASE_SUITE="$2"; shift 2 ;;
     --output-dir) OUTPUT_DIR="$2"; shift 2 ;;
     --timestamp) TIMESTAMP="$2"; shift 2 ;;
     --no-check-targets) CHECK_TARGETS=0; shift ;;
@@ -141,6 +145,16 @@ require_ragas_judge_key() {
   exit 2
 }
 
+validate_case_suite() {
+  case "$CASE_SUITE" in
+    diagnostic-29|alpha-127) ;;
+    *)
+      echo "Error: --case-suite must be diagnostic-29 or alpha-127, got: $CASE_SUITE" >&2
+      exit 2
+      ;;
+  esac
+}
+
 language_args() {
   python3 - "$LANGUAGES" <<'PY'
 import sys
@@ -161,6 +175,7 @@ PY
 
 main() {
   require_cmd python3
+  validate_case_suite
   if [ ! -f "$RUNNER" ]; then
     echo "Error: live API RAGAS runner not found: $RUNNER" >&2
     exit 2
@@ -189,6 +204,7 @@ main() {
     echo "Runner: $RUNNER"
     echo "Base URL: $BASE_URL"
     echo "Output dir: $OUTPUT_DIR"
+    echo "Case suite: $CASE_SUITE"
     echo "Languages: ${LANG_ARGS[*]}"
     echo "Metrics: ${METRIC_ARGS[*]}"
     if [ "$CHECK_TARGETS" = "1" ]; then
@@ -214,12 +230,13 @@ main() {
   echo "Running /api/chat live RAGAS"
   echo "Timestamp: $TIMESTAMP"
   echo "Base URL: $BASE_URL"
+  echo "Case suite: $CASE_SUITE"
   echo "Languages: ${LANG_ARGS[*]}"
   echo "Metrics: ${METRIC_ARGS[*]}"
   echo "RAGAS batch strategy: ${RAGAS_BATCH_STRATEGY:-single}"
   echo "RAGAS per-case timeout: ${RAGAS_OUTER_SINGLE_TIMEOUT:-300}s"
 
-  cmd=(python evaluation/run_live_api_eval.py --base-url "$BASE_URL" --languages "${LANG_ARGS[@]}" --metrics "${METRIC_ARGS[@]}" --output-dir "$OUTPUT_DIR")
+  cmd=(python evaluation/run_live_api_eval.py --base-url "$BASE_URL" --case-suite "$CASE_SUITE" --languages "${LANG_ARGS[@]}" --metrics "${METRIC_ARGS[@]}" --output-dir "$OUTPUT_DIR")
   if [ "$CHECK_TARGETS" = "1" ]; then
     cmd+=(--check-targets)
   fi
