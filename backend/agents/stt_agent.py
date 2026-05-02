@@ -305,6 +305,55 @@ def _parse_qwen_stt_hedge_delay(
     return timeout
 
 
+def _parse_qwen_stt_hedge_grace(
+    raw_value: Optional[str],
+    *,
+    hard_timeout: float,
+    hedge_delay: float | None,
+) -> float:
+    """Parse the extra wait for Qwen after a hedged Vosk result is ready."""
+
+    default = 6.0
+    if raw_value is None or raw_value.strip() == "":
+        timeout = default
+    else:
+        try:
+            timeout = float(raw_value)
+        except (TypeError, ValueError):
+            logger.warning(
+                "Invalid QWEN_STT_HEDGE_GRACE_SECONDS=%r; falling back to %.1fs",
+                raw_value,
+                default,
+            )
+            timeout = default
+
+    if not math.isfinite(timeout):
+        logger.warning(
+            "Invalid QWEN_STT_HEDGE_GRACE_SECONDS=%r; falling back to %.1fs",
+            raw_value,
+            default,
+        )
+        timeout = default
+
+    if timeout <= 0 or hedge_delay is None:
+        return 0.0
+
+    max_grace = max(0.0, hard_timeout - hedge_delay)
+    if timeout >= max_grace:
+        adjusted = max(0.0, max_grace * 0.8)
+        logger.warning(
+            "QWEN_STT_HEDGE_GRACE_SECONDS %.2fs plus hedge delay %.2fs must be less "
+            "than QWEN_STT_TIMEOUT %.2fs; using %.2fs",
+            timeout,
+            hedge_delay,
+            hard_timeout,
+            adjusted,
+        )
+        return adjusted
+
+    return timeout
+
+
 def _env_flag(name: str, default: bool = False) -> bool:
     raw_value = os.getenv(name)
     if raw_value is None:
@@ -1094,6 +1143,7 @@ class STTAgent:
         self._vosk_fallback_client = None
         self._qwen_timeout = None
         self._qwen_hedge_delay = None
+        self._qwen_hedge_grace = 0.0
         if stt_client:
             self.stt_client = stt_client
         elif self.stt_provider == "vosk":
@@ -1119,6 +1169,11 @@ class STTAgent:
             self._qwen_hedge_delay = _parse_qwen_stt_hedge_delay(
                 os.getenv("QWEN_STT_HEDGE_DELAY_SECONDS"),
                 hard_timeout=self._qwen_timeout,
+            )
+            self._qwen_hedge_grace = _parse_qwen_stt_hedge_grace(
+                os.getenv("QWEN_STT_HEDGE_GRACE_SECONDS"),
+                hard_timeout=self._qwen_timeout,
+                hedge_delay=self._qwen_hedge_delay,
             )
             if _stt_preload_vosk_fallback_enabled():
                 self._vosk_fallback_client.preload_models()
@@ -1377,6 +1432,7 @@ class STTAgent:
                 language=language,
                 timeout_s=self._qwen_timeout,
                 hedge_delay_s=self._qwen_hedge_delay,
+                hedge_grace_s=self._qwen_hedge_grace,
                 audio_bytes=len(audio_data),
                 qwen_postprocess_enabled=qwen_postprocess_enabled,
             )
@@ -1513,6 +1569,7 @@ class STTAgent:
                         success=False,
                         stt_qwen_duration_ms=_duration_ms(overall_started_at),
                         hedge_delay_s=self._qwen_hedge_delay,
+                        hedge_grace_s=self._qwen_hedge_grace,
                     )
                     vosk_fallback_allowed.set()
                     done, _pending = await asyncio.wait(
@@ -1530,6 +1587,39 @@ class STTAgent:
                             vosk_result = await vosk_task
                         except Exception as exc:
                             vosk_result = exc
+                        if (
+                            isinstance(vosk_result, TranscriptionResult)
+                            and self._qwen_hedge_grace > 0
+                            and not qwen_task.done()
+                        ):
+                            log_stt_event(
+                                event="stt_qwen_hedge_grace_start",
+                                stt_trace_id=stt_trace_id,
+                                provider="qwen-primary",
+                                language=language,
+                                success=False,
+                                hedge_grace_s=self._qwen_hedge_grace,
+                                stt_qwen_duration_ms=_duration_ms(overall_started_at),
+                            )
+                            try:
+                                qwen_result = await asyncio.wait_for(
+                                    asyncio.shield(qwen_task),
+                                    timeout=self._qwen_hedge_grace,
+                                )
+                            except asyncio.TimeoutError:
+                                log_stt_event(
+                                    event="stt_qwen_hedge_grace_complete",
+                                    stt_trace_id=stt_trace_id,
+                                    provider="qwen-primary",
+                                    language=language,
+                                    success=False,
+                                    error_type="TimeoutError",
+                                    hedge_grace_s=self._qwen_hedge_grace,
+                                    stt_qwen_duration_ms=_duration_ms(overall_started_at),
+                                )
+                            except Exception as exc:
+                                qwen_result = exc
+                                qwen_error_for_log = exc
                 except Exception as exc:
                     qwen_result = exc
                     qwen_error_for_log = exc
@@ -1546,6 +1636,7 @@ class STTAgent:
                     language=qwen_result.language,
                     success=True,
                     stt_overall_duration_ms=_duration_ms(overall_started_at),
+                    hedge_grace_s=self._qwen_hedge_grace,
                     qwen_postprocess_enabled=qwen_postprocess_enabled,
                 )
                 return {
@@ -1591,6 +1682,7 @@ class STTAgent:
                         language=qwen_result.language,
                         success=True,
                         stt_overall_duration_ms=_duration_ms(overall_started_at),
+                        hedge_grace_s=self._qwen_hedge_grace,
                         qwen_postprocess_enabled=qwen_postprocess_enabled,
                         vosk_error_type=type(vosk_result).__name__,
                     )
@@ -1618,6 +1710,7 @@ class STTAgent:
                     language=vosk_result.language,
                     success=True,
                     stt_overall_duration_ms=_duration_ms(overall_started_at),
+                    hedge_grace_s=self._qwen_hedge_grace,
                     vosk_postprocessed=postprocessed,
                     qwen_error_type=type(qwen_error_for_log).__name__,
                 )

@@ -76,6 +76,8 @@ source of truth は `.github/workflows/ci.yml` の deploy job。
   - `TTS_PROVIDER=piper`
   - `STT_PROVIDER=qwen-primary`
   - `QWEN_STT_TIMEOUT=45`
+  - `QWEN_STT_HEDGE_DELAY_SECONDS=4`
+  - `QWEN_STT_HEDGE_GRACE_SECONDS=6`
   - `FRONTEND_PRODUCTION_ORIGIN=<vercel-production-origin>`
   - `ALLOWED_ORIGINS=<vercel-production-origin>`
 - secret は `--update-secrets` で更新する

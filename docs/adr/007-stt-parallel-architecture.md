@@ -31,19 +31,20 @@ Engineer Cafe Navigator のアルファテストに向けて、STT (Speech-to-Te
 ### アーキテクチャ
 
 ```
-音声入力 ──┬──→ Qwen3-ASR 0.6B (asyncio.wait_for, timeout=10s)
+音声入力 ──┬──→ Qwen3-ASR 0.6B (asyncio.wait_for, timeout=QWEN_STT_TIMEOUT)
            │     成功 → Qwen 結果返却 (provider="qwen-primary")
-           │     タイムアウト/エラー ↓
-           └──→ Vosk (asyncio.gather で同時実行済み)
-                 Vosk 結果を即返却 (provider="vosk-fallback")
+           │     hedge delay 超過 ↓
+           └──→ Vosk fallback を開始
+                 Vosk が先に完了しても、短い grace window で Qwen 完了を待つ
+                 Qwen が間に合えば Qwen、間に合わなければ Vosk を返却
                  → STT_LLM_POSTPROCESS=true なら LLM 後処理適用
 ```
 
 ### 並列実行の詳細
 
-- `asyncio.gather()` で Qwen と Vosk を**同時に開始**
+- Qwen を先行開始し、`QWEN_STT_HEDGE_DELAY_SECONDS` を超えた場合のみ Vosk fallback を開始
 - Qwen に `asyncio.wait_for(timeout=QWEN_STT_TIMEOUT)` を適用
-- Vosk は通常 100-300ms で完了 → Qwen がタイムアウトした瞬間に結果が即座に利用可能
+- Vosk が先に完了した場合も `QWEN_STT_HEDGE_GRACE_SECONDS` の範囲で Qwen を待ち、品質が高い Qwen 結果を優先する
 - Vosk フォールバック時のみ `_llm_post_process()` (PR #426) が適用される
 
 ### STT_PROVIDER の値
@@ -60,7 +61,9 @@ Engineer Cafe Navigator のアルファテストに向けて、STT (Speech-to-Te
 | 変数 | デフォルト | 説明 |
 |---|---|---|
 | `STT_PROVIDER` | コード既定: production=`google`, non-production=`qwen0.6b-cpu`; Cloud Run deploy は `qwen-primary` を明示設定 | STT プロバイダー選択 |
-| `QWEN_STT_TIMEOUT` | `10` | Qwen タイムアウト (秒) |
+| `QWEN_STT_TIMEOUT` | `24` | Qwen hard timeout (秒)。Cloud Run は `45` |
+| `QWEN_STT_HEDGE_DELAY_SECONDS` | `4` | Qwen 先行後、Vosk fallback を開始するまでの soft latency budget |
+| `QWEN_STT_HEDGE_GRACE_SECONDS` | `6` | Vosk fallback 完了後も Qwen を優先するために待つ grace window |
 | `STT_LLM_POSTPROCESS` | `false` | Vosk フォールバック時の LLM 後処理 |
 | `HF_HOME` | `/app/.hf_cache` | HuggingFace モデルキャッシュ |
 
