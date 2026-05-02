@@ -69,7 +69,12 @@ class FastIntent:
 
 
 def is_assistant_profile_question(lower_query: str) -> bool:
-    """Detect questions about this kiosk assistant, not the visitor's name."""
+    """Detect questions about this kiosk assistant, not the visitor's name.
+
+    Covers ja/en/ko/zh identity and capability queries. Used as a fast-path
+    route to short-circuit LLM/web_search and force a hardcoded
+    "Engineer Cafe Navigator" self-introduction. See issue #615.
+    """
     visitor_name_markers = (
         "私の名前",
         "僕の名前",
@@ -77,11 +82,16 @@ def is_assistant_profile_question(lower_query: str) -> bool:
         "わたしの名前",
         "my name",
         "call me",
+        "내 이름",
+        "제 이름",
+        "我的名字",
+        "我叫",
     )
     if any(marker in lower_query for marker in visitor_name_markers):
         return False
 
     identity_markers = (
+        # Japanese
         "あなたの名前",
         "君の名前",
         "きみの名前",
@@ -91,11 +101,49 @@ def is_assistant_profile_question(lower_query: str) -> bool:
         "あなたは誰",
         "君は誰",
         "何者",
+        "貴方",
+        "自己紹介",
+        "どんなai",
+        "どんなボット",
+        "どんなモデル",
+        "どのモデル",
+        "どのai",
+        # English
         "what is your name",
         "what's your name",
+        "what are you called",
         "who are you",
+        "what model are you",
+        "which model",
+        "which ai",
+        "are you trained",
+        "are you made",
+        "introduce yourself",
+        # Korean
+        "너의 이름",
+        "너 이름",
+        "당신의 이름",
+        "당신 이름",
+        "이름이 뭐",
+        "이름이 무엇",
+        "누구세요",
+        "누구야",
+        "누구신가요",
+        "자기소개",
+        # Chinese (Simplified + Traditional)
+        "你叫什么",
+        "你叫什麼",
+        "你是谁",
+        "你是誰",
+        "你的名字",
+        "您的名字",
+        "您是谁",
+        "您是誰",
+        "自我介绍",
+        "自我介紹",
     )
     capability_markers = (
+        # Japanese
         "何ができます",
         "なにができます",
         "できること",
@@ -103,9 +151,19 @@ def is_assistant_profile_question(lower_query: str) -> bool:
         "ヘルプ",
         "使い方を教えて",
         "どんな案内",
+        # English
         "what can you do",
         "how can you help",
         "help me with",
+        # Korean
+        "무엇을 할 수 있",
+        "뭘 할 수 있",
+        "어떻게 도와",
+        # Chinese
+        "你能做什么",
+        "你能做什麼",
+        "能帮我",
+        "能幫我",
     )
     return any(marker in lower_query for marker in (*identity_markers, *capability_markers))
 
