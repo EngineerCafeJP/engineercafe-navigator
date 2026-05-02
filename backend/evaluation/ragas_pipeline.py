@@ -536,7 +536,10 @@ class RagasEvaluator:
         report: RagasReport,
     ) -> RagasReport:
         """Evaluate cases one by one so provider stalls do not fail the full language batch."""
-        for case in cases:
+        total = len(cases)
+        for index, case in enumerate(cases, start=1):
+            case_id = case.get("query_id", case["question"][:40])
+            print(f"RAGAS case {index}/{total} start: {case_id}", flush=True)
             result = await self.evaluate_single(
                 question=case["question"],
                 answer=case["answer"],
@@ -545,8 +548,15 @@ class RagasEvaluator:
             )
             report.results.append(result)
             if result.error:
-                case_id = case.get("query_id", case["question"][:40])
                 report.errors.append(f"{case_id}: {result.error}")
+                print(f"RAGAS case {index}/{total} error: {case_id}: {result.error}", flush=True)
+            else:
+                print(
+                    "RAGAS case "
+                    f"{index}/{total} done: {case_id} "
+                    f"answer_correctness={result.answer_correctness:.4f}",
+                    flush=True,
+                )
 
         report.evaluated_cases = len([result for result in report.results if result.error is None])
         return report

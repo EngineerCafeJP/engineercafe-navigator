@@ -18,6 +18,8 @@ from backend.infrastructure.reception_repository import (
     SupabaseVisitRepository,
 )
 
+_RECEPTION_ID = "11111111-1111-1111-1111-111111111111"
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -74,7 +76,7 @@ def _sample_session(
         purpose = VisitPurpose(category="facility_use", detail="Co-working")
 
     return ReceptionSession(
-        id="rs-001",
+        id=_RECEPTION_ID,
         session_id=session_id,
         visitor_identity=identity,
         purpose=purpose,
@@ -104,14 +106,14 @@ async def test_save_and_find_reception_session(mock_client: MagicMock):
     mock_client.table.assert_called_with("reception_sessions")
     upsert_builder.upsert.assert_called_once()
     upserted_data = upsert_builder.upsert.call_args[0][0]
-    assert upserted_data["id"] == "rs-001"
+    assert upserted_data["id"] == _RECEPTION_ID
     assert upserted_data["user_id"] == 42
     assert upserted_data["stage"] == "greeting"
     assert upserted_data["purpose"] == "facility_use"
 
     # --- find_by_id ---
     row = {
-        "id": "rs-001",
+        "id": _RECEPTION_ID,
         "session_id": "sess-001",
         "user_id": 42,
         "stage": "greeting",
@@ -122,16 +124,27 @@ async def test_save_and_find_reception_session(mock_client: MagicMock):
     find_builder = _chainable_builder(execute_result=_make_query_result(data=[row]))
     mock_client.table = MagicMock(return_value=find_builder)
 
-    found = await repo.find_by_id("rs-001")
+    found = await repo.find_by_id(_RECEPTION_ID)
 
     assert found is not None
-    assert found.id == "rs-001"
+    assert found.id == _RECEPTION_ID
     assert found.stage == "greeting"
     assert found.visitor_identity is not None
     assert found.visitor_identity.user_id == 42
     assert found.visitor_identity.visitor_type == VisitorType(value="returning")
     assert found.purpose is not None
     assert found.purpose.category == "facility_use"
+
+
+@pytest.mark.asyncio
+async def test_find_by_id_skips_non_uuid_session_id(mock_client: MagicMock):
+    """Synthetic IDs should not be sent to reception_sessions.id UUID lookup."""
+    repo = SupabaseReceptionSessionRepository(supabase_client=mock_client)
+
+    found = await repo.find_by_id("alpha-b-20260502-B1-BIZ-002")
+
+    assert found is None
+    mock_client.table.assert_not_called()
 
 
 @pytest.mark.asyncio

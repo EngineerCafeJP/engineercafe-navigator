@@ -20,6 +20,10 @@ from unittest.mock import Mock, AsyncMock, patch, MagicMock
 import backend.utils.memory_helper as memory_helper_module
 from backend.utils.memory_helper import SimplifiedMemoryHelper, get_memory_helper
 
+_ACTIVE_SESSION_ID = "11111111-1111-1111-1111-111111111111"
+_ENDED_SESSION_ID = "22222222-2222-2222-2222-222222222222"
+_MISSING_SESSION_ID = "33333333-3333-3333-3333-333333333333"
+
 # =============================================================================
 # フィクスチャ
 # =============================================================================
@@ -164,10 +168,10 @@ class TestIsSessionActive:
     async def test_returns_true_for_active_session(self, helper_with_client):
         """アクティブなセッションに対して True を返す"""
         helper, client = helper_with_client
-        chain = _build_chain_mock(Mock(data=[{"id": "session-1", "status": "active"}]))
+        chain = _build_chain_mock(Mock(data=[{"id": _ACTIVE_SESSION_ID, "status": "active"}]))
         client.table.return_value = chain
 
-        result = await helper._is_session_active("session-1")
+        result = await helper._is_session_active(_ACTIVE_SESSION_ID)
 
         assert result is True
         client.table.assert_called_with("conversation_sessions")
@@ -179,7 +183,7 @@ class TestIsSessionActive:
         chain = _build_chain_mock(Mock(data=[]))
         client.table.return_value = chain
 
-        result = await helper._is_session_active("nonexistent")
+        result = await helper._is_session_active(_MISSING_SESSION_ID)
 
         assert result is False
 
@@ -187,12 +191,22 @@ class TestIsSessionActive:
     async def test_returns_false_for_ended_session(self, helper_with_client):
         """ended ステータスのセッションに対して False を返す"""
         helper, client = helper_with_client
-        chain = _build_chain_mock(Mock(data=[{"id": "session-1", "status": "ended"}]))
+        chain = _build_chain_mock(Mock(data=[{"id": _ENDED_SESSION_ID, "status": "ended"}]))
         client.table.return_value = chain
 
-        result = await helper._is_session_active("session-1")
+        result = await helper._is_session_active(_ENDED_SESSION_ID)
 
         assert result is False
+
+    @pytest.mark.asyncio
+    async def test_non_uuid_session_id_skips_conversation_session_lookup(self, helper_with_client):
+        """synthetic session_id は UUID カラムへ問い合わせず active 扱いにする"""
+        helper, client = helper_with_client
+
+        result = await helper._is_session_active("alpha-b-20260502-B1-BIZ-002")
+
+        assert result is True
+        client.table.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_returns_true_on_exception_fallback(self, helper_with_client):

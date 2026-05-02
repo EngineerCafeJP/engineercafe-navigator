@@ -101,7 +101,7 @@ jobs:
         id: stt_preflight
         if: contains(format(',{0},', inputs.suites), ',stt,') || contains(format(',{0},', inputs.suites), ',all,')
         continue-on-error: true
-        run: scripts/stt-live-preflight.sh --timestamp "${ALPHA_TIMESTAMP}-stt" --minutes 1440 --limit 1000
+        run: scripts/stt-live-preflight.sh --timestamp "${ALPHA_TIMESTAMP}-stt" --revision "$ALPHA_SMOKE_CLOUD_RUN_REVISION" --minutes 1440 --limit 1000
 
       - name: V voice pipeline live preflight
         id: voice_pipeline
@@ -210,18 +210,45 @@ jobs:
           BACKEND_API_KEY: ${{ secrets.BACKEND_API_KEY }}
         run: scripts/welcome-live-preflight.sh --timestamp "${ALPHA_TIMESTAMP}-h" --host "$ALPHA_SMOKE_BASE_URL" --delays 0,5,10
 
-      - name: Upload alpha reports
+      - name: Upload alpha compact reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: alpha-live-verification-${{ github.run_id }}
+          name: alpha-live-verification-summary-${{ github.run_id }}
           path: |
-            backend/tests/reports/
-            backend/tests/evaluation/reports/
+            backend/tests/reports/*.md
+            backend/tests/reports/*.csv
+            backend/tests/reports/*.json
+            backend/tests/reports/*.log
+            backend/tests/evaluation/reports/*.md
+            backend/tests/evaluation/reports/*.csv
+            backend/tests/evaluation/reports/*.json
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Upload alpha heavy browser artifacts
+        if: >-
+          always() && (
+            steps.stt_preflight.outcome == 'failure' ||
+            steps.voice_pipeline.outcome == 'failure' ||
+            steps.alpha_a.outcome == 'failure' ||
+            steps.alpha_b.outcome == 'failure' ||
+            steps.rag_api_live.outcome == 'failure' ||
+            steps.alpha_d.outcome == 'failure' ||
+            steps.cloud_logging.outcome == 'failure' ||
+            steps.quality_q.outcome == 'failure' ||
+            steps.quality_m.outcome == 'failure' ||
+            steps.quality_t.outcome == 'failure' ||
+            steps.welcome_live.outcome == 'failure'
+          )
+        uses: actions/upload-artifact@v4
+        with:
+          name: alpha-live-verification-browser-artifacts-${{ github.run_id }}
+          path: |
             frontend/playwright-report/
             frontend/test-results/
           if-no-files-found: warn
-          retention-days: 30
+          retention-days: 7
 
       - name: Summarize outcomes
         if: always()

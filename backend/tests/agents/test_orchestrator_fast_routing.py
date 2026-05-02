@@ -138,6 +138,8 @@ class TestOrchestratorFastRouting:
             ("定休日はありますか？", "hours"),
             ("開館時間を教えてください", "hours"),
             ("閉館は何時ですか？", "hours"),
+            ("今日の最終受付は何時ですか。", "hours"),
+            ("受付時間を教えてください。", "hours"),
             ("お休みの日はありますか？", "hours"),
         ]
         for query, expected_type in test_cases:
@@ -155,6 +157,7 @@ class TestOrchestratorFastRouting:
         test_cases = [
             ("Is the cafe closed on weekends?", "hours"),
             ("Are there any holidays?", "hours"),
+            ("What is the last reception time today?", "hours"),
         ]
         for query, expected_type in test_cases:
             result = orchestrator._try_fast_routing(query)

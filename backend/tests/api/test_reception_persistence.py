@@ -6,7 +6,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Iterator, Optional
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -16,6 +16,10 @@ from backend.main import app
 from backend.utils.reception_repository import ReceptionRepository
 
 client = TestClient(app)
+
+_VALID_RECEPTION_ID = "11111111-1111-1111-1111-111111111111"
+_EXPIRED_RECEPTION_ID = "22222222-2222-2222-2222-222222222222"
+_ACTIVE_RECEPTION_ID = "33333333-3333-3333-3333-333333333333"
 
 
 def _parse_timestamp(value: Any) -> Any:
@@ -167,7 +171,7 @@ def _sample_session_data(
     expires_at: Optional[str] = None,
 ) -> dict[str, Any]:
     return {
-        "id": "rs-001",
+        "id": _VALID_RECEPTION_ID,
         "session_id": "session-001",
         "stage": stage,
         "language": "ja",
@@ -205,18 +209,29 @@ async def test_repository_store_get_complete_lifecycle() -> None:
     repo = ReceptionRepository(fake_client)  # type: ignore[arg-type]
 
     session_data = _sample_session_data()
-    await repo.store_session("rs-001", session_data)
+    await repo.store_session(_VALID_RECEPTION_ID, session_data)
 
-    stored = await repo.get_session("rs-001")
+    stored = await repo.get_session(_VALID_RECEPTION_ID)
     assert stored is not None
     assert stored["session_data"]["session_id"] == "session-001"
     assert stored["visitor_name"] == "Taro"
     assert stored["status"] == "active"
 
-    await repo.complete_session("rs-001")
+    await repo.complete_session(_VALID_RECEPTION_ID)
 
-    assert fake_client.storage["reception_sessions"]["rs-001"]["status"] == "completed"
-    assert await repo.get_session("rs-001") is None
+    assert fake_client.storage["reception_sessions"][_VALID_RECEPTION_ID]["status"] == "completed"
+    assert await repo.get_session(_VALID_RECEPTION_ID) is None
+
+
+@pytest.mark.asyncio
+async def test_repository_non_uuid_session_id_skips_primary_key_lookup() -> None:
+    mock_client = Mock()
+    repo = ReceptionRepository(mock_client)  # type: ignore[arg-type]
+
+    assert await repo.get_session("alpha-b-20260502-B1-BIZ-002") is None
+    await repo.complete_session("alpha-b-20260502-B1-BIZ-002")
+
+    mock_client.table.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -225,25 +240,25 @@ async def test_repository_cleanup_expired_sessions() -> None:
     repo = ReceptionRepository(fake_client)  # type: ignore[arg-type]
 
     await repo.store_session(
-        "expired-session",
+        _EXPIRED_RECEPTION_ID,
         _sample_session_data(
             expires_at=(datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat(),
         ),
     )
     await repo.store_session(
-        "active-session",
+        _ACTIVE_RECEPTION_ID,
         _sample_session_data(
             expires_at=(datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
         )
-        | {"id": "active-session", "session_id": "session-002"},
+        | {"id": _ACTIVE_RECEPTION_ID, "session_id": "session-002"},
     )
 
     expired_count = await repo.cleanup_expired()
     active_sessions = await repo.list_active_sessions()
 
     assert expired_count == 1
-    assert fake_client.storage["reception_sessions"]["expired-session"]["status"] == "expired"
-    assert [row["id"] for row in active_sessions] == ["active-session"]
+    assert fake_client.storage["reception_sessions"][_EXPIRED_RECEPTION_ID]["status"] == "expired"
+    assert [row["id"] for row in active_sessions] == [_ACTIVE_RECEPTION_ID]
 
 
 @pytest.mark.asyncio
