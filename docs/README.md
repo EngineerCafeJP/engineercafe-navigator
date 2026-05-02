@@ -1,6 +1,6 @@
 # Documentation Map
 
-> 2026-05-02 時点での現役ドキュメント案内です。まずこのページから参照してください。
+> 2026-05-03 時点での現役ドキュメント案内です。まずこのページから参照してください。
 
 ## まず読む文書
 
@@ -77,11 +77,30 @@
 - `archive/migration/`: Mastra -> LangGraph 移行期の詳細資料
 - `archive/frontend-docs-old/`: 旧 frontend 文書群
 
+## 2026-05-03 Alpha Remediation Snapshot
+
+PR #674, #675, #676 を develop に merge し、Cloud Run staging
+`engineer-cafe-backend-00148-82c` / `d789a2cd899779423947c40a3d65e19382f52d30`
+で検証済みです。
+
+Resolved:
+
+- #659 B routing / slide live smoke: targeted B run `25254789937` が `64 passed, 0 warned, 0 failed`
+- #660 H-UI Welcome UI live scenario
+- #661 compact artifact visibility
+- #662 Supabase UUID / Cloud Run log hygiene
+- #671 RAGAS direct OpenAI provider secret
+
+Still active:
+
+- #658 STT long-tail latency
+- #657 / #583 RAGAS 29-case vs 127-case coverage reconciliation
+- #653 / #672 Q/C answer quality
+- #670 RAGAS full-run speed / telemetry closeout
+
 ## 直近の次アクション
 
-- #658 STT preflight latency を current revision 観点で修正する
-- #660 H-UI Welcome OCR overlay / wait condition を修正する
-- #659 `B1-BIZ-002` routing を修正する
-- #653 / #672 の Q/C answer quality failure を修正する
-- #662 の Supabase UUID/log hygiene を修正する
-- #661 / #670 で artifact size と RAGAS progress telemetry を改善する
+- #658 STT long-tail latency の fallback threshold / warmup / timeout 前 mitigation を実装する
+- #657 / #583 の alpha gate coverage を launch gate と diagnostic/soak に分けて文書化・実装する
+- #653 / #672 の Q/C answer quality failure を case-level telemetry で修正する
+- #670 は full C/Q run の artifact で provider/model/progress が十分に残ることを確認して close 判断する

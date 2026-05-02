@@ -162,7 +162,7 @@ fast path は env flag と route condition で無効化できる構成にする�
 `alpha-live-verification` full run `25244933308` で、Cerebras fast path は live log 上で
 `gpt-oss-120b` を使っていることを確認した。ただし alpha GO はまだ不可。
 
-残る優先課題:
+この時点で残っていた優先課題:
 
 - #658: STT preflight latency
 - #660: H-UI Welcome OCR overlay
@@ -173,6 +173,35 @@ fast path は env flag と route condition で無効化できる構成にする�
 また、RAGAS は fast response の product path ではなく evaluation path だが、alpha gate の信頼性に直結する。
 2026-05-02 に GitHub Actions `OPENAI_API_KEY` を更新し、run `25247945549` で direct OpenAI
 `gpt-5.2-2025-12-11` が使われることを確認した。OpenRouter fallback は GO 証跡として使わない。
+
+## 2026-05-03 検証結果
+
+PR #674, #675, #676 を develop に merge し、Cloud Run staging に `d789a2cd899779423947c40a3d65e19382f52d30`
+を deploy した。
+
+検証済み:
+
+- Cloud Run revision: `engineer-cafe-backend-00148-82c`
+- Targeted B run: `25254789937`
+- B routing / slide result: `64 passed, 0 warned, 0 failed`
+- `B1-BIZ-003` (`土日祝日も利用できますか。`): `business_info`, `1258ms`
+- slide narration B5-1..B5-5: PASS
+- Cloud Logging UUID / reception persistence errors during the B run window: 0 rows
+
+この結果により、ADR 018 の「identity / business-info / slide route は unnecessary heavyweight fallback
+に流さない」という方針のうち、B routing と slide smoke の live proof は成立した。
+
+一方、voice turn 全体の alpha GO はまだ不可。STT-only current-revision gate では p50 `5180ms`,
+p95/max `29217ms`, over-10s ratio `14.3%` が残っている。したがって、次の実装優先度は
+fast LLM / routing ではなく #658 の STT long-tail mitigation とする。
+
+ADR 018 の release gate を以下に更新する。
+
+- identity / assistant profile: deterministic response, provider self-disclosure 0 件を維持
+- business-info fast routing: B targeted suite green を維持
+- slide narration: B5 smoke green を維持
+- Cloud Run log hygiene: synthetic session ID による UUID 400 を 0 件に維持
+- full voice turn: STT p95 が current-revision gate を満たすまで alpha GO 不可
 
 ## 参照
 
