@@ -441,7 +441,14 @@ def run_case(args: argparse.Namespace, api_key: str, rows: list[dict[str, Any]],
     transcript = str(stt.get("transcript") or "").strip()
     provider = str(stt.get("sttProvider") or "")
     sim = similarity(case.query, transcript) if transcript else 0.0
-    provider_ok = provider == "qwen-primary" or (args.allow_vosk_fallback and provider == "vosk-fallback")
+    expected_provider = (
+        "provider=qwen-primary|vosk-fallback"
+        if args.allow_vosk_fallback
+        else "provider=qwen-primary"
+    )
+    provider_ok = provider == "qwen-primary" or (
+        args.allow_vosk_fallback and provider == "vosk-fallback"
+    )
     latency_ok = duration_ms <= args.stt_max_ms
     hard_latency_ok = duration_ms <= args.stt_hard_max_ms
     if not (http == 200 and stt.get("success") is True and transcript):
@@ -462,7 +469,7 @@ def run_case(args: argparse.Namespace, api_key: str, rows: list[dict[str, Any]],
         http=http,
         duration_ms=duration_ms,
         language=case.language,
-        expected=f"provider=qwen-primary latency<={args.stt_max_ms}ms hard<={args.stt_hard_max_ms}ms",
+        expected=f"{expected_provider} latency<={args.stt_max_ms}ms hard<={args.stt_hard_max_ms}ms",
         actual=f"provider={provider or 'unknown'} similarity={sim:.3f} transcript={compact(transcript)}",
         notes=compact(raw),
     )

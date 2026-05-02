@@ -974,7 +974,7 @@ class TestSTTAgent:
         mock_qwen_client.assert_called_once_with(default_language="ja")
 
     def test_init_qwen_primary_timeout_env_guard(self, monkeypatch):
-        """qwen-primary uses 24s default after alpha live verification."""
+        """qwen-primary keeps a separate 24s hard timeout."""
         monkeypatch.setenv("QWEN_STT_TIMEOUT", "true")
 
         with (
@@ -984,6 +984,7 @@ class TestSTTAgent:
             agent = STTAgent(stt_provider="qwen-primary")
 
         assert agent._qwen_timeout == pytest.approx(24.0)
+        assert agent._qwen_hedge_delay == pytest.approx(4.0)
 
     def test_init_qwen_primary_timeout_env_numeric(self, monkeypatch):
         """qwen-primary accepts numeric QWEN_STT_TIMEOUT values."""
@@ -996,6 +997,34 @@ class TestSTTAgent:
             agent = STTAgent(stt_provider="qwen-primary")
 
         assert agent._qwen_timeout == pytest.approx(2.5)
+        assert agent._qwen_hedge_delay == pytest.approx(2.0)
+
+    def test_init_qwen_primary_hedge_delay_env_numeric(self, monkeypatch):
+        """qwen-primary accepts numeric QWEN_STT_HEDGE_DELAY_SECONDS values."""
+        monkeypatch.setenv("QWEN_STT_TIMEOUT", "24")
+        monkeypatch.setenv("QWEN_STT_HEDGE_DELAY_SECONDS", "3.5")
+
+        with (
+            patch("backend.agents.stt_agent.Qwen06BCpuSTTClient"),
+            patch("backend.agents.stt_agent.LocalSTTClient"),
+        ):
+            agent = STTAgent(stt_provider="qwen-primary")
+
+        assert agent._qwen_timeout == pytest.approx(24.0)
+        assert agent._qwen_hedge_delay == pytest.approx(3.5)
+
+    def test_init_qwen_primary_hedge_delay_zero_disables_hedge(self, monkeypatch):
+        """QWEN_STT_HEDGE_DELAY_SECONDS=0 restores hard-timeout-only behavior."""
+        monkeypatch.setenv("QWEN_STT_TIMEOUT", "24")
+        monkeypatch.setenv("QWEN_STT_HEDGE_DELAY_SECONDS", "0")
+
+        with (
+            patch("backend.agents.stt_agent.Qwen06BCpuSTTClient"),
+            patch("backend.agents.stt_agent.LocalSTTClient"),
+        ):
+            agent = STTAgent(stt_provider="qwen-primary")
+
+        assert agent._qwen_hedge_delay is None
 
     def test_qwen_primary_preloads_vosk_fallback_in_production(self, monkeypatch):
         """Production qwen-primary preloads fallback models to avoid first-request latency."""
@@ -2026,6 +2055,7 @@ class TestQwenPrimaryFallback:
         agent.stt_provider = "qwen-primary"
         agent._vosk_fallback_client = mock_vosk
         agent._qwen_timeout = 10.0
+        agent._qwen_hedge_delay = None
         return agent
 
     @pytest.mark.asyncio
@@ -2169,6 +2199,76 @@ class TestQwenPrimaryFallback:
         assert result["success"] is True
         assert result["provider"] == "vosk-fallback"
         assert result["transcript"] == "vosk result"
+
+    @pytest.mark.asyncio
+    async def test_qwen_hedge_returns_vosk_before_hard_timeout(self, caplog):
+        """Slow Qwen is hedged with Vosk before the hard timeout."""
+        caplog.set_level(logging.INFO, logger="backend.observability.stt")
+
+        async def slow_qwen(*args, **kwargs):
+            await asyncio.sleep(2)
+            return TranscriptionResult(text="late qwen", confidence=0.9, language="ja")
+
+        async def run_vosk(*args, **kwargs):
+            await asyncio.sleep(0.02)
+            return TranscriptionResult(text="hedged vosk", confidence=0.8, language="ja")
+
+        mock_qwen = MagicMock()
+        mock_qwen.transcribe = slow_qwen
+        mock_vosk = MagicMock(spec=LocalSTTClient)
+        mock_vosk.transcribe = AsyncMock(side_effect=run_vosk)
+
+        agent = self._make_agent(mock_qwen, mock_vosk)
+        agent._qwen_timeout = 10.0
+        agent._qwen_hedge_delay = 0.01
+
+        loop = asyncio.get_running_loop()
+        started_at = loop.time()
+        result = await agent.speech_to_text(b"audio", language="ja")
+        elapsed = loop.time() - started_at
+
+        assert result["success"] is True
+        assert result["provider"] == "vosk-fallback"
+        assert result["transcript"] == "hedged vosk"
+        assert elapsed < 0.5
+
+        stt_records = [
+            record for record in caplog.records if record.name == "backend.observability.stt"
+        ]
+        events = [getattr(record, "event", None) for record in stt_records]
+        assert "stt_qwen_hedge_start" in events
+        winner = next(
+            record for record in stt_records if getattr(record, "event", None) == "stt_winner"
+        )
+        assert winner.stt_winner == "vosk"
+        assert winner.provider == "vosk-fallback"
+        assert winner.qwen_error_type == "HedgedFallback"
+
+    @pytest.mark.asyncio
+    async def test_qwen_after_hedge_still_wins_before_vosk(self):
+        """Qwen still wins if it completes after hedge starts but before Vosk."""
+
+        async def hedged_qwen(*args, **kwargs):
+            await asyncio.sleep(0.02)
+            return TranscriptionResult(text="qwen still wins", confidence=0.9, language="ja")
+
+        async def slower_vosk(*args, **kwargs):
+            await asyncio.sleep(0.2)
+            return TranscriptionResult(text="slow fallback", confidence=0.8, language="ja")
+
+        mock_qwen = MagicMock()
+        mock_qwen.transcribe = hedged_qwen
+        mock_vosk = MagicMock(spec=LocalSTTClient)
+        mock_vosk.transcribe = AsyncMock(side_effect=slower_vosk)
+
+        agent = self._make_agent(mock_qwen, mock_vosk)
+        agent._qwen_timeout = 10.0
+        agent._qwen_hedge_delay = 0.01
+        result = await agent.speech_to_text(b"audio", language="ja")
+
+        assert result["success"] is True
+        assert result["provider"] == "qwen-primary"
+        assert result["transcript"] == "qwen still wins"
 
     @pytest.mark.asyncio
     async def test_qwen_error_vosk_fallback(self):
