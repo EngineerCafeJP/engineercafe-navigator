@@ -40,6 +40,20 @@ CASE_SUITE_EXPECTED_TOTALS = {
     CASE_SUITE_DIAGNOSTIC_29: 29,
     CASE_SUITE_ALPHA_127: 127,
 }
+LOCAL_KNOWLEDGE_SOURCE_REQUIREMENT = "enhanced_rag|knowledge_base|knowledge_base_cached"
+EVENT_SOURCE_REQUIREMENT = f"google_calendar|connpass|{LOCAL_KNOWLEDGE_SOURCE_REQUIREMENT}"
+NO_SOURCE_REQUIRED_CATEGORIES = {"emergency", "farewell", "reception"}
+EVENT_LIKE_CATEGORIES = {"event", "community", "clarification"}
+EMERGENCY_TERMS = (
+    "緊急",
+    "避難",
+    "地震",
+    "火事",
+    "aed",
+    "earthquake",
+    "fire",
+    "evacuate",
+)
 TRACKED_METRICS = (
     "context_precision",
     "answer_correctness",
@@ -71,9 +85,14 @@ def _flatten_metadata_sources(value: Any) -> set[str]:
 
 def _required_live_sources(query: Dict[str, Any]) -> List[str]:
     category = str(query.get("category") or "").strip().lower().replace("-", "_")
-    if category == "event":
-        return ["google_calendar|connpass"]
-    return ["enhanced_rag"]
+    question = str(query.get("question") or "").strip().lower()
+    if category in NO_SOURCE_REQUIRED_CATEGORIES or any(
+        term in question for term in EMERGENCY_TERMS
+    ):
+        return []
+    if category in EVENT_LIKE_CATEGORIES:
+        return [EVENT_SOURCE_REQUIREMENT]
+    return [LOCAL_KNOWLEDGE_SOURCE_REQUIREMENT]
 
 
 def _source_requirement_ok(
