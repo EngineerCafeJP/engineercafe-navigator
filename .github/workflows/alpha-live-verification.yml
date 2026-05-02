@@ -5,7 +5,7 @@ on:
     inputs:
       suites:
         description: 'Comma-separated suites: stt,v,a,b,c,d,e,h-ui,h,q,m,t,all (h is a compatibility alias for h-ui)'
-        default: 'stt,v,b,d,e'
+        default: 'stt,v,b,c,q,h-ui'
         type: string
       timestamp:
         description: 'Stable timestamp marker. Empty uses current UTC time.'
@@ -135,6 +135,7 @@ jobs:
           API_SECRET_KEY: ${{ secrets.BACKEND_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          RAG_API_LIVE_OPENAI_SECRET_NAMES: OPENAI_API_KEY,openai-api-key
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         run: scripts/rag-api-live-test.sh --timestamp "${ALPHA_TIMESTAMP}-c" --languages ja,en,zh,ko
