@@ -6,10 +6,10 @@
 
 ## 現在の要約
 
-- フロントエンドの主要 API route は 2026-03-14 時点で FastAPI バックエンドへの proxy 化が進み、Mastra 依存の残骸除去も進行済みです。
-- 直近では Web Audio autoplay、VRM 互換性、WebM→WAV 変換などの修正が続いており、現在は機能追加より安定化フェーズの色が強いです。
-- バックエンドは `pytest --collect-only -q` ベースで 2,868 件のテストが収集されますが、リポジトリ全体では fix 連打と低い test commit 比率が続いています。
-- すぐに本番品質とみなせる状態ではありません。特に管理系 route の認証、受付フローの永続化、運用ガードレールが未完です。
+- 2026-05-02 時点で、alpha live verification の full-suite workflow は Cloud Run SHA match 付きで実行できます。
+- Cloud Run staging は develop SHA `fa7745b7420c0709fcff950ed3bf4c090f0dfc55` の revision `engineer-cafe-backend-00144-q85` で検証済みです。
+- RAGAS evaluator は GitHub Actions secret 修正後、direct OpenAI で動くことを確認済みです。
+- ただし alpha はまだ **NO-GO** です。STT latency、B routing、Welcome UI、Q/C answer quality、RAGAS 127-case coverage、Cloud Run log hygiene が残っています。
 
 詳細は [docs/STATUS.md](docs/STATUS.md) を参照してください。
 
@@ -36,10 +36,11 @@ Browser
 
 ## 現時点の主要リスク
 
-- フロント側の管理・監視系 endpoint に未認証 route が残っています。
-- バックエンドの API key 保護は local/dev では `API_SECRET_KEY` 未設定時に無効化されますが、`staging` / `preview` / `production` では fail-closed です。
-- `backend/api/reception.py` は受付セッションをメモリ保持しており、再起動や複数インスタンスに弱いです。
-- ドキュメント群には Mastra 前提や古い agent 構成が残っており、文書の現役/履歴の区別が不十分でした。
+- alpha gate は end-to-end で回るが、最新 full run は failure です。
+- `continue-on-error` のため、GitHub step が success に見えても suite outcome が failure の場合があります。
+- STT preflight は現行 revision と過去24h履歴が混ざり、release 判定として過敏/不透明です。
+- RAGAS は direct OpenAI に修正済みですが、JA answer_correctness と 29-vs-127 coverage が未解決です。
+- Welcome UI live scenario は `kiosk-welcome-ocr-overlay` が見つからず失敗します。
 
 この README は現況の入口だけを扱います。監査結果と production readiness の論点は [docs/STATUS.md](docs/STATUS.md) に集約しています。
 
@@ -80,23 +81,21 @@ make dev
 
 ## ドキュメント
 
-- [docs/STATUS.md](docs/STATUS.md): 2026-03-14 時点の実装状況、リスク、production gap
+- [docs/STATUS.md](docs/STATUS.md): 現在の alpha / production readiness 状態
 - [docs/README.md](docs/README.md): 現役ドキュメントと履歴ドキュメントの整理
+- [docs/testing/alpha-live-verification-status-2026-05-02.md](docs/testing/alpha-live-verification-status-2026-05-02.md): 最新 alpha live verification 結果
+- [docs/plans/alpha-remediation-plan-2026-05-02.md](docs/plans/alpha-remediation-plan-2026-05-02.md): 次実装順
 - [frontend/README.md](frontend/README.md): フロントエンドの現況と環境変数
 - [backend/README.md](backend/README.md): バックエンドの現況と運用上の注意
 - [docs/DEVELOPER-GUIDE.md](docs/DEVELOPER-GUIDE.md): 現行の開発導線
 
 ## GitHub の現況
 
-2026-03-14 時点で把握した主要な open items:
+2026-05-02 時点で把握した主要な alpha open items:
 
-- Issue `#232`: 2026-03-14 production hardening umbrella tracker
-- Issue `#197`: Admin / CRON / Monitoring 保護
-- Issue `#209`: 音声主体 UI に対するバブルオーバーレイ整理
-- Issue `#224`: フロントの完全 backend proxy 化の残課題整理
-- Issue `#165`: Reception-2025 との統合境界と shared data 活用
-- PR `#132`: 管理認証 middleware の draft
-- PR `#215`: 新 knowledge UI
+- P0: `#658`, `#659`, `#660`, `#657`, `#643`, `#623`, `#612`, `#611`, `#585`, `#584`, `#583`
+- P1: `#672`, `#670`, `#669`, `#663`, `#662`, `#661`, `#655`, `#653`
+- `#671` は GitHub Actions RAGAS provider secret 問題として作成し、direct OpenAI 確認後に close 済みです。
 
 ## 注意
 

@@ -1,16 +1,18 @@
 # 現在の状態
 
-Last updated: 2026-04-30
+Last updated: 2026-05-02
 
 ## 概要
 
-このページは、`develop` 上の現行コード、2026-04-19 の live audit、2026-04-29 の実機音声 UX 確認をもとに更新しています。
+このページは、`develop` 上の現行コード、2026-04-19 の live audit、2026-04-29 の実機音声 UX 確認、
+2026-05-02 の alpha-live-verification full run / targeted C run をもとに更新しています。
 
 確認元:
 
 - 2026-04-16 から 2026-04-19 UTC の Cloud Run ログ
 - 2026-04-19 UTC の直近 Vercel production deploy
 - 2026-04-29 JST の mobile / kiosk 実地確認 screenshot と Cloud Run structured logs
+- 2026-05-02 JST の `alpha-live-verification` run `25244933308` / `25247945549`
 - 現在 open の GitHub Issue
 
 Supabase については、CLI で linked project の確認まではできましたが、このセッションでは recent runtime log
@@ -19,19 +21,48 @@ Supabase については、CLI で linked project の確認まではできまし
 現状の結論:
 
 - キオスクのコアフロー自体は実装済み
-- ただし 2026-04-29 の実地確認により、alpha release はそのまま GO できない
-- 現在の主リスクは「未実装の基本機能」ではなく「会話 UX の基本品質、実測 latency、route 整合性」
+- alpha live verification workflow は Cloud Run SHA match 付きで end-to-end 実行できる
+- RAGAS evaluator は direct OpenAI で動くことを確認済み
+- ただし 2026-05-02 の full run は failure で、alpha release はまだ GO できない
+- 現在の主リスクは「未実装の基本機能」ではなく「会話 UX の基本品質、実測 latency、route 整合性、評価 gate の透明性」
 
-特に優先度が高いのは次の 5 点です。
+特に優先度が高いのは次の 6 点です。
 
-1. identity / help / capability 質問が provider 自己紹介や雑な general answer に落ちる問題
-2. rank graph に入らない一般質問が RAG miss -> web search -> heavyweight LLM に流れる latency 問題
-3. stale request type / mode により、次 turn が SlideAgent など誤 route に流れる問題
-4. voice / chat / TTS の実機 p95 latency が alpha UX に達していない問題
-5. deploy 時の frontend -> backend 認証ドリフト
+1. STT preflight latency が alpha gate を落としている問題
+2. H-UI Welcome OCR overlay が live scenario で見つからない問題
+3. B routing の `B1-BIZ-002` 誤判定
+4. Q/C answer quality と RAGAS JA target miss
+5. RAGAS 29-case gate と 127-case requirement の不一致
+6. Cloud Run / Supabase log hygiene と artifact size / progress telemetry
 
 現行の実装判断は [ADR 018](adr/018-alpha-fast-response-and-assistant-profile-routing.md) と
-[Alpha Fast Response Implementation Plan](plans/alpha-fast-response-implementation-2026-04-30.md) を優先する。
+[Alpha Remediation Plan 2026-05-02](plans/alpha-remediation-plan-2026-05-02.md) を優先する。
+
+## 2026-05-02 Alpha Live Verification Snapshot
+
+最新の正本は [Alpha Live Verification Status 2026-05-02](testing/alpha-live-verification-status-2026-05-02.md)。
+
+- Full run: `25244933308`
+- Targeted C/RAGAS run: `25247945549`
+- Cloud Run revision: `engineer-cafe-backend-00144-q85`
+- develop SHA: `fa7745b7420c0709fcff950ed3bf4c090f0dfc55`
+- SHA match: pass
+- Full run conclusion: failure
+- Direct OpenAI RAGAS: confirmed after GitHub Secret `OPENAI_API_KEY` sync
+
+Resolved in this session:
+
+- #671: RAGAS provider secret issue. `OPENAI_API_KEY` is now available to the workflow, and C uses direct OpenAI.
+
+Still blocking:
+
+- #658: STT preflight latency
+- #659: B routing `B1-BIZ-002`
+- #660: H-UI Welcome OCR overlay
+- #657 / #583: RAGAS 29 vs 127 coverage
+- #653 / #672: Q/C answer quality
+- #662: Supabase UUID/log errors
+- #661 / #670: artifact size and RAGAS telemetry
 
 ## 実装済みとして確認できたこと
 
@@ -182,36 +213,34 @@ current turn の high-confidence intent なしに route を固定してはいけ
 
 ## いま重要な Open Issues
 
-- `#618`: daily / identity / general fallback の lightweight no-thinking model 分離
-- `#617`: stale request type / mode による誤 route
-- `#616`: Welcome camera/OCR-first と push-to-talk UX
-- `#615`: identity / general question の回答品質
-- `#613`: 実機音声 turn latency
+- `#658`: STT preflight latency
+- `#660`: Welcome UI live scenario
+- `#659`: B routing / slide live smoke
+- `#657`: RAGAS gate 29 vs 127
+- `#653`: Q-content quality
+- `#672`: Direct OpenAI C/RAGAS JA target miss
+- `#662`: Supabase UUID/log hygiene
+- `#661`: alpha artifact size
+- `#669`: deployed tRAG translation model missing
+- `#670`: C/RAGAS runtime and telemetry
 - `#611`: Cerebras dynamic filler / fast first-response path
-- `#468`: deploy-time auth drift guardrails
-- `#140`: load / latency baseline
-- `#458`: emotion / expression / animation alignment
-- `#190`: live character validation
-- `#117`: autonomous reception flow integration
-- `#138`: multilingual quality improvements
-- `#398`: multilingual RAGAS improvement phase 2
 
 ## 推奨する実装順
 
-1. identity / help / capability fast path を実装する (`#615`, `#618`)
-2. General fallback を daily/general light と current-info search path に分ける (`#618`, `#617`)
-3. Gemini / Cerebras 候補を公式 API availability + live benchmark で選定する (`#611`, `#613`)
-4. Welcome camera/OCR-first と push-to-talk UX を直す (`#616`)
-5. deploy-time authenticated smoke check を維持・強化する (`#468`)
-6. live latency baseline と load test を整備する (`#140`)
-7. emotion -> expression -> animation の契約を一本化する (`#458`, `#190`)
-8. multilingual quality を評価基準込みで閉じる (`#138`, `#398`)
-9. reception の残作業を行動フロー中心に進める (`#117`)
+1. STT preflight latency と current revision scoping を直す (`#658`)
+2. H-UI Welcome OCR overlay / wait condition を直す (`#660`)
+3. B routing `B1-BIZ-002` を直す (`#659`)
+4. Q/C answer quality を直す (`#653`, `#672`)
+5. Supabase UUID/log hygiene を直す (`#662`)
+6. artifact size と RAGAS progress telemetry を直す (`#661`, `#670`)
+7. RAGAS 127-case gate を定義・実装する (`#657`, `#583`)
 
 ## 参照
 
 - [SECURITY.md](SECURITY.md)
 - [DEPLOYMENT.md](DEPLOYMENT.md)
+- [testing/alpha-live-verification-status-2026-05-02.md](testing/alpha-live-verification-status-2026-05-02.md)
+- [plans/alpha-remediation-plan-2026-05-02.md](plans/alpha-remediation-plan-2026-05-02.md)
 - [plans/alpha-fast-response-implementation-2026-04-30.md](plans/alpha-fast-response-implementation-2026-04-30.md)
 - [adr/018-alpha-fast-response-and-assistant-profile-routing.md](adr/018-alpha-fast-response-and-assistant-profile-routing.md)
 - [plans/production-readiness-followup-2026-04-19.md](plans/production-readiness-followup-2026-04-19.md)

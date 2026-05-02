@@ -1,11 +1,13 @@
 # Documentation Map
 
-> 2026-04-30 時点での現役ドキュメント案内です。まずこのページから参照してください。
+> 2026-05-02 時点での現役ドキュメント案内です。まずこのページから参照してください。
 
 ## まず読む文書
 
 - [../README.md](../README.md): プロジェクト全体の現在地
 - [STATUS.md](STATUS.md): 実装済み事項と、いま残っている本当の運用リスク
+- [testing/alpha-live-verification-status-2026-05-02.md](testing/alpha-live-verification-status-2026-05-02.md): 最新 alpha live verification 結果
+- [plans/alpha-remediation-plan-2026-05-02.md](plans/alpha-remediation-plan-2026-05-02.md): 次実装順
 - [SECURITY.md](SECURITY.md): 現在の auth 連鎖と残課題
 - [DEPLOYMENT.md](DEPLOYMENT.md): Vercel + Cloud Run の現行デプロイ運用
 - [plans/alpha-fast-response-implementation-2026-04-30.md](plans/alpha-fast-response-implementation-2026-04-30.md): Alpha Phase 4 の高速応答 / identity routing 実装計画
@@ -21,6 +23,9 @@
 - [SECURITY.md](SECURITY.md)
 - [DEPLOYMENT.md](DEPLOYMENT.md)
 - [CHANGELOG.md](CHANGELOG.md)
+- [testing/alpha-live-verification-status-2026-05-02.md](testing/alpha-live-verification-status-2026-05-02.md)
+- [testing/alpha-final-scenarios.md](testing/alpha-final-scenarios.md)
+- [plans/alpha-remediation-plan-2026-05-02.md](plans/alpha-remediation-plan-2026-05-02.md)
 - [plans/alpha-fast-response-implementation-2026-04-30.md](plans/alpha-fast-response-implementation-2026-04-30.md)
 - [plans/production-readiness-followup-2026-04-19.md](plans/production-readiness-followup-2026-04-19.md)
 
@@ -47,6 +52,7 @@
 - `docs/plans/production-hardening-session-2026-03-14.md`
 - `docs/plans/alpha-trial-p1-remediation-2026-04-13.md`
 - `docs/plans/deployment-readiness-2026-03-15.md`
+- `docs/testing/alpha-live-verification-status-2026-04-25.md`
 - `docs/plans/production-readiness-followup-2026-04-19.md` は履歴ではないが、2026-04-30 以降の alpha blocker 判断では `alpha-fast-response-implementation-2026-04-30.md` を優先する
 
 ## 読むときに注意が必要な文書
@@ -73,8 +79,9 @@
 
 ## 直近の次アクション
 
-- ADR 018 に従い、identity / help / capability を deterministic fast path にする
-- General fallback を daily/general light と current-info search path に分ける
-- Gemini / Cerebras の model id と latency を公式 API + live benchmark で確認してから Cloud Run env に反映する
-- API / architecture / development 文書の stale 記述を段階的に更新または archive に移す
-- Supabase の運用ログ確認手順を別途整備する
+- #658 STT preflight latency を current revision 観点で修正する
+- #660 H-UI Welcome OCR overlay / wait condition を修正する
+- #659 `B1-BIZ-002` routing を修正する
+- #653 / #672 の Q/C answer quality failure を修正する
+- #662 の Supabase UUID/log hygiene を修正する
+- #661 / #670 で artifact size と RAGAS progress telemetry を改善する

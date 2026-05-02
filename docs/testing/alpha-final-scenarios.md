@@ -1,10 +1,17 @@
 # Alpha Final Live Verification Scenarios
 
-Alpha 最終 Live 検証は **2026-04-26** に Cloud Run live 環境で実施予定です。このドキュメントは、事前準備スクリプトがそのまま参照できるように、音声発話、LangGraph routing、adversarial prompt、長文発話サンプルを固定 ID 付きで定義します。
+Alpha 最終 Live 検証は Cloud Run live 環境で実施します。このドキュメントは、事前準備スクリプトがそのまま参照できるように、音声発話、LangGraph routing、adversarial prompt、長文発話サンプルを固定 ID 付きで定義します。
 
 ## Current Status
 
-2026-04-25 時点の live verification は **NO-GO** です。最新の実行結果、残 blocker、再開手順は [Alpha Live Verification Status 2026-04-25](alpha-live-verification-status-2026-04-25.md) を正本として参照してください。
+2026-05-02 時点の live verification は **NO-GO** です。最新の実行結果、残 blocker、再開手順は [Alpha Live Verification Status 2026-05-02](alpha-live-verification-status-2026-05-02.md) を正本として参照してください。
+
+Current confirmed target:
+
+- develop SHA: `fa7745b7420c0709fcff950ed3bf4c090f0dfc55`
+- Cloud Run revision: `engineer-cafe-backend-00144-q85`
+- Full run: `25244933308`
+- Direct OpenAI C/RAGAS run: `25247945549`
 
 ## Live Target
 
@@ -21,6 +28,8 @@ Alpha 最終 Live 検証は **2026-04-26** に Cloud Run live 環境で実施予
 - 受付系の質問では visitor/session ID をスクリプト側で付与し、同一 ID の多ターン文脈維持を検証します。
 - RAGAS は direct RAG 評価と `/api/chat` live API 評価を分離します。`scripts/rag-live-test.sh` は `EnhancedRAGSearch` 直評価、`scripts/rag-api-live-test.sh` は `/api/chat` 経由評価です。
 - A 系の音声本実行前に `scripts/stt-live-preflight.sh` で直近の `stt_winner` latency / timeout 分布を確認します。
+- Alpha GO proof の C/RAGAS は direct OpenAI を必須にします。`RAGAS judge provider: direct OpenAI` が出ない run は diagnostic として扱い、GO 証跡にしません。
+- GitHub step conclusion だけで suite の成否を判断しないでください。`continue-on-error` のため、summary / artifact の suite outcome を正本にします。
 
 ## A-1 Japanese Realistic Utterances
 
