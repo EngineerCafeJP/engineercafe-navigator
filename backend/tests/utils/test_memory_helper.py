@@ -9,6 +9,11 @@ from unittest.mock import Mock, AsyncMock, patch
 from backend.utils.memory_helper import SimplifiedMemoryHelper, get_memory_helper
 
 
+ACTIVE_SESSION_ID = "11111111-1111-4111-8111-111111111111"
+ENDED_SESSION_ID = "22222222-2222-4222-8222-222222222222"
+MISSING_SESSION_ID = "33333333-3333-4333-8333-333333333333"
+
+
 class TestSimplifiedMemoryHelper:
     """SimplifiedMemoryHelper のテストクラス"""
 
@@ -234,12 +239,14 @@ class TestSimplifiedMemoryHelper:
         mock_client.table = Mock(return_value=mock_table)
         mock_table.select = Mock(return_value=mock_select)
         mock_select.eq = Mock(return_value=mock_eq)
-        mock_eq.execute = Mock(return_value=Mock(data=[{"id": "test-session", "status": "active"}]))
+        mock_eq.execute = Mock(
+            return_value=Mock(data=[{"id": ACTIVE_SESSION_ID, "status": "active"}])
+        )
 
         mock_create_client.return_value = mock_client
 
         helper = SimplifiedMemoryHelper()
-        result = await helper._is_session_active("test-session")
+        result = await helper._is_session_active(ACTIVE_SESSION_ID)
 
         assert result is True
 
@@ -255,12 +262,14 @@ class TestSimplifiedMemoryHelper:
         mock_client.table = Mock(return_value=mock_table)
         mock_table.select = Mock(return_value=mock_select)
         mock_select.eq = Mock(return_value=mock_eq)
-        mock_eq.execute = Mock(return_value=Mock(data=[{"id": "test-session", "status": "ended"}]))
+        mock_eq.execute = Mock(
+            return_value=Mock(data=[{"id": ENDED_SESSION_ID, "status": "ended"}])
+        )
 
         mock_create_client.return_value = mock_client
 
         helper = SimplifiedMemoryHelper()
-        result = await helper._is_session_active("test-session")
+        result = await helper._is_session_active(ENDED_SESSION_ID)
 
         assert result is False
 
@@ -281,7 +290,7 @@ class TestSimplifiedMemoryHelper:
         mock_create_client.return_value = mock_client
 
         helper = SimplifiedMemoryHelper()
-        result = await helper._is_session_active("nonexistent-session")
+        result = await helper._is_session_active(MISSING_SESSION_ID)
 
         assert result is False
 
@@ -305,7 +314,7 @@ class TestSimplifiedMemoryHelper:
         mock_sessions_select = Mock()
         mock_sessions_eq = Mock()
         mock_sessions_eq.execute = Mock(
-            return_value=Mock(data=[{"id": "test-session", "status": "ended"}])
+            return_value=Mock(data=[{"id": ENDED_SESSION_ID, "status": "ended"}])
         )
         mock_sessions_select.eq = Mock(return_value=mock_sessions_eq)
         mock_sessions_table.select = Mock(return_value=mock_sessions_select)
@@ -319,7 +328,7 @@ class TestSimplifiedMemoryHelper:
         mock_create_client.return_value = mock_client
 
         helper = SimplifiedMemoryHelper()
-        messages = await helper._get_recent_messages("test-session")
+        messages = await helper._get_recent_messages(ENDED_SESSION_ID)
 
         assert messages == []
 
