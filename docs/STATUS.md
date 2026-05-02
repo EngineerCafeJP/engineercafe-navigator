@@ -1,11 +1,12 @@
 # 現在の状態
 
-Last updated: 2026-05-02
+Last updated: 2026-05-03
 
 ## 概要
 
 このページは、`develop` 上の現行コード、2026-04-19 の live audit、2026-04-29 の実機音声 UX 確認、
-2026-05-02 の alpha-live-verification full run / targeted C run をもとに更新しています。
+2026-05-02 の alpha-live-verification full run / targeted C run、2026-05-03 の PR #674/#675/#676
+deploy verification をもとに更新しています。
 
 確認元:
 
@@ -13,6 +14,7 @@ Last updated: 2026-05-02
 - 2026-04-19 UTC の直近 Vercel production deploy
 - 2026-04-29 JST の mobile / kiosk 実地確認 screenshot と Cloud Run structured logs
 - 2026-05-02 JST の `alpha-live-verification` run `25244933308` / `25247945549`
+- 2026-05-03 JST の targeted B run `25254789937` と Cloud Run revision `engineer-cafe-backend-00148-82c`
 - 現在 open の GitHub Issue
 
 Supabase については、CLI で linked project の確認まではできましたが、このセッションでは recent runtime log
@@ -23,20 +25,49 @@ Supabase については、CLI で linked project の確認まではできまし
 - キオスクのコアフロー自体は実装済み
 - alpha live verification workflow は Cloud Run SHA match 付きで end-to-end 実行できる
 - RAGAS evaluator は direct OpenAI で動くことを確認済み
-- ただし 2026-05-02 の full run は failure で、alpha release はまだ GO できない
+- PR #674/#675/#676 により、B routing / slide live smoke、Welcome UI、compact artifacts、Supabase UUID log hygiene は解消済み
+- ただし latest `suites=all` の green proof はまだなく、alpha release はまだ GO できない
 - 現在の主リスクは「未実装の基本機能」ではなく「会話 UX の基本品質、実測 latency、route 整合性、評価 gate の透明性」
 
-特に優先度が高いのは次の 6 点です。
+特に優先度が高いのは次の 4 点です。
 
-1. STT preflight latency が alpha gate を落としている問題
-2. H-UI Welcome OCR overlay が live scenario で見つからない問題
-3. B routing の `B1-BIZ-002` 誤判定
-4. Q/C answer quality と RAGAS JA target miss
-5. RAGAS 29-case gate と 127-case requirement の不一致
-6. Cloud Run / Supabase log hygiene と artifact size / progress telemetry
+1. STT long-tail latency が alpha gate を落としている問題
+2. Q/C answer quality と RAGAS JA target miss
+3. RAGAS 29-case gate と 127-case requirement の不一致
+4. RAGAS full-run speed / telemetry の operational closeout
 
 現行の実装判断は [ADR 018](adr/018-alpha-fast-response-and-assistant-profile-routing.md) と
 [Alpha Remediation Plan 2026-05-02](plans/alpha-remediation-plan-2026-05-02.md) を優先する。
+
+## 2026-05-03 Alpha Remediation Snapshot
+
+最新の deployed staging:
+
+- develop SHA: `d789a2cd899779423947c40a3d65e19382f52d30`
+- Cloud Run revision: `engineer-cafe-backend-00148-82c`
+- Traffic: latest revision 100%
+- Health: `/health` OK
+- develop CI: `25253946681`, success including backend-test, backend-test-ragas, backend-deploy-staging smoke
+- Targeted B run: `25254789937`
+- B result: `64 passed, 0 warned, 0 failed`
+- B1-BIZ-003: `土日祝日も利用できますか。` -> `business_info`, `1258ms`
+- Cloud Logging UUID / reception persistence errors during B run window: 0 rows
+
+Resolved in PR #674/#675/#676:
+
+- #659: B routing / slide live smoke
+- #660: Welcome UI live scenario
+- #661: compact artifact visibility
+- #662: Supabase UUID / Cloud Run log hygiene
+- #671: RAGAS provider secret issue
+
+Still blocking or important:
+
+- #658: STT long-tail latency remains P0. Latest STT-only gate after #674 deploy had 7 samples,
+  p50 `5180ms`, p95/max `29217ms`, and 14.3% over 10s.
+- #657 / #583: RAGAS 29 vs 127 coverage reconciliation remains P0.
+- #653 / #672: Q/C answer quality remains P1 and may become launch-blocking depending on case analysis.
+- #670: RAGAS telemetry is implemented, but a full C/Q run still needs operational proof before close.
 
 ## 2026-05-02 Alpha Live Verification Snapshot
 
@@ -50,19 +81,20 @@ Supabase については、CLI で linked project の確認まではできまし
 - Full run conclusion: failure
 - Direct OpenAI RAGAS: confirmed after GitHub Secret `OPENAI_API_KEY` sync
 
-Resolved in this session:
+Resolved in the 2026-05-02 / 2026-05-03 remediation pass:
 
 - #671: RAGAS provider secret issue. `OPENAI_API_KEY` is now available to the workflow, and C uses direct OpenAI.
+- #659: B routing / slide live smoke.
+- #660: H-UI Welcome UI live scenario.
+- #661: compact artifact visibility.
+- #662: Supabase UUID/log hygiene.
 
 Still blocking:
 
 - #658: STT preflight latency
-- #659: B routing `B1-BIZ-002`
-- #660: H-UI Welcome OCR overlay
 - #657 / #583: RAGAS 29 vs 127 coverage
 - #653 / #672: Q/C answer quality
-- #662: Supabase UUID/log errors
-- #661 / #670: artifact size and RAGAS telemetry
+- #670: full-run RAGAS speed / telemetry closeout
 
 ## 実装済みとして確認できたこと
 
@@ -214,26 +246,20 @@ current turn の high-confidence intent なしに route を固定してはいけ
 ## いま重要な Open Issues
 
 - `#658`: STT preflight latency
-- `#660`: Welcome UI live scenario
-- `#659`: B routing / slide live smoke
 - `#657`: RAGAS gate 29 vs 127
 - `#653`: Q-content quality
 - `#672`: Direct OpenAI C/RAGAS JA target miss
-- `#662`: Supabase UUID/log hygiene
-- `#661`: alpha artifact size
 - `#669`: deployed tRAG translation model missing
 - `#670`: C/RAGAS runtime and telemetry
 - `#611`: Cerebras dynamic filler / fast first-response path
 
 ## 推奨する実装順
 
-1. STT preflight latency と current revision scoping を直す (`#658`)
-2. H-UI Welcome OCR overlay / wait condition を直す (`#660`)
-3. B routing `B1-BIZ-002` を直す (`#659`)
-4. Q/C answer quality を直す (`#653`, `#672`)
-5. Supabase UUID/log hygiene を直す (`#662`)
-6. artifact size と RAGAS progress telemetry を直す (`#661`, `#670`)
-7. RAGAS 127-case gate を定義・実装する (`#657`, `#583`)
+1. STT long-tail latency mitigation を実装する (`#658`)
+2. RAGAS 127-case gate を定義・実装する (`#657`, `#583`)
+3. Q/C answer quality を直す (`#653`, `#672`)
+4. RAGAS full-run telemetry / runtime を close 判断する (`#670`)
+5. tRAG translation model fallback の alpha 影響を判断する (`#669`)
 
 ## 参照
 

@@ -92,3 +92,14 @@ Alpha live verification の運用結果を踏まえ、以下をガードレー�
 - Alpha RAGAS は direct OpenAI を必須にする。`OPENAI_API_KEY` が空で OpenRouter fallback になった run は diagnostic として扱う。
 - Artifact は compact failure summary と heavy trace/video を分ける。932MB 級 artifact は triage 阻害として扱う。
 - STT preflight は historical 24h risk と current revision release gate を分ける。過去 revision の outlier だけで現行 release gate を落とさない。
+
+## 2026-05-03 追記
+
+PR #674, #675, #676 の remediation と deployed staging 検証を踏まえ、以下を運用ルールに追加する。
+
+- Alpha issue を close するには、実装 PR の merge だけでなく、Cloud Run staging の deployed SHA match と targeted live suite の artifact を紐づける。
+- Synthetic alpha session ID は test isolation のため維持してよいが、UUID 型 DB column へ直接渡してはならない。UUID column に保存する値は UUID に正規化し、元の synthetic ID は JSON payload / metadata に保持する。
+- Cloud Run log hygiene の issue は、対象 revision と run window を指定した Logging query で再発 0 件を確認してから close する。
+- B routing / slide smoke の GO 証跡は targeted B run `25254789937` とする。この run は Cloud Run revision `engineer-cafe-backend-00148-82c`、image tag `d789a2cd899779423947c40a3d65e19382f52d30` で `64 passed, 0 warned, 0 failed`。
+- Compact artifact split は release gate の一部とする。成功時も compact reports が残り、heavy browser artifacts は failure-oriented にする。
+- Current-revision STT gate が失敗している限り、B/H/log hygiene が green でも alpha GO とはしない。

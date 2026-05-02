@@ -1,7 +1,8 @@
 # Alpha Live Verification Status 2026-05-02
 
-このドキュメントは、2026-05-02 JST 時点の alpha live verification 正本です。古い
-2026-04-25 status は履歴として残しますが、次の実装判断ではこのファイルを優先します。
+このドキュメントは、2026-05-02 JST 時点の alpha live verification 正本に、2026-05-03 JST
+の PR #674/#675/#676 remediation 結果を追記したものです。古い 2026-04-25 status は履歴として残しますが、
+次の実装判断ではこのファイルを優先します。
 
 ## 結論
 
@@ -10,7 +11,10 @@
 `develop` と Cloud Run staging の SHA 同期、full-suite workflow、C/RAGAS direct OpenAI
 実行経路は成立しました。一方で、alpha GO を止める blocker がまだ残っています。
 
-## Deploy / SHA Sync
+2026-05-03 時点で、B routing / slide live smoke、Welcome UI、artifact split、Supabase UUID
+log hygiene は解消済みです。残る P0 は STT long-tail latency と RAGAS coverage reconciliation です。
+
+## 2026-05-02 Baseline Deploy / SHA Sync
 
 - PR: #667
 - develop SHA: `fa7745b7420c0709fcff950ed3bf4c090f0dfc55`
@@ -21,6 +25,39 @@
 - `require_deployed_sha_match=true`: PASS
 
 ## Runs
+
+### 2026-05-03 Targeted B Verification After PR #674/#675/#676
+
+- Run: <https://github.com/EngineerCafeJP/engineercafe-navigator/actions/runs/25254789937>
+- Suites: `b`
+- Result: success
+- Cloud Run revision: `engineer-cafe-backend-00148-82c`
+- Image:
+  `asia-northeast1-docker.pkg.dev/aipartner-426616/cloud-run-source-deploy/engineer-cafe-backend:d789a2cd899779423947c40a3d65e19382f52d30`
+- Health: `/health` OK
+- `require_deployed_sha_match=true`: PASS
+- Summary: `64 passed, 0 warned, 0 failed`
+- B1-BIZ-003: `土日祝日も利用できますか。` -> `business_info`, `1258ms`
+- Slide narration B5-1..B5-5: PASS, `171ms` to `180ms`
+- Cloud Logging query for `invalid input syntax for type uuid`: 0 rows in the run window
+- Cloud Logging query for `Reception session persistence failed`: 0 rows in the run window
+
+Resolved by this remediation pass:
+
+- #659: B routing / slide live smoke
+- #660: H-UI Welcome UI live scenario
+- #661: compact artifact visibility
+- #662: Supabase UUID / Cloud Run log hygiene
+- #671: RAGAS provider secret issue
+
+Important STT follow-up:
+
+- STT-only run after PR #674 deploy still failed the current-revision gate.
+- Gate samples: 7
+- p50: `5180ms`
+- p95/max: `29217ms`
+- over-10s ratio: `14.3%`
+- #658 remains the highest-priority P0.
 
 ### Full Suite
 
@@ -62,10 +99,8 @@ coverage, not provider configuration.
 
 ### P0
 
-- #658: STT preflight latency still fails. Reconstructed 1440-minute report showed p95 `11067ms`,
-  max `34076ms`, and 11.6% samples over 10s.
-- #659: B routing still fails at `B1-BIZ-002` (`今日の最終受付は何時ですか。`).
-- #660: H-UI Welcome live scenario still fails because `kiosk-welcome-ocr-overlay` is not found.
+- #658: STT preflight latency still fails. The current-revision gate after PR #674 had p95/max
+  `29217ms` and 14.3% samples over 10s.
 - #657 / #583: C/RAGAS gate still runs 29 cases while #583 requires 127.
 - #643 / #612: umbrella issues remain open until the alpha gate is green.
 - #623: slide narration endpoint smoke is covered by B, but full 5-page ingestion proof remains open.
@@ -80,10 +115,9 @@ coverage, not provider configuration.
   - `Q-BIZ-EN-003`
   - `Q-EVT-EN-001`
   - `Q-DAILY-JA-001`
-- #662: Cloud Run still logs Supabase UUID parsing errors for synthetic alpha session IDs.
-- #661: alpha artifact remains too large and hides compact failure details.
 - #669: deployed tRAG translation model assets are missing, causing retry/fallback logs.
-- #670: C/RAGAS runtime improved after direct OpenAI, but progress telemetry and gate splitting remain weak.
+- #670: C/RAGAS runtime improved after direct OpenAI, and telemetry is now present, but full-run
+  operational proof is still needed.
 - #655: memory WARNs remain; TTS long Japanese case passed in the latest run.
 - #663: SHA-match gate still blocks harness-only commits without backend deploy.
 - #668: GitHub Actions Node.js 20 deprecation warnings need post-alpha cleanup.
@@ -106,13 +140,11 @@ Observed impact:
 
 ## Next Implementation Order
 
-1. #658: STT preflight latency and report scoping.
-2. #660: H-UI Welcome OCR overlay / wait condition.
-3. #659: `B1-BIZ-002` routing.
-4. #653 and #672: Q/C answer quality for current failing cases.
-5. #662: Supabase UUID/log hygiene.
-6. #661 and #670: artifact size and live progress telemetry.
-7. #657/#583: expand or correctly define the 127-case alpha RAGAS gate.
+1. #658: STT long-tail latency mitigation.
+2. #657/#583: expand or correctly define the 127-case alpha RAGAS gate.
+3. #653 and #672: Q/C answer quality for current failing cases.
+4. #670: verify full C/Q telemetry and runtime with the current artifact split.
+5. #669: decide whether deployed tRAG translation model fallback is launch-blocking.
 
 ## Useful Commands
 
@@ -132,4 +164,3 @@ gcloud run services describe engineer-cafe-backend \
   --region asia-northeast1 \
   --format='value(status.latestReadyRevisionName,spec.template.spec.containers[0].image,status.url)'
 ```
-
