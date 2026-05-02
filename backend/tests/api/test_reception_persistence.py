@@ -235,6 +235,16 @@ async def test_repository_non_uuid_session_id_skips_primary_key_lookup() -> None
 
 
 @pytest.mark.asyncio
+async def test_repository_non_uuid_conversation_session_id_skips_lookup() -> None:
+    mock_client = Mock()
+    repo = ReceptionRepository(mock_client)  # type: ignore[arg-type]
+
+    assert await repo.get_session_by_conversation_id("alpha-b-20260502-B1-BIZ-003") is None
+
+    mock_client.table.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_repository_cleanup_expired_sessions() -> None:
     fake_client = _FakeSupabaseClient()
     repo = ReceptionRepository(fake_client)  # type: ignore[arg-type]

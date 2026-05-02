@@ -101,6 +101,12 @@ class SupabaseReceptionSessionRepository(ReceptionSessionRepository):
         Returns:
             A ``ReceptionSession`` or ``None``.
         """
+        try:
+            uuid.UUID(conversation_session_id)
+        except (TypeError, ValueError):
+            logger.debug("Skipping reception session conversation lookup for non-UUID session_id")
+            return None
+
         client = await self._get_client()
         try:
             result = (

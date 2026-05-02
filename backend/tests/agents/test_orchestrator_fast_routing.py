@@ -140,6 +140,7 @@ class TestOrchestratorFastRouting:
             ("閉館は何時ですか？", "hours"),
             ("今日の最終受付は何時ですか。", "hours"),
             ("受付時間を教えてください。", "hours"),
+            ("土日祝日も利用できますか。", "hours"),
             ("お休みの日はありますか？", "hours"),
         ]
         for query, expected_type in test_cases:
