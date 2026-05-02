@@ -34,6 +34,18 @@ def _is_uuid(value: str) -> bool:
     return True
 
 
+def _db_uuid_or_none(value: Any) -> str | None:
+    if not isinstance(value, str) or not _is_uuid(value):
+        return None
+    return str(uuid.UUID(value))
+
+
+def _stable_reception_id(value: str) -> str:
+    if _is_uuid(value):
+        return str(uuid.UUID(value))
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, f"engineer-cafe-navigator:reception:{value}"))
+
+
 async def _run_db_call(call: Callable[[], _T]) -> _T:
     """Run the synchronous Supabase client without blocking the event loop."""
     return await asyncio.wait_for(asyncio.to_thread(call), timeout=_db_timeout_seconds())
@@ -59,8 +71,8 @@ class ReceptionRepository:
         metadata = data.get("metadata") or {}
 
         payload = {
-            "id": session_id,
-            "session_id": data.get("session_id"),
+            "id": _stable_reception_id(session_id),
+            "session_id": _db_uuid_or_none(data.get("session_id")),
             "user_id": visitor_identity.get("user_id"),
             "stage": data.get("stage", "initiated"),
             "purpose": purpose.get("category") if isinstance(purpose, dict) else purpose,

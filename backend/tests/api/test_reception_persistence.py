@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Iterator, Optional
 from unittest.mock import AsyncMock, Mock, patch
+import uuid
 
 import pytest
 from fastapi.testclient import TestClient
@@ -242,6 +243,26 @@ async def test_repository_non_uuid_conversation_session_id_skips_lookup() -> Non
     assert await repo.get_session_by_conversation_id("alpha-b-20260502-B1-BIZ-003") is None
 
     mock_client.table.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_repository_store_session_coerces_non_uuid_values_for_uuid_columns() -> None:
+    fake_client = _FakeSupabaseClient()
+    repo = ReceptionRepository(fake_client)  # type: ignore[arg-type]
+
+    synthetic_id = "alpha-b-fast-20260502-B2-GREET-001"
+    await repo.store_session(
+        synthetic_id,
+        _sample_session_data() | {"id": synthetic_id, "session_id": synthetic_id},
+    )
+
+    rows = fake_client.storage["reception_sessions"]
+    assert len(rows) == 1
+    stored_id, stored = next(iter(rows.items()))
+    assert uuid.UUID(stored_id)
+    assert stored_id != synthetic_id
+    assert stored["session_id"] is None
+    assert stored["session_data"]["session_id"] == synthetic_id
 
 
 @pytest.mark.asyncio
