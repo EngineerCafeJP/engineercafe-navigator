@@ -7,17 +7,31 @@ export interface KnowledgeUploadFormData {
   title: string;
 }
 
+// NOTE: We avoid `z.instanceof(File, ...)` at module top-level because the
+// `File` global is only available in Node 20+ (and always in browsers). This
+// module is evaluated at Next.js prerender time on Node, so referencing
+// `File` directly there throws `ReferenceError: File is not defined` on
+// Node 18. We perform the instance check lazily inside a refine callback,
+// which only runs in the browser when validation is actually invoked.
+// See issue #645.
+const fileSchema = z
+  .unknown()
+  .refine(
+    (value): value is File =>
+      typeof File !== 'undefined' && value instanceof File,
+    { message: 'ファイルは必須です' },
+  )
+  .refine((file) => {
+    const ext = file.name.split('.').pop()?.toLowerCase();
+    return Boolean(ext && ['pdf', 'md', 'markdown'].includes(ext));
+  }, 'PDF または Markdown ファイルのみ対応しています')
+  .refine(
+    (file) => file.size <= 10 * 1024 * 1024,
+    'ファイルサイズは 10MB 以内にしてください',
+  );
+
 const uploadSchema = z.object({
-  file: z
-    .instanceof(File, { message: 'ファイルは必須です' })
-    .refine((file) => {
-      const ext = file.name.split('.').pop()?.toLowerCase();
-      return Boolean(ext && ['pdf', 'md', 'markdown'].includes(ext));
-    }, 'PDF または Markdown ファイルのみ対応しています')
-    .refine(
-      (file) => file.size <= 10 * 1024 * 1024,
-      'ファイルサイズは 10MB 以内にしてください',
-    ),
+  file: fileSchema,
   category: z.string().min(1, 'カテゴリは必須です'),
   language: z.enum(['ja', 'en']),
   title: z.string().max(200, 'タイトルは 200 文字以内にしてください').optional(),
