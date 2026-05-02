@@ -33,6 +33,10 @@ Current confirmed target:
   `scripts/rag-api-live-test.sh --case-suite alpha-127 --languages ja,en,zh,ko`、または
   `alpha-live-verification.yml` の `suites=c-127` / `c_ragas_suite=alpha-127` を使います。
   Report の `case_suite=alpha-127` と `suite_coverage` が 127/127 PASS になっていることを確認してください。
+- C/RAGAS live source gate は intent ごとの source policy で判定します。施設・料金・連絡先などの local knowledge は
+  `enhanced_rag` / `knowledge_base` / `knowledge_base_cached` を同等に扱い、event-like case は
+  `google_calendar` / `connpass` も許容します。緊急・受付・farewell の即時応答は source なしでも source gate 上は許容し、
+  回答品質は `answer_correctness` 側で判定します。
 - GitHub step conclusion だけで suite の成否を判断しないでください。`continue-on-error` のため、summary / artifact の suite outcome を正本にします。
 
 ## A-1 Japanese Realistic Utterances
