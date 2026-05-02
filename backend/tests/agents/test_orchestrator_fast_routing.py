@@ -374,6 +374,51 @@ class TestOrchestratorFastRouting:
         assert result["agent"] == "slide"
         assert result["request_type"] == "slide"
 
+    def test_quality_gate_q_recv_ja_002_reception_not_current_info(self, orchestrator):
+        """Q-RECV-JA-002: 再受付 + 今日 は current_info に吸われず business_info reception へ。"""
+        result = orchestrator._try_fast_routing(
+            "以前登録した来館者ですが、今日は再受付だけで大丈夫ですか。"
+        )
+        assert result is not None
+        assert result["agent"] == "business_info"
+        assert result["request_type"] == "reception"
+        assert result["category"] == "reception"
+
+    def test_quality_gate_q_farewell_ja_001_farewell_not_daily(self, orchestrator):
+        """Q-FAREWELL-JA-001: 感謝 + また来ます は daily ではなく farewell へ。"""
+        result = orchestrator._try_fast_routing("今日はありがとうございました。また来ます。")
+        assert result is not None
+        assert result["agent"] == "farewell"
+        assert result["request_type"] == "farewell"
+        assert result["category"] == "farewell"
+
+    def test_emergency_kaji_overrides_farewell(self, orchestrator):
+        """P1 guard: 火事なので帰ります must not route to farewell."""
+        result = orchestrator._try_fast_routing("火事なので帰ります")
+        assert result is not None
+        assert result["agent"] != "farewell", f"emergency kaji query leaked to farewell: {result}"
+
+    def test_emergency_jishin_overrides_farewell(self, orchestrator):
+        """P1 guard: 地震なので帰ります must not route to farewell."""
+        result = orchestrator._try_fast_routing("地震なので帰ります")
+        assert result is not None
+        assert result["agent"] != "farewell", f"emergency jishin query leaked to farewell: {result}"
+
+    def test_emergency_english_overrides_farewell(self, orchestrator):
+        """P1 guard: 'emergency, I am leaving' must not route to farewell."""
+        result = orchestrator._try_fast_routing("emergency, I am leaving")
+        assert result is not None
+        assert (
+            result["agent"] != "farewell"
+        ), f"english emergency query leaked to farewell: {result}"
+
+    def test_p2_mata_kuru_with_reception_not_farewell(self, orchestrator):
+        """P2 anchor: 'また来るときに受付は必要ですか' must not route to farewell."""
+        result = orchestrator._try_fast_routing("また来るときに受付は必要ですか")
+        # Must not be routed to farewell. Either fallthrough (None) or reception/business_info.
+        if result is not None:
+            assert result["agent"] != "farewell", f"reception query leaked to farewell: {result}"
+
 
 def test_zh_greeting_template_content():
     """Chinese greeting templates should exist for all time periods"""

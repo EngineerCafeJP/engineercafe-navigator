@@ -20,6 +20,7 @@ from backend.config.routing_constants import (
     EXCLUSIVE_RENTAL_KEYWORDS,
     EVENT_KEYWORDS,
     FACILITY_EQUIPMENT_KEYWORDS,
+    FAREWELL_KEYWORDS,
     FLOOR_KEYWORDS,
     FLOOR_LAYOUT_KEYWORDS,
     FOOD_DRINK_KEYWORDS,
@@ -36,6 +37,9 @@ from backend.config.routing_constants import (
     WIFI_KEYWORDS,
     match_keywords,
 )
+
+_MATA_KIMASU_FAREWELL_RE = re.compile(r"また\s*来(ます|る|ました|るね|ますね)\s*[。!！?？\.]?\s*$")
+_SERVICE_INTENT_RE = re.compile(r"(受付|予約|会員|問合せ|問い合わせ)")
 
 FILLER_INTENTS = frozenset(
     {
@@ -285,6 +289,25 @@ def classify_fast_intent(query: str) -> Optional[FastIntent]:
             reasoning="Assistant profile/capability question detected",
         )
 
+    farewell_substring_hit = match_keywords(lower_query, FAREWELL_KEYWORDS)
+    farewell_anchored_hit = bool(_MATA_KIMASU_FAREWELL_RE.search(query))
+    has_service_intent = bool(_SERVICE_INTENT_RE.search(query))
+    has_emergency = match_keywords(lower_query, EMERGENCY_KEYWORDS)
+
+    # Farewell before daily_conversation so thanks + また来ます routes out (Q-FAREWELL-JA-001).
+    # Emergency and service-intent tokens must keep their more specific routing flows.
+    if (
+        (farewell_substring_hit or farewell_anchored_hit)
+        and not has_emergency
+        and not has_service_intent
+    ):
+        return FastIntent(
+            "farewell",
+            "farewell",
+            "farewell",
+            "Farewell keyword detected",
+        )
+
     if is_daily_conversation_request(lower_query):
         return FastIntent(
             agent="general_knowledge",
@@ -293,7 +316,7 @@ def classify_fast_intent(query: str) -> Optional[FastIntent]:
             reasoning="Daily conversation request detected",
         )
 
-    if match_keywords(lower_query, EMERGENCY_KEYWORDS):
+    if has_emergency:
         return FastIntent("facility", "emergency", "emergency", "Emergency keyword detected")
 
     if match_keywords(lower_query, GREETING_KEYWORDS):
@@ -343,6 +366,11 @@ def classify_fast_intent(query: str) -> Optional[FastIntent]:
         )
     if match_keywords(lower_query, EVENT_KEYWORDS):
         return FastIntent("event", "events", "event", "Event keyword detected")
+    # Reception before current_info so 今日 + 再受付 is not misclassified (Q-RECV-JA-002).
+    if match_keywords(lower_query, RECEPTION_KEYWORDS):
+        return FastIntent(
+            "business_info", "reception", "reception", "Reception/check-in keyword detected"
+        )
     if is_current_info_request(lower_query):
         return FastIntent(
             "general_knowledge",
@@ -404,10 +432,6 @@ def classify_fast_intent(query: str) -> Optional[FastIntent]:
     if match_keywords(lower_query, FACILITY_EQUIPMENT_KEYWORDS):
         return FastIntent(
             "facility", "facility-info", "facility", "Facility equipment keyword detected"
-        )
-    if match_keywords(lower_query, RECEPTION_KEYWORDS):
-        return FastIntent(
-            "business_info", "reception", "reception", "Reception/check-in keyword detected"
         )
     if match_keywords(lower_query, FLOOR_LAYOUT_KEYWORDS):
         return FastIntent(
