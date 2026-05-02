@@ -17,7 +17,7 @@ Current confirmed target:
 
 - Backend: `https://engineer-cafe-backend-639959525777.asia-northeast1.run.app`
 - Cloud Run revision: GO 判定時は workflow の `Resolve live target` 出力を正本にする
-- Backend SHA: `require_deployed_sha_match=true` で workflow SHA と Cloud Run image tag の一致を必須にする
+- Backend SHA: `require_deployed_sha_match=true` で expected backend SHA と Cloud Run image tag の一致を必須にする。`expected_backend_sha` が空の場合は workflow SHA を expected backend SHA として使うため、backend 変更を含む GO proof の既定動作は変わらない。
 - Frontend: `https://frontend-delta-six-20.vercel.app`
 
 ## Usage Notes
@@ -38,6 +38,17 @@ Current confirmed target:
   `google_calendar` / `connpass` も許容します。緊急・受付・farewell の即時応答は source なしでも source gate 上は許容し、
   回答品質は `answer_correctness` 側で判定します。
 - GitHub step conclusion だけで suite の成否を判断しないでください。`continue-on-error` のため、summary / artifact の suite outcome を正本にします。
+- Harness-only workflow/script rerun では、backend deploy が意図的に変わっていない場合だけ
+  `require_deployed_sha_match=true` のまま `expected_backend_sha=<Cloud Run image tag の 40-char commit SHA>` を渡します。
+  `expected_backend_sha` は full SHA のみ許容されます。
+
+```bash
+gh workflow run alpha-live-verification.yml \
+  --ref develop \
+  -f suites=all \
+  -f require_deployed_sha_match=true \
+  -f expected_backend_sha=19623d5534c409856344215b3062900f35ff2816
+```
 
 ## A-1 Japanese Realistic Utterances
 

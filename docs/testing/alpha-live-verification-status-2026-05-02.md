@@ -159,6 +159,13 @@ gh workflow run alpha-live-verification.yml \
   -f suites=c \
   -f require_deployed_sha_match=true
 
+# Harness-only rerun when the workflow/scripts changed but Cloud Run backend did not:
+gh workflow run alpha-live-verification.yml \
+  --ref develop \
+  -f suites=all \
+  -f require_deployed_sha_match=true \
+  -f expected_backend_sha=<40-char-deployed-backend-sha>
+
 gcloud run services describe engineer-cafe-backend \
   --project aipartner-426616 \
   --region asia-northeast1 \
