@@ -19,6 +19,7 @@ from backend.infrastructure.reception_repository import (
 )
 
 _RECEPTION_ID = "11111111-1111-1111-1111-111111111111"
+_CONVERSATION_SESSION_ID = "22222222-2222-2222-2222-222222222222"
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -154,7 +155,7 @@ async def test_find_by_conversation_session(mock_client: MagicMock):
 
     row = {
         "id": "rs-002",
-        "session_id": "conv-session-xyz",
+        "session_id": _CONVERSATION_SESSION_ID,
         "user_id": None,
         "stage": "initiated",
         "purpose": None,
@@ -164,11 +165,11 @@ async def test_find_by_conversation_session(mock_client: MagicMock):
     builder = _chainable_builder(execute_result=_make_query_result(data=[row]))
     mock_client.table = MagicMock(return_value=builder)
 
-    found = await repo.find_by_conversation_session("conv-session-xyz")
+    found = await repo.find_by_conversation_session(_CONVERSATION_SESSION_ID)
 
     assert found is not None
     assert found.id == "rs-002"
-    assert found.session_id == "conv-session-xyz"
+    assert found.session_id == _CONVERSATION_SESSION_ID
     assert found.visitor_identity is None
     assert found.purpose is None
     assert found.language == "en"
@@ -183,8 +184,19 @@ async def test_find_by_conversation_session_not_found(mock_client: MagicMock):
     builder = _chainable_builder(execute_result=_make_query_result(data=[]))
     mock_client.table = MagicMock(return_value=builder)
 
-    found = await repo.find_by_conversation_session("nonexistent")
+    found = await repo.find_by_conversation_session(_CONVERSATION_SESSION_ID)
     assert found is None
+
+
+@pytest.mark.asyncio
+async def test_find_by_conversation_session_skips_non_uuid_session_id(mock_client: MagicMock):
+    """Synthetic IDs should not be sent to reception_sessions.session_id UUID lookup."""
+    repo = SupabaseReceptionSessionRepository(supabase_client=mock_client)
+
+    found = await repo.find_by_conversation_session("alpha-b-20260502-B1-BIZ-003")
+
+    assert found is None
+    mock_client.table.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

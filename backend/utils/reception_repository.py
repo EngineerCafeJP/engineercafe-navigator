@@ -115,8 +115,9 @@ class ReceptionRepository:
         """
         if not session_id or not session_id.strip():
             return None
-        # Do NOT validate as UUID -- session_id can be any string format
-        # (e.g. "voice-session-*" from the browser).
+        if not _is_uuid(session_id):
+            logger.debug("Skipping reception_sessions.session_id lookup for non-UUID session_id")
+            return None
         try:
             client = await self._get_client()
             result = await _run_db_call(
