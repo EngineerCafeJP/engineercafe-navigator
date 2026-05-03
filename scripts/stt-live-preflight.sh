@@ -143,6 +143,7 @@ def load_rows(raw_path: str) -> list[dict[str, Any]]:
             {
                 "timestamp": entry.get("timestamp"),
                 "revision": (entry.get("resource") or {}).get("labels", {}).get("revision_name"),
+                "trace_id": payload.get("stt_trace_id") or "",
                 "winner": payload.get("stt_winner") or payload.get("provider") or "unknown",
                 "provider": payload.get("provider") or "unknown",
                 "duration_ms": duration_ms,
@@ -269,11 +270,18 @@ if gate_revision:
     for key, value in history["revision_counts"].most_common():
         lines.append(f"| {key} | {value} |")
 if timeout_rows or over_10s:
-    lines.extend(["", "| Timestamp | Revision | Winner | Provider | Duration ms | Error |", "| --- | --- | --- | --- | ---: | --- |"])
+    lines.extend(
+        [
+            "",
+            "| Timestamp | Revision | Trace | Winner | Provider | Duration ms | Error |",
+            "| --- | --- | --- | --- | --- | ---: | --- |",
+        ]
+    )
     risk_rows = {
         (
             row["timestamp"],
             row["revision"],
+            row["trace_id"],
             row["winner"],
             row["provider"],
             row["duration_ms"],
@@ -283,7 +291,7 @@ if timeout_rows or over_10s:
     }.values()
     for row in sorted(risk_rows, key=lambda x: x["duration_ms"], reverse=True)[:20]:
         lines.append(
-            f"| {row['timestamp']} | {row['revision']} | {row['winner']} | "
+            f"| {row['timestamp']} | {row['revision']} | {row['trace_id']} | {row['winner']} | "
             f"{row['provider']} | {row['duration_ms']} | {row['qwen_error_type']} |"
         )
 

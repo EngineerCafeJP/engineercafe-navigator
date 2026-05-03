@@ -48,6 +48,7 @@ logger = logging.getLogger(__name__)
 
 _stt_postprocess_client: Optional["_stt_httpx.AsyncClient"] = None
 _qwen_stt_executor: Optional[concurrent.futures.ThreadPoolExecutor] = None
+_vosk_stt_executor: Optional[concurrent.futures.ThreadPoolExecutor] = None
 
 
 def _is_real_openrouter_key(value: str) -> bool:
@@ -82,6 +83,16 @@ def _get_qwen_stt_executor() -> concurrent.futures.ThreadPoolExecutor:
             thread_name_prefix="qwen-stt",
         )
     return _qwen_stt_executor
+
+
+def _get_vosk_stt_executor() -> concurrent.futures.ThreadPoolExecutor:
+    global _vosk_stt_executor
+    if _vosk_stt_executor is None:
+        _vosk_stt_executor = concurrent.futures.ThreadPoolExecutor(
+            max_workers=2,
+            thread_name_prefix="vosk-stt",
+        )
+    return _vosk_stt_executor
 
 
 # ---------------------------------------------------------------------------
@@ -352,6 +363,52 @@ def _parse_qwen_stt_hedge_grace(
         return adjusted
 
     return timeout
+
+
+def _parse_qwen_stt_latency_budget(
+    raw_value: Optional[str],
+    *,
+    hard_timeout: float,
+) -> float | None:
+    """Parse the end-to-end STT budget used to cap optional Qwen grace wait."""
+
+    default = 10.0
+    if raw_value is None or raw_value.strip() == "":
+        budget = default
+    else:
+        try:
+            budget = float(raw_value)
+        except (TypeError, ValueError):
+            logger.warning(
+                "Invalid QWEN_STT_LATENCY_BUDGET_SECONDS=%r; falling back to %.1fs",
+                raw_value,
+                default,
+            )
+            budget = default
+
+    if not math.isfinite(budget):
+        logger.warning(
+            "Invalid QWEN_STT_LATENCY_BUDGET_SECONDS=%r; falling back to %.1fs",
+            raw_value,
+            default,
+        )
+        budget = default
+
+    if budget <= 0:
+        return None
+
+    if budget >= hard_timeout:
+        adjusted = max(0.05, hard_timeout * 0.8)
+        logger.warning(
+            "QWEN_STT_LATENCY_BUDGET_SECONDS %.2fs must be less than QWEN_STT_TIMEOUT %.2fs; "
+            "using %.2fs",
+            budget,
+            hard_timeout,
+            adjusted,
+        )
+        return adjusted
+
+    return budget
 
 
 def _normalize_vosk_route_transcript(transcript: str, language: Optional[str]) -> str:
@@ -867,11 +924,10 @@ class LocalSTTClient:
         """WAVバイト列を受け取り、TranscriptionResult を返します (thread pool経由)。"""
         try:
             loop = asyncio.get_running_loop()
-            with concurrent.futures.ThreadPoolExecutor() as pool:
-                return await loop.run_in_executor(
-                    pool,
-                    lambda: self._sync_transcribe(audio_data, language, grammar),
-                )
+            return await loop.run_in_executor(
+                _get_vosk_stt_executor(),
+                lambda: self._sync_transcribe(audio_data, language, grammar),
+            )
         except ValueError as e:
             message = f"Invalid audio data for STT transcription: {e}"
             logger.warning(message)
@@ -1226,6 +1282,7 @@ class STTAgent:
         self._qwen_timeout = None
         self._qwen_hedge_delay = None
         self._qwen_hedge_grace = 0.0
+        self._qwen_latency_budget = None
         if stt_client:
             self.stt_client = stt_client
         elif self.stt_provider == "vosk":
@@ -1256,6 +1313,10 @@ class STTAgent:
                 os.getenv("QWEN_STT_HEDGE_GRACE_SECONDS"),
                 hard_timeout=self._qwen_timeout,
                 hedge_delay=self._qwen_hedge_delay,
+            )
+            self._qwen_latency_budget = _parse_qwen_stt_latency_budget(
+                os.getenv("QWEN_STT_LATENCY_BUDGET_SECONDS"),
+                hard_timeout=self._qwen_timeout,
             )
             if _stt_preload_vosk_fallback_enabled():
                 self._vosk_fallback_client.preload_models()
@@ -1515,6 +1576,7 @@ class STTAgent:
                 timeout_s=self._qwen_timeout,
                 hedge_delay_s=self._qwen_hedge_delay,
                 hedge_grace_s=self._qwen_hedge_grace,
+                latency_budget_s=self._qwen_latency_budget,
                 audio_bytes=len(audio_data),
                 qwen_postprocess_enabled=qwen_postprocess_enabled,
             )
@@ -1684,6 +1746,7 @@ class STTAgent:
                         stt_qwen_duration_ms=_duration_ms(overall_started_at),
                         hedge_delay_s=self._qwen_hedge_delay,
                         hedge_grace_s=self._qwen_hedge_grace,
+                        latency_budget_s=self._qwen_latency_budget,
                     )
                     vosk_fallback_allowed.set()
                     done, _pending = await asyncio.wait(
@@ -1725,34 +1788,58 @@ class STTAgent:
                             and not qwen_task.done()
                             and not vosk_trusted
                         ):
-                            log_stt_event(
-                                event="stt_qwen_hedge_grace_start",
-                                stt_trace_id=stt_trace_id,
-                                provider="qwen-primary",
-                                language=language,
-                                success=False,
-                                hedge_grace_s=self._qwen_hedge_grace,
-                                stt_qwen_duration_ms=_duration_ms(overall_started_at),
-                            )
-                            try:
-                                qwen_result = await asyncio.wait_for(
-                                    asyncio.shield(qwen_task),
-                                    timeout=self._qwen_hedge_grace,
+                            remaining_budget = self._qwen_hedge_grace
+                            if self._qwen_latency_budget is not None:
+                                remaining_budget = min(
+                                    remaining_budget,
+                                    self._qwen_latency_budget
+                                    - (time.perf_counter() - overall_started_at),
                                 )
-                            except asyncio.TimeoutError:
+                            if remaining_budget <= 0:
                                 log_stt_event(
-                                    event="stt_qwen_hedge_grace_complete",
+                                    event="stt_qwen_hedge_grace_skipped",
                                     stt_trace_id=stt_trace_id,
                                     provider="qwen-primary",
                                     language=language,
                                     success=False,
-                                    error_type="TimeoutError",
                                     hedge_grace_s=self._qwen_hedge_grace,
+                                    latency_budget_s=self._qwen_latency_budget,
                                     stt_qwen_duration_ms=_duration_ms(overall_started_at),
                                 )
-                            except Exception as exc:
-                                qwen_result = exc
-                                qwen_error_for_log = exc
+                                remaining_budget = 0.0
+                            if remaining_budget > 0:
+                                log_stt_event(
+                                    event="stt_qwen_hedge_grace_start",
+                                    stt_trace_id=stt_trace_id,
+                                    provider="qwen-primary",
+                                    language=language,
+                                    success=False,
+                                    hedge_grace_s=self._qwen_hedge_grace,
+                                    latency_budget_s=self._qwen_latency_budget,
+                                    effective_hedge_grace_s=remaining_budget,
+                                    stt_qwen_duration_ms=_duration_ms(overall_started_at),
+                                )
+                                try:
+                                    qwen_result = await asyncio.wait_for(
+                                        asyncio.shield(qwen_task),
+                                        timeout=remaining_budget,
+                                    )
+                                except asyncio.TimeoutError:
+                                    log_stt_event(
+                                        event="stt_qwen_hedge_grace_complete",
+                                        stt_trace_id=stt_trace_id,
+                                        provider="qwen-primary",
+                                        language=language,
+                                        success=False,
+                                        error_type="TimeoutError",
+                                        hedge_grace_s=self._qwen_hedge_grace,
+                                        latency_budget_s=self._qwen_latency_budget,
+                                        effective_hedge_grace_s=remaining_budget,
+                                        stt_qwen_duration_ms=_duration_ms(overall_started_at),
+                                    )
+                                except Exception as exc:
+                                    qwen_result = exc
+                                    qwen_error_for_log = exc
                 except Exception as exc:
                     qwen_result = exc
                     qwen_error_for_log = exc

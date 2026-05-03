@@ -180,6 +180,41 @@ class TestLocalSTTClient:
                 assert "empty" in str(exc_info.value).lower()
 
     @pytest.mark.asyncio
+    async def test_transcribe_cancellation_does_not_wait_for_blocking_executor(
+        self, test_wav_16khz
+    ):
+        """Vosk cancellation should not wait for a blocking worker thread."""
+        import concurrent.futures
+
+        import backend.agents.stt_agent as _mod
+
+        client = LocalSTTClient()
+        completed = threading.Event()
+
+        def blocking_transcribe(*args, **kwargs):
+            time.sleep(0.3)
+            completed.set()
+            return TranscriptionResult(text="late", confidence=0.8, language="ja")
+
+        shared = concurrent.futures.ThreadPoolExecutor(
+            max_workers=1,
+            thread_name_prefix="vosk-stt-test",
+        )
+
+        started_at = time.perf_counter()
+        with patch.object(client, "_sync_transcribe", side_effect=blocking_transcribe):
+            with patch.object(_mod, "_get_vosk_stt_executor", return_value=shared):
+                with pytest.raises(asyncio.TimeoutError):
+                    await asyncio.wait_for(
+                        client.transcribe(test_wav_16khz, language="ja"),
+                        timeout=0.01,
+                    )
+
+        assert time.perf_counter() - started_at < 0.2
+        assert completed.wait(timeout=1.0), "Vosk worker should finish after cancellation"
+        shared.shutdown(wait=True)
+
+    @pytest.mark.asyncio
     async def test_transcribe_invalid_json_raises_error(self, test_wav_16khz):
         """LocalSTTClient raises error if Vosk returns malformed JSON"""
         client = LocalSTTClient()
@@ -988,6 +1023,7 @@ class TestSTTAgent:
         assert agent._qwen_timeout == pytest.approx(24.0)
         assert agent._qwen_hedge_delay == pytest.approx(4.0)
         assert agent._qwen_hedge_grace == pytest.approx(6.0)
+        assert agent._qwen_latency_budget == pytest.approx(10.0)
 
     def test_init_qwen_primary_timeout_env_numeric(self, monkeypatch):
         """qwen-primary accepts numeric QWEN_STT_TIMEOUT values."""
@@ -1002,6 +1038,7 @@ class TestSTTAgent:
         assert agent._qwen_timeout == pytest.approx(2.5)
         assert agent._qwen_hedge_delay == pytest.approx(2.0)
         assert agent._qwen_hedge_grace == pytest.approx(0.4)
+        assert agent._qwen_latency_budget == pytest.approx(2.0)
 
     def test_init_qwen_primary_hedge_delay_env_numeric(self, monkeypatch):
         """qwen-primary accepts numeric QWEN_STT_HEDGE_DELAY_SECONDS values."""
@@ -1033,6 +1070,19 @@ class TestSTTAgent:
         assert agent._qwen_timeout == pytest.approx(24.0)
         assert agent._qwen_hedge_delay == pytest.approx(3.5)
         assert agent._qwen_hedge_grace == pytest.approx(2.5)
+
+    def test_init_qwen_primary_latency_budget_env_numeric(self, monkeypatch):
+        """qwen-primary accepts numeric QWEN_STT_LATENCY_BUDGET_SECONDS values."""
+        monkeypatch.setenv("QWEN_STT_TIMEOUT", "24")
+        monkeypatch.setenv("QWEN_STT_LATENCY_BUDGET_SECONDS", "8.5")
+
+        with (
+            patch("backend.agents.stt_agent.Qwen06BCpuSTTClient"),
+            patch("backend.agents.stt_agent.LocalSTTClient"),
+        ):
+            agent = STTAgent(stt_provider="qwen-primary")
+
+        assert agent._qwen_latency_budget == pytest.approx(8.5)
 
     def test_vosk_transcript_trusted_for_alpha_route_keywords(self):
         """Route-stable Vosk transcripts can skip the Qwen grace wait."""
@@ -2130,6 +2180,7 @@ class TestQwenPrimaryFallback:
         agent._qwen_timeout = 10.0
         agent._qwen_hedge_delay = None
         agent._qwen_hedge_grace = 0.0
+        agent._qwen_latency_budget = None
         return agent
 
     @pytest.mark.asyncio
@@ -2548,6 +2599,48 @@ class TestQwenPrimaryFallback:
             if record.name == "backend.observability.stt"
         ]
         assert "stt_qwen_hedge_grace_complete" in events
+
+    @pytest.mark.asyncio
+    async def test_qwen_grace_skips_when_latency_budget_is_exhausted(self, caplog):
+        """The optional Qwen grace wait must not push Vosk fallback past budget."""
+        caplog.set_level(logging.INFO, logger="backend.observability.stt")
+
+        async def too_late_qwen(*args, **kwargs):
+            await asyncio.sleep(0.30)
+            return TranscriptionResult(text="too late", confidence=0.9, language="ja")
+
+        async def untrusted_vosk(*args, **kwargs):
+            await asyncio.sleep(0.05)
+            return TranscriptionResult(text="fast fallback", confidence=0.8, language="ja")
+
+        mock_qwen = MagicMock()
+        mock_qwen.transcribe = too_late_qwen
+        mock_vosk = MagicMock(spec=LocalSTTClient)
+        mock_vosk.transcribe = AsyncMock(side_effect=untrusted_vosk)
+
+        agent = self._make_agent(mock_qwen, mock_vosk)
+        agent._qwen_timeout = 10.0
+        agent._qwen_hedge_delay = 0.01
+        agent._qwen_hedge_grace = 0.20
+        agent._qwen_latency_budget = 0.03
+
+        loop = asyncio.get_running_loop()
+        started_at = loop.time()
+        result = await agent.speech_to_text(b"audio", language="ja")
+        elapsed = loop.time() - started_at
+
+        assert result["success"] is True
+        assert result["provider"] == "vosk-fallback"
+        assert result["transcript"] == "fast fallback"
+        assert elapsed < 0.15
+
+        events = [
+            getattr(record, "event", None)
+            for record in caplog.records
+            if record.name == "backend.observability.stt"
+        ]
+        assert "stt_qwen_hedge_grace_skipped" in events
+        assert "stt_qwen_hedge_grace_start" not in events
 
     @pytest.mark.asyncio
     async def test_qwen_error_vosk_fallback(self):
