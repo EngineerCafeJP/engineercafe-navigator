@@ -15,6 +15,8 @@ set -euo pipefail
 #   RAG_API_LIVE_METRICS           Comma-separated RAGAS metrics.
 #   RAG_API_LIVE_CHAT_INTERVAL_SECONDS
 #                                   Minimum seconds between /api/chat starts (default: 2.2).
+#   RAG_API_LIVE_TOTAL_TIMEOUT_SECONDS
+#                                   Whole runner wall-clock timeout; 0 disables (default: 7200).
 #   OPENAI_API_KEY / OPENROUTER_API_KEY are required by the RAGAS evaluator.
 #   If neither is set, this script tries Secret Manager. Direct OpenAI is preferred.
 
@@ -35,6 +37,7 @@ TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 CHAT_INTERVAL_SECONDS="${RAG_API_LIVE_CHAT_INTERVAL_SECONDS:-2.2}"
 CHAT_RETRY_ATTEMPTS="${RAG_API_LIVE_CHAT_RETRY_ATTEMPTS:-4}"
 CHAT_RETRY_BACKOFF_SECONDS="${RAG_API_LIVE_CHAT_RETRY_BACKOFF_SECONDS:-2.0}"
+TOTAL_TIMEOUT_SECONDS="${RAG_API_LIVE_TOTAL_TIMEOUT_SECONDS:-7200}"
 DRY_RUN=0
 CHECK_TARGETS=1
 
@@ -61,6 +64,8 @@ Options:
                          Total /api/chat attempts for retryable 429 responses (default: 4)
   --chat-retry-backoff-seconds VALUE
                          Base exponential backoff seconds for retryable 429 responses (default: 2.0)
+  RAG_API_LIVE_TOTAL_TIMEOUT_SECONDS
+                         Whole runner wall-clock timeout; 0 disables (default: 7200)
   --no-check-targets     Do not fail when configured answer_correctness targets are missed
   --dry-run              Validate local prerequisites and print planned command only
   -h, --help             Show this usage
@@ -232,6 +237,8 @@ main() {
     echo "Chat interval seconds: $CHAT_INTERVAL_SECONDS"
     echo "Chat retry attempts: $CHAT_RETRY_ATTEMPTS"
     echo "Chat retry backoff seconds: $CHAT_RETRY_BACKOFF_SECONDS"
+    echo "Runner total timeout seconds: $TOTAL_TIMEOUT_SECONDS"
+    echo "RAGAS max workers: ${RAGAS_MAX_WORKERS:-1}"
     if [ "$CHECK_TARGETS" = "1" ]; then
       echo "Target check: enabled"
       echo "Live source metadata gate: enabled"
@@ -264,6 +271,8 @@ main() {
   echo "Chat retry backoff seconds: $CHAT_RETRY_BACKOFF_SECONDS"
   echo "RAGAS batch strategy: ${RAGAS_BATCH_STRATEGY:-single}"
   echo "RAGAS per-case timeout: ${RAGAS_OUTER_SINGLE_TIMEOUT:-300}s"
+  echo "RAGAS max workers: ${RAGAS_MAX_WORKERS:-1}"
+  echo "Runner total timeout: ${TOTAL_TIMEOUT_SECONDS}s"
 
   cmd=(python evaluation/run_live_api_eval.py --base-url "$BASE_URL" --case-suite "$CASE_SUITE" --languages "${LANG_ARGS[@]}" --metrics "${METRIC_ARGS[@]}" --output-dir "$OUTPUT_DIR" --report-timestamp "$TIMESTAMP" --chat-interval-seconds "$CHAT_INTERVAL_SECONDS" --chat-retry-attempts "$CHAT_RETRY_ATTEMPTS" --chat-retry-backoff-seconds "$CHAT_RETRY_BACKOFF_SECONDS")
   if [ "$CHECK_TARGETS" = "1" ]; then
@@ -272,17 +281,30 @@ main() {
   (
     cd "$ROOT_DIR/backend"
     if command -v uv >/dev/null 2>&1; then
-      API_SECRET_KEY="$API_KEY" \
-        RAGAS_BATCH_STRATEGY="${RAGAS_BATCH_STRATEGY:-single}" \
-        RAGAS_OUTER_SINGLE_TIMEOUT="${RAGAS_OUTER_SINGLE_TIMEOUT:-300}" \
-        PYTHONPATH="$ROOT_DIR:$ROOT_DIR/backend:${PYTHONPATH:-}" \
-        uv run --extra evaluation "${cmd[@]}"
+      runner_cmd=(uv run --extra evaluation "${cmd[@]}")
     else
+      runner_cmd=("${cmd[@]}")
+    fi
+
+    # asyncio.wait_for cannot stop a provider call already running in a worker thread.
+    # The outer process timeout keeps C/RAGAS from consuming the entire workflow.
+    if [ "$TOTAL_TIMEOUT_SECONDS" != "0" ] && command -v timeout >/dev/null 2>&1; then
       API_SECRET_KEY="$API_KEY" \
         RAGAS_BATCH_STRATEGY="${RAGAS_BATCH_STRATEGY:-single}" \
         RAGAS_OUTER_SINGLE_TIMEOUT="${RAGAS_OUTER_SINGLE_TIMEOUT:-300}" \
+        RAGAS_MAX_WORKERS="${RAGAS_MAX_WORKERS:-1}" \
         PYTHONPATH="$ROOT_DIR:$ROOT_DIR/backend:${PYTHONPATH:-}" \
-        "${cmd[@]}"
+        timeout --kill-after=30s "${TOTAL_TIMEOUT_SECONDS}s" "${runner_cmd[@]}"
+    else
+      if [ "$TOTAL_TIMEOUT_SECONDS" != "0" ]; then
+        echo "Warning: timeout command not found; running without whole-runner timeout" >&2
+      fi
+      API_SECRET_KEY="$API_KEY" \
+        RAGAS_BATCH_STRATEGY="${RAGAS_BATCH_STRATEGY:-single}" \
+        RAGAS_OUTER_SINGLE_TIMEOUT="${RAGAS_OUTER_SINGLE_TIMEOUT:-300}" \
+        RAGAS_MAX_WORKERS="${RAGAS_MAX_WORKERS:-1}" \
+        PYTHONPATH="$ROOT_DIR:$ROOT_DIR/backend:${PYTHONPATH:-}" \
+        "${runner_cmd[@]}"
     fi
   )
 }
