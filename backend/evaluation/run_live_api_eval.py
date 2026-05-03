@@ -31,6 +31,9 @@ GROUND_TRUTH_PATH = (
     Path(__file__).parent.parent / "tests" / "fixtures" / "golden_datasets" / "ground_truth.json"
 )
 DEFAULT_REPORTS_DIR = Path(__file__).parent.parent / "tests" / "evaluation" / "reports"
+DEFAULT_CHAT_INTERVAL_SECONDS = 2.2
+DEFAULT_CHAT_RETRY_ATTEMPTS = 4
+DEFAULT_CHAT_RETRY_BACKOFF_SECONDS = 2.0
 
 ALL_LANGUAGES = ("ja", "en", "zh", "ko")
 CASE_SUITE_DIAGNOSTIC_29 = "diagnostic-29"
@@ -202,6 +205,25 @@ def _collection_error_record(
     }
 
 
+def _report_file_timestamp(value: Optional[str] = None) -> str:
+    """Return a filesystem-safe timestamp marker for report artifact names."""
+    raw = (value or "").strip()
+    if not raw:
+        raw = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    safe = "".join(ch if ch.isalnum() or ch in {"-", "_", "."} else "_" for ch in raw)
+    return safe or datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+
+
+def _retry_after_seconds(response: httpx.Response, fallback: float) -> float:
+    retry_after = response.headers.get("Retry-After")
+    if retry_after:
+        try:
+            return max(0.0, float(retry_after))
+        except ValueError:
+            pass
+    return fallback
+
+
 async def _call_chat_api(
     client: httpx.AsyncClient,
     *,
@@ -209,6 +231,8 @@ async def _call_chat_api(
     question: str,
     language: str,
     api_key: Optional[str] = None,
+    retry_attempts: int = DEFAULT_CHAT_RETRY_ATTEMPTS,
+    retry_backoff_seconds: float = DEFAULT_CHAT_RETRY_BACKOFF_SECONDS,
 ) -> Dict[str, Any]:
     """Call the /api/chat endpoint and return the response."""
     headers: Dict[str, str] = {"Content-Type": "application/json"}
@@ -221,9 +245,26 @@ async def _call_chat_api(
     }
 
     url = f"{base_url.rstrip('/')}/api/chat"
-    response = await client.post(url, json=payload, headers=headers, timeout=60.0)
-    response.raise_for_status()
-    return response.json()
+    attempts = max(1, retry_attempts)
+    for attempt in range(attempts):
+        response = await client.post(url, json=payload, headers=headers, timeout=60.0)
+        try:
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as exc:
+            if response.status_code != 429 or attempt >= attempts - 1:
+                raise exc
+            fallback = retry_backoff_seconds * (2**attempt)
+            sleep_for = _retry_after_seconds(response, fallback)
+            logger.warning(
+                "  /api/chat returned 429; retrying in %.1fs (attempt %d/%d)",
+                sleep_for,
+                attempt + 2,
+                attempts,
+            )
+            await asyncio.sleep(sleep_for)
+
+    raise RuntimeError("unreachable chat retry loop")
 
 
 async def run_live_api_evaluation(
@@ -235,6 +276,10 @@ async def run_live_api_evaluation(
     check_live_sources: bool = True,
     metrics: Optional[Sequence[str]] = None,
     case_suite: str = CASE_SUITE_DIAGNOSTIC_29,
+    report_timestamp: Optional[str] = None,
+    chat_interval_seconds: float = 0.0,
+    chat_retry_attempts: int = DEFAULT_CHAT_RETRY_ATTEMPTS,
+    chat_retry_backoff_seconds: float = DEFAULT_CHAT_RETRY_BACKOFF_SECONDS,
 ) -> Dict[str, Any]:
     """Run RAGAS evaluation against the live API.
 
@@ -243,6 +288,10 @@ async def run_live_api_evaluation(
         api_key: Optional API key for authentication.
         languages: Languages to evaluate (default: all).
         output_dir: Directory for report output.
+        report_timestamp: Optional stable artifact filename marker.
+        chat_interval_seconds: Minimum seconds between live /api/chat request starts.
+        chat_retry_attempts: Total /api/chat attempts for retryable 429 responses.
+        chat_retry_backoff_seconds: Base exponential backoff for 429 responses.
 
     Returns:
         Evaluation result dictionary with per-language metrics.
@@ -256,6 +305,7 @@ async def run_live_api_evaluation(
     all_eval_cases: Dict[str, List[Dict[str, Any]]] = {}
     requested_case_counts: Dict[str, int] = {}
     collection_errors: Dict[str, List[Dict[str, Any]]] = {}
+    last_chat_started: Optional[float] = None
 
     # Phase 1: Collect live API responses
     async with httpx.AsyncClient() as client:
@@ -286,13 +336,21 @@ async def run_live_api_evaluation(
                     continue
 
                 try:
+                    if chat_interval_seconds > 0 and last_chat_started is not None:
+                        since_last_start = time.monotonic() - last_chat_started
+                        sleep_for = chat_interval_seconds - since_last_start
+                        if sleep_for > 0:
+                            await asyncio.sleep(sleep_for)
                     start = time.monotonic()
+                    last_chat_started = start
                     api_response = await _call_chat_api(
                         client,
                         base_url=base_url,
                         question=query["question"],
                         language=lang,
                         api_key=api_key,
+                        retry_attempts=chat_retry_attempts,
+                        retry_backoff_seconds=chat_retry_backoff_seconds,
                     )
                     elapsed = time.monotonic() - start
 
@@ -477,6 +535,9 @@ async def run_live_api_evaluation(
         check_live_sources=check_live_sources,
         case_suite=case_suite,
     )
+    report_file_ts = _report_file_timestamp(report_timestamp)
+    json_report_filename = f"live_api_eval_{report_file_ts}.json"
+    text_report_filename = f"live_api_eval_{report_file_ts}.txt"
 
     result = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -488,6 +549,14 @@ async def run_live_api_evaluation(
         "metrics": list(selected_metrics),
         "ragas_context_source": "golden_dataset",
         "live_source_gate_enabled": check_live_sources,
+        "artifact_metadata": {
+            "report_timestamp": report_file_ts,
+            "json_report_filename": json_report_filename,
+            "text_report_filename": text_report_filename,
+            "chat_interval_seconds": chat_interval_seconds,
+            "chat_retry_attempts": chat_retry_attempts,
+            "chat_retry_backoff_seconds": chat_retry_backoff_seconds,
+        },
         "per_language": per_language_results,
         "comparison": comparison,
         "report": report_text,
@@ -496,9 +565,8 @@ async def run_live_api_evaluation(
     # Save reports
     dest_dir = output_dir or DEFAULT_REPORTS_DIR
     dest_dir.mkdir(parents=True, exist_ok=True)
-    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    json_path = dest_dir / f"live_api_eval_{ts}.json"
-    txt_path = dest_dir / f"live_api_eval_{ts}.txt"
+    json_path = dest_dir / json_report_filename
+    txt_path = dest_dir / text_report_filename
     json_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
     txt_path.write_text(report_text, encoding="utf-8")
 
@@ -782,6 +850,12 @@ def main() -> None:
         help="Report output directory.",
     )
     parser.add_argument(
+        "--report-timestamp",
+        type=str,
+        default=None,
+        help="Stable timestamp marker for report artifact filenames.",
+    )
+    parser.add_argument(
         "--check-targets",
         action="store_true",
         help="Exit with status 1 when targets are missed.",
@@ -813,6 +887,24 @@ def main() -> None:
             "RAG/event sources. Diagnostic use only."
         ),
     )
+    parser.add_argument(
+        "--chat-interval-seconds",
+        type=float,
+        default=0.0,
+        help="Minimum seconds between live /api/chat request starts.",
+    )
+    parser.add_argument(
+        "--chat-retry-attempts",
+        type=int,
+        default=DEFAULT_CHAT_RETRY_ATTEMPTS,
+        help="Total /api/chat attempts for retryable 429 responses.",
+    )
+    parser.add_argument(
+        "--chat-retry-backoff-seconds",
+        type=float,
+        default=DEFAULT_CHAT_RETRY_BACKOFF_SECONDS,
+        help="Base exponential backoff seconds for retryable 429 responses.",
+    )
     parser.add_argument("--verbose", action="store_true", help="Enable debug logging.")
     args = parser.parse_args()
 
@@ -831,6 +923,10 @@ def main() -> None:
             check_live_sources=not args.no_check_live_sources,
             metrics=args.metrics,
             case_suite=args.case_suite,
+            report_timestamp=args.report_timestamp,
+            chat_interval_seconds=args.chat_interval_seconds,
+            chat_retry_attempts=args.chat_retry_attempts,
+            chat_retry_backoff_seconds=args.chat_retry_backoff_seconds,
         )
     )
 

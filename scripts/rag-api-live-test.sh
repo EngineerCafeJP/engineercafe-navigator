@@ -13,6 +13,8 @@ set -euo pipefail
 #   RAG_API_LIVE_BASE_URL          Overrides default Cloud Run URL.
 #   RAG_API_LIVE_SECRET_PROJECT    Overrides Secret Manager project.
 #   RAG_API_LIVE_METRICS           Comma-separated RAGAS metrics.
+#   RAG_API_LIVE_CHAT_INTERVAL_SECONDS
+#                                   Minimum seconds between /api/chat starts (default: 2.2).
 #   OPENAI_API_KEY / OPENROUTER_API_KEY are required by the RAGAS evaluator.
 #   If neither is set, this script tries Secret Manager. Direct OpenAI is preferred.
 
@@ -30,6 +32,9 @@ LANGUAGES="ja,en,zh,ko"
 METRICS="${RAG_API_LIVE_METRICS:-answer_correctness}"
 CASE_SUITE="${RAG_API_LIVE_CASE_SUITE:-diagnostic-29}"
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
+CHAT_INTERVAL_SECONDS="${RAG_API_LIVE_CHAT_INTERVAL_SECONDS:-2.2}"
+CHAT_RETRY_ATTEMPTS="${RAG_API_LIVE_CHAT_RETRY_ATTEMPTS:-4}"
+CHAT_RETRY_BACKOFF_SECONDS="${RAG_API_LIVE_CHAT_RETRY_BACKOFF_SECONDS:-2.0}"
 DRY_RUN=0
 CHECK_TARGETS=1
 
@@ -49,14 +54,20 @@ Options:
   --metrics LIST         Comma-separated RAGAS metrics (default: answer_correctness)
   --case-suite NAME      diagnostic-29 (fast path) or alpha-127 (release gate)
   --output-dir DIR       Report directory (default: backend/tests/evaluation/reports)
-  --timestamp VALUE      Stable timestamp marker printed for operator correlation
+  --timestamp VALUE      Stable timestamp marker for logs and report names
+  --chat-interval-seconds VALUE
+                         Minimum seconds between live /api/chat request starts (default: 2.2)
+  --chat-retry-attempts VALUE
+                         Total /api/chat attempts for retryable 429 responses (default: 4)
+  --chat-retry-backoff-seconds VALUE
+                         Base exponential backoff seconds for retryable 429 responses (default: 2.0)
   --no-check-targets     Do not fail when configured answer_correctness targets are missed
   --dry-run              Validate local prerequisites and print planned command only
   -h, --help             Show this usage
 
 Outputs:
-  backend/tests/evaluation/reports/live_api_ragas_<timestamp>.json
-  backend/tests/evaluation/reports/live_api_ragas_<timestamp>.md
+  backend/tests/evaluation/reports/live_api_eval_<timestamp>.json
+  backend/tests/evaluation/reports/live_api_eval_<timestamp>.txt
 EOF
   exit "${1:-0}"
 }
@@ -74,6 +85,9 @@ while [ "$#" -gt 0 ]; do
     --case-suite) CASE_SUITE="$2"; shift 2 ;;
     --output-dir) OUTPUT_DIR="$2"; shift 2 ;;
     --timestamp) TIMESTAMP="$2"; shift 2 ;;
+    --chat-interval-seconds) CHAT_INTERVAL_SECONDS="$2"; shift 2 ;;
+    --chat-retry-attempts) CHAT_RETRY_ATTEMPTS="$2"; shift 2 ;;
+    --chat-retry-backoff-seconds) CHAT_RETRY_BACKOFF_SECONDS="$2"; shift 2 ;;
     --no-check-targets) CHECK_TARGETS=0; shift ;;
     --dry-run) DRY_RUN=1; shift ;;
     -h|--help) usage 0 ;;
@@ -207,6 +221,9 @@ main() {
     echo "Case suite: $CASE_SUITE"
     echo "Languages: ${LANG_ARGS[*]}"
     echo "Metrics: ${METRIC_ARGS[*]}"
+    echo "Chat interval seconds: $CHAT_INTERVAL_SECONDS"
+    echo "Chat retry attempts: $CHAT_RETRY_ATTEMPTS"
+    echo "Chat retry backoff seconds: $CHAT_RETRY_BACKOFF_SECONDS"
     if [ "$CHECK_TARGETS" = "1" ]; then
       echo "Target check: enabled"
       echo "Live source metadata gate: enabled"
@@ -233,10 +250,13 @@ main() {
   echo "Case suite: $CASE_SUITE"
   echo "Languages: ${LANG_ARGS[*]}"
   echo "Metrics: ${METRIC_ARGS[*]}"
+  echo "Chat interval seconds: $CHAT_INTERVAL_SECONDS"
+  echo "Chat retry attempts: $CHAT_RETRY_ATTEMPTS"
+  echo "Chat retry backoff seconds: $CHAT_RETRY_BACKOFF_SECONDS"
   echo "RAGAS batch strategy: ${RAGAS_BATCH_STRATEGY:-single}"
   echo "RAGAS per-case timeout: ${RAGAS_OUTER_SINGLE_TIMEOUT:-300}s"
 
-  cmd=(python evaluation/run_live_api_eval.py --base-url "$BASE_URL" --case-suite "$CASE_SUITE" --languages "${LANG_ARGS[@]}" --metrics "${METRIC_ARGS[@]}" --output-dir "$OUTPUT_DIR")
+  cmd=(python evaluation/run_live_api_eval.py --base-url "$BASE_URL" --case-suite "$CASE_SUITE" --languages "${LANG_ARGS[@]}" --metrics "${METRIC_ARGS[@]}" --output-dir "$OUTPUT_DIR" --report-timestamp "$TIMESTAMP" --chat-interval-seconds "$CHAT_INTERVAL_SECONDS" --chat-retry-attempts "$CHAT_RETRY_ATTEMPTS" --chat-retry-backoff-seconds "$CHAT_RETRY_BACKOFF_SECONDS")
   if [ "$CHECK_TARGETS" = "1" ]; then
     cmd+=(--check-targets)
   fi
