@@ -286,6 +286,23 @@ is_success_json() {
   [ "$LAST_HTTP" = "200" ] && { [ "$success" = "True" ] || [ "$success" = "true" ] || [ -z "$success" ]; }
 }
 
+tts_fallback_problem() {
+  local fallback_used upstream_error error clean_text
+  fallback_used="$(printf '%s' "$LAST_BODY" | json_get upstreamStatus.fallbackUsed)"
+  upstream_error="$(printf '%s' "$LAST_BODY" | json_get upstreamStatus.error)"
+  error="$(printf '%s' "$LAST_BODY" | json_get error)"
+  clean_text="$(printf '%s' "$LAST_BODY" | json_get cleanText)"
+  if [ "$fallback_used" = "True" ] || [ "$fallback_used" = "true" ]; then
+    printf '%s' "${upstream_error:-${error:-fallbackUsed=true}}"
+    return
+  fi
+  case "$clean_text" in
+    *"音声の生成に失敗しました"*|*"failed to generate the audio response"*|*"Failed to generate speech"*)
+      printf '%s' "$clean_text"
+      ;;
+  esac
+}
+
 chat_success() {
   [ "$LAST_HTTP" = "200" ] && [ -n "$(printf '%s' "$LAST_BODY" | json_get answer)" ]
 }
@@ -400,15 +417,17 @@ EOF
 )
 
 run_voice_case() {
-  local case_id="$1" lang="$2" category="$3" text="$4" session_id transcript provider answer emotion audio sim status
+  local case_id="$1" lang="$2" category="$3" text="$4"
+  local session_id transcript provider answer emotion audio sim status fallback_problem
   session_id="alpha-a-$TIMESTAMP-$case_id"
 
   post_json "/api/voice" "$(voice_tts_body "$text" "$lang" "$session_id" "$TTS_PROVIDER")"
   audio="$(printf '%s' "$LAST_BODY" | json_get audioResponse)"
-  if is_success_json && [ -n "$audio" ]; then
+  fallback_problem="$(tts_fallback_problem)"
+  if is_success_json && [ -n "$audio" ] && [ -z "$fallback_problem" ]; then
     record_result "A" "$case_id" "tts_source" "PASS" "$LAST_HTTP" "$LAST_TIME_MS" "$lang" "$category" "$TTS_PROVIDER" "audio generated"
   else
-    record_result "A" "$case_id" "tts_source" "FAIL" "$LAST_HTTP" "$LAST_TIME_MS" "$lang" "$category" "" "missing source audio"
+    record_result "A" "$case_id" "tts_source" "FAIL" "$LAST_HTTP" "$LAST_TIME_MS" "$lang" "$category" "" "${fallback_problem:-missing source audio}"
     return
   fi
 
@@ -449,10 +468,11 @@ PY
 
   post_json "/api/voice" "$(voice_tts_body "$answer" "$lang" "$session_id" "$TTS_PROVIDER")"
   audio="$(printf '%s' "$LAST_BODY" | json_get audioResponse)"
-  if is_success_json && [ -n "$audio" ]; then
+  fallback_problem="$(tts_fallback_problem)"
+  if is_success_json && [ -n "$audio" ] && [ -z "$fallback_problem" ]; then
     record_result "A" "$case_id" "tts_answer" "PASS" "$LAST_HTTP" "$LAST_TIME_MS" "$lang" "$TTS_PROVIDER" "audio" "round-trip complete"
   else
-    record_result "A" "$case_id" "tts_answer" "FAIL" "$LAST_HTTP" "$LAST_TIME_MS" "$lang" "$TTS_PROVIDER" "" "answer TTS failed"
+    record_result "A" "$case_id" "tts_answer" "FAIL" "$LAST_HTTP" "$LAST_TIME_MS" "$lang" "$TTS_PROVIDER" "" "${fallback_problem:-answer TTS failed}"
   fi
 }
 

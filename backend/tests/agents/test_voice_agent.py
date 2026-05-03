@@ -512,6 +512,8 @@ async def test_text_to_speech_piper_fallback_japanese_to_voicevox(monkeypatch):
     assert result["success"] is True
     assert result["audioResponse"] == "VOICEVOX_FALLBACK_BASE64"
     assert result["format"] == "audio/wav"
+    assert result["fallback_used"] is True
+    assert "piper connection error" in result["error"]
 
 
 @pytest.mark.asyncio
@@ -541,3 +543,5 @@ async def test_text_to_speech_piper_fallback_english_to_kokoro(monkeypatch):
     assert result["success"] is True
     assert result["audioResponse"] == "KOKORO_FALLBACK_BASE64"
     assert result["format"] == "audio/wav"
+    assert result["fallback_used"] is True
+    assert "piper connection error" in result["error"]

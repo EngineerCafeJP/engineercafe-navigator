@@ -976,6 +976,7 @@ class VoiceAgent:
                     "cleanText": fb_text,
                     "error": str(e),
                     "format": audio_format,
+                    "fallback_used": True,
                     "tts_cache_hit": False,
                 }
             except Exception as fallback_error:

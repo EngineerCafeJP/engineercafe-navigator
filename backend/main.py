@@ -1229,6 +1229,8 @@ async def voice_api(request: Request, body: VoiceRequest):
                     provider=body.ttsProvider or os.getenv("TTS_PROVIDER", "voicevox"),
                     format=audio_format,
                     cacheHit=result.get("tts_cache_hit"),
+                    fallbackUsed=bool(result.get("fallback_used")),
+                    error=result.get("error") if result.get("fallback_used") else None,
                 ),
             )
 
