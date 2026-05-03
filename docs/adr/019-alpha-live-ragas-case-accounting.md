@@ -2,7 +2,7 @@
 
 ## ステータス
 
-提案
+Accepted / implemented by PR #692
 
 ## 日付
 
@@ -28,6 +28,12 @@
 127 ケースを保持しており、`alpha-127` manifest も `ja=80, en=23, zh=12, ko=12`
 をロードしている。したがって、これは dataset selection の問題ではなく live API
 評価ハーネスの accounting 問題である。
+
+PR #692 でこの accounting defect は修正済み。post-#692 validation run `25270459825`
+では `suite_coverage.requested_total_cases=127` を保持し、live `/api/chat` 失敗は
+`collection_errors` として artifact に残った。ただし同 run は `/api/chat` `429 Too Many Requests`
+により `evaluated=35`, `collection_errors=92` であり、C-127 completion / alpha GO proof ではない。
+429 collection blocker は #694 / PR #695 で別途対応し、post-#695 rerun 待ち。
 
 現在の `backend/evaluation/run_live_api_eval.py` は `/api/chat` collection phase で
 例外が出たケースをログに出すだけで report から落とす。その後
@@ -109,6 +115,24 @@ Alpha gate では manifest 件数を primary accounting とする必要がある
    `suite_coverage.requested_total_cases=127` であること、collection failure があれば
    `collection_errors` と `evaluation_complete=false` に出ることを確認する。
 
+## 実装・検証結果
+
+- PR: <https://github.com/EngineerCafeJP/engineercafe-navigator/pull/692>
+- Merge SHA: `d74264e808e9b2a0244d3a1a9e5dfe12671530ea`
+- Live validation run: <https://github.com/EngineerCafeJP/engineercafe-navigator/actions/runs/25270459825>
+- Result:
+  - `case_suite`: `alpha-127`
+  - `suite_coverage.expected_total_cases`: `127`
+  - `suite_coverage.requested_total_cases`: `127`
+  - evaluated cases: `35`
+  - collection errors: `92`
+  - API failed cases: `92`
+  - main failure mode: live `/api/chat` `429 Too Many Requests`
+
+This validates the ADR decision: manifest/request accounting now remains `127` even when live API
+collection fails. It also separates the next blocker cleanly: collection reliability / rate-limit
+pacing, not manifest accounting.
+
 ## ロールバック
 
 この変更は evaluation harness artifact schema の追加であり、product runtime には影響しない。
@@ -118,13 +142,17 @@ collection-success-only report に戻せる。ただし、その状態の C-127 
 
 ## 現在の実装メモ
 
-2026-05-03 時点で `codex/alpha-c127-live-harness-accounting` に未コミットの draft patch がある。
-次セッションではこの ADR と GitHub Issue #691 を起点に、draft patch を見直して test / PR / merge へ進める。
+ADR 019 itself is implemented and #691 is closed. Remaining C-127 proof depends on #694 / PR #695
+and a post-#695 `suites=c-127` rerun that reaches `evaluated=127` and `collection_errors=0`.
 
 ## 参照
 
 - Run: <https://github.com/EngineerCafeJP/engineercafe-navigator/actions/runs/25268597241>
+- Validation run: <https://github.com/EngineerCafeJP/engineercafe-navigator/actions/runs/25270459825>
 - Issue: <https://github.com/EngineerCafeJP/engineercafe-navigator/issues/691>
+- PR: <https://github.com/EngineerCafeJP/engineercafe-navigator/pull/692>
+- Follow-up rate-limit issue: <https://github.com/EngineerCafeJP/engineercafe-navigator/issues/694>
+- Follow-up rate-limit PR: <https://github.com/EngineerCafeJP/engineercafe-navigator/pull/695>
 - `backend/evaluation/run_live_api_eval.py`
 - `backend/tests/evaluation/test_ragas_live_case_suites.py`
 - `backend/tests/fixtures/golden_datasets/ground_truth.json`
