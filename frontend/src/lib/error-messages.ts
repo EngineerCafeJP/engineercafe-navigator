@@ -71,6 +71,12 @@ export const ERROR_MESSAGES: Record<string, ErrorMessage> = {
     ja: 'サービスが一時的に利用できません。しばらくしてからもう一度お試しください。',
     en: 'Service is temporarily unavailable. Please try again later.',
   },
+  BACKEND_TIMEOUT: {
+    ja:
+      '音声サービスの起動に時間がかかっています。少し待ってからもう一度お試しください。',
+    en:
+      'The voice service is still warming up. Please wait a moment and try again.',
+  },
   
   // Session Errors
   SESSION_EXPIRED: {
@@ -208,6 +214,13 @@ export function formatError(
     ) {
       return getErrorMessage('TTS_ERROR', language);
     }
+    if (
+      message.includes('timed out') ||
+      message.includes('timeout') ||
+      message.includes('504')
+    ) {
+      return getErrorMessage('BACKEND_TIMEOUT', language);
+    }
   }
 
   // Check for 422 validation error
@@ -256,6 +269,9 @@ export function formatError(
   
   // Check for HTTP status codes
   if (error.status) {
+    if (error.status === 504) {
+      return getErrorMessage('BACKEND_TIMEOUT', language);
+    }
     if (error.status >= 500) {
       return getErrorMessage('SERVER_ERROR', language);
     }

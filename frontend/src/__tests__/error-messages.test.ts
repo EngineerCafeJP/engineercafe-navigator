@@ -9,8 +9,8 @@ test("formatError preserves Safari microphone permission failures by DOMExceptio
     originalName: "NotAllowedError",
   });
 
-  assert.match(formatError(error, "ja"), /マイク.*拒否/);
-  assert.match(formatError(error, "en"), /Microphone access was denied/);
+  assert.match(formatError(error, "ja"), /マイク.*許可/);
+  assert.match(formatError(error, "en"), /Microphone permission is required/);
 });
 
 test("formatError maps microphone device and state failures to actionable messages", () => {
@@ -19,7 +19,7 @@ test("formatError maps microphone device and state failures to actionable messag
       Object.assign(new Error("missing"), { name: "NotFoundError" }),
       "ja",
     ),
-    /検出されません/,
+    /見つかりません/,
   );
   assert.match(
     formatError(
@@ -33,6 +33,17 @@ test("formatError maps microphone device and state failures to actionable messag
       Object.assign(new Error("state"), { name: "InvalidStateError" }),
       "ja",
     ),
-    /もう一度ボタン/,
+    /マイクボタン/,
+  );
+});
+
+test("formatError maps backend timeout to a voice warmup message", () => {
+  assert.match(
+    formatError(Object.assign(new Error("Backend request timed out"), { status: 504 }), "ja"),
+    /起動に時間/,
+  );
+  assert.match(
+    formatError(Object.assign(new Error("Backend request timed out"), { status: 504 }), "en"),
+    /warming up/,
   );
 });
