@@ -69,10 +69,22 @@ class TestNewRoutingKeywords:
             ("Can I bring food?", "food_drink"),
             ("飲み物は持ってきていいですか？", "food_drink"),
             ("ペットボトルの飲み物は持ち込めますか？", "food_drink"),
+            ("외부 음식을 가져와도 되나요?", "food_drink"),
         ],
     )
     def test_food_drink_keywords(self, query, expected):
         """飲食キーワードがfood_drinkにルーティングされることを確認"""
+        assert extract_request_type(query) == expected
+
+    @pytest.mark.parametrize(
+        "query,expected",
+        [
+            ("How can I contact Engineer Cafe?", "contact"),
+            ("エンジニアカフェの連絡先を教えてください", "contact"),
+        ],
+    )
+    def test_contact_keywords(self, query, expected):
+        """連絡先キーワードがcontactにルーティングされることを確認"""
         assert extract_request_type(query) == expected
 
     @pytest.mark.parametrize(

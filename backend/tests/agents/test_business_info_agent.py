@@ -22,6 +22,7 @@ class TestBusinessInfoAgent:
         assert self.agent._map_request_type_to_category("location") == "location"
         assert self.agent._map_request_type_to_category("access") == "location"
         assert self.agent._map_request_type_to_category("reception") == "general"
+        assert self.agent._map_request_type_to_category("contact") == "contact"
         assert self.agent._map_request_type_to_category("unknown") == "general"
 
     def test_get_request_type_prompt_japanese(self):
@@ -258,6 +259,49 @@ class TestBusinessInfoAgent:
         assert response is not None
         assert "2026年2月23日18:00" in response["answer"]
         assert "展示形式" in response["answer"]
+
+    def test_eic_completion_conditions_canonical(self):
+        """gt-023: EICの修了認定条件を汎用EIC説明に倒さない"""
+        response = self.agent._get_canonical_response(
+            "EICの修了認定条件を教えてください",
+            "community",
+            "ja",
+        )
+
+        assert response is not None
+        assert "講義3回" in response["answer"]
+        assert "LT発表" in response["answer"]
+        assert "Dev & Tips 5回中3回" in response["answer"]
+        assert "Boot Camp 2日間" in response["answer"]
+        assert "DevDay" in response["answer"]
+        assert "短期集中" not in response["answer"]
+
+    def test_saino_hours_precedes_engineer_cafe_hours(self):
+        """gt-015: sainoの営業時間をエンジニアカフェ開館時間に倒さない"""
+        response = self.agent._get_canonical_response(
+            "cafe&bar sainoの営業時間は？",
+            "hours",
+            "ja",
+        )
+
+        assert response is not None
+        assert "Day Time 12:00〜17:00" in response["answer"]
+        assert "Night Time 18:00〜20:00" in response["answer"]
+        assert "月曜と水曜" in response["answer"]
+        assert "朝9時から夜22時" not in response["answer"]
+
+    def test_saino_coffee_price_precedes_engineer_cafe_pricing(self):
+        """gt-017: 価格fast-path後もsainoのコーヒー価格を返す"""
+        response = self.agent._get_canonical_response(
+            "サイノカフェのコーヒーの値段は？",
+            "price",
+            "ja",
+        )
+
+        assert response is not None
+        assert "ブレンドコーヒー380円" in response["answer"]
+        assert "カフェラテ570円" in response["answer"]
+        assert "施設・設備の利用料は無料" not in response["answer"]
 
     @pytest.mark.asyncio
     async def test_chinese_canonical_ignores_stale_state_context(self):

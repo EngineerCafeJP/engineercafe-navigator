@@ -262,6 +262,50 @@ class TestFacilityAgent:
         assert "外带食物原则上不允许" in response["answer"]
         assert "cafe&bar saino" in response["answer"]
 
+    def test_saino_food_menu_canonical_precedes_food_policy(self):
+        """gt-016: サイノカフェのメニューを一般持ち込みポリシーに倒さない"""
+        agent = FacilityAgent()
+        response = agent._get_canonical_response(
+            "サイノカフェのフードメニューを教えてください",
+            "food_drink",
+            "ja",
+        )
+
+        assert response is not None
+        assert "てりたまハンバーグサンド" in response["answer"]
+        assert "ツナチーズメルトサンド" in response["answer"]
+        assert "ドリンクセット" in response["answer"]
+        assert "持ち込み" not in response["answer"]
+
+    def test_saino_alcohol_canonical_precedes_food_policy(self):
+        """gt-018: サイノカフェのアルコール質問を一般飲食ポリシーに倒さない"""
+        agent = FacilityAgent()
+        response = agent._get_canonical_response(
+            "サイノカフェでアルコールは飲めますか？",
+            "food_drink",
+            "ja",
+        )
+
+        assert response is not None
+        assert "18:00〜20:00" in response["answer"]
+        assert "ハイネケン500円" in response["answer"]
+        assert "カクテル各700円" in response["answer"]
+        assert "持ち込み" not in response["answer"]
+
+    def test_saino_coffee_price_canonical(self):
+        """gt-017: サイノカフェのコーヒー価格を具体価格で固定する"""
+        agent = FacilityAgent()
+        response = agent._get_canonical_response(
+            "サイノカフェのコーヒーの値段は？",
+            "food_drink",
+            "ja",
+        )
+
+        assert response is not None
+        assert "ブレンドコーヒー380円" in response["answer"]
+        assert "カフェラテ570円" in response["answer"]
+        assert "カフェモカ700円" in response["answer"]
+
     def test_access_canonical_response_english(self):
         """アクセス案内は施設名と最寄り駅を含める"""
         agent = FacilityAgent()
