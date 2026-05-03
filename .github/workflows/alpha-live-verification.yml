@@ -173,6 +173,7 @@ jobs:
           if [[ ",${{ inputs.suites }}," == *",c-127," ]]; then
             c_suite="alpha-127"
           fi
+          echo "ALPHA_C_RAGAS_SUITE=$c_suite" >> "$GITHUB_ENV"
           scripts/rag-api-live-test.sh --timestamp "${ALPHA_TIMESTAMP}-c" --case-suite "$c_suite" --languages ja,en,zh,ko
 
       - name: D memory and state durability smoke
@@ -295,6 +296,7 @@ jobs:
 
           - suites: ${{ inputs.suites }}
           - c_ragas_suite_input: ${{ inputs.c_ragas_suite }}
+          - c_ragas_suite_resolved: ${ALPHA_C_RAGAS_SUITE:-not-run}
           - timestamp: ${ALPHA_TIMESTAMP:-unknown}
           - backend: ${ALPHA_SMOKE_BASE_URL:-unknown}
           - revision: ${ALPHA_SMOKE_CLOUD_RUN_REVISION:-unknown}
@@ -317,6 +319,61 @@ jobs:
           | quality_t | ${{ steps.quality_t.outcome }} |
           | welcome_live | ${{ steps.welcome_live.outcome }} |
           EOF
+
+          ragas_report_ts="$(python - "${ALPHA_TIMESTAMP:-unknown}-c" <<'PY'
+          import sys
+
+          raw = sys.argv[1].strip()
+          safe = "".join(ch if ch.isalnum() or ch in {"-", "_", "."} else "_" for ch in raw)
+          print(safe or "unknown-c")
+          PY
+          )"
+          ragas_json="backend/tests/evaluation/reports/live_api_eval_${ragas_report_ts}.json"
+          if [[ -f "$ragas_json" ]]; then
+            python - "$ragas_json" >> "$GITHUB_STEP_SUMMARY" <<'PY'
+          import json
+          import sys
+
+          path = sys.argv[1]
+          with open(path, encoding="utf-8") as f:
+              data = json.load(f)
+
+          summary = data.get("evaluation_summary", {})
+          coverage = data.get("suite_coverage", {})
+          print("")
+          print("## C/RAGAS coverage")
+          print("")
+          print(f"- artifact: `{path}`")
+          print(f"- case_suite: {data.get('case_suite', 'unknown')}")
+          print(
+              "- suite_cases: "
+              f"requested={coverage.get('requested_total_cases', 'unknown')} "
+              f"expected={coverage.get('expected_total_cases', 'unknown')} "
+              f"passed={coverage.get('passed', 'unknown')}"
+          )
+          print(
+              "- totals: "
+              f"requested={summary.get('requested_total_cases', 0)} "
+              f"collected={summary.get('collected_total_cases', 0)} "
+              f"evaluated={summary.get('evaluated_total_cases', 0)} "
+              f"collection_errors={summary.get('collection_error_total', 0)} "
+              f"api_failed={summary.get('api_failed_total', 0)} "
+              f"ragas_errors={summary.get('ragas_error_total', 0)}"
+          )
+          requested = summary.get("requested_by_language", {})
+          collected = summary.get("collected_by_language", {})
+          evaluated = summary.get("evaluated_by_language", {})
+          errors = summary.get("collection_errors_by_language", {})
+          print("")
+          print("| Language | Requested | Collected | Evaluated | Collection errors |")
+          print("| --- | ---: | ---: | ---: | ---: |")
+          for lang in data.get("languages", []):
+              print(
+                  f"| {lang} | {requested.get(lang, 0)} | {collected.get(lang, 0)} | "
+                  f"{evaluated.get(lang, 0)} | {errors.get(lang, 0)} |"
+              )
+          PY
+          fi
 
       - name: Fail when any selected suite failed
         if: always()

@@ -4,7 +4,7 @@ Alpha 最終 Live 検証は Cloud Run live 環境で実施します。このド�
 
 ## Current Status
 
-2026-05-02 時点の live verification は **NO-GO** です。最新の実行結果、残 blocker、再開手順は [Alpha Live Verification Status 2026-05-02](alpha-live-verification-status-2026-05-02.md) を正本として参照してください。
+2026-05-03 時点の live verification は **NO-GO** です。最新の実行結果、残 blocker、再開手順は [Alpha Live Verification Status 2026-05-02](alpha-live-verification-status-2026-05-02.md) を正本として参照してください。
 
 Current confirmed target:
 
@@ -18,6 +18,7 @@ Current confirmed target:
 - Backend: `https://engineer-cafe-backend-639959525777.asia-northeast1.run.app`
 - Cloud Run revision: GO 判定時は workflow の `Resolve live target` 出力を正本にする
 - Backend SHA: `require_deployed_sha_match=true` で expected backend SHA と Cloud Run image tag の一致を必須にする。`expected_backend_sha` が空の場合は workflow SHA を expected backend SHA として使うため、backend 変更を含む GO proof の既定動作は変わらない。
+  Harness-only merge の後に backend deploy が意図的に変わっていない場合だけ、現行 Cloud Run image tag の 40-char SHA を `expected_backend_sha` に渡す。
 - Frontend: `https://frontend-delta-six-20.vercel.app`
 
 ## Usage Notes
@@ -32,7 +33,16 @@ Current confirmed target:
 - C/RAGAS の 29-case path は diagnostic only です。Alpha GO proof では
   `scripts/rag-api-live-test.sh --case-suite alpha-127 --languages ja,en,zh,ko`、または
   `alpha-live-verification.yml` の `suites=c-127` / `c_ragas_suite=alpha-127` を使います。
-  Report の `case_suite=alpha-127` と `suite_coverage` が 127/127 PASS になっていることを確認してください。
+  Report の `case_suite=alpha-127` と `suite_coverage.requested_total_cases=127` に加えて、
+  `evaluated=127`, `collection_errors=0`, `api_failed_case_count=0` を確認してください。
+  Post-#692 run `25270459825` は `requested=127` でしたが、`evaluated=35`, `collection_errors=92`
+  だったため GO proof ではありません。PR #695 後の C-127 rerun が必要です。
+- C/RAGAS の 127-case artifact では `evaluation_summary` を必ず確認してください。
+  `requested_total_cases=127` だけでは GO 証跡になりません。
+  `collected_total_cases=127`、`evaluated_total_cases=127`、`collection_error_total=0`、
+  `ragas_error_total=0`、および言語別 counts（ja=80/en=23/zh=12/ko=12）が揃って初めて
+  完全実行として扱います。collection error がある run は、RAGAS scores が高くても
+  incomplete として扱います。
 - C/RAGAS live source gate は intent ごとの source policy で判定します。施設・料金・連絡先などの local knowledge は
   `enhanced_rag` / `knowledge_base` / `knowledge_base_cached` を同等に扱い、event-like case は
   `google_calendar` / `connpass` も許容します。緊急・受付・farewell の即時応答は source なしでも source gate 上は許容し、

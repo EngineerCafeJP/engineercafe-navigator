@@ -187,6 +187,66 @@ def _suite_coverage(
     }
 
 
+def _language_case_counts(config: Dict[str, Any]) -> Dict[str, int]:
+    """Return manifest case counts by language for coverage artifacts."""
+    counts = {lang: 0 for lang in ALL_LANGUAGES}
+    for query in config.get("queries", []):
+        language = str(query.get("language") or "")
+        if language:
+            counts[language] = counts.get(language, 0) + 1
+    return counts
+
+
+def _evaluation_summary(
+    lang_results: Dict[str, Dict[str, Any]],
+    languages: Sequence[str],
+) -> Dict[str, Any]:
+    """Aggregate collection/evaluation counts so partial 127 runs are obvious."""
+    requested_by_language: Dict[str, int] = {}
+    collected_by_language: Dict[str, int] = {}
+    evaluated_by_language: Dict[str, int] = {}
+    collection_errors_by_language: Dict[str, int] = {}
+    api_failed_by_language: Dict[str, int] = {}
+    ragas_errors_by_language: Dict[str, int] = {}
+
+    for lang in languages:
+        result = lang_results.get(lang, {})
+        requested_by_language[lang] = int(result.get("requested_case_count", 0) or 0)
+        collected_by_language[lang] = int(result.get("collected_case_count", 0) or 0)
+        evaluated_by_language[lang] = int(result.get("evaluated_case_count", 0) or 0)
+        collection_errors_by_language[lang] = int(result.get("collection_error_count", 0) or 0)
+        api_failed_by_language[lang] = int(result.get("api_failed_case_count", 0) or 0)
+        ragas_errors_by_language[lang] = int(result.get("ragas_error_count", 0) or 0)
+
+    requested_total = sum(requested_by_language.values())
+    collected_total = sum(collected_by_language.values())
+    evaluated_total = sum(evaluated_by_language.values())
+    collection_error_total = sum(collection_errors_by_language.values())
+    api_failed_total = sum(api_failed_by_language.values())
+    ragas_error_total = sum(ragas_errors_by_language.values())
+
+    return {
+        "requested_total_cases": requested_total,
+        "collected_total_cases": collected_total,
+        "evaluated_total_cases": evaluated_total,
+        "collection_error_total": collection_error_total,
+        "api_failed_total": api_failed_total,
+        "ragas_error_total": ragas_error_total,
+        "requested_by_language": requested_by_language,
+        "collected_by_language": collected_by_language,
+        "evaluated_by_language": evaluated_by_language,
+        "collection_errors_by_language": collection_errors_by_language,
+        "api_failed_by_language": api_failed_by_language,
+        "ragas_errors_by_language": ragas_errors_by_language,
+        "collection_complete": collected_total == requested_total and collection_error_total == 0,
+        "evaluation_complete": (
+            evaluated_total == requested_total
+            and collection_error_total == 0
+            and ragas_error_total == 0
+        ),
+    }
+
+
 def _collection_error_record(
     query: Dict[str, Any],
     *,
@@ -300,6 +360,7 @@ async def run_live_api_evaluation(
     gt_lookup = _load_ground_truth_lookup()
     selected_languages = list(languages or ALL_LANGUAGES)
     selected_metrics = tuple(metrics or TRACKED_METRICS)
+    manifest_language_counts = _language_case_counts(config)
 
     per_language_results: Dict[str, Dict[str, Any]] = {}
     all_eval_cases: Dict[str, List[Dict[str, Any]]] = {}
@@ -433,10 +494,12 @@ async def run_live_api_evaluation(
                 "language": lang,
                 "error": "no evaluable cases",
                 "requested_case_count": requested_count,
+                "collected_case_count": 0,
                 "evaluated_case_count": 0,
                 "skipped_case_count": requested_count,
                 "api_failed_case_count": api_failed_count,
                 "collection_error_count": len(lang_collection_errors),
+                "ragas_error_count": 0,
                 "collection_errors": lang_collection_errors,
                 "metrics": {},
                 "results": [],
@@ -454,10 +517,12 @@ async def run_live_api_evaluation(
                 "language": lang,
                 "error": "ragas not installed",
                 "requested_case_count": requested_count,
+                "collected_case_count": len(cases),
                 "evaluated_case_count": 0,
                 "skipped_case_count": requested_count,
                 "api_failed_case_count": api_failed_count,
                 "collection_error_count": len(lang_collection_errors),
+                "ragas_error_count": 0,
                 "collection_errors": lang_collection_errors,
                 "metrics": {},
                 "results": [
@@ -476,9 +541,15 @@ async def run_live_api_evaluation(
 
         logger.info("Running RAGAS evaluation for %s (%d cases)...", lang, len(cases))
         report = await evaluator.evaluate_batch(cases)
+        report_error_count = len(
+            [error for error in getattr(report, "errors", []) if str(error).strip()]
+        )
+        per_case_error_count = 0
 
         per_case_results: List[Dict[str, Any]] = []
         for case, result in zip(cases, report.results):
+            if result.error:
+                per_case_error_count += 1
             per_case_results.append(
                 {
                     "query_id": case["query_id"],
@@ -496,14 +567,17 @@ async def run_live_api_evaluation(
                     "live_source_check": case["live_source_check"],
                 }
             )
+        ragas_error_count = max(report_error_count, per_case_error_count)
 
         per_language_results[lang] = {
             "language": lang,
             "requested_case_count": requested_count,
+            "collected_case_count": len(cases),
             "evaluated_case_count": report.evaluated_cases,
             "skipped_case_count": report.skipped_cases + len(lang_collection_errors),
             "api_failed_case_count": api_failed_count,
             "collection_error_count": len(lang_collection_errors),
+            "ragas_error_count": ragas_error_count,
             "collection_errors": lang_collection_errors,
             "metrics": report.metrics,
             "errors": report.errors,
@@ -519,10 +593,12 @@ async def run_live_api_evaluation(
         selected_languages=selected_languages,
         requested_total=requested_total,
     )
+    evaluation_summary = _evaluation_summary(per_language_results, selected_languages)
     comparison = _compare_targets(
         per_language_results, selected_languages, check_live_sources=check_live_sources
     )
     comparison["suite_coverage"] = suite_coverage
+    comparison["evaluation_summary"] = evaluation_summary
     comparison["alpha_release_gate_met"] = (
         comparison["all_targets_met"]
         and suite_coverage["release_blocking"]
@@ -544,6 +620,7 @@ async def run_live_api_evaluation(
         "mode": "live-api",
         "case_suite": case_suite,
         "suite_coverage": suite_coverage,
+        "evaluation_summary": evaluation_summary,
         "base_url": base_url,
         "languages": selected_languages,
         "metrics": list(selected_metrics),
@@ -553,6 +630,11 @@ async def run_live_api_evaluation(
             "report_timestamp": report_file_ts,
             "json_report_filename": json_report_filename,
             "text_report_filename": text_report_filename,
+            "expected_total_cases": config.get("expected_total_cases"),
+            "manifest_language_counts": manifest_language_counts,
+            "selected_language_counts": {
+                lang: manifest_language_counts.get(lang, 0) for lang in selected_languages
+            },
             "chat_interval_seconds": chat_interval_seconds,
             "chat_retry_attempts": chat_retry_attempts,
             "chat_retry_backoff_seconds": chat_retry_backoff_seconds,
@@ -608,14 +690,18 @@ def _compare_targets(
 
         answer_target_passed = isinstance(actual, (int, float)) and actual >= target
         requested_count = int(result.get("requested_case_count", 0) or 0)
+        collected_count = int(result.get("collected_case_count", 0) or 0)
         evaluated_count = int(result.get("evaluated_case_count", 0) or 0)
         collection_error_count = int(result.get("collection_error_count", 0) or 0)
+        ragas_error_count = int(result.get("ragas_error_count", 0) or 0)
         evaluation_complete = (
             requested_count > 0
+            and collected_count == requested_count
             and evaluated_count == requested_count
             and not result.get("errors")
             and not result.get("error")
             and collection_error_count == 0
+            and ragas_error_count == 0
         )
         passed = answer_target_passed and not source_failures and evaluation_complete
         per_language[lang] = {
@@ -626,8 +712,10 @@ def _compare_targets(
             },
             "evaluation_complete": {
                 "requested": requested_count,
+                "collected": collected_count,
                 "evaluated": evaluated_count,
                 "collection_errors": collection_error_count,
+                "ragas_errors": ragas_error_count,
                 "passed": evaluation_complete,
             },
             "live_source_gate": {
@@ -654,6 +742,7 @@ def _compare_targets(
                     "answer_target_passed": answer_target_passed,
                     "evaluation_complete": evaluation_complete,
                     "collection_errors": collection_error_count,
+                    "ragas_errors": ragas_error_count,
                     "source_failures": len(source_failures),
                 }
             )
@@ -701,6 +790,32 @@ def _format_report(
                 "",
             ]
         )
+    evaluation_summary = comparison.get("evaluation_summary", {})
+    if evaluation_summary:
+        collection_status = "PASS" if evaluation_summary.get("collection_complete") else "FAIL"
+        evaluation_status = "PASS" if evaluation_summary.get("evaluation_complete") else "FAIL"
+        lines.extend(
+            [
+                "Collection/evaluation summary:",
+                "  totals: "
+                f"requested={evaluation_summary.get('requested_total_cases', 0)} "
+                f"collected={evaluation_summary.get('collected_total_cases', 0)} "
+                f"evaluated={evaluation_summary.get('evaluated_total_cases', 0)} "
+                f"collection_errors={evaluation_summary.get('collection_error_total', 0)} "
+                f"ragas_errors={evaluation_summary.get('ragas_error_total', 0)}",
+                f"  collection_complete: {collection_status}",
+                f"  evaluation_complete: {evaluation_status}",
+                "  language_counts: "
+                + ", ".join(
+                    f"{lang}=requested:{evaluation_summary.get('requested_by_language', {}).get(lang, 0)}"
+                    f"/collected:{evaluation_summary.get('collected_by_language', {}).get(lang, 0)}"
+                    f"/evaluated:{evaluation_summary.get('evaluated_by_language', {}).get(lang, 0)}"
+                    f"/errors:{evaluation_summary.get('collection_errors_by_language', {}).get(lang, 0)}"
+                    for lang in languages
+                ),
+                "",
+            ]
+        )
 
     for lang in languages:
         result = lang_results.get(lang, {})
@@ -710,6 +825,7 @@ def _format_report(
         lines.append(f"--- [{lang.upper()}] ---")
         lines.append(
             f"  Cases: requested={result.get('requested_case_count', 0)} "
+            f"collected={result.get('collected_case_count', 0)} "
             f"evaluated={result.get('evaluated_case_count', 0)} "
             f"skipped={result.get('skipped_case_count', 0)}"
         )
@@ -743,9 +859,12 @@ def _format_report(
         eval_status = "PASS" if eval_complete.get("passed") else "FAIL"
         lines.append(
             "  evaluation_complete: "
+            f"collected={eval_complete.get('collected', 0)}/"
+            f"{eval_complete.get('requested', 0)} "
             f"evaluated={eval_complete.get('evaluated', 0)}/"
             f"{eval_complete.get('requested', 0)} "
             f"collection_errors={eval_complete.get('collection_errors', 0)} "
+            f"ragas_errors={eval_complete.get('ragas_errors', 0)} "
             f"[{eval_status}]"
         )
         if source_gate.get("enabled"):
@@ -805,6 +924,7 @@ def _format_report(
                 f"answer_target_passed={f.get('answer_target_passed')} "
                 f"evaluation_complete={f.get('evaluation_complete')} "
                 f"collection_errors={f.get('collection_errors', 0)} "
+                f"ragas_errors={f.get('ragas_errors', 0)} "
                 f"source_failures={f.get('source_failures', 0)}"
             )
 
