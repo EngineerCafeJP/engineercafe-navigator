@@ -2566,6 +2566,48 @@ class TestQwenPrimaryFallback:
         assert "stt_qwen_hedge_grace_start" not in events
 
     @pytest.mark.asyncio
+    async def test_vosk_kenshi_wall_hours_confusion_normalizes(self, caplog):
+        """Alpha live Vosk confusion for Engineer Cafe hours remains business_info."""
+        caplog.set_level(logging.INFO, logger="backend.observability.stt")
+
+        async def slow_qwen(*args, **kwargs):
+            await asyncio.sleep(0.30)
+            return TranscriptionResult(text="late qwen", confidence=0.9, language="ja")
+
+        async def confused_vosk(*args, **kwargs):
+            await asyncio.sleep(0.01)
+            return TranscriptionResult(
+                text="検事 や 壁 の 影響 時間 を 教え て ください",
+                confidence=0.8,
+                language="ja",
+            )
+
+        mock_qwen = MagicMock()
+        mock_qwen.transcribe = slow_qwen
+        mock_vosk = MagicMock(spec=LocalSTTClient)
+        mock_vosk.transcribe = AsyncMock(side_effect=confused_vosk)
+
+        agent = self._make_agent(mock_qwen, mock_vosk)
+        agent._qwen_timeout = 10.0
+        agent._qwen_hedge_delay = 0.01
+        agent._qwen_hedge_grace = 0.20
+
+        result = await agent.speech_to_text(b"audio", language="ja")
+
+        assert result["success"] is True
+        assert result["provider"] == "vosk-fallback"
+        assert result["transcript"] == "エンジニアカフェの営業時間を教えてください。"
+
+        events = [
+            getattr(record, "event", None)
+            for record in caplog.records
+            if record.name == "backend.observability.stt"
+        ]
+        assert "stt_vosk_route_normalize" in events
+        assert "stt_vosk_early_accept" in events
+        assert "stt_qwen_hedge_grace_start" not in events
+
+    @pytest.mark.asyncio
     async def test_qwen_grace_expires_then_vosk_wins(self, caplog):
         """Vosk remains the fallback if Qwen misses the grace window."""
         caplog.set_level(logging.INFO, logger="backend.observability.stt")
