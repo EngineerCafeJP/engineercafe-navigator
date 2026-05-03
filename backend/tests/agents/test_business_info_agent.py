@@ -261,6 +261,34 @@ class TestBusinessInfoAgent:
         self.agent.enhanced_rag.search.assert_not_called()
         self.agent.llm_provider.generate.assert_not_called()
 
+    @pytest.mark.asyncio
+    async def test_answer_business_query_canonical_ignores_stale_state_context(self):
+        """Known alpha-gate canonical answers must not be suppressed by stale RAG cache."""
+        self.agent.enhanced_rag.search = AsyncMock(
+            side_effect=AssertionError("reservation canonical must skip stale cache fallback")
+        )
+        self.agent.llm_provider.generate = AsyncMock(
+            side_effect=AssertionError("reservation canonical must skip LLM")
+        )
+
+        response = await self.agent.answer_business_query(
+            "Can I use Engineer Cafe without a reservation?",
+            "reception",
+            "en",
+            "q-biz-en-003",
+            state_context={
+                "success": True,
+                "category": "general",
+                "context_string": "stale general cache",
+                "results": [],
+                "query": "stale",
+            },
+        )
+
+        assert "without a reservation" in response["answer"].lower()
+        self.agent.enhanced_rag.search.assert_not_called()
+        self.agent.llm_provider.generate.assert_not_called()
+
     def test_reception_request_type_alone_does_not_force_first_visit(self):
         """reception routingだけで初回登録回答へ倒さない"""
         response = self.agent._get_canonical_response(
@@ -304,6 +332,25 @@ class TestBusinessInfoAgent:
         assert "contact form" in response["answer"].lower()
         assert "official website" in response["answer"].lower()
         assert "second-floor meeting rooms" in response["answer"].lower()
+
+    def test_contact_canonical_response_zh_ko_includes_sources_and_form(self):
+        """gt-106/116: ZH/KO contact must avoid fallback and include contact form URL."""
+        zh = self.agent._get_canonical_response("如何联系工程师咖啡？", "contact", "zh")
+        ko = self.agent._get_canonical_response(
+            "엔지니어 카페에 어떻게 연락할 수 있나요?", "contact", "ko"
+        )
+
+        assert zh is not None
+        assert "080-6742-7231" in zh["answer"]
+        assert "https://engineercafe.jp/" in zh["answer"]
+        assert "https://engineercafe.jp/ja/contact" in zh["answer"]
+        assert zh["metadata"]["sources"] == ["enhanced_rag"]
+
+        assert ko is not None
+        assert "080-6742-7231" in ko["answer"]
+        assert "https://engineercafe.jp/" in ko["answer"]
+        assert "https://engineercafe.jp/ja/contact" in ko["answer"]
+        assert ko["metadata"]["sources"] == ["enhanced_rag"]
 
     def test_closed_days_canonical_precedes_hours(self):
         """休館日は営業時間の広い回答に倒さない"""

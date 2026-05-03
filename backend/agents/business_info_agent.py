@@ -124,22 +124,15 @@ class BusinessInfoAgent:
             language,
         )
 
-        # requestTypeをcategoryにマッピング
-        category = self._map_request_type_to_category(request_type)
-
-        cached = state_context if state_context else None
-        canonical_allowed = not cached or (
-            cached.get("success") and cached.get("category") == category
-        )
-        canonical = (
-            self._get_canonical_response(query, request_type, language)
-            if canonical_allowed
-            else None
-        )
+        canonical = self._get_canonical_response(query, request_type, language)
         if canonical:
             return canonical
 
+        # requestTypeをcategoryにマッピング
+        category = self._map_request_type_to_category(request_type)
+
         # Check cached RAG results
+        cached = state_context if state_context else None
         if cached and cached.get("success") and cached.get("category") == category:
             context = cached.get("context_string", "")
             logger.info("Using cached RAG results for %s", category)
@@ -855,14 +848,14 @@ Information: {context}
                     "You can also visit reception in person during opening hours."
                 ),
                 "zh": (
-                    "[relaxed]可以在13:00到21:00之间拨打080-6742-7231"
-                    "联系工程师咖啡，也可以查看官网 https://engineercafe.jp/ "
-                    "或使用联系表单。"
+                    "[relaxed]电话：080-6742-7231（13:00-21:00）。"
+                    "官网：https://engineercafe.jp/。"
+                    "联系表单：https://engineercafe.jp/ja/contact。"
                 ),
                 "ko": (
-                    "[relaxed]엔지니어 카페에는 13시부터 21시 사이에 "
-                    "080-6742-7231로 전화하실 수 있습니다. 공식 사이트 "
-                    "https://engineercafe.jp/ 와 문의 양식도 이용할 수 있어요."
+                    "[relaxed]전화는 080-6742-7231(13:00-21:00)입니다. "
+                    "공식 사이트는 https://engineercafe.jp/ 이고 "
+                    "문의 폼은 https://engineercafe.jp/ja/contact 입니다."
                 ),
             }
             return self._canonical_result(answers.get(language, answers["ja"]), request_type)
