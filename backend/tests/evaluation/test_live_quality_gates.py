@@ -1,7 +1,13 @@
+import asyncio
+import httpx
+import pytest
+import time
+
 from evaluation.live_quality_gates import (
     check_answer_quality,
     check_safety,
     denies_explicit_ltm_recall,
+    post_json,
 )
 
 
@@ -48,3 +54,38 @@ def test_explicit_ltm_denial_does_not_hide_concrete_ssid_recall() -> None:
     answer = "前に伝えたWi-FiのSSIDはcafe-freeです。"
 
     assert denies_explicit_ltm_recall(answer) is False
+
+
+@pytest.mark.asyncio
+async def test_post_json_excludes_initial_pacer_wait_from_duration() -> None:
+    events: list[str] = []
+
+    class Pacer:
+        async def wait(self, endpoint: str) -> None:
+            assert endpoint == "/api/chat"
+            events.append("wait")
+            await asyncio.sleep(0.12)
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"answer": "ok"})
+
+    wall_started = time.perf_counter()
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        status, duration_ms, parsed, raw = await post_json(
+            client,
+            base_url="https://example.test",
+            api_key="secret",
+            endpoint="/api/chat",
+            body={"query": "少し雑談して"},
+            timeout=1,
+            pacer=Pacer(),
+            retries=0,
+        )
+    wall_elapsed_ms = int((time.perf_counter() - wall_started) * 1000)
+
+    assert status == 200
+    assert parsed == {"answer": "ok"}
+    assert raw == '{"answer":"ok"}'
+    assert wall_elapsed_ms >= 100
+    assert duration_ms < 100
+    assert events[0] == "wait"
