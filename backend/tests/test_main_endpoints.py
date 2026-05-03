@@ -466,6 +466,30 @@ class TestVoiceEndpoint:
                 assert resp.phase == "text_to_speech"
                 assert resp.upstreamStatus["provider"] == "piper"
 
+    @pytest.mark.asyncio
+    async def test_voice_tts_fallback_is_reported_in_upstream_status(self):
+        mock_agent = AsyncMock()
+        mock_agent.text_to_speech = AsyncMock(
+            return_value={
+                "success": True,
+                "audioResponse": "d2F2",
+                "format": "audio/wav",
+                "emotion": "sad",
+                "error": "Piper unavailable",
+                "fallback_used": True,
+            }
+        )
+        with patch("backend.main._get_voice_agent_for_provider_key", return_value=mock_agent):
+            from backend.main import VoiceRequest, voice_api
+
+            body = VoiceRequest(action="text_to_speech", text="hello", ttsProvider="piper")
+            resp = await voice_api(_mock_request(), body)
+
+        assert resp.success is True
+        assert resp.upstreamStatus["provider"] == "piper"
+        assert resp.upstreamStatus["fallbackUsed"] is True
+        assert resp.upstreamStatus["error"] == "Piper unavailable"
+
 
 class TestSlidesEndpoint:
     @pytest.mark.asyncio

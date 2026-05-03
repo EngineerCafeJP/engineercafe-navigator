@@ -108,6 +108,21 @@ def response_route(body: dict[str, Any]) -> str:
     return ""
 
 
+def tts_fallback_problem(body: dict[str, Any]) -> str:
+    upstream = body.get("upstreamStatus") if isinstance(body.get("upstreamStatus"), dict) else {}
+    if upstream.get("fallbackUsed") is True:
+        return compact(upstream.get("error") or body.get("error") or "fallbackUsed=true")
+    clean_text = str(body.get("cleanText") or "")
+    fallback_phrases = (
+        "音声の生成に失敗しました",
+        "failed to generate the audio response",
+        "Failed to generate speech",
+    )
+    if any(phrase in clean_text for phrase in fallback_phrases):
+        return compact(clean_text)
+    return ""
+
+
 def similarity(expected: str, actual: str) -> float:
     def norm(text: str) -> str:
         return "".join(text.lower().split())
@@ -398,7 +413,14 @@ def run_case(args: argparse.Namespace, api_key: str, rows: list[dict[str, Any]],
         timeout=args.timeout,
     )
     audio = tts_source.get("audioResponse")
-    if http == 200 and tts_source.get("success") is True and isinstance(audio, str) and len(audio) > 64:
+    fallback_problem = tts_fallback_problem(tts_source)
+    if (
+        http == 200
+        and tts_source.get("success") is True
+        and isinstance(audio, str)
+        and len(audio) > 64
+        and not fallback_problem
+    ):
         record(
             rows,
             case_id=case.case_id,
@@ -420,9 +442,9 @@ def run_case(args: argparse.Namespace, api_key: str, rows: list[dict[str, Any]],
             http=http,
             duration_ms=duration_ms,
             language=case.language,
-            expected="audioResponse",
-            actual="missing",
-            notes=compact(raw),
+            expected="audioResponse without fallback",
+            actual="fallback" if fallback_problem else "missing",
+            notes=fallback_problem or compact(raw),
         )
         return
 
@@ -522,17 +544,19 @@ def run_case(args: argparse.Namespace, api_key: str, rows: list[dict[str, Any]],
         timeout=args.timeout,
     )
     answer_audio = tts_answer.get("audioResponse")
+    fallback_problem = tts_fallback_problem(tts_answer)
     if (
         http == 200
         and tts_answer.get("success") is True
         and isinstance(answer_audio, str)
         and len(answer_audio) > 64
+        and not fallback_problem
     ):
         answer_status = "PASS"
         actual = str(tts_answer.get("audioFormat") or "audio")
     else:
         answer_status = "FAIL"
-        actual = "missing"
+        actual = "fallback" if fallback_problem else "missing"
     record(
         rows,
         case_id=case.case_id,
@@ -541,9 +565,9 @@ def run_case(args: argparse.Namespace, api_key: str, rows: list[dict[str, Any]],
         http=http,
         duration_ms=duration_ms,
         language=case.language,
-        expected=args.tts_provider,
+        expected=f"{args.tts_provider} without fallback",
         actual=actual,
-        notes=compact(raw),
+        notes=fallback_problem or compact(raw),
     )
 
 
