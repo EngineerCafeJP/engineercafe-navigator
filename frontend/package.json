@@ -18,6 +18,7 @@
     "import:markdown": "tsx -r dotenv/config scripts/import-markdown-knowledge.ts",
     "setup:admin": "tsx -r dotenv/config scripts/setup-admin-knowledge.ts",
     "test": "cd scripts/tests && tsx run-tests.ts",
+    "test:node": "tsx scripts/tests/run-tests.ts node",
     "test:e2e": "playwright test --config=playwright.config.ts",
     "test:e2e:ui": "playwright test --config=playwright.config.ts --ui",
     "test:integrated": "cd scripts/tests && tsx run-tests.ts integrated",
