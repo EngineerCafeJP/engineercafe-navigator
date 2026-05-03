@@ -32,7 +32,7 @@ export const isIOSWebKitAudio = (): boolean => {
   );
 };
 
-type SupportedLang = 'ja' | 'en' | 'zh' | 'ko';
+export type SupportedLang = 'ja' | 'en' | 'zh' | 'ko';
 
 export const getTapToEnableAudioMessage = (language: string = 'ja'): string => {
   const messages: Record<SupportedLang, string> = {

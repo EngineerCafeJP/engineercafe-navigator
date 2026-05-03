@@ -6,7 +6,10 @@ import {
   AudioInteractionManager,
   unlockAudioForUserGesture,
 } from '@/lib/audio/audio-interaction-manager';
-import { getTapToEnableAudioMessage } from '@/lib/audio/audio-user-interaction-gate';
+import {
+  getTapToEnableAudioMessage,
+  type SupportedLang,
+} from '@/lib/audio/audio-user-interaction-gate';
 import DOMPurify from 'dompurify';
 import { ChevronLeft, Keyboard, MessageCircle, Pause, Play, RotateCcw, Settings } from 'lucide-react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -119,10 +122,17 @@ const isNarrationGestureRequiredError = (error: unknown): boolean => {
   );
 };
 
-const getNarrationPlaybackFailureMessage = (language: 'ja' | 'en'): string =>
-  language === 'ja'
-    ? 'ナレーションの再生に失敗しました'
-    : 'Narration playback failed';
+const NARRATION_PLAYBACK_FAILURE_MESSAGES: Record<SupportedLang, string> = {
+  ja: 'ナレーションの再生に失敗しました',
+  en: 'Narration playback failed',
+  zh: '旁白播放失败',
+  ko: '내레이션 재생에 실패했습니다',
+};
+
+const getNarrationPlaybackFailureMessage = (language: string): string => {
+  const lang = language as SupportedLang;
+  return NARRATION_PLAYBACK_FAILURE_MESSAGES[lang] ?? NARRATION_PLAYBACK_FAILURE_MESSAGES.en;
+};
 
 export default function MarpViewer({
   slideFile = 'engineer-cafe',

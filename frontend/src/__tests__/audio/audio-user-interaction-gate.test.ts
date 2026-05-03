@@ -170,3 +170,9 @@ test('getTapToEnableAudioMessage falls back to English for unknown languages', {
 }, () => {
   assert.equal(getTapToEnableAudioMessage('fr'), 'Tap once more to enable audio playback');
 });
+
+test('getTapToEnableAudioMessage falls back to English for empty string', {
+  concurrency: false,
+}, () => {
+  assert.equal(getTapToEnableAudioMessage(''), 'Tap once more to enable audio playback');
+});
