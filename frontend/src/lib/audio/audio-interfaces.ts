@@ -161,6 +161,7 @@ export interface AudioPlayerOptions {
   loop?: boolean;
   preload?: boolean;
   crossOrigin?: string;
+  decodeTimeoutMs?: number;
   
   // Event callbacks (legacy support)
   onPlay?: () => void;

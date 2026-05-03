@@ -3,10 +3,17 @@ import { after, test } from "node:test";
 
 import {
   estimateAudioDataByteLength,
+  MobileAudioService,
   shouldUseHtmlAudioFirstForPlayback,
 } from "../lib/audio/mobile-audio-service";
+import { AudioPlaybackService } from "../lib/audio/audio-playback-service";
 
 const originalNavigator = globalThis.navigator;
+const originalWindow = (globalThis as typeof globalThis & { window?: unknown }).window;
+const originalDocument = (globalThis as typeof globalThis & { document?: unknown }).document;
+const originalAudio = (globalThis as typeof globalThis & { Audio?: unknown }).Audio;
+const originalCreateObjectURL = URL.createObjectURL;
+const originalRevokeObjectURL = URL.revokeObjectURL;
 
 const setUserAgent = (userAgent: string): void => {
   Object.defineProperty(globalThis, "navigator", {
@@ -19,6 +26,26 @@ after(() => {
   Object.defineProperty(globalThis, "navigator", {
     configurable: true,
     value: originalNavigator,
+  });
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: originalWindow,
+  });
+  Object.defineProperty(globalThis, "document", {
+    configurable: true,
+    value: originalDocument,
+  });
+  Object.defineProperty(globalThis, "Audio", {
+    configurable: true,
+    value: originalAudio,
+  });
+  Object.defineProperty(URL, "createObjectURL", {
+    configurable: true,
+    value: originalCreateObjectURL,
+  });
+  Object.defineProperty(URL, "revokeObjectURL", {
+    configurable: true,
+    value: originalRevokeObjectURL,
   });
 });
 
@@ -50,4 +77,169 @@ test("non-Android and small Android audio stay on Web Audio first", () => {
 
   setUserAgent("Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36");
   assert.equal(shouldUseHtmlAudioFirstForPlayback(smallBase64), false);
+});
+
+test("blob and http audio URLs use HTML audio without creating object URLs", async () => {
+  let lastAudioUrl = "";
+  let createObjectURLCalled = false;
+
+  class MockAudioElement {
+    public preload = "";
+    public volume = 1;
+    public paused = true;
+    public ended = false;
+    private listeners = new Map<string, Set<() => void>>();
+
+    constructor(url: string) {
+      lastAudioUrl = url;
+    }
+
+    setAttribute() {}
+    removeAttribute() {}
+    load() {}
+    pause() {
+      this.paused = true;
+    }
+    addEventListener(event: string, listener: () => void) {
+      const listeners = this.listeners.get(event) ?? new Set<() => void>();
+      listeners.add(listener);
+      this.listeners.set(event, listeners);
+    }
+    removeEventListener(event: string, listener: () => void) {
+      this.listeners.get(event)?.delete(listener);
+    }
+    async play() {
+      this.paused = false;
+      this.listeners.get("play")?.forEach((listener) => listener());
+      setTimeout(() => {
+        this.ended = true;
+        this.listeners.get("ended")?.forEach((listener) => listener());
+      }, 0);
+    }
+  }
+
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: { innerWidth: 390, setTimeout, clearTimeout },
+  });
+  Object.defineProperty(globalThis, "document", {
+    configurable: true,
+    value: {
+      addEventListener() {},
+      removeEventListener() {},
+    },
+  });
+  Object.defineProperty(globalThis, "Audio", {
+    configurable: true,
+    value: MockAudioElement,
+  });
+  Object.defineProperty(URL, "createObjectURL", {
+    configurable: true,
+    value: () => {
+      createObjectURLCalled = true;
+      return "blob:created";
+    },
+  });
+  Object.defineProperty(URL, "revokeObjectURL", {
+    configurable: true,
+    value: () => {},
+  });
+
+  const service = new MobileAudioService();
+  const result = await service.playAudio("blob:existing-audio");
+
+  assert.equal(result.success, true);
+  assert.equal(result.method, "html-audio");
+  assert.equal(lastAudioUrl, "blob:existing-audio");
+  assert.equal(createObjectURLCalled, false);
+
+  const httpResult = await service.playAudio("https://example.com/audio.mp3");
+  assert.equal(httpResult.success, true);
+  assert.equal(httpResult.method, "html-audio");
+  assert.equal(lastAudioUrl, "https://example.com/audio.mp3");
+  assert.equal(createObjectURLCalled, false);
+
+  const playbackResult = await AudioPlaybackService.playAudioFast("blob:playback-audio");
+  assert.equal(playbackResult.success, true);
+  assert.equal(playbackResult.method, "html-audio");
+
+  service.dispose();
+});
+
+test("playAudioWithLipSync skips analyzer for blob audio URLs", async () => {
+  let audioContextConstructed = false;
+
+  class MockAudioElement {
+    public preload = "";
+    public volume = 1;
+    public paused = true;
+    public ended = false;
+    private listeners = new Map<string, Set<() => void>>();
+
+    constructor(public readonly url: string) {}
+
+    setAttribute() {}
+    removeAttribute() {}
+    load() {}
+    pause() {
+      this.paused = true;
+    }
+    addEventListener(event: string, listener: () => void) {
+      const listeners = this.listeners.get(event) ?? new Set<() => void>();
+      listeners.add(listener);
+      this.listeners.set(event, listeners);
+    }
+    removeEventListener(event: string, listener: () => void) {
+      this.listeners.get(event)?.delete(listener);
+    }
+    async play() {
+      this.paused = false;
+      this.listeners.get("play")?.forEach((listener) => listener());
+      setTimeout(() => {
+        this.ended = true;
+        this.listeners.get("ended")?.forEach((listener) => listener());
+      }, 0);
+    }
+  }
+
+  class AnalyzerAudioContext {
+    constructor() {
+      audioContextConstructed = true;
+    }
+    async resume() {}
+    createAnalyser() {
+      return { fftSize: 0 };
+    }
+  }
+
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: {
+      innerWidth: 390,
+      setTimeout,
+      clearTimeout,
+      AudioContext: AnalyzerAudioContext,
+      webkitAudioContext: AnalyzerAudioContext,
+    },
+  });
+  Object.defineProperty(globalThis, "document", {
+    configurable: true,
+    value: {
+      addEventListener() {},
+      removeEventListener() {},
+    },
+  });
+  Object.defineProperty(globalThis, "Audio", {
+    configurable: true,
+    value: MockAudioElement,
+  });
+
+  const result = await AudioPlaybackService.playAudioWithLipSync("blob:playback-audio", {
+    enableLipSync: true,
+    onVisemeUpdate: () => undefined,
+  });
+
+  assert.equal(result.success, true);
+  assert.equal(result.method, "html-audio");
+  assert.equal(audioContextConstructed, false);
 });
