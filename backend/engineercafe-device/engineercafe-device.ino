@@ -4,32 +4,33 @@
 #include <WiFiClientSecure.h>
 #include <Wire.h>
 #include <Adafruit_VL53L0X.h>
+#include "secrets.h"  // SSID, PASSWORD, WEBHOOK_URL_BACKEND, API_SECRET_KEY, DEVICE_ID
 
-// ─── WiFi / API設定 ─────────────────────────────────────────
-const char* SSID        = "";
-const char* PASSWORD    = "";
-
-// ─── Webhook URL設定 ────────────────────────────────────────
-const char* WEBHOOK_URL_BACKEND   = "";
-
-const char* API_SECRET_KEY = "";
-const char* DEVICE_ID      = "";
 const char* SENSOR_TYPE    = "pir_tof";  // ← 変更
 
 // ─── ピン設定 ───────────────────────────────────────────────
 #define PIR_PIN   35
 
 // ─── ToF設定 ────────────────────────────────────────────────
+// Near-field kiosk line: trigger inside ~30cm, release hysteresis ~40cm (VL53L0X noise).
 #define TOF_TRIGGER_MM       300   // 確定閾値: 30cm
-#define CONFIRM_COUNT          3   // 連続N回でWebhook発火
+#define CONFIRM_COUNT          3   // loop ~300ms: debounce ghost triggers before firing webhook
 #define LEAVE_THRESHOLD_MM   400   // 離脱判定: 40cm以上
 #define LEAVE_CONFIRM_COUNT    3   // 離脱連続N回で確定
 
 // ─── PIR保持設定 ────────────────────────────────────────────
+// Hold PIR-high context across slow ToF sampling (~10s typical walk-by window).
 #define PIR_HOLD_MS          10000
 
 // ─── 画面更新間隔 ────────────────────────────────────────────
 #define DISPLAY_INTERVAL_MS   1000
+
+// ─── WiFi / ToF ブート ───────────────────────────────────────
+#define WIFI_CONNECT_TIMEOUT_MS 30000
+#define TOF_INIT_MAX_ATTEMPTS    5
+
+// PIR: typical HC-SR501 warm-up after power (~30–60s); kiosk fixed boot delay.
+#define PIR_WARMUP_SECONDS      30
 
 // ─── ToFインスタンス ────────────────────────────────────────
 Adafruit_VL53L0X tof;
@@ -52,7 +53,8 @@ int measureToF_MM() {
 }
 
 // ─── バックエンドへ送信 ──────────────────────────────────────
-void sendToBackend(int tofMM) {
+// HTTP 200 + success/trigger_received, or rate_limited (see README) => true.
+bool sendToBackend(int tofMM) {
   char payload[256];
   snprintf(
     payload, sizeof(payload),
@@ -76,16 +78,39 @@ void sendToBackend(int tofMM) {
     Serial.printf("[Backend] response=%s\n", responseBody.c_str());
   }
   http.end();
+
+  if (code <= 0 || code != 200) {
+    return false;
+  }
+  if (responseBody.indexOf("\"success\":true") >= 0 ||
+      responseBody.indexOf("\"success\": true") >= 0) {
+    return true;
+  }
+  if (responseBody.indexOf("trigger_received") >= 0) {
+    return true;
+  }
+  if (responseBody.indexOf("rate_limited") >= 0) {
+    return true;
+  }
+  return false;
 }
 
-// ─── 両方へ送信 ──────────────────────────────────────────────
-void sendSensorTrigger(int tofMM) {
+// ─── Webhook（本体 + 最大2回リトライ） ────────────────────────
+bool sendSensorTrigger(int tofMM) {
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println("[Webhook] WiFi未接続のためスキップ");
-    return;
+    return false;
   }
 
-  sendToBackend(tofMM);
+  if (sendToBackend(tofMM)) {
+    return true;
+  }
+  delay(500);
+  if (sendToBackend(tofMM)) {
+    return true;
+  }
+  delay(1500);
+  return sendToBackend(tofMM);
 }
 
 // ─── 画面表示 ────────────────────────────────────────────────
@@ -106,6 +131,15 @@ void showStandby() {
   M5.Lcd.setTextSize(2);
   M5.Lcd.setCursor(75, 135);
   M5.Lcd.println("Engineer Cafe");
+}
+
+void showWebhookFailure() {
+  M5.Lcd.fillScreen(TFT_BLACK);
+  M5.Lcd.setTextColor(TFT_RED);
+  M5.Lcd.setTextSize(3);
+  M5.Lcd.setCursor(40, 100);
+  M5.Lcd.println("Webhook NG");
+  delay(2000);
 }
 
 void showDebug(bool pirOn, int tofMM, bool measuring) {
@@ -184,34 +218,64 @@ void setup() {
   M5.Lcd.setCursor(10, 80);
   M5.Lcd.println("Init ToF...");
 
-  if (!tof.begin(0x29, false, &Wire)) {
-    Serial.println("[ToF] 初期化失敗！");
+  bool tofOk = false;
+  for (int attempt = 1; attempt <= TOF_INIT_MAX_ATTEMPTS; attempt++) {
+    if (attempt > 1) {
+      delay(300);
+    }
+    if (tof.begin(0x29, false, &Wire)) {
+      tofOk = true;
+      break;
+    }
+    Serial.printf("[ToF] init retry %d/%d\n", attempt, TOF_INIT_MAX_ATTEMPTS);
+    delay(400);
+  }
+  if (!tofOk) {
+    Serial.println("[ToF] 初期化失敗 — 再起動");
     M5.Lcd.setTextColor(TFT_RED);
     M5.Lcd.setCursor(10, 110);
-    M5.Lcd.println("ToF INIT FAILED");
-    while (1) delay(100);
+    M5.Lcd.println("ToF FAILED");
+    M5.Lcd.setCursor(10, 135);
+    M5.Lcd.setTextSize(2);
+    M5.Lcd.println("Rebooting...");
+    delay(3000);
+    ESP.restart();
   }
   Serial.println("[ToF] 初期化完了");
 
   // WiFi接続
-  M5.Lcd.setCursor(10, 110);
+  M5.Lcd.fillScreen(TFT_BLACK);
   M5.Lcd.setTextColor(TFT_WHITE);
+  M5.Lcd.setTextSize(2);
+  M5.Lcd.setCursor(10, 80);
   M5.Lcd.println("WiFi connecting...");
   WiFi.begin(SSID, PASSWORD);
+  unsigned long wifiStarted = millis();
   while (WiFi.status() != WL_CONNECTED) {
+    if (millis() - wifiStarted > WIFI_CONNECT_TIMEOUT_MS) {
+      Serial.println("[WiFi] timeout -> restart");
+      M5.Lcd.fillScreen(TFT_BLACK);
+      M5.Lcd.setTextColor(TFT_RED);
+      M5.Lcd.setCursor(10, 90);
+      M5.Lcd.println("WiFi timeout");
+      M5.Lcd.setCursor(10, 120);
+      M5.Lcd.println("Restarting...");
+      delay(2000);
+      ESP.restart();
+    }
     delay(250);
     Serial.print(".");
   }
   Serial.printf("\n[WiFi] 接続完了: %s\n", WiFi.localIP().toString().c_str());
 
   // PIR安定待ち
-  Serial.println("[PIR] 安定待ち中... 30秒");
+  Serial.printf("[PIR] 安定待ち中... %d秒\n", PIR_WARMUP_SECONDS);
   M5.Lcd.fillScreen(TFT_BLACK);
   M5.Lcd.setTextColor(TFT_WHITE);
   M5.Lcd.setTextSize(2);
   M5.Lcd.setCursor(10, 80);
   M5.Lcd.println("PIR Warming up...");
-  for (int i = 30; i > 0; i--) {
+  for (int i = PIR_WARMUP_SECONDS; i > 0; i--) {
     M5.Lcd.fillRect(10, 110, 300, 30, TFT_BLACK);
     M5.Lcd.setCursor(10, 110);
     M5.Lcd.printf("Wait: %d sec", i);
@@ -248,12 +312,18 @@ void loop() {
         confirmCount++;
         if (confirmCount >= CONFIRM_COUNT) {
           Serial.println("[System] >>> 来訪者検知！Webhook送信 <<<");
-          showWelcome();
-          sendSensorTrigger(tofMM);
-          currentState = GREETING;
-          confirmCount = 0;
-          leaveCount   = 0;
-          Serial.println("[System] GREETING状態へ。人が離れるまでPIR無効。");
+          if (sendSensorTrigger(tofMM)) {
+            showWelcome();
+            currentState = GREETING;
+            confirmCount = 0;
+            leaveCount   = 0;
+            Serial.println("[System] GREETING状態へ。人が離れるまでPIR無効。");
+          } else {
+            Serial.println("[System] Webhook失敗のためWAITING維持");
+            confirmCount = 0;
+            showWebhookFailure();
+            lastDisplayUpdate = 0;
+          }
         }
       } else {
         confirmCount = 0;
