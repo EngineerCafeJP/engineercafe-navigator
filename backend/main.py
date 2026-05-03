@@ -36,7 +36,11 @@ from backend.utils.structured_logging import (
     setup_structured_logging,
 )
 from backend.utils.session_task_manager import get_session_task_manager
-from backend.utils.intent_classifier import FILLER_INTENTS, filler_intent_for_query
+from backend.utils.intent_classifier import (
+    FILLER_INTENTS,
+    classify_fast_intent,
+    filler_intent_for_query,
+)
 from backend.utils.filler_catalog import FILLER_TEXTS
 
 logger = logging.getLogger(__name__)
@@ -365,6 +369,127 @@ def _build_workflow_payload(body: ChatRequest, session_id: str) -> Dict[str, Any
     return payload
 
 
+def _general_fast_path_answer(query: str, language: str, request_type: str) -> tuple[str, str]:
+    lower_query = query.lower()
+    if request_type == "assistant_profile":
+        if language == "en":
+            return (
+                "I am Engineer Cafe Navigator, the reception kiosk for Engineer Cafe in "
+                "Fukuoka. I can help with facilities, events, membership check-in, Wi-Fi, "
+                "slide guidance, and everyday questions visitors commonly ask at reception.",
+                "helpful",
+            )
+        if language == "ko":
+            return (
+                "저는 Engineer Cafe Navigator 입니다. 후쿠오카의 엔지니어 카페 안내 키오스크로서, "
+                "시설 이용, 이벤트, 회원증, Wi-Fi, 슬라이드 안내와 함께 접수처에서 자주 받는 "
+                "일상적인 질문에도 답해 드립니다.",
+                "helpful",
+            )
+        if language == "zh":
+            return (
+                "我是 Engineer Cafe Navigator，福冈工程师咖啡馆的前台导览终端。我可以为您介绍"
+                "设施使用、活动信息、会员证、Wi-Fi、幻灯片导览，以及前台常见的日常问题。",
+                "helpful",
+            )
+        return (
+            "私は Engineer Cafe Navigator です。福岡市のエンジニアカフェの受付キオスク"
+            "として、施設利用、イベント、会員証、Wi-Fi、スライド案内に加えて、"
+            "受付でよくある日常的な質問にもお答えします。",
+            "helpful",
+        )
+
+    if any(marker in lower_query for marker in ("ありがとう", "サンキュー", "thanks", "thank you")):
+        return (
+            (
+                "どういたしまして。ほかにも気になることがあれば、気軽に聞いてください。"
+                if language == "ja"
+                else "You're welcome. Feel free to ask me anything else."
+            ),
+            "relaxed",
+        )
+    if any(marker in lower_query for marker in ("疲れた", "i am tired", "i'm tired")):
+        return (
+            (
+                "少し休憩しましょう。エンジニアカフェでは、落ち着いて作業したり一息ついたりできます。"
+                if language == "ja"
+                else "Take a short break. Engineer Cafe is a good place to settle in and recharge."
+            ),
+            "relaxed",
+        )
+    if any(marker in lower_query for marker in ("元気", "how are you")):
+        return (
+            (
+                "元気です。今日は受付として、施設案内でも雑談でもすぐお手伝いできます。"
+                if language == "ja"
+                else "I'm doing well. I can help with reception guidance or a quick casual chat."
+            ),
+            "relaxed",
+        )
+    return (
+        (
+            "もちろんです。短くお話ししましょう。施設のことでも、今日の過ごし方でも気軽に聞いてください。"
+            if language == "ja"
+            else (
+                "Of course. We can keep it light. Ask me about the facility "
+                "or anything practical for your visit."
+            )
+        ),
+        "relaxed",
+    )
+
+
+def _try_chat_general_fast_path(
+    body: ChatRequest,
+    *,
+    session_id: str,
+    request_id: str,
+    started_at: float,
+) -> ChatResponse | None:
+    if body.image_data or body.context or body.visitor_id:
+        return None
+
+    intent = classify_fast_intent(body.query)
+    if (
+        intent is None
+        or intent.agent != "general_knowledge"
+        or intent.request_type not in {"assistant_profile", "daily_conversation"}
+    ):
+        return None
+
+    language = body.language or "ja"
+    answer, emotion = _general_fast_path_answer(body.query, language, intent.request_type)
+    metadata = {
+        "query": body.query,
+        "session_id": session_id,
+        "agent": "GeneralKnowledgeAgent",
+        "category": "general_knowledge",
+        "route": "general_knowledge",
+        "request_type": intent.request_type,
+        "query_type": intent.request_type,
+        "sources": [],
+        "web_search_used": False,
+        "rag_used": False,
+        "provider_called": False,
+        "fast_path": "chat_endpoint",
+    }
+    latency_ms = int((time.perf_counter() - started_at) * 1000)
+    log_chat_response(
+        request_id=request_id,
+        language=language,
+        metadata=metadata,
+        latency_ms=latency_ms,
+    )
+    return ChatResponse(
+        answer=answer,
+        emotion=emotion,
+        metadata=metadata,
+        requestId=request_id,
+        phase="chat",
+        upstreamStatus=_upstream_status("chat_endpoint_fast_path", route="general_knowledge"),
+    )
+
+
 def _request_id_from_request(request: Request) -> str:
     return get_request_id() or request.headers.get("X-Request-ID") or generate_request_id()
 
@@ -464,6 +589,15 @@ async def chat(request: Request, body: ChatRequest):
             )
 
         body = body.copy(update={"query": sanitize_input(body.query)})
+        fast_response = _try_chat_general_fast_path(
+            body,
+            session_id=session_id,
+            request_id=request_id,
+            started_at=started_at,
+        )
+        if fast_response is not None:
+            return fast_response
+
         result = await _run_workflow_with_tracking(
             payload=_build_workflow_payload(body, session_id),
             session_id=session_id,

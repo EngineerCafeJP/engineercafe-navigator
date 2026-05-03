@@ -3,6 +3,7 @@ BusinessInfoAgent のユニットテスト
 """
 
 import pytest
+from unittest.mock import AsyncMock
 
 from backend.agents.business_info_agent import BusinessInfoAgent
 
@@ -134,6 +135,74 @@ class TestBusinessInfoAgent:
         assert "cafe&bar saino" in response["answer"]
         assert "3Dプリンターのフィラメント代" in response["answer"]
         assert "2階" not in response["answer"]
+
+    def test_reservation_canonical_response_english_includes_expected_fact(self):
+        """Q-BIZ-EN-003: reservation questions must be deterministic."""
+        response = self.agent._get_canonical_response(
+            "Can I use Engineer Cafe without a reservation?",
+            "reception",
+            "en",
+        )
+
+        assert response is not None
+        assert "reservation" in response["answer"].lower()
+        assert "without a reservation" in response["answer"].lower()
+        assert "1F reception" in response["answer"]
+        assert response["metadata"]["sources"] == ["enhanced_rag"]
+
+    def test_reservation_canonical_does_not_capture_event_room_booking(self):
+        """Event-room reservation questions must stay out of generic coworking answers."""
+        response = self.agent._get_canonical_response(
+            "Do I need a reservation for an event room?",
+            "reception",
+            "en",
+        )
+
+        assert response is None
+
+    def test_reservation_canonical_does_not_capture_meeting_room_booking(self):
+        """Meeting-room reservation questions are facility-specific, not coworking use."""
+        response = self.agent._get_canonical_response(
+            "Do I need a reservation for a meeting room?",
+            "reception",
+            "en",
+        )
+
+        assert response is None
+
+    def test_first_visit_registration_precedes_reservation_canonical(self):
+        """First-visit registration questions should not become reservation-only answers."""
+        response = self.agent._get_canonical_response(
+            "For my first visit, do I need a reservation or should I register at reception?",
+            "reception",
+            "en",
+        )
+
+        assert response is not None
+        assert "5 to 10 minutes" in response["answer"]
+        assert "web form" in response["answer"].lower()
+        assert "regular coworking space" not in response["answer"].lower()
+
+    @pytest.mark.asyncio
+    async def test_answer_business_query_reservation_canonical_skips_rag_and_llm(self):
+        """Q-BIZ-EN-003: live path should not depend on RAG/LLM wording."""
+        self.agent.enhanced_rag.search = AsyncMock(
+            side_effect=AssertionError("reservation canonical must skip RAG")
+        )
+        self.agent.llm_provider.generate = AsyncMock(
+            side_effect=AssertionError("reservation canonical must skip LLM")
+        )
+
+        response = await self.agent.answer_business_query(
+            "Can I use Engineer Cafe without a reservation?",
+            "reception",
+            "en",
+            "q-biz-en-003",
+        )
+
+        assert "reservation" in response["answer"].lower()
+        self.agent.enhanced_rag.search.assert_not_called()
+        self.agent.llm_provider.generate.assert_not_called()
 
     def test_reception_request_type_alone_does_not_force_first_visit(self):
         """reception routingだけで初回登録回答へ倒さない"""
