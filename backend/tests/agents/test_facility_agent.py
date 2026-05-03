@@ -318,6 +318,36 @@ class TestFacilityAgent:
 
         assert response is None
 
+    @pytest.mark.asyncio
+    async def test_smoking_query_uses_smoking_rag_category(self):
+        """喫煙ポリシーはfacility-infoではなくsmokingカテゴリで検索する"""
+        agent = FacilityAgent()
+
+        with (
+            patch.object(agent.enhanced_rag, "search", new_callable=AsyncMock) as mock_rag,
+            patch.object(agent.llm_provider, "generate", new_callable=AsyncMock) as mock_llm,
+        ):
+            mock_rag.return_value = {
+                "success": True,
+                "data": {
+                    "context": "エンジニアカフェは全館禁煙です。",
+                    "results": [],
+                    "totalResults": 1,
+                },
+            }
+            mock_llm.return_value = "[relaxed]실내에서는 흡연할 수 없습니다."
+
+            result = await agent.answer_facility_query(
+                query="실내에서 흡연할 수 있나요?",
+                request_type="smoking",
+                language="ko",
+            )
+
+        assert result["metadata"]["sources"] == ["enhanced_rag"]
+        assert result["metadata"]["category"] == "smoking"
+        mock_rag.assert_awaited_once()
+        assert mock_rag.await_args.kwargs["category"] == "smoking"
+
     def test_determine_emotion_default(self):
         """デフォルト感情タグ"""
         agent = FacilityAgent()

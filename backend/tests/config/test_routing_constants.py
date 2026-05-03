@@ -43,10 +43,22 @@ class TestNewRoutingKeywords:
             ("喫煙所はありますか？", "smoking"),
             ("タバコは吸えますか？", "smoking"),
             ("Is smoking allowed?", "smoking"),
+            ("실내에서 흡연할 수 있나요?", "smoking"),
         ],
     )
     def test_smoking_keywords(self, query, expected):
         """喫煙キーワードがsmokingにルーティングされることを確認"""
+        assert extract_request_type(query) == expected
+
+    @pytest.mark.parametrize(
+        "query,expected",
+        [
+            ("What spaces are available at Engineer Cafe?", "facility"),
+            ("Tell me about available spaces.", "facility"),
+        ],
+    )
+    def test_available_spaces_keywords(self, query, expected):
+        """英語のスペース一覧質問がfacilityにルーティングされることを確認"""
         assert extract_request_type(query) == expected
 
     @pytest.mark.parametrize(

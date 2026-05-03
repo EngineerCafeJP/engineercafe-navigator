@@ -34,6 +34,7 @@ IDENTITY_QUERIES = {
         "あなたは誰ですか",
         "何者ですか",
         "自己紹介してください",
+        "あなたに相談できることは？",
         "どんなAIなの？",
         "どのモデルを使ってる？",
     ],
@@ -78,6 +79,8 @@ VISITOR_NAME_QUERIES = [
 NON_IDENTITY_AMBIGUOUS_QUERIES = [
     # 貴方 used as 2nd-person pronoun in a Wi-Fi question (not asking about bot)
     "貴方にWi-Fiの設定を聞きたい",
+    # "できること" as a consultation domain phrase, not assistant capability.
+    "コミュニティマネージャーに相談できることは？",
     # "AI" as topic of an event lookup, not asking which AI the bot is
     "which AI events are held here?",
     # Chinese capability marker without self-referential identity token

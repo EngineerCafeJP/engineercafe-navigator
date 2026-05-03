@@ -234,6 +234,35 @@ class TestOrchestratorFastRouting:
             assert result is not None, f"Query '{query}' should match fast-path"
             assert result["agent"] == "facility", f"Query '{query}' should route to facility"
 
+    def test_english_available_spaces_routes_to_facility(self, orchestrator):
+        result = orchestrator._try_fast_routing("What spaces are available at Engineer Cafe?")
+
+        assert result is not None
+        assert result["agent"] == "facility"
+        assert result["category"] == "facility-info"
+        assert result["request_type"] == "facility"
+
+    def test_namespace_does_not_route_to_facility_space_keyword(self, orchestrator):
+        result = orchestrator._try_fast_routing("What is namespace in Python?")
+
+        assert result is None
+
+    def test_gt_019_consultation_not_assistant_profile(self, orchestrator):
+        result = orchestrator._try_fast_routing("コミュニティマネージャーに相談できることは？")
+
+        assert result is not None
+        assert result["request_type"] != "assistant_profile"
+        assert result["category"] == "consultation"
+        assert result["request_type"] == "consultation"
+
+    def test_korean_smoking_routes_to_facility(self, orchestrator):
+        result = orchestrator._try_fast_routing("실내에서 흡연할 수 있나요?")
+
+        assert result is not None
+        assert result["agent"] == "facility"
+        assert result["category"] == "facility-info"
+        assert result["request_type"] == "smoking"
+
     def test_greeting_konnichiwa(self, orchestrator):
         """こんにちは が greeting にルーティングされること"""
         result = orchestrator._try_fast_routing("こんにちは")
