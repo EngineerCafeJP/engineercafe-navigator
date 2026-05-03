@@ -3,9 +3,13 @@
 import { EmotionData, EmotionManager } from '@/lib/emotion-manager';
 import { ExpressionController } from '@/lib/expression-controller';
 import { LipSyncAnalyzer } from '@/lib/lip-sync-analyzer';
+import {
+  DEFAULT_IDLE_VRMA_URL,
+  isIdleVrmaUrl,
+  loadVRMAAnimationClipFromUrl,
+} from '@/lib/vrm-animation-clip';
 import { VRMBlendShapeController, VRMUtils, getLipSyncFactorFromEmotions } from '@/lib/vrm-utils';
 import { VRM, VRMLoaderPlugin } from '@pixiv/three-vrm';
-import { VRMAnimationLoaderPlugin, createVRMAnimationClip } from '@pixiv/three-vrm-animation';
 import { Settings, User, VolumeX } from 'lucide-react';
 import {
   useEffect,
@@ -261,6 +265,8 @@ export default function CharacterAvatar({
   const updateSceneBackgroundRef = useRef<(options: BackgroundOption) => void>(() => {});
   const loadedModelPathRef = useRef(modelPath);
   const loadedVrmSpecVersionRef = useRef<string | null>(null);
+  /** Hips X/Z at t=0 from {@link DEFAULT_IDLE_VRMA_URL}; used to align other VRMA clips. */
+  const idleHipsBaselineRef = useRef<{ x: number; z: number } | null>(null);
 
   const applyRootScenePosition = useCallback((vrm?: VRM | null) => {
     const targetVrm = vrm ?? charactersRef.current;
@@ -655,97 +661,60 @@ export default function CharacterAvatar({
     vrm: VRM,
     loop: boolean = true,
   ) => {
-    const loader = new GLTFLoader();
-    loader.crossOrigin = 'anonymous';
-    
-    // Register the VRMAnimationLoaderPlugin
-    loader.register((parser) => {
-      return new VRMAnimationLoaderPlugin(parser);
-    });
-
     try {
-      const gltf = await loader.loadAsync(animationUrl);
-      
-      // Try different ways to access the animation
-      const vrmAnimation = gltf.userData.vrmAnimations?.[0] || gltf.userData.vrmAnimation;
-      
-      if (vrmAnimation) {
-        let clip: THREE.AnimationClip | null = null;
+      const { clip: initialClip } = await loadVRMAAnimationClipFromUrl(animationUrl, vrm);
+      if (!initialClip) {
+        return { success: false, duration: 0 };
+      }
+      let clip = initialClip;
 
-        if (vrm.lookAt) {
-          if (!vrm.lookAt.target) {
-            const fallbackLookAtTarget = new THREE.Object3D();
-            fallbackLookAtTarget.position.copy(DEFAULT_LOOKAT_TARGET);
-            vrm.lookAt.target = fallbackLookAtTarget;
-          }
-
-          clip = createVRMAnimationClip(vrmAnimation, vrm as any);
+      if (isIdleVrmaUrl(animationUrl)) {
+        const baseline = VRMUtils.sampleHipsPositionXZAtTime(clip, vrm, 0);
+        if (baseline) {
+          idleHipsBaselineRef.current = baseline;
         }
-
-        if (!clip && gltf.animations && gltf.animations.length > 0) {
-          clip = gltf.animations[0];
-        }
-
-        if (!clip) {
-          return { success: false, duration: 0 };
-        }
-        
-        if (!mixerRef.current) {
-          mixerRef.current = new THREE.AnimationMixer(vrm.scene);
-        }
-        
-        // Stop current animation if exists
-        if (currentActionRef.current) {
-          currentActionRef.current.stop();
-        }
-        
-        // Play new animation
-        const action = mixerRef.current.clipAction(clip);
-        if (loop) {
-          action.setLoop(THREE.LoopRepeat, Infinity);
-        } else {
-          action.setLoop(THREE.LoopOnce, 1);
-          action.clampWhenFinished = true;
-        }
-        action.play();
-        currentActionRef.current = action;
-        
-        // Keep root position centralized across animation changes.
-        applyRootScenePosition(vrm);
-        
-        
-        return { success: true, duration: clip.duration };
       } else {
-        
-        // Try using the gltf animations directly
-        if (gltf.animations && gltf.animations.length > 0) {
-          
-          if (!mixerRef.current) {
-            mixerRef.current = new THREE.AnimationMixer(vrm.scene);
+        let baseline = idleHipsBaselineRef.current;
+        if (!baseline) {
+          const idlePack = await loadVRMAAnimationClipFromUrl(DEFAULT_IDLE_VRMA_URL, vrm);
+          if (idlePack.clip) {
+            baseline = VRMUtils.sampleHipsPositionXZAtTime(idlePack.clip, vrm, 0);
+            if (baseline) {
+              idleHipsBaselineRef.current = baseline;
+            }
           }
-          
-          const clip = gltf.animations[0];
-          const action = mixerRef.current.clipAction(clip);
-          if (loop) {
-            action.setLoop(THREE.LoopRepeat, Infinity);
-          } else {
-            action.setLoop(THREE.LoopOnce, 1);
-            action.clampWhenFinished = true;
-          }
-          action.play();
-          currentActionRef.current = action;
-          
-          // Keep root position centralized across animation changes.
-          applyRootScenePosition(vrm);
-          
-          
-          return { success: true, duration: clip.duration };
+        }
+        const other = VRMUtils.sampleHipsPositionXZAtTime(clip, vrm, 0);
+        if (baseline && other) {
+          clip = VRMUtils.rebaseHipsHorizontalInClip(clip, vrm, baseline, other);
         }
       }
+
+      if (!mixerRef.current) {
+        mixerRef.current = new THREE.AnimationMixer(vrm.scene);
+      }
+
+      if (currentActionRef.current) {
+        currentActionRef.current.stop();
+      }
+
+      const action = mixerRef.current.clipAction(clip);
+      if (loop) {
+        action.setLoop(THREE.LoopRepeat, Infinity);
+      } else {
+        action.setLoop(THREE.LoopOnce, 1);
+        action.clampWhenFinished = true;
+      }
+      action.play();
+      currentActionRef.current = action;
+
+      applyRootScenePosition(vrm);
+
+      return { success: true, duration: clip.duration };
     } catch (error) {
       console.error('Error loading VRM animation:', error);
     }
-    
+
     return { success: false, duration: 0 };
   };
 
@@ -801,6 +770,7 @@ export default function CharacterAvatar({
         sceneRef.current.remove(charactersRef.current.scene);
         charactersRef.current = null;
       }
+      idleHipsBaselineRef.current = null;
 
       // Load VRM model via fetch + parseAsync so texture base path is correct.
       // Force TextureLoader instead of ImageBitmapLoader: blob URLs from bufferView
@@ -1390,6 +1360,7 @@ export default function CharacterAvatar({
       VRMUtils.dispose(charactersRef.current);
     }
 
+    idleHipsBaselineRef.current = null;
     loadedVrmSpecVersionRef.current = null;
   };
 
