@@ -182,7 +182,30 @@ jobs:
         continue-on-error: true
         env:
           API_SECRET_KEY: ${{ secrets.BACKEND_API_KEY }}
-        run: scripts/alpha-smoke-comprehensive.sh --timestamp "${ALPHA_TIMESTAMP}-d" --host "$ALPHA_SMOKE_BASE_URL" --scenarios D --timeout 120 --sleep 2.2 --parallel 1
+        shell: bash
+        run: |
+          set -uo pipefail
+          d_started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          scripts/alpha-smoke-comprehensive.sh --timestamp "${ALPHA_TIMESTAMP}-d" --host "$ALPHA_SMOKE_BASE_URL" --scenarios D --timeout 120 --sleep 2.2 --parallel 1
+          smoke_status=$?
+
+          settle_seconds="${ALPHA_CLOUD_LOGGING_SETTLE_SECONDS:-20}"
+          if [[ "$settle_seconds" =~ ^[0-9]+$ && "$settle_seconds" -gt 0 ]]; then
+            sleep "$settle_seconds"
+          fi
+
+          d_finished_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          scripts/cloud-logging-verify.sh \
+            --timestamp "${ALPHA_TIMESTAMP}-d-cloudrun" \
+            --since "$d_started_at" \
+            --until "$d_finished_at" \
+            --limit 1000 \
+            --error-gate-only
+          log_gate_status=$?
+
+          if [[ "$smoke_status" -ne 0 || "$log_gate_status" -ne 0 ]]; then
+            exit 1
+          fi
 
       - name: E Cloud Logging verification
         id: cloud_logging
