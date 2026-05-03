@@ -42,7 +42,7 @@ Supabase については、CLI で linked project の確認まではできまし
 1. 最新 full suite run `25272361091` の outcome / artifact を確認する
 2. C-127 が live `/api/chat` 429 なしで `127/127` collect/evaluate できることの証明
 3. Q suite の残 failure が #693 後に解消されたことの証明
-4. #696/#697/#698 の voice timeout / mobile playback live-device proof
+4. #697/#698 の mobile playback live-device proof
 5. RAGAS full-run speed / telemetry の operational closeout
 
 現行の実装判断は [ADR 018](adr/018-alpha-fast-response-and-assistant-profile-routing.md) と
@@ -84,7 +84,7 @@ Resolved or implemented in the 2026-05-03 remediation pass:
 Still blocking or important:
 
 - #583: C-127 completion remains P0 until post-#695/#701 run collects/evaluates `127/127` with `collection_errors=0`.
-- #696: voice backend timeout / warmup UX remains P0 until post-#705/#709 live proof shows no silent fail path.
+- #696: voice backend timeout / warmup UX is closed after post-#705/#709 live proof.
 - #697: iOS delayed TTS playback remains P0 until post-#707 iPad/iPhone Safari proof.
 - #698: Android large-audio playback remains P1 until post-#707 Android phone proof or explicit alpha demotion.
 - #653: Q quality remains P1 until post-#693 `suites=q` rerun has 0 failures.

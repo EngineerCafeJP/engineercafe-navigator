@@ -53,7 +53,7 @@ Current confirmed target:
 - Same-day harness hardening from PR #700/#701/#702/#703 is included in the current develop baseline:
   Welcome camera-flow guard, C-127 coverage summary, alpha Cloud Run log hygiene, and STT warmup before voice live.
 - Voice/device GO proof after #705/#707/#709 must include Cloud Run/Vercel evidence for `/api/voice`
-  and `/api/voice/filler` timeout behavior (#696), iPad/iPhone Safari delayed TTS playback (#697),
+  and `/api/voice/filler` timeout behavior (closed as #696), iPad/iPhone Safari delayed TTS playback (#697),
   and Android phone >1MB audio playback without `decodeAudioData` hang (#698).
 - Harness-only workflow/script rerun では、backend deploy が意図的に変わっていない場合だけ
   `require_deployed_sha_match=true` のまま `expected_backend_sha=<Cloud Run image tag の 40-char commit SHA>` を渡します。

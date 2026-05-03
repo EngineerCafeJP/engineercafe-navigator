@@ -85,7 +85,7 @@ PR #674, #675, #676 に加えて、#692, #693, #695, #699, #700, #701, #702, #70
 で、C-127 completion proof にはなっていません。#695 は 429 pacing / retry 修正として merge 済みで、
 post-#695/#701 C-127 proof は run `25272361091` で確認中です。#693 は Q suite 残 failure 修正として merge 済みで、
 同 run で post-deploy proof を確認中です。#705/#709 は voice timeout budget、#707 は mobile audio playback の
-実装修正として merge/deploy 済みですが、#696/#697/#698 は live/device proof まで open 維持です。
+実装修正として merge/deploy 済みです。#696 は live proof 後に close 済み、#697/#698 は live/device proof まで open 維持です。
 
 Resolved:
 
@@ -100,7 +100,7 @@ Resolved:
 - #700 Welcome camera-flow guard
 - #702 alpha Cloud Run log-noise reduction
 - #703 STT warmup before voice live
-- #696 voice backend timeout budget: PR #705/#709 merged/deployed, live proof pending
+- #696 voice backend timeout budget: PR #705/#709 merged/deployed and closed after live proof
 - #697 iOS delayed TTS playback: PR #707 merged, device proof pending
 - #698 Android large-audio playback: PR #707 merged, device proof pending
 
@@ -109,7 +109,7 @@ Still active:
 - #583 C-127 completion proof: run `25272361091` must collect/evaluate `127/127`
 - #653 / #672 Q/C answer quality
 - #670 RAGAS full-run speed / telemetry closeout
-- #696 / #697 / #698 live/device proof
+- #697 / #698 live/device proof
 - #611 / #584 / #585 live-only proof / issue-scope decisions
 
 ## 直近の次アクション
