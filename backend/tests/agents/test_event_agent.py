@@ -95,6 +95,9 @@ class TestEventAgent:
 
         assert "Connpass" in response["answer"]
         assert "sign-up" in response["answer"].lower()
+        assert "https://engineercafe.connpass.com/" in response["answer"]
+        assert "free" in response["answer"].lower()
+        assert "early sign-up" in response["answer"].lower()
         assert response["metadata"]["sources"] == ["connpass"]
 
     def test_connpass_canonical_response_japanese_mentions_recruitment(self):

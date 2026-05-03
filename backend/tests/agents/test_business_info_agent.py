@@ -82,6 +82,7 @@ class TestBusinessInfoAgent:
         assert "5 to 10 minutes" in response["answer"]
         assert "web form" in response["answer"].lower()
         assert "staff" in response["answer"].lower()
+        assert "ask the reception staff" in response["answer"].lower()
         assert "free" in response["answer"].lower()
 
     def test_first_time_visitor_canonical_response(self):
@@ -234,6 +235,19 @@ class TestBusinessInfoAgent:
         assert response is not None
         assert "080-6742-7231" in response["answer"]
         assert "13時から21時" in response["answer"]
+
+    def test_contact_canonical_response_english_includes_channels(self):
+        """EN contact answer should not depend on RAG/LLM URL generation."""
+        response = self.agent._get_canonical_response(
+            "How can I contact Engineer Cafe?", None, "en"
+        )
+
+        assert response is not None
+        assert "080-6742-7231" in response["answer"]
+        assert "13:00 and 21:00" in response["answer"]
+        assert "https://engineercafe.jp/" in response["answer"]
+        assert "inquiry form" in response["answer"].lower()
+        assert "second-floor meeting rooms" in response["answer"].lower()
 
     def test_closed_days_canonical_precedes_hours(self):
         """休館日は営業時間の広い回答に倒さない"""

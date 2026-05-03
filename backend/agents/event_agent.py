@@ -378,7 +378,9 @@ class EventAgent:
             ),
             "en": (
                 "[relaxed]Yes, you can check Engineer Cafe events on Connpass. "
-                "Event listings and sign-up information are available there."
+                "Event listings, details, and sign-up information are available at "
+                "https://engineercafe.connpass.com/. Many events are free, and when "
+                "capacity is limited, early sign-up is recommended."
             ),
             "zh": (
                 "[relaxed]可以在Connpass上查看工程师咖啡的活动信息。"
