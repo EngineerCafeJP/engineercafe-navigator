@@ -338,6 +338,30 @@ FAREWELL_KEYWORDS = [
     "gotta go",
 ]
 
+ENGLISH_FAREWELL_KEYWORDS = [
+    "goodbye",
+    "bye",
+    "leaving",
+    "going home",
+    "see you",
+    "heading out",
+    "gotta go",
+]
+
+JAPANESE_FAREWELL_KEYWORDS = [
+    keyword for keyword in FAREWELL_KEYWORDS if keyword not in ENGLISH_FAREWELL_KEYWORDS
+]
+
+
+def _compile_english_farewell_pattern(keyword: str) -> re.Pattern:
+    escaped_keyword = re.escape(keyword).replace(r"\ ", r"\s+")
+    return re.compile(rf"(?<![a-z0-9]){escaped_keyword}(?![a-z0-9])")
+
+
+ENGLISH_FAREWELL_PATTERNS = [
+    _compile_english_farewell_pattern(keyword) for keyword in ENGLISH_FAREWELL_KEYWORDS
+]
+
 EARTHQUAKE_KEYWORDS = [
     "地震",
     "earthquake",
@@ -756,6 +780,14 @@ def match_keywords(text: str, keywords: List[str]) -> bool:
     return any(kw.lower() in lower_text for kw in keywords)
 
 
+def match_farewell_keywords(text: str) -> bool:
+    """退館フレーズを判定する。英語は語境界つきで substring 誤爆を避ける。"""
+    lower_text = text.lower()
+    return any(kw in lower_text for kw in JAPANESE_FAREWELL_KEYWORDS) or any(
+        pattern.search(lower_text) for pattern in ENGLISH_FAREWELL_PATTERNS
+    )
+
+
 LOCATION_KEYWORDS = ["場所", "どこ", "アクセス", "住所", "location", "where", "address"]
 
 
@@ -776,7 +808,7 @@ def extract_request_type(query: str) -> Optional[str]:
 
     if match_keywords(lower_query, EMERGENCY_KEYWORDS):
         return "emergency"
-    if match_keywords(lower_query, FAREWELL_KEYWORDS):
+    if match_farewell_keywords(lower_query):
         return "farewell"
     if match_keywords(lower_query, LOST_FOUND_KEYWORDS):
         return "lost_found"
@@ -814,12 +846,6 @@ def extract_request_type(query: str) -> Optional[str]:
         return "photography"
     if match_keywords(lower_query, CHILDREN_NOISE_KEYWORDS):
         return "children_noise"
-    if match_keywords(lower_query, LOCATION_KEYWORDS):
-        return "location"
-    if match_keywords(lower_query, BOOKING_KEYWORDS):
-        return "booking"
-    if match_keywords(lower_query, RECEPTION_KEYWORDS):
-        return "reception"
     if match_keywords(lower_query, FLOOR_LAYOUT_KEYWORDS):
         return "floor_layout"
     if match_keywords(lower_query, FACILITY_EQUIPMENT_KEYWORDS):
@@ -836,5 +862,11 @@ def extract_request_type(query: str) -> Optional[str]:
         return "event"
     if match_keywords(lower_query, SLIDE_KEYWORDS):
         return "slide"
+    if match_keywords(lower_query, LOCATION_KEYWORDS):
+        return "location"
+    if match_keywords(lower_query, BOOKING_KEYWORDS):
+        return "booking"
+    if match_keywords(lower_query, RECEPTION_KEYWORDS):
+        return "reception"
 
     return None
