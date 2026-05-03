@@ -6,6 +6,7 @@ import {
   AudioInteractionManager,
   unlockAudioForUserGesture,
 } from '@/lib/audio/audio-interaction-manager';
+import { getTapToEnableAudioMessage } from '@/lib/audio/audio-user-interaction-gate';
 import DOMPurify from 'dompurify';
 import { ChevronLeft, Keyboard, MessageCircle, Pause, Play, RotateCcw, Settings } from 'lucide-react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -81,6 +82,47 @@ interface MarpViewerProps {
 
 const SLIDE_TRANSITION_DELAY_MS = 500;
 const NARRATION_SCHEDULE_DELAY_MS = 300;
+
+const getErrorName = (error: unknown): string | null => {
+  if (typeof error !== 'object' || error === null || !('name' in error)) {
+    return null;
+  }
+
+  const name = (error as { name?: unknown }).name;
+  return typeof name === 'string' ? name : null;
+};
+
+const getErrorMessage = (error: unknown): string | null => {
+  if (typeof error !== 'object' || error === null || !('message' in error)) {
+    return null;
+  }
+
+  const message = (error as { message?: unknown }).message;
+  return typeof message === 'string' ? message : null;
+};
+
+const isAudioContextGestureBlocked = (): boolean => {
+  try {
+    const state = AudioInteractionManager.getInstance().getAudioContextState();
+    return state === 'suspended' || (state as string) === 'interrupted';
+  } catch {
+    return false;
+  }
+};
+
+const isNarrationGestureRequiredError = (error: unknown): boolean => {
+  const message = getErrorMessage(error);
+  return (
+    getErrorName(error) === 'NotAllowedError' ||
+    isAudioContextGestureBlocked() ||
+    message?.includes('interaction') === true
+  );
+};
+
+const getNarrationPlaybackFailureMessage = (language: 'ja' | 'en'): string =>
+  language === 'ja'
+    ? 'ナレーションの再生に失敗しました'
+    : 'Narration playback failed';
 
 export default function MarpViewer({
   slideFile = 'engineer-cafe',
@@ -923,15 +965,20 @@ export default function MarpViewer({
         }
 
         advancePresentation(500);
-      } catch (error: any) {
+      } catch (error) {
         resetNarrationFlags();
 
         // Browser autoplay policy requires explicit user interaction.
         if (
-          error?.type === 'user_interaction_required' ||
-          error?.requiresUserInteraction ||
-          error?.name === 'NotAllowedError' ||
-          error?.message?.includes('interaction')
+          (typeof error === 'object' &&
+            error !== null &&
+            'type' in error &&
+            error.type === 'user_interaction_required') ||
+          (typeof error === 'object' &&
+            error !== null &&
+            'requiresUserInteraction' in error &&
+            error.requiresUserInteraction === true) ||
+          isNarrationGestureRequiredError(error)
         ) {
           console.warn('[MarpViewer] autoplay blocked — user interaction required');
           setShowAudioPermissionPrompt(true);
@@ -941,6 +988,14 @@ export default function MarpViewer({
         }
 
         console.error('[MarpViewer] narration playback failed:', error);
+        if (isNarrationGestureRequiredError(error)) {
+          setShowAudioPermissionPrompt(true);
+          setIsPlaying(false);
+          onPresentationComplete?.('stopped');
+          return;
+        }
+
+        setError(getNarrationPlaybackFailureMessage(currentLanguage));
 
         if (isActivePlaybackSession(playbackSession)) {
           advancePresentation(1000);
@@ -952,6 +1007,13 @@ export default function MarpViewer({
         return;
       } else {
         console.error('[MarpViewer] Error narrating slide:', error);
+        if (isNarrationGestureRequiredError(error)) {
+          setShowAudioPermissionPrompt(true);
+          setIsPlaying(false);
+          onPresentationComplete?.('stopped');
+        } else {
+          setError(getNarrationPlaybackFailureMessage(currentLanguage));
+        }
       }
       resetNarrationFlags();
       throw error;
@@ -1704,9 +1766,7 @@ export default function MarpViewer({
               🔊 {language === 'ja' ? '音声再生の許可' : 'Audio Permission Required'}
             </h3>
             <p className="text-gray-700 mb-4">
-              {language === 'ja' 
-                ? 'ブラウザの設定により音声の自動再生がブロックされています。プレゼンテーションを開始するには音声再生を許可してください。' 
-                : 'Audio autoplay is blocked by your browser. Please allow audio playback to start the synchronized presentation.'}
+              {getTapToEnableAudioMessage(currentLanguage)}
             </p>
             <div className="flex justify-end space-x-2">
               <button

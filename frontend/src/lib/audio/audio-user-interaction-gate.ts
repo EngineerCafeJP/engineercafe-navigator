@@ -10,6 +10,41 @@ let resolvePendingInteraction: (() => void) | null = null;
 
 const isBrowser = (): boolean => typeof window !== 'undefined' && typeof document !== 'undefined';
 
+export const isIOSWebKitAudio = (): boolean => {
+  if (!isBrowser()) return false;
+  const ua = navigator.userAgent;
+  const vendor = navigator.vendor || '';
+
+  if (/iPad|iPhone|iPod/.test(ua)) return true;
+  if (
+    typeof navigator.platform === 'string' &&
+    navigator.platform === 'MacIntel' &&
+    (navigator.maxTouchPoints || 0) > 1
+  ) {
+    return true;
+  }
+
+  return (
+    /Safari/.test(ua) &&
+    /Apple/.test(vendor) &&
+    !/Chrome|CriOS|Chromium|Edg/.test(ua) &&
+    /Mobile/.test(ua)
+  );
+};
+
+type SupportedLang = 'ja' | 'en' | 'zh' | 'ko';
+
+export const getTapToEnableAudioMessage = (language: string = 'ja'): string => {
+  const messages: Record<SupportedLang, string> = {
+    ja: '音声を有効にするには、もう一度画面をタップしてください',
+    en: 'Tap once more to enable audio playback',
+    zh: '请再次点按屏幕以启用音频',
+    ko: '오디오를 활성화하려면 화면을 한 번 더 탭하세요',
+  };
+  const lang = language as SupportedLang;
+  return messages[lang] ?? messages.en;
+};
+
 const clearPendingInteraction = (): void => {
   resolvePendingInteraction?.();
   pendingInteractionPromise = null;
