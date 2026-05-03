@@ -44,6 +44,15 @@ class TestOrchestratorFastRouting:
         assert result["request_type"] == "food_drink", "Should be food_drink type"
         assert result["reasoning"] == "Food/drink policy keyword detected"
 
+    def test_pet_bottle_query_stays_food_drink(self, orchestrator):
+        """ペットボトル should not trigger the pet policy fast path."""
+        result = orchestrator._try_fast_routing("ペットボトルの飲み物は持ち込めますか？")
+
+        assert result is not None
+        assert result["agent"] == "facility"
+        assert result["request_type"] == "food_drink"
+        assert result["reasoning"] == "Food/drink policy keyword detected"
+
     def test_food_drink_verb_variations(self, orchestrator):
         """Test various food/drink verb patterns"""
         test_queries = [
@@ -424,6 +433,23 @@ class TestOrchestratorFastRouting:
         assert result["agent"] == "farewell"
         assert result["request_type"] == "farewell"
         assert result["category"] == "farewell"
+
+    @pytest.mark.parametrize(
+        ("query", "request_type"),
+        [
+            ("一時外出のルールは？", "temporary_exit"),
+            ("ペットを連れて入れますか？", "pets"),
+        ],
+    )
+    def test_alpha_c_ragas_live_source_cases_route_to_facility(
+        self, orchestrator, query, request_type
+    ):
+        """gt-038/gt-057 should not fall through to broad business_info fallback."""
+        result = orchestrator._try_fast_routing(query)
+        assert result is not None
+        assert result["agent"] == "facility"
+        assert result["category"] == "facility-info"
+        assert result["request_type"] == request_type
 
     def test_emergency_kaji_overrides_farewell(self, orchestrator):
         """P1 guard: 火事なので帰ります must not route to farewell."""

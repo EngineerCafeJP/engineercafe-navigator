@@ -12,6 +12,7 @@ from backend.config.prompts.facility_prompts import (
     FACILITY_ENHANCEMENT_KEYWORDS,
     build_facility_prompt,
 )
+from backend.config.routing_constants import match_pet_policy_keywords
 from backend.llm import get_llm_provider, get_model_config
 from backend.tools.enhanced_rag import EnhancedRAGSearch
 from backend.utils.language_types import DEFAULT_NOT_FOUND_RESPONSE
@@ -217,6 +218,7 @@ class FacilityAgent:
             "food_drink": "food_drink",
             "parking": "parking",
             "bicycle": "bicycle",
+            "pets": "policy",
         }
         return category_by_request_type.get(request_type or "", "facility-info")
 
@@ -575,6 +577,53 @@ class FacilityAgent:
             }
             return self._canonical_result(answers.get(language, answers["ja"]), request_type)
 
+        if request_type == "temporary_exit" or self._asks_temporary_exit_policy(normalized):
+            answers = {
+                "ja": (
+                    "[relaxed]15分以内の一時外出は、受付カードを持ったまま自由に"
+                    "出入りできます。15分以上離席する場合は、受付カードを返却して"
+                    "一度退館手続きをしてください。"
+                ),
+                "en": (
+                    "[relaxed]You may step out freely for up to 15 minutes while "
+                    "keeping your reception card. If you will be away for 15 minutes "
+                    "or longer, please return the card and complete checkout once."
+                ),
+                "zh": (
+                    "[relaxed]15分钟以内的临时外出可以保留接待卡自由进出。"
+                    "如果离开15分钟以上，请归还接待卡并先办理退馆手续。"
+                ),
+                "ko": (
+                    "[relaxed]15분 이내의 일시 외출은 접수 카드를 가지고 자유롭게 "
+                    "출입할 수 있습니다. 15분 이상 자리를 비울 때는 접수 카드를 "
+                    "반납하고 한 번 퇴관 절차를 해 주세요."
+                ),
+            }
+            return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
+        if request_type == "pets" or self._asks_pet_policy(normalized):
+            answers = {
+                "ja": (
+                    "[relaxed]盲導犬、聴導犬、介助犬などの補助犬は同伴できます。"
+                    "それ以外のペットは、テラス席を含めて施設全域で同伴できません。"
+                ),
+                "en": (
+                    "[relaxed]Service dogs, such as guide, hearing, or assistance "
+                    "dogs, are allowed. Other pets are not allowed anywhere in the "
+                    "facility, including the terrace."
+                ),
+                "zh": (
+                    "[relaxed]导盲犬、助听犬、介助犬等辅助犬可以同行。"
+                    "除此之外的宠物，包括露台座位在内，设施全域都不能带入。"
+                ),
+                "ko": (
+                    "[relaxed]안내견, 청각도우미견, 보조견 같은 보조견은 동반할 "
+                    "수 있습니다. 그 외 반려동물은 테라스를 포함한 시설 전체에 "
+                    "동반할 수 없습니다."
+                ),
+            }
+            return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
         if self._asks_printer_or_copier(normalized):
             answers = {
                 "ja": (
@@ -698,6 +747,30 @@ class FacilityAgent:
             "음료",
         )
         return any(keyword in query for keyword in keywords)
+
+    @staticmethod
+    def _asks_temporary_exit_policy(query: str) -> bool:
+        keywords = (
+            "一時外出",
+            "途中外出",
+            "外出のルール",
+            "出入り",
+            "再入館",
+            "再入場",
+            "離席",
+            "15分以内",
+            "15分以上",
+            "temporary exit",
+            "step out",
+            "leave temporarily",
+            "re-enter",
+            "reentry",
+        )
+        return any(keyword in query for keyword in keywords)
+
+    @staticmethod
+    def _asks_pet_policy(query: str) -> bool:
+        return match_pet_policy_keywords(query)
 
     @staticmethod
     def _asks_3d_printer_filament_price(query: str) -> bool:

@@ -33,10 +33,12 @@ from backend.config.routing_constants import (
     RECEPTION_KEYWORDS,
     SLIDE_KEYWORDS,
     SMOKING_KEYWORDS,
+    TEMPORARY_EXIT_KEYWORDS,
     TOILET_KEYWORDS,
     WIFI_KEYWORDS,
     match_farewell_keywords,
     match_keywords,
+    match_pet_policy_keywords,
 )
 
 _MATA_KIMASU_FAREWELL_RE = re.compile(r"また\s*来(ます|る|ました|るね|ますね)\s*[。!！?？\.]?\s*$")
@@ -442,6 +444,20 @@ def classify_fast_intent(query: str) -> Optional[FastIntent]:
             "facility-info",
             "children_noise",
             "Children/noise policy keyword detected",
+        )
+    if match_keywords(lower_query, TEMPORARY_EXIT_KEYWORDS):
+        return FastIntent(
+            "facility",
+            "facility-info",
+            "temporary_exit",
+            "Temporary exit policy keyword detected",
+        )
+    if match_pet_policy_keywords(lower_query):
+        return FastIntent(
+            "facility",
+            "facility-info",
+            "pets",
+            "Pet policy keyword detected",
         )
     if match_keywords(lower_query, FACILITY_EQUIPMENT_KEYWORDS):
         return FastIntent(

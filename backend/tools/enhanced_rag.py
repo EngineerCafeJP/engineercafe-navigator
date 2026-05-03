@@ -39,6 +39,7 @@ RPC_SIMILARITY_THRESHOLDS: Dict[str, float] = {
     "food_drink": 0.30,
     "parking": 0.30,
     "bicycle": 0.30,
+    "policy": 0.30,
 }
 DEFAULT_RPC_SIMILARITY_THRESHOLD = 0.30
 RPC_TIMEOUT_SECONDS = 10.0
@@ -57,6 +58,7 @@ CATEGORY_THRESHOLDS = {
     "food_drink": {"high": 0.70, "medium": 0.50, "term_match": 0.20},
     "parking": {"high": 0.70, "medium": 0.50, "term_match": 0.20},
     "bicycle": {"high": 0.70, "medium": 0.50, "term_match": 0.20},
+    "policy": {"high": 0.70, "medium": 0.50, "term_match": 0.20},
 }
 DEFAULT_THRESHOLDS = {"high": 0.78, "medium": 0.58, "term_match": 0.25}
 
@@ -559,6 +561,7 @@ class EnhancedRAGSearch:
             "food_drink": ["飲食", "食べ物", "drink", "food"],
             "parking": ["駐車場", "parking"],
             "bicycle": ["駐輪場", "bicycle parking"],
+            "policy": ["ルール", "ポリシー", "同伴", "補助犬", "一時外出", "policy"],
         }
 
         if category in category_keywords:

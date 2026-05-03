@@ -632,10 +632,46 @@ CHILDREN_NOISE_KEYWORDS = [
     "noise",
 ]
 
+TEMPORARY_EXIT_KEYWORDS = [
+    "一時外出",
+    "途中外出",
+    "外出のルール",
+    "出入り",
+    "再入館",
+    "再入場",
+    "離席",
+    "15分以内",
+    "15分以上",
+]
+
+PET_POLICY_KEYWORDS = [
+    "ペット",
+    "動物",
+    "補助犬",
+    "盲導犬",
+    "聴導犬",
+    "介助犬",
+    "pet",
+    "pets",
+    "animal",
+    "service animal",
+    "service dog",
+    "guide dog",
+]
+
+PET_POLICY_EXCLUSION_KEYWORDS = [
+    "ペットボトル",
+    "petボトル",
+    "pet bottle",
+    "plastic bottle",
+]
+
 POLICY_KEYWORDS = [
     *ACCESSIBILITY_KEYWORDS,
     *PHOTOGRAPHY_KEYWORDS,
     *CHILDREN_NOISE_KEYWORDS,
+    *TEMPORARY_EXIT_KEYWORDS,
+    *PET_POLICY_KEYWORDS,
 ]
 
 
@@ -788,6 +824,35 @@ def match_farewell_keywords(text: str) -> bool:
     )
 
 
+def match_pet_policy_keywords(text: str) -> bool:
+    """Pet policy keywords with bottle/whole-word guards."""
+    lower_text = text.lower()
+    if any(kw.lower() in lower_text for kw in PET_POLICY_EXCLUSION_KEYWORDS):
+        return False
+
+    japanese_keywords = [
+        "ペット",
+        "動物",
+        "補助犬",
+        "盲導犬",
+        "聴導犬",
+        "介助犬",
+    ]
+    if any(kw in lower_text for kw in japanese_keywords):
+        return True
+
+    english_keywords = [
+        "pet",
+        "pets",
+        "animal",
+        "service animal",
+        "service dog",
+        "guide dog",
+        "assistance dog",
+    ]
+    return any(re.search(rf"\b{re.escape(kw)}\b", lower_text) for kw in english_keywords)
+
+
 LOCATION_KEYWORDS = ["場所", "どこ", "アクセス", "住所", "location", "where", "address"]
 
 
@@ -846,6 +911,10 @@ def extract_request_type(query: str) -> Optional[str]:
         return "photography"
     if match_keywords(lower_query, CHILDREN_NOISE_KEYWORDS):
         return "children_noise"
+    if match_keywords(lower_query, TEMPORARY_EXIT_KEYWORDS):
+        return "temporary_exit"
+    if match_pet_policy_keywords(lower_query):
+        return "pets"
     if match_keywords(lower_query, FLOOR_LAYOUT_KEYWORDS):
         return "floor_layout"
     if match_keywords(lower_query, FACILITY_EQUIPMENT_KEYWORDS):
