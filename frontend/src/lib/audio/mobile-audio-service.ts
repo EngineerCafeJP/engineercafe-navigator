@@ -19,8 +19,45 @@ export interface MobileAudioOptions extends MobileAudioPlayerOptions {
   retryDelay?: number;
 }
 
+const ANDROID_WEB_AUDIO_DECODE_LIMIT_BYTES = 1_000_000;
+
 // Legacy type alias for backward compatibility
 export type AudioPlaybackResult = AudioOperationResult;
+
+export function estimateAudioDataByteLength(audioData: AudioDataInput): number | null {
+  if (audioData instanceof Blob) {
+    return audioData.size;
+  }
+
+  if (audioData instanceof ArrayBuffer) {
+    return audioData.byteLength;
+  }
+
+  if (typeof audioData !== 'string') {
+    return null;
+  }
+
+  let cleanedBase64 = audioData;
+  if (cleanedBase64.includes(',')) {
+    cleanedBase64 = cleanedBase64.split(',')[1] ?? '';
+  }
+  cleanedBase64 = cleanedBase64.replace(/[^A-Za-z0-9+/=]/g, '');
+  if (!cleanedBase64) {
+    return 0;
+  }
+
+  const padding = cleanedBase64.endsWith('==') ? 2 : cleanedBase64.endsWith('=') ? 1 : 0;
+  return Math.max(0, Math.floor((cleanedBase64.length * 3) / 4) - padding);
+}
+
+export function shouldUseHtmlAudioFirstForPlayback(audioData: AudioDataInput): boolean {
+  if (!DeviceDetector.isAndroid()) {
+    return false;
+  }
+
+  const byteLength = estimateAudioDataByteLength(audioData);
+  return byteLength !== null && byteLength > ANDROID_WEB_AUDIO_DECODE_LIMIT_BYTES;
+}
 
 export class MobileAudioService {
   private static readonly PLAYBACK_START_TIMEOUT_MS = 8000;
@@ -54,13 +91,27 @@ export class MobileAudioService {
   public async playAudio(audioData: AudioDataInput): Promise<AudioOperationResult> {
     try {
       const result = await this.withPlaybackStartTimeout(async () => {
-        if (DeviceDetector.isIOS()) {
+        if (
+          this.options.preferredMethod === 'html-audio' ||
+          shouldUseHtmlAudioFirstForPlayback(audioData)
+        ) {
           const htmlAudioResult = await this.tryHtmlAudio(audioData);
           if (htmlAudioResult.success) {
             return htmlAudioResult;
           }
 
           console.warn('[MOBILE-AUDIO] HTML audio fallback failed, retrying Web Audio:', htmlAudioResult.error);
+        }
+
+        if (this.options.preferredMethod === 'html-audio') {
+          return {
+            success: false,
+            method: 'html-audio',
+            error: new AudioError(
+              AudioErrorType.PLAYBACK_FAILED,
+              'HTML audio playback failed and Web Audio fallback is disabled',
+            ),
+          };
         }
 
         return this.tryWebAudio(audioData);
@@ -100,8 +151,9 @@ export class MobileAudioService {
       
 
       // Ensure audio context is ready
+      let audioContext: AudioContext;
       try {
-        await this.interactionManager.ensureAudioContext();
+        audioContext = await this.interactionManager.ensureAudioContext();
       } catch (error) {
         // If user interaction is required, let the UI handle it
         if (error instanceof Error && error.message.includes('User interaction required')) {
@@ -118,7 +170,7 @@ export class MobileAudioService {
 
       // For tablets, always recreate the player to avoid state issues
       if (!this.webAudioPlayer) {
-        this.webAudioPlayer = new WebAudioPlayer(this.options);
+        this.webAudioPlayer = new WebAudioPlayer(this.options, audioContext);
       } else if (isTablet) {
         // Reset existing player for tablets to avoid state issues
         this.webAudioPlayer.reset();
