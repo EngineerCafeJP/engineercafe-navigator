@@ -34,6 +34,17 @@ export interface BackendProxyResult<T = unknown> {
   readonly data: T;
 }
 
+const BACKEND_TIMEOUT_STATUS = 504;
+const BACKEND_TIMEOUT_ERROR = "Backend request timed out";
+
+function isAbortLikeError(error: unknown): boolean {
+  if (!(error instanceof Error || error instanceof DOMException)) {
+    return false;
+  }
+
+  return error.name === "TimeoutError" || error.name === "AbortError";
+}
+
 /**
  * Send a request to the backend, automatically attaching X-API-Key.
  *
@@ -74,7 +85,24 @@ export async function backendFetch<T = unknown>(
     fetchInit.body = JSON.stringify(body);
   }
 
-  const response = await fetch(url, fetchInit);
+  let response: Response;
+  try {
+    response = await fetch(url, fetchInit);
+  } catch (error) {
+    if (timeoutMs !== undefined && signal === undefined && isAbortLikeError(error)) {
+      return {
+        ok: false,
+        status: BACKEND_TIMEOUT_STATUS,
+        data: {
+          error: BACKEND_TIMEOUT_ERROR,
+          details:
+            "The backend did not respond before the Vercel proxy timeout. Try again after the voice service finishes warming up.",
+        } as T,
+      };
+    }
+    throw error;
+  }
+
   let data: T;
   try {
     data = (await response.json()) as T;
