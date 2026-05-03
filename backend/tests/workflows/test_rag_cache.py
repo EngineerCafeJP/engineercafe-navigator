@@ -266,18 +266,20 @@ class TestAgentCacheUsage:
                 }
             )
 
-            # カテゴリ不一致: キャッシュはgeneral、実際はconsultation
+            # カテゴリ不一致: キャッシュはhours、実際はgeneral。
+            # Known canonical questions intentionally bypass RAG regardless of cache state,
+            # so this uses a non-canonical business query to test fallback mechanics.
             state_context = {
                 "success": True,
-                "category": "general",
-                "context_string": "一般情報",
+                "category": "hours",
+                "context_string": "営業時間データ",
                 "results": [],
                 "query": "テスト",
             }
 
             await agent.answer_business_query(
-                query="コミュニティマネージャーに相談できることは？",
-                request_type="consultation",
+                query="テスト",
+                request_type=None,
                 language="ja",
                 state_context=state_context,
             )
@@ -310,15 +312,15 @@ class TestAgentCacheUsage:
             # キャッシュが失敗状態
             state_context = {
                 "success": False,
-                "category": "consultation",
+                "category": "general",
                 "context_string": "",
                 "results": [],
                 "query": "テスト",
             }
 
             await agent.answer_business_query(
-                query="コミュニティマネージャーに相談できることは？",
-                request_type="consultation",
+                query="テスト",
+                request_type=None,
                 language="ja",
                 state_context=state_context,
             )
