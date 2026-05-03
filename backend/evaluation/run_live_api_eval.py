@@ -184,6 +184,24 @@ def _suite_coverage(
     }
 
 
+def _collection_error_record(
+    query: Dict[str, Any],
+    *,
+    error_type: str,
+    message: str,
+) -> Dict[str, Any]:
+    """Return a reportable record for cases that never reached RAGAS evaluation."""
+    return {
+        "query_id": query.get("id"),
+        "ground_truth_id": query.get("ground_truth_id"),
+        "language": query.get("language"),
+        "category": query.get("category"),
+        "question": query.get("question"),
+        "error_type": error_type,
+        "error": message,
+    }
+
+
 async def _call_chat_api(
     client: httpx.AsyncClient,
     *,
@@ -236,12 +254,16 @@ async def run_live_api_evaluation(
 
     per_language_results: Dict[str, Dict[str, Any]] = {}
     all_eval_cases: Dict[str, List[Dict[str, Any]]] = {}
+    requested_case_counts: Dict[str, int] = {}
+    collection_errors: Dict[str, List[Dict[str, Any]]] = {}
 
     # Phase 1: Collect live API responses
     async with httpx.AsyncClient() as client:
         for lang in selected_languages:
             queries = [q for q in config["queries"] if q["language"] == lang]
             lang_cases: List[Dict[str, Any]] = []
+            lang_collection_errors: List[Dict[str, Any]] = []
+            requested_case_counts[lang] = len(queries)
 
             logger.info("Evaluating %d queries for language: %s", len(queries), lang)
 
@@ -253,6 +275,13 @@ async def run_live_api_evaluation(
                         "Skipping %s: ground truth %s not found",
                         query["id"],
                         gt_id,
+                    )
+                    lang_collection_errors.append(
+                        _collection_error_record(
+                            query,
+                            error_type="missing_ground_truth",
+                            message=f"ground truth {gt_id} not found",
+                        )
                     )
                     continue
 
@@ -312,8 +341,16 @@ async def run_live_api_evaluation(
                     )
                 except Exception as exc:
                     logger.error("  [%s] API call failed: %s", query["id"], exc)
+                    lang_collection_errors.append(
+                        _collection_error_record(
+                            query,
+                            error_type="api_call_failed",
+                            message=str(exc),
+                        )
+                    )
 
             all_eval_cases[lang] = lang_cases
+            collection_errors[lang] = lang_collection_errors
 
     # Phase 2: Run RAGAS evaluation
     try:
@@ -324,12 +361,25 @@ async def run_live_api_evaluation(
 
     for lang in selected_languages:
         cases = all_eval_cases.get(lang, [])
+        requested_count = requested_case_counts.get(lang, 0)
+        lang_collection_errors = collection_errors.get(lang, [])
+        api_failed_count = len(
+            [
+                error
+                for error in lang_collection_errors
+                if error.get("error_type") == "api_call_failed"
+            ]
+        )
         if not cases:
             per_language_results[lang] = {
                 "language": lang,
                 "error": "no evaluable cases",
-                "requested_case_count": 0,
+                "requested_case_count": requested_count,
                 "evaluated_case_count": 0,
+                "skipped_case_count": requested_count,
+                "api_failed_case_count": api_failed_count,
+                "collection_error_count": len(lang_collection_errors),
+                "collection_errors": lang_collection_errors,
                 "metrics": {},
                 "results": [],
             }
@@ -345,8 +395,12 @@ async def run_live_api_evaluation(
             per_language_results[lang] = {
                 "language": lang,
                 "error": "ragas not installed",
-                "requested_case_count": len(cases),
+                "requested_case_count": requested_count,
                 "evaluated_case_count": 0,
+                "skipped_case_count": requested_count,
+                "api_failed_case_count": api_failed_count,
+                "collection_error_count": len(lang_collection_errors),
+                "collection_errors": lang_collection_errors,
                 "metrics": {},
                 "results": [
                     {
@@ -387,9 +441,12 @@ async def run_live_api_evaluation(
 
         per_language_results[lang] = {
             "language": lang,
-            "requested_case_count": len(cases),
+            "requested_case_count": requested_count,
             "evaluated_case_count": report.evaluated_cases,
-            "skipped_case_count": report.skipped_cases,
+            "skipped_case_count": report.skipped_cases + len(lang_collection_errors),
+            "api_failed_case_count": api_failed_count,
+            "collection_error_count": len(lang_collection_errors),
+            "collection_errors": lang_collection_errors,
             "metrics": report.metrics,
             "errors": report.errors,
             "results": per_case_results,
@@ -484,11 +541,13 @@ def _compare_targets(
         answer_target_passed = isinstance(actual, (int, float)) and actual >= target
         requested_count = int(result.get("requested_case_count", 0) or 0)
         evaluated_count = int(result.get("evaluated_case_count", 0) or 0)
+        collection_error_count = int(result.get("collection_error_count", 0) or 0)
         evaluation_complete = (
             requested_count > 0
             and evaluated_count == requested_count
             and not result.get("errors")
             and not result.get("error")
+            and collection_error_count == 0
         )
         passed = answer_target_passed and not source_failures and evaluation_complete
         per_language[lang] = {
@@ -500,6 +559,7 @@ def _compare_targets(
             "evaluation_complete": {
                 "requested": requested_count,
                 "evaluated": evaluated_count,
+                "collection_errors": collection_error_count,
                 "passed": evaluation_complete,
             },
             "live_source_gate": {
@@ -525,6 +585,7 @@ def _compare_targets(
                     "target": target,
                     "answer_target_passed": answer_target_passed,
                     "evaluation_complete": evaluation_complete,
+                    "collection_errors": collection_error_count,
                     "source_failures": len(source_failures),
                 }
             )
@@ -584,6 +645,13 @@ def _format_report(
             f"evaluated={result.get('evaluated_case_count', 0)} "
             f"skipped={result.get('skipped_case_count', 0)}"
         )
+        collection_error_count = result.get("collection_error_count", 0)
+        if collection_error_count:
+            lines.append(
+                "  collection_errors: "
+                f"{collection_error_count} "
+                f"(api_failed={result.get('api_failed_case_count', 0)})"
+            )
 
         if result.get("error"):
             lines.append(f"  ERROR: {result['error']}")
@@ -608,7 +676,9 @@ def _format_report(
         lines.append(
             "  evaluation_complete: "
             f"evaluated={eval_complete.get('evaluated', 0)}/"
-            f"{eval_complete.get('requested', 0)} [{eval_status}]"
+            f"{eval_complete.get('requested', 0)} "
+            f"collection_errors={eval_complete.get('collection_errors', 0)} "
+            f"[{eval_status}]"
         )
         if source_gate.get("enabled"):
             sg_status = "PASS" if source_gate.get("passed") else "FAIL"
@@ -666,6 +736,7 @@ def _format_report(
                 f"  {f['language']}: actual={f['actual']} target={f['target']} "
                 f"answer_target_passed={f.get('answer_target_passed')} "
                 f"evaluation_complete={f.get('evaluation_complete')} "
+                f"collection_errors={f.get('collection_errors', 0)} "
                 f"source_failures={f.get('source_failures', 0)}"
             )
 

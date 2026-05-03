@@ -12,7 +12,8 @@
 実行経路は成立しました。一方で、alpha GO を止める blocker がまだ残っています。
 
 2026-05-03 時点で、B routing / slide live smoke、Welcome UI、artifact split、Supabase UUID
-log hygiene は解消済みです。残る P0 は STT long-tail latency と RAGAS coverage reconciliation です。
+log hygiene、Cloud Run Qwen runtime dependency、STT/voice preflight は解消済みです。残る P0 は
+RAGAS coverage / accounting reconciliation と live-only proof 群です。
 
 ## 2026-05-02 Baseline Deploy / SHA Sync
 
@@ -50,14 +51,53 @@ Resolved by this remediation pass:
 - #662: Supabase UUID / Cloud Run log hygiene
 - #671: RAGAS provider secret issue
 
-Important STT follow-up:
+### 2026-05-03 C-127 Harness Accounting Finding
 
-- STT-only run after PR #674 deploy still failed the current-revision gate.
-- Gate samples: 7
-- p50: `5180ms`
-- p95/max: `29217ms`
-- over-10s ratio: `14.3%`
-- #658 remains the highest-priority P0.
+- Run: <https://github.com/EngineerCafeJP/engineercafe-navigator/actions/runs/25268597241>
+- Suites: `c-127`
+- Result: failure
+- Backend SHA match: `d1280aa64643aae7b22df875ee22f13cbfe294a2`
+- Case suite: `alpha-127`
+- Expected cases: `127`
+- Reported requested/evaluated cases: `85`
+- Reported language counts: `ja=38`, `en=23`, `zh=12`, `ko=12`
+
+This run confirmed a harness accounting bug. The `alpha-127` dataset still contains 127 cases
+(`ja=80`, `en=23`, `zh=12`, `ko=12`), but `run_live_api_eval.py` currently drops `/api/chat`
+collection failures from the report and then uses collected-success count as `requested_case_count`.
+The missing 42 cases were all Japanese and were absent from the artifact instead of being reported as
+collection failures.
+
+Required next action is ADR 019 / #691:
+
+- `requested_case_count` must mean selected manifest cases, not successfully collected responses.
+- API collection failures must be persisted as `collection_errors`.
+- `evaluation_complete` and `alpha_release_gate_met` must fail when collection errors exist.
+
+Until this is fixed and rerun, C-127 artifacts cannot be used as alpha GO proof even when
+`case_suite=alpha-127` is present.
+
+### 2026-05-03 Targeted Q Verification After PR #690/#689
+
+- Run: <https://github.com/EngineerCafeJP/engineercafe-navigator/actions/runs/25269072919>
+- Suites: `q`
+- Result: failure
+- Backend SHA match: `d1280aa64643aae7b22df875ee22f13cbfe294a2`
+- Summary: `23 PASS / 0 WARN / 2 FAIL`
+
+Remaining failures:
+
+- `Q-BIZ-EN-003`: route is `business_info` and source is `enhanced_rag`, but expected fact
+  `reservation` is missing.
+- `Q-DAILY-JA-001`: route is `general_knowledge`, but latency is `2205ms`.
+
+Improvement from the previous Q baseline: `Q-EVT-EN-001` now passes.
+
+Resolved STT follow-up:
+
+- Earlier STT-only run after PR #674 deploy failed with p95/max `29217ms`.
+- A later `suites=stt,v` run `25258764528` passed on Cloud Run `engineer-cafe-backend-00153-r9r`.
+- #658 is closed.
 
 ### Full Suite
 
@@ -67,7 +107,7 @@ Important STT follow-up:
 - Artifact: `alpha-live-verification-25244933308`, artifact ID `6761318600`
 - Artifact size: `932,009,663` bytes
 
-Final failing outcomes:
+Historical failing outcomes from that run:
 
 | Outcome | Status | Current issue |
 | --- | --- | --- |
@@ -99,27 +139,27 @@ coverage, not provider configuration.
 
 ### P0
 
-- #658: STT preflight latency still fails. The current-revision gate after PR #674 had p95/max
-  `29217ms` and 14.3% samples over 10s.
-- #657 / #583: C/RAGAS gate still runs 29 cases while #583 requires 127.
+- #691 / #657 / #583: C/RAGAS gate now has `c-127`, but the first full run exposed harness accounting
+  drift: `alpha-127` expected 127 while artifact reported only 85 requested/evaluated cases.
 - #643 / #612: umbrella issues remain open until the alpha gate is green.
-- #623: slide narration endpoint smoke is covered by B, but full 5-page ingestion proof remains open.
 - #611 / #584 / #585: fast first-response, edge/failure tolerance, and 2h kiosk soak still need final proof.
 
 ### P1
 
-- #672: Direct OpenAI C/RAGAS still misses JA answer_correctness target.
-  - JA: `0.8295`, target `0.85`
-  - weakest cases: `ml-ja-003` access guidance and `ml-ja-004` Connpass/event check
+- #672: Direct OpenAI C/RAGAS still misses answer quality targets after C-127.
+  - JA: `0.585`, target `0.85`
+  - EN: `0.7017`, target `0.75`
+  - ZH: `0.7271`, target `0.65`
+  - KO: `0.7151`, target `0.65`
+  - JA/EN answer quality and live source fallback cases need product-side triage after harness
+    accounting is fixed.
 - #653: Q content quality still fails.
   - `Q-BIZ-EN-003`
-  - `Q-EVT-EN-001`
   - `Q-DAILY-JA-001`
-- #669: deployed tRAG translation model assets are missing, causing retry/fallback logs.
+  - `Q-EVT-EN-001` now passes in run `25269072919`.
 - #670: C/RAGAS runtime improved after direct OpenAI, and telemetry is now present, but full-run
   operational proof is still needed.
 - #655: memory WARNs remain; TTS long Japanese case passed in the latest run.
-- #663: SHA-match gate still blocks harness-only commits without backend deploy.
 - #668: GitHub Actions Node.js 20 deprecation warnings need post-alpha cleanup.
 
 ## RAGAS Provider Decision
@@ -140,11 +180,11 @@ Observed impact:
 
 ## Next Implementation Order
 
-1. #658: STT long-tail latency mitigation.
-2. #657/#583: expand or correctly define the 127-case alpha RAGAS gate.
-3. #653 and #672: Q/C answer quality for current failing cases.
-4. #670: verify full C/Q telemetry and runtime with the current artifact split.
-5. #669: decide whether deployed tRAG translation model fallback is launch-blocking.
+1. ADR 019 / #691 / #657 / #583: fix C-127 harness accounting so 127 manifest cases are always reported,
+   and collection failures are explicit.
+2. #653 and #672: Q/C answer quality for current failing cases.
+3. #670: verify full C/Q telemetry and runtime with the current artifact split.
+4. #611 / #584 / #585: collect or split the remaining live-only alpha proof.
 
 ## Useful Commands
 
