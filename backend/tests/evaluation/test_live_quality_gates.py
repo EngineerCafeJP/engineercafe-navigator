@@ -1,4 +1,5 @@
 import asyncio
+import json
 import httpx
 import pytest
 import time
@@ -8,6 +9,8 @@ from evaluation.live_quality_gates import (
     check_safety,
     denies_explicit_ltm_recall,
     post_json,
+    recalled_facts,
+    run_m_suite,
 )
 
 
@@ -56,6 +59,39 @@ def test_explicit_ltm_denial_does_not_hide_concrete_ssid_recall() -> None:
     assert denies_explicit_ltm_recall(answer) is False
 
 
+def test_explicit_ltm_denial_does_not_treat_history_reference_as_denial() -> None:
+    answer = "会話履歴にはWi-FiのSSIDはcafe-freeと残っています。"
+
+    assert denies_explicit_ltm_recall(answer) is False
+
+
+def test_explicit_ltm_denial_accepts_not_asked_wording() -> None:
+    answer = "これまでの会話履歴を確認した限りでは、SSIDに関する情報は伺っておりません。"
+
+    assert denies_explicit_ltm_recall(answer) is True
+
+
+def test_cross_session_recall_does_not_count_denial_suggestions_as_fact() -> None:
+    answer = (
+        "現時点の会話履歴にはお客様の好きな席に関する具体的な記録が見当たりません。"
+        "もしよろしければ、窓際の席などを改めて教えてください。"
+    )
+
+    assert recalled_facts(answer, ["窓"]) == []
+
+
+def test_cross_session_recall_does_not_count_fact_inside_denial_sentence() -> None:
+    answer = "好きな席が窓側という記録は見当たりません。"
+
+    assert recalled_facts(answer, ["窓"]) == []
+
+
+def test_cross_session_recall_counts_fact_when_denial_phrase_is_corrected() -> None:
+    answer = "記録が見当たりませんでしたが、以前伺った内容では好きな席は窓側です。"
+
+    assert recalled_facts(answer, ["窓"]) == ["窓"]
+
+
 @pytest.mark.asyncio
 async def test_post_json_excludes_initial_pacer_wait_from_duration() -> None:
     events: list[str] = []
@@ -89,3 +125,45 @@ async def test_post_json_excludes_initial_pacer_wait_from_duration() -> None:
     assert wall_elapsed_ms >= 100
     assert duration_ms < 100
     assert events[0] == "wait"
+
+
+@pytest.mark.asyncio
+async def test_ltm_cross_session_empty_recall_is_failure() -> None:
+    class Pacer:
+        async def wait(self, endpoint: str) -> None:
+            assert endpoint == "/api/chat"
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content.decode("utf-8"))
+        if body["session_id"].startswith("s1-"):
+            return httpx.Response(200, json={"answer": "承知しました。覚えておきます。"})
+        return httpx.Response(
+            200,
+            json={"answer": "以前の好きな席に関する記録が見当たりません。"},
+        )
+
+    case = {
+        "id": "M-LTM-001",
+        "type": "ltm_cross_session",
+        "visitor_id_template": "visitor-{timestamp}",
+        "session_1_id_template": "s1-{timestamp}",
+        "session_1_queries": ["私の好きな席は窓側です。覚えてください。"],
+        "session_2_id_template": "s2-{timestamp}",
+        "session_2_queries": ["前に覚えてもらった好きな席を教えてください。"],
+        "expected_recall_facts": ["窓"],
+    }
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        rows = await run_m_suite(
+            client,
+            base_url="https://example.test",
+            api_key="secret",
+            cases=[case],
+            timeout=1,
+            pacer=Pacer(),
+        )
+
+    assert len(rows) == 1
+    assert rows[0].case_id == "M-LTM-001"
+    assert rows[0].status == "FAIL"
+    assert rows[0].notes == "cross_session recall_facts_found=[]"

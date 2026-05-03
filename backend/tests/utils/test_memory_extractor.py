@@ -41,6 +41,22 @@ class TestExtractMemories:
         assert "Pythonが好き" in remembers[0]["content"]
         assert remembers[0]["confidence"] == 1.0
 
+    def test_remember_request_ja_tail_form_extracts_fact_not_polite_suffix(self):
+        query = "私の好きな席は窓側です。visitor alpha-m-ltm-123 として覚えてください。"
+
+        result = extract_memories(query, "承知しました", "ja")
+
+        remembers = [m for m in result if m["type"] == "explicit_remember"]
+        assert len(remembers) == 1
+        assert "窓側" in remembers[0]["content"]
+        assert "ください" not in remembers[0]["content"]
+        assert "visitor" not in remembers[0]["content"]
+
+    def test_remember_request_ja_bare_polite_request_is_not_memory(self):
+        result = extract_memories("覚えてください。", "承知しました", "ja")
+
+        assert [m for m in result if m["type"] == "explicit_remember"] == []
+
     def test_language_preference_en(self):
         result = extract_memories("Hello there", "Hi!", "en")
         lang_prefs = [m for m in result if m["type"] == "language_preference"]
