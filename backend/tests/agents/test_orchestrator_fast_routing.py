@@ -452,6 +452,34 @@ class TestOrchestratorFastRouting:
         if result is not None:
             assert result["agent"] != "farewell", f"reception query leaked to farewell: {result}"
 
+    def test_english_see_your_floor_map_not_farewell(self, orchestrator):
+        result = orchestrator._try_fast_routing("Can I see your floor map?")
+
+        assert result is not None
+        assert result["agent"] == "facility"
+        assert result["request_type"] == "floor_layout"
+
+    def test_english_see_your_hours_not_farewell(self, orchestrator):
+        result = orchestrator._try_fast_routing("Can I see your opening hours?")
+
+        assert result is not None
+        assert result["agent"] == "business_info"
+        assert result["request_type"] == "hours"
+
+    def test_hajimete_does_not_preempt_floor_map(self, orchestrator):
+        result = orchestrator._try_fast_routing("初めて来ました。フロアマップを見せてください。")
+
+        assert result is not None
+        assert result["agent"] == "facility"
+        assert result["request_type"] == "floor_layout"
+
+    def test_hajimete_does_not_preempt_parking(self, orchestrator):
+        result = orchestrator._try_fast_routing("初めて来ました。駐車場はありますか？")
+
+        assert result is not None
+        assert result["agent"] == "facility"
+        assert result["request_type"] == "parking"
+
 
 def test_zh_greeting_template_content():
     """Chinese greeting templates should exist for all time periods"""

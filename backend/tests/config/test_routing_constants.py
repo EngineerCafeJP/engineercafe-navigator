@@ -95,9 +95,37 @@ class TestReceptionRouting:
         """受付の場所を聞く質問は来館受付フローではなく施設案内として扱う"""
         assert extract_request_type("受付はどこにありますか？") == "location"
 
+    @pytest.mark.parametrize(
+        "query,expected",
+        [
+            ("初めて来ました。フロアマップを見せてください。", "floor_layout"),
+            ("初めて来ました。駐車場はありますか？", "parking"),
+        ],
+    )
+    def test_hajimete_does_not_preempt_more_specific_intents(self, query, expected):
+        """広い「初めて」は具体的な施設系意図を奪わない"""
+        assert extract_request_type(query) == expected
+
     def test_reception_maps_to_business_info(self):
         """receptionカテゴリがbusiness_infoにマッピングされることを確認"""
         assert CATEGORY_TO_AGENT_MAP["reception"] == "business_info"
+
+
+class TestFarewellRouting:
+    """退館キーワードルーティングテスト"""
+
+    @pytest.mark.parametrize(
+        "query,expected",
+        [
+            ("see you", "farewell"),
+            ("Goodbye!", "farewell"),
+            ("Can I see your floor map?", "floor_layout"),
+            ("Can I see your opening hours?", "hours"),
+        ],
+    )
+    def test_english_farewell_requires_phrase_boundary(self, query, expected):
+        """see your は see you 退館フレーズとして扱わない"""
+        assert extract_request_type(query) == expected
 
 
 class TestEmergencyRoutingIntegration:

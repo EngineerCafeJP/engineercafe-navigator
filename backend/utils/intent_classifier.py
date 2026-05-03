@@ -20,7 +20,6 @@ from backend.config.routing_constants import (
     EXCLUSIVE_RENTAL_KEYWORDS,
     EVENT_KEYWORDS,
     FACILITY_EQUIPMENT_KEYWORDS,
-    FAREWELL_KEYWORDS,
     FLOOR_KEYWORDS,
     FLOOR_LAYOUT_KEYWORDS,
     FOOD_DRINK_KEYWORDS,
@@ -36,6 +35,7 @@ from backend.config.routing_constants import (
     SMOKING_KEYWORDS,
     TOILET_KEYWORDS,
     WIFI_KEYWORDS,
+    match_farewell_keywords,
     match_keywords,
 )
 
@@ -301,7 +301,7 @@ def classify_fast_intent(query: str) -> Optional[FastIntent]:
             reasoning="Assistant profile/capability question detected",
         )
 
-    farewell_substring_hit = match_keywords(lower_query, FAREWELL_KEYWORDS)
+    farewell_substring_hit = match_farewell_keywords(lower_query)
     farewell_anchored_hit = bool(_MATA_KIMASU_FAREWELL_RE.search(query))
     has_service_intent = bool(_SERVICE_INTENT_RE.search(query))
     has_emergency = match_keywords(lower_query, EMERGENCY_KEYWORDS)
@@ -392,18 +392,6 @@ def classify_fast_intent(query: str) -> Optional[FastIntent]:
         )
     if match_keywords(lower_query, EVENT_KEYWORDS):
         return FastIntent("event", "events", "event", "Event keyword detected")
-    # Reception before current_info so 今日 + 再受付 is not misclassified (Q-RECV-JA-002).
-    if match_keywords(lower_query, RECEPTION_KEYWORDS):
-        return FastIntent(
-            "business_info", "reception", "reception", "Reception/check-in keyword detected"
-        )
-    if is_current_info_request(lower_query):
-        return FastIntent(
-            "general_knowledge",
-            "current_info",
-            "current_info",
-            "Current-information small-talk request detected",
-        )
     if match_keywords(lower_query, SLIDE_KEYWORDS):
         return FastIntent("slide", "slide", "slide", "Slide keyword detected")
     if match_keywords(lower_query, COMMUNITY_KEYWORDS):
@@ -477,6 +465,19 @@ def classify_fast_intent(query: str) -> Optional[FastIntent]:
     if match_keywords(lower_query, FOOD_DRINK_KEYWORDS):
         return FastIntent(
             "facility", "facility-info", "food_drink", "Food/drink policy keyword detected"
+        )
+    # Reception stays before current_info so 今日 + 再受付 is not misclassified (Q-RECV-JA-002),
+    # but after specific facility/event/business intents so broad 初めて does not preempt them.
+    if match_keywords(lower_query, RECEPTION_KEYWORDS):
+        return FastIntent(
+            "business_info", "reception", "reception", "Reception/check-in keyword detected"
+        )
+    if is_current_info_request(lower_query):
+        return FastIntent(
+            "general_knowledge",
+            "current_info",
+            "current_info",
+            "Current-information small-talk request detected",
         )
 
     return None
