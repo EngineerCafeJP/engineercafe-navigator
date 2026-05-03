@@ -11,6 +11,13 @@ interface ObservedCall {
   method: string;
 }
 
+interface SttWarmupPayload {
+  sttWarmupError?: unknown;
+  sttWarmupProvider?: unknown;
+  sttWarmupStatus?: unknown;
+  success?: unknown;
+}
+
 function normalizeText(value: string | null | undefined): string {
   return (value ?? '')
     .replace(/\[\/?[a-zA-Z_]+(?::\d*\.?\d+)?\]/g, '')
@@ -38,6 +45,61 @@ async function selectEnglishAndClose(page: Page, timeout = 15_000): Promise<void
   await expect(closeButton).toBeVisible({ timeout });
   await closeButton.click();
   await expect(dialog).toBeHidden({ timeout });
+}
+
+function parsePositiveInteger(value: string | undefined, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+async function warmupSttForLiveVoice(
+  page: Page,
+  baseURL: string | undefined,
+  language: string,
+): Promise<void> {
+  const warmupTimeoutMs = parsePositiveInteger(
+    process.env.PLAYWRIGHT_VOICE_LIVE_WARMUP_TIMEOUT_MS,
+    60_000,
+  );
+  const requestTimeoutMs = Math.min(60_000, Math.max(10_000, warmupTimeoutMs));
+  const deadline = Date.now() + warmupTimeoutMs;
+  const voiceUrl = new URL('/api/voice', baseURL ?? 'http://127.0.0.1:3000').toString();
+  const sessionId = `voice-live-warmup-${Date.now()}`;
+  let lastStatus = 'not-started';
+  let lastProvider = 'unknown';
+  let lastError = '';
+
+  while (Date.now() < deadline) {
+    const response = await page.request.post(voiceUrl, {
+      data: { action: 'warmup', language, sessionId },
+      timeout: requestTimeoutMs,
+    });
+    expect(response.ok(), `STT warmup request failed with HTTP ${response.status()}`).toBeTruthy();
+
+    const payload = (await response.json().catch(() => null)) as SttWarmupPayload | null;
+    expect(payload, 'STT warmup response must be JSON').not.toBeNull();
+    lastStatus =
+      typeof payload?.sttWarmupStatus === 'string' ? payload.sttWarmupStatus : 'unknown';
+    lastProvider =
+      typeof payload?.sttWarmupProvider === 'string' ? payload.sttWarmupProvider : 'unknown';
+    lastError = typeof payload?.sttWarmupError === 'string' ? payload.sttWarmupError : '';
+
+    if (lastStatus === 'ready' || lastStatus === 'skipped') {
+      return;
+    }
+    if (lastStatus === 'failed') {
+      throw new Error(
+        `STT warmup failed before voice-live test (provider=${lastProvider}, error=${lastError})`,
+      );
+    }
+
+    await page.waitForTimeout(2_000);
+  }
+
+  throw new Error(
+    `STT warmup did not become ready before voice-live test ` +
+      `(lastStatus=${lastStatus}, provider=${lastProvider}, timeoutMs=${warmupTimeoutMs})`,
+  );
 }
 
 function parseAction(request: Request): string | undefined {
@@ -79,6 +141,7 @@ test.describe('Voice live (browser voice round-trip against live backend)', () =
       origin: baseURL ?? 'http://127.0.0.1:3000',
     });
     await installDeterministicVoiceRecorder(page);
+    await warmupSttForLiveVoice(page, baseURL, 'en');
 
     const apiCalls: ObservedCall[] = [];
     page.on('request', (request) => {

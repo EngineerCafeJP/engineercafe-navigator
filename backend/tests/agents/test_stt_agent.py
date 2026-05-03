@@ -2247,6 +2247,45 @@ class TestQwenPrimaryFallback:
         assert winner.stt_overall_duration_ms - qwen_complete.stt_qwen_duration_ms < 100
 
     @pytest.mark.asyncio
+    async def test_qwen_fast_path_does_not_start_hedge(self, caplog):
+        """Fast Qwen completes before hedge delay, so Vosk fallback never starts."""
+        caplog.set_level(logging.INFO, logger="backend.observability.stt")
+
+        mock_qwen = MagicMock()
+        mock_qwen.transcribe = AsyncMock(
+            return_value=TranscriptionResult(
+                text="qwen fast",
+                confidence=0.95,
+                language="ja",
+            )
+        )
+        mock_vosk = MagicMock(spec=LocalSTTClient)
+        mock_vosk.transcribe = AsyncMock(
+            return_value=TranscriptionResult(
+                text="fallback should not run",
+                confidence=0.7,
+                language="ja",
+            )
+        )
+
+        agent = self._make_agent(mock_qwen, mock_vosk)
+        agent._qwen_hedge_delay = 0.5
+        result = await agent.speech_to_text(b"audio", language="ja")
+
+        assert result["success"] is True
+        assert result["provider"] == "qwen-primary"
+        assert result["transcript"] == "qwen fast"
+        mock_vosk.transcribe.assert_not_called()
+
+        events = [
+            getattr(record, "event", None)
+            for record in caplog.records
+            if record.name == "backend.observability.stt"
+        ]
+        assert "stt_qwen_hedge_start" not in events
+        assert "stt_vosk_start" not in events
+
+    @pytest.mark.asyncio
     async def test_qwen_timeout_vosk_fallback(self):
         """Qwen times out -> Vosk fallback with provider='vosk-fallback'"""
         import asyncio
@@ -2521,6 +2560,39 @@ class TestQwenPrimaryFallback:
         assert result["success"] is True
         assert result["provider"] == "vosk-fallback"
         assert result["transcript"] == "fallback ok"
+
+    @pytest.mark.asyncio
+    async def test_qwen_immediate_error_falls_back_with_hedge_enabled(self, caplog):
+        """Immediate Qwen error still starts Vosk fallback when hedge is configured."""
+        caplog.set_level(logging.INFO, logger="backend.observability.stt")
+
+        mock_qwen = MagicMock()
+        mock_qwen.transcribe = AsyncMock(side_effect=RuntimeError("Model OOM"))
+        mock_vosk = MagicMock(spec=LocalSTTClient)
+        mock_vosk.transcribe = AsyncMock(
+            return_value=TranscriptionResult(
+                text="fallback ok",
+                confidence=0.75,
+                language="en",
+            )
+        )
+
+        agent = self._make_agent(mock_qwen, mock_vosk)
+        agent._qwen_hedge_delay = 0.5
+        result = await agent.speech_to_text(b"audio", language="en")
+
+        assert result["success"] is True
+        assert result["provider"] == "vosk-fallback"
+        assert result["transcript"] == "fallback ok"
+        mock_qwen.transcribe.assert_called_once_with(b"audio", language="en")
+        mock_vosk.transcribe.assert_called_once_with(b"audio", "en")
+
+        stt_records = [
+            record for record in caplog.records if record.name == "backend.observability.stt"
+        ]
+        events = [getattr(record, "event", None) for record in stt_records]
+        assert "stt_qwen_hedge_start" not in events
+        assert events.index("stt_qwen_complete") < events.index("stt_vosk_start")
 
     @pytest.mark.asyncio
     async def test_qwen_failure_starts_vosk_after_qwen_and_returns_vosk(self, caplog):
