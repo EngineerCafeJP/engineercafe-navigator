@@ -238,6 +238,7 @@ async def test_live_eval_keeps_alpha_127_manifest_count_when_api_collection_fail
         "chat_interval_seconds": 0.0,
         "chat_retry_attempts": 4,
         "chat_retry_backoff_seconds": 2.0,
+        "chat_timeout_seconds": 60.0,
     }
     assert (tmp_path / "live_api_eval_alpha-live-test-c.json").is_file()
     assert (tmp_path / "live_api_eval_alpha-live-test-c.txt").is_file()
