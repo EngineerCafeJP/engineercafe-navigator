@@ -14,39 +14,43 @@ The workflow infrastructure is now complete enough to run targeted alpha gates e
 - RAGAS provider/model/case progress telemetry is emitted.
 - B routing / slide live smoke is green on deployed staging.
 
-The product is still **NO-GO** for alpha because there is no latest `suites=all` green proof, and
-the first C-127 run exposed a live RAGAS harness accounting defect.
+The product is still **NO-GO** for alpha because there is no latest `suites=all` green proof.
+The C-127 manifest accounting defect is fixed by PR #692, but post-#692 validation exposed a
+live `/api/chat` 429 collection blocker.
 
 Latest deployed verification:
 
 - backend deploy SHA: `d1280aa64643aae7b22df875ee22f13cbfe294a2`
 - Cloud Run revision: `engineer-cafe-backend-00157-b6c`
-- C-127 run: `25268597241`
-- C-127 result: failure, `alpha-127` expected `127` but artifact reported `85`
-- Q targeted run after C-127 dispatch: `25269072919` failed with `23 PASS / 0 WARN / 2 FAIL`
+- PR #692 merge SHA: `d74264e808e9b2a0244d3a1a9e5dfe12671530ea`
+- C-127 run after #692: `25270459825`
+- C-127 result after #692: failure, `alpha-127` requested `127`, evaluated `35`, collection errors `92`
+- PR #695 merge SHA: `ed25199e4c7104ac0f6e2f027c4fdadd72280182`; post-#695 C-127 rerun pending
+- Q targeted run before #693: `25269072919` failed with `23 PASS / 0 WARN / 2 FAIL`
+- PR #693 merge SHA: `14cb8e5b3c4f9711a77c634d3db80f8bf4f80efd`; post-#693 Q rerun pending
 
 ## Implementation Order
 
-### 1. ADR 019 / #691 / #657 / #583 RAGAS coverage and accounting
+### 1. #583 / #694 C-127 live collection completion
 
-Goal: make C-127 artifacts prove both selected manifest coverage and live API collection success.
+Goal: make C-127 collect and evaluate all 127 selected manifest cases through live `/api/chat`.
 
 Status:
 
 - Direct OpenAI provider path is confirmed.
 - RAGAS progress telemetry is implemented.
 - `c-127` workflow selection is implemented.
-- The first C-127 run selected `alpha-127`, but artifact accounting reported only 85 requested cases
-  because live API collection failures were dropped from the report.
+- PR #692 fixed manifest accounting: post-#692 run `25270459825` reports `requested=127`.
+- The same run evaluated only `35/127` because live `/api/chat` returned `92` `429 Too Many Requests`
+  collection errors.
+- PR #695 is merged with C-127 pacing / 429 retry and compact artifact polish, but live proof is pending.
 
 Tasks:
 
-- Implement ADR 019 in `backend/evaluation/run_live_api_eval.py`.
-- Keep `requested_case_count` tied to selected manifest cases, not collected successful responses.
-- Persist `/api/chat` collection failures as `collection_errors`.
-- Fail `evaluation_complete` and `alpha_release_gate_met` when collection errors exist.
-- Add regression coverage in `backend/tests/evaluation/test_ragas_live_case_suites.py`.
-- Re-run `suites=c-127` before interpreting C answer quality metrics.
+- Re-run `suites=c-127` after PR #695 is deployed or explicitly pass the current deployed backend SHA
+  if the merge is harness-only.
+- Require `suite_coverage.requested_total_cases=127`, `evaluated=127`, and `collection_errors=0`.
+- Only interpret #672 C answer/source metrics after collection completes.
 
 ### 2. #653 / #672 answer quality
 
@@ -62,21 +66,18 @@ Latest Q run `25269072919` improved from 3 failures to 2 failures:
 - `Q-BIZ-EN-003`: route OK, sources OK, missing expected fact `reservation`.
 - `Q-DAILY-JA-001`: route OK, answer OK, latency `2205ms`.
 - `Q-EVT-EN-001` now passes.
+- PR #693 is merged for the two remaining failures; post-deploy `suites=q` proof is pending.
 
-Current C/RAGAS direct OpenAI C-127 failure:
+Current C/RAGAS direct OpenAI C-127 status:
 
-- Run `25268597241`: `alpha-127` expected `127`, reported `85`; interpret answer quality only
-  after ADR 019 is merged and rerun.
-- Current reported metrics from the incomplete artifact:
-  - JA answer_correctness `0.585`, target `0.85`
-  - EN answer_correctness `0.7017`, target `0.75`
-  - ZH answer_correctness `0.7271`, target `0.65`
-  - KO answer_correctness `0.7151`, target `0.65`
-- Source gate failures: `gt-019` JA, `gt-065` EN, `gt-115` KO.
+- Run `25270459825`: `alpha-127` requested `127`, evaluated `35`, collection errors `92`.
+- Current answer/source metrics are not release-proof because most cases were not collected.
+- Known evaluated-subset source failure: `gt-019` JA consultation had actual sources `[]`.
 
 Tasks:
 
-- Read the report artifacts for exact expected facts and actual answers.
+- Re-run `q` after PR #693 and close #653 only if the Q suite has `0 FAIL`.
+- Re-run `c-127` after PR #695 and only then read the report artifacts for exact expected facts and actual answers.
 - Decide whether each failure is response generation, source retrieval, ground truth, or threshold drift.
 - Fix the smallest product-side issue first; only adjust tests when the expected answer is wrong.
 - Re-run `q` and `c`.
@@ -92,7 +93,7 @@ Status:
 
 Tasks:
 
-- Run full C/Q after #691 and the targeted Q/C fixes, or in a diagnostic window.
+- Run full C/Q after #695 and the targeted Q/C fixes, or in a diagnostic window.
 - Confirm provider/model/case progress is present in logs and compact artifacts.
 - Close #670 only after one full C/Q operational proof.
 
@@ -151,11 +152,10 @@ Status: completed in PR #674.
 Use targeted suites until the relevant blocker is fixed:
 
 ```bash
-gh workflow run alpha-live-verification.yml --ref develop -f suites=stt,v -f require_deployed_sha_match=true
 gh workflow run alpha-live-verification.yml --ref develop -f suites=c-127 -f require_deployed_sha_match=true -f expected_backend_sha=<current-backend-sha>
-gh workflow run alpha-live-verification.yml --ref develop -f suites=q,c -f require_deployed_sha_match=true
+gh workflow run alpha-live-verification.yml --ref develop -f suites=q -f require_deployed_sha_match=true -f expected_backend_sha=<current-backend-sha>
 ```
 
-Only run `suites=all` after #691 and the C/Q gate decision have targeted green runs. For C-127,
-do not treat an artifact as release proof unless `suite_coverage.requested_total_cases=127` and
-collection failures are explicitly represented.
+Only run `suites=all` after post-#695 C-127 and post-#693 Q have targeted green runs. For C-127,
+do not treat an artifact as release proof unless `suite_coverage.requested_total_cases=127`,
+`evaluated=127`, and `collection_errors=0`.

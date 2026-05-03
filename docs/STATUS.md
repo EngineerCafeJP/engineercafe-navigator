@@ -6,7 +6,7 @@ Last updated: 2026-05-03
 
 このページは、`develop` 上の現行コード、2026-04-19 の live audit、2026-04-29 の実機音声 UX 確認、
 2026-05-02 の alpha-live-verification full run / targeted C run、2026-05-03 の PR #674/#675/#676
-deploy verification をもとに更新しています。
+deploy verification、PR #692/#693/#695 merge 後の alpha issue 状態をもとに更新しています。
 
 確認元:
 
@@ -15,6 +15,7 @@ deploy verification をもとに更新しています。
 - 2026-04-29 JST の mobile / kiosk 実地確認 screenshot と Cloud Run structured logs
 - 2026-05-02 JST の `alpha-live-verification` run `25244933308` / `25247945549`
 - 2026-05-03 JST の targeted B run `25254789937` と Cloud Run revision `engineer-cafe-backend-00148-82c`
+- 2026-05-03 JST の post-#692 C-127 run `25270459825`
 - 現在 open の GitHub Issue
 
 Supabase については、CLI で linked project の確認まではできましたが、このセッションでは recent runtime log
@@ -26,14 +27,17 @@ Supabase については、CLI で linked project の確認まではできまし
 - alpha live verification workflow は Cloud Run SHA match 付きで end-to-end 実行できる
 - RAGAS evaluator は direct OpenAI で動くことを確認済み
 - PR #674/#675/#676 により、B routing / slide live smoke、Welcome UI、compact artifacts、Supabase UUID log hygiene は解消済み
+- PR #692 により C-127 manifest accounting は解消済み。run `25270459825` で `requested=127` になったが、
+  live `/api/chat` 429 により `evaluated=35`, `collection_errors=92` だった
+- PR #693 は Q quality 修正、PR #695 は C-127 pacing / retry 修正として merge 済み。どちらも post-deploy live rerun 待ち
 - ただし latest `suites=all` の green proof はまだなく、alpha release はまだ GO できない
 - 現在の主リスクは「未実装の基本機能」ではなく「会話 UX の基本品質、実測 latency、route 整合性、評価 gate の透明性」
 
 特に優先度が高いのは次の 4 点です。
 
-1. STT long-tail latency が alpha gate を落としている問題
-2. Q/C answer quality と RAGAS JA target miss
-3. RAGAS 29-case gate と 127-case requirement の不一致
+1. C-127 が live `/api/chat` 429 なしで `127/127` collect/evaluate できることの証明
+2. Q suite の残 failure が #693 後に解消されたことの証明
+3. C-127 完走後の answer/source quality 判断
 4. RAGAS full-run speed / telemetry の operational closeout
 
 現行の実装判断は [ADR 018](adr/018-alpha-fast-response-and-assistant-profile-routing.md) と
@@ -41,7 +45,7 @@ Supabase については、CLI で linked project の確認まではできまし
 
 ## 2026-05-03 Alpha Remediation Snapshot
 
-最新の deployed staging:
+最新の deployed staging / harness 状態:
 
 - develop SHA: `d789a2cd899779423947c40a3d65e19382f52d30`
 - Cloud Run revision: `engineer-cafe-backend-00148-82c`
@@ -52,6 +56,10 @@ Supabase については、CLI で linked project の確認まではできまし
 - B result: `64 passed, 0 warned, 0 failed`
 - B1-BIZ-003: `土日祝日も利用できますか。` -> `business_info`, `1258ms`
 - Cloud Logging UUID / reception persistence errors during B run window: 0 rows
+- PR #692 merge SHA: `d74264e808e9b2a0244d3a1a9e5dfe12671530ea`
+- Post-#692 C-127 run: `25270459825`, `requested=127`, `evaluated=35`, `collection_errors=92`
+- PR #693 merge SHA: `14cb8e5b3c4f9711a77c634d3db80f8bf4f80efd`; Q rerun pending
+- PR #695 merge SHA: `ed25199e4c7104ac0f6e2f027c4fdadd72280182`; post-#695 C-127 rerun pending
 
 Resolved in PR #674/#675/#676:
 
@@ -60,14 +68,15 @@ Resolved in PR #674/#675/#676:
 - #661: compact artifact visibility
 - #662: Supabase UUID / Cloud Run log hygiene
 - #671: RAGAS provider secret issue
+- #691: C-127 manifest accounting
+- #694: C-127 `/api/chat` 429 collection blocker implementation merged in PR #695; live proof pending
 
 Still blocking or important:
 
-- #658: STT long-tail latency remains P0. Latest STT-only gate after #674 deploy had 7 samples,
-  p50 `5180ms`, p95/max `29217ms`, and 14.3% over 10s.
-- #657 / #583: RAGAS 29 vs 127 coverage reconciliation remains P0.
-- #653 / #672: Q/C answer quality remains P1 and may become launch-blocking depending on case analysis.
-- #670: RAGAS telemetry is implemented, but a full C/Q run still needs operational proof before close.
+- #583: C-127 completion remains P0 until post-#695 run collects/evaluates `127/127` with `collection_errors=0`.
+- #653: Q quality remains P1 until post-#693 `suites=q` rerun has 0 failures.
+- #672: C answer/source quality remains P1, but current C metrics are not release-proof until C-127 collection completes.
+- #670: RAGAS telemetry is implemented, but post-#695 C-127 artifact still needs operational proof before close.
 
 ## 2026-05-02 Alpha Live Verification Snapshot
 
@@ -91,8 +100,7 @@ Resolved in the 2026-05-02 / 2026-05-03 remediation pass:
 
 Still blocking:
 
-- #658: STT preflight latency
-- #657 / #583: RAGAS 29 vs 127 coverage
+- #583: C-127 completion proof after #695
 - #653 / #672: Q/C answer quality
 - #670: full-run RAGAS speed / telemetry closeout
 
@@ -245,21 +253,19 @@ current turn の high-confidence intent なしに route を固定してはいけ
 
 ## いま重要な Open Issues
 
-- `#658`: STT preflight latency
-- `#657`: RAGAS gate 29 vs 127
+- `#583`: C-127 completion proof
 - `#653`: Q-content quality
 - `#672`: Direct OpenAI C/RAGAS JA target miss
-- `#669`: deployed tRAG translation model missing
 - `#670`: C/RAGAS runtime and telemetry
 - `#611`: Cerebras dynamic filler / fast first-response path
 
 ## 推奨する実装順
 
-1. STT long-tail latency mitigation を実装する (`#658`)
-2. RAGAS 127-case gate を定義・実装する (`#657`, `#583`)
-3. Q/C answer quality を直す (`#653`, `#672`)
+1. PR #695 後の `suites=c-127` rerun で #583 / #670 / #672 の判断材料を取る
+2. PR #693 後の `suites=q` rerun で #653 を close できるか判断する
+3. C-127 が `127/127` 完走してから C answer/source quality を直す (`#672`)
 4. RAGAS full-run telemetry / runtime を close 判断する (`#670`)
-5. tRAG translation model fallback の alpha 影響を判断する (`#669`)
+5. #611 / #584 / #585 の live-only proof を収集するか、alpha GO から demote / waive する
 
 ## 参照
 

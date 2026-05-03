@@ -79,28 +79,33 @@
 
 ## 2026-05-03 Alpha Remediation Snapshot
 
-PR #674, #675, #676 を develop に merge し、Cloud Run staging
-`engineer-cafe-backend-00148-82c` / `d789a2cd899779423947c40a3d65e19382f52d30`
-で検証済みです。
+PR #674, #675, #676 に加えて、#692, #693, #695 を develop に merge 済みです。
+#692 は C-127 accounting を修正し、run `25270459825` で `requested=127` を確認しました。
+ただし同 run は live `/api/chat` 429 により `evaluated=35`, `collection_errors=92`
+で、C-127 completion proof にはなっていません。#695 は 429 pacing / retry 修正として merge 済みで、
+post-#695 C-127 rerun 待ちです。#693 は Q suite 残 failure 修正として merge 済みで、post-deploy Q rerun 待ちです。
 
 Resolved:
 
+- #658 STT / voice preflight: run `25258764528` が `suites=stt,v` PASS
 - #659 B routing / slide live smoke: targeted B run `25254789937` が `64 passed, 0 warned, 0 failed`
 - #660 H-UI Welcome UI live scenario
 - #661 compact artifact visibility
 - #662 Supabase UUID / Cloud Run log hygiene
 - #671 RAGAS direct OpenAI provider secret
+- #691 C-127 manifest accounting: PR #692
+- #694 C-127 `/api/chat` 429 collection blocker: PR #695 merged, live proof pending
 
 Still active:
 
-- #658 STT long-tail latency
-- #657 / #583 RAGAS 29-case vs 127-case coverage reconciliation
+- #583 C-127 completion proof: post-#695 rerun must collect/evaluate `127/127`
 - #653 / #672 Q/C answer quality
 - #670 RAGAS full-run speed / telemetry closeout
+- #611 / #584 / #585 live-only proof / issue-scope decisions
 
 ## 直近の次アクション
 
-- #658 STT long-tail latency の fallback threshold / warmup / timeout 前 mitigation を実装する
-- #657 / #583 の alpha gate coverage を launch gate と diagnostic/soak に分けて文書化・実装する
-- #653 / #672 の Q/C answer quality failure を case-level telemetry で修正する
-- #670 は full C/Q run の artifact で provider/model/progress が十分に残ることを確認して close 判断する
+- #695 後に `suites=c-127` を rerun し、`requested=127`, `evaluated=127`, `collection_errors=0` を確認する
+- #693 後に `suites=q` を rerun し、#653 の残 failure が 0 になったか確認する
+- C-127 が完走してから #672 の answer/source quality を case-level telemetry で修正する
+- #670 は post-#695 C-127 artifact で provider/model/progress と compact report が十分に残ることを確認して close 判断する
