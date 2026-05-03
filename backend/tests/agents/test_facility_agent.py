@@ -231,9 +231,10 @@ class TestFacilityAgent:
 
         spaces = agent._get_canonical_response("スペースを使いたい", "facility", "ja")
         assert spaces is not None
-        assert "利用可能スペース" in spaces["answer"]
+        assert "メインホール" in spaces["answer"]
+        assert "MAKER'sスペース" in spaces["answer"]
         assert "防音室" in spaces["answer"]
-        assert "有料会議室3室" in spaces["answer"]
+        assert "2階会議室" in spaces["answer"]
 
     def test_alpha_c127_ja_facility_detail_canonical(self):
         """JA C-127: 設備・階層・アクセシビリティ回答を固定する"""
@@ -451,6 +452,20 @@ class TestFacilityAgent:
         assert "福岡市在住の学生は無料" in response["answer"]
         assert "紙の印刷" not in response["answer"]
 
+    def test_english_printer_copier_canonical(self):
+        """gt-094: printer/copier questions must not route to building history."""
+        agent = FacilityAgent()
+        response = agent._get_canonical_response(
+            "Is there a printer or copier in the building?",
+            "facility",
+            "en",
+        )
+
+        assert response is not None
+        assert "does not provide" in response["answer"]
+        assert "printer, copier, or scanner" in response["answer"]
+        assert "1909" not in response["answer"]
+
     def test_lost_found_canonical_response(self):
         """忘れ物は受付・電話番号案内に固定する"""
         agent = FacilityAgent()
@@ -554,14 +569,16 @@ class TestFacilityAgent:
 
         assert response is None
 
-    def test_wifi_password_canonical_response_does_not_expose_literal_secret(self):
-        """実地では受付カード・スタッフ確認へ誘導し、固定パスワードを出さない"""
+    def test_wifi_password_canonical_response_includes_public_guest_credentials(self):
+        """C-127 gt-032: 公開ゲストSSID・passwordと受付カード裏面を案内する"""
         agent = FacilityAgent()
         response = agent._get_canonical_response("Wi-Fiのパスワードは何ですか？", "wifi", "ja")
 
         assert response is not None
+        assert "engnecf-guest-2.4GHz" in response["answer"]
+        assert "engnecf-guest-5GHz" in response["answer"]
+        assert "akarenga-112years" in response["answer"]
         assert "受付カード" in response["answer"]
-        assert "akarenga-112years" not in response["answer"]
 
     def test_bringing_laptop_does_not_match_food_policy(self):
         """bringだけで飲食持ち込み回答へ倒さない"""

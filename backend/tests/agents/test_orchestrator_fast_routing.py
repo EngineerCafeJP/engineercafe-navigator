@@ -328,6 +328,14 @@ class TestOrchestratorFastRouting:
             result is None or result["category"] != "greeting"
         ), "Query containing 'history' should not be routed to greeting"
 
+    def test_printer_copier_in_building_routes_to_facility_equipment(self, orchestrator):
+        """gt-094: 'in the building' must not preempt printer/copier intent."""
+        result = orchestrator._try_fast_routing("Is there a printer or copier in the building?")
+
+        assert result is not None
+        assert result["agent"] == "facility"
+        assert result["request_type"] == "facility"
+
     def test_no_false_positive_compound_greeting(self, orchestrator):
         """'hello, what are the business hours?' should NOT match greeting (too long)"""
         result = orchestrator._try_fast_routing("hello, what are the business hours?")

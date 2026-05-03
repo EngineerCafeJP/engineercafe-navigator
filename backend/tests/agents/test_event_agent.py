@@ -141,6 +141,7 @@ class TestEventAgent:
 
         response = await self.agent.answer_event_query("イベントについて", "ja")
 
+        assert "イベントについてお調べします" in response["answer"]
         assert "開催予定" in response["answer"]
         assert "参加方法" in response["answer"]
         assert "Connpass" in response["answer"]

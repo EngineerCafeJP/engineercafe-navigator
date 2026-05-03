@@ -469,10 +469,9 @@ class EventAgent:
     def _get_event_clarification_response(language: str) -> Dict:
         answers = {
             "ja": (
-                "[relaxed]イベントについては、開催予定、参加方法、イベント開催相談の"
-                "どれを知りたいか教えてください。開催予定や申込はConnpass "
-                "https://engineercafe.connpass.com/ で確認できます。"
-                "イベントを開きたい場合はコミュニティマネージャーへの事前相談が必要です。"
+                "[relaxed]イベントについてお調べします。開催予定や参加申込は"
+                "Connpass https://engineercafe.connpass.com/ で確認できます。"
+                "参加方法や開催相談も案内できます。"
             ),
             "en": (
                 "[relaxed]For events, please tell me whether you want upcoming events, "

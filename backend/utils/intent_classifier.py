@@ -412,6 +412,10 @@ def classify_fast_intent(query: str) -> Optional[FastIntent]:
         return FastIntent(
             "facility", "facility-info", "access", "Access/direction keyword detected"
         )
+    if match_keywords(lower_query, FACILITY_EQUIPMENT_KEYWORDS):
+        return FastIntent(
+            "facility", "facility-info", "facility", "Facility equipment keyword detected"
+        )
     if _is_nearby_facility_query(lower_query):
         return FastIntent("facility", "facility-info", "nearby", "Nearby facility keyword detected")
     if match_keywords(lower_query, BUILDING_KEYWORDS):
@@ -464,10 +468,6 @@ def classify_fast_intent(query: str) -> Optional[FastIntent]:
             "facility-info",
             "pets",
             "Pet policy keyword detected",
-        )
-    if match_keywords(lower_query, FACILITY_EQUIPMENT_KEYWORDS):
-        return FastIntent(
-            "facility", "facility-info", "facility", "Facility equipment keyword detected"
         )
     if match_keywords(lower_query, CONTACT_KEYWORDS):
         return FastIntent(

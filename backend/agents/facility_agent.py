@@ -914,9 +914,9 @@ class FacilityAgent:
 
             answers = {
                 "ja": (
-                    "[relaxed]福岡市赤煉瓦文化館は1909年に建てられ、"
-                    "1969年に国の重要文化財に指定されました。1994年に復元リニューアルされ、"
-                    "2019年にこの建物内でエンジニアカフェが開設されました。"
+                    "[relaxed]福岡市赤煉瓦文化館は1909年（明治42年）に、"
+                    "日本生命保険株式会社九州支店の社屋として建てられました。"
+                    "設計は辰野金吾・片岡安で、1969年に国の重要文化財に指定されました。"
                 ),
                 "en": (
                     "[relaxed]The Fukuoka City Red Brick Culture Hall was built in "
@@ -1006,9 +1006,11 @@ class FacilityAgent:
         if self._asks_summer_heat(normalized):
             answers = {
                 "ja": (
-                    "[relaxed]夏場は歴史的建造物のため熱がこもりやすく、2階や窓際は"
-                    "暑く感じることがあります。エアコンはありますが、涼しい場所を選ぶなら"
-                    "地下1階や日差しの少ない席がおすすめです。ふた付き飲み物も持ち込めます。"
+                    "[relaxed]赤煉瓦造りの歴史的建造物のため蓄熱しやすく、"
+                    "夏場は暑く感じることがあります。エアコンはありますが、完全に"
+                    "冷えるまで時間がかかる場合があります。涼しく過ごすなら地下1階の"
+                    "Under SpaceやFocus Spaceがおすすめです。飲み物をこまめに"
+                    "取りながらご利用ください。"
                 )
             }
             return self._canonical_result(answers.get(language, answers["ja"]), request_type)
@@ -1075,10 +1077,10 @@ class FacilityAgent:
                     "ネットプリント利用を検討してください。"
                 ),
                 "en": (
-                    "[relaxed]A standard document printer or copier is not listed as "
-                    "available in the building. The B1F MAKER's Space has 3D printers "
-                    "and laser cutters, so for paper printing please ask staff or use "
-                    "a nearby convenience store."
+                    "[relaxed]No. Engineer Cafe does not provide a standard document "
+                    "printer, copier, or scanner. The B1F MAKER's Space has 3D printers "
+                    "and laser cutters, but for paper printing please ask staff or use "
+                    "a nearby convenience store's net-print service."
                 ),
                 "zh": (
                     "[relaxed]馆内没有提供普通文件打印机、复印机或扫描仪的信息。"
@@ -1097,8 +1099,9 @@ class FacilityAgent:
         if self._asks_wifi_credential(normalized):
             answers = {
                 "ja": (
-                    "[relaxed]エンジニアカフェでは無料Wi-Fiを利用できます。SSIDや"
-                    "パスワードは受付カードの裏面で確認するか、受付スタッフに確認してください。"
+                    "[relaxed]Wi-FiのSSIDは engnecf-guest-2.4GHz または "
+                    "engnecf-guest-5GHz です。パスワードは akarenga-112years です。"
+                    "受付カードの裏面にも記載されています。"
                 ),
                 "en": (
                     "[relaxed]Free Wi-Fi is available at Engineer Cafe. The SSIDs are "
@@ -1123,11 +1126,10 @@ class FacilityAgent:
         if self._asks_available_spaces(normalized):
             answers = {
                 "ja": (
-                    "[relaxed]利用可能スペースは、1階のメインホール、cafe&bar saino、"
-                    "談話室、テラス、地下1階のMAKER'sスペース、集中スペース、"
-                    "MTGスペース、アンダースペース、防音室です。2階には"
-                    "赤煉瓦文化館管理の有料会議室3室もあります。目的に合わせて"
-                    "受付スタッフへ相談してください。"
+                    "[relaxed]エンジニアカフェには、メインホール、集中スペース、"
+                    "MAKER'sスペース、MTGスペース、防音室、アンダースペース、"
+                    "テラス、談話室、2階会議室などがあります。用途に応じて"
+                    "ご選択ください。"
                 ),
                 "en": (
                     "[relaxed]Available spaces include the 1F Main Hall for coworking "
