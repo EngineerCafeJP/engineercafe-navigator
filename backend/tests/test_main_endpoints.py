@@ -1,5 +1,7 @@
 """Tests for backend/main.py endpoint fixes (Sprint 5)"""
 
+import logging
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -36,6 +38,47 @@ class TestHealthCheck:
         # CI環境ではSupabase/LLM未接続のため "degraded" になりうる
         assert data["status"] in ("ok", "degraded")
         assert data["service"] == "engineer-cafe-navigator-backend"
+
+
+class TestProductionLogHygiene:
+    def test_request_timing_threshold_env_falls_back_on_invalid_value(self, monkeypatch):
+        import backend.main as main_mod
+
+        monkeypatch.setenv("REQUEST_TIMING_LOG_THRESHOLD_MS", "not-a-number")
+
+        assert main_mod._float_env("REQUEST_TIMING_LOG_THRESHOLD_MS", 10000) == 10000
+
+    def test_health_request_does_not_emit_info_timing_log(self, caplog):
+        from backend.main import app
+
+        caplog.set_level(logging.INFO, logger="backend.main")
+        client = TestClient(app)
+        response = client.get("/health")
+
+        assert response.status_code == 200
+        assert response.headers.get("x-response-time-ms")
+        assert not any(record.getMessage() == "request_completed_slow" for record in caplog.records)
+
+    def test_slow_non_health_request_keeps_structured_timing_fields(self, caplog, monkeypatch):
+        import backend.main as main_mod
+        from backend.main import app
+
+        monkeypatch.setattr(main_mod, "_REQUEST_TIMING_LOG_THRESHOLD_MS", 0)
+        caplog.set_level(logging.INFO, logger="backend.main")
+        client = TestClient(app)
+        response = client.get("/api/voice")
+
+        assert response.status_code == 200
+        records = [
+            record for record in caplog.records if record.getMessage() == "request_completed_slow"
+        ]
+        assert records
+        record = records[-1]
+        assert record.event == "request_completed_slow"
+        assert record.method == "GET"
+        assert record.path == "/api/voice"
+        assert record.status_code == 200
+        assert record.duration_ms >= 0
 
 
 class TestVoiceWarmupEndpoint:

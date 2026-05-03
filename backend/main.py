@@ -50,6 +50,21 @@ _VALID_REQUEST_ID = re.compile(r"^[a-zA-Z0-9\-]{1,64}$")
 _ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
 
 
+def _float_env(name: str, default: float) -> float:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        logger.warning("Invalid %s=%r; using %.0f", name, raw, default)
+        return default
+    return value if value >= 0 else default
+
+
+_REQUEST_TIMING_LOG_THRESHOLD_MS = _float_env("REQUEST_TIMING_LOG_THRESHOLD_MS", 10000)
+
+
 class RequestIDMiddleware(BaseHTTPMiddleware):
     """X-Request-ID ヘッダーの生成/伝播"""
 
@@ -78,20 +93,33 @@ class RequestTimingMiddleware(BaseHTTPMiddleware):
         except Exception:
             duration_ms = (time.perf_counter() - start) * 1000
             logger.warning(
-                "Request %s %s failed after %.2fms",
-                request.method,
-                request.url.path,
-                duration_ms,
+                "request_failed",
+                extra={
+                    "event": "request_failed",
+                    "method": request.method,
+                    "path": request.url.path,
+                    "duration_ms": round(duration_ms, 2),
+                },
             )
             raise
         duration_ms = (time.perf_counter() - start) * 1000
         response.headers["X-Response-Time-Ms"] = f"{duration_ms:.2f}"
-        logger.info(
-            "Request %s %s completed in %.2fms",
-            request.method,
-            request.url.path,
-            duration_ms,
+        should_log = response.status_code >= 500 or (
+            request.url.path != "/health" and duration_ms >= _REQUEST_TIMING_LOG_THRESHOLD_MS
         )
+        if should_log:
+            level = logging.WARNING if response.status_code >= 500 else logging.INFO
+            logger.log(
+                level,
+                "request_completed_slow",
+                extra={
+                    "event": "request_completed_slow",
+                    "method": request.method,
+                    "path": request.url.path,
+                    "status_code": response.status_code,
+                    "duration_ms": round(duration_ms, 2),
+                },
+            )
         return response
 
 
@@ -107,10 +135,13 @@ class TokenTrackerMiddleware(BaseHTTPMiddleware):
             # Log token summary for this request
             tracker = get_token_tracker()
             if tracker.total_tokens > 0:
-                logger.info(
-                    "Token usage: %d tokens, $%.6f estimated cost",
-                    tracker.total_tokens,
-                    tracker.total_cost_usd,
+                logger.debug(
+                    "token_usage",
+                    extra={
+                        "event": "token_usage",
+                        "total_tokens": tracker.total_tokens,
+                        "estimated_cost_usd": round(tracker.total_cost_usd, 6),
+                    },
                 )
             return response
         finally:

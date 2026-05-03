@@ -13,6 +13,7 @@ from backend.utils.structured_logging import (
     StructuredFormatter,
     generate_request_id,
     request_id_var,
+    setup_structured_logging,
 )
 
 # ============================================
@@ -134,3 +135,26 @@ def test_generate_request_id():
     # 毎回異なる値を生成する
     rid2 = generate_request_id()
     assert rid != rid2
+
+
+def test_setup_structured_logging_quiets_access_and_http_client_loggers():
+    original_handlers = logging.getLogger().handlers[:]
+    original_level = logging.getLogger().level
+    access_level = logging.getLogger("uvicorn.access").level
+    httpx_level = logging.getLogger("httpx").level
+    httpcore_level = logging.getLogger("httpcore").level
+
+    try:
+        setup_structured_logging()
+
+        assert logging.getLogger("uvicorn.access").level == logging.WARNING
+        assert logging.getLogger("httpx").level == logging.WARNING
+        assert logging.getLogger("httpcore").level == logging.WARNING
+    finally:
+        root = logging.getLogger()
+        root.handlers.clear()
+        root.handlers.extend(original_handlers)
+        root.setLevel(original_level)
+        logging.getLogger("uvicorn.access").setLevel(access_level)
+        logging.getLogger("httpx").setLevel(httpx_level)
+        logging.getLogger("httpcore").setLevel(httpcore_level)
