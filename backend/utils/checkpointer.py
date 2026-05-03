@@ -24,6 +24,8 @@ from psycopg import AsyncConnection, InterfaceError, OperationalError
 from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool, PoolClosed
 
+from backend.utils.postgres_sanitizer import sanitize_for_postgres
+
 logger = logging.getLogger(__name__)
 
 _T = TypeVar("_T")
@@ -207,7 +209,11 @@ class ResilientAsyncPostgresSaver(AsyncPostgresSaver):
             return await operation(*args, **kwargs)
 
     async def aget_tuple(self, config: RunnableConfig) -> Any:
-        return await self._run_with_connection_retry("aget_tuple", super().aget_tuple, config)
+        return await self._run_with_connection_retry(
+            "aget_tuple",
+            super().aget_tuple,
+            cast(RunnableConfig, sanitize_for_postgres(config)),
+        )
 
     async def alist(
         self,
@@ -218,11 +224,14 @@ class ResilientAsyncPostgresSaver(AsyncPostgresSaver):
         limit: int | None = None,
     ) -> AsyncGenerator[Any, None]:
         stale_pool = self.pool
+        safe_config = cast(RunnableConfig | None, sanitize_for_postgres(config))
+        safe_filter = cast(dict[str, Any] | None, sanitize_for_postgres(filter))
+        safe_before = cast(RunnableConfig | None, sanitize_for_postgres(before))
         try:
             async for item in super().alist(
-                config,
-                filter=filter,
-                before=before,
+                safe_config,
+                filter=safe_filter,
+                before=safe_before,
                 limit=limit,
             ):
                 yield item
@@ -237,9 +246,9 @@ class ResilientAsyncPostgresSaver(AsyncPostgresSaver):
             )
             await self.recreate(reason=error, stale_pool=stale_pool)
             async for item in super().alist(
-                config,
-                filter=filter,
-                before=before,
+                safe_config,
+                filter=safe_filter,
+                before=safe_before,
                 limit=limit,
             ):
                 yield item
@@ -254,10 +263,10 @@ class ResilientAsyncPostgresSaver(AsyncPostgresSaver):
         return await self._run_with_connection_retry(
             "aput",
             super().aput,
-            config,
-            checkpoint,
-            metadata,
-            new_versions,
+            cast(RunnableConfig, sanitize_for_postgres(config)),
+            cast(Checkpoint, sanitize_for_postgres(checkpoint)),
+            cast(CheckpointMetadata, sanitize_for_postgres(metadata)),
+            cast(ChannelVersions, sanitize_for_postgres(new_versions)),
         )
 
     async def aput_writes(
@@ -270,14 +279,18 @@ class ResilientAsyncPostgresSaver(AsyncPostgresSaver):
         await self._run_with_connection_retry(
             "aput_writes",
             super().aput_writes,
-            config,
-            writes,
-            task_id,
-            task_path,
+            cast(RunnableConfig, sanitize_for_postgres(config)),
+            sanitize_for_postgres(writes),
+            sanitize_for_postgres(task_id),
+            sanitize_for_postgres(task_path),
         )
 
     async def adelete_thread(self, thread_id: str) -> None:
-        await self._run_with_connection_retry("adelete_thread", super().adelete_thread, thread_id)
+        await self._run_with_connection_retry(
+            "adelete_thread",
+            super().adelete_thread,
+            sanitize_for_postgres(thread_id),
+        )
 
 
 async def create_checkpointer() -> AsyncPostgresSaver:

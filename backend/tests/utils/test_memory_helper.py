@@ -214,6 +214,32 @@ class TestSimplifiedMemoryHelper:
         assert "expires_at" not in call_args
 
     @pytest.mark.asyncio
+    @patch("backend.utils.memory_helper.create_client")
+    async def test_store_message_strips_postgres_nul_chars(self, mock_create_client):
+        """PostgreSQL jsonb/text に保存できないNUL文字を保存前に除去する"""
+        mock_client = Mock()
+        mock_table = Mock()
+        mock_insert = Mock()
+        mock_insert.execute = Mock(return_value=Mock(data=[{"id": 1}]))
+        mock_table.insert = Mock(return_value=mock_insert)
+        mock_client.table = Mock(return_value=mock_table)
+        mock_create_client.return_value = mock_client
+
+        helper = SimplifiedMemoryHelper()
+
+        await helper.store_message(
+            role="user",
+            content="営業時間\x00は？",
+            session_id="test\x00-session",
+            metadata={"emotion": "curious\x00"},
+        )
+
+        call_args = mock_table.insert.call_args[0][0]
+        assert call_args["value"]["content"] == "営業時間は？"
+        assert call_args["value"]["sessionId"] == "test-session"
+        assert call_args["value"]["emotion"] == "curious"
+
+    @pytest.mark.asyncio
     async def test_store_message_without_supabase(self):
         """Supabaseなしでのメッセージ保存（スキップされる）"""
         helper = SimplifiedMemoryHelper()

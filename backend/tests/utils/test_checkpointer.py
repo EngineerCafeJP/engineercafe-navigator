@@ -92,6 +92,101 @@ class TestCheckpointerFactory:
 
 class TestResilientAsyncPostgresSaver:
     @pytest.mark.asyncio
+    async def test_aget_tuple_strips_postgres_nul_chars_before_read(self):
+        saver = checkpointer.ResilientAsyncPostgresSaver(
+            factory=MagicMock(),
+            pool=MagicMock(),
+        )
+        saver._run_with_connection_retry = AsyncMock(return_value={"ok": True})
+
+        await saver.aget_tuple({"configurable": {"thread_id": "session\x00-1"}})
+
+        args = saver._run_with_connection_retry.await_args.args
+        assert args[2] == {"configurable": {"thread_id": "session-1"}}
+
+    @pytest.mark.asyncio
+    async def test_aput_strips_postgres_nul_chars_before_write(self):
+        saver = checkpointer.ResilientAsyncPostgresSaver(
+            factory=MagicMock(),
+            pool=MagicMock(),
+        )
+        saver._run_with_connection_retry = AsyncMock(return_value={"ok": True})
+
+        await saver.aput(
+            {"configurable": {"thread_id": "session\x00-1"}},
+            {"channel_values": {"messages": ["hello\x00"]}},
+            {"source": "workflow\x00"},
+            {"channel\x00": "v\x001"},
+        )
+
+        args = saver._run_with_connection_retry.await_args.args
+        assert args[2] == {"configurable": {"thread_id": "session-1"}}
+        assert args[3] == {"channel_values": {"messages": ["hello"]}}
+        assert args[4] == {"source": "workflow"}
+        assert args[5] == {"channel": "v1"}
+
+    @pytest.mark.asyncio
+    async def test_aput_writes_strips_postgres_nul_chars_before_write(self):
+        saver = checkpointer.ResilientAsyncPostgresSaver(
+            factory=MagicMock(),
+            pool=MagicMock(),
+        )
+        saver._run_with_connection_retry = AsyncMock(return_value=None)
+
+        await saver.aput_writes(
+            {"configurable": {"thread_id": "session\x00-1"}},
+            [("answer", "ok\x00")],
+            "task\x00",
+            "path\x00",
+        )
+
+        args = saver._run_with_connection_retry.await_args.args
+        assert args[2] == {"configurable": {"thread_id": "session-1"}}
+        assert args[3] == [("answer", "ok")]
+        assert args[4] == "task"
+        assert args[5] == "path"
+
+    @pytest.mark.asyncio
+    async def test_alist_strips_postgres_nul_chars_before_read(self):
+        saver = checkpointer.ResilientAsyncPostgresSaver(
+            factory=MagicMock(),
+            pool=MagicMock(),
+        )
+
+        async def mock_alist(_self, config, *, filter=None, before=None, limit=None):
+            assert config == {"configurable": {"thread_id": "session-1"}}
+            assert filter == {"source": "workflow"}
+            assert before == {"configurable": {"checkpoint_id": "checkpoint-1"}}
+            assert limit == 1
+            yield {"checkpoint_id": "one"}
+
+        with patch.object(checkpointer.AsyncPostgresSaver, "alist", mock_alist):
+            result = [
+                item
+                async for item in saver.alist(
+                    {"configurable": {"thread_id": "session\x00-1"}},
+                    filter={"source": "workflow\x00"},
+                    before={"configurable": {"checkpoint_id": "checkpoint\x00-1"}},
+                    limit=1,
+                )
+            ]
+
+        assert result == [{"checkpoint_id": "one"}]
+
+    @pytest.mark.asyncio
+    async def test_adelete_thread_strips_postgres_nul_chars(self):
+        saver = checkpointer.ResilientAsyncPostgresSaver(
+            factory=MagicMock(),
+            pool=MagicMock(),
+        )
+        saver._run_with_connection_retry = AsyncMock(return_value=None)
+
+        await saver.adelete_thread("session\x00-1")
+
+        args = saver._run_with_connection_retry.await_args.args
+        assert args[2] == "session-1"
+
+    @pytest.mark.asyncio
     async def test_alist_retries_after_stale_connection(self):
         initial_pool = MagicMock()
         initial_pool.close = AsyncMock()
