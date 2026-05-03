@@ -400,14 +400,15 @@ class TestBusinessInfoAgent:
             "ja",
         )
         assert skill_change is not None
-        assert "スキルチェンジ相談は可能" in skill_change["answer"]
+        assert "スキルチェンジ支援" in skill_change["answer"]
         assert "相談会" in skill_change["answer"]
 
     def test_alpha_c127_reception_welcome_canonical(self):
         """gt-081/082/085: 初回・再訪ウェルカムを固定する"""
         first_visit = self.agent._get_canonical_response("初めて来ました", "reception", "ja")
         assert first_visit is not None
-        assert "ようこそ" in first_visit["answer"]
+        assert "エンジニアカフェへようこそ" in first_visit["answer"]
+        assert "初めてのご利用" in first_visit["answer"]
         assert "1階受付" in first_visit["answer"]
         assert "利用登録手続き" in first_visit["answer"]
 
@@ -415,7 +416,8 @@ class TestBusinessInfoAgent:
             "前にも来たことがあります", "reception", "ja"
         )
         assert returning is not None
-        assert "またのご来館ありがとうございます" in returning["answer"]
+        assert "おかえりなさい" in returning["answer"]
+        assert "エンジニアカフェへようこそ" in returning["answer"]
         assert "チェックイン" in returning["answer"]
         assert "受付カード" in returning["answer"]
 

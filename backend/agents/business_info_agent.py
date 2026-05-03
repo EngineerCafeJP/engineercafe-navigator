@@ -474,9 +474,9 @@ Information: {context}
             if self._asks_skill_change(normalized):
                 answers = {
                     "ja": (
-                        "[relaxed]スキルチェンジ相談は可能です。コミュニティマネージャーが"
-                        "転職、学習方針、キャリアの整理をサポートします。定期的に"
-                        "スキルチェンジ相談会も開催されています。相談受付は13:00〜21:00です。"
+                        "[relaxed]はい、コミュニティマネージャーがスキルチェンジ支援に"
+                        "対応しています。未経験からエンジニアになりたい社会人向けの"
+                        "スキルチェンジ相談会も定期開催しています。"
                     )
                 }
                 return self._canonical_result(answers.get(language, answers["ja"]), request_type)
@@ -683,10 +683,9 @@ Information: {context}
         if self._asks_first_visit_registration(normalized, request_type):
             answers = {
                 "ja": (
-                    "[happy]ようこそ、初めてのご来館ですね。まず1階受付で"
-                    "利用登録手続きをお願いします。登録は無料で、受付で案内する"
-                    "Webフォームに入力し、所要時間は約5〜10分です。"
-                    "スタッフが案内しますので、そのまま受付にお声がけください。"
+                    "[happy]エンジニアカフェへようこそ！初めてのご利用ですね。"
+                    "まず1階受付で利用登録手続きをお願いします。登録は無料で、"
+                    "5〜10分ほどで完了します。"
                 ),
                 "en": (
                     "[relaxed]Register at reception on arrival. Ask staff for assistance. "
@@ -709,9 +708,9 @@ Information: {context}
         if self._asks_returning_visit(normalized, request_type):
             answers = {
                 "ja": (
-                    "[happy]またのご来館ありがとうございます。前にも来たことがある方も、"
+                    "[happy]またのご来館ありがとうございます。おかえりなさい！"
+                    "エンジニアカフェへようこそ。前にも来たことがある方も、"
                     "本日は1階受付でチェックインして受付カードを受け取ってください。"
-                    "その後、コワーキングスペースを無料で利用できます。"
                 ),
                 "en": (
                     "[relaxed]Welcome back. If you have visited before, please still "
