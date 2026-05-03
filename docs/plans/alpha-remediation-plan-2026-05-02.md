@@ -30,7 +30,7 @@ Latest deployed verification:
 - C-127 result after #692: failure, `alpha-127` requested `127`, evaluated `35`, collection errors `92`
 - PR #695 merge SHA: `ed25199e4c7104ac0f6e2f027c4fdadd72280182`
 - PR #699/#700/#701/#702/#703 are merged for C source routing, Welcome guard, C-127 coverage, log hygiene, and STT warmup
-- PR #705/#707/#709 are merged; voice timeout / mobile audio proof remains open
+- PR #705/#707/#709 are merged; #696 is closed after live proof, and #697/#698 mobile audio proof remains open
 - Full alpha-live-verification run `25272361091` is in progress with `suites=all`, `c_ragas_suite=alpha-127`
 - Q targeted run before #693: `25269072919` failed with `23 PASS / 0 WARN / 2 FAIL`
 - PR #693 merge SHA: `14cb8e5b3c4f9711a77c634d3db80f8bf4f80efd`; post-#693 Q proof is included in run `25272361091`
@@ -118,11 +118,11 @@ Tasks:
 
 ### #696 / #697 / #698 voice and mobile playback implementation
 
-Status: implemented, proof pending.
+Status: #696 closed after live proof; #697/#698 implemented, device proof pending.
 
 - PR #705/#709 align Vercel maxDuration, voice/filler proxy timeout, controlled 504 UX, and Cloud Run deploy guard.
 - PR #707 keeps the iOS gesture-unlocked AudioContext path and adds Android large-audio HTML playback fallback.
-- #696/#697/#698 remain open until live logs and target-device proof are attached.
+- #697/#698 remain open until target-device proof is attached. #696 timeout regression remains covered by #643 full-run evidence.
 
 ### #658 STT long-tail latency
 

@@ -179,7 +179,7 @@ coverage, not provider configuration.
 - #583: C/RAGAS gate now has `c-127`, and PR #692 fixed manifest accounting. Post-#692 run
   `25270459825` still evaluated only `35/127` because live `/api/chat` returned 92 `429` collection
   errors. PR #695/#701 are merged; full run `25272361091` is the current proof attempt.
-- #696: PR #705/#709 are merged and deployed for voice backend timeout / Vercel budget; live proof is pending.
+- #696: PR #705/#709 are merged and deployed for voice backend timeout / Vercel budget; focused filler proof plus V/STT/A live proof are attached, and the issue is closed.
 - #697: PR #707 is merged for iOS delayed TTS playback; iPad/iPhone Safari proof is pending.
 - #643 / #612: umbrella issues remain open until the alpha gate is green.
 - #611 / #584 / #585: fast first-response, edge/failure tolerance, and 2h kiosk soak still need final proof.
@@ -225,7 +225,7 @@ Observed impact:
 1. Watch full run `25272361091`: prove SHA match, collect artifacts, and decide GO / targeted reruns.
 2. C-127: prove `requested=127`, `evaluated=127`, `collection_errors=0`.
 3. Q: prove #653 has `0 FAIL`.
-4. #696/#697/#698: collect Cloud Run/Vercel logs and real-device proof.
+4. #697/#698: collect real-device proof.
 5. #672: triage C answer/source quality only after C-127 collection completes.
 6. #670: verify full C/Q telemetry and runtime with the current artifact split.
 
