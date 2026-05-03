@@ -1,7 +1,8 @@
 # Alpha Remediation Plan 2026-05-02
 
 This is the execution plan for the implementation sessions after the 2026-05-02 alpha live
-verification run. It includes the 2026-05-03 remediation status after PR #674, #675, and #676.
+verification run. It includes the 2026-05-03 remediation status through PR #709 and the
+SHA-matched full alpha-live-verification run `25272361091`.
 
 ## Current State
 
@@ -13,25 +14,41 @@ The workflow infrastructure is now complete enough to run targeted alpha gates e
 - Compact reports and failure-oriented heavy artifacts are split.
 - RAGAS provider/model/case progress telemetry is emitted.
 - B routing / slide live smoke is green on deployed staging.
+- Voice backend timeout budget is aligned across Vercel proxy, Next.js routes, and Cloud Run deploy guard.
+- iOS delayed TTS and Android large-audio playback have product-side fixes merged.
 
 The product is still **NO-GO** for alpha because there is no latest `suites=all` green proof.
 The C-127 manifest accounting defect is fixed by PR #692, but post-#692 validation exposed a
-live `/api/chat` 429 collection blocker.
+live `/api/chat` 429 collection blocker. A new SHA-matched full run is in progress.
 
 Latest deployed verification:
 
-- backend deploy SHA: `d1280aa64643aae7b22df875ee22f13cbfe294a2`
-- Cloud Run revision: `engineer-cafe-backend-00157-b6c`
+- backend deploy SHA: `6ce1ac81983c7ae53ddfdfc58eba1ee043a83fa8`
+- Cloud Run revision: `engineer-cafe-backend-00162-mlr`
 - PR #692 merge SHA: `d74264e808e9b2a0244d3a1a9e5dfe12671530ea`
 - C-127 run after #692: `25270459825`
 - C-127 result after #692: failure, `alpha-127` requested `127`, evaluated `35`, collection errors `92`
-- PR #695 merge SHA: `ed25199e4c7104ac0f6e2f027c4fdadd72280182`; post-#695 C-127 rerun pending
+- PR #695 merge SHA: `ed25199e4c7104ac0f6e2f027c4fdadd72280182`
+- PR #699/#700/#701/#702/#703 are merged for C source routing, Welcome guard, C-127 coverage, log hygiene, and STT warmup
+- PR #705/#707/#709 are merged; voice timeout / mobile audio proof remains open
+- Full alpha-live-verification run `25272361091` is in progress with `suites=all`, `c_ragas_suite=alpha-127`
 - Q targeted run before #693: `25269072919` failed with `23 PASS / 0 WARN / 2 FAIL`
-- PR #693 merge SHA: `14cb8e5b3c4f9711a77c634d3db80f8bf4f80efd`; post-#693 Q rerun pending
+- PR #693 merge SHA: `14cb8e5b3c4f9711a77c634d3db80f8bf4f80efd`; post-#693 Q proof is included in run `25272361091`
 
 ## Implementation Order
 
-### 1. #583 / #694 C-127 live collection completion
+### 1. Watch full run `25272361091`
+
+Goal: use the first post-#709 full run as the current alpha gate proof attempt.
+
+Tasks:
+
+- Confirm SHA match against Cloud Run image `6ce1ac81983c7ae53ddfdfc58eba1ee043a83fa8`.
+- Collect the compact report artifact and workflow summary.
+- If C-127 or Q still fails, split only the failing area into targeted reruns.
+- Do not close #643/#612 until this run is green or an explicit waiver/demotion is recorded.
+
+### 2. #583 / #694 C-127 live collection completion
 
 Goal: make C-127 collect and evaluate all 127 selected manifest cases through live `/api/chat`.
 
@@ -43,16 +60,16 @@ Status:
 - PR #692 fixed manifest accounting: post-#692 run `25270459825` reports `requested=127`.
 - The same run evaluated only `35/127` because live `/api/chat` returned `92` `429 Too Many Requests`
   collection errors.
-- PR #695 is merged with C-127 pacing / 429 retry and compact artifact polish, but live proof is pending.
+- PR #695 is merged with C-127 pacing / 429 retry, and PR #701 adds coverage summary polish, but live proof is pending.
 
 Tasks:
 
-- Re-run `suites=c-127` after PR #695 is deployed or explicitly pass the current deployed backend SHA
-  if the merge is harness-only.
+- Use run `25272361091` as the current C-127 proof attempt. If it fails, re-run only `suites=c-127`
+  against the deployed SHA or the next targeted fix SHA.
 - Require `suite_coverage.requested_total_cases=127`, `evaluated=127`, and `collection_errors=0`.
 - Only interpret #672 C answer/source metrics after collection completes.
 
-### 2. #653 / #672 answer quality
+### 3. #653 / #672 answer quality
 
 Goal: remove current Q/C answer-quality failures without masking real product issues.
 
@@ -66,7 +83,7 @@ Latest Q run `25269072919` improved from 3 failures to 2 failures:
 - `Q-BIZ-EN-003`: route OK, sources OK, missing expected fact `reservation`.
 - `Q-DAILY-JA-001`: route OK, answer OK, latency `2205ms`.
 - `Q-EVT-EN-001` now passes.
-- PR #693 is merged for the two remaining failures; post-deploy `suites=q` proof is pending.
+- PR #693 is merged for the two remaining failures; proof is pending in the current full run.
 
 Current C/RAGAS direct OpenAI C-127 status:
 
@@ -76,13 +93,13 @@ Current C/RAGAS direct OpenAI C-127 status:
 
 Tasks:
 
-- Re-run `q` after PR #693 and close #653 only if the Q suite has `0 FAIL`.
-- Re-run `c-127` after PR #695 and only then read the report artifacts for exact expected facts and actual answers.
+- Read Q outcome from run `25272361091` and close #653 only if the Q suite has `0 FAIL`.
+- Read C-127 outcome from run `25272361091` and only then inspect report artifacts for exact expected facts and actual answers.
 - Decide whether each failure is response generation, source retrieval, ground truth, or threshold drift.
 - Fix the smallest product-side issue first; only adjust tests when the expected answer is wrong.
 - Re-run `q` and `c`.
 
-### 3. #670 RAGAS operational closeout
+### 4. #670 RAGAS operational closeout
 
 Goal: make slow or failing C/Q gates diagnosable in GitHub Actions artifacts.
 
@@ -98,6 +115,14 @@ Tasks:
 - Close #670 only after one full C/Q operational proof.
 
 ## Completed Items
+
+### #696 / #697 / #698 voice and mobile playback implementation
+
+Status: implemented, proof pending.
+
+- PR #705/#709 align Vercel maxDuration, voice/filler proxy timeout, controlled 504 UX, and Cloud Run deploy guard.
+- PR #707 keeps the iOS gesture-unlocked AudioContext path and adds Android large-audio HTML playback fallback.
+- #696/#697/#698 remain open until live logs and target-device proof are attached.
 
 ### #658 STT long-tail latency
 

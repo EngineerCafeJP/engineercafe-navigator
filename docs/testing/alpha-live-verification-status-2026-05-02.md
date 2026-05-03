@@ -1,7 +1,7 @@
 # Alpha Live Verification Status 2026-05-02
 
 このドキュメントは、2026-05-02 JST 時点の alpha live verification 正本に、2026-05-03 JST
-の PR #674/#675/#676 remediation 結果を追記したものです。古い 2026-04-25 status は履歴として残しますが、
+の PR #674/#675/#676/#692/#693/#695/#699/#700/#701/#702/#703/#705/#707/#709 remediation 結果を追記したものです。古い 2026-04-25 status は履歴として残しますが、
 次の実装判断ではこのファイルを優先します。
 
 ## 結論
@@ -12,8 +12,24 @@
 実行経路は成立しました。一方で、alpha GO を止める blocker がまだ残っています。
 
 2026-05-03 時点で、B routing / slide live smoke、Welcome UI、artifact split、Supabase UUID
-log hygiene、Cloud Run Qwen runtime dependency、STT/voice preflight、C-127 manifest accounting は
-解消済みです。残る P0 は C-127 live collection completion と live-only proof 群です。
+log hygiene、Cloud Run Qwen runtime dependency、STT/voice preflight、C-127 manifest accounting、
+Welcome camera-flow guard、C-127 coverage summary、STT warmup before voice live、
+voice timeout budget、mobile audio fallback は実装修正済みです。残る P0 は full suite run
+`25272361091` の outcome、C-127 live collection completion、voice/device proof、live-only proof 群です。
+
+## 2026-05-03 Post-#709 Full Suite Dispatch
+
+- Run: <https://github.com/EngineerCafeJP/engineercafe-navigator/actions/runs/25272361091>
+- Suites: `all`
+- C/RAGAS suite: `alpha-127`
+- Expected backend SHA: `6ce1ac81983c7ae53ddfdfc58eba1ee043a83fa8`
+- Cloud Run revision before dispatch: `engineer-cafe-backend-00162-mlr`
+- Image:
+  `asia-northeast1-docker.pkg.dev/aipartner-426616/cloud-run-source-deploy/engineer-cafe-backend:6ce1ac81983c7ae53ddfdfc58eba1ee043a83fa8`
+- Health: `/health` OK
+- Status at doc update: in progress
+
+This run supersedes cancelled run `25271271437` as the current alpha gate proof attempt.
 
 ## 2026-05-02 Baseline Deploy / SHA Sync
 
@@ -162,12 +178,15 @@ coverage, not provider configuration.
 
 - #583: C/RAGAS gate now has `c-127`, and PR #692 fixed manifest accounting. Post-#692 run
   `25270459825` still evaluated only `35/127` because live `/api/chat` returned 92 `429` collection
-  errors. PR #695 is merged; post-#695 rerun is pending.
+  errors. PR #695/#701 are merged; full run `25272361091` is the current proof attempt.
+- #696: PR #705/#709 are merged and deployed for voice backend timeout / Vercel budget; live proof is pending.
+- #697: PR #707 is merged for iOS delayed TTS playback; iPad/iPhone Safari proof is pending.
 - #643 / #612: umbrella issues remain open until the alpha gate is green.
 - #611 / #584 / #585: fast first-response, edge/failure tolerance, and 2h kiosk soak still need final proof.
 
 ### P1
 
+- #698: PR #707 is merged for Android large-audio playback; Android phone proof is pending.
 - #672: Direct OpenAI C/RAGAS still misses answer quality targets, but the latest post-#692 C metrics
   are not release-proof because C-127 collection failed.
   - JA: `0.585`, target `0.85`
@@ -203,11 +222,12 @@ Observed impact:
 
 ## Next Implementation Order
 
-1. Post-#695 `suites=c-127`: prove `requested=127`, `evaluated=127`, `collection_errors=0`.
-2. Post-#693 `suites=q`: prove #653 has `0 FAIL`.
-3. #672: triage C answer/source quality only after C-127 collection completes.
-4. #670: verify full C/Q telemetry and runtime with the current artifact split.
-5. #611 / #584 / #585: collect or split the remaining live-only alpha proof.
+1. Watch full run `25272361091`: prove SHA match, collect artifacts, and decide GO / targeted reruns.
+2. C-127: prove `requested=127`, `evaluated=127`, `collection_errors=0`.
+3. Q: prove #653 has `0 FAIL`.
+4. #696/#697/#698: collect Cloud Run/Vercel logs and real-device proof.
+5. #672: triage C answer/source quality only after C-127 collection completes.
+6. #670: verify full C/Q telemetry and runtime with the current artifact split.
 
 ## Useful Commands
 

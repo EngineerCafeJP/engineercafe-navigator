@@ -48,6 +48,13 @@ Current confirmed target:
   `google_calendar` / `connpass` も許容します。緊急・受付・farewell の即時応答は source なしでも source gate 上は許容し、
   回答品質は `answer_correctness` 側で判定します。
 - GitHub step conclusion だけで suite の成否を判断しないでください。`continue-on-error` のため、summary / artifact の suite outcome を正本にします。
+- 2026-05-03 の current proof run は `25272361091` です。`suites=all`, `c_ragas_suite=alpha-127`,
+  `expected_backend_sha=6ce1ac81983c7ae53ddfdfc58eba1ee043a83fa8` で dispatch 済みです。
+- Same-day harness hardening from PR #700/#701/#702/#703 is included in the current develop baseline:
+  Welcome camera-flow guard, C-127 coverage summary, alpha Cloud Run log hygiene, and STT warmup before voice live.
+- Voice/device GO proof after #705/#707/#709 must include Cloud Run/Vercel evidence for `/api/voice`
+  and `/api/voice/filler` timeout behavior (#696), iPad/iPhone Safari delayed TTS playback (#697),
+  and Android phone >1MB audio playback without `decodeAudioData` hang (#698).
 - Harness-only workflow/script rerun では、backend deploy が意図的に変わっていない場合だけ
   `require_deployed_sha_match=true` のまま `expected_backend_sha=<Cloud Run image tag の 40-char commit SHA>` を渡します。
   `expected_backend_sha` は full SHA のみ許容されます。

@@ -6,7 +6,7 @@ Last updated: 2026-05-03
 
 このページは、`develop` 上の現行コード、2026-04-19 の live audit、2026-04-29 の実機音声 UX 確認、
 2026-05-02 の alpha-live-verification full run / targeted C run、2026-05-03 の PR #674/#675/#676
-deploy verification、PR #692/#693/#695 merge 後の alpha issue 状態をもとに更新しています。
+deploy verification、PR #692/#693/#695/#699/#700/#701/#702/#703/#705/#707/#709 merge 後の alpha issue 状態をもとに更新しています。
 
 確認元:
 
@@ -16,6 +16,8 @@ deploy verification、PR #692/#693/#695 merge 後の alpha issue 状態をもと
 - 2026-05-02 JST の `alpha-live-verification` run `25244933308` / `25247945549`
 - 2026-05-03 JST の targeted B run `25254789937` と Cloud Run revision `engineer-cafe-backend-00148-82c`
 - 2026-05-03 JST の post-#692 C-127 run `25270459825`
+- 2026-05-03 JST の post-#709 Cloud Run deploy revision `engineer-cafe-backend-00162-mlr`
+- 2026-05-03 JST の SHA-matched full alpha-live-verification run `25272361091`
 - 現在 open の GitHub Issue
 
 Supabase については、CLI で linked project の確認まではできましたが、このセッションでは recent runtime log
@@ -29,16 +31,19 @@ Supabase については、CLI で linked project の確認まではできまし
 - PR #674/#675/#676 により、B routing / slide live smoke、Welcome UI、compact artifacts、Supabase UUID log hygiene は解消済み
 - PR #692 により C-127 manifest accounting は解消済み。run `25270459825` で `requested=127` になったが、
   live `/api/chat` 429 により `evaluated=35`, `collection_errors=92` だった
-- PR #693 は Q quality 修正、PR #695 は C-127 pacing / retry 修正として merge 済み。どちらも post-deploy live rerun 待ち
+- PR #693 は Q quality 修正、PR #695/#701 は C-127 pacing / coverage 修正、PR #699/#700/#702/#703 は C source / live harness / log hygiene hardening として merge 済み
+- PR #705/#709 は voice backend timeout / Vercel budget 修正、PR #707 は iOS/Android mobile audio 修正として merge 済み
+- 最新 full suite run `25272361091` は Cloud Run revision `engineer-cafe-backend-00162-mlr` / SHA `6ce1ac81983c7ae53ddfdfc58eba1ee043a83fa8` で実行中
 - ただし latest `suites=all` の green proof はまだなく、alpha release はまだ GO できない
 - 現在の主リスクは「未実装の基本機能」ではなく「会話 UX の基本品質、実測 latency、route 整合性、評価 gate の透明性」
 
-特に優先度が高いのは次の 4 点です。
+特に優先度が高いのは次の 5 点です。
 
-1. C-127 が live `/api/chat` 429 なしで `127/127` collect/evaluate できることの証明
-2. Q suite の残 failure が #693 後に解消されたことの証明
-3. C-127 完走後の answer/source quality 判断
-4. RAGAS full-run speed / telemetry の operational closeout
+1. 最新 full suite run `25272361091` の outcome / artifact を確認する
+2. C-127 が live `/api/chat` 429 なしで `127/127` collect/evaluate できることの証明
+3. Q suite の残 failure が #693 後に解消されたことの証明
+4. #696/#697/#698 の voice timeout / mobile playback live-device proof
+5. RAGAS full-run speed / telemetry の operational closeout
 
 現行の実装判断は [ADR 018](adr/018-alpha-fast-response-and-assistant-profile-routing.md) と
 [Alpha Remediation Plan 2026-05-02](plans/alpha-remediation-plan-2026-05-02.md) を優先する。
@@ -47,21 +52,23 @@ Supabase については、CLI で linked project の確認まではできまし
 
 最新の deployed staging / harness 状態:
 
-- develop SHA: `d789a2cd899779423947c40a3d65e19382f52d30`
-- Cloud Run revision: `engineer-cafe-backend-00148-82c`
+- develop SHA: `6ce1ac81983c7ae53ddfdfc58eba1ee043a83fa8`
+- Cloud Run revision: `engineer-cafe-backend-00162-mlr`
 - Traffic: latest revision 100%
 - Health: `/health` OK
-- develop CI: `25253946681`, success including backend-test, backend-test-ragas, backend-deploy-staging smoke
+- develop CI after PR #709: `25271932807`, success including frontend voice-live and `ci-success`
 - Targeted B run: `25254789937`
 - B result: `64 passed, 0 warned, 0 failed`
 - B1-BIZ-003: `土日祝日も利用できますか。` -> `business_info`, `1258ms`
 - Cloud Logging UUID / reception persistence errors during B run window: 0 rows
 - PR #692 merge SHA: `d74264e808e9b2a0244d3a1a9e5dfe12671530ea`
 - Post-#692 C-127 run: `25270459825`, `requested=127`, `evaluated=35`, `collection_errors=92`
-- PR #693 merge SHA: `14cb8e5b3c4f9711a77c634d3db80f8bf4f80efd`; Q rerun pending
-- PR #695 merge SHA: `ed25199e4c7104ac0f6e2f027c4fdadd72280182`; post-#695 C-127 rerun pending
+- PR #693 merge SHA: `14cb8e5b3c4f9711a77c634d3db80f8bf4f80efd`
+- PR #695 merge SHA: `ed25199e4c7104ac0f6e2f027c4fdadd72280182`
+- PR #699/#700/#701/#702/#703/#705/#707/#709 are all included in deployed Cloud Run SHA `6ce1ac81983c7ae53ddfdfc58eba1ee043a83fa8`
+- Full alpha-live-verification run `25272361091` is in progress with `suites=all`, `c_ragas_suite=alpha-127`, and SHA match required
 
-Resolved in PR #674/#675/#676:
+Resolved or implemented in the 2026-05-03 remediation pass:
 
 - #659: B routing / slide live smoke
 - #660: Welcome UI live scenario
@@ -70,13 +77,19 @@ Resolved in PR #674/#675/#676:
 - #671: RAGAS provider secret issue
 - #691: C-127 manifest accounting
 - #694: C-127 `/api/chat` 429 collection blocker implementation merged in PR #695; live proof pending
+- #700: Welcome camera-flow guard
+- #702: alpha Cloud Run log-noise reduction
+- #703: STT warmup before voice live
 
 Still blocking or important:
 
-- #583: C-127 completion remains P0 until post-#695 run collects/evaluates `127/127` with `collection_errors=0`.
+- #583: C-127 completion remains P0 until post-#695/#701 run collects/evaluates `127/127` with `collection_errors=0`.
+- #696: voice backend timeout / warmup UX remains P0 until post-#705/#709 live proof shows no silent fail path.
+- #697: iOS delayed TTS playback remains P0 until post-#707 iPad/iPhone Safari proof.
+- #698: Android large-audio playback remains P1 until post-#707 Android phone proof or explicit alpha demotion.
 - #653: Q quality remains P1 until post-#693 `suites=q` rerun has 0 failures.
 - #672: C answer/source quality remains P1, but current C metrics are not release-proof until C-127 collection completes.
-- #670: RAGAS telemetry is implemented, but post-#695 C-127 artifact still needs operational proof before close.
+- #670: RAGAS telemetry is implemented, but post-#695/#701 C-127 artifact still needs operational proof before close.
 
 ## 2026-05-02 Alpha Live Verification Snapshot
 
