@@ -632,10 +632,39 @@ CHILDREN_NOISE_KEYWORDS = [
     "noise",
 ]
 
+TEMPORARY_EXIT_KEYWORDS = [
+    "一時外出",
+    "途中外出",
+    "外出のルール",
+    "出入り",
+    "再入館",
+    "再入場",
+    "離席",
+    "15分以内",
+    "15分以上",
+]
+
+PET_POLICY_KEYWORDS = [
+    "ペット",
+    "動物",
+    "補助犬",
+    "盲導犬",
+    "聴導犬",
+    "介助犬",
+    "pet",
+    "pets",
+    "animal",
+    "service animal",
+    "service dog",
+    "guide dog",
+]
+
 POLICY_KEYWORDS = [
     *ACCESSIBILITY_KEYWORDS,
     *PHOTOGRAPHY_KEYWORDS,
     *CHILDREN_NOISE_KEYWORDS,
+    *TEMPORARY_EXIT_KEYWORDS,
+    *PET_POLICY_KEYWORDS,
 ]
 
 
@@ -846,6 +875,10 @@ def extract_request_type(query: str) -> Optional[str]:
         return "photography"
     if match_keywords(lower_query, CHILDREN_NOISE_KEYWORDS):
         return "children_noise"
+    if match_keywords(lower_query, TEMPORARY_EXIT_KEYWORDS):
+        return "temporary_exit"
+    if match_keywords(lower_query, PET_POLICY_KEYWORDS):
+        return "pets"
     if match_keywords(lower_query, FLOOR_LAYOUT_KEYWORDS):
         return "floor_layout"
     if match_keywords(lower_query, FACILITY_EQUIPMENT_KEYWORDS):

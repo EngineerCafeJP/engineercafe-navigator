@@ -318,6 +318,37 @@ class TestFacilityAgent:
 
         assert response is None
 
+    def test_temporary_exit_canonical_response_japanese(self):
+        """gt-038: 一時外出ルールは受付カード保持/返却条件まで固定する"""
+        agent = FacilityAgent()
+        response = agent._get_canonical_response("一時外出のルールは？", "temporary_exit", "ja")
+
+        assert response is not None
+        assert "15分以内" in response["answer"]
+        assert "受付カード" in response["answer"]
+        assert "15分以上" in response["answer"]
+        assert "退館手続き" in response["answer"]
+        assert response["metadata"]["sources"] == ["enhanced_rag"]
+
+    def test_pet_policy_canonical_response_japanese(self):
+        """gt-057: 補助犬は可、それ以外のペットはテラス含め不可に固定する"""
+        agent = FacilityAgent()
+        response = agent._get_canonical_response("ペットを連れて入れますか？", "pets", "ja")
+
+        assert response is not None
+        assert "補助犬" in response["answer"]
+        assert "同伴できます" in response["answer"]
+        assert "それ以外のペット" in response["answer"]
+        assert "テラス" in response["answer"]
+        assert "同伴できません" in response["answer"]
+        assert response["metadata"]["sources"] == ["enhanced_rag"]
+
+    def test_pet_policy_uses_policy_rag_category_when_not_canonical(self):
+        """ペット系 request_type は policy カテゴリのKBを検索する"""
+        agent = FacilityAgent()
+
+        assert agent._map_request_type_to_rag_category("pets") == "policy"
+
     @pytest.mark.asyncio
     async def test_smoking_query_uses_smoking_rag_category(self):
         """喫煙ポリシーはfacility-infoではなくsmokingカテゴリで検索する"""

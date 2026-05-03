@@ -74,6 +74,19 @@ class TestNewRoutingKeywords:
         """飲食キーワードがfood_drinkにルーティングされることを確認"""
         assert extract_request_type(query) == expected
 
+    @pytest.mark.parametrize(
+        "query,expected",
+        [
+            ("一時外出のルールは？", "temporary_exit"),
+            ("15分以上離席するときはどうすればいいですか？", "temporary_exit"),
+            ("ペットを連れて入れますか？", "pets"),
+            ("盲導犬は同伴できますか？", "pets"),
+        ],
+    )
+    def test_live_ragas_policy_keywords(self, query, expected):
+        """C/RAGAS live source guard cases should have deterministic policy request types."""
+        assert extract_request_type(query) == expected
+
 
 class TestReceptionRouting:
     """受付キーワードルーティングテスト"""
