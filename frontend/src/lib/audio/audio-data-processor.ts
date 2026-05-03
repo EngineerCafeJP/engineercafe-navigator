@@ -31,6 +31,7 @@ export interface AudioProcessingResult<T = Blob> {
 export class AudioDataProcessor {
   private static readonly CHUNK_SIZE = 8192;
   private static readonly BASE64_PATTERN = /^[A-Za-z0-9+/]*={0,2}$/;
+  static readonly LARGE_AUDIO_FALLBACK_THRESHOLD_BYTES = 1024 * 1024;
   
   /**
    * Clean and validate base64 string
@@ -242,6 +243,27 @@ export class AudioDataProcessor {
     } catch (error) {
       return false;
     }
+  }
+
+  /**
+   * Estimate audio payload size without decoding the full base64 string.
+   */
+  static estimateAudioDataSize(data: string | ArrayBuffer | Blob): number {
+    if (data instanceof Blob) {
+      return data.size;
+    }
+
+    if (data instanceof ArrayBuffer) {
+      return data.byteLength;
+    }
+
+    if (data.startsWith('blob:') || data.startsWith('http')) {
+      return 0;
+    }
+
+    const cleaned = this.cleanBase64(data);
+    const padding = cleaned.endsWith('==') ? 2 : cleaned.endsWith('=') ? 1 : 0;
+    return Math.max(0, Math.floor((cleaned.length * 3) / 4) - padding);
   }
 
   /**

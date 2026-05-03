@@ -107,6 +107,7 @@ export class AudioPlaybackService {
       // Keep track of playback state for lip-sync
       let playbackStartTime = 0;
       let isPlaying = false;
+      let playbackMethod = 'web-audio';
 
       let lipSyncData: LipSyncData | null = null;
       const pre = options.precomputedLipSync;
@@ -185,7 +186,7 @@ export class AudioPlaybackService {
             options.onPlaybackEnd?.();
             
             // Resolve the Promise when audio playback ends
-            safeResolve({ success: true, method: 'web-audio' });
+            safeResolve({ success: true, method: playbackMethod });
           },
           onError: (error) => {
             const audioError = error instanceof AudioError
@@ -212,6 +213,7 @@ export class AudioPlaybackService {
               safeReject(audioError);
               return; // Early exit to prevent further processing
             }
+            playbackMethod = result.method || playbackMethod;
             // Don't resolve here - wait for onEnded callback
           })
           .catch((error) => {
@@ -243,10 +245,11 @@ export class AudioPlaybackService {
   ): Promise<AudioOperationResult> {
     // Create a Promise that resolves when audio playback is complete
     return new Promise<AudioOperationResult>((resolve, reject) => {
+      let playbackMethod = 'web-audio';
       const audioService = new MobileAudioService({
         volume,
         onEnded: () => {
-          resolve({ success: true, method: 'web-audio' });
+          resolve({ success: true, method: playbackMethod });
         },
         onError: (error) => {
           reject(error);
@@ -257,7 +260,9 @@ export class AudioPlaybackService {
       audioService.playAudio(audioData).then((result) => {
         if (!result.success) {
           reject(result.error!);
+          return;
         }
+        playbackMethod = result.method || playbackMethod;
         // Don't resolve here - wait for onEnded callback
       }).catch((error) => {
         const audioError = AudioError.fromError(error as Error, AudioErrorType.PLAYBACK_FAILED);

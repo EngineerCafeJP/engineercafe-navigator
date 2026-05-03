@@ -17,6 +17,8 @@ import {
 export interface MobileAudioOptions extends MobileAudioPlayerOptions {
   retryAttempts?: number;
   retryDelay?: number;
+  largeAudioThresholdBytes?: number;
+  decodeTimeoutMs?: number;
 }
 
 // Legacy type alias for backward compatibility
@@ -36,6 +38,9 @@ export class MobileAudioService {
     this.options = {
       retryAttempts: 3,
       retryDelay: 1000,
+      enableFallback: true,
+      preferredMethod: 'auto',
+      largeAudioThresholdBytes: AudioDataProcessor.LARGE_AUDIO_FALLBACK_THRESHOLD_BYTES,
       ...options
     };
     this.interactionManager = AudioInteractionManager.getInstance();
@@ -54,19 +59,32 @@ export class MobileAudioService {
   public async playAudio(audioData: AudioDataInput): Promise<AudioOperationResult> {
     try {
       const result = await this.withPlaybackStartTimeout(async () => {
-        if (DeviceDetector.isIOS()) {
+        if (this.shouldPreferHtmlAudio(audioData)) {
           const htmlAudioResult = await this.tryHtmlAudio(audioData);
           if (htmlAudioResult.success) {
+            return htmlAudioResult;
+          }
+
+          if (this.options.preferredMethod === 'html-audio') {
             return htmlAudioResult;
           }
 
           console.warn('[MOBILE-AUDIO] HTML audio fallback failed, retrying Web Audio:', htmlAudioResult.error);
         }
 
-        return this.tryWebAudio(audioData);
+        const webAudioResult = await this.tryWebAudio(audioData);
+        if (
+          !webAudioResult.success &&
+          this.options.enableFallback !== false &&
+          this.options.preferredMethod !== 'web-audio'
+        ) {
+          return this.tryHtmlAudio(audioData);
+        }
+
+        return webAudioResult;
       });
       if (result.success) {
-        this.currentMethod = (result.method as 'web-audio' | null) ?? 'web-audio';
+        this.currentMethod = (result.method as 'web-audio' | 'html-audio' | null) ?? 'web-audio';
         return result;
       }
       
@@ -84,10 +102,42 @@ export class MobileAudioService {
       const audioError = AudioError.fromError(error as Error, AudioErrorType.PLAYBACK_FAILED);
       return {
         success: false,
-        method: 'web-audio',
+        method: this.currentMethod ?? 'web-audio',
         error: audioError
       };
     }
+  }
+
+  private getAudioSize(audioData: AudioDataInput): number {
+    try {
+      return AudioDataProcessor.estimateAudioDataSize(audioData);
+    } catch (error) {
+      console.warn('[MOBILE-AUDIO] Failed to estimate audio size:', error);
+      return 0;
+    }
+  }
+
+  private shouldPreferHtmlAudio(audioData: AudioDataInput): boolean {
+    if (this.options.preferredMethod === 'html-audio') {
+      return true;
+    }
+
+    if (this.options.preferredMethod === 'web-audio' || this.options.enableFallback === false) {
+      return false;
+    }
+
+    if (DeviceDetector.isIOS()) {
+      return true;
+    }
+
+    const audioSize = this.getAudioSize(audioData);
+    const threshold = this.options.largeAudioThresholdBytes ?? AudioDataProcessor.LARGE_AUDIO_FALLBACK_THRESHOLD_BYTES;
+    const isLargeAudio = audioSize > threshold;
+    const isUrlString =
+      typeof audioData === 'string' &&
+      (audioData.startsWith('blob:') || audioData.startsWith('http'));
+
+    return DeviceDetector.isAndroid() && DeviceDetector.isMobile() && (isLargeAudio || isUrlString);
   }
 
   /**
@@ -161,10 +211,12 @@ export class MobileAudioService {
 
   private async tryHtmlAudio(audioData: AudioDataInput): Promise<AudioOperationResult> {
     try {
-      const audioBlob = await this.toAudioBlob(audioData);
       this.cleanupHtmlAudio();
 
-      const audioUrl = URL.createObjectURL(audioBlob);
+      const shouldReuseUrl =
+        typeof audioData === 'string' &&
+        (audioData.startsWith('blob:') || audioData.startsWith('http'));
+      const audioUrl = shouldReuseUrl ? audioData : URL.createObjectURL(await this.toAudioBlob(audioData));
       const audio = new Audio(audioUrl);
       audio.preload = 'auto';
       audio.volume = this.options.volume ?? 0.8;
@@ -193,7 +245,7 @@ export class MobileAudioService {
       const onError = () => {
         const audioError = new AudioError(
           AudioErrorType.PLAYBACK_FAILED,
-          'HTML audio playback failed on iOS',
+          'HTML audio playback failed on mobile',
         );
         this.options.onError?.(audioError);
         this.cleanupHtmlAudio();
@@ -212,7 +264,7 @@ export class MobileAudioService {
       };
 
       this.htmlAudioElement = audio;
-      this.htmlAudioUrl = audioUrl;
+      this.htmlAudioUrl = shouldReuseUrl ? null : audioUrl;
 
       await audio.play();
       emitPlay();
@@ -451,9 +503,9 @@ export class DeviceDetector {
       return 'web-audio';
     }
     
-    // Android generally works well with both, prefer Web Audio for consistency
+    // Android decodeAudioData can hang on large payloads; prefer HTML Audio.
     if (this.isAndroid()) {
-      return 'web-audio';
+      return 'html-audio';
     }
 
     // Desktop - either works, Web Audio preferred for advanced features
