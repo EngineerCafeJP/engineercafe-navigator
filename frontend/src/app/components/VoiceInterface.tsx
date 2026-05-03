@@ -10,6 +10,7 @@ import { cn } from '@/lib/cn';
 import { EmotionTagParser } from '@/lib/emotion-tag-parser';
 import { formatError } from '@/lib/error-messages';
 import { LipSyncAnalyzer, type LipSyncFrame } from '@/lib/lip-sync-analyzer';
+import { createVoiceFillerPlaybackGate } from '@/lib/voice-filler-playback';
 import { mergePlaybackMetadataWithTtsVrmControl } from '@/lib/voice/tts-vrm-metadata';
 import { preprocessTTS } from '@/utils/tts-preprocess';
 import { AlertCircle, Loader2, Mic, MicOff, Volume2, VolumeX, XCircle } from 'lucide-react';
@@ -565,6 +566,7 @@ export default function VoiceInterface({
     async (trimmed: string, abortController: AbortController) => {
       const signal = abortController.signal;
       const visitorId = ensureVisitorId();
+      const fillerGate = createVoiceFillerPlaybackGate(signal);
 
       cancelFastFiller();
       stopPlayback(false);
@@ -594,11 +596,7 @@ export default function VoiceInterface({
                   return;
                 }
                 const data = (await res.json()) as Record<string, unknown>;
-                const audio =
-                  typeof data.audioResponse === 'string' && data.audioResponse.length > 0
-                    ? data.audioResponse
-                    : null;
-                if (!audio || signal.aborted) {
+                if (!fillerGate.canEnqueue(data.audioResponse)) {
                   return;
                 }
                 const q = audioQueueRef.current;
@@ -610,7 +608,7 @@ export default function VoiceInterface({
                 q.add({
                   id: `filler-${Date.now()}`,
                   priority: 10,
-                  audioData: audio,
+                  audioData: data.audioResponse,
                 });
               } catch {
                 /* degrade silently */
@@ -682,6 +680,7 @@ export default function VoiceInterface({
           throw ttsError;
         }
 
+        fillerGate.close();
         // Filler runs in parallel; do not await — slow filler must not delay main TTS enqueue.
         void fillerTask.catch(() => {});
 
@@ -760,6 +759,7 @@ export default function VoiceInterface({
           }, 240);
         }
       } catch (voiceError) {
+        fillerGate.close();
         if (voiceError instanceof DOMException && voiceError.name === 'AbortError') {
           return;
         }
