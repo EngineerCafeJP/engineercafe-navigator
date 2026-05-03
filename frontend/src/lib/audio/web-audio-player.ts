@@ -29,9 +29,11 @@ export class WebAudioPlayer {
   private pauseTime = 0;
   private duration = 0;
   private options: AudioPlayerOptions;
+  private readonly sharedAudioContext: AudioContext | null;
 
-  constructor(options: AudioPlayerOptions = {}) {
+  constructor(options: AudioPlayerOptions = {}, audioContext?: AudioContext | null) {
     this.options = options;
+    this.sharedAudioContext = audioContext ?? null;
   }
 
   /**
@@ -56,10 +58,14 @@ export class WebAudioPlayer {
     }
 
     try {
-      // Use webkitAudioContext for Safari compatibility
-      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-      this.audioContext = new AudioContextClass();
-      registerAudioContextResumeOnInteraction(this.audioContext);
+      if (this.sharedAudioContext && this.sharedAudioContext.state !== 'closed') {
+        this.audioContext = this.sharedAudioContext;
+      } else {
+        // Use webkitAudioContext for Safari compatibility
+        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+        this.audioContext = new AudioContextClass();
+        registerAudioContextResumeOnInteraction(this.audioContext);
+      }
       await this.resumeContextIfNeeded();
 
       // Create gain node for volume control
@@ -354,7 +360,11 @@ export class WebAudioPlayer {
   public dispose(): void {
     this.stop();
     
-    if (this.audioContext && this.audioContext.state !== 'closed') {
+    if (
+      this.audioContext &&
+      this.audioContext !== this.sharedAudioContext &&
+      this.audioContext.state !== 'closed'
+    ) {
       this.audioContext.close();
     }
     this.audioContext = null;
