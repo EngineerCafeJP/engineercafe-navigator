@@ -4,6 +4,11 @@
 の PR #674/#675/#676/#692/#693/#695/#699/#700/#701/#702/#703/#705/#707/#709 remediation 結果を追記したものです。古い 2026-04-25 status は履歴として残しますが、
 次の実装判断ではこのファイルを優先します。
 
+> 2026-05-03 reset note: next implementation planning should now use
+> [Alpha Live Verification Status 2026-05-03](alpha-live-verification-status-2026-05-03.md)
+> and [Alpha Reset Plan 2026-05-03](../plans/alpha-reset-plan-2026-05-03.md). The sections below
+> that describe run `25272361091` as "in progress" are historical.
+
 ## 結論
 
 **NO-GO** です。
@@ -134,7 +139,8 @@ Resolved STT follow-up:
 
 - Earlier STT-only run after PR #674 deploy failed with p95/max `29217ms`.
 - A later `suites=stt,v` run `25258764528` passed on Cloud Run `engineer-cafe-backend-00153-r9r`.
-- #658 is closed.
+- At this historical point #658 was closed. It was reopened after run `25275030436` failed the
+  current-revision latency gate again; see the 2026-05-03 reset status.
 
 ### Full Suite
 
@@ -222,12 +228,12 @@ Observed impact:
 
 ## Next Implementation Order
 
-1. Watch full run `25272361091`: prove SHA match, collect artifacts, and decide GO / targeted reruns.
-2. C-127: prove `requested=127`, `evaluated=127`, `collection_errors=0`.
-3. Q: prove #653 has `0 FAIL`.
-4. #697/#698: collect real-device proof.
-5. #672: triage C answer/source quality only after C-127 collection completes.
-6. #670: verify full C/Q telemetry and runtime with the current artifact split.
+1. Use the 2026-05-03 reset status as the current source of truth.
+2. #658: fix STT current-revision latency and rerun `suites=stt,v`.
+3. #583/#672: fix C alpha-127 answer/source quality after run `25274709049` proved `127/127/127`.
+4. #697/#698/#585: collect real-device and onsite proof.
+5. #655/#716: resolve or explicitly accept memory WARN semantics.
+6. #717/#719/#670: close only with workflow/artifact proof.
 
 ## Useful Commands
 

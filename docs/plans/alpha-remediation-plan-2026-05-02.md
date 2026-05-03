@@ -4,6 +4,11 @@ This is the execution plan for the implementation sessions after the 2026-05-02 
 verification run. It includes the 2026-05-03 remediation status through PR #709 and the
 SHA-matched full alpha-live-verification run `25272361091`.
 
+> 2026-05-03 reset note: this plan is now historical for the long remediation sweep. Use
+> [Alpha Reset Plan 2026-05-03](alpha-reset-plan-2026-05-03.md) for the next implementation session.
+> The previous "watch full run" posture has been replaced by targeted STT, C/RAGAS, and device-proof
+> work.
+
 ## Current State
 
 The workflow infrastructure is now complete enough to run targeted alpha gates end to end:
@@ -31,11 +36,15 @@ Latest deployed verification:
 - PR #695 merge SHA: `ed25199e4c7104ac0f6e2f027c4fdadd72280182`
 - PR #699/#700/#701/#702/#703 are merged for C source routing, Welcome guard, C-127 coverage, log hygiene, and STT warmup
 - PR #705/#707/#709 are merged; #696 is closed after live proof, and #697/#698 mobile audio proof remains open
-- Full alpha-live-verification run `25272361091` is in progress with `suites=all`, `c_ragas_suite=alpha-127`
+- At this historical snapshot, full alpha-live-verification run `25272361091` had been dispatched with
+  `suites=all`, `c_ragas_suite=alpha-127`
 - Q targeted run before #693: `25269072919` failed with `23 PASS / 0 WARN / 2 FAIL`
 - PR #693 merge SHA: `14cb8e5b3c4f9711a77c634d3db80f8bf4f80efd`; post-#693 Q proof is included in run `25272361091`
 
 ## Implementation Order
+
+This section is superseded by [Alpha Reset Plan 2026-05-03](alpha-reset-plan-2026-05-03.md). It is
+kept for audit history only.
 
 ### 1. Watch full run `25272361091`
 
@@ -130,7 +139,8 @@ Status: completed and closed.
 
 - Current-revision scoping is implemented.
 - Historical risk reporting is separated from release gate reporting.
-- GitHub issue #658 is closed after run `25258764528` passed `suites=stt,v`.
+- GitHub issue #658 was closed after run `25258764528` passed `suites=stt,v`, but this historical
+  status is superseded by the 2026-05-03 reset after run `25275030436` failed STT latency again.
 
 ### #660 H-UI Welcome OCR overlay
 
