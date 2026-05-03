@@ -83,6 +83,7 @@ export interface VoiceInterfaceRenderProps {
   cancelSession: () => void;
   clearConversation: () => void;
   clearVisitState: () => void;
+  unlockAudioPlayback: () => boolean;
   sendMessage: (message: string) => Promise<void>;
   /** Speak fixed text (e.g. reception greeting) without running QA. */
   speakPreparedText: (
@@ -214,6 +215,38 @@ const toBase64 = async (blob: Blob): Promise<string> => {
   return VoiceRecorder.arrayBufferToBase64(arrayBuffer);
 };
 
+const isAudioGestureRequiredError = (error: unknown): boolean => {
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'requiresUserInteraction' in error &&
+    error.requiresUserInteraction === true
+  ) {
+    return true;
+  }
+
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'type' in error &&
+    error.type === 'user_interaction_required'
+  ) {
+    return true;
+  }
+
+  if (error instanceof Error) {
+    const message = error.message.toLowerCase();
+    return (
+      error.name === 'NotAllowedError' ||
+      message.includes('user interaction') ||
+      message.includes('user gesture') ||
+      message.includes('autoplay')
+    );
+  }
+
+  return false;
+};
+
 const stopAudioPlayback = (
   audioQueueRef: MutableRefObject<AudioQueue | null>,
   mobileAudioServiceRef: MutableRefObject<MobileAudioService | null>,
@@ -271,6 +304,11 @@ export default function VoiceInterface({
   const shouldListenRef = useRef(false);
   const fastFillerTimerRef = useRef<number | null>(null);
   const fastFillerUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const pendingIOSPlaybackRef = useRef<{
+    audioBase64: string;
+    metadata: VoiceInterfaceMetadata | null;
+  } | null>(null);
+  const isReplayingPendingIOSAudioRef = useRef(false);
 
   useEffect(() => {
     visitorIdRef.current = getOrCreateVisitorId();
@@ -407,15 +445,12 @@ export default function VoiceInterface({
     audioQueueRef.current?.setVolume(effectiveVolume);
   }, [volume]);
 
-  const handleAudioUnlockGesture = useCallback(() => {
-    if (sessionState === 'listening') {
-      return;
-    }
-
-    unlockAudioForUserGesture();
-  }, [sessionState]);
-
-  const stopForIOSAudioUnlock = useCallback((): boolean => {
+  const deferForIOSAudioUnlock = useCallback((
+    pendingPlayback?: {
+      audioBase64: string;
+      metadata: VoiceInterfaceMetadata | null;
+    },
+  ): boolean => {
     if (!isIOSWebKitAudio()) {
       return false;
     }
@@ -432,6 +467,10 @@ export default function VoiceInterface({
 
     if (isReady) {
       return false;
+    }
+
+    if (pendingPlayback) {
+      pendingIOSPlaybackRef.current = pendingPlayback;
     }
 
     const message = getTapToEnableAudioMessage(currentLanguage);
@@ -535,7 +574,10 @@ export default function VoiceInterface({
         return;
       }
 
-      if (stopForIOSAudioUnlock()) {
+      if (deferForIOSAudioUnlock({
+        audioBase64,
+        metadata: metadataForPlayback ?? null,
+      })) {
         return;
       }
 
@@ -610,10 +652,45 @@ export default function VoiceInterface({
       revokeAudioUrl,
       scheduleLipSyncFrames,
       skipAssistantTurnAutoResume,
-      stopForIOSAudioUnlock,
+      deferForIOSAudioUnlock,
       voiceController,
     ],
   );
+
+  const unlockAudioPlayback = useCallback((): boolean => {
+    if (sessionState === 'listening') {
+      return false;
+    }
+
+    unlockAudioForUserGesture();
+
+    const pendingPlayback = pendingIOSPlaybackRef.current;
+    if (!pendingPlayback || isReplayingPendingIOSAudioRef.current) {
+      return false;
+    }
+
+    pendingIOSPlaybackRef.current = null;
+    isReplayingPendingIOSAudioRef.current = true;
+    setError(null);
+
+    void (async () => {
+      try {
+        await AudioInteractionManager.getInstance().forceInitialize();
+        await playAssistantAudio(pendingPlayback.audioBase64, pendingPlayback.metadata);
+      } catch (error) {
+        if (isAudioGestureRequiredError(error)) {
+          pendingIOSPlaybackRef.current = pendingPlayback;
+          setError(getTapToEnableAudioMessage(currentLanguage));
+        } else {
+          setError(formatError(error, currentLanguage));
+        }
+      } finally {
+        isReplayingPendingIOSAudioRef.current = false;
+      }
+    })();
+
+    return true;
+  }, [currentLanguage, playAssistantAudio, sessionState]);
 
   const processVoiceTurnWithParallelFiller = useCallback(
     async (trimmed: string, abortController: AbortController) => {
@@ -784,7 +861,10 @@ export default function VoiceInterface({
             await playAssistantAudio(ttsResult.audioResponse, playbackMetadata);
             return;
           }
-          if (stopForIOSAudioUnlock()) {
+          if (deferForIOSAudioUnlock({
+            audioBase64: ttsResult.audioResponse,
+            metadata: playbackMetadata ?? null,
+          })) {
             return;
           }
           q.setVolume(isMuted ? 0 : volume);
@@ -838,7 +918,7 @@ export default function VoiceInterface({
       playAssistantAudio,
       scheduleLipSyncFrames,
       skipAssistantTurnAutoResume,
-      stopForIOSAudioUnlock,
+      deferForIOSAudioUnlock,
       stopPlayback,
       volume,
       voiceController,
@@ -1251,7 +1331,10 @@ export default function VoiceInterface({
   }, [sessionState, startRecorderCapture, stopRecorderCapture, voiceController.shouldListen]);
 
   const startListening = useCallback(async (): Promise<boolean> => {
-    unlockAudioForUserGesture();
+    if (unlockAudioPlayback() || isReplayingPendingIOSAudioRef.current) {
+      return true;
+    }
+
     shouldListenRef.current = true;
     cancelPendingRequest();
     stopPlayback(false);
@@ -1264,7 +1347,14 @@ export default function VoiceInterface({
     voiceController.startManualSession();
     sendSttWarmup({ language: currentLanguage, sessionId: sessionIdRef.current });
     return true;
-  }, [cancelPendingRequest, currentLanguage, startRecorderCapture, stopPlayback, voiceController]);
+  }, [
+    cancelPendingRequest,
+    currentLanguage,
+    startRecorderCapture,
+    stopPlayback,
+    unlockAudioPlayback,
+    voiceController,
+  ]);
 
   const stopListening = useCallback(() => {
     shouldListenRef.current = false;
@@ -1272,6 +1362,8 @@ export default function VoiceInterface({
   }, [voiceController]);
 
   const cancelSession = useCallback(() => {
+    pendingIOSPlaybackRef.current = null;
+    isReplayingPendingIOSAudioRef.current = false;
     cancelSttWarmup();
     cancelFastFiller();
     cancelPendingRequest();
@@ -1337,6 +1429,8 @@ export default function VoiceInterface({
 
   useEffect(() => {
     return () => {
+      pendingIOSPlaybackRef.current = null;
+      isReplayingPendingIOSAudioRef.current = false;
       cancelFastFiller();
       cancelPendingRequest();
       cleanupAudioPlayback();
@@ -1373,6 +1467,7 @@ export default function VoiceInterface({
       cancelSession,
       clearConversation,
       clearVisitState,
+      unlockAudioPlayback,
       sendMessage,
       speakPreparedText,
       setVolume,
@@ -1400,6 +1495,7 @@ export default function VoiceInterface({
       stopListening,
       toggleLanguage,
       transcript,
+      unlockAudioPlayback,
       voiceController.characterState,
       voiceController.isWakeWordListening,
       voiceController.isWakeWordSupported,
@@ -1449,8 +1545,8 @@ export default function VoiceInterface({
       <div className="mt-6 flex items-center justify-center gap-3">
         <button
           type="button"
-          onPointerDown={handleAudioUnlockGesture}
-          onTouchEnd={handleAudioUnlockGesture}
+          onPointerDown={unlockAudioPlayback}
+          onTouchEnd={unlockAudioPlayback}
           onClick={isListening ? stopListening : startListening}
           disabled={isBusy && !isListening}
           aria-label={isListening ? '録音を停止' : '録音を開始'}
@@ -1480,8 +1576,8 @@ export default function VoiceInterface({
 
         <button
           type="button"
-          onPointerDown={handleAudioUnlockGesture}
-          onTouchEnd={handleAudioUnlockGesture}
+          onPointerDown={unlockAudioPlayback}
+          onTouchEnd={unlockAudioPlayback}
           onClick={() => setMuted(!isMuted)}
           aria-label={isMuted ? 'ミュートを解除' : 'ミュートにする'}
           className="flex size-12 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-sm transition-colors duration-200 hover:bg-slate-50"

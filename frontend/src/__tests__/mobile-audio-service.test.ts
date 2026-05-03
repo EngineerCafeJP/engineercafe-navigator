@@ -4,6 +4,7 @@ import { after, test } from "node:test";
 import {
   estimateAudioDataByteLength,
   MobileAudioService,
+  shouldResetWebAudioPlayerForDevice,
   shouldUseHtmlAudioFirstForPlayback,
 } from "../lib/audio/mobile-audio-service";
 import { AudioPlaybackService } from "../lib/audio/audio-playback-service";
@@ -66,6 +67,106 @@ test("Android large audio uses HTML audio before Web Audio decode", () => {
   const largeBase64 = "A".repeat(1_333_340);
   assert.equal(estimateAudioDataByteLength(largeBase64), 1_000_005);
   assert.equal(shouldUseHtmlAudioFirstForPlayback(largeBase64), true);
+});
+
+test("mobile Web Audio reset applies to Android phones as well as iOS", () => {
+  setUserAgent("Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36");
+  assert.equal(shouldResetWebAudioPlayerForDevice(), true);
+
+  setUserAgent("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15");
+  assert.equal(shouldResetWebAudioPlayerForDevice(), true);
+
+  setUserAgent("Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4) AppleWebKit/605.1.15");
+  assert.equal(shouldResetWebAudioPlayerForDevice(), false);
+});
+
+test("Android large base64 playback uses HTML audio without constructing AudioContext", async () => {
+  let audioContextConstructed = false;
+  let createdObjectUrl = "";
+
+  class MockAudioElement {
+    public preload = "";
+    public volume = 1;
+    public paused = true;
+    public ended = false;
+    private listeners = new Map<string, Set<() => void>>();
+
+    constructor(public readonly url: string) {}
+
+    setAttribute() {}
+    removeAttribute() {}
+    load() {}
+    pause() {
+      this.paused = true;
+    }
+    addEventListener(event: string, listener: () => void) {
+      const listeners = this.listeners.get(event) ?? new Set<() => void>();
+      listeners.add(listener);
+      this.listeners.set(event, listeners);
+    }
+    removeEventListener(event: string, listener: () => void) {
+      this.listeners.get(event)?.delete(listener);
+    }
+    async play() {
+      this.paused = false;
+      this.listeners.get("play")?.forEach((listener) => listener());
+      setTimeout(() => {
+        this.ended = true;
+        this.listeners.get("ended")?.forEach((listener) => listener());
+      }, 0);
+    }
+  }
+
+  class FailIfConstructedAudioContext {
+    constructor() {
+      audioContextConstructed = true;
+    }
+  }
+
+  setUserAgent("Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36");
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: {
+      innerWidth: 390,
+      setTimeout,
+      clearTimeout,
+      AudioContext: FailIfConstructedAudioContext,
+      webkitAudioContext: FailIfConstructedAudioContext,
+    },
+  });
+  Object.defineProperty(globalThis, "document", {
+    configurable: true,
+    value: {
+      addEventListener() {},
+      removeEventListener() {},
+    },
+  });
+  Object.defineProperty(globalThis, "Audio", {
+    configurable: true,
+    value: MockAudioElement,
+  });
+  Object.defineProperty(URL, "createObjectURL", {
+    configurable: true,
+    value: (blob: Blob) => {
+      createdObjectUrl = `blob:android-large-${blob.size}`;
+      return createdObjectUrl;
+    },
+  });
+  Object.defineProperty(URL, "revokeObjectURL", {
+    configurable: true,
+    value: () => {},
+  });
+
+  const largeBase64 = Buffer.alloc(1_000_005).toString("base64");
+  const service = new MobileAudioService();
+  const result = await service.playAudio(largeBase64);
+
+  assert.equal(result.success, true);
+  assert.equal(result.method, "html-audio");
+  assert.equal(createdObjectUrl, "blob:android-large-1000005");
+  assert.equal(audioContextConstructed, false);
+
+  service.dispose();
 });
 
 test("non-Android and small Android audio stay on Web Audio first", () => {

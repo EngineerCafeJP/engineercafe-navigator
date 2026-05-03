@@ -72,6 +72,15 @@ export function isAudioUrlString(audioData: AudioDataInput): audioData is string
   );
 }
 
+export function shouldResetWebAudioPlayerForDevice(): boolean {
+  if (typeof navigator === 'undefined') {
+    return false;
+  }
+
+  const ua = navigator.userAgent;
+  return /iPad|iPhone|iPod|Android/i.test(ua);
+}
+
 export class MobileAudioService {
   private static readonly PLAYBACK_START_TIMEOUT_MS = 8000;
   private webAudioPlayer: WebAudioPlayer | null = null;
@@ -162,9 +171,6 @@ export class MobileAudioService {
    */
   private async tryWebAudio(audioData: AudioDataInput): Promise<AudioOperationResult> {
     try {
-      const isTablet = /iPad|Android.*Tablet/i.test(navigator.userAgent);
-      
-
       // Ensure audio context is ready
       let audioContext: AudioContext;
       try {
@@ -183,11 +189,11 @@ export class MobileAudioService {
         }
       }
 
-      // For tablets, always recreate the player to avoid state issues
+      // Mobile Web Audio state can stale between turns, especially after a
+      // blocked or timed-out playback attempt.
       if (!this.webAudioPlayer) {
         this.webAudioPlayer = new WebAudioPlayer(this.options, audioContext);
-      } else if (isTablet) {
-        // Reset existing player for tablets to avoid state issues
+      } else if (shouldResetWebAudioPlayerForDevice()) {
         this.webAudioPlayer.reset();
       }
 
@@ -393,9 +399,7 @@ export class MobileAudioService {
     if (this.webAudioPlayer) {
       this.webAudioPlayer.stop();
       
-      // Reset for tablets to prevent state issues
-      const isTablet = /iPad|Android.*Tablet/i.test(navigator.userAgent);
-      if (isTablet) {
+      if (shouldResetWebAudioPlayerForDevice()) {
         this.webAudioPlayer.reset();
       }
     }
