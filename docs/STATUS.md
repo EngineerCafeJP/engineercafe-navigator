@@ -6,7 +6,8 @@ Last updated: 2026-05-03
 
 このページは、`develop` 上の現行コード、2026-04-19 の live audit、2026-04-29 の実機音声 UX 確認、
 2026-05-02 の alpha-live-verification full run / targeted C run、2026-05-03 の PR #674/#675/#676
-deploy verification、PR #692/#693/#695/#699/#700/#701/#702/#703/#705/#707/#709 merge 後の alpha issue 状態をもとに更新しています。
+deploy verification、PR #692/#693/#695/#699/#700/#701/#702/#703/#705/#707/#709 merge 後の alpha issue 状態、
+および 2026-05-03 夜の reset snapshot をもとに更新しています。
 
 確認元:
 
@@ -18,6 +19,7 @@ deploy verification、PR #692/#693/#695/#699/#700/#701/#702/#703/#705/#707/#709 
 - 2026-05-03 JST の post-#692 C-127 run `25270459825`
 - 2026-05-03 JST の post-#709 Cloud Run deploy revision `engineer-cafe-backend-00162-mlr`
 - 2026-05-03 JST の SHA-matched full alpha-live-verification run `25272361091`
+- 2026-05-03 JST の C/Q run `25274709049` と STT/D/M run `25275030436`
 - 現在 open の GitHub Issue
 
 Supabase については、CLI で linked project の確認まではできましたが、このセッションでは recent runtime log
@@ -33,24 +35,47 @@ Supabase については、CLI で linked project の確認まではできまし
   live `/api/chat` 429 により `evaluated=35`, `collection_errors=92` だった
 - PR #693 は Q quality 修正、PR #695/#701 は C-127 pacing / coverage 修正、PR #699/#700/#702/#703 は C source / live harness / log hygiene hardening として merge 済み
 - PR #705/#709 は voice backend timeout / Vercel budget 修正、PR #707 は iOS/Android mobile audio 修正として merge 済み
-- 最新 full suite run `25272361091` は Cloud Run revision `engineer-cafe-backend-00162-mlr` / SHA `6ce1ac81983c7ae53ddfdfc58eba1ee043a83fa8` で実行中
-- ただし latest `suites=all` の green proof はまだなく、alpha release はまだ GO できない
+- PR #727/#731/#730/#734/#735 は merge 済み。ただし #717/#719/#697/#698/#585 は proof-gated issue として open のまま
+- #736 は frontend node test discovery PR として open。今回の docs reset では merge しない
+- 最新の有効な C/Q run `25274709049` は Q `25/25` PASS だが、C alpha-127 は `127/127/127` 完走後に JA/EN answer correctness と KO source gate で FAIL
+- 最新の有効な STT/D/M run `25275030436` は D/M が warning-only で通った一方、STT latency p95 `15624ms` で FAIL
+- latest `suites=all` の green proof はまだなく、alpha release はまだ GO できない
 - 現在の主リスクは「未実装の基本機能」ではなく「会話 UX の基本品質、実測 latency、route 整合性、評価 gate の透明性」
 
 特に優先度が高いのは次の 5 点です。
 
-1. 最新 full suite run `25272361091` の outcome / artifact を確認する
-2. C-127 が live `/api/chat` 429 なしで `127/127` collect/evaluate できることの証明
-3. Q suite の残 failure が #693 後に解消されたことの証明
-4. #697/#698 の mobile playback live-device proof
-5. RAGAS full-run speed / telemetry の operational closeout
+1. #658: STT current-revision latency を targeted run で green に戻す
+2. #583/#672: C alpha-127 の JA/EN answer correctness と KO source grounding を直す
+3. #697/#698/#585: mobile playback / onsite proof を実機で取る
+4. #655/#716: memory WARN の扱いを決め、必要なら rebase して targeted M proof を取る
+5. #717/#719/#670: infra / telemetry issue を proof-gated に close する
 
 現行の実装判断は [ADR 018](adr/018-alpha-fast-response-and-assistant-profile-routing.md) と
-[Alpha Remediation Plan 2026-05-02](plans/alpha-remediation-plan-2026-05-02.md) を優先する。
+[Alpha Reset Plan 2026-05-03](plans/alpha-reset-plan-2026-05-03.md) を優先する。
+
+## 2026-05-03 Reset Snapshot
+
+詳細な正本は [Alpha Live Verification Status 2026-05-03](testing/alpha-live-verification-status-2026-05-03.md)
+と [Alpha Reset Plan 2026-05-03](plans/alpha-reset-plan-2026-05-03.md)。
+
+Reset 時点の結論:
+
+- **NO-GO**。
+- C/Q run `25274709049`: C alpha-127 は `requested=127`, `collected=127`, `evaluated=127`,
+  `collection_errors=0`, direct OpenAI まで到達したが、JA `0.5671 < 0.85`,
+  EN `0.6914 < 0.75`, KO `gt-113` source `[fallback]` で FAIL。Q は `25 PASS / 0 WARN / 0 FAIL`。
+- STT/D/M run `25275030436`: STT は p95 `15624ms`, over-10s `14/29` で FAIL。
+  D は `45 passed, 10 warned, 0 failed`、M は `4 PASS / 1 WARN / 0 FAIL`。
+- #653/#721/#729/#732 は close 済み。
+- #658 は STT latency proof により reopen/open。
+- #717/#719/#697/#698/#585 は implementation merge では閉じず、runtime/device proof を待つ。
+- #736 は open のまま。docs reset 後に別 PR として判断する。
 
 ## 2026-05-03 Alpha Remediation Snapshot
 
-最新の deployed staging / harness 状態:
+過去 snapshot。最新判断では上記 2026-05-03 Reset Snapshot を優先する。
+
+当時の deployed staging / harness 状態:
 
 - develop SHA: `6ce1ac81983c7ae53ddfdfc58eba1ee043a83fa8`
 - Cloud Run revision: `engineer-cafe-backend-00162-mlr`
@@ -66,7 +91,8 @@ Supabase については、CLI で linked project の確認まではできまし
 - PR #693 merge SHA: `14cb8e5b3c4f9711a77c634d3db80f8bf4f80efd`
 - PR #695 merge SHA: `ed25199e4c7104ac0f6e2f027c4fdadd72280182`
 - PR #699/#700/#701/#702/#703/#705/#707/#709 are all included in deployed Cloud Run SHA `6ce1ac81983c7ae53ddfdfc58eba1ee043a83fa8`
-- Full alpha-live-verification run `25272361091` is in progress with `suites=all`, `c_ragas_suite=alpha-127`, and SHA match required
+- At this historical snapshot, full alpha-live-verification run `25272361091` had been dispatched with
+  `suites=all`, `c_ragas_suite=alpha-127`, and SHA match required.
 
 Resolved or implemented in the 2026-05-03 remediation pass:
 
@@ -87,13 +113,15 @@ Still blocking or important:
 - #696: voice backend timeout / warmup UX is closed after post-#705/#709 live proof.
 - #697: iOS delayed TTS playback remains P0 until post-#707 iPad/iPhone Safari proof.
 - #698: Android large-audio playback remains P1 until post-#707 Android phone proof or explicit alpha demotion.
-- #653: Q quality remains P1 until post-#693 `suites=q` rerun has 0 failures.
+- #653: Q quality was still pending in this historical snapshot; it is now closed by run `25274709049`
+  with `25 PASS / 0 WARN / 0 FAIL`.
 - #672: C answer/source quality remains P1, but current C metrics are not release-proof until C-127 collection completes.
 - #670: RAGAS telemetry is implemented, but post-#695/#701 C-127 artifact still needs operational proof before close.
 
 ## 2026-05-02 Alpha Live Verification Snapshot
 
-最新の正本は [Alpha Live Verification Status 2026-05-02](testing/alpha-live-verification-status-2026-05-02.md)。
+この snapshot は履歴。最新の正本は
+[Alpha Live Verification Status 2026-05-03](testing/alpha-live-verification-status-2026-05-03.md)。
 
 - Full run: `25244933308`
 - Targeted C/RAGAS run: `25247945549`
@@ -113,7 +141,8 @@ Resolved in the 2026-05-02 / 2026-05-03 remediation pass:
 
 Still blocking:
 
-- #583: C-127 completion proof after #695
+- #583: C-127 completion proof after #695 was still pending in this historical snapshot; run
+  `25274709049` later proved complete accounting/collection and exposed quality/source failures.
 - #653 / #672: Q/C answer quality
 - #670: full-run RAGAS speed / telemetry closeout
 
@@ -266,24 +295,26 @@ current turn の high-confidence intent なしに route を固定してはいけ
 
 ## いま重要な Open Issues
 
-- `#583`: C-127 completion proof
-- `#653`: Q-content quality
+- `#583`: C-127 alpha gate proof; accounting/collection is complete, but answer/source quality still fails
+- `#658`: STT current-revision latency
 - `#672`: Direct OpenAI C/RAGAS JA target miss
 - `#670`: C/RAGAS runtime and telemetry
 - `#611`: Cerebras dynamic filler / fast first-response path
 
 ## 推奨する実装順
 
-1. run `25272361091` または targeted `suites=c-127` rerun で #583 / #670 / #672 の判断材料を取る
-2. PR #693 後の `suites=q` rerun で #653 を close できるか判断する
-3. C-127 が `127/127` 完走してから C answer/source quality を直す (`#672`)
-4. RAGAS full-run telemetry / runtime を close 判断する (`#670`)
-5. #611 / #584 / #585 の live-only proof を収集するか、alpha GO から demote / waive する
+1. #658 を targeted `suites=stt,v` で直す
+2. run `25274709049` の C artifacts を読んで #583/#672 を直し、targeted `suites=c-127` で証明する
+3. #697/#698/#585 の live-device / onsite proof を取る
+4. #655/#716 を rebase するか alpha では WARN acceptance として明文化する
+5. #717/#719/#670 を workflow/artifact proof で close する
 
 ## 参照
 
 - [SECURITY.md](SECURITY.md)
 - [DEPLOYMENT.md](DEPLOYMENT.md)
+- [testing/alpha-live-verification-status-2026-05-03.md](testing/alpha-live-verification-status-2026-05-03.md)
+- [plans/alpha-reset-plan-2026-05-03.md](plans/alpha-reset-plan-2026-05-03.md)
 - [testing/alpha-live-verification-status-2026-05-02.md](testing/alpha-live-verification-status-2026-05-02.md)
 - [plans/alpha-remediation-plan-2026-05-02.md](plans/alpha-remediation-plan-2026-05-02.md)
 - [plans/alpha-fast-response-implementation-2026-04-30.md](plans/alpha-fast-response-implementation-2026-04-30.md)

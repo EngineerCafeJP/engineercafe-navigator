@@ -103,3 +103,19 @@ PR #674, #675, #676 の remediation と deployed staging 検証を踏まえ、�
 - B routing / slide smoke の GO 証跡は targeted B run `25254789937` とする。この run は Cloud Run revision `engineer-cafe-backend-00148-82c`、image tag `d789a2cd899779423947c40a3d65e19382f52d30` で `64 passed, 0 warned, 0 failed`。
 - Compact artifact split は release gate の一部とする。成功時も compact reports が残り、heavy browser artifacts は failure-oriented にする。
 - Current-revision STT gate が失敗している限り、B/H/log hygiene が green でも alpha GO とはしない。
+
+## 2026-05-03 Reset 追記
+
+同日の長時間 merge / verification sweep 後、以下を追加の運用ルールとする。
+
+- Runtime-sensitive issue は implementation PR の auto-close に任せない。#717/#719/#697/#698/#585
+  のような proof-gated issue は、merge 後に必要なら reopen し、workflow / device / run-window proof
+  が揃ってから close する。
+- Full-suite workflow は最終確認として扱う。既知の STT latency や C/RAGAS quality failure がある間は、
+  targeted suite を優先し、full `suites=all` の再 dispatch を連発しない。
+- Docs reset PR は実装停止点として許可する。Issue map、ADR、status が drift した場合は、新規実装より先に
+  docs-only PR で判断基準を固定する。
+- "PASS with WARN" は alpha GO では自動的に pass とみなさない。D/M の memory warning のように
+  product risk が残る場合は、WARN acceptance または follow-up issue を明示する。
+- Open PR は ready-looking でも reset 指示後に opportunistic merge しない。#736 のような hygiene PR は、
+  docs reset 後に別判断として扱う。

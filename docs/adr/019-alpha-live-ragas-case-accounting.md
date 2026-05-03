@@ -145,6 +145,33 @@ collection-success-only report に戻せる。ただし、その状態の C-127 
 ADR 019 itself is implemented and #691 is closed. Remaining C-127 proof depends on #694 / PR #695
 and a post-#695 `suites=c-127` rerun that reaches `evaluated=127` and `collection_errors=0`.
 
+## 2026-05-03 Reset 追記
+
+Post-#695/#701 run `25274709049` reached the accounting bar:
+
+- `case_suite`: `alpha-127`
+- requested cases: `127`
+- collected cases: `127`
+- evaluated cases: `127`
+- collection errors: `0`
+- RAGAS errors: `0`
+- provider: direct OpenAI
+- model: `gpt-5.2-2025-12-11`
+
+This closes the original accounting and collection-completion concern for ADR 019. The remaining
+C alpha blocker is no longer "did the harness really test 127 cases?" but "did the product answer and
+source those 127 cases well enough?"
+
+Current remaining C failures from that run:
+
+- JA answer correctness: `0.5671`, target `0.85`
+- EN answer correctness: `0.6914`, target `0.75`
+- KO source gate: `gt-113` returned `[fallback]` instead of `enhanced_rag`, `knowledge_base`, or
+  `knowledge_base_cached`
+
+Therefore, future C triage should not reopen ADR 019 unless accounting regresses. Track product
+quality/source defects in #583/#672.
+
 ## 参照
 
 - Run: <https://github.com/EngineerCafeJP/engineercafe-navigator/actions/runs/25268597241>
