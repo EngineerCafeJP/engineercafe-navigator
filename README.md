@@ -42,7 +42,7 @@ Browser
 - `continue-on-error` のため、GitHub step が success に見えても suite outcome が failure の場合があります。
 - STT / voice preflight は run `25258764528` で PASS し、#658 は close 済みです。
 - RAGAS は direct OpenAI と C-127 manifest accounting まで修正済みですが、post-#692 run `25270459825`
-  は `/api/chat` 429 により `35/127` evaluated でした。PR #695 後の C-127 rerun が必要です。
+  は `/api/chat` 429 により `35/127` evaluated でした。current proof run `25272361091` の artifact 確認が必要です。
 - Q suite は PR #693 merge 後の proof を、最新 full suite run `25272361091` で再確認中です。
 - Voice timeout / mobile audio は PR #705/#707/#709 で修正済みです。#696 は close 済み、#697/#698 は live/device proof 待ちです。
 - B routing / slide live smoke と Cloud Run UUID log hygiene は 2026-05-03 時点の deployed staging で解消確認済みです。

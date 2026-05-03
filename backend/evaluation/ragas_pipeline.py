@@ -117,6 +117,50 @@ _COLUMN_NAME_MAP = {
 }
 
 
+def resolve_ragas_judge_metadata() -> Dict[str, Any]:
+    """Return non-secret metadata for the RAGAS judge provider selected by env."""
+    openai_present = bool(os.environ.get("OPENAI_API_KEY"))
+    openrouter_present = bool(os.environ.get("OPENROUTER_API_KEY"))
+
+    if openai_present:
+        return {
+            "provider": "openai",
+            "provider_label": "direct OpenAI",
+            "model": OPENAI_EVAL_MODEL,
+            "embeddings_provider": "ragas_default_openai",
+            "embeddings_model": None,
+            "fallback": False,
+            "openai_key_present": True,
+            "openrouter_key_present": openrouter_present,
+            "release_gate_eligible": True,
+        }
+
+    if openrouter_present:
+        return {
+            "provider": "openrouter",
+            "provider_label": "OpenRouter fallback",
+            "model": OPENROUTER_EVAL_MODEL,
+            "embeddings_provider": "openrouter",
+            "embeddings_model": OPENROUTER_EMBEDDING_MODEL,
+            "fallback": True,
+            "openai_key_present": False,
+            "openrouter_key_present": True,
+            "release_gate_eligible": False,
+        }
+
+    return {
+        "provider": "none",
+        "provider_label": "none",
+        "model": None,
+        "embeddings_provider": None,
+        "embeddings_model": None,
+        "fallback": False,
+        "openai_key_present": False,
+        "openrouter_key_present": False,
+        "release_gate_eligible": False,
+    }
+
+
 @dataclass(frozen=True)
 class RagasResult:
     """単一ケースの RAGAS 評価結果（6メトリクス）"""

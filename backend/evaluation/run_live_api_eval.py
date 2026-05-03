@@ -473,10 +473,12 @@ async def run_live_api_evaluation(
 
     # Phase 2: Run RAGAS evaluation
     try:
-        from evaluation.ragas_pipeline import RagasEvaluator
+        from evaluation.ragas_pipeline import RagasEvaluator, resolve_ragas_judge_metadata
     except ImportError:
         sys.path.insert(0, str(Path(__file__).parent.parent))
-        from evaluation.ragas_pipeline import RagasEvaluator
+        from evaluation.ragas_pipeline import RagasEvaluator, resolve_ragas_judge_metadata
+
+    ragas_judge_metadata = resolve_ragas_judge_metadata()
 
     for lang in selected_languages:
         cases = all_eval_cases.get(lang, [])
@@ -599,10 +601,12 @@ async def run_live_api_evaluation(
     )
     comparison["suite_coverage"] = suite_coverage
     comparison["evaluation_summary"] = evaluation_summary
+    comparison["ragas_judge"] = ragas_judge_metadata
     comparison["alpha_release_gate_met"] = (
         comparison["all_targets_met"]
         and suite_coverage["release_blocking"]
         and suite_coverage["passed"]
+        and ragas_judge_metadata["release_gate_eligible"]
     )
     report_text = _format_report(
         per_language_results,
@@ -625,11 +629,13 @@ async def run_live_api_evaluation(
         "languages": selected_languages,
         "metrics": list(selected_metrics),
         "ragas_context_source": "golden_dataset",
+        "ragas_judge": ragas_judge_metadata,
         "live_source_gate_enabled": check_live_sources,
         "artifact_metadata": {
             "report_timestamp": report_file_ts,
             "json_report_filename": json_report_filename,
             "text_report_filename": text_report_filename,
+            "ragas_judge": ragas_judge_metadata,
             "expected_total_cases": config.get("expected_total_cases"),
             "manifest_language_counts": manifest_language_counts,
             "selected_language_counts": {
@@ -817,6 +823,24 @@ def _format_report(
                     f"/errors:{errors_by_language.get(lang, 0)}"
                     for lang in languages
                 ),
+                "",
+            ]
+        )
+
+    ragas_judge = comparison.get("ragas_judge", {})
+    if ragas_judge:
+        provider_gate = "PASS" if ragas_judge.get("release_gate_eligible") else "FAIL"
+        fallback = "yes" if ragas_judge.get("fallback") else "no"
+        lines.extend(
+            [
+                "RAGAS judge:",
+                f"  provider: {ragas_judge.get('provider_label', ragas_judge.get('provider'))}",
+                f"  model: {ragas_judge.get('model') or 'n/a'}",
+                "  embeddings: "
+                f"{ragas_judge.get('embeddings_provider') or 'n/a'}"
+                f"/{ragas_judge.get('embeddings_model') or 'default'}",
+                f"  fallback: {fallback}",
+                f"  release_gate_eligible: {provider_gate}",
                 "",
             ]
         )

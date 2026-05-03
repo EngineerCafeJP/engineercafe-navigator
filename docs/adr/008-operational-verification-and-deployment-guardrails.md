@@ -89,7 +89,7 @@ Alpha live verification の運用結果を踏まえ、以下をガードレー�
 
 - `alpha-live-verification` の GO 証跡は `require_deployed_sha_match=true` を必須にする。
 - GitHub Actions の `continue-on-error` step conclusion は正本にしない。workflow summary と report artifact の suite outcome を正本にする。
-- Alpha RAGAS は direct OpenAI を必須にする。`OPENAI_API_KEY` が空で OpenRouter fallback になった run は diagnostic として扱う。
+- Alpha RAGAS は direct OpenAI を必須にする。`OPENAI_API_KEY` が空で OpenRouter fallback になった run は diagnostic として扱い、`alpha_release_gate_met=false` とする。JSON/text artifact の `ragas_judge` provider/model を GO 証跡に含める。
 - Artifact は compact failure summary と heavy trace/video を分ける。932MB 級 artifact は triage 阻害として扱う。
 - STT preflight は historical 24h risk と current revision release gate を分ける。過去 revision の outlier だけで現行 release gate を落とさない。
 
