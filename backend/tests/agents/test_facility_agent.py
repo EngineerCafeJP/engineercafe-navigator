@@ -176,6 +176,125 @@ class TestFacilityAgent:
         assert "地下" in enhanced or "B1" in enhanced
         assert "MTGスペース" in enhanced or "集中スペース" in enhanced
 
+    def test_alpha_c127_nearby_lunch_canonical(self):
+        """gt-046: 周辺ランチは飲食持ち込みポリシーに倒さない"""
+        agent = FacilityAgent()
+        response = agent._get_canonical_response("周辺でランチを食べられる場所は？", "nearby", "ja")
+
+        assert response is not None
+        assert "天神地下街" in response["answer"]
+        assert "西中洲" in response["answer"]
+        assert "アクロス福岡" in response["answer"]
+        assert "持ち込み" not in response["answer"]
+
+    def test_alpha_c127_airport_route_canonical(self):
+        """gt-064/gt-060: 空港アクセスは所要時間と運賃を含める"""
+        agent = FacilityAgent()
+        response = agent._get_canonical_response(
+            "How do I get to Engineer Cafe from Fukuoka Airport?", "access", "en"
+        )
+
+        assert response is not None
+        assert "11 minutes" in response["answer"]
+        assert "260 yen" in response["answer"]
+        assert "Exit 16" in response["answer"]
+
+    def test_alpha_c127_available_spaces_canonical(self):
+        """gt-065/gt-084: 利用可能スペース一覧を固定する"""
+        agent = FacilityAgent()
+        response = agent._get_canonical_response(
+            "What spaces are available at Engineer Cafe?", "facility", "en"
+        )
+
+        assert response is not None
+        assert "1F Main Hall" in response["answer"]
+        assert "Focus Space" in response["answer"]
+        assert "MAKER's Space" in response["answer"]
+        assert "paid meeting rooms" in response["answer"]
+
+    def test_alpha_c127_multipurpose_toilet_canonical(self):
+        """gt-077: 多目的トイレは通常トイレ案内に倒さない"""
+        agent = FacilityAgent()
+        response = agent._get_canonical_response("多目的トイレはありますか？", "toilet", "ja")
+
+        assert response is not None
+        assert "多目的トイレはありません" in response["answer"]
+        assert "080-6742-7231" in response["answer"]
+
+    def test_alpha_c127_children_policy_canonical(self):
+        """gt-034: 子連れ利用は年齢制限・安全・専用設備なしを含める"""
+        agent = FacilityAgent()
+        response = agent._get_canonical_response(
+            "子供を連れて利用できますか？", "children_noise", "ja"
+        )
+
+        assert response is not None
+        assert "年齢制限" in response["answer"]
+        assert "保護者同伴" in response["answer"]
+        assert "授乳室" in response["answer"]
+        assert "おむつ交換台" in response["answer"]
+
+    def test_alpha_c127_laser_materials_canonical(self):
+        """gt-044: レーザー素材は可否と禁止素材を固定する"""
+        agent = FacilityAgent()
+        response = agent._get_canonical_response("レーザー加工機で使える素材は？", "facility", "ja")
+
+        assert response is not None
+        assert "アクリル" in response["answer"]
+        assert "PVC" in response["answer"]
+        assert "ポリカーボネート" in response["answer"]
+        assert "発泡スチロール" in response["answer"]
+
+    def test_alpha_c127_projector_loan_canonical(self):
+        """gt-052: AV機器貸出は主要機材とCM相談を含める"""
+        agent = FacilityAgent()
+        response = agent._get_canonical_response(
+            "プロジェクターを借りることはできますか？", "facility", "ja"
+        )
+
+        assert response is not None
+        assert "プロジェクター" in response["answer"]
+        assert "スクリーン" in response["answer"]
+        assert "マイク" in response["answer"]
+        assert "コミュニティマネージャー" in response["answer"]
+
+    def test_alpha_c127_conduct_policy_canonical(self):
+        """gt-054: 勧誘禁止は仮眠禁止も含める"""
+        agent = FacilityAgent()
+        response = agent._get_canonical_response(
+            "営利目的の勧誘はできますか？", "children_noise", "ja"
+        )
+
+        assert response is not None
+        assert "勧誘" in response["answer"]
+        assert "名刺交換" in response["answer"]
+        assert "セールス" in response["answer"]
+        assert "仮眠" in response["answer"]
+
+    def test_alpha_c127_water_server_canonical(self):
+        """gt-058: 水回りはサーバーなしと購入先を含める"""
+        agent = FacilityAgent()
+        response = agent._get_canonical_response(
+            "ウォーターサーバーはありますか？", "facility", "ja"
+        )
+
+        assert response is not None
+        assert "ウォーターサーバー" in response["answer"]
+        assert "自動販売機" in response["answer"]
+        assert "ふた付き" in response["answer"]
+        assert "近隣コンビニ" in response["answer"]
+
+    def test_alpha_c127_bicycle_parking_english_canonical(self):
+        """gt-071: 英語の駐輪場案内を短く固定する"""
+        agent = FacilityAgent()
+        response = agent._get_canonical_response(
+            "Is there bicycle parking near Engineer Cafe?", "bicycle", "en"
+        )
+
+        assert response is not None
+        assert "no dedicated bicycle parking" in response["answer"].lower()
+        assert "public bicycle parking" in response["answer"].lower()
+
     # ==========================================================================
     # 地下施設フィルタリングテスト
     # ==========================================================================

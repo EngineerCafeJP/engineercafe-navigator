@@ -97,6 +97,62 @@ class TestBusinessInfoAgent:
         assert "staff" in response["answer"].lower()
         assert "5 to 10 minutes" in response["answer"]
 
+    def test_returning_visitor_canonical_response_japanese(self):
+        """gt-082/gt-085: 再来館発話は退館・会話履歴ではなく歓迎にする"""
+        response = self.agent._get_canonical_response("前にも来たことがあります", "reception", "ja")
+
+        assert response is not None
+        assert "またのご来館" in response["answer"]
+        assert "チェックイン" in response["answer"]
+        assert "受付カード" in response["answer"]
+        assert "ありがとうございました" not in response["answer"]
+
+    def test_engineer_cafe_lab_canonical_response(self):
+        """gt-021: Engineer Cafe LabをEIC情報に混ぜない"""
+        response = self.agent._get_canonical_response(
+            "Engineer Cafe Labとは何ですか？", "community", "ja"
+        )
+
+        assert response is not None
+        assert "25歳以下" in response["answer"]
+        assert "事前応募" in response["answer"]
+        assert "面接" in response["answer"]
+        assert "EIC" not in response["answer"]
+
+    def test_alpha_c127_engineer_friendly_city_canonical(self):
+        """gt-059: EFCは中核施設と支援施策を含める"""
+        response = self.agent._get_canonical_response(
+            "エンジニアフレンドリーシティ福岡とは？", "community", "ja"
+        )
+
+        assert response is not None
+        assert "福岡市" in response["answer"]
+        assert "中核施設" in response["answer"]
+        assert "EFCアワード" in response["answer"]
+        assert "外国人エンジニア支援" in response["answer"]
+
+    def test_alpha_c127_official_social_canonical(self):
+        """gt-053: 公式SNSはX/Connpass/公式サイト/LINEなしを含める"""
+        response = self.agent._get_canonical_response(
+            "エンジニアカフェの公式SNSアカウントは？", "contact", "ja"
+        )
+
+        assert response is not None
+        assert "@EngineerCafeJP" in response["answer"]
+        assert "https://engineercafe.connpass.com/" in response["answer"]
+        assert "https://engineercafe.jp/" in response["answer"]
+        assert "LINEアカウントはありません" in response["answer"]
+
+    def test_alpha_c127_english_support_canonical(self):
+        """gt-056: 英語対応は英語版URLと限定対応を含める"""
+        response = self.agent._get_canonical_response("英語対応はしていますか？", "contact", "ja")
+
+        assert response is not None
+        assert "https://engineercafe.jp/en/" in response["answer"]
+        assert "英語対応は限定的" in response["answer"]
+        assert "国際イベント" in response["answer"]
+        assert "外国人利用者" in response["answer"]
+
     def test_opening_hours_canonical_response_japanese(self):
         """営業時間は開館時間と相談受付時間を分けて案内する"""
         response = self.agent._get_canonical_response(
@@ -246,6 +302,7 @@ class TestBusinessInfoAgent:
         assert "13:00-21:00" in response["answer"]
         assert "https://engineercafe.jp/" in response["answer"]
         assert "contact form" in response["answer"].lower()
+        assert "official website" in response["answer"].lower()
         assert "second-floor meeting rooms" in response["answer"].lower()
 
     def test_closed_days_canonical_precedes_hours(self):

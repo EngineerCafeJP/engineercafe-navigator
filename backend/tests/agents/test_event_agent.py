@@ -94,6 +94,7 @@ class TestEventAgent:
         response = self.agent._get_connpass_response("en")
 
         assert "Connpass" in response["answer"]
+        assert "you can check Engineer Cafe events on Connpass" in response["answer"]
         assert "sign-up" in response["answer"].lower()
         assert "https://engineercafe.connpass.com/" in response["answer"]
         assert "free" in response["answer"].lower()
@@ -109,6 +110,40 @@ class TestEventAgent:
         assert "申込" in response["answer"] or "申し込み" in response["answer"]
         assert "参加費無料" in response["answer"]
         assert "早めの申込" in response["answer"]
+
+    @pytest.mark.asyncio
+    async def test_event_hosting_canonical_skips_live_calendar(self):
+        """gt-030: イベント開催相談は予定イベント一覧に倒さない"""
+        self.agent.calendar_service.search_events = AsyncMock(
+            side_effect=AssertionError("event hosting should skip live calendar")
+        )
+        self.agent.connpass_service.search_events = AsyncMock(
+            side_effect=AssertionError("event hosting should skip live connpass search")
+        )
+
+        response = await self.agent.answer_event_query(
+            "エンジニアカフェでイベントを開催したいのですが", "ja"
+        )
+
+        assert "コミュニティマネージャー" in response["answer"]
+        assert "福岡市の許可" in response["answer"]
+        assert "Connpass" in response["answer"]
+
+    @pytest.mark.asyncio
+    async def test_event_clarification_canonical_skips_live_calendar(self):
+        """gt-083: 曖昧なイベント発話は確認案内とConnpass参照にする"""
+        self.agent.calendar_service.search_events = AsyncMock(
+            side_effect=AssertionError("event clarification should skip live calendar")
+        )
+        self.agent.connpass_service.search_events = AsyncMock(
+            side_effect=AssertionError("event clarification should skip live connpass search")
+        )
+
+        response = await self.agent.answer_event_query("イベントについて", "ja")
+
+        assert "開催予定" in response["answer"]
+        assert "参加方法" in response["answer"]
+        assert "Connpass" in response["answer"]
 
 
 class TestEventDeduplication:
