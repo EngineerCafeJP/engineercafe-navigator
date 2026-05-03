@@ -23,10 +23,12 @@ import wave
 from pathlib import Path
 from typing import Optional
 
+import numpy as np
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import Response, StreamingResponse
 from huggingface_hub import snapshot_download
 from piper import PiperVoice
+from piper.util import audio_float_to_int16
 from pydantic import BaseModel
 
 logging.basicConfig(level=logging.INFO)
@@ -122,6 +124,94 @@ def _resolve_language_id(voice: PiperVoice, language: str) -> Optional[int]:
     return None
 
 
+def _synthesize_stream_raw_compatible(
+    voice: PiperVoice,
+    text: str,
+    *,
+    speaker_id: Optional[int] = None,
+    length_scale: Optional[float] = None,
+    noise_scale: Optional[float] = None,
+    noise_w: Optional[float] = None,
+    sentence_silence: float = 0.0,
+    volume: float = 1.0,
+    language_id: Optional[int] = None,
+):
+    """Yield PCM chunks while filling newer piper-plus ONNX inputs.
+
+    piper-tts-plus 1.9.0 does not provide speaker_embedding inputs, but the
+    current tsukuyomi model requires them even though it is configured as a
+    single-speaker model. Zero embedding + mask=0 keeps speaker conditioning
+    disabled and preserves the SDK behavior for models that do not need it.
+    """
+    if length_scale is None:
+        length_scale = voice.config.length_scale
+    if noise_scale is None:
+        noise_scale = voice.config.noise_scale
+    if noise_w is None:
+        noise_w = voice.config.noise_w
+
+    input_names = {inp.name for inp in voice.session.get_inputs()}
+    silence_bytes = bytes(int(sentence_silence * voice.config.sample_rate) * 2)
+
+    for phonemes in voice.phonemize(text):
+        phoneme_ids = voice.phonemes_to_ids(phonemes)
+        phoneme_ids_array = np.expand_dims(np.array(phoneme_ids, dtype=np.int64), 0)
+        phoneme_ids_lengths = np.array([phoneme_ids_array.shape[1]], dtype=np.int64)
+        args = {
+            "input": phoneme_ids_array,
+            "input_lengths": phoneme_ids_lengths,
+            "scales": np.array([noise_scale, length_scale, noise_w], dtype=np.float32),
+        }
+
+        if voice.config.num_speakers > 1:
+            sid_value = 0 if speaker_id is None else speaker_id
+            args["sid"] = np.expand_dims(np.array([sid_value], dtype=np.int64), 0)
+
+        if "lid" in input_names:
+            lid_value = 0 if language_id is None else language_id
+            args["lid"] = np.array([lid_value], dtype=np.int64)
+
+        if "prosody_features" in input_names:
+            args["prosody_features"] = np.zeros(
+                (1, phoneme_ids_array.shape[1], 3),
+                dtype=np.int64,
+            )
+
+        if "speaker_embedding" in input_names:
+            args["speaker_embedding"] = np.zeros((1, 256), dtype=np.float32)
+
+        if "speaker_embedding_mask" in input_names:
+            args["speaker_embedding_mask"] = np.zeros((1, 1), dtype=np.int64)
+
+        audio = voice.session.run(None, args)[0].squeeze(0)
+        pcm = audio_float_to_int16(audio.squeeze(), volume=volume).tobytes()
+        yield pcm + silence_bytes
+
+
+def _synthesize_wav_compatible(
+    voice: PiperVoice,
+    text: str,
+    wav_file: wave.Wave_write,
+    *,
+    speaker_id: Optional[int] = None,
+    length_scale: Optional[float] = None,
+    noise_scale: Optional[float] = None,
+    language_id: Optional[int] = None,
+) -> None:
+    wav_file.setframerate(voice.config.sample_rate)
+    wav_file.setsampwidth(2)
+    wav_file.setnchannels(1)
+    for chunk in _synthesize_stream_raw_compatible(
+        voice,
+        text,
+        speaker_id=speaker_id,
+        length_scale=length_scale,
+        noise_scale=noise_scale,
+        language_id=language_id,
+    ):
+        wav_file.writeframes(chunk)
+
+
 # ---------------------------------------------------------------------------
 # Startup
 # ---------------------------------------------------------------------------
@@ -198,7 +288,8 @@ def synthesize(req: SynthRequest) -> Response:
 
     buf = io.BytesIO()
     with wave.open(buf, "wb") as wav_file:
-        voice.synthesize(
+        _synthesize_wav_compatible(
+            voice,
             req.text,
             wav_file,
             speaker_id=req.speaker_id,
@@ -252,7 +343,8 @@ def synthesize_stream(body: dict) -> StreamingResponse:
     sid = speaker_id if isinstance(speaker_id, int) and speaker_id >= 0 else None
 
     def _generate():
-        for chunk in voice.synthesize_stream_raw(
+        for chunk in _synthesize_stream_raw_compatible(
+            voice,
             text,
             speaker_id=sid,
             length_scale=length_scale,
