@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { Play, User } from 'lucide-react';
 import type { CharacterAnimationData } from '../utils/character-animation-utils';
+import { DEFAULT_IDLE_VRMA_URL } from '@/lib/vrm-animation-clip';
 import KeyframeSettings from './KeyframeSettings';
 
 export interface ControlsState {
@@ -17,7 +18,7 @@ export interface VRMAnimationOption {
   label: string;
 }
 
-const DEFAULT_VRM_ANIMATION = '/animations/idle.vrma';
+const DEFAULT_VRM_ANIMATION = DEFAULT_IDLE_VRMA_URL;
 
 const VISEME_NAMES = ['aa', 'ih', 'ou', 'ee', 'oh'];
 

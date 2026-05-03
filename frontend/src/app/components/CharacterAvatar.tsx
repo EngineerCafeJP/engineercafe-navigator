@@ -5,7 +5,7 @@ import { ExpressionController } from '@/lib/expression-controller';
 import { LipSyncAnalyzer } from '@/lib/lip-sync-analyzer';
 import {
   DEFAULT_IDLE_VRMA_URL,
-  isIdleVrmaUrl,
+  isDefaultIdleVrmaRequest,
   loadVRMAAnimationClipFromUrl,
 } from '@/lib/vrm-animation-clip';
 import { VRMBlendShapeController, VRMUtils, getLipSyncFactorFromEmotions } from '@/lib/vrm-utils';
@@ -668,7 +668,7 @@ export default function CharacterAvatar({
       }
       let clip = initialClip;
 
-      if (isIdleVrmaUrl(animationUrl)) {
+      if (isDefaultIdleVrmaRequest(animationUrl)) {
         const baseline = VRMUtils.sampleHipsPositionXZAtTime(clip, vrm, 0);
         if (baseline) {
           idleHipsBaselineRef.current = baseline;
@@ -747,7 +747,7 @@ export default function CharacterAvatar({
     }
     
     // Return to idle animation
-    await loadVRMAnimation('/animations/idle.vrma', vrm, true);
+    await loadVRMAnimation(DEFAULT_IDLE_VRMA_URL, vrm, true);
     isPlayingSequence.current = false;
   };
 
@@ -857,7 +857,7 @@ export default function CharacterAvatar({
 
         // Load default idle animation
         try {
-          await loadVRMAnimation('/animations/idle.vrma', vrm, true);
+          await loadVRMAnimation(DEFAULT_IDLE_VRMA_URL, vrm, true);
         } catch (animationError) {
           console.error('[CharacterAvatar] Failed to load default idle animation:', animationError);
         }

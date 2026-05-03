@@ -3,10 +3,46 @@ import { VRMAnimationLoaderPlugin, createVRMAnimationClip } from '@pixiv/three-v
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
+import { EmotionMapping } from '@/lib/emotion-mapping';
+
 /** Same default as CharacterAvatar (1m ahead, 1m up) for VRMLookAt when loading VRMA. */
 const FALLBACK_LOOK_AT_POSITION = new THREE.Vector3(0, 1, 1);
 
-export const DEFAULT_IDLE_VRMA_URL = '/animations/idle.vrma';
+/**
+ * Maps a supported animation key to its public `.vrma` URL (same rule as
+ * {@code CharacterAvatar} {@code /animations/${animation}.vrma}).
+ */
+export function vrmaUrlForAnimationName(animationName: string): string {
+  return `/animations/${animationName}.vrma`;
+}
+
+/**
+ * Standby / default character VRMA: tied to {@link EmotionMapping.DEFAULT_ANIMATION}
+ * (`idle`), not file-name heuristics.
+ */
+export const DEFAULT_IDLE_VRMA_URL = vrmaUrlForAnimationName(EmotionMapping.DEFAULT_ANIMATION);
+
+/** Normalizes request URLs for same-asset comparison (query stripped, path-only for absolute URLs). */
+export function normalizeVrmaAssetPath(animationUrl: string): string {
+  const raw = animationUrl.split('?')[0] ?? animationUrl;
+  if (/^https?:\/\//i.test(raw)) {
+    try {
+      return new URL(raw).pathname;
+    } catch {
+      return raw;
+    }
+  }
+  const path = raw.startsWith('/') ? raw : `/${raw}`;
+  return path.replace(/\/{2,}/g, '/');
+}
+
+/**
+ * True when {@code animationUrl} resolves to the same asset as {@link DEFAULT_IDLE_VRMA_URL}
+ * (standby animation from {@link EmotionMapping}).
+ */
+export function isDefaultIdleVrmaRequest(animationUrl: string): boolean {
+  return normalizeVrmaAssetPath(animationUrl) === normalizeVrmaAssetPath(DEFAULT_IDLE_VRMA_URL);
+}
 
 function ensureVrmLookAtTarget(vrm: VRM): void {
   if (!vrm.lookAt) {
@@ -49,10 +85,4 @@ export async function loadVRMAAnimationClipFromUrl(
   }
 
   return { clip, duration: clip?.duration ?? 0 };
-}
-
-/** Whether {@code animationUrl} points at {@link DEFAULT_IDLE_VRMA_URL}-style idle VRMA. */
-export function isIdleVrmaUrl(animationUrl: string): boolean {
-  const pathOnly = animationUrl.split('?')[0] ?? animationUrl;
-  return pathOnly.endsWith('/idle.vrma') || pathOnly.endsWith('idle.vrma');
 }
