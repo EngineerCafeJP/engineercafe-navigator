@@ -18,6 +18,7 @@ from backend.evaluation.ragas_pipeline import (
     RagasReport,
     RagasResult,
     _ragas_available,
+    resolve_ragas_judge_metadata,
 )
 
 # =============================================================================
@@ -392,6 +393,44 @@ class TestResolveEvaluationLLM:
             assert rc.timeout == RAGAS_TIMEOUT
             assert rc.max_retries == RAGAS_MAX_RETRIES
             assert rc.max_workers == RAGAS_MAX_WORKERS
+
+
+class TestRagasJudgeMetadata:
+    """RAGAS judge provider artifact metadata tests."""
+
+    def test_openai_key_takes_priority_over_openrouter(self):
+        env = {"OPENAI_API_KEY": "sk-test", "OPENROUTER_API_KEY": "sk-or-test"}
+        with patch.dict("os.environ", env, clear=True):
+            metadata = resolve_ragas_judge_metadata()
+
+        assert metadata["provider"] == "openai"
+        assert metadata["provider_label"] == "direct OpenAI"
+        assert metadata["model"] == OPENAI_EVAL_MODEL
+        assert metadata["fallback"] is False
+        assert metadata["openai_key_present"] is True
+        assert metadata["openrouter_key_present"] is True
+        assert metadata["release_gate_eligible"] is True
+
+    def test_openrouter_only_is_fallback_and_not_release_gate_eligible(self):
+        with patch.dict("os.environ", {"OPENROUTER_API_KEY": "sk-or-test"}, clear=True):
+            metadata = resolve_ragas_judge_metadata()
+
+        assert metadata["provider"] == "openrouter"
+        assert metadata["provider_label"] == "OpenRouter fallback"
+        assert metadata["fallback"] is True
+        assert metadata["openai_key_present"] is False
+        assert metadata["openrouter_key_present"] is True
+        assert metadata["release_gate_eligible"] is False
+
+    def test_no_keys_records_no_provider(self):
+        with patch.dict("os.environ", {}, clear=True):
+            metadata = resolve_ragas_judge_metadata()
+
+        assert metadata["provider"] == "none"
+        assert metadata["model"] is None
+        assert metadata["openai_key_present"] is False
+        assert metadata["openrouter_key_present"] is False
+        assert metadata["release_gate_eligible"] is False
 
 
 class TestRunConfigDefaults:

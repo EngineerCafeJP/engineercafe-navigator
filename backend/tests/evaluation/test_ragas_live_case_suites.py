@@ -20,6 +20,18 @@ from backend.evaluation.run_live_api_eval import (
     run_live_api_evaluation,
 )
 
+NO_RAGAS_JUDGE_METADATA = {
+    "provider": "none",
+    "provider_label": "none",
+    "model": None,
+    "embeddings_provider": None,
+    "embeddings_model": None,
+    "fallback": False,
+    "openai_key_present": False,
+    "openrouter_key_present": False,
+    "release_gate_eligible": False,
+}
+
 
 def test_diagnostic_case_suite_preserves_29_case_manifest():
     config = _load_case_suite_config(CASE_SUITE_DIAGNOSTIC_29)
@@ -166,7 +178,10 @@ async def test_live_eval_keeps_alpha_127_manifest_count_when_api_collection_fail
     monkeypatch.setitem(
         __import__("sys").modules,
         "evaluation.ragas_pipeline",
-        SimpleNamespace(RagasEvaluator=FakeRagasEvaluator),
+        SimpleNamespace(
+            RagasEvaluator=FakeRagasEvaluator,
+            resolve_ragas_judge_metadata=lambda: NO_RAGAS_JUDGE_METADATA,
+        ),
     )
 
     result = await run_live_api_evaluation(
@@ -216,6 +231,7 @@ async def test_live_eval_keeps_alpha_127_manifest_count_when_api_collection_fail
         "report_timestamp": "alpha-live-test-c",
         "json_report_filename": "live_api_eval_alpha-live-test-c.json",
         "text_report_filename": "live_api_eval_alpha-live-test-c.txt",
+        "ragas_judge": NO_RAGAS_JUDGE_METADATA,
         "expected_total_cases": 127,
         "manifest_language_counts": {"ja": 80, "en": 23, "zh": 12, "ko": 12},
         "selected_language_counts": {"ja": 80, "en": 23, "zh": 12, "ko": 12},
@@ -227,12 +243,107 @@ async def test_live_eval_keeps_alpha_127_manifest_count_when_api_collection_fail
     assert (tmp_path / "live_api_eval_alpha-live-test-c.txt").is_file()
     assert "collection_errors: 1 (api_failed=1)" in result["report"]
     assert "Collection/evaluation summary:" in result["report"]
+    assert "RAGAS judge:" in result["report"]
+    assert "provider: none" in result["report"]
     assert "totals: requested=127 collected=126 evaluated=126" in result["report"]
     assert "ja=requested:80/collected:79/evaluated:79/errors:1" in result["report"]
     assert (
         "evaluation_complete: collected=79/80 evaluated=79/80 "
         "collection_errors=1 ragas_errors=0 [FAIL]"
     ) in result["report"]
+    assert "Alpha release gate met: NO" in result["report"]
+
+
+@pytest.mark.asyncio()
+async def test_alpha_127_release_gate_requires_direct_openai_provider(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+):
+    async def fake_call_chat_api(client, *, base_url, question, language, api_key=None, **kwargs):
+        return {
+            "answer": "grounded answer",
+            "metadata": {
+                "agent": "FakeAgent",
+                "category": "test",
+                "route": "fake",
+                "sources": ["knowledge_base_cached", "google_calendar"],
+            },
+        }
+
+    class FakeRagasEvaluator:
+        is_available = True
+
+        def __init__(self, *, metrics, max_cases):
+            self.metrics = metrics
+            self.max_cases = max_cases
+
+        async def evaluate_batch(self, cases):
+            return SimpleNamespace(
+                evaluated_cases=len(cases),
+                skipped_cases=0,
+                metrics={
+                    "context_precision": 1.0,
+                    "answer_correctness": 1.0,
+                    "answer_relevancy": 1.0,
+                    "faithfulness": 1.0,
+                },
+                errors=[],
+                results=[
+                    SimpleNamespace(
+                        question=case["question"],
+                        answer_correctness=1.0,
+                        answer_relevancy=1.0,
+                        faithfulness=1.0,
+                        context_precision=1.0,
+                        error=None,
+                    )
+                    for case in cases
+                ],
+            )
+
+    openrouter_metadata = {
+        "provider": "openrouter",
+        "provider_label": "OpenRouter fallback",
+        "model": "openai/gpt-5-mini",
+        "embeddings_provider": "openrouter",
+        "embeddings_model": "openai/text-embedding-3-small",
+        "fallback": True,
+        "openai_key_present": False,
+        "openrouter_key_present": True,
+        "release_gate_eligible": False,
+    }
+
+    monkeypatch.setattr(
+        "backend.evaluation.run_live_api_eval._call_chat_api",
+        fake_call_chat_api,
+    )
+    monkeypatch.setitem(
+        __import__("sys").modules,
+        "evaluation.ragas_pipeline",
+        SimpleNamespace(
+            RagasEvaluator=FakeRagasEvaluator,
+            resolve_ragas_judge_metadata=lambda: openrouter_metadata,
+        ),
+    )
+
+    result = await run_live_api_evaluation(
+        base_url="http://example.test",
+        languages=ALL_LANGUAGES,
+        output_dir=tmp_path,
+        case_suite=CASE_SUITE_ALPHA_127,
+        metrics=("answer_correctness",),
+        report_timestamp="alpha-live-openrouter",
+    )
+
+    assert result["comparison"]["all_targets_met"] is True
+    assert result["suite_coverage"]["passed"] is True
+    assert result["comparison"]["ragas_judge"] == openrouter_metadata
+    assert result["ragas_judge"] == openrouter_metadata
+    assert result["artifact_metadata"]["ragas_judge"] == openrouter_metadata
+    assert result["comparison"]["alpha_release_gate_met"] is False
+    assert "provider: OpenRouter fallback" in result["report"]
+    assert "release_gate_eligible: FAIL" in result["report"]
+    assert "All targets met: YES" in result["report"]
     assert "Alpha release gate met: NO" in result["report"]
 
 

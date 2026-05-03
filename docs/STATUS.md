@@ -274,7 +274,7 @@ current turn の high-confidence intent なしに route を固定してはいけ
 
 ## 推奨する実装順
 
-1. PR #695 後の `suites=c-127` rerun で #583 / #670 / #672 の判断材料を取る
+1. run `25272361091` または targeted `suites=c-127` rerun で #583 / #670 / #672 の判断材料を取る
 2. PR #693 後の `suites=q` rerun で #653 を close できるか判断する
 3. C-127 が `127/127` 完走してから C answer/source quality を直す (`#672`)
 4. RAGAS full-run telemetry / runtime を close 判断する (`#670`)

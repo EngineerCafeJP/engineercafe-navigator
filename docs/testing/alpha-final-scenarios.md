@@ -8,10 +8,10 @@ Alpha 最終 Live 検証は Cloud Run live 環境で実施します。このド�
 
 Current confirmed target:
 
-- develop SHA: `fa7745b7420c0709fcff950ed3bf4c090f0dfc55`
-- Cloud Run revision: `engineer-cafe-backend-00144-q85`
-- Full run: `25244933308`
-- Direct OpenAI C/RAGAS run: `25247945549`
+- develop SHA: `6ce1ac81983c7ae53ddfdfc58eba1ee043a83fa8`
+- Cloud Run revision: `engineer-cafe-backend-00162-mlr`
+- Current full run: `25272361091`
+- Direct OpenAI C/RAGAS: required in the current full run artifact/logs
 
 ## Live Target
 
@@ -36,7 +36,7 @@ Current confirmed target:
   Report の `case_suite=alpha-127` と `suite_coverage.requested_total_cases=127` に加えて、
   `evaluated=127`, `collection_errors=0`, `api_failed_case_count=0` を確認してください。
   Post-#692 run `25270459825` は `requested=127` でしたが、`evaluated=35`, `collection_errors=92`
-  だったため GO proof ではありません。PR #695 後の C-127 rerun が必要です。
+  だったため GO proof ではありません。current proof run `25272361091` の artifact 確認が必要です。
 - C/RAGAS の 127-case artifact では `evaluation_summary` を必ず確認してください。
   `requested_total_cases=127` だけでは GO 証跡になりません。
   `collected_total_cases=127`、`evaluated_total_cases=127`、`collection_error_total=0`、
@@ -64,7 +64,7 @@ gh workflow run alpha-live-verification.yml \
   --ref develop \
   -f suites=all \
   -f require_deployed_sha_match=true \
-  -f expected_backend_sha=19623d5534c409856344215b3062900f35ff2816
+  -f expected_backend_sha=6ce1ac81983c7ae53ddfdfc58eba1ee043a83fa8
 ```
 
 ## A-1 Japanese Realistic Utterances
