@@ -2462,6 +2462,15 @@ class TestQwenPrimaryFallback:
         ]
         assert "stt_vosk_early_accept" in events
         assert "stt_qwen_hedge_grace_start" not in events
+        qwen_complete = next(
+            record
+            for record in caplog.records
+            if record.name == "backend.observability.stt"
+            and getattr(record, "event", None) == "stt_qwen_complete"
+        )
+        assert qwen_complete.success is False
+        assert qwen_complete.cancelled is True
+        assert qwen_complete.error_type == "CancelledError"
 
     @pytest.mark.asyncio
     async def test_vosk_hours_confusion_normalizes_and_skips_grace(self, caplog):
