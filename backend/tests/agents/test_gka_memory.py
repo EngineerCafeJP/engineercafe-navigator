@@ -90,6 +90,7 @@ class TestGKAAnswerQueryDispatch:
             None,
             None,
             long_term_memory=long_term_memory,
+            query_type="general",
         )
         assert result["answer"] == "一般回答"
 
