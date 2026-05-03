@@ -3,6 +3,7 @@
 from collections import Counter
 from types import SimpleNamespace
 
+import httpx
 import pytest
 
 from backend.evaluation.run_live_api_eval import (
@@ -11,6 +12,7 @@ from backend.evaluation.run_live_api_eval import (
     CASE_SUITE_DIAGNOSTIC_29,
     EVENT_SOURCE_REQUIREMENT,
     LOCAL_KNOWLEDGE_SOURCE_REQUIREMENT,
+    _call_chat_api,
     _load_case_suite_config,
     _required_live_sources,
     _source_requirement_ok,
@@ -112,7 +114,7 @@ async def test_live_eval_keeps_alpha_127_manifest_count_when_api_collection_fail
 ):
     calls = []
 
-    async def fake_call_chat_api(client, *, base_url, question, language, api_key=None):
+    async def fake_call_chat_api(client, *, base_url, question, language, api_key=None, **kwargs):
         calls.append((question, language))
         if len(calls) == 1:
             raise TimeoutError("synthetic timeout")
@@ -173,6 +175,7 @@ async def test_live_eval_keeps_alpha_127_manifest_count_when_api_collection_fail
         output_dir=tmp_path,
         case_suite=CASE_SUITE_ALPHA_127,
         metrics=("answer_correctness",),
+        report_timestamp="alpha-live-test-c",
     )
 
     assert result["suite_coverage"]["requested_total_cases"] == 127
@@ -189,6 +192,53 @@ async def test_live_eval_keeps_alpha_127_manifest_count_when_api_collection_fail
         "passed": False,
     }
     assert result["comparison"]["alpha_release_gate_met"] is False
+    assert result["artifact_metadata"] == {
+        "report_timestamp": "alpha-live-test-c",
+        "json_report_filename": "live_api_eval_alpha-live-test-c.json",
+        "text_report_filename": "live_api_eval_alpha-live-test-c.txt",
+        "chat_interval_seconds": 0.0,
+        "chat_retry_attempts": 4,
+        "chat_retry_backoff_seconds": 2.0,
+    }
+    assert (tmp_path / "live_api_eval_alpha-live-test-c.json").is_file()
+    assert (tmp_path / "live_api_eval_alpha-live-test-c.txt").is_file()
     assert "collection_errors: 1 (api_failed=1)" in result["report"]
     assert "evaluation_complete: evaluated=79/80 collection_errors=1 [FAIL]" in result["report"]
     assert "Alpha release gate met: NO" in result["report"]
+
+
+@pytest.mark.asyncio
+async def test_call_chat_api_retries_429_with_retry_after(monkeypatch):
+    sleeps: list[float] = []
+
+    async def fake_sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+
+    attempts = 0
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            return httpx.Response(429, headers={"Retry-After": "0.01"}, request=request)
+        return httpx.Response(
+            200,
+            json={"answer": "ok", "metadata": {"agent": "GeneralKnowledgeAgent"}},
+            request=request,
+        )
+
+    monkeypatch.setattr("backend.evaluation.run_live_api_eval.asyncio.sleep", fake_sleep)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        result = await _call_chat_api(
+            client,
+            base_url="http://example.test",
+            question="少し雑談して",
+            language="ja",
+            retry_attempts=2,
+            retry_backoff_seconds=2.0,
+        )
+
+    assert result["answer"] == "ok"
+    assert attempts == 2
+    assert sleeps == [0.01]

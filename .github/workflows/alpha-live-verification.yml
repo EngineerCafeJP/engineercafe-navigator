@@ -258,6 +258,7 @@ jobs:
             backend/tests/evaluation/reports/*.md
             backend/tests/evaluation/reports/*.csv
             backend/tests/evaluation/reports/*.json
+            backend/tests/evaluation/reports/*.txt
           if-no-files-found: warn
           retention-days: 30
 
