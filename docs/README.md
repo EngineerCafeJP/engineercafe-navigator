@@ -79,11 +79,13 @@
 
 ## 2026-05-03 Alpha Remediation Snapshot
 
-PR #674, #675, #676 に加えて、#692, #693, #695 を develop に merge 済みです。
+PR #674, #675, #676 に加えて、#692, #693, #695, #699, #700, #701, #702, #703, #705, #707, #709 を develop に merge 済みです。
 #692 は C-127 accounting を修正し、run `25270459825` で `requested=127` を確認しました。
 ただし同 run は live `/api/chat` 429 により `evaluated=35`, `collection_errors=92`
 で、C-127 completion proof にはなっていません。#695 は 429 pacing / retry 修正として merge 済みで、
-post-#695 C-127 rerun 待ちです。#693 は Q suite 残 failure 修正として merge 済みで、post-deploy Q rerun 待ちです。
+post-#695/#701 C-127 proof は run `25272361091` で確認中です。#693 は Q suite 残 failure 修正として merge 済みで、
+同 run で post-deploy proof を確認中です。#705/#709 は voice timeout budget、#707 は mobile audio playback の
+実装修正として merge/deploy 済みですが、#696/#697/#698 は live/device proof まで open 維持です。
 
 Resolved:
 
@@ -95,17 +97,25 @@ Resolved:
 - #671 RAGAS direct OpenAI provider secret
 - #691 C-127 manifest accounting: PR #692
 - #694 C-127 `/api/chat` 429 collection blocker: PR #695 merged, live proof pending
+- #700 Welcome camera-flow guard
+- #702 alpha Cloud Run log-noise reduction
+- #703 STT warmup before voice live
+- #696 voice backend timeout budget: PR #705/#709 merged/deployed, live proof pending
+- #697 iOS delayed TTS playback: PR #707 merged, device proof pending
+- #698 Android large-audio playback: PR #707 merged, device proof pending
 
 Still active:
 
-- #583 C-127 completion proof: post-#695 rerun must collect/evaluate `127/127`
+- #583 C-127 completion proof: run `25272361091` must collect/evaluate `127/127`
 - #653 / #672 Q/C answer quality
 - #670 RAGAS full-run speed / telemetry closeout
+- #696 / #697 / #698 live/device proof
 - #611 / #584 / #585 live-only proof / issue-scope decisions
 
 ## 直近の次アクション
 
-- #695 後に `suites=c-127` を rerun し、`requested=127`, `evaluated=127`, `collection_errors=0` を確認する
-- #693 後に `suites=q` を rerun し、#653 の残 failure が 0 になったか確認する
+- run `25272361091` を監視し、full suite の outcome / artifact を正本として確認する
+- C-127 で `requested=127`, `evaluated=127`, `collection_errors=0` を確認する
+- Q suite で #653 の残 failure が 0 になったか確認する
 - C-127 が完走してから #672 の answer/source quality を case-level telemetry で修正する
-- #670 は post-#695 C-127 artifact で provider/model/progress と compact report が十分に残ることを確認して close 判断する
+- #670 は post-#695/#701 C-127 artifact で provider/model/progress と compact report が十分に残ることを確認して close 判断する

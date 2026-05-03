@@ -6,12 +6,12 @@
 
 ## 現在の要約
 
-- 2026-05-03 時点で、alpha live verification の workflow は Cloud Run SHA match 付きで targeted suite を安定実行できます。
-- Cloud Run staging は develop SHA `d789a2cd899779423947c40a3d65e19382f52d30` の revision `engineer-cafe-backend-00148-82c` で検証済みです。
+- 2026-05-03 時点で、alpha live verification の workflow は Cloud Run SHA match 付きで targeted / full suite を実行できます。
+- Cloud Run staging は develop SHA `6ce1ac81983c7ae53ddfdfc58eba1ee043a83fa8` の revision `engineer-cafe-backend-00162-mlr` で SHA 一致、`/health` OK です。
 - B routing / slide live smoke は targeted run `25254789937` で `64 passed, 0 warned, 0 failed` まで復旧しました。
 - Welcome UI, compact artifact, Cloud Run Supabase UUID/log hygiene は resolved として issue close 済みです。
-- ただし alpha はまだ **NO-GO** です。C-127 live collection completion、Q/C answer quality、live-only proof が残っています。
-- PR #692/#693/#695 は merge 済みですが、#693 後 Q rerun と #695 後 C-127 rerun が未完了です。
+- ただし alpha はまだ **NO-GO** です。最新 full suite run `25272361091` の完走結果、C-127 live collection completion、Q/C answer quality、live/device proof が残っています。
+- PR #692/#693/#695/#699/#700/#701/#702/#703/#705/#707/#709 は merge 済みです。#696/#697/#698 は実装修正済みですが、live/device proof が終わるまで open 維持です。
 
 詳細は [docs/STATUS.md](docs/STATUS.md) を参照してください。
 
@@ -43,7 +43,8 @@ Browser
 - STT / voice preflight は run `25258764528` で PASS し、#658 は close 済みです。
 - RAGAS は direct OpenAI と C-127 manifest accounting まで修正済みですが、post-#692 run `25270459825`
   は `/api/chat` 429 により `35/127` evaluated でした。PR #695 後の C-127 rerun が必要です。
-- Q suite は PR #693 merge 後の targeted rerun 待ちです。
+- Q suite は PR #693 merge 後の proof を、最新 full suite run `25272361091` で再確認中です。
+- Voice timeout / mobile audio は PR #705/#707/#709 で修正済みですが、#696/#697/#698 は live/device proof 待ちです。
 - B routing / slide live smoke と Cloud Run UUID log hygiene は 2026-05-03 時点の deployed staging で解消確認済みです。
 
 この README は現況の入口だけを扱います。監査結果と production readiness の論点は [docs/STATUS.md](docs/STATUS.md) に集約しています。
@@ -97,10 +98,10 @@ make dev
 
 2026-05-03 時点で把握した主要な alpha open items:
 
-- P0 / alpha-scope: `#583`, `#584`, `#585`, `#611`, `#612`, `#643`
-- P1 / alpha-scope: `#653`, `#670`, `#672`
+- P0 / alpha-scope: `#583`, `#584`, `#585`, `#611`, `#612`, `#643`, `#696`, `#697`
+- P1 / alpha-scope: `#653`, `#670`, `#672`, `#698`
 - Resolved in the latest remediation pass: `#658`, `#659`, `#660`, `#661`, `#662`, `#671`, `#691`, `#694`
-- Merged and awaiting live proof: PR `#693` for Q quality, PR `#695` for C-127 `/api/chat` pacing / 429 retry
+- Merged and awaiting live proof: PR `#693` for Q quality, PR `#695/#701` for C-127 pacing / coverage, PR `#699` for C source routing, PR `#700/#703` for live harness hardening, PR `#702` for log hygiene, PR `#705/#709` for voice timeout budget, PR `#707` for mobile audio playback
 
 ## 注意
 
