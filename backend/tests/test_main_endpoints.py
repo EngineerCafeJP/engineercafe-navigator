@@ -196,6 +196,44 @@ class TestChatEndpoint:
             assert response.vrm_control == {"name": "idle", "duration": 1000, "keyframes": []}
 
     @pytest.mark.asyncio
+    async def test_chat_daily_conversation_uses_endpoint_fast_path(self):
+        from backend.main import ChatRequest, chat
+
+        with patch("backend.main._run_workflow_with_tracking", new_callable=AsyncMock) as workflow:
+            body = ChatRequest(
+                query="少し雑談して",
+                session_id="quality-q-daily",
+                language="ja",
+            )
+            response = await chat(_mock_request(), body)
+
+        workflow.assert_not_awaited()
+        assert response.metadata["route"] == "general_knowledge"
+        assert response.metadata["request_type"] == "daily_conversation"
+        assert response.metadata["fast_path"] == "chat_endpoint"
+        assert response.metadata["provider_called"] is False
+        assert response.metadata["web_search_used"] is False
+        assert "施設" in response.answer
+
+    @pytest.mark.asyncio
+    async def test_chat_assistant_profile_uses_endpoint_fast_path(self):
+        from backend.main import ChatRequest, chat
+
+        with patch("backend.main._run_workflow_with_tracking", new_callable=AsyncMock) as workflow:
+            body = ChatRequest(
+                query="あなたの名前は？",
+                session_id="quality-q-assistant",
+                language="ja",
+            )
+            response = await chat(_mock_request(), body)
+
+        workflow.assert_not_awaited()
+        assert response.metadata["route"] == "general_knowledge"
+        assert response.metadata["request_type"] == "assistant_profile"
+        assert response.metadata["sources"] == []
+        assert "Engineer Cafe Navigator" in response.answer
+
+    @pytest.mark.asyncio
     async def test_chat_error_no_leak(self):
         """Exception detail should NOT contain internal error message"""
         with patch(

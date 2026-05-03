@@ -3,6 +3,7 @@ GeneralKnowledgeAgent のユニットテスト
 """
 
 import os
+import time
 import pytest
 from unittest.mock import patch, MagicMock, AsyncMock
 from backend.agents.general_knowledge_agent import GeneralKnowledgeAgent
@@ -264,15 +265,20 @@ class TestGeneralKnowledgeAgentIntegration:
 
     @pytest.mark.asyncio
     async def test_answer_query_daily_conversation_does_not_call_provider_or_search(self):
+        started = time.perf_counter()
         result = await self.agent.answer_query(
             query="今日は少し疲れた",
             language="ja",
             session_id="test_session",
             query_type="daily_conversation",
         )
+        elapsed_ms = (time.perf_counter() - started) * 1000
 
         assert result["metadata"]["query_type"] == "daily_conversation"
         assert result["metadata"]["web_search_used"] is False
+        assert result["metadata"]["rag_used"] is False
+        assert result["metadata"]["provider_called"] is False
+        assert elapsed_ms < 100
         self.mock_provider.generate.assert_not_called()
         self.mock_web_search.search.assert_not_called()
         self.mock_rag_search.search.assert_not_called()

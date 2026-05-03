@@ -588,6 +588,27 @@ Information: {context}
             }
             return self._canonical_result(answers.get(language, answers["ja"]), request_type)
 
+        if self._asks_reservation_requirement(normalized):
+            answers = {
+                "ja": (
+                    "[relaxed]通常のコワーキング利用は予約なしで利用できます。"
+                    "来館したら1階受付でチェックインしてください。"
+                ),
+                "en": (
+                    "[relaxed]Yes. You can use the regular coworking space at "
+                    "Engineer Cafe without a reservation. Please check in at the "
+                    "1F reception when you arrive."
+                ),
+                "zh": (
+                    "[relaxed]普通共享办公空间无需预约即可使用。" "到馆后请先到一楼前台办理签到。"
+                ),
+                "ko": (
+                    "[relaxed]일반 코워킹 공간은 예약 없이 이용할 수 있습니다. "
+                    "방문하시면 1층 안내 데스크에서 체크인해 주세요."
+                ),
+            }
+            return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
         if self._asks_what_is_engineer_cafe(normalized, language):
             answers = {
                 "ja": (
@@ -770,6 +791,71 @@ Information: {context}
             "얼마",
         )
         return any(keyword in query for keyword in keywords)
+
+    @staticmethod
+    def _asks_reservation_requirement(query: str) -> bool:
+        excluded_targets = (
+            "event",
+            "events",
+            "event room",
+            "workshop",
+            "meetup",
+            "seminar",
+            "meeting room",
+            "conference room",
+            "room",
+            "イベント",
+            "イベントスペース",
+            "勉強会",
+            "セミナー",
+            "ミートアップ",
+            "会議室",
+            "ミーティングルーム",
+            "会议室",
+            "活动",
+            "이벤트",
+            "회의실",
+        )
+        if any(target in query for target in excluded_targets):
+            return False
+
+        reservation_markers = (
+            "without a reservation",
+            "no reservation",
+            "need a reservation",
+            "reservation needed",
+            "reservation required",
+            "予約なし",
+            "予約無し",
+            "予約不要",
+            "予約は必要",
+            "予約が必要",
+            "予約必要",
+            "无需预约",
+            "需要预约",
+            "예약 없이",
+            "예약 필요",
+        )
+        if not any(marker in query for marker in reservation_markers):
+            return False
+
+        regular_use_markers = (
+            "engineer cafe",
+            "coworking",
+            "regular",
+            "use",
+            "visit",
+            "利用",
+            "使え",
+            "コワーキング",
+            "普通",
+            "通常",
+            "使用",
+            "共享办公",
+            "이용",
+            "코워킹",
+        )
+        return any(marker in query for marker in regular_use_markers)
 
     @staticmethod
     def _asks_what_is_engineer_cafe(query: str, language: str) -> bool:
