@@ -1,5 +1,6 @@
 """C/RAGAS live API case-suite selection tests."""
 
+import json
 from collections import Counter
 from types import SimpleNamespace
 
@@ -231,6 +232,7 @@ async def test_live_eval_keeps_alpha_127_manifest_count_when_api_collection_fail
         "report_timestamp": "alpha-live-test-c",
         "json_report_filename": "live_api_eval_alpha-live-test-c.json",
         "text_report_filename": "live_api_eval_alpha-live-test-c.txt",
+        "progress_report_filename": "live_api_eval_alpha-live-test-c.progress.json",
         "ragas_judge": NO_RAGAS_JUDGE_METADATA,
         "expected_total_cases": 127,
         "manifest_language_counts": {"ja": 80, "en": 23, "zh": 12, "ko": 12},
@@ -242,6 +244,17 @@ async def test_live_eval_keeps_alpha_127_manifest_count_when_api_collection_fail
     }
     assert (tmp_path / "live_api_eval_alpha-live-test-c.json").is_file()
     assert (tmp_path / "live_api_eval_alpha-live-test-c.txt").is_file()
+    progress_path = tmp_path / "live_api_eval_alpha-live-test-c.progress.json"
+    assert progress_path.is_file()
+    progress = json.loads(progress_path.read_text(encoding="utf-8"))
+    assert progress["mode"] == "live-api-progress"
+    assert progress["case_suite"] == CASE_SUITE_ALPHA_127
+    assert progress["total_requested_cases"] == 127
+    assert progress["phase"] == "report_written"
+    assert progress["collection"]["collected"] == 126
+    assert progress["collection"]["errors"] == 1
+    assert progress["ragas"]["completed_languages"] == ["ja", "en", "zh", "ko"]
+    assert progress["ragas"]["evaluated_total"] == 126
     assert "collection_errors: 1 (api_failed=1)" in result["report"]
     assert "Collection/evaluation summary:" in result["report"]
     assert "RAGAS judge:" in result["report"]

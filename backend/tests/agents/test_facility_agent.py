@@ -337,6 +337,7 @@ class TestFacilityAgent:
         assert response is not None
         assert "天神駅" in response["answer"]
         assert "徒歩約5分" in response["answer"]
+        assert "天神4丁目" in response["answer"]
         assert "専用駐車場はない" in response["answer"]
 
     def test_generic_wifi_query_does_not_expose_credentials(self):
