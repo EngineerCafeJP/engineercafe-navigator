@@ -324,6 +324,19 @@ class TestGeneralKnowledgeAgentIntegration:
         self.mock_provider.generate.assert_awaited_once()
 
     @pytest.mark.asyncio
+    async def test_consultation_query_type_uses_consultation_rag_category(self):
+        result = await self.agent.answer_query(
+            query="コミュニティマネージャーに相談できることは？",
+            language="ja",
+            session_id="test_session",
+            query_type="consultation",
+        )
+
+        assert result["metadata"]["sources"] == ["knowledge_base"]
+        self.mock_rag_search.search.assert_awaited_once()
+        assert self.mock_rag_search.search.await_args.kwargs["category"] == "consultation"
+
+    @pytest.mark.asyncio
     async def test_deep_reasoning_uses_explicit_model_case(self):
         result = await self.agent.answer_query(
             query="弁証法的に比較分析してください",

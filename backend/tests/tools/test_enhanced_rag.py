@@ -671,6 +671,58 @@ class TestTextFallbackSearch:
         assert results
         assert "SSID" in results[0]["content"] or "engnecf" in results[0]["content"]
 
+    def test_local_yaml_fallback_returns_consultation_for_gt_019(self, rag_search):
+        """gt-019の相談サービス質問が公式相談KBに当たる"""
+        results = rag_search._local_knowledge_fallback_search(
+            query="コミュニティマネージャーに相談できることは？",
+            category="consultation",
+            language="ja",
+            max_results=3,
+        )
+
+        assert results
+        assert results[0]["id"] == "community-manager"
+        assert "スキルチェンジ" in results[0]["content"]
+
+    def test_local_yaml_fallback_returns_spaces_for_gt_065(self, rag_search):
+        """gt-065の英語スペース一覧質問が主要スペースKBに当たる"""
+        results = rag_search._local_knowledge_fallback_search(
+            query="What spaces are available at Engineer Cafe?",
+            category="facility-info",
+            language="en",
+            max_results=10,
+        )
+
+        result_ids = {row["id"] for row in results}
+        assert "facility-main-hall" in result_ids
+        assert "facility-focus-space" in result_ids
+        assert "facility-makers-space" in result_ids
+
+    def test_expand_query_adds_space_terms_for_gt_065(self, rag_search):
+        """gt-065の英語スペース質問はスペース系KB語彙へ拡張される"""
+        expanded = rag_search._expand_query(
+            "What spaces are available at Engineer Cafe?",
+            category="facility-info",
+            language="en",
+        )
+
+        assert "spaces" in expanded
+        assert "スペース" in expanded
+        assert "メインホール" in expanded or "集中スペース" in expanded
+
+    def test_local_yaml_fallback_returns_smoking_for_gt_115_korean(self, rag_search):
+        """gt-115の韓国語喫煙質問が喫煙ポリシーKBに当たる"""
+        results = rag_search._local_knowledge_fallback_search(
+            query="실내에서 흡연할 수 있나요?",
+            category="smoking",
+            language="ko",
+            max_results=3,
+        )
+
+        assert results
+        assert results[0]["id"] == "policy-smoking"
+        assert "禁煙" in results[0]["content"]
+
     def test_local_yaml_fallback_keeps_reception_queries_on_general_guides(self, rag_search):
         """受付・予約なし質問ではイベント予約ではなく一般受付案内を優先する"""
         results = rag_search._local_knowledge_fallback_search(

@@ -135,6 +135,17 @@ def is_assistant_profile_question(lower_query: str) -> bool:
     if any(marker in lower_query for marker in visitor_name_markers):
         return False
 
+    domain_service_markers = (
+        "コミュニティマネージャー",
+        "community manager",
+        "キャリア相談",
+        "技術相談",
+        "スキルチェンジ",
+        "転職",
+    )
+    if any(marker in lower_query for marker in domain_service_markers):
+        return False
+
     # Substring identity markers that are unambiguous on their own.
     identity_markers = (
         # Japanese

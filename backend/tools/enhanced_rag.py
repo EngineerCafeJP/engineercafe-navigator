@@ -35,6 +35,10 @@ RPC_SIMILARITY_THRESHOLDS: Dict[str, float] = {
     "general": 0.30,
     "consultation": 0.30,
     "community": 0.30,
+    "smoking": 0.30,
+    "food_drink": 0.30,
+    "parking": 0.30,
+    "bicycle": 0.30,
 }
 DEFAULT_RPC_SIMILARITY_THRESHOLD = 0.30
 RPC_TIMEOUT_SECONDS = 10.0
@@ -49,6 +53,10 @@ CATEGORY_THRESHOLDS = {
     "general": {"high": 0.72, "medium": 0.52, "term_match": 0.20},
     "consultation": {"high": 0.65, "medium": 0.45, "term_match": 0.18},
     "community": {"high": 0.73, "medium": 0.53, "term_match": 0.20},
+    "smoking": {"high": 0.65, "medium": 0.45, "term_match": 0.18},
+    "food_drink": {"high": 0.70, "medium": 0.50, "term_match": 0.20},
+    "parking": {"high": 0.70, "medium": 0.50, "term_match": 0.20},
+    "bicycle": {"high": 0.70, "medium": 0.50, "term_match": 0.20},
 }
 DEFAULT_THRESHOLDS = {"high": 0.78, "medium": 0.58, "term_match": 0.25}
 
@@ -153,6 +161,14 @@ QUERY_EXPANSION_MAP: Dict[str, List[str]] = {
     "位置": ["場所", "アクセス", "住所"],
     "设施": ["設備", "施設", "facility"],
     "登记": ["利用方法", "登録", "初回"],
+    # Policy / space queries
+    "spaces": ["スペース", "施設", "設備", "メインホール", "集中スペース"],
+    "available spaces": ["スペース", "施設", "設備", "メインホール", "集中スペース"],
+    "what spaces": ["スペース", "施設", "設備", "メインホール", "集中スペース"],
+    "smoking": ["喫煙", "禁煙", "喫煙所"],
+    "흡연": ["喫煙", "禁煙", "喫煙所"],
+    "금연": ["禁煙", "喫煙"],
+    "담배": ["喫煙", "禁煙", "喫煙所"],
 }
 
 
@@ -518,22 +534,35 @@ class EnhancedRAGSearch:
         if category != "general" and len(query) < 15 and "エンジニアカフェ" not in query:
             query = f"エンジニアカフェ {query}"
 
-        # カテゴリベースの拡張キーワード
-        category_keywords: Dict[str, List[str]] = {
-            "hours": ["営業時間", "opening hours", "business hours", "開館時間"],
-            "pricing": ["料金", "price", "pricing", "cost", "利用料金"],
-            "location": ["場所", "アクセス", "location", "access", "住所", "address"],
-            "facility-info": ["設備", "facility", "施設", "equipment"],
-        }
-
-        if category in category_keywords:
-            expansions.extend(category_keywords[category])
-
         # クエリ内のキーワードに基づく拡張
         query_lower = query.lower()
         for key, synonyms in QUERY_EXPANSION_MAP.items():
             if key.lower() in query_lower:
                 expansions.extend(synonyms)
+
+        # カテゴリベースの拡張キーワード
+        category_keywords: Dict[str, List[str]] = {
+            "hours": ["営業時間", "opening hours", "business hours", "開館時間"],
+            "pricing": ["料金", "price", "pricing", "cost", "利用料金"],
+            "location": ["場所", "アクセス", "location", "access", "住所", "address"],
+            "facility-info": [
+                "設備",
+                "facility",
+                "facilities",
+                "space",
+                "spaces",
+                "施設",
+                "equipment",
+            ],
+            "consultation": ["相談", "コミュニティマネージャー", "career", "consultation"],
+            "smoking": ["喫煙", "禁煙", "smoking", "흡연", "금연"],
+            "food_drink": ["飲食", "食べ物", "drink", "food"],
+            "parking": ["駐車場", "parking"],
+            "bicycle": ["駐輪場", "bicycle parking"],
+        }
+
+        if category in category_keywords:
+            expansions.extend(category_keywords[category])
 
         # 重複除去して元クエリと結合
         seen: set[str] = set()
@@ -815,7 +844,12 @@ class EnhancedRAGSearch:
 
     def _extract_text_query_terms(self, query: str, category: str, language: str) -> list[str]:
         text = self._expand_query(query, category, language).lower()
-        terms = set(re.findall(r"[a-z0-9][a-z0-9_.+-]*|[\u3040-\u30ff\u4e00-\u9fff]{2,}", text))
+        terms = set(
+            re.findall(
+                r"[a-z0-9][a-z0-9_.+-]*|[\u3040-\u30ff\u4e00-\u9fff\uac00-\ud7af]{2,}",
+                text,
+            )
+        )
 
         domain_terms = (
             "wi-fi",
@@ -833,6 +867,11 @@ class EnhancedRAGSearch:
             "開館",
             "駐車",
             "電源",
+            "喫煙",
+            "禁煙",
+            "흡연",
+            "금연",
+            "담배",
         )
         query_lower = query.lower()
         for term in domain_terms:
@@ -869,7 +908,10 @@ class EnhancedRAGSearch:
 
     @staticmethod
     def _contains_cjk(text: str) -> bool:
-        return any("\u3040" <= c <= "\u30ff" or "\u4e00" <= c <= "\u9fff" for c in text)
+        return any(
+            "\u3040" <= c <= "\u30ff" or "\u4e00" <= c <= "\u9fff" or "\uac00" <= c <= "\ud7af"
+            for c in text
+        )
 
     async def _generate_embedding(self, text: str) -> List[float]:
         """OpenRouter API経由でエンベディングを生成。

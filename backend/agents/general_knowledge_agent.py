@@ -111,6 +111,7 @@ class GeneralKnowledgeAgent:
             state_context,
             context_signals,
             long_term_memory=long_term_memory,
+            query_type=query_type,
         )
 
     async def answer_general_query(
@@ -151,16 +152,17 @@ class GeneralKnowledgeAgent:
             # 2. ナレッジベース検索（キャッシュチェック付き）
             context = ""
             sources: List[str] = []
+            rag_category = self._rag_category_for_query_type(query_type)
 
             cached = state_context if state_context else None
-            if cached and cached.get("success") and cached.get("category") == "general":
+            if cached and cached.get("success") and cached.get("category") == rag_category:
                 context = cached.get("context_string", "")
                 sources.append("knowledge_base_cached")
                 logger.info("Using cached RAG results: %d chars", len(context))
             else:
                 kb_result = await self.rag_search.search(
                     query=query,
-                    category="general",
+                    category=rag_category,
                     language=language,
                     max_results=5,
                     context_signals=context_signals,
@@ -244,6 +246,15 @@ class GeneralKnowledgeAgent:
         except Exception as e:
             logger.exception("GeneralKnowledgeAgent処理エラー: %s", e)
             return self._handle_error(language)
+
+    @staticmethod
+    def _rag_category_for_query_type(query_type: str) -> str:
+        """Keep general-knowledge routes on specific local KB slices when known."""
+        category_by_query_type = {
+            "consultation": "consultation",
+            "community": "community",
+        }
+        return category_by_query_type.get(query_type, "general")
 
     # =========================================================================
     # メモリクエリ処理

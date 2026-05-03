@@ -483,6 +483,9 @@ SMOKING_KEYWORDS = [
     "smoking",
     "cigarette",
     "smoke",
+    "흡연",
+    "금연",
+    "담배",
 ]
 
 FOOD_DRINK_KEYWORDS = [
@@ -532,6 +535,8 @@ FACILITY_EQUIPMENT_KEYWORDS = [
     "equipment",
     "facility",
     "facilities",
+    "available spaces",
+    "what spaces",
     "outlet",
     "printer",
     "monitor",

@@ -139,9 +139,11 @@ class FacilityAgent:
 
         # Check cached RAG results
         cached = state_context if state_context else None
-        if cached and cached.get("success") and cached.get("category") == "facility-info":
+        rag_category = self._map_request_type_to_rag_category(request_type)
+
+        if cached and cached.get("success") and cached.get("category") == rag_category:
             context = cached.get("context_string", "")
-            logger.info("Using cached RAG results for facility-info")
+            logger.info("Using cached RAG results for %s", rag_category)
         else:
             # クエリ拡張（requestTypeに応じて）
             enhanced_query = self._enhance_query(query, request_type, language)
@@ -149,7 +151,7 @@ class FacilityAgent:
             # Enhanced RAG検索
             rag_result = await self.enhanced_rag.search(
                 query=enhanced_query,
-                category="facility-info",
+                category=rag_category,
                 language=language,
                 include_advice=True,
                 max_results=10,
@@ -188,7 +190,7 @@ class FacilityAgent:
                 "metadata": {
                     "agent": "FacilityAgent",
                     "confidence": 0.85,
-                    "category": "facility-info",
+                    "category": rag_category,
                     "request_type": request_type,
                     "sources": ["enhanced_rag"],
                 },
@@ -206,6 +208,17 @@ class FacilityAgent:
             )
             return f"{query} {keywords}"
         return query
+
+    @staticmethod
+    def _map_request_type_to_rag_category(request_type: Optional[str]) -> str:
+        """Map facility request types to the narrowest RAG category available."""
+        category_by_request_type = {
+            "smoking": "smoking",
+            "food_drink": "food_drink",
+            "parking": "parking",
+            "bicycle": "bicycle",
+        }
+        return category_by_request_type.get(request_type or "", "facility-info")
 
     def _filter_basement_context(self, context: str, query: str, language: str) -> str:
         """地下施設に関連するコンテキストのみに絞り込む
