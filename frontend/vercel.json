@@ -10,19 +10,19 @@
   ],
   "functions": {
     "src/app/api/voice/route.ts": {
-      "maxDuration": 60
+      "maxDuration": 120
     },
     "src/app/api/voice/filler/route.ts": {
-      "maxDuration": 60
+      "maxDuration": 120
     },
     "src/app/api/qa/route.ts": {
-      "maxDuration": 60
+      "maxDuration": 120
     },
     "src/app/api/slides/route.ts": {
-      "maxDuration": 60
+      "maxDuration": 120
     },
     "src/app/api/character/route.ts": {
-      "maxDuration": 60
+      "maxDuration": 120
     },
     "src/app/api/marp/route.ts": {
       "maxDuration": 15
