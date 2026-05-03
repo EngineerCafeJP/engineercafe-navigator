@@ -15,6 +15,8 @@ set -euo pipefail
 #   RAG_API_LIVE_METRICS           Comma-separated RAGAS metrics.
 #   RAG_API_LIVE_CHAT_INTERVAL_SECONDS
 #                                   Minimum seconds between /api/chat starts (default: 2.2).
+#   RAG_API_LIVE_CHAT_TIMEOUT_SECONDS
+#                                   Per-attempt /api/chat timeout seconds (default: 60).
 #   RAG_API_LIVE_TOTAL_TIMEOUT_SECONDS
 #                                   Whole runner wall-clock timeout; 0 disables (default: 7200).
 #   OPENAI_API_KEY / OPENROUTER_API_KEY are required by the RAGAS evaluator.
@@ -35,6 +37,7 @@ METRICS="${RAG_API_LIVE_METRICS:-answer_correctness}"
 CASE_SUITE="${RAG_API_LIVE_CASE_SUITE:-diagnostic-29}"
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 CHAT_INTERVAL_SECONDS="${RAG_API_LIVE_CHAT_INTERVAL_SECONDS:-2.2}"
+CHAT_TIMEOUT_SECONDS="${RAG_API_LIVE_CHAT_TIMEOUT_SECONDS:-60}"
 CHAT_RETRY_ATTEMPTS="${RAG_API_LIVE_CHAT_RETRY_ATTEMPTS:-4}"
 CHAT_RETRY_BACKOFF_SECONDS="${RAG_API_LIVE_CHAT_RETRY_BACKOFF_SECONDS:-2.0}"
 TOTAL_TIMEOUT_SECONDS="${RAG_API_LIVE_TOTAL_TIMEOUT_SECONDS:-7200}"
@@ -60,6 +63,8 @@ Options:
   --timestamp VALUE      Stable timestamp marker for logs and report names
   --chat-interval-seconds VALUE
                          Minimum seconds between live /api/chat request starts (default: 2.2)
+  --chat-timeout-seconds VALUE
+                         Per-attempt timeout seconds for live /api/chat requests (default: 60)
   --chat-retry-attempts VALUE
                          Total /api/chat attempts for retryable 429 responses (default: 4)
   --chat-retry-backoff-seconds VALUE
@@ -91,6 +96,7 @@ while [ "$#" -gt 0 ]; do
     --output-dir) OUTPUT_DIR="$2"; shift 2 ;;
     --timestamp) TIMESTAMP="$2"; shift 2 ;;
     --chat-interval-seconds) CHAT_INTERVAL_SECONDS="$2"; shift 2 ;;
+    --chat-timeout-seconds) CHAT_TIMEOUT_SECONDS="$2"; shift 2 ;;
     --chat-retry-attempts) CHAT_RETRY_ATTEMPTS="$2"; shift 2 ;;
     --chat-retry-backoff-seconds) CHAT_RETRY_BACKOFF_SECONDS="$2"; shift 2 ;;
     --no-check-targets) CHECK_TARGETS=0; shift ;;
@@ -105,6 +111,18 @@ require_cmd() {
     echo "Error: required command not found: $1" >&2
     exit 2
   fi
+}
+
+timeout_cmd() {
+  if command -v timeout >/dev/null 2>&1; then
+    printf 'timeout'
+    return 0
+  fi
+  if command -v gtimeout >/dev/null 2>&1; then
+    printf 'gtimeout'
+    return 0
+  fi
+  return 1
 }
 
 fetch_api_key_from_gcloud() {
@@ -235,6 +253,7 @@ main() {
     echo "Languages: ${LANG_ARGS[*]}"
     echo "Metrics: ${METRIC_ARGS[*]}"
     echo "Chat interval seconds: $CHAT_INTERVAL_SECONDS"
+    echo "Chat timeout seconds: $CHAT_TIMEOUT_SECONDS"
     echo "Chat retry attempts: $CHAT_RETRY_ATTEMPTS"
     echo "Chat retry backoff seconds: $CHAT_RETRY_BACKOFF_SECONDS"
     echo "Runner total timeout seconds: $TOTAL_TIMEOUT_SECONDS"
@@ -267,17 +286,21 @@ main() {
   echo "Languages: ${LANG_ARGS[*]}"
   echo "Metrics: ${METRIC_ARGS[*]}"
   echo "Chat interval seconds: $CHAT_INTERVAL_SECONDS"
+  echo "Chat timeout seconds: $CHAT_TIMEOUT_SECONDS"
   echo "Chat retry attempts: $CHAT_RETRY_ATTEMPTS"
   echo "Chat retry backoff seconds: $CHAT_RETRY_BACKOFF_SECONDS"
   echo "RAGAS batch strategy: ${RAGAS_BATCH_STRATEGY:-single}"
   echo "RAGAS per-case timeout: ${RAGAS_OUTER_SINGLE_TIMEOUT:-300}s"
   echo "RAGAS max workers: ${RAGAS_MAX_WORKERS:-1}"
   echo "Runner total timeout: ${TOTAL_TIMEOUT_SECONDS}s"
+  echo "Expected JSON report: $OUTPUT_DIR/live_api_eval_${TIMESTAMP}.json"
+  echo "Expected text report: $OUTPUT_DIR/live_api_eval_${TIMESTAMP}.txt"
 
-  cmd=(python evaluation/run_live_api_eval.py --base-url "$BASE_URL" --case-suite "$CASE_SUITE" --languages "${LANG_ARGS[@]}" --metrics "${METRIC_ARGS[@]}" --output-dir "$OUTPUT_DIR" --report-timestamp "$TIMESTAMP" --chat-interval-seconds "$CHAT_INTERVAL_SECONDS" --chat-retry-attempts "$CHAT_RETRY_ATTEMPTS" --chat-retry-backoff-seconds "$CHAT_RETRY_BACKOFF_SECONDS")
+  cmd=(python evaluation/run_live_api_eval.py --base-url "$BASE_URL" --case-suite "$CASE_SUITE" --languages "${LANG_ARGS[@]}" --metrics "${METRIC_ARGS[@]}" --output-dir "$OUTPUT_DIR" --report-timestamp "$TIMESTAMP" --chat-interval-seconds "$CHAT_INTERVAL_SECONDS" --chat-timeout-seconds "$CHAT_TIMEOUT_SECONDS" --chat-retry-attempts "$CHAT_RETRY_ATTEMPTS" --chat-retry-backoff-seconds "$CHAT_RETRY_BACKOFF_SECONDS")
   if [ "$CHECK_TARGETS" = "1" ]; then
     cmd+=(--check-targets)
   fi
+  set +e
   (
     cd "$ROOT_DIR/backend"
     if command -v uv >/dev/null 2>&1; then
@@ -288,13 +311,17 @@ main() {
 
     # asyncio.wait_for cannot stop a provider call already running in a worker thread.
     # The outer process timeout keeps C/RAGAS from consuming the entire workflow.
-    if [ "$TOTAL_TIMEOUT_SECONDS" != "0" ] && command -v timeout >/dev/null 2>&1; then
+    timeout_binary=""
+    if [ "$TOTAL_TIMEOUT_SECONDS" != "0" ]; then
+      timeout_binary="$(timeout_cmd || true)"
+    fi
+    if [ -n "$timeout_binary" ]; then
       API_SECRET_KEY="$API_KEY" \
         RAGAS_BATCH_STRATEGY="${RAGAS_BATCH_STRATEGY:-single}" \
         RAGAS_OUTER_SINGLE_TIMEOUT="${RAGAS_OUTER_SINGLE_TIMEOUT:-300}" \
         RAGAS_MAX_WORKERS="${RAGAS_MAX_WORKERS:-1}" \
         PYTHONPATH="$ROOT_DIR:$ROOT_DIR/backend:${PYTHONPATH:-}" \
-        timeout --kill-after=30s "${TOTAL_TIMEOUT_SECONDS}s" "${runner_cmd[@]}"
+        "$timeout_binary" --kill-after=30s "${TOTAL_TIMEOUT_SECONDS}s" "${runner_cmd[@]}"
     else
       if [ "$TOTAL_TIMEOUT_SECONDS" != "0" ]; then
         echo "Warning: timeout command not found; running without whole-runner timeout" >&2
@@ -307,6 +334,20 @@ main() {
         "${runner_cmd[@]}"
     fi
   )
+  status=$?
+  set -e
+  if [ "$status" -ne 0 ]; then
+    echo "C live RAGAS failed with status $status" >&2
+    if [ "$status" -eq 124 ]; then
+      echo "Failure reason: whole-runner timeout after ${TOTAL_TIMEOUT_SECONDS}s." >&2
+    elif [ "$status" -eq 137 ]; then
+      echo "Failure reason: runner was killed, commonly after timeout kill-after or OOM." >&2
+    fi
+    echo "Check progress above for the last completed phase/case." >&2
+    echo "Expected JSON report if the runner reached artifact writing: $OUTPUT_DIR/live_api_eval_${TIMESTAMP}.json" >&2
+    echo "Expected text report if the runner reached artifact writing: $OUTPUT_DIR/live_api_eval_${TIMESTAMP}.txt" >&2
+    exit "$status"
+  fi
 }
 
 main "$@"

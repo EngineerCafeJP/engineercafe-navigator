@@ -140,9 +140,12 @@ jobs:
         id: alpha_a
         if: contains(format(',{0},', inputs.suites), ',a,') || contains(format(',{0},', inputs.suites), ',all,')
         continue-on-error: true
+        timeout-minutes: 60
         env:
           API_SECRET_KEY: ${{ secrets.BACKEND_API_KEY }}
-        run: scripts/alpha-smoke-comprehensive.sh --timestamp "${ALPHA_TIMESTAMP}-a" --host "$ALPHA_SMOKE_BASE_URL" --scenarios A --timeout 120 --sleep 3.2
+        run: |
+          echo "A voice round-trip smoke step timeout: 60 minutes; per-request timeout: 120 seconds"
+          scripts/alpha-smoke-comprehensive.sh --timestamp "${ALPHA_TIMESTAMP}-a" --host "$ALPHA_SMOKE_BASE_URL" --scenarios A --timeout 120 --sleep 3.2
 
       - name: B LangGraph routing live smoke
         id: alpha_b

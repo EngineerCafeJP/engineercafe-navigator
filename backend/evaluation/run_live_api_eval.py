@@ -34,6 +34,7 @@ DEFAULT_REPORTS_DIR = Path(__file__).parent.parent / "tests" / "evaluation" / "r
 DEFAULT_CHAT_INTERVAL_SECONDS = 2.2
 DEFAULT_CHAT_RETRY_ATTEMPTS = 4
 DEFAULT_CHAT_RETRY_BACKOFF_SECONDS = 2.0
+DEFAULT_CHAT_TIMEOUT_SECONDS = 60.0
 
 ALL_LANGUAGES = ("ja", "en", "zh", "ko")
 CASE_SUITE_DIAGNOSTIC_29 = "diagnostic-29"
@@ -265,6 +266,12 @@ def _collection_error_record(
     }
 
 
+def _emit_progress(message: str) -> None:
+    """Print progress immediately so long GitHub Actions runs do not look stalled."""
+    print(message, flush=True)
+    logger.info(message)
+
+
 def _report_file_timestamp(value: Optional[str] = None) -> str:
     """Return a filesystem-safe timestamp marker for report artifact names."""
     raw = (value or "").strip()
@@ -293,6 +300,7 @@ async def _call_chat_api(
     api_key: Optional[str] = None,
     retry_attempts: int = DEFAULT_CHAT_RETRY_ATTEMPTS,
     retry_backoff_seconds: float = DEFAULT_CHAT_RETRY_BACKOFF_SECONDS,
+    timeout_seconds: float = DEFAULT_CHAT_TIMEOUT_SECONDS,
 ) -> Dict[str, Any]:
     """Call the /api/chat endpoint and return the response."""
     headers: Dict[str, str] = {"Content-Type": "application/json"}
@@ -307,7 +315,12 @@ async def _call_chat_api(
     url = f"{base_url.rstrip('/')}/api/chat"
     attempts = max(1, retry_attempts)
     for attempt in range(attempts):
-        response = await client.post(url, json=payload, headers=headers, timeout=60.0)
+        response = await client.post(
+            url,
+            json=payload,
+            headers=headers,
+            timeout=timeout_seconds,
+        )
         try:
             response.raise_for_status()
             return response.json()
@@ -340,6 +353,7 @@ async def run_live_api_evaluation(
     chat_interval_seconds: float = 0.0,
     chat_retry_attempts: int = DEFAULT_CHAT_RETRY_ATTEMPTS,
     chat_retry_backoff_seconds: float = DEFAULT_CHAT_RETRY_BACKOFF_SECONDS,
+    chat_timeout_seconds: float = DEFAULT_CHAT_TIMEOUT_SECONDS,
 ) -> Dict[str, Any]:
     """Run RAGAS evaluation against the live API.
 
@@ -352,6 +366,7 @@ async def run_live_api_evaluation(
         chat_interval_seconds: Minimum seconds between live /api/chat request starts.
         chat_retry_attempts: Total /api/chat attempts for retryable 429 responses.
         chat_retry_backoff_seconds: Base exponential backoff for 429 responses.
+        chat_timeout_seconds: Per-attempt timeout for live /api/chat calls.
 
     Returns:
         Evaluation result dictionary with per-language metrics.
@@ -367,8 +382,18 @@ async def run_live_api_evaluation(
     requested_case_counts: Dict[str, int] = {}
     collection_errors: Dict[str, List[Dict[str, Any]]] = {}
     last_chat_started: Optional[float] = None
+    total_requested_cases = sum(
+        1 for query in config.get("queries", []) if query.get("language") in selected_languages
+    )
+    collected_count = 0
+    collection_error_count = 0
 
     # Phase 1: Collect live API responses
+    _emit_progress(
+        "Live API collection phase start: "
+        f"case_suite={case_suite} total_cases={total_requested_cases} "
+        f"languages={','.join(selected_languages)} timeout_per_attempt={chat_timeout_seconds:.1f}s"
+    )
     async with httpx.AsyncClient() as client:
         for lang in selected_languages:
             queries = [q for q in config["queries"] if q["language"] == lang]
@@ -376,22 +401,26 @@ async def run_live_api_evaluation(
             lang_collection_errors: List[Dict[str, Any]] = []
             requested_case_counts[lang] = len(queries)
 
-            logger.info("Evaluating %d queries for language: %s", len(queries), lang)
+            _emit_progress(f"Live API collection language start: {lang} cases={len(queries)}")
 
-            for query in queries:
+            for lang_index, query in enumerate(queries, start=1):
+                global_index = collected_count + collection_error_count + 1
                 gt_id = query["ground_truth_id"]
                 gt_case = gt_lookup.get(gt_id)
                 if gt_case is None:
-                    logger.warning(
-                        "Skipping %s: ground truth %s not found",
-                        query["id"],
-                        gt_id,
+                    message = f"ground truth {gt_id} not found"
+                    collection_error_count += 1
+                    _emit_progress(
+                        "Live API collection case error: "
+                        f"{global_index}/{total_requested_cases} "
+                        f"{lang} {lang_index}/{len(queries)} {query['id']} "
+                        f"type=missing_ground_truth error={message}"
                     )
                     lang_collection_errors.append(
                         _collection_error_record(
                             query,
                             error_type="missing_ground_truth",
-                            message=f"ground truth {gt_id} not found",
+                            message=message,
                         )
                     )
                     continue
@@ -404,6 +433,12 @@ async def run_live_api_evaluation(
                             await asyncio.sleep(sleep_for)
                     start = time.monotonic()
                     last_chat_started = start
+                    _emit_progress(
+                        "Live API collection case start: "
+                        f"{global_index}/{total_requested_cases} "
+                        f"{lang} {lang_index}/{len(queries)} {query['id']} "
+                        f"category={query.get('category', '?')}"
+                    )
                     api_response = await _call_chat_api(
                         client,
                         base_url=base_url,
@@ -412,6 +447,7 @@ async def run_live_api_evaluation(
                         api_key=api_key,
                         retry_attempts=chat_retry_attempts,
                         retry_backoff_seconds=chat_retry_backoff_seconds,
+                        timeout_seconds=chat_timeout_seconds,
                     )
                     elapsed = time.monotonic() - start
 
@@ -451,15 +487,22 @@ async def run_live_api_evaluation(
                             },
                         }
                     )
-                    logger.info(
-                        "  [%s] %s -> agent=%s (%.1fs)",
-                        query["id"],
-                        query["question"][:40],
-                        metadata_dict.get("agent", "?"),
-                        elapsed,
+                    collected_count += 1
+                    _emit_progress(
+                        "Live API collection case done: "
+                        f"{global_index}/{total_requested_cases} "
+                        f"{lang} {lang_index}/{len(queries)} {query['id']} "
+                        f"agent={metadata_dict.get('agent', '?')} "
+                        f"sources_ok={sources_ok} elapsed={elapsed:.1f}s"
                     )
                 except Exception as exc:
-                    logger.error("  [%s] API call failed: %s", query["id"], exc)
+                    collection_error_count += 1
+                    _emit_progress(
+                        "Live API collection case error: "
+                        f"{global_index}/{total_requested_cases} "
+                        f"{lang} {lang_index}/{len(queries)} {query['id']} "
+                        f"type=api_call_failed error={exc}"
+                    )
                     lang_collection_errors.append(
                         _collection_error_record(
                             query,
@@ -470,8 +513,22 @@ async def run_live_api_evaluation(
 
             all_eval_cases[lang] = lang_cases
             collection_errors[lang] = lang_collection_errors
+            _emit_progress(
+                "Live API collection language done: "
+                f"{lang} collected={len(lang_cases)}/{len(queries)} "
+                f"errors={len(lang_collection_errors)}"
+            )
+
+    _emit_progress(
+        "Live API collection phase done: "
+        f"collected={collected_count}/{total_requested_cases} errors={collection_error_count}"
+    )
 
     # Phase 2: Run RAGAS evaluation
+    _emit_progress(
+        "RAGAS scoring phase start: "
+        f"languages={','.join(selected_languages)} metrics={','.join(selected_metrics)}"
+    )
     try:
         from evaluation.ragas_pipeline import RagasEvaluator, resolve_ragas_judge_metadata
     except ImportError:
@@ -492,6 +549,11 @@ async def run_live_api_evaluation(
             ]
         )
         if not cases:
+            _emit_progress(
+                "RAGAS language skipped: "
+                f"{lang} reason=no_evaluable_cases requested={requested_count} "
+                f"collection_errors={len(lang_collection_errors)}"
+            )
             per_language_results[lang] = {
                 "language": lang,
                 "error": "no evaluable cases",
@@ -514,7 +576,10 @@ async def run_live_api_evaluation(
         )
 
         if not evaluator.is_available:
-            logger.warning("RAGAS not available, returning API responses only")
+            _emit_progress(
+                "RAGAS language skipped: "
+                f"{lang} reason=ragas_not_available collected={len(cases)}"
+            )
             per_language_results[lang] = {
                 "language": lang,
                 "error": "ragas not installed",
@@ -541,7 +606,7 @@ async def run_live_api_evaluation(
             }
             continue
 
-        logger.info("Running RAGAS evaluation for %s (%d cases)...", lang, len(cases))
+        _emit_progress(f"RAGAS language start: {lang} cases={len(cases)}")
         report = await evaluator.evaluate_batch(cases)
         report_error_count = len(
             [error for error in getattr(report, "errors", []) if str(error).strip()]
@@ -585,6 +650,13 @@ async def run_live_api_evaluation(
             "errors": report.errors,
             "results": per_case_results,
         }
+        _emit_progress(
+            "RAGAS language done: "
+            f"{lang} evaluated={report.evaluated_cases}/{requested_count} "
+            f"ragas_errors={ragas_error_count}"
+        )
+
+    _emit_progress("RAGAS scoring phase done")
 
     # Phase 3: Compare with targets
     requested_total = sum(
@@ -644,6 +716,7 @@ async def run_live_api_evaluation(
             "chat_interval_seconds": chat_interval_seconds,
             "chat_retry_attempts": chat_retry_attempts,
             "chat_retry_backoff_seconds": chat_retry_backoff_seconds,
+            "chat_timeout_seconds": chat_timeout_seconds,
         },
         "per_language": per_language_results,
         "comparison": comparison,
@@ -1053,6 +1126,12 @@ def main() -> None:
         default=DEFAULT_CHAT_RETRY_BACKOFF_SECONDS,
         help="Base exponential backoff seconds for retryable 429 responses.",
     )
+    parser.add_argument(
+        "--chat-timeout-seconds",
+        type=float,
+        default=DEFAULT_CHAT_TIMEOUT_SECONDS,
+        help="Per-attempt timeout seconds for live /api/chat calls.",
+    )
     parser.add_argument("--verbose", action="store_true", help="Enable debug logging.")
     args = parser.parse_args()
 
@@ -1075,6 +1154,7 @@ def main() -> None:
             chat_interval_seconds=args.chat_interval_seconds,
             chat_retry_attempts=args.chat_retry_attempts,
             chat_retry_backoff_seconds=args.chat_retry_backoff_seconds,
+            chat_timeout_seconds=args.chat_timeout_seconds,
         )
     )
 
