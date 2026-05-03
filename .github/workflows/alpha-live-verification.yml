@@ -286,6 +286,7 @@ jobs:
             backend/tests/evaluation/reports/*.csv
             backend/tests/evaluation/reports/*.json
             backend/tests/evaluation/reports/*.txt
+            backend/tests/evaluation/reports/*.log
           if-no-files-found: warn
           retention-days: 30
 
@@ -355,6 +356,7 @@ jobs:
           PY
           )"
           ragas_json="backend/tests/evaluation/reports/live_api_eval_${ragas_report_ts}.json"
+          ragas_progress_json="backend/tests/evaluation/reports/live_api_eval_${ragas_report_ts}.progress.json"
           if [[ -f "$ragas_json" ]]; then
             python - "$ragas_json" >> "$GITHUB_STEP_SUMMARY" <<'PY'
           import json
@@ -398,6 +400,41 @@ jobs:
                   f"| {lang} | {requested.get(lang, 0)} | {collected.get(lang, 0)} | "
                   f"{evaluated.get(lang, 0)} | {errors.get(lang, 0)} |"
               )
+          PY
+          elif [[ -f "$ragas_progress_json" ]]; then
+            python - "$ragas_progress_json" >> "$GITHUB_STEP_SUMMARY" <<'PY'
+          import json
+          import sys
+
+          path = sys.argv[1]
+          with open(path, encoding="utf-8") as f:
+              data = json.load(f)
+
+          collection = data.get("collection", {})
+          ragas = data.get("ragas", {})
+          print("")
+          print("## C/RAGAS progress")
+          print("")
+          print(f"- artifact: `{path}`")
+          print(f"- case_suite: {data.get('case_suite', 'unknown')}")
+          print(f"- phase: {data.get('phase', 'unknown')}")
+          print(f"- updated_at: {data.get('updated_at', 'unknown')}")
+          print(f"- elapsed_seconds: {data.get('elapsed_seconds', 'unknown')}")
+          print(f"- message: {data.get('message', 'unknown')}")
+          print(
+              "- collection: "
+              f"collected={collection.get('collected', 0)}/"
+              f"{data.get('total_requested_cases', 0)} "
+              f"errors={collection.get('errors', 0)} "
+              f"current_language={collection.get('current_language')}"
+          )
+          print(
+              "- ragas: "
+              f"current_language={ragas.get('current_language')} "
+              f"completed_languages={','.join(ragas.get('completed_languages', []))} "
+              f"evaluated_total={ragas.get('evaluated_total', 0)} "
+              f"heartbeat_count={ragas.get('heartbeat_count', 0)}"
+          )
           PY
           fi
 

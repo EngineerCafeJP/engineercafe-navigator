@@ -373,7 +373,8 @@ class EventAgent:
                 "Connpassで確認できます。多くのイベントがConnpassで募集されており、"
                 "イベント一覧は https://engineercafe.connpass.com/ から見られるので、"
                 "各イベントページで詳細や申込方法を確認してください。"
-                "参加費無料のイベントがほとんどで、定員がある場合は先着順が多いです。"
+                "参加費無料のイベントがほとんどで、定員がある場合は先着順が多いため、"
+                "早めの申込をおすすめします。"
             ),
             "en": (
                 "[relaxed]Yes, you can check Engineer Cafe events on Connpass. "

@@ -19,6 +19,8 @@ set -euo pipefail
 #                                   Per-attempt /api/chat timeout seconds (default: 60).
 #   RAG_API_LIVE_TOTAL_TIMEOUT_SECONDS
 #                                   Whole runner wall-clock timeout; 0 disables (default: 7200).
+#   RAGAS_PROGRESS_HEARTBEAT_SECONDS
+#                                   Seconds between RAGAS in-progress heartbeat logs (default: 60).
 #   OPENAI_API_KEY / OPENROUTER_API_KEY are required by the RAGAS evaluator.
 #   If neither is set, this script tries Secret Manager. Direct OpenAI is preferred.
 
@@ -78,6 +80,8 @@ Options:
 Outputs:
   backend/tests/evaluation/reports/live_api_eval_<timestamp>.json
   backend/tests/evaluation/reports/live_api_eval_<timestamp>.txt
+  backend/tests/evaluation/reports/live_api_eval_<timestamp>.progress.json
+  backend/tests/evaluation/reports/live_api_eval_<timestamp>.progress.log
 EOF
   exit "${1:-0}"
 }
@@ -257,6 +261,9 @@ main() {
     echo "Chat retry attempts: $CHAT_RETRY_ATTEMPTS"
     echo "Chat retry backoff seconds: $CHAT_RETRY_BACKOFF_SECONDS"
     echo "Runner total timeout seconds: $TOTAL_TIMEOUT_SECONDS"
+    echo "RAGAS progress heartbeat seconds: ${RAGAS_PROGRESS_HEARTBEAT_SECONDS:-60}"
+    echo "Expected progress JSON: $OUTPUT_DIR/live_api_eval_${TIMESTAMP}.progress.json"
+    echo "Expected progress log: $OUTPUT_DIR/live_api_eval_${TIMESTAMP}.progress.log"
     echo "RAGAS max workers: ${RAGAS_MAX_WORKERS:-1}"
     if [ "$CHECK_TARGETS" = "1" ]; then
       echo "Target check: enabled"
@@ -295,7 +302,11 @@ main() {
   echo "Runner total timeout: ${TOTAL_TIMEOUT_SECONDS}s"
   echo "Expected JSON report: $OUTPUT_DIR/live_api_eval_${TIMESTAMP}.json"
   echo "Expected text report: $OUTPUT_DIR/live_api_eval_${TIMESTAMP}.txt"
+  echo "Expected progress JSON: $OUTPUT_DIR/live_api_eval_${TIMESTAMP}.progress.json"
+  echo "Expected progress log: $OUTPUT_DIR/live_api_eval_${TIMESTAMP}.progress.log"
 
+  progress_log="$OUTPUT_DIR/live_api_eval_${TIMESTAMP}.progress.log"
+  : > "$progress_log"
   cmd=(python evaluation/run_live_api_eval.py --base-url "$BASE_URL" --case-suite "$CASE_SUITE" --languages "${LANG_ARGS[@]}" --metrics "${METRIC_ARGS[@]}" --output-dir "$OUTPUT_DIR" --report-timestamp "$TIMESTAMP" --chat-interval-seconds "$CHAT_INTERVAL_SECONDS" --chat-timeout-seconds "$CHAT_TIMEOUT_SECONDS" --chat-retry-attempts "$CHAT_RETRY_ATTEMPTS" --chat-retry-backoff-seconds "$CHAT_RETRY_BACKOFF_SECONDS")
   if [ "$CHECK_TARGETS" = "1" ]; then
     cmd+=(--check-targets)
@@ -333,7 +344,7 @@ main() {
         PYTHONPATH="$ROOT_DIR:$ROOT_DIR/backend:${PYTHONPATH:-}" \
         "${runner_cmd[@]}"
     fi
-  )
+  ) 2>&1 | tee -a "$progress_log"
   status=$?
   set -e
   if [ "$status" -ne 0 ]; then
@@ -346,6 +357,8 @@ main() {
     echo "Check progress above for the last completed phase/case." >&2
     echo "Expected JSON report if the runner reached artifact writing: $OUTPUT_DIR/live_api_eval_${TIMESTAMP}.json" >&2
     echo "Expected text report if the runner reached artifact writing: $OUTPUT_DIR/live_api_eval_${TIMESTAMP}.txt" >&2
+    echo "Expected progress JSON if the runner started: $OUTPUT_DIR/live_api_eval_${TIMESTAMP}.progress.json" >&2
+    echo "Progress log: $progress_log" >&2
     exit "$status"
   fi
 }

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import json
 import logging
 import os
@@ -35,6 +36,7 @@ DEFAULT_CHAT_INTERVAL_SECONDS = 2.2
 DEFAULT_CHAT_RETRY_ATTEMPTS = 4
 DEFAULT_CHAT_RETRY_BACKOFF_SECONDS = 2.0
 DEFAULT_CHAT_TIMEOUT_SECONDS = 60.0
+DEFAULT_PROGRESS_HEARTBEAT_SECONDS = 60.0
 
 ALL_LANGUAGES = ("ja", "en", "zh", "ko")
 CASE_SUITE_DIAGNOSTIC_29 = "diagnostic-29"
@@ -272,6 +274,116 @@ def _emit_progress(message: str) -> None:
     logger.info(message)
 
 
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _progress_heartbeat_seconds() -> float:
+    raw = os.environ.get("RAGAS_PROGRESS_HEARTBEAT_SECONDS")
+    if raw is None:
+        return DEFAULT_PROGRESS_HEARTBEAT_SECONDS
+    try:
+        return max(0.0, float(raw))
+    except ValueError:
+        logger.warning(
+            "Invalid RAGAS_PROGRESS_HEARTBEAT_SECONDS=%s; using default %.1fs",
+            raw,
+            DEFAULT_PROGRESS_HEARTBEAT_SECONDS,
+        )
+        return DEFAULT_PROGRESS_HEARTBEAT_SECONDS
+
+
+class _LiveEvalProgress:
+    """Write a small sidecar artifact that survives runner timeout/kill failures."""
+
+    def __init__(
+        self,
+        *,
+        path: Path,
+        case_suite: str,
+        base_url: str,
+        languages: Sequence[str],
+        metrics: Sequence[str],
+        total_requested_cases: int,
+    ) -> None:
+        self.path = path
+        self.started_monotonic = time.monotonic()
+        started_at = _utc_now_iso()
+        self.state: Dict[str, Any] = {
+            "schema_version": 1,
+            "mode": "live-api-progress",
+            "case_suite": case_suite,
+            "base_url": base_url,
+            "languages": list(languages),
+            "metrics": list(metrics),
+            "total_requested_cases": total_requested_cases,
+            "started_at": started_at,
+            "updated_at": started_at,
+            "elapsed_seconds": 0.0,
+            "phase": "initialized",
+            "message": "initialized",
+            "collection": {
+                "collected": 0,
+                "errors": 0,
+                "current_language": None,
+                "current_query_id": None,
+                "completed_languages": [],
+            },
+            "ragas": {
+                "current_language": None,
+                "completed_languages": [],
+                "evaluated_total": 0,
+                "heartbeat_count": 0,
+            },
+        }
+        self.write()
+
+    def update(self, *, phase: str, message: str, **fields: Any) -> None:
+        self.state["phase"] = phase
+        self.state["message"] = message
+        self.state["updated_at"] = _utc_now_iso()
+        self.state["elapsed_seconds"] = round(time.monotonic() - self.started_monotonic, 1)
+        for key, value in fields.items():
+            if isinstance(value, dict) and isinstance(self.state.get(key), dict):
+                self.state[key].update(value)
+            else:
+                self.state[key] = value
+        self.write()
+
+    def write(self) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        tmp_path = self.path.with_suffix(self.path.suffix + ".tmp")
+        tmp_path.write_text(json.dumps(self.state, ensure_ascii=False, indent=2), encoding="utf-8")
+        tmp_path.replace(self.path)
+
+
+async def _ragas_progress_heartbeat(
+    progress: _LiveEvalProgress,
+    *,
+    language: str,
+    case_count: int,
+    interval_seconds: float,
+) -> None:
+    heartbeat_count = int(progress.state.get("ragas", {}).get("heartbeat_count", 0) or 0)
+    started = time.monotonic()
+    while True:
+        await asyncio.sleep(interval_seconds)
+        heartbeat_count += 1
+        elapsed = time.monotonic() - started
+        message = (
+            "RAGAS heartbeat: " f"language={language} cases={case_count} elapsed={elapsed:.0f}s"
+        )
+        _emit_progress(message)
+        progress.update(
+            phase="ragas_scoring",
+            message=message,
+            ragas={
+                "current_language": language,
+                "heartbeat_count": heartbeat_count,
+            },
+        )
+
+
 def _report_file_timestamp(value: Optional[str] = None) -> str:
     """Return a filesystem-safe timestamp marker for report artifact names."""
     raw = (value or "").strip()
@@ -376,6 +488,11 @@ async def run_live_api_evaluation(
     selected_languages = list(languages or ALL_LANGUAGES)
     selected_metrics = tuple(metrics or TRACKED_METRICS)
     manifest_language_counts = _language_case_counts(config)
+    report_file_ts = _report_file_timestamp(report_timestamp)
+    dest_dir = output_dir or DEFAULT_REPORTS_DIR
+    json_report_filename = f"live_api_eval_{report_file_ts}.json"
+    text_report_filename = f"live_api_eval_{report_file_ts}.txt"
+    progress_report_filename = f"live_api_eval_{report_file_ts}.progress.json"
 
     per_language_results: Dict[str, Dict[str, Any]] = {}
     all_eval_cases: Dict[str, List[Dict[str, Any]]] = {}
@@ -387,12 +504,26 @@ async def run_live_api_evaluation(
     )
     collected_count = 0
     collection_error_count = 0
+    progress = _LiveEvalProgress(
+        path=dest_dir / progress_report_filename,
+        case_suite=case_suite,
+        base_url=base_url,
+        languages=selected_languages,
+        metrics=selected_metrics,
+        total_requested_cases=total_requested_cases,
+    )
 
     # Phase 1: Collect live API responses
-    _emit_progress(
+    message = (
         "Live API collection phase start: "
         f"case_suite={case_suite} total_cases={total_requested_cases} "
         f"languages={','.join(selected_languages)} timeout_per_attempt={chat_timeout_seconds:.1f}s"
+    )
+    _emit_progress(message)
+    progress.update(
+        phase="collection",
+        message=message,
+        collection={"collected": collected_count, "errors": collection_error_count},
     )
     async with httpx.AsyncClient() as client:
         for lang in selected_languages:
@@ -402,6 +533,11 @@ async def run_live_api_evaluation(
             requested_case_counts[lang] = len(queries)
 
             _emit_progress(f"Live API collection language start: {lang} cases={len(queries)}")
+            progress.update(
+                phase="collection",
+                message=f"Live API collection language start: {lang} cases={len(queries)}",
+                collection={"current_language": lang, "current_query_id": None},
+            )
 
             for lang_index, query in enumerate(queries, start=1):
                 global_index = collected_count + collection_error_count + 1
@@ -415,6 +551,20 @@ async def run_live_api_evaluation(
                         f"{global_index}/{total_requested_cases} "
                         f"{lang} {lang_index}/{len(queries)} {query['id']} "
                         f"type=missing_ground_truth error={message}"
+                    )
+                    progress.update(
+                        phase="collection",
+                        message=(
+                            "Live API collection case error: "
+                            f"{global_index}/{total_requested_cases} "
+                            f"{lang} {query['id']} type=missing_ground_truth"
+                        ),
+                        collection={
+                            "collected": collected_count,
+                            "errors": collection_error_count,
+                            "current_language": lang,
+                            "current_query_id": query["id"],
+                        },
                     )
                     lang_collection_errors.append(
                         _collection_error_record(
@@ -438,6 +588,19 @@ async def run_live_api_evaluation(
                         f"{global_index}/{total_requested_cases} "
                         f"{lang} {lang_index}/{len(queries)} {query['id']} "
                         f"category={query.get('category', '?')}"
+                    )
+                    progress.update(
+                        phase="collection",
+                        message=(
+                            "Live API collection case start: "
+                            f"{global_index}/{total_requested_cases} {lang} {query['id']}"
+                        ),
+                        collection={
+                            "collected": collected_count,
+                            "errors": collection_error_count,
+                            "current_language": lang,
+                            "current_query_id": query["id"],
+                        },
                     )
                     api_response = await _call_chat_api(
                         client,
@@ -495,6 +658,19 @@ async def run_live_api_evaluation(
                         f"agent={metadata_dict.get('agent', '?')} "
                         f"sources_ok={sources_ok} elapsed={elapsed:.1f}s"
                     )
+                    progress.update(
+                        phase="collection",
+                        message=(
+                            "Live API collection case done: "
+                            f"{global_index}/{total_requested_cases} {lang} {query['id']}"
+                        ),
+                        collection={
+                            "collected": collected_count,
+                            "errors": collection_error_count,
+                            "current_language": lang,
+                            "current_query_id": query["id"],
+                        },
+                    )
                 except Exception as exc:
                     collection_error_count += 1
                     _emit_progress(
@@ -502,6 +678,20 @@ async def run_live_api_evaluation(
                         f"{global_index}/{total_requested_cases} "
                         f"{lang} {lang_index}/{len(queries)} {query['id']} "
                         f"type=api_call_failed error={exc}"
+                    )
+                    progress.update(
+                        phase="collection",
+                        message=(
+                            "Live API collection case error: "
+                            f"{global_index}/{total_requested_cases} {lang} {query['id']} "
+                            "type=api_call_failed"
+                        ),
+                        collection={
+                            "collected": collected_count,
+                            "errors": collection_error_count,
+                            "current_language": lang,
+                            "current_query_id": query["id"],
+                        },
                     )
                     lang_collection_errors.append(
                         _collection_error_record(
@@ -518,17 +708,42 @@ async def run_live_api_evaluation(
                 f"{lang} collected={len(lang_cases)}/{len(queries)} "
                 f"errors={len(lang_collection_errors)}"
             )
+            completed_languages = list(progress.state["collection"]["completed_languages"])
+            completed_languages.append(lang)
+            progress.update(
+                phase="collection",
+                message=(
+                    "Live API collection language done: "
+                    f"{lang} collected={len(lang_cases)}/{len(queries)} "
+                    f"errors={len(lang_collection_errors)}"
+                ),
+                collection={
+                    "collected": collected_count,
+                    "errors": collection_error_count,
+                    "current_language": None,
+                    "current_query_id": None,
+                    "completed_languages": completed_languages,
+                },
+            )
 
-    _emit_progress(
+    message = (
         "Live API collection phase done: "
         f"collected={collected_count}/{total_requested_cases} errors={collection_error_count}"
     )
+    _emit_progress(message)
+    progress.update(
+        phase="collection_done",
+        message=message,
+        collection={"collected": collected_count, "errors": collection_error_count},
+    )
 
     # Phase 2: Run RAGAS evaluation
-    _emit_progress(
+    message = (
         "RAGAS scoring phase start: "
         f"languages={','.join(selected_languages)} metrics={','.join(selected_metrics)}"
     )
+    _emit_progress(message)
+    progress.update(phase="ragas_scoring", message=message)
     try:
         from evaluation.ragas_pipeline import RagasEvaluator, resolve_ragas_judge_metadata
     except ImportError:
@@ -606,8 +821,31 @@ async def run_live_api_evaluation(
             }
             continue
 
-        _emit_progress(f"RAGAS language start: {lang} cases={len(cases)}")
-        report = await evaluator.evaluate_batch(cases)
+        message = f"RAGAS language start: {lang} cases={len(cases)}"
+        _emit_progress(message)
+        progress.update(
+            phase="ragas_scoring",
+            message=message,
+            ragas={"current_language": lang},
+        )
+        heartbeat_interval = _progress_heartbeat_seconds()
+        heartbeat_task: Optional[asyncio.Task[None]] = None
+        if heartbeat_interval > 0:
+            heartbeat_task = asyncio.create_task(
+                _ragas_progress_heartbeat(
+                    progress,
+                    language=lang,
+                    case_count=len(cases),
+                    interval_seconds=heartbeat_interval,
+                )
+            )
+        try:
+            report = await evaluator.evaluate_batch(cases)
+        finally:
+            if heartbeat_task is not None:
+                heartbeat_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await heartbeat_task
         report_error_count = len(
             [error for error in getattr(report, "errors", []) if str(error).strip()]
         )
@@ -655,8 +893,27 @@ async def run_live_api_evaluation(
             f"{lang} evaluated={report.evaluated_cases}/{requested_count} "
             f"ragas_errors={ragas_error_count}"
         )
+        completed_languages = list(progress.state["ragas"]["completed_languages"])
+        completed_languages.append(lang)
+        progress.update(
+            phase="ragas_scoring",
+            message=(
+                "RAGAS language done: "
+                f"{lang} evaluated={report.evaluated_cases}/{requested_count} "
+                f"ragas_errors={ragas_error_count}"
+            ),
+            ragas={
+                "current_language": None,
+                "completed_languages": completed_languages,
+                "evaluated_total": sum(
+                    int(result.get("evaluated_case_count", 0) or 0)
+                    for result in per_language_results.values()
+                ),
+            },
+        )
 
     _emit_progress("RAGAS scoring phase done")
+    progress.update(phase="ragas_done", message="RAGAS scoring phase done")
 
     # Phase 3: Compare with targets
     requested_total = sum(
@@ -687,9 +944,6 @@ async def run_live_api_evaluation(
         check_live_sources=check_live_sources,
         case_suite=case_suite,
     )
-    report_file_ts = _report_file_timestamp(report_timestamp)
-    json_report_filename = f"live_api_eval_{report_file_ts}.json"
-    text_report_filename = f"live_api_eval_{report_file_ts}.txt"
 
     result = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -707,6 +961,7 @@ async def run_live_api_evaluation(
             "report_timestamp": report_file_ts,
             "json_report_filename": json_report_filename,
             "text_report_filename": text_report_filename,
+            "progress_report_filename": progress_report_filename,
             "ragas_judge": ragas_judge_metadata,
             "expected_total_cases": config.get("expected_total_cases"),
             "manifest_language_counts": manifest_language_counts,
@@ -724,7 +979,6 @@ async def run_live_api_evaluation(
     }
 
     # Save reports
-    dest_dir = output_dir or DEFAULT_REPORTS_DIR
     dest_dir.mkdir(parents=True, exist_ok=True)
     json_path = dest_dir / json_report_filename
     txt_path = dest_dir / text_report_filename
@@ -732,6 +986,12 @@ async def run_live_api_evaluation(
     txt_path.write_text(report_text, encoding="utf-8")
 
     logger.info("Wrote live API evaluation report to %s", json_path)
+    progress.update(
+        phase="report_written",
+        message=f"Wrote live API evaluation report to {json_path}",
+        json_report=str(json_path),
+        text_report=str(txt_path),
+    )
     print(report_text)
 
     return result

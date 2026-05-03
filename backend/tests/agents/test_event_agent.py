@@ -105,6 +105,7 @@ class TestEventAgent:
         assert "https://engineercafe.connpass.com/" in response["answer"]
         assert "申込" in response["answer"] or "申し込み" in response["answer"]
         assert "参加費無料" in response["answer"]
+        assert "早めの申込" in response["answer"]
 
 
 class TestEventDeduplication:

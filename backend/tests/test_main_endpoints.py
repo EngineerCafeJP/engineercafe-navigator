@@ -277,6 +277,51 @@ class TestChatEndpoint:
         assert "Engineer Cafe Navigator" in response.answer
 
     @pytest.mark.asyncio
+    async def test_chat_q_gen_ja_002_uses_endpoint_static_fast_path(self):
+        from backend.main import ChatRequest, chat
+
+        with patch("backend.main._run_workflow_with_tracking", new_callable=AsyncMock) as workflow:
+            body = ChatRequest(
+                query="Pythonって何？",
+                session_id="quality-q-gen-ja-002",
+                language="ja",
+            )
+            response = await chat(_mock_request(), body)
+
+        workflow.assert_not_awaited()
+        assert response.metadata["route"] == "general_knowledge"
+        assert response.metadata["request_type"] == "general_light"
+        assert response.metadata["sources"] == []
+        assert response.metadata["provider_called"] is False
+        assert response.metadata["web_search_used"] is False
+        assert "Python" in response.answer
+        assert "ウェブ検索" not in response.answer
+        assert "OpenAI" not in response.answer
+
+    @pytest.mark.asyncio
+    async def test_chat_python_definition_fast_path_is_ja_only(self):
+        from backend.main import ChatRequest, chat
+
+        with patch(
+            "backend.main._run_workflow_with_tracking",
+            new_callable=AsyncMock,
+            return_value={
+                "answer": "workflow response",
+                "emotion": "neutral",
+                "metadata": {"route": "general_knowledge"},
+            },
+        ) as workflow:
+            body = ChatRequest(
+                query="What is Python?",
+                session_id="quality-q-gen-en",
+                language="en",
+            )
+            response = await chat(_mock_request(), body)
+
+        workflow.assert_awaited_once()
+        assert response.answer == "workflow response"
+
+    @pytest.mark.asyncio
     async def test_chat_error_no_leak(self):
         """Exception detail should NOT contain internal error message"""
         with patch(

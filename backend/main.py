@@ -470,6 +470,32 @@ def _general_fast_path_answer(query: str, language: str, request_type: str) -> t
     )
 
 
+def _general_static_fast_path_answer(query: str, language: str) -> tuple[str, str, str] | None:
+    """Return stable general-knowledge answers that do not need workflow/LLM."""
+    if language != "ja":
+        return None
+
+    normalized_query = re.sub(r"\s+", "", query.lower())
+    python_definition_queries = {
+        "pythonって何?",
+        "pythonって何？",
+        "pythonとは何?",
+        "pythonとは何？",
+        "pythonとは何ですか?",
+        "pythonとは何ですか？",
+    }
+    if normalized_query not in python_definition_queries:
+        return None
+
+    return (
+        "Pythonは、読み書きしやすい文法が特徴のプログラミング言語です。"
+        "Webアプリ、データ分析、AI、自動化など幅広い用途で使われ、"
+        "初心者にも学びやすい言語としてよく選ばれます。",
+        "helpful",
+        "general_light",
+    )
+
+
 def _try_chat_general_fast_path(
     body: ChatRequest,
     *,
@@ -481,6 +507,40 @@ def _try_chat_general_fast_path(
         return None
 
     intent = classify_fast_intent(body.query)
+    language = body.language or "ja"
+    static_answer = _general_static_fast_path_answer(body.query, language)
+    if intent is None and static_answer is not None:
+        answer, emotion, request_type = static_answer
+        metadata = {
+            "query": body.query,
+            "session_id": session_id,
+            "agent": "GeneralKnowledgeAgent",
+            "category": "general_knowledge",
+            "route": "general_knowledge",
+            "request_type": request_type,
+            "query_type": request_type,
+            "sources": [],
+            "web_search_used": False,
+            "rag_used": False,
+            "provider_called": False,
+            "fast_path": "chat_endpoint",
+        }
+        latency_ms = int((time.perf_counter() - started_at) * 1000)
+        log_chat_response(
+            request_id=request_id,
+            language=language,
+            metadata=metadata,
+            latency_ms=latency_ms,
+        )
+        return ChatResponse(
+            answer=answer,
+            emotion=emotion,
+            metadata=metadata,
+            requestId=request_id,
+            phase="chat",
+            upstreamStatus=_upstream_status("chat_endpoint_fast_path", route="general_knowledge"),
+        )
+
     if (
         intent is None
         or intent.agent != "general_knowledge"
@@ -488,7 +548,6 @@ def _try_chat_general_fast_path(
     ):
         return None
 
-    language = body.language or "ja"
     answer, emotion = _general_fast_path_answer(body.query, language, intent.request_type)
     metadata = {
         "query": body.query,
