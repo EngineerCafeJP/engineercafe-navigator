@@ -83,6 +83,27 @@ Triage:
 3. Check Cloud Run request latency and 5xx logs for platform-level issues.
 4. Compare the current revision against the previous healthy revision.
 
+## Alpha Log Hygiene
+
+The alpha Cloud Logging gate treats the following as release-blocking noise because they obscure
+actual P0/P1 signal during live verification:
+
+- `invalid input syntax for type uuid`
+- `Reception session persistence failed`
+
+Useful Cloud Logging query:
+
+```text
+resource.type="cloud_run_revision"
+resource.labels.service_name="engineer-cafe-backend"
+("invalid input syntax for type uuid" OR "Reception session persistence failed")
+```
+
+Expected result during a targeted alpha run window is zero rows. If rows appear, first confirm
+whether synthetic alpha `session_id` values are being passed into UUID-only persistence lookups or
+whether Supabase reception persistence is genuinely unavailable. Keep structured request,
+`chat_response`, STT, and TTS logs intact; do not hide real persistence errors by lowering severity.
+
 ## Memory Errors
 
 There is no structured `memory_*` event today. Phase 1b monitors existing root structured

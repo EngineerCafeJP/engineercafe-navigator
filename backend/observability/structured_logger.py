@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import sys
 from typing import Any, Literal, cast
 
@@ -41,9 +42,17 @@ class _SttJsonFormatter(logging.Formatter):
         return json.dumps(payload, ensure_ascii=False, default=str)
 
 
+def _propagate_observability_logs() -> bool:
+    raw = os.getenv("OBSERVABILITY_LOG_PROPAGATE")
+    if raw is not None:
+        return raw.strip().lower() in {"1", "true", "yes", "on"}
+    return os.getenv("ENVIRONMENT") != "production"
+
+
 def _get_chat_response_logger() -> logging.Logger:
     logger = logging.getLogger(CHAT_RESPONSE_LOGGER_NAME)
     logger.setLevel(logging.INFO)
+    logger.propagate = _propagate_observability_logs()
 
     if not any(getattr(handler, _CHAT_LOG_HANDLER_MARKER, False) for handler in logger.handlers):
         handler = logging.StreamHandler(sys.stdout)
@@ -57,7 +66,7 @@ def _get_chat_response_logger() -> logging.Logger:
 def _get_stt_logger() -> logging.Logger:
     logger = logging.getLogger(STT_LOGGER_NAME)
     logger.setLevel(logging.INFO)
-    logger.propagate = True
+    logger.propagate = _propagate_observability_logs()
 
     if not any(getattr(handler, _STT_LOG_HANDLER_MARKER, False) for handler in logger.handlers):
         handler = logging.StreamHandler(sys.stdout)
@@ -87,7 +96,7 @@ def _get_tts_cache_logger() -> logging.Logger:
 def _get_tts_logger() -> logging.Logger:
     logger = logging.getLogger(TTS_LOGGER_NAME)
     logger.setLevel(logging.INFO)
-    logger.propagate = True
+    logger.propagate = _propagate_observability_logs()
 
     if not any(getattr(handler, _TTS_LOG_HANDLER_MARKER, False) for handler in logger.handlers):
         handler = logging.StreamHandler(sys.stdout)

@@ -57,3 +57,25 @@ def test_log_tts_event_includes_request_id(capsys):
     assert payload["event"] == "tts_complete"
     assert payload["request_id"] == "req-tts-613"
     assert payload["tts_overall_duration_ms"] == 42
+
+
+def test_observability_loggers_do_not_propagate_in_production(monkeypatch):
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.delenv("OBSERVABILITY_LOG_PROPAGATE", raising=False)
+
+    chat_logger = structured_logger_module._get_chat_response_logger()
+    stt_logger = structured_logger_module._get_stt_logger()
+    tts_logger = structured_logger_module._get_tts_logger()
+
+    assert chat_logger.propagate is False
+    assert stt_logger.propagate is False
+    assert tts_logger.propagate is False
+
+
+def test_observability_log_propagation_can_be_enabled_for_tests(monkeypatch):
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("OBSERVABILITY_LOG_PROPAGATE", "true")
+
+    stt_logger = structured_logger_module._get_stt_logger()
+
+    assert stt_logger.propagate is True

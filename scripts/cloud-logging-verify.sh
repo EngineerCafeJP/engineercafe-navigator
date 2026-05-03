@@ -103,6 +103,8 @@ event_filter() {
 
 chat_filter="$BASE_FILTER AND (jsonPayload.event=\"chat_response\" OR labels.event=\"chat_response\" OR textPayload:\"chat_response\")"
 memory_filter="$BASE_FILTER AND ((jsonPayload.logger=\"backend.utils.memory_helper\" AND jsonPayload.level=\"ERROR\") OR jsonPayload.event=\"memory_helper_error\" OR (jsonPayload.logger:\"memory_helper\" AND severity>=ERROR) OR (textPayload:\"memory_helper\" AND severity>=ERROR))"
+uuid_hygiene_filter="$BASE_FILTER AND (textPayload:\"invalid input syntax for type uuid\" OR jsonPayload.message:\"invalid input syntax for type uuid\" OR jsonPayload.exception.message:\"invalid input syntax for type uuid\")"
+reception_hygiene_filter="$BASE_FILTER AND (textPayload:\"Reception session persistence failed\" OR jsonPayload.message:\"Reception session persistence failed\")"
 
 if [ "$DRY_RUN" = "1" ]; then
   echo "Dry run: no gcloud logging read calls will be executed."
@@ -113,6 +115,8 @@ if [ "$DRY_RUN" = "1" ]; then
   done
   echo "Filter[chat_response]: $chat_filter"
   echo "Filter[memory_helper_error]: $memory_filter"
+  echo "Filter[uuid_hygiene]: $uuid_hygiene_filter"
+  echo "Filter[reception_hygiene]: $reception_hygiene_filter"
   exit 0
 fi
 
@@ -135,6 +139,8 @@ for event in stt_qwen_start stt_qwen_complete stt_winner; do
 done
 read_logs "$chat_filter" "$TMP_DIR/chat_response.json"
 read_logs "$memory_filter" "$TMP_DIR/memory_helper_errors.json"
+read_logs "$uuid_hygiene_filter" "$TMP_DIR/uuid_hygiene.json"
+read_logs "$reception_hygiene_filter" "$TMP_DIR/reception_hygiene.json"
 
 python3 - "$TIMESTAMP" "$PROJECT_ID" "$SERVICE_NAME" "$REGION" "$MINUTES" "$THRESHOLD" "$REPORT" "$TMP_DIR" <<'PY'
 from __future__ import annotations
@@ -238,6 +244,9 @@ for entry in load("memory_helper_errors"):
     ):
         memory_errors.append({**data, "_timestamp": entry.get("timestamp"), "_severity": entry.get("severity")})
 
+uuid_hygiene_entries = load("uuid_hygiene")
+reception_hygiene_entries = load("reception_hygiene")
+
 failures: list[str] = []
 if trace_count == 0:
     failures.append("No structured STT trace events found.")
@@ -250,6 +259,14 @@ if not chat_entries:
     failures.append("No structured chat_response logs found.")
 if chat_missing:
     failures.append(f"{len(chat_missing)} chat_response log(s) are missing required fields.")
+if uuid_hygiene_entries:
+    failures.append(
+        f"{len(uuid_hygiene_entries)} invalid UUID syntax log(s) found; synthetic alpha IDs are still leaking into UUID queries."
+    )
+if reception_hygiene_entries:
+    failures.append(
+        f"{len(reception_hygiene_entries)} reception persistence failure log(s) found."
+    )
 
 passed = not failures
 lines = [
@@ -282,6 +299,14 @@ lines.append(
 lines.append(
     f"| `memory_helper` ERROR samples | {'WARN' if memory_errors else 'PASS'} | "
     f"{len(memory_errors)} error log(s) found; samples listed below if present |"
+)
+lines.append(
+    f"| `invalid input syntax for type uuid` hygiene | {'FAIL' if uuid_hygiene_entries else 'PASS'} | "
+    f"{len(uuid_hygiene_entries)} matching log row(s) |"
+)
+lines.append(
+    f"| `Reception session persistence failed` hygiene | {'FAIL' if reception_hygiene_entries else 'PASS'} | "
+    f"{len(reception_hygiene_entries)} matching log row(s) |"
 )
 
 if failures:
@@ -328,6 +353,34 @@ if memory_errors:
         lines.append(f"| {md(item.get('_timestamp'))} | {md(item.get('_severity') or item.get('level'))} | {md(message)[:500]} |")
 else:
     lines.append("- No memory_helper error samples in the lookback window.")
+
+lines.extend([
+    "",
+    "## Alpha Log Hygiene",
+    "",
+    f"- `invalid input syntax for type uuid` rows: {len(uuid_hygiene_entries)}",
+    f"- `Reception session persistence failed` rows: {len(reception_hygiene_entries)}",
+])
+if uuid_hygiene_entries or reception_hygiene_entries:
+    lines.extend(["", "| Check | Timestamp | Severity | Message |", "| --- | --- | --- | --- |"])
+    for name, entries in (
+        ("uuid", uuid_hygiene_entries[:5]),
+        ("reception", reception_hygiene_entries[:5]),
+    ):
+        for entry in entries:
+            data = payload(entry)
+            message = (
+                data.get("message")
+                or data.get("error")
+                or entry.get("textPayload")
+                or data.get("event")
+                or ""
+            )
+            lines.append(
+                f"| {name} | {md(entry.get('timestamp'))} | {md(entry.get('severity'))} | {md(message)[:500]} |"
+            )
+else:
+    lines.append("- No alpha log hygiene matches in the lookback window.")
 
 pathlib.Path(report).write_text("\n".join(lines) + "\n", encoding="utf-8")
 print(report)

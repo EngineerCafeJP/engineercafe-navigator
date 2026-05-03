@@ -6,6 +6,7 @@ JSON形式のログフォーマッターとリクエストID伝播のための�
 
 import json
 import logging
+import os
 import uuid
 from contextvars import ContextVar
 from datetime import datetime, timezone
@@ -108,3 +109,12 @@ def setup_structured_logging(level: int = logging.INFO) -> None:
     root_logger.handlers.clear()
     root_logger.addHandler(handler)
     root_logger.setLevel(level)
+
+    # Cloud Run already emits request/access logs. Keep application logs focused
+    # on structured diagnostics instead of duplicating every request line.
+    logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+
+    if os.getenv("ENVIRONMENT") == "production":
+        logging.getLogger("slowapi").setLevel(logging.WARNING)
