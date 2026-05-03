@@ -38,6 +38,7 @@ from backend.agents.orchestrator_agent import (
 from backend.agents.orchestrator_agent import OrchestratorAgent as RoutingLogicAgent
 from backend.config.routing_constants import GREETING_KEYWORDS, match_keywords
 from backend.services.memory_promoter import MemoryPromoter
+from backend.utils.postgres_sanitizer import sanitize_for_postgres
 from backend.utils.store import store_with_retry
 
 logger = logging.getLogger(__name__)
@@ -706,9 +707,11 @@ class MainWorkflow:
                 if user_id and user_id != "anonymous" and runtime.store:
                     from backend.utils.memory_feature_flags import get_memory_feature_flags
 
-                    namespace = ("visitor_memories", user_id)
+                    safe_user_id = sanitize_for_postgres(user_id)
+                    namespace = ("visitor_memories", safe_user_id)
+                    safe_query = sanitize_for_postgres(state.get("query", ""))
                     memories = await store_with_retry(
-                        lambda s: s.asearch(namespace, query=state.get("query", ""), limit=5),
+                        lambda s: s.asearch(namespace, query=safe_query, limit=5),
                         store=runtime.store,
                         operation_name="long-term memory load",
                     )
@@ -1317,8 +1320,9 @@ class MainWorkflow:
                 from backend.utils.memory_feature_flags import get_memory_feature_flags
 
                 memory_flags = get_memory_feature_flags()
-                long_term_namespace = ("visitor_memories", user_id)
-                candidate_namespace = ("visitor_memory_candidates", user_id)
+                safe_user_id = sanitize_for_postgres(user_id)
+                long_term_namespace = ("visitor_memories", safe_user_id)
+                candidate_namespace = ("visitor_memory_candidates", safe_user_id)
 
                 def _is_fast_path_memory(memory: dict[str, Any]) -> bool:
                     memory_type = memory.get("candidate_type") or memory.get("type")
@@ -1359,6 +1363,7 @@ class MainWorkflow:
                         "timestamp": time.time(),
                         "source": source,
                     }
+                    value = sanitize_for_postgres(value)
                     await store_with_retry(
                         lambda s, k=key, v=value: s.aput(long_term_namespace, k, v),
                         store=runtime.store,
@@ -1379,7 +1384,7 @@ class MainWorkflow:
                             fast_path_count = 0
                             for candidate in candidates:
                                 candidate_key = str(uuid.uuid4())
-                                candidate_value = dict(candidate)
+                                candidate_value = sanitize_for_postgres(dict(candidate))
                                 await store_with_retry(
                                     lambda s, k=candidate_key, v=candidate_value: s.aput(
                                         candidate_namespace,
@@ -1432,7 +1437,7 @@ class MainWorkflow:
                         promoter = get_memory_promoter()
                         promotion_stats = await promoter.promote_for_user(
                             runtime.store,
-                            user_id,
+                            safe_user_id,
                             delete_promoted_candidates=False,
                         )
                         if promotion_stats.get("promoted", 0) > 0:

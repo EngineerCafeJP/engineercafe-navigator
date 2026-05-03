@@ -17,6 +17,7 @@ import logging
 from supabase import create_client, Client
 
 from backend.config.routing_constants import extract_request_type
+from backend.utils.postgres_sanitizer import sanitize_for_postgres
 
 logger = logging.getLogger(__name__)
 
@@ -470,7 +471,10 @@ class SimplifiedMemoryHelper:
             return
 
         timestamp = int(datetime.now().timestamp() * 1000)
-        metadata = metadata or {}
+        metadata = sanitize_for_postgres(metadata or {})
+        role = sanitize_for_postgres(role)
+        content = sanitize_for_postgres(content)
+        session_id = sanitize_for_postgres(session_id)
 
         # リクエストタイプの自動抽出（user messageの場合）
         if role == "user" and "request_type" not in metadata:

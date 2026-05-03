@@ -244,6 +244,144 @@ class TestMainWorkflowMemoryIntegration:
 
     @pytest.mark.asyncio
     @patch("backend.workflows.main_workflow.OrchestratorAgent")
+    async def test_format_response_strips_postgres_nul_chars_from_memory_candidates(
+        self, mock_orchestrator_class
+    ):
+        """candidate/LTM Store 書き込み前に PostgreSQL 非対応のNUL文字を除去する"""
+        from backend.workflows.main_workflow import MainWorkflow
+
+        mock_orchestrator_class.return_value = AsyncMock()
+
+        with patch("backend.utils.memory_helper.get_memory_helper") as mock_get_helper:
+            mock_helper = AsyncMock()
+            mock_helper.store_message = AsyncMock()
+            mock_get_helper.return_value = mock_helper
+
+            with (
+                patch(
+                    "backend.utils.memory_extractor.extract_memories",
+                    return_value=[],
+                ),
+                patch(
+                    "backend.utils.memory_extractor.extract_memory_candidates",
+                    return_value=[
+                        {
+                            "status": "candidate",
+                            "candidate_type": "visitor_name",
+                            "content": "田\x00中",
+                            "confidence": 0.9,
+                            "evidence": {"query": "私は田\x00中です"},
+                        }
+                    ],
+                ),
+                patch(
+                    "backend.utils.memory_feature_flags.get_memory_feature_flags",
+                    return_value=SimpleNamespace(
+                        enable_memory_candidates=True,
+                        enable_memory_promotion=False,
+                        enable_style_profile=False,
+                        enable_long_term_memory_rerank=False,
+                    ),
+                ),
+                patch.dict(os.environ, {"ENABLE_MEMORY_CANDIDATES": "true"}),
+            ):
+                workflow = MainWorkflow()
+                runtime = MagicMock()
+                runtime.context = MagicMock()
+                runtime.context.user_id = "visitor\x00-4"
+                runtime.store = MagicMock()
+                runtime.store.aput = AsyncMock()
+
+                state = {
+                    "query": "私は田\x00中です",
+                    "answer": "こんにちは田\x00中さん",
+                    "session_id": "test-session",
+                    "language": "ja",
+                }
+
+                async def _passthrough(op, **kw):
+                    return await op(runtime.store)
+
+                with patch(
+                    "backend.workflows.main_workflow.store_with_retry",
+                    side_effect=_passthrough,
+                ):
+                    await workflow._format_response_node(state, runtime)
+
+                calls = runtime.store.aput.await_args_list
+                candidate_args = calls[0].args
+                fast_path_args = calls[1].args
+                assert candidate_args[0] == ("visitor_memory_candidates", "visitor-4")
+                assert candidate_args[2]["content"] == "田中"
+                assert candidate_args[2]["evidence"]["query"] == "私は田中です"
+                assert fast_path_args[0] == ("visitor_memories", "visitor-4")
+                assert fast_path_args[2]["data"] == "田中"
+
+    @pytest.mark.asyncio
+    @patch("backend.workflows.main_workflow.OrchestratorAgent")
+    async def test_format_response_strips_postgres_nul_chars_before_memory_promotion(
+        self, mock_orchestrator_class
+    ):
+        """candidate promotion も保存済み namespace と同じ安全な user_id で読む"""
+        from backend.workflows.main_workflow import MainWorkflow
+
+        mock_orchestrator_class.return_value = AsyncMock()
+
+        with patch("backend.utils.memory_helper.get_memory_helper") as mock_get_helper:
+            mock_helper = AsyncMock()
+            mock_helper.store_message = AsyncMock()
+            mock_get_helper.return_value = mock_helper
+
+            promoter = MagicMock()
+            promoter.promote_for_user = AsyncMock(return_value={"promoted": 0})
+
+            with (
+                patch(
+                    "backend.utils.memory_extractor.extract_memories",
+                    return_value=[],
+                ),
+                patch(
+                    "backend.utils.memory_extractor.extract_memory_candidates",
+                    return_value=[],
+                ),
+                patch(
+                    "backend.utils.memory_feature_flags.get_memory_feature_flags",
+                    return_value=SimpleNamespace(
+                        enable_memory_candidates=True,
+                        enable_memory_promotion=True,
+                        enable_style_profile=False,
+                        enable_long_term_memory_rerank=False,
+                    ),
+                ),
+                patch(
+                    "backend.services.memory_promoter.get_memory_promoter",
+                    return_value=promoter,
+                ),
+                patch.dict(os.environ, {"ENABLE_MEMORY_CANDIDATES": "true"}),
+            ):
+                workflow = MainWorkflow()
+                runtime = MagicMock()
+                runtime.context = MagicMock()
+                runtime.context.user_id = "visitor\x00-promote"
+                runtime.store = MagicMock()
+
+                state = {
+                    "query": "覚えてください",
+                    "answer": "覚えました",
+                    "session_id": "test-session",
+                    "language": "ja",
+                }
+
+                await workflow._format_response_node(state, runtime)
+
+                promoter.promote_for_user.assert_awaited_once_with(
+                    runtime.store,
+                    "visitor-promote",
+                    delete_promoted_candidates=False,
+                )
+
+    @pytest.mark.asyncio
+    @patch("backend.workflows.main_workflow.OrchestratorAgent")
     async def test_format_response_skips_memory_candidates_when_flag_disabled(
         self, mock_orchestrator_class
     ):
@@ -706,6 +844,66 @@ class TestMainWorkflowMemoryIntegration:
                 lt = result["context"]["long_term_memory"]
                 assert lt
                 assert lt[0]["type"] == "explicit_remember"
+
+    @pytest.mark.asyncio
+    @patch("backend.workflows.main_workflow.OrchestratorAgent")
+    async def test_memory_loader_strips_postgres_nul_chars_from_ltm_lookup(
+        self, mock_orchestrator_class
+    ):
+        """LTM Store 読み込み前に namespace/query のNUL文字を除去する"""
+        from backend.workflows.main_workflow import MainWorkflow
+
+        mock_orchestrator_class.return_value = AsyncMock()
+
+        with patch("backend.utils.memory_helper.get_memory_helper") as mock_get_helper:
+            mock_helper = AsyncMock()
+            mock_helper.get_context = AsyncMock(
+                return_value={
+                    "recent_messages": [],
+                    "context_string": "",
+                    "inherited_request_type": None,
+                }
+            )
+            mock_helper.store_message = AsyncMock()
+            mock_get_helper.return_value = mock_helper
+
+            with patch(
+                "backend.utils.memory_feature_flags.get_memory_feature_flags",
+                return_value=SimpleNamespace(
+                    enable_memory_candidates=False,
+                    enable_memory_promotion=False,
+                    enable_style_profile=False,
+                    enable_long_term_memory_rerank=False,
+                ),
+            ):
+                workflow = MainWorkflow()
+                runtime = MagicMock()
+                runtime.context = MagicMock()
+                runtime.context.user_id = "visitor\x00-load"
+                runtime.store = MagicMock()
+                runtime.store.asearch = AsyncMock(return_value=[])
+
+                state = {
+                    "query": "覚え\x00てる？",
+                    "session_id": "test-session",
+                    "language": "ja",
+                    "context": {},
+                }
+
+                async def _passthrough(op, **kw):
+                    return await op(runtime.store)
+
+                with patch(
+                    "backend.workflows.main_workflow.store_with_retry",
+                    side_effect=_passthrough,
+                ):
+                    await workflow._memory_loader_node(state, runtime)
+
+                runtime.store.asearch.assert_awaited_once_with(
+                    ("visitor_memories", "visitor-load"),
+                    query="覚えてる？",
+                    limit=5,
+                )
 
 
 class TestWorkflowGraphStructure:
