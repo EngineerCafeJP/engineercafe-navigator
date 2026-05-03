@@ -103,6 +103,27 @@ test(
 );
 
 test(
+  'logs and does not throw when the Slack webhook request times out',
+  { concurrency: false },
+  async () => {
+    env.CRON_SLACK_WEBHOOK_URL = 'https://hooks.slack.example/services/test';
+    const errors: unknown[][] = [];
+    console.error = (...args: unknown[]) => {
+      errors.push(args);
+    };
+    global.fetch = (async () => {
+      throw new DOMException('The operation was aborted', 'AbortError');
+    }) as typeof fetch;
+
+    await assert.doesNotReject(dispatchCronAlert(baseContext));
+
+    assert.equal(errors.length, 1);
+    assert.match(String(errors[0][0]), /Failed to dispatch Slack cron alert/);
+    assert.equal((errors[0][1] as DOMException).name, 'AbortError');
+  }
+);
+
+test(
   'includes cron name, duration, and error message in the payload',
   { concurrency: false },
   async () => {

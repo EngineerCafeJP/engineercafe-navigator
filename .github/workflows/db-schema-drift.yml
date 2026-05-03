@@ -8,14 +8,22 @@ on:
     paths:
       - 'backend/supabase/migrations/**'
 
+permissions:
+  contents: read
+
+concurrency:
+  group: db-schema-drift-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   drift-check:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
       - name: Install Supabase CLI
-        run: npm i -g supabase
+        run: npm i -g supabase@^1
 
       - name: Check drift
         env:

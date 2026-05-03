@@ -108,6 +108,7 @@ export async function dispatchCronAlert(ctx: CronAlertContext): Promise<void> {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(3000),
     });
 
     if (!response.ok) {
