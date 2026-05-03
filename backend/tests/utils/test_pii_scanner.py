@@ -82,6 +82,12 @@ class TestScanAndMaskPhone:
         masked, items = scan_and_mask(text)
         assert "[REDACTED_PHONE]" in masked
 
+    def test_public_engineer_cafe_phone_is_not_masked(self):
+        text = "Phone: 080-6742-7231 (13:00-21:00)."
+        masked, items = scan_and_mask(text)
+        assert masked == text
+        assert items == []
+
 
 class TestScanAndMaskCreditCard:
     """クレジットカード番号の検出・マスキング"""
@@ -307,6 +313,9 @@ class TestContainsPii:
 
     def test_with_phone(self):
         assert contains_pii("電話: 090-1234-5678") is True
+
+    def test_with_public_engineer_cafe_phone(self):
+        assert contains_pii("Phone: 080-6742-7231 (13:00-21:00).") is False
 
     def test_with_credit_card(self):
         assert contains_pii("カード: 4111-1111-1111-1111") is True

@@ -603,10 +603,9 @@ Information: {context}
                     "受付でスタッフに声をかけてください。"
                 ),
                 "en": (
-                    "[relaxed]For your first visit, register at the 1F reception when "
-                    "you arrive. Please ask the reception staff for assistance. "
-                    "Registration is free, takes about 5 to 10 minutes, and staff "
-                    "can help you complete the web form."
+                    "[relaxed]Register at reception on arrival. Ask staff for assistance. "
+                    "It takes about 5 to 10 minutes and is completed with a web form. "
+                    "Online pre-registration is not available."
                 ),
                 "zh": (
                     "[relaxed]第一次来访时，请到一楼前台办理登记。登记免费，"
@@ -676,11 +675,11 @@ Information: {context}
                     "https://engineercafe.jp/ で、お問い合わせフォームも利用できます。"
                 ),
                 "en": (
-                    "[relaxed]You can contact Engineer Cafe by phone at 080-6742-7231 "
-                    "between 13:00 and 21:00. You can also use the official website, "
-                    "https://engineercafe.jp/, or its inquiry form. For second-floor "
-                    "meeting rooms, please use the separate inquiry path or ask at "
-                    "reception during opening hours."
+                    "[relaxed]Phone: 080-6742-7231 (13:00-21:00). "
+                    "Website: https://engineercafe.jp/. "
+                    "Contact form: https://engineercafe.jp/ja/contact. "
+                    "For second-floor meeting rooms, a separate inquiry may be needed. "
+                    "You can also visit reception in person during opening hours."
                 ),
                 "zh": (
                     "[relaxed]可以在13:00到21:00之间拨打080-6742-7231"

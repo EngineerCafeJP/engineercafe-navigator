@@ -78,12 +78,11 @@ class TestBusinessInfoAgent:
         )
 
         assert response is not None
-        assert "1F reception" in response["answer"]
+        assert "reception" in response["answer"]
         assert "5 to 10 minutes" in response["answer"]
         assert "web form" in response["answer"].lower()
         assert "staff" in response["answer"].lower()
-        assert "ask the reception staff" in response["answer"].lower()
-        assert "free" in response["answer"].lower()
+        assert "online pre-registration is not available" in response["answer"].lower()
 
     def test_first_time_visitor_canonical_response(self):
         """Hyphenated first-time visitor phrasing must not fall back."""
@@ -94,8 +93,8 @@ class TestBusinessInfoAgent:
         assert response is not None
         assert response["metadata"]["confidence"] >= 0.7
         assert response["metadata"]["sources"] == ["enhanced_rag"]
-        assert "1F reception" in response["answer"]
-        assert "free" in response["answer"].lower()
+        assert "reception" in response["answer"]
+        assert "staff" in response["answer"].lower()
         assert "5 to 10 minutes" in response["answer"]
 
     def test_opening_hours_canonical_response_japanese(self):
@@ -244,9 +243,9 @@ class TestBusinessInfoAgent:
 
         assert response is not None
         assert "080-6742-7231" in response["answer"]
-        assert "13:00 and 21:00" in response["answer"]
+        assert "13:00-21:00" in response["answer"]
         assert "https://engineercafe.jp/" in response["answer"]
-        assert "inquiry form" in response["answer"].lower()
+        assert "contact form" in response["answer"].lower()
         assert "second-floor meeting rooms" in response["answer"].lower()
 
     def test_closed_days_canonical_precedes_hours(self):

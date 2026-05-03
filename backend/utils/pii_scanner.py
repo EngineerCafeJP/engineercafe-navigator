@@ -25,6 +25,22 @@ from typing import Dict, List, Tuple
 # 各パターンは (pattern_name, compiled_regex) のタプル
 # pattern_name はマスキング時の置換ラベルに使用される
 
+_PUBLIC_CONTACT_ALLOWLIST = {
+    "080-6742-7231",
+    "080 6742 7231",
+    "08067427231",
+}
+
+
+def _normalize_public_contact_candidate(value: str) -> str:
+    return re.sub(r"[\s\-]", "", value)
+
+
+_PUBLIC_CONTACT_ALLOWLIST_NORMALIZED = {
+    _normalize_public_contact_candidate(value) for value in _PUBLIC_CONTACT_ALLOWLIST
+}
+
+
 _PII_PATTERNS: List[Tuple[str, re.Pattern[str]]] = [
     # --- メールアドレス ---
     (
@@ -174,6 +190,12 @@ def scan_and_mask(text: str) -> Tuple[str, List[Dict[str, str]]]:
 
     for pattern_name, pattern in _PII_PATTERNS:
         for match in pattern.finditer(text):
+            if (
+                pattern_name == "PHONE"
+                and _normalize_public_contact_candidate(match.group())
+                in _PUBLIC_CONTACT_ALLOWLIST_NORMALIZED
+            ):
+                continue
             all_matches.append((match.start(), match.end(), pattern_name, match.group()))
 
     if not all_matches:
@@ -224,8 +246,14 @@ def contains_pii(text: str) -> bool:
     if not text:
         return False
 
-    for _pattern_name, pattern in _PII_PATTERNS:
-        if pattern.search(text):
+    for pattern_name, pattern in _PII_PATTERNS:
+        for match in pattern.finditer(text):
+            if (
+                pattern_name == "PHONE"
+                and _normalize_public_contact_candidate(match.group())
+                in _PUBLIC_CONTACT_ALLOWLIST_NORMALIZED
+            ):
+                continue
             return True
 
     return False
