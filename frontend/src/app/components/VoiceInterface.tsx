@@ -2,8 +2,16 @@
 
 import { AudioQueue } from '@/lib/audio-queue';
 import { AudioDataProcessor } from '@/lib/audio/audio-data-processor';
-import { unlockAudioForUserGesture } from '@/lib/audio/audio-interaction-manager';
-import { markAudioUserInteraction } from '@/lib/audio/audio-user-interaction-gate';
+import {
+  AudioInteractionManager,
+  registerAudioContextSuspensionListener,
+  unlockAudioForUserGesture,
+} from '@/lib/audio/audio-interaction-manager';
+import {
+  getTapToEnableAudioMessage,
+  isIOSWebKitAudio,
+  markAudioUserInteraction,
+} from '@/lib/audio/audio-user-interaction-gate';
 import { MobileAudioService } from '@/lib/audio/mobile-audio-service';
 import { audioStateManager } from '@/lib/audio-state-manager';
 import { cn } from '@/lib/cn';
@@ -399,6 +407,46 @@ export default function VoiceInterface({
     audioQueueRef.current?.setVolume(effectiveVolume);
   }, [volume]);
 
+  const handleAudioUnlockGesture = useCallback(() => {
+    if (sessionState === 'listening') {
+      return;
+    }
+
+    unlockAudioForUserGesture();
+  }, [sessionState]);
+
+  const stopForIOSAudioUnlock = useCallback((): boolean => {
+    if (!isIOSWebKitAudio()) {
+      return false;
+    }
+
+    let state: AudioContextState | null = null;
+    let isReady = false;
+    try {
+      const manager = AudioInteractionManager.getInstance();
+      state = manager.getAudioContextState();
+      isReady = manager.isAudioContextReady() && state === 'running';
+    } catch {
+      isReady = false;
+    }
+
+    if (isReady) {
+      return false;
+    }
+
+    const message = getTapToEnableAudioMessage(currentLanguage);
+    console.warn('[VoiceInterface] iOS AudioContext is not ready; waiting for a tap-to-enable gesture', {
+      state,
+    });
+    cleanupAudioPlayback();
+    setError(message);
+    setIsLoading(false);
+    setLoadingMessage('');
+    setLoadingPhase(null);
+    voiceController.notifySpeakingComplete(true);
+    return true;
+  }, [cleanupAudioPlayback, currentLanguage, voiceController]);
+
   const resetConversation = useCallback(() => {
     setTranscript('');
     setResponse('');
@@ -487,6 +535,10 @@ export default function VoiceInterface({
         return;
       }
 
+      if (stopForIOSAudioUnlock()) {
+        return;
+      }
+
       let audioBytes: Uint8Array;
       try {
         audioBytes = Uint8Array.from(atob(audioBase64), (char) => char.charCodeAt(0));
@@ -558,6 +610,7 @@ export default function VoiceInterface({
       revokeAudioUrl,
       scheduleLipSyncFrames,
       skipAssistantTurnAutoResume,
+      stopForIOSAudioUnlock,
       voiceController,
     ],
   );
@@ -731,6 +784,9 @@ export default function VoiceInterface({
             await playAssistantAudio(ttsResult.audioResponse, playbackMetadata);
             return;
           }
+          if (stopForIOSAudioUnlock()) {
+            return;
+          }
           q.setVolume(isMuted ? 0 : volume);
           q.add({
             id: `assistant-${Date.now()}`,
@@ -782,6 +838,7 @@ export default function VoiceInterface({
       playAssistantAudio,
       scheduleLipSyncFrames,
       skipAssistantTurnAutoResume,
+      stopForIOSAudioUnlock,
       stopPlayback,
       volume,
       voiceController,
@@ -1273,6 +1330,12 @@ export default function VoiceInterface({
   }, [sessionState, onAssistantPlaybackEnd]);
 
   useEffect(() => {
+    return registerAudioContextSuspensionListener(() => {
+      setError(getTapToEnableAudioMessage(currentLanguage));
+    });
+  }, [currentLanguage]);
+
+  useEffect(() => {
     return () => {
       cancelFastFiller();
       cancelPendingRequest();
@@ -1386,6 +1449,8 @@ export default function VoiceInterface({
       <div className="mt-6 flex items-center justify-center gap-3">
         <button
           type="button"
+          onPointerDown={handleAudioUnlockGesture}
+          onTouchEnd={handleAudioUnlockGesture}
           onClick={isListening ? stopListening : startListening}
           disabled={isBusy && !isListening}
           aria-label={isListening ? '録音を停止' : '録音を開始'}
@@ -1415,6 +1480,8 @@ export default function VoiceInterface({
 
         <button
           type="button"
+          onPointerDown={handleAudioUnlockGesture}
+          onTouchEnd={handleAudioUnlockGesture}
           onClick={() => setMuted(!isMuted)}
           aria-label={isMuted ? 'ミュートを解除' : 'ミュートにする'}
           className="flex size-12 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-sm transition-colors duration-200 hover:bg-slate-50"

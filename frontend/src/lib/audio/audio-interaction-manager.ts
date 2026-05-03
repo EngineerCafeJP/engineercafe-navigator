@@ -11,6 +11,32 @@ import {
   resetAudioUserInteractionGate
 } from './audio-user-interaction-gate';
 
+type AudioContextSuspensionListener = (state: AudioContextState) => void;
+
+const audioContextSuspensionListeners = new Set<AudioContextSuspensionListener>();
+
+const isSuspendedAudioContextState = (state: AudioContextState): boolean =>
+  state === 'suspended' || (state as string) === 'interrupted';
+
+const notifyAudioContextSuspensionListeners = (state: AudioContextState): void => {
+  audioContextSuspensionListeners.forEach((listener) => {
+    try {
+      listener(state);
+    } catch (error) {
+      console.error('[AudioInteractionManager] AudioContext suspension listener failed:', error);
+    }
+  });
+};
+
+export function registerAudioContextSuspensionListener(
+  listener: AudioContextSuspensionListener,
+): () => void {
+  audioContextSuspensionListeners.add(listener);
+  return () => {
+    audioContextSuspensionListeners.delete(listener);
+  };
+}
+
 export interface AudioInteractionEvents {
   onContextInitialized?: () => void;
   onInteractionRequired?: () => void;
@@ -132,7 +158,11 @@ export class AudioInteractionManager {
   public async ensureAudioContext(): Promise<AudioContext> {
     if (this.isContextInitialized) {
       await this.globalAudioManager.ensureResumed();
-      return this.globalAudioManager.getContext()!;
+      const context = this.globalAudioManager.getContext()!;
+      if (hasAudioUserInteraction() && isSuspendedAudioContextState(context.state)) {
+        notifyAudioContextSuspensionListeners(context.state);
+      }
+      return context;
     }
 
     this.hasUserInteracted = this.hasUserInteracted || hasAudioUserInteraction();
@@ -142,7 +172,11 @@ export class AudioInteractionManager {
     }
 
     await this.initializeAudioContext();
-    return this.globalAudioManager.getContext()!;
+    const context = this.globalAudioManager.getContext()!;
+    if (hasAudioUserInteraction() && isSuspendedAudioContextState(context.state)) {
+      notifyAudioContextSuspensionListeners(context.state);
+    }
+    return context;
   }
 
   /**
