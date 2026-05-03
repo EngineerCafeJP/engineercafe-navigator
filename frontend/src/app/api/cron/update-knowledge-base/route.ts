@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { knowledgeBaseUpdater } from '@/jobs/update-knowledge-base';
+import { dispatchCronAlert } from '@/lib/monitoring/cron-alerts';
 import { ragMetrics } from '@/lib/monitoring/rag-metrics';
+
+const CRON_NAME = '/api/cron/update-knowledge-base';
 
 /**
  * CRON endpoint for automated knowledge base updates
@@ -47,23 +50,38 @@ export async function GET(request: NextRequest) {
     
   } catch (error) {
     const duration = Date.now() - startTime;
+    const cronError = error instanceof Error ? error : new Error('Unknown error');
+    let metricsTracked = false;
     
     console.error('[CRON] Knowledge base update failed:', error);
     
     // Track error metrics
-    await ragMetrics.trackKnowledgeBaseOperation({
-      operation: 'batch_import',
-      category: 'automated_update',
-      count: 0,
+    try {
+      await ragMetrics.trackKnowledgeBaseOperation({
+        operation: 'batch_import',
+        category: 'automated_update',
+        count: 0,
+        duration,
+        success: false,
+        error: cronError.message,
+      });
+      metricsTracked = true;
+    } catch (metricsError) {
+      console.error('[CRON] Failed to track knowledge base error metrics:', metricsError);
+    }
+
+    await dispatchCronAlert({
+      cronName: CRON_NAME,
+      startTime,
       duration,
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: cronError,
+      metricsTracked,
     });
     
     return NextResponse.json(
       {
         error: 'Knowledge base update failed',
-        message: error instanceof Error ? error.message : 'Unknown error',
+        message: cronError.message,
         duration: `${duration}ms`,
         timestamp: new Date().toISOString(),
       },
