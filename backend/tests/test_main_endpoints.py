@@ -522,6 +522,7 @@ class TestVoiceEndpoint:
                 "emotion": "sad",
                 "error": "Piper unavailable",
                 "fallback_used": True,
+                "fallback_provider": "voicevox",
             }
         )
         with patch("backend.main._get_voice_agent_for_provider_key", return_value=mock_agent):
@@ -532,7 +533,9 @@ class TestVoiceEndpoint:
 
         assert resp.success is True
         assert resp.upstreamStatus["provider"] == "piper"
+        assert resp.upstreamStatus["actualProvider"] == "voicevox"
         assert resp.upstreamStatus["fallbackUsed"] is True
+        assert resp.upstreamStatus["fallbackProvider"] == "voicevox"
         assert resp.upstreamStatus["error"] == "Piper unavailable"
 
 

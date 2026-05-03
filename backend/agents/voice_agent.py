@@ -907,15 +907,16 @@ class VoiceAgent:
             }
         except Exception as e:
             logger.exception("TTS failed, trying fallback: %s", e)
-            fb_text = fallback_error_message(language)
+            fallback_provider: Optional[str] = None
             try:
                 if self.tts_provider == "piper":
                     # piper障害時: 日本語 → VoiceVox、英語 → Kokoro にフォールバック
                     if language == "en":
                         logger.warning("piper failed, falling back to Kokoro for en")
                         if self.kokoro_client:
+                            fallback_provider = "kokoro"
                             audio_b64 = await self.kokoro_client.synthesize_wav_base64(
-                                fb_text, language
+                                processed, language
                             )
                         else:
                             raise RuntimeError(
@@ -929,8 +930,9 @@ class VoiceAgent:
                             )
                         logger.warning("piper failed, falling back to VoiceVox for %s", language)
                         if self.voicevox_fallback_client:
+                            fallback_provider = "voicevox"
                             audio_b64 = await self.voicevox_fallback_client.synthesize_wav_base64(
-                                fb_text, language
+                                processed, language
                             )
                         else:
                             raise RuntimeError(
@@ -940,8 +942,9 @@ class VoiceAgent:
                 elif language == "en":
                     # 英語フォールバック → Kokoro TTS
                     if self.kokoro_client:
+                        fallback_provider = "kokoro"
                         audio_b64 = await self.kokoro_client.synthesize_wav_base64(
-                            fb_text, language
+                            processed, language
                         )
                     else:
                         raise RuntimeError(
@@ -950,12 +953,14 @@ class VoiceAgent:
                     audio_format = "audio/wav"
                 elif self.tts_provider == "voicevox":
                     # 日本語フォールバック → VoiceVox
-                    audio_b64 = await self.tts_client.synthesize_wav_base64(fb_text, language)
+                    fallback_provider = "voicevox"
+                    audio_b64 = await self.tts_client.synthesize_wav_base64(processed, language)
                     audio_format = "audio/wav"
                 else:
                     # Google TTSフォールバック
+                    fallback_provider = "google"
                     audio_b64 = await self.tts_client.synthesize_mp3_base64(
-                        fb_text, language, "sad"
+                        processed, language, "sad"
                     )
                     audio_format = "audio/mpeg"
 
@@ -967,16 +972,18 @@ class VoiceAgent:
                     tts_cache_hit=False,
                     tts_overall_duration_ms=int((time.perf_counter() - tts_started_at) * 1000),
                     fallback_used=True,
+                    fallback_provider=fallback_provider,
                     error_type=type(e).__name__,
                 )
                 return {
                     "success": True,
                     "audioResponse": audio_b64,
                     "emotion": "sad",
-                    "cleanText": fb_text,
+                    "cleanText": processed,
                     "error": str(e),
                     "format": audio_format,
                     "fallback_used": True,
+                    "fallback_provider": fallback_provider,
                     "tts_cache_hit": False,
                 }
             except Exception as fallback_error:

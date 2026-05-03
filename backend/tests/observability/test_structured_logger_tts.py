@@ -47,6 +47,9 @@ def test_log_tts_event_includes_request_id(capsys):
             language="ja",
             success=True,
             tts_overall_duration_ms=42,
+            fallback_used=True,
+            fallback_provider="voicevox",
+            error_type="RuntimeError",
         )
     finally:
         structured_logger_module._current_request_id = token
@@ -57,6 +60,9 @@ def test_log_tts_event_includes_request_id(capsys):
     assert payload["event"] == "tts_complete"
     assert payload["request_id"] == "req-tts-613"
     assert payload["tts_overall_duration_ms"] == 42
+    assert payload["fallback_used"] is True
+    assert payload["fallback_provider"] == "voicevox"
+    assert payload["error_type"] == "RuntimeError"
 
 
 def test_observability_loggers_do_not_propagate_in_production(monkeypatch):

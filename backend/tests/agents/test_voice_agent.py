@@ -494,8 +494,11 @@ async def test_text_to_speech_piper_fallback_japanese_to_voicevox(monkeypatch):
 
     voicevox_called = {"called": False}
 
+    fallback_text = {"value": None}
+
     async def fake_voicevox_synth(text, lang, speaker_id=None):
         voicevox_called["called"] = True
+        fallback_text["value"] = text
         return "VOICEVOX_FALLBACK_BASE64"
 
     monkeypatch.setattr(agent.tts_client, "synthesize_wav_base64", fake_piper_fail)
@@ -513,6 +516,9 @@ async def test_text_to_speech_piper_fallback_japanese_to_voicevox(monkeypatch):
     assert result["audioResponse"] == "VOICEVOX_FALLBACK_BASE64"
     assert result["format"] == "audio/wav"
     assert result["fallback_used"] is True
+    assert result["fallback_provider"] == "voicevox"
+    assert result["cleanText"] == "こんにちは"
+    assert fallback_text["value"] == "こんにちは"
     assert "piper connection error" in result["error"]
 
 
@@ -527,8 +533,11 @@ async def test_text_to_speech_piper_fallback_english_to_kokoro(monkeypatch):
 
     kokoro_called = {"called": False}
 
+    fallback_text = {"value": None}
+
     async def fake_kokoro_synth(text, lang, voice=None):
         kokoro_called["called"] = True
+        fallback_text["value"] = text
         return "KOKORO_FALLBACK_BASE64"
 
     monkeypatch.setattr(agent.tts_client, "synthesize_wav_base64", fake_piper_fail)
@@ -544,4 +553,7 @@ async def test_text_to_speech_piper_fallback_english_to_kokoro(monkeypatch):
     assert result["audioResponse"] == "KOKORO_FALLBACK_BASE64"
     assert result["format"] == "audio/wav"
     assert result["fallback_used"] is True
+    assert result["fallback_provider"] == "kokoro"
+    assert result["cleanText"] == "Hello, how can I help you?"
+    assert fallback_text["value"] == "Hello, how can I help you?"
     assert "piper connection error" in result["error"]
