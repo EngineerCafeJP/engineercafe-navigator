@@ -1276,7 +1276,7 @@ class MainWorkflow:
         # zh/ko: rely on LLM's native multilingual output (LANGUAGE_INSTRUCTION)
         # CTranslate2 only supports en<->ja, so no translation for zh/ko
         language = state.get("language", "ja")
-        if language == "en":
+        if language == "en" and self._should_translate_answer_to_english(answer):
             try:
                 from backend.services.translation_service import (
                     get_translation_service,
@@ -1504,6 +1504,15 @@ class MainWorkflow:
                 AIMessage(content=answer),
             ],
         }
+
+    @staticmethod
+    def _should_translate_answer_to_english(answer: str) -> bool:
+        """Return true only when an English turn still has Japanese text."""
+        if not answer:
+            return False
+        return any(
+            ("\u3040" <= char <= "\u30ff") or ("\u4e00" <= char <= "\u9fff") for char in answer
+        )
 
     def _decode_image_data(self, image_data: Any) -> Any:
         """Convert base64 image string to np.ndarray for VisionAgent.

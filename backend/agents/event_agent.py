@@ -377,10 +377,9 @@ class EventAgent:
                 "早めの申込をおすすめします。"
             ),
             "en": (
-                "[relaxed]Yes, you can check Engineer Cafe events on Connpass. "
-                "Event listings, details, and sign-up information are available at "
-                "https://engineercafe.connpass.com/. Many events are free, and when "
-                "capacity is limited, early sign-up is recommended."
+                "[relaxed]Yes. Event listings and sign-up information are available "
+                "on Connpass at https://engineercafe.connpass.com/. Most events are "
+                "free, and many are first-come, first-served."
             ),
             "zh": (
                 "[relaxed]可以在Connpass上查看工程师咖啡的活动信息。"

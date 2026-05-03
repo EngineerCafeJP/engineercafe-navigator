@@ -1425,6 +1425,42 @@ class TestResponseTranslation:
 
     @pytest.mark.asyncio
     @patch("backend.workflows.main_workflow.OrchestratorAgent")
+    async def test_format_response_skips_translation_for_english_answer(
+        self, mock_orchestrator_class
+    ):
+        """Canonical English answers must not pass through the JA->EN model."""
+        from backend.workflows.main_workflow import MainWorkflow
+
+        mock_orchestrator_class.return_value = AsyncMock()
+
+        with (
+            patch("backend.utils.memory_helper.get_memory_helper") as mock_get_helper,
+            patch("backend.services.translation_service.get_translation_service") as mock_get_ts,
+        ):
+            mock_helper = AsyncMock()
+            mock_helper.store_message = AsyncMock()
+            mock_get_helper.return_value = mock_helper
+
+            workflow = MainWorkflow()
+            answer = (
+                "Phone: 080-6742-7231 (13:00-21:00). "
+                "Website: https://engineercafe.jp/. "
+                "Contact form: https://engineercafe.jp/ja/contact."
+            )
+            state = {
+                "query": "How can I contact Engineer Cafe?",
+                "answer": answer,
+                "session_id": "test-session",
+                "language": "en",
+            }
+
+            result = await workflow._format_response_node(state, _mock_runtime())
+
+            mock_get_ts.assert_not_called()
+            assert result["messages"][-1].content == answer
+
+    @pytest.mark.asyncio
+    @patch("backend.workflows.main_workflow.OrchestratorAgent")
     async def test_format_response_skips_translation_for_ja(self, mock_orchestrator_class):
         """language='ja' の場合、翻訳をスキップすることを確認"""
         from backend.workflows.main_workflow import MainWorkflow
