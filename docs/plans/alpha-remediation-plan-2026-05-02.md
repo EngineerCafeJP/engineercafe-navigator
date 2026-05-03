@@ -14,70 +14,65 @@ The workflow infrastructure is now complete enough to run targeted alpha gates e
 - RAGAS provider/model/case progress telemetry is emitted.
 - B routing / slide live smoke is green on deployed staging.
 
-The product is still **NO-GO** for alpha because there is no latest `suites=all` green proof and
-the STT current-revision gate still fails.
+The product is still **NO-GO** for alpha because there is no latest `suites=all` green proof, and
+the first C-127 run exposed a live RAGAS harness accounting defect.
 
 Latest deployed verification:
 
-- develop SHA: `d789a2cd899779423947c40a3d65e19382f52d30`
-- Cloud Run revision: `engineer-cafe-backend-00148-82c`
-- Targeted B run: `25254789937`
-- B result: `64 passed, 0 warned, 0 failed`
-- UUID / reception persistence log errors during the B run window: 0 rows
+- backend deploy SHA: `d1280aa64643aae7b22df875ee22f13cbfe294a2`
+- Cloud Run revision: `engineer-cafe-backend-00157-b6c`
+- C-127 run: `25268597241`
+- C-127 result: failure, `alpha-127` expected `127` but artifact reported `85`
+- Q targeted run after C-127 dispatch: `25269072919` failed with `23 PASS / 0 WARN / 2 FAIL`
 
 ## Implementation Order
 
-### 1. #658 STT long-tail latency
+### 1. ADR 019 / #691 / #657 / #583 RAGAS coverage and accounting
 
-Goal: reduce the current deployed revision STT long-tail before relying on voice gates.
-
-Status:
-
-- Current-revision scoping is implemented.
-- Historical risk reporting is separated from release gate reporting.
-- The latest STT-only current-revision gate still failed: 7 samples, p50 `5180ms`,
-  p95/max `29217ms`, 14.3% over 10s.
-
-Next tasks:
-
-- Implement Qwen STT long-tail mitigation: fallback threshold, warmup policy, and timeout-before-failure behavior.
-- Re-run `stt` and `v` suites.
-
-### 2. #657 / #583 RAGAS coverage
-
-Goal: reconcile the 29-case diagnostic gate with the 127-case alpha requirement.
+Goal: make C-127 artifacts prove both selected manifest coverage and live API collection success.
 
 Status:
 
 - Direct OpenAI provider path is confirmed.
 - RAGAS progress telemetry is implemented.
-- Coverage semantics are still unresolved.
+- `c-127` workflow selection is implemented.
+- The first C-127 run selected `alpha-127`, but artifact accounting reported only 85 requested cases
+  because live API collection failures were dropped from the report.
 
 Tasks:
 
-- Define release-blocking cases versus diagnostic/soak cases.
-- Add explicit workflow inputs for diagnostic C and full C-127.
-  - Implemented harness selection: `c` / `c-diag` run `diagnostic-29`; `c-127` runs
-    `alpha-127`; the `c_ragas_suite` workflow input can also select either suite for `c` or
-    `all`.
-- Ensure reports cannot imply that 29 cases satisfy the 127-case requirement.
-  - `live_api_eval` reports now include `case_suite` and `suite_coverage` metadata. Only
-    `alpha-127` with all four languages and 127 requested cases is release-blocking coverage.
+- Implement ADR 019 in `backend/evaluation/run_live_api_eval.py`.
+- Keep `requested_case_count` tied to selected manifest cases, not collected successful responses.
+- Persist `/api/chat` collection failures as `collection_errors`.
+- Fail `evaluation_complete` and `alpha_release_gate_met` when collection errors exist.
+- Add regression coverage in `backend/tests/evaluation/test_ragas_live_case_suites.py`.
+- Re-run `suites=c-127` before interpreting C answer quality metrics.
 
-### 3. #653 / #672 answer quality
+### 2. #653 / #672 answer quality
 
 Goal: remove current Q/C answer-quality failures without masking real product issues.
 
 Current Q failures:
 
 - `Q-BIZ-EN-003`
-- `Q-EVT-EN-001`
 - `Q-DAILY-JA-001`
 
-Current C/RAGAS direct OpenAI failure:
+Latest Q run `25269072919` improved from 3 failures to 2 failures:
 
-- JA answer_correctness `0.8295`, target `0.85`
-- weak cases: `ml-ja-003`, `ml-ja-004`
+- `Q-BIZ-EN-003`: route OK, sources OK, missing expected fact `reservation`.
+- `Q-DAILY-JA-001`: route OK, answer OK, latency `2205ms`.
+- `Q-EVT-EN-001` now passes.
+
+Current C/RAGAS direct OpenAI C-127 failure:
+
+- Run `25268597241`: `alpha-127` expected `127`, reported `85`; interpret answer quality only
+  after ADR 019 is merged and rerun.
+- Current reported metrics from the incomplete artifact:
+  - JA answer_correctness `0.585`, target `0.85`
+  - EN answer_correctness `0.7017`, target `0.75`
+  - ZH answer_correctness `0.7271`, target `0.65`
+  - KO answer_correctness `0.7151`, target `0.65`
+- Source gate failures: `gt-019` JA, `gt-065` EN, `gt-115` KO.
 
 Tasks:
 
@@ -86,7 +81,7 @@ Tasks:
 - Fix the smallest product-side issue first; only adjust tests when the expected answer is wrong.
 - Re-run `q` and `c`.
 
-### 4. #670 RAGAS operational closeout
+### 3. #670 RAGAS operational closeout
 
 Goal: make slow or failing C/Q gates diagnosable in GitHub Actions artifacts.
 
@@ -97,11 +92,19 @@ Status:
 
 Tasks:
 
-- Run full C/Q after #658 or in a diagnostic window.
+- Run full C/Q after #691 and the targeted Q/C fixes, or in a diagnostic window.
 - Confirm provider/model/case progress is present in logs and compact artifacts.
 - Close #670 only after one full C/Q operational proof.
 
 ## Completed Items
+
+### #658 STT long-tail latency
+
+Status: completed and closed.
+
+- Current-revision scoping is implemented.
+- Historical risk reporting is separated from release gate reporting.
+- GitHub issue #658 is closed after run `25258764528` passed `suites=stt,v`.
 
 ### #660 H-UI Welcome OCR overlay
 
@@ -149,7 +152,10 @@ Use targeted suites until the relevant blocker is fixed:
 
 ```bash
 gh workflow run alpha-live-verification.yml --ref develop -f suites=stt,v -f require_deployed_sha_match=true
+gh workflow run alpha-live-verification.yml --ref develop -f suites=c-127 -f require_deployed_sha_match=true -f expected_backend_sha=<current-backend-sha>
 gh workflow run alpha-live-verification.yml --ref develop -f suites=q,c -f require_deployed_sha_match=true
 ```
 
-Only run `suites=all` after #658 and the C/Q gate decision have targeted green runs.
+Only run `suites=all` after #691 and the C/Q gate decision have targeted green runs. For C-127,
+do not treat an artifact as release proof unless `suite_coverage.requested_total_cases=127` and
+collection failures are explicitly represented.

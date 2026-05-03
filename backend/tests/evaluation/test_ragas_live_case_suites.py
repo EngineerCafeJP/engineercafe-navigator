@@ -1,6 +1,9 @@
 """C/RAGAS live API case-suite selection tests."""
 
 from collections import Counter
+from types import SimpleNamespace
+
+import pytest
 
 from backend.evaluation.run_live_api_eval import (
     ALL_LANGUAGES,
@@ -12,6 +15,7 @@ from backend.evaluation.run_live_api_eval import (
     _required_live_sources,
     _source_requirement_ok,
     _suite_coverage,
+    run_live_api_evaluation,
 )
 
 
@@ -99,3 +103,92 @@ def test_source_requirement_accepts_knowledge_and_event_alternatives():
         [LOCAL_KNOWLEDGE_SOURCE_REQUIREMENT],
         ["fallback"],
     )
+
+
+@pytest.mark.asyncio()
+async def test_live_eval_keeps_alpha_127_manifest_count_when_api_collection_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+):
+    calls = []
+
+    async def fake_call_chat_api(client, *, base_url, question, language, api_key=None):
+        calls.append((question, language))
+        if len(calls) == 1:
+            raise TimeoutError("synthetic timeout")
+        return {
+            "answer": "grounded answer",
+            "metadata": {
+                "agent": "FakeAgent",
+                "category": "test",
+                "route": "fake",
+                "sources": ["knowledge_base_cached", "google_calendar"],
+            },
+        }
+
+    class FakeRagasEvaluator:
+        is_available = True
+
+        def __init__(self, *, metrics, max_cases):
+            self.metrics = metrics
+            self.max_cases = max_cases
+
+        async def evaluate_batch(self, cases):
+            return SimpleNamespace(
+                evaluated_cases=len(cases),
+                skipped_cases=0,
+                metrics={
+                    "context_precision": 1.0,
+                    "answer_correctness": 1.0,
+                    "answer_relevancy": 1.0,
+                    "faithfulness": 1.0,
+                },
+                errors=[],
+                results=[
+                    SimpleNamespace(
+                        question=case["question"],
+                        answer_correctness=1.0,
+                        answer_relevancy=1.0,
+                        faithfulness=1.0,
+                        context_precision=1.0,
+                        error=None,
+                    )
+                    for case in cases
+                ],
+            )
+
+    monkeypatch.setattr(
+        "backend.evaluation.run_live_api_eval._call_chat_api",
+        fake_call_chat_api,
+    )
+    monkeypatch.setitem(
+        __import__("sys").modules,
+        "evaluation.ragas_pipeline",
+        SimpleNamespace(RagasEvaluator=FakeRagasEvaluator),
+    )
+
+    result = await run_live_api_evaluation(
+        base_url="http://example.test",
+        languages=ALL_LANGUAGES,
+        output_dir=tmp_path,
+        case_suite=CASE_SUITE_ALPHA_127,
+        metrics=("answer_correctness",),
+    )
+
+    assert result["suite_coverage"]["requested_total_cases"] == 127
+    assert result["suite_coverage"]["passed"] is True
+    assert result["per_language"]["ja"]["requested_case_count"] == 80
+    assert result["per_language"]["ja"]["evaluated_case_count"] == 79
+    assert result["per_language"]["ja"]["api_failed_case_count"] == 1
+    assert result["per_language"]["ja"]["collection_error_count"] == 1
+    assert result["per_language"]["ja"]["collection_errors"][0]["error_type"] == "api_call_failed"
+    assert result["comparison"]["per_language"]["ja"]["evaluation_complete"] == {
+        "requested": 80,
+        "evaluated": 79,
+        "collection_errors": 1,
+        "passed": False,
+    }
+    assert result["comparison"]["alpha_release_gate_met"] is False
+    assert "collection_errors: 1 (api_failed=1)" in result["report"]
+    assert "evaluation_complete: evaluated=79/80 collection_errors=1 [FAIL]" in result["report"]
+    assert "Alpha release gate met: NO" in result["report"]
