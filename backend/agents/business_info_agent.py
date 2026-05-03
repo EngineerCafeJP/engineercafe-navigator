@@ -124,15 +124,22 @@ class BusinessInfoAgent:
             language,
         )
 
-        canonical = self._get_canonical_response(query, request_type, language)
-        if canonical:
-            return canonical
-
         # requestTypeをcategoryにマッピング
         category = self._map_request_type_to_category(request_type)
 
-        # Check cached RAG results
         cached = state_context if state_context else None
+        canonical_allowed = not cached or (
+            cached.get("success") and cached.get("category") == category
+        )
+        canonical = (
+            self._get_canonical_response(query, request_type, language)
+            if canonical_allowed
+            else None
+        )
+        if canonical:
+            return canonical
+
+        # Check cached RAG results
         if cached and cached.get("success") and cached.get("category") == category:
             context = cached.get("context_string", "")
             logger.info("Using cached RAG results for %s", category)
@@ -470,6 +477,38 @@ Information: {context}
             }
             return self._canonical_result(answers.get(language, answers["ja"]), request_type)
 
+        if self._asks_consultation(normalized, request_type):
+            if self._asks_skill_change(normalized):
+                answers = {
+                    "ja": (
+                        "[relaxed]スキルチェンジ相談は可能です。コミュニティマネージャーが"
+                        "転職、学習方針、キャリアの整理をサポートします。定期的に"
+                        "スキルチェンジ相談会も開催されています。相談受付は13:00〜21:00です。"
+                    )
+                }
+                return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
+            answers = {
+                "ja": (
+                    "[relaxed]コミュニティマネージャーには、キャリア相談、転職・"
+                    "スキルチェンジ支援、技術相談、コミュニティ運営支援、"
+                    "イベント企画サポートなどを相談できます。相談受付は13:00〜21:00で、"
+                    "基本的に予約不要です。"
+                )
+            }
+            return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
+        if self._asks_corporate_receipt(normalized):
+            answers = {
+                "ja": (
+                    "[relaxed]コワーキング利用は無料のため領収書は発行されません。"
+                    "2階会議室など有料施設は法人名義での予約や領収書・請求書発行に"
+                    "対応できる場合があります。2階会議室は赤煉瓦文化館管理なので、"
+                    "利用前に受付または管理側へ確認してください。"
+                )
+            }
+            return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
         if self._asks_engineer_friendly_city(normalized):
             answers = {
                 "ja": (
@@ -529,7 +568,8 @@ Information: {context}
                     "ja": (
                         "[relaxed]DevDayはENGINEER IGNITION CAMP（EIC）の"
                         "最終展示会で、2026年2月23日18:00から開催されます。"
-                        "ピッチではなく展示形式で実施されます。"
+                        "ピッチではなく展示形式で実施され、審査員にはFusic浜崎氏、"
+                        "ヌーラボ橋本氏らが予定されています。"
                     ),
                     "en": (
                         "[relaxed]DevDay is the final exhibition for ENGINEER IGNITION "
@@ -650,10 +690,10 @@ Information: {context}
         if self._asks_first_visit_registration(normalized, request_type):
             answers = {
                 "ja": (
-                    "[relaxed]ようこそ。初めて利用する場合は、来館時に1階受付で利用登録をします。"
-                    "所要時間は約5〜10分で、登録料は無料です。"
-                    "受付で案内されるWebフォームに入力します。オンライン事前登録ではなく、"
-                    "受付でスタッフに声をかけてください。"
+                    "[happy]ようこそ、初めてのご来館ですね。まず1階受付で"
+                    "利用登録手続きをお願いします。登録は無料で、受付で案内する"
+                    "Webフォームに入力し、所要時間は約5〜10分です。"
+                    "スタッフが案内しますので、そのまま受付にお声がけください。"
                 ),
                 "en": (
                     "[relaxed]Register at reception on arrival. Ask staff for assistance. "
@@ -676,9 +716,9 @@ Information: {context}
         if self._asks_returning_visit(normalized, request_type):
             answers = {
                 "ja": (
-                    "[relaxed]またのご来館ありがとうございます。以前ご利用いただいた方も、"
-                    "来館時は1階受付でチェックインしてください。受付カードを受け取れば、"
-                    "コワーキングスペースを無料で利用できます。"
+                    "[happy]またのご来館ありがとうございます。前にも来たことがある方も、"
+                    "本日は1階受付でチェックインして受付カードを受け取ってください。"
+                    "その後、コワーキングスペースを無料で利用できます。"
                 ),
                 "en": (
                     "[relaxed]Welcome back. If you have visited before, please still "
@@ -1151,6 +1191,34 @@ Information: {context}
             "얼마",
         )
         return any(keyword in query for keyword in keywords)
+
+    @staticmethod
+    def _asks_consultation(query: str, request_type: Optional[str]) -> bool:
+        if request_type == "consultation":
+            return True
+        keywords = (
+            "コミュニティマネージャー",
+            "相談",
+            "キャリア",
+            "転職",
+            "スキルチェンジ",
+            "技術相談",
+            "consultation",
+            "career advice",
+        )
+        return any(keyword in query for keyword in keywords)
+
+    @staticmethod
+    def _asks_skill_change(query: str) -> bool:
+        return any(keyword in query for keyword in ("スキルチェンジ", "転職", "career change"))
+
+    @staticmethod
+    def _asks_corporate_receipt(query: str) -> bool:
+        corporate_markers = ("法人", "会社名", "corporate", "company")
+        receipt_markers = ("領収書", "請求書", "receipt", "invoice")
+        return any(marker in query for marker in corporate_markers) or any(
+            marker in query for marker in receipt_markers
+        )
 
     @staticmethod
     def _asks_reservation_requirement(query: str) -> bool:

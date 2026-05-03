@@ -355,6 +355,38 @@ class FacilityAgent:
             if answer:
                 return self._canonical_result(answer, request_type)
 
+        if self._asks_main_hall(normalized):
+            answers = {
+                "ja": (
+                    "[relaxed]1階メインホールはイベント優先のコワーキングスペースです。"
+                    "通常は約30席あり、Wi-Fiと電源を利用できます。4Kモニター貸出や"
+                    "VRゴーグルなどの最新機材もあり、イベントや発表にも使われます。"
+                )
+            }
+            return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
+        if self._asks_maker_space_equipment(normalized):
+            answers = {
+                "ja": (
+                    "[relaxed]MAKER'sスペースは地下1階にあり、レーザー加工機、"
+                    "3Dプリンター（Bambu Lab P1S）、はんだごて、ボール盤、"
+                    "オシロスコープなどを利用できます。機材使用料は無料ですが、"
+                    "3Dプリンターのフィラメント代は有料です。"
+                )
+            }
+            return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
+        if request_type == "exclusive_rental" or self._asks_exclusive_rental(normalized):
+            answers = {
+                "ja": (
+                    "[relaxed]メインホールは30〜50名規模のイベントに対応できます。"
+                    "エンジニア関連イベントは条件付きで無料になる場合があります。"
+                    "貸切やイベント利用は事前予約とコミュニティマネージャー面談が"
+                    "必要な場合があるため、早めに相談してください。"
+                )
+            }
+            return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
         if self._asks_3d_printer_filament_price(normalized):
             answers = {
                 "ja": (
@@ -460,6 +492,16 @@ class FacilityAgent:
             return self._canonical_result(answers.get(language, answers["ja"]), request_type)
 
         if self._asks_online_meeting_place(normalized):
+            if self._asks_soundproof_room(normalized):
+                answers = {
+                    "ja": (
+                        "[relaxed]防音室は地下1階に1室あります。1回1時間まで、"
+                        "先着順で利用でき、予約はできません。オンラインミーティングや"
+                        "電話に向いています。"
+                    )
+                }
+                return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
             answers = {
                 "ja": (
                     "[relaxed]電話やオンラインミーティングは、1階メインホール、"
@@ -733,8 +775,8 @@ class FacilityAgent:
             answers = {
                 "ja": (
                     "[relaxed]2階会議室は赤煉瓦文化館管理の有料施設です。"
-                    "9時〜12時の料金例は、会議室1（12名）が800円、"
-                    "会議室2（8名）が500円、会議室3（30名）が1,700円です。"
+                    "9時〜12時の料金例は、会議室1（12名）が800円〜、"
+                    "会議室2（8名）が500円〜、会議室3（30名）が1,700円〜です。"
                     "時間帯により料金が変わるため、詳しくは赤煉瓦文化館側へ確認してください。"
                 ),
                 "en": (
@@ -860,6 +902,16 @@ class FacilityAgent:
             return self._canonical_result(answers.get(language, answers["ja"]), request_type)
 
         if request_type == "building" or self._asks_building_history(normalized):
+            if self._asks_building_architecture(normalized):
+                answers = {
+                    "ja": (
+                        "[relaxed]赤煉瓦文化館は辰野式の建築で、赤煉瓦に花崗岩の帯、"
+                        "八角塔屋とドーム、大理石の玄関、アールヌーボーの装飾が特徴です。"
+                        "煉瓦造2階・地下1階で、延床面積は約282平方メートルです。"
+                    )
+                }
+                return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
             answers = {
                 "ja": (
                     "[relaxed]福岡市赤煉瓦文化館は1909年に建てられ、"
@@ -887,10 +939,10 @@ class FacilityAgent:
         if request_type == "food_drink" or self._asks_food_policy(normalized):
             answers = {
                 "ja": (
-                    "[relaxed]外部食品の持ち込みは原則禁止です。"
-                    "ふた付きの飲み物は持ち込みできます。cafe&bar sainoで購入した飲食物は、"
+                    "[relaxed]メインホール、集中スペース、地下施設では飲食できません。"
+                    "外部食品の持ち込みは原則禁止で、ふた付きの飲み物は持ち込みできます。"
+                    "cafe&bar sainoで購入した飲食物は、"
                     "saino店内、談話室、テラスなど指定エリアで食べられます。"
-                    "メインホール、集中スペース、地下施設では飲食できません。"
                 ),
                 "en": (
                     "[relaxed]You can bring drinks in lidded containers. Outside food "
@@ -908,6 +960,56 @@ class FacilityAgent:
                     "원칙적으로 허용되지 않으며, cafe&bar saino에서 구매한 음식은 "
                     "테라스나 라운지 같은 지정 구역에서 드실 수 있어요."
                 ),
+            }
+            return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
+        if self._asks_lounge_room(normalized):
+            answers = {
+                "ja": (
+                    "[relaxed]談話室は1階のcafe&bar saino近くにある休憩・交流スペースです。"
+                    "sainoで購入した飲食物を食べられ、軽い打ち合わせや休憩に向いています。"
+                )
+            }
+            return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
+        if request_type == "floor_layout" or self._asks_floor_layout(normalized):
+            answers = {
+                "ja": (
+                    "[relaxed]フロア構成は、1階がメインホール、cafe&bar saino、"
+                    "談話室、テラスです。2階は赤煉瓦文化館管理の会議室3室、"
+                    "地下1階はMAKER'sスペース、集中スペース、MTGスペース、"
+                    "アンダースペース、防音室です。"
+                )
+            }
+            return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
+        if request_type == "accessibility" or self._asks_accessibility(normalized):
+            answers = {
+                "ja": (
+                    "[relaxed]車椅子ではテラス側からスロープを設置して1階を利用できます。"
+                    "2階と地下1階は利用できません。来館前に080-6742-7231へ"
+                    "事前連絡することをおすすめします。多目的トイレはありません。"
+                )
+            }
+            return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
+        if self._asks_charger_loan(normalized):
+            answers = {
+                "ja": (
+                    "[relaxed]受付でUSB-CやLightningなどの充電器・ケーブルを貸出できます。"
+                    "数量限定なので、長時間使う場合は持参がおすすめです。各席には"
+                    "電源コンセントもあります。"
+                )
+            }
+            return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
+        if self._asks_summer_heat(normalized):
+            answers = {
+                "ja": (
+                    "[relaxed]夏場は歴史的建造物のため熱がこもりやすく、2階や窓際は"
+                    "暑く感じることがあります。エアコンはありますが、涼しい場所を選ぶなら"
+                    "地下1階や日差しの少ない席がおすすめです。ふた付き飲み物も持ち込めます。"
+                )
             }
             return self._canonical_result(answers.get(language, answers["ja"]), request_type)
 
@@ -1021,10 +1123,11 @@ class FacilityAgent:
         if self._asks_available_spaces(normalized):
             answers = {
                 "ja": (
-                    "[relaxed]利用できる主なスペースは、1階のメインホール"
-                    "（コワーキング・イベント利用）、地下1階の集中スペース6席、"
-                    "MTGスペース、MAKER's Space、アンダースペース、防音室です。"
-                    "2階には赤煉瓦文化館管理の有料会議室が3室あります。"
+                    "[relaxed]利用可能スペースは、1階のメインホール、cafe&bar saino、"
+                    "談話室、テラス、地下1階のMAKER'sスペース、集中スペース、"
+                    "MTGスペース、アンダースペース、防音室です。2階には"
+                    "赤煉瓦文化館管理の有料会議室3室もあります。目的に合わせて"
+                    "受付スタッフへ相談してください。"
                 ),
                 "en": (
                     "[relaxed]Available spaces include the 1F Main Hall for coworking "
@@ -1196,6 +1299,43 @@ class FacilityAgent:
         )
 
     @staticmethod
+    def _asks_main_hall(query: str) -> bool:
+        if not any(keyword in query for keyword in ("メインホール", "main hall")):
+            return False
+        excluded_markers = ("貸切", "飲食", "食べ", "food", "eat", "exclusive", "rental")
+        if any(marker in query for marker in excluded_markers):
+            return False
+        return any(marker in query for marker in ("どんなスペース", "どんな場所", "what kind"))
+
+    @staticmethod
+    def _asks_maker_space_equipment(query: str) -> bool:
+        maker_markers = ("maker'sスペース", "maker's space", "makersスペース", "メイカースペース")
+        equipment_markers = ("機材", "設備", "使え", "利用", "equipment", "facilities")
+        return any(marker in query for marker in maker_markers) and any(
+            marker in query for marker in equipment_markers
+        )
+
+    @staticmethod
+    def _asks_exclusive_rental(query: str) -> bool:
+        rental_markers = ("貸切", "貸し切り", "イベント利用", "exclusive", "rental")
+        return any(marker in query for marker in rental_markers)
+
+    @staticmethod
+    def _asks_building_architecture(query: str) -> bool:
+        architecture_markers = (
+            "建築的特徴",
+            "建築の特徴",
+            "辰野式",
+            "花崗岩",
+            "八角塔屋",
+            "ドーム",
+            "アールヌーボー",
+            "architectural",
+            "architecture",
+        )
+        return any(marker in query for marker in architecture_markers)
+
+    @staticmethod
     def _asks_building_history(query: str) -> bool:
         return any(
             keyword in query for keyword in ("重要文化財", "赤煉瓦", "red brick", "historic")
@@ -1342,6 +1482,52 @@ class FacilityAgent:
             "통화",
         )
         return any(keyword in query for keyword in keywords)
+
+    @staticmethod
+    def _asks_soundproof_room(query: str) -> bool:
+        return any(keyword in query for keyword in ("防音室", "soundproof room", "phone booth"))
+
+    @staticmethod
+    def _asks_lounge_room(query: str) -> bool:
+        return any(keyword in query for keyword in ("談話室", "ラウンジ", "lounge"))
+
+    @staticmethod
+    def _asks_floor_layout(query: str) -> bool:
+        keywords = (
+            "フロア構成",
+            "フロアマップ",
+            "フロアガイド",
+            "floor layout",
+            "floor map",
+            "floor guide",
+        )
+        return any(keyword in query for keyword in keywords)
+
+    @staticmethod
+    def _asks_accessibility(query: str) -> bool:
+        keywords = (
+            "車椅子",
+            "バリアフリー",
+            "スロープ",
+            "エレベーター",
+            "wheelchair",
+            "accessibility",
+            "accessible",
+            "barrier-free",
+        )
+        return any(keyword in query for keyword in keywords)
+
+    @staticmethod
+    def _asks_charger_loan(query: str) -> bool:
+        charger_markers = ("充電器", "充電ケーブル", "usb-c", "lightning", "charger", "cable")
+        loan_markers = ("借り", "貸出", "貸し出し", "ありますか", "borrow", "loan")
+        return any(marker in query for marker in charger_markers) and any(
+            marker in query for marker in loan_markers
+        )
+
+    @staticmethod
+    def _asks_summer_heat(query: str) -> bool:
+        return any(keyword in query for keyword in ("夏場", "暑い", "暑く", "heat", "hot"))
 
     @staticmethod
     def _asks_focus_space(query: str) -> bool:

@@ -212,6 +212,94 @@ class TestFacilityAgent:
         assert "MAKER's Space" in response["answer"]
         assert "paid meeting rooms" in response["answer"]
 
+    def test_alpha_c127_ja_space_details_canonical(self):
+        """JA C-127: 低スコアだった主要スペース説明を固定する"""
+        agent = FacilityAgent()
+
+        main_hall = agent._get_canonical_response(
+            "メインホールはどんなスペースですか？", "facility", "ja"
+        )
+        assert main_hall is not None
+        assert "30席" in main_hall["answer"]
+        assert "Wi-Fi" in main_hall["answer"]
+        assert "4Kモニター" in main_hall["answer"]
+
+        lounge = agent._get_canonical_response("談話室はどんなスペースですか？", "facility", "ja")
+        assert lounge is not None
+        assert "saino" in lounge["answer"]
+        assert "休憩・交流" in lounge["answer"]
+
+        spaces = agent._get_canonical_response("スペースを使いたい", "facility", "ja")
+        assert spaces is not None
+        assert "利用可能スペース" in spaces["answer"]
+        assert "防音室" in spaces["answer"]
+        assert "有料会議室3室" in spaces["answer"]
+
+    def test_alpha_c127_ja_facility_detail_canonical(self):
+        """JA C-127: 設備・階層・アクセシビリティ回答を固定する"""
+        agent = FacilityAgent()
+
+        maker = agent._get_canonical_response(
+            "MAKER'sスペースではどんな機材が使えますか？", "facility", "ja"
+        )
+        assert maker is not None
+        assert "Bambu Lab P1S" in maker["answer"]
+        assert "ボール盤" in maker["answer"]
+        assert "フィラメント代は有料" in maker["answer"]
+
+        floor = agent._get_canonical_response("フロア構成を教えてください", "floor_layout", "ja")
+        assert floor is not None
+        assert "1階" in floor["answer"]
+        assert "2階" in floor["answer"]
+        assert "地下1階" in floor["answer"]
+
+        wheelchair = agent._get_canonical_response("車椅子で利用できますか", "accessibility", "ja")
+        assert wheelchair is not None
+        assert "テラス側" in wheelchair["answer"]
+        assert "2階と地下1階は利用できません" in wheelchair["answer"]
+        assert "多目的トイレはありません" in wheelchair["answer"]
+
+    def test_alpha_c127_ja_operational_detail_canonical(self):
+        """JA C-127: 貸切・防音室・充電・夏場・建築特徴を固定する"""
+        agent = FacilityAgent()
+
+        rental = agent._get_canonical_response(
+            "メインホールを貸切利用できますか？", "exclusive_rental", "ja"
+        )
+        assert rental is not None
+        assert "30〜50名" in rental["answer"]
+        assert "条件付きで無料" in rental["answer"]
+        assert "コミュニティマネージャー" in rental["answer"]
+
+        soundproof = agent._get_canonical_response("防音室はありますか？", "facility", "ja")
+        assert soundproof is not None
+        assert "地下1階に1室" in soundproof["answer"]
+        assert "1回1時間" in soundproof["answer"]
+        assert "予約はできません" in soundproof["answer"]
+
+        charger = agent._get_canonical_response(
+            "充電器を借りることはできますか？", "facility", "ja"
+        )
+        assert charger is not None
+        assert "USB-C" in charger["answer"]
+        assert "Lightning" in charger["answer"]
+        assert "電源コンセント" in charger["answer"]
+
+        summer = agent._get_canonical_response(
+            "夏場のエンジニアカフェは暑いですか？", "facility", "ja"
+        )
+        assert summer is not None
+        assert "歴史的建造物" in summer["answer"]
+        assert "地下1階" in summer["answer"]
+
+        architecture = agent._get_canonical_response(
+            "赤煉瓦文化館の建築的特徴は？", "building", "ja"
+        )
+        assert architecture is not None
+        assert "辰野式" in architecture["answer"]
+        assert "八角塔屋" in architecture["answer"]
+        assert "アールヌーボー" in architecture["answer"]
+
     def test_alpha_c127_multipurpose_toilet_canonical(self):
         """gt-077: 多目的トイレは通常トイレ案内に倒さない"""
         agent = FacilityAgent()
