@@ -435,7 +435,8 @@ def _normalize_vosk_route_transcript(transcript: str, language: Optional[str]) -
     if is_wifi_connection_confusion:
         return "Wi-Fiの接続方法を教えてください。"
 
-    if "時間" not in normalized:
+    has_time_context = any(marker in normalized for marker in ("時間", "影響時", "液状時"))
+    if not has_time_context:
         return transcript
 
     asks_for_time = any(
@@ -447,7 +448,17 @@ def _normalize_vosk_route_transcript(transcript: str, language: Optional[str]) -
 
     has_engineer_cafe_context = any(
         marker in normalized
-        for marker in ("エンジニア", "カフェ", "営業", "開館", "会館", "受付", "利用")
+        for marker in (
+            "エンジニア",
+            "カフェ",
+            "営業",
+            "開館",
+            "会館",
+            "受付",
+            "利用",
+            "検事",
+            "壁",
+        )
     ) or ("赤毛" in normalized and "アン" in normalized)
     if not has_engineer_cafe_context:
         return transcript
