@@ -181,21 +181,44 @@ async def test_live_eval_keeps_alpha_127_manifest_count_when_api_collection_fail
     assert result["suite_coverage"]["requested_total_cases"] == 127
     assert result["suite_coverage"]["passed"] is True
     assert result["per_language"]["ja"]["requested_case_count"] == 80
+    assert result["per_language"]["ja"]["collected_case_count"] == 79
     assert result["per_language"]["ja"]["evaluated_case_count"] == 79
     assert result["per_language"]["ja"]["api_failed_case_count"] == 1
     assert result["per_language"]["ja"]["collection_error_count"] == 1
+    assert result["per_language"]["ja"]["ragas_error_count"] == 0
     assert result["per_language"]["ja"]["collection_errors"][0]["error_type"] == "api_call_failed"
     assert result["comparison"]["per_language"]["ja"]["evaluation_complete"] == {
         "requested": 80,
+        "collected": 79,
         "evaluated": 79,
         "collection_errors": 1,
+        "ragas_errors": 0,
         "passed": False,
+    }
+    assert result["evaluation_summary"] == {
+        "requested_total_cases": 127,
+        "collected_total_cases": 126,
+        "evaluated_total_cases": 126,
+        "collection_error_total": 1,
+        "api_failed_total": 1,
+        "ragas_error_total": 0,
+        "requested_by_language": {"ja": 80, "en": 23, "zh": 12, "ko": 12},
+        "collected_by_language": {"ja": 79, "en": 23, "zh": 12, "ko": 12},
+        "evaluated_by_language": {"ja": 79, "en": 23, "zh": 12, "ko": 12},
+        "collection_errors_by_language": {"ja": 1, "en": 0, "zh": 0, "ko": 0},
+        "api_failed_by_language": {"ja": 1, "en": 0, "zh": 0, "ko": 0},
+        "ragas_errors_by_language": {"ja": 0, "en": 0, "zh": 0, "ko": 0},
+        "collection_complete": False,
+        "evaluation_complete": False,
     }
     assert result["comparison"]["alpha_release_gate_met"] is False
     assert result["artifact_metadata"] == {
         "report_timestamp": "alpha-live-test-c",
         "json_report_filename": "live_api_eval_alpha-live-test-c.json",
         "text_report_filename": "live_api_eval_alpha-live-test-c.txt",
+        "expected_total_cases": 127,
+        "manifest_language_counts": {"ja": 80, "en": 23, "zh": 12, "ko": 12},
+        "selected_language_counts": {"ja": 80, "en": 23, "zh": 12, "ko": 12},
         "chat_interval_seconds": 0.0,
         "chat_retry_attempts": 4,
         "chat_retry_backoff_seconds": 2.0,
@@ -203,7 +226,13 @@ async def test_live_eval_keeps_alpha_127_manifest_count_when_api_collection_fail
     assert (tmp_path / "live_api_eval_alpha-live-test-c.json").is_file()
     assert (tmp_path / "live_api_eval_alpha-live-test-c.txt").is_file()
     assert "collection_errors: 1 (api_failed=1)" in result["report"]
-    assert "evaluation_complete: evaluated=79/80 collection_errors=1 [FAIL]" in result["report"]
+    assert "Collection/evaluation summary:" in result["report"]
+    assert "totals: requested=127 collected=126 evaluated=126" in result["report"]
+    assert "ja=requested:80/collected:79/evaluated:79/errors:1" in result["report"]
+    assert (
+        "evaluation_complete: collected=79/80 evaluated=79/80 "
+        "collection_errors=1 ragas_errors=0 [FAIL]"
+    ) in result["report"]
     assert "Alpha release gate met: NO" in result["report"]
 
 

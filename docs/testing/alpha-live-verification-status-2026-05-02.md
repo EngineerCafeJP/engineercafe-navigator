@@ -12,8 +12,8 @@
 実行経路は成立しました。一方で、alpha GO を止める blocker がまだ残っています。
 
 2026-05-03 時点で、B routing / slide live smoke、Welcome UI、artifact split、Supabase UUID
-log hygiene、Cloud Run Qwen runtime dependency、STT/voice preflight は解消済みです。残る P0 は
-RAGAS coverage / accounting reconciliation と live-only proof 群です。
+log hygiene、Cloud Run Qwen runtime dependency、STT/voice preflight、C-127 manifest accounting は
+解消済みです。残る P0 は C-127 live collection completion と live-only proof 群です。
 
 ## 2026-05-02 Baseline Deploy / SHA Sync
 
@@ -68,14 +68,32 @@ collection failures from the report and then uses collected-success count as `re
 The missing 42 cases were all Japanese and were absent from the artifact instead of being reported as
 collection failures.
 
-Required next action is ADR 019 / #691:
+Resolved by ADR 019 / #691 / PR #692:
 
 - `requested_case_count` must mean selected manifest cases, not successfully collected responses.
 - API collection failures must be persisted as `collection_errors`.
 - `evaluation_complete` and `alpha_release_gate_met` must fail when collection errors exist.
+- Artifact review must compare `requested`, `collected`, and `evaluated` totals plus language counts.
+  For `alpha-127`, complete coverage means ja=80/en=23/zh=12/ko=12 with zero collection and
+  RAGAS errors.
 
-Until this is fixed and rerun, C-127 artifacts cannot be used as alpha GO proof even when
-`case_suite=alpha-127` is present.
+### 2026-05-03 Post-#692 C-127 Validation
+
+- Run: <https://github.com/EngineerCafeJP/engineercafe-navigator/actions/runs/25270459825>
+- Suites: `c-127`
+- Result: failure
+- Workflow head SHA / #692 merge SHA: `d74264e808e9b2a0244d3a1a9e5dfe12671530ea`
+- Case suite: `alpha-127`
+- Expected cases: `127`
+- Requested cases: `127`
+- Evaluated cases: `35`
+- Collection errors: `92`
+- Main failure mode: live `/api/chat` `429 Too Many Requests`
+
+This run proves that PR #692 fixed the manifest accounting defect: `suite_coverage.requested_total_cases`
+stays `127`. It does **not** prove C-127 completion because only `35/127` cases were collected/evaluated.
+PR #695 is merged to add C-127 pacing / 429 retry, and the next required proof is a post-#695
+`suites=c-127` rerun with `evaluated=127` and `collection_errors=0`.
 
 ### 2026-05-03 Targeted Q Verification After PR #690/#689
 
@@ -92,6 +110,9 @@ Remaining failures:
 - `Q-DAILY-JA-001`: route is `general_knowledge`, but latency is `2205ms`.
 
 Improvement from the previous Q baseline: `Q-EVT-EN-001` now passes.
+
+PR #693 is merged for the two remaining Q failures. Close proof for #653 is still pending and must
+come from a post-#693 targeted `suites=q` run with `0 FAIL`.
 
 Resolved STT follow-up:
 
@@ -111,9 +132,9 @@ Historical failing outcomes from that run:
 
 | Outcome | Status | Current issue |
 | --- | --- | --- |
-| `stt_preflight` | failure | #658 |
+| `stt_preflight` | failure | #658 (closed by run `25258764528`) |
 | `alpha_b` | failure | #659 |
-| `rag_api_live` | failure | #657, #583, #672 |
+| `rag_api_live` | failure | #583, #672 |
 | `cloud_logging` | failure | #662 |
 | `quality_q` | failure | #653 |
 | `welcome_live` | failure | #660 |
@@ -139,21 +160,23 @@ coverage, not provider configuration.
 
 ### P0
 
-- #691 / #657 / #583: C/RAGAS gate now has `c-127`, but the first full run exposed harness accounting
-  drift: `alpha-127` expected 127 while artifact reported only 85 requested/evaluated cases.
+- #583: C/RAGAS gate now has `c-127`, and PR #692 fixed manifest accounting. Post-#692 run
+  `25270459825` still evaluated only `35/127` because live `/api/chat` returned 92 `429` collection
+  errors. PR #695 is merged; post-#695 rerun is pending.
 - #643 / #612: umbrella issues remain open until the alpha gate is green.
 - #611 / #584 / #585: fast first-response, edge/failure tolerance, and 2h kiosk soak still need final proof.
 
 ### P1
 
-- #672: Direct OpenAI C/RAGAS still misses answer quality targets after C-127.
+- #672: Direct OpenAI C/RAGAS still misses answer quality targets, but the latest post-#692 C metrics
+  are not release-proof because C-127 collection failed.
   - JA: `0.585`, target `0.85`
   - EN: `0.7017`, target `0.75`
   - ZH: `0.7271`, target `0.65`
   - KO: `0.7151`, target `0.65`
   - JA/EN answer quality and live source fallback cases need product-side triage after harness
     accounting is fixed.
-- #653: Q content quality still fails.
+- #653: Q content quality still needs post-#693 live proof.
   - `Q-BIZ-EN-003`
   - `Q-DAILY-JA-001`
   - `Q-EVT-EN-001` now passes in run `25269072919`.
@@ -180,11 +203,11 @@ Observed impact:
 
 ## Next Implementation Order
 
-1. ADR 019 / #691 / #657 / #583: fix C-127 harness accounting so 127 manifest cases are always reported,
-   and collection failures are explicit.
-2. #653 and #672: Q/C answer quality for current failing cases.
-3. #670: verify full C/Q telemetry and runtime with the current artifact split.
-4. #611 / #584 / #585: collect or split the remaining live-only alpha proof.
+1. Post-#695 `suites=c-127`: prove `requested=127`, `evaluated=127`, `collection_errors=0`.
+2. Post-#693 `suites=q`: prove #653 has `0 FAIL`.
+3. #672: triage C answer/source quality only after C-127 collection completes.
+4. #670: verify full C/Q telemetry and runtime with the current artifact split.
+5. #611 / #584 / #585: collect or split the remaining live-only alpha proof.
 
 ## Useful Commands
 

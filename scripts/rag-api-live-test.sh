@@ -169,6 +169,13 @@ validate_case_suite() {
   esac
 }
 
+expected_suite_cases() {
+  case "$CASE_SUITE" in
+    diagnostic-29) printf '29' ;;
+    alpha-127) printf '127' ;;
+  esac
+}
+
 language_args() {
   python3 - "$LANGUAGES" <<'PY'
 import sys
@@ -219,6 +226,7 @@ main() {
     echo "Base URL: $BASE_URL"
     echo "Output dir: $OUTPUT_DIR"
     echo "Case suite: $CASE_SUITE"
+    echo "Expected suite cases: $(expected_suite_cases)"
     echo "Languages: ${LANG_ARGS[*]}"
     echo "Metrics: ${METRIC_ARGS[*]}"
     echo "Chat interval seconds: $CHAT_INTERVAL_SECONDS"
@@ -248,6 +256,7 @@ main() {
   echo "Timestamp: $TIMESTAMP"
   echo "Base URL: $BASE_URL"
   echo "Case suite: $CASE_SUITE"
+  echo "Expected suite cases: $(expected_suite_cases)"
   echo "Languages: ${LANG_ARGS[*]}"
   echo "Metrics: ${METRIC_ARGS[*]}"
   echo "Chat interval seconds: $CHAT_INTERVAL_SECONDS"
