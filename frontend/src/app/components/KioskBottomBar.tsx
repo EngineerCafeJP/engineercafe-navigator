@@ -58,6 +58,10 @@ export function KioskBottomBar({
       : labels.kioskVoice;
 
   const handleKioskVoiceStart = async () => {
+    if (voice.unlockAudioPlayback()) {
+      return;
+    }
+
     unlockAudioForUserGesture();
     clearReturnToIdleTimer();
     setWelcomeMemberOcrOpen(false);

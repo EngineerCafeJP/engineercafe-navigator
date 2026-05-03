@@ -27,7 +27,7 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      testIgnore: /(voice-live|welcome-live|voice-permission-denial)\.spec\.ts/,
+      testIgnore: /(voice-live|welcome-live|voice-permission-denial|mobile-audio-proof)\.spec\.ts/,
       use: {
         ...devices['Desktop Chrome'],
         launchOptions: {
@@ -55,6 +55,13 @@ export default defineConfig({
       testMatch: /voice-permission-denial\.spec\.ts/,
       use: {
         ...devices['Desktop Safari'],
+      },
+    },
+    {
+      name: 'webkit-mobile-audio',
+      testMatch: /mobile-audio-proof\.spec\.ts/,
+      use: {
+        ...devices['iPhone 13'],
       },
     },
   ],
