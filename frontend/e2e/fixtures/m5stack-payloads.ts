@@ -11,9 +11,9 @@ export const m5stackPayloads = {
     distance_mm: 350,
     device_id: 'm5stack-validation',
   },
-  rateLimitDevice: {
+  rateLimitDevice: (suffix: string = String(Date.now())) => ({
     sensor_type: 'ToF',
     distance_mm: 500,
-    device_id: 'm5stack-e2e-rate-limit',
-  },
+    device_id: `m5stack-e2e-rate-limit-${suffix}`,
+  }),
 };

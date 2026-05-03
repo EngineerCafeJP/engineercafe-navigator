@@ -5,6 +5,11 @@ import { expect, test } from '@playwright/test';
 
 import { m5stackPayloads } from './fixtures/m5stack-payloads';
 
+test.skip(
+  !process.env.BACKEND_API_URL && !process.env.PLAYWRIGHT_BASE_URL,
+  'M5Stack E2E requires a reachable backend (BACKEND_API_URL or PLAYWRIGHT_BASE_URL must be set)',
+);
+
 /**
  * M5Stack sensor webhook → backend → kiosk sensor polling → Welcome flow (Refs #585 / #706).
  *
@@ -153,6 +158,14 @@ test.describe('M5Stack reception sensor webhook (API + kiosk polling)', () => {
       headers,
     });
     expect(missingType.status()).toBe(422);
+    const missingTypeBody = (await missingType.json()) as {
+      detail?: Array<{ loc?: unknown[] }>;
+    };
+    expect(
+      missingTypeBody.detail?.some(
+        (detail) => Array.isArray(detail.loc) && detail.loc.includes('sensor_type'),
+      ),
+    ).toBe(true);
 
     const longType = await request.post(url, {
       data: m5stackPayloads.invalidLongSensorType,
@@ -166,7 +179,7 @@ test.describe('M5Stack reception sensor webhook (API + kiosk polling)', () => {
   }) => {
     const headers = backendRequestHeaders();
     const url = backendTriggerUrl();
-    const payload = m5stackPayloads.rateLimitDevice;
+    const payload = m5stackPayloads.rateLimitDevice();
 
     const first = await request.post(url, { data: payload, headers });
     expect(first.status(), await first.text()).toBe(200);
@@ -182,7 +195,7 @@ test.describe('M5Stack reception sensor webhook (API + kiosk polling)', () => {
     expect(secondJson.success).toBe(false);
     expect(secondJson.action).toBe('rate_limited');
 
-    await sleep(6_000);
+    await sleep(7_000);
 
     const third = await request.post(url, { data: payload, headers });
     expect(third.status(), await third.text()).toBe(200);
