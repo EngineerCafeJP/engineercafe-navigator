@@ -1523,6 +1523,19 @@ class STTAgent:
                     self.stt_client.transcribe(audio_data, language=language),
                     timeout=self._qwen_timeout,
                 )
+            except asyncio.CancelledError:
+                log_stt_event(
+                    event="stt_qwen_complete",
+                    stt_trace_id=stt_trace_id,
+                    provider="qwen-primary",
+                    language=language,
+                    success=False,
+                    cancelled=True,
+                    error_type="CancelledError",
+                    stt_qwen_duration_ms=_duration_ms(qwen_started_at),
+                    qwen_postprocess_enabled=qwen_postprocess_enabled,
+                )
+                raise
             except Exception as exc:
                 log_stt_event(
                     event="stt_qwen_complete",

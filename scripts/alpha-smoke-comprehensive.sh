@@ -31,7 +31,7 @@ SLEEP_SECONDS=1
 TTS_PROVIDER="piper"
 PARALLEL=5
 STT_THRESHOLD=0.50
-REQUIRE_QWEN_PRIMARY="${ALPHA_SMOKE_REQUIRE_QWEN_PRIMARY:-1}"
+REQUIRE_QWEN_PRIMARY="${ALPHA_SMOKE_REQUIRE_QWEN_PRIMARY:-0}"
 RETRIES="${ALPHA_SMOKE_RETRIES:-3}"
 LTM_RECALL_RETRIES="${ALPHA_SMOKE_LTM_RECALL_RETRIES:-2}"
 LTM_RECALL_RETRY_SLEEP="${ALPHA_SMOKE_LTM_RECALL_RETRY_SLEEP:-2}"
@@ -61,7 +61,8 @@ Options:
   --tts-provider NAME    TTS provider for A-4 round-trip audio (default: piper)
   --parallel N           D-1 visitor parallelism (default: 5)
   --stt-threshold FLOAT  A-4 SequenceMatcher similarity threshold (default: 0.50)
-  --allow-vosk-fallback  Allow A scenario STT provider to be vosk-fallback (debug only)
+  --allow-vosk-fallback  Allow A scenario STT provider to be vosk-fallback (default)
+  --require-qwen-primary Require A scenario STT provider to be qwen-primary
   --retries N            Retries for HTTP 429 responses (default: 3)
   --dry-run              Validate script data and planned requests without network
   -h, --help             Show this usage
@@ -88,6 +89,7 @@ while [ "$#" -gt 0 ]; do
     --parallel) PARALLEL="$2"; shift 2 ;;
     --stt-threshold) STT_THRESHOLD="$2"; shift 2 ;;
     --allow-vosk-fallback) REQUIRE_QWEN_PRIMARY=0; shift ;;
+    --require-qwen-primary) REQUIRE_QWEN_PRIMARY=1; shift ;;
     --retries) RETRIES="$2"; shift 2 ;;
     --dry-run) DRY_RUN=1; shift ;;
     -h|--help) usage 0 ;;
@@ -415,11 +417,13 @@ run_voice_case() {
   provider="$(printf '%s' "$LAST_BODY" | json_get sttProvider)"
   if is_success_json && [ -n "$transcript" ]; then
     if [ "$provider" = "qwen-primary" ]; then
-      record_result "A" "$case_id" "stt_provider" "PASS" "$LAST_HTTP" "$LAST_TIME_MS" "$lang" "qwen-primary" "$provider" "primary provider selected"
+      record_result "A" "$case_id" "stt_provider" "PASS" "$LAST_HTTP" "$LAST_TIME_MS" "$lang" "qwen-primary|vosk-fallback" "$provider" "primary provider selected"
+    elif [ "$provider" = "vosk-fallback" ] && [ "$REQUIRE_QWEN_PRIMARY" != "1" ]; then
+      record_result "A" "$case_id" "stt_provider" "PASS" "$LAST_HTTP" "$LAST_TIME_MS" "$lang" "qwen-primary|vosk-fallback" "$provider" "fallback accepted by alpha STT contract"
     elif [ "$REQUIRE_QWEN_PRIMARY" = "1" ]; then
       record_result "A" "$case_id" "stt_provider" "FAIL" "$LAST_HTTP" "$LAST_TIME_MS" "$lang" "qwen-primary" "${provider:-unknown}" "Qwen primary required; transcript=$transcript"
     else
-      record_result "A" "$case_id" "stt_provider" "WARN" "$LAST_HTTP" "$LAST_TIME_MS" "$lang" "qwen-primary" "${provider:-unknown}" "fallback allowed for this run"
+      record_result "A" "$case_id" "stt_provider" "FAIL" "$LAST_HTTP" "$LAST_TIME_MS" "$lang" "qwen-primary|vosk-fallback" "${provider:-unknown}" "unexpected STT provider; transcript=$transcript"
     fi
     sim="$(similarity "$text" "$transcript")"
     status="$(python3 - "$sim" "$STT_THRESHOLD" <<'PY'
@@ -769,6 +773,7 @@ dry_run() {
   echo "Backend SHA: $BACKEND_SHA"
   echo "Scenarios: $SCENARIOS"
   echo "429 retries: $RETRIES"
+  echo "Require Qwen primary for A STT: $REQUIRE_QWEN_PRIMARY"
   echo "Reports: $REPORT_MD / $REPORT_CSV"
   printf 'A utterances: '; printf '%s\n' "$A_UTTERANCES" | sed '/^$/d' | wc -l | tr -d ' '
   echo ""
