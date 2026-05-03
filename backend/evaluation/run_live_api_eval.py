@@ -794,6 +794,10 @@ def _format_report(
     if evaluation_summary:
         collection_status = "PASS" if evaluation_summary.get("collection_complete") else "FAIL"
         evaluation_status = "PASS" if evaluation_summary.get("evaluation_complete") else "FAIL"
+        requested_by_language = evaluation_summary.get("requested_by_language", {})
+        collected_by_language = evaluation_summary.get("collected_by_language", {})
+        evaluated_by_language = evaluation_summary.get("evaluated_by_language", {})
+        errors_by_language = evaluation_summary.get("collection_errors_by_language", {})
         lines.extend(
             [
                 "Collection/evaluation summary:",
@@ -807,10 +811,10 @@ def _format_report(
                 f"  evaluation_complete: {evaluation_status}",
                 "  language_counts: "
                 + ", ".join(
-                    f"{lang}=requested:{evaluation_summary.get('requested_by_language', {}).get(lang, 0)}"
-                    f"/collected:{evaluation_summary.get('collected_by_language', {}).get(lang, 0)}"
-                    f"/evaluated:{evaluation_summary.get('evaluated_by_language', {}).get(lang, 0)}"
-                    f"/errors:{evaluation_summary.get('collection_errors_by_language', {}).get(lang, 0)}"
+                    f"{lang}=requested:{requested_by_language.get(lang, 0)}"
+                    f"/collected:{collected_by_language.get(lang, 0)}"
+                    f"/evaluated:{evaluated_by_language.get(lang, 0)}"
+                    f"/errors:{errors_by_language.get(lang, 0)}"
                     for lang in languages
                 ),
                 "",
