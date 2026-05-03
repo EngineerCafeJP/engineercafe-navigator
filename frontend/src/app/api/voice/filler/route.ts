@@ -7,7 +7,7 @@ import {
 import { backendFetch } from '@/lib/api/backend-proxy';
 import { fillerRequestSchema } from '@/lib/schemas/voice-filler';
 
-const FILLER_PROXY_TIMEOUT_MS = 15_000;
+const FILLER_PROXY_TIMEOUT_MS = 110_000;
 
 export async function POST(request: NextRequest) {
   try {

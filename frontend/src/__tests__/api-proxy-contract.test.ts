@@ -196,3 +196,27 @@ test(
     assert.deepEqual(await response.json(), { error: 'Backend request timed out' });
   }
 );
+
+test(
+  'voice filler POST maps backend proxy timeout to a controlled 504 payload',
+  { concurrency: false },
+  async () => {
+    process.env.BACKEND_API_URL = 'https://backend.example.com';
+    (process.env as Record<string, string | undefined>).NODE_ENV = 'test';
+    global.fetch = (async () => {
+      throw new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+    }) as typeof fetch;
+
+    const { POST } = await import('../app/api/voice/filler/route');
+    const response = await POST(
+      new NextRequest('https://example.com/api/voice/filler', {
+        method: 'POST',
+        body: JSON.stringify({ query: 'こんにちは', language: 'ja' }),
+        headers: { 'Content-Type': 'application/json' },
+      })
+    );
+
+    assert.equal(response.status, 504);
+    assert.deepEqual(await response.json(), { error: 'Backend request timed out' });
+  }
+);

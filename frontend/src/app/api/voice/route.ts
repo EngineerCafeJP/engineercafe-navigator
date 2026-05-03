@@ -6,7 +6,7 @@ import {
 } from '@/app/api/_shared/backend-error-response';
 import { backendFetch } from '@/lib/api/backend-proxy';
 
-const VOICE_PROXY_TIMEOUT_MS = 55_000;
+const VOICE_PROXY_TIMEOUT_MS = 110_000;
 
 export async function POST(request: NextRequest) {
   try {

@@ -56,3 +56,29 @@ test('frontend API proxy timeouts stay below their Vercel maxDuration', async ()
     }
   }
 });
+
+test('voice proxy timeout covers observed Cloud Run cold starts without exceeding Vercel', async () => {
+  const config = JSON.parse(await readText('vercel.json')) as VercelConfig;
+  const proxySource = await readText('src/lib/api/backend-proxy.ts');
+  const constants = new Map(
+    Array.from(proxySource.matchAll(/export const\s+([A-Z0-9_]+)\s*=\s*([0-9][0-9_]*)/g)).map(
+      (match) => [match[1], Number(match[2].replaceAll('_', ''))] as const,
+    ),
+  );
+
+  const voiceMaxDurationMs =
+    (config.functions?.['src/app/api/voice/route.ts']?.maxDuration ?? 0) * 1000;
+  const fillerMaxDurationMs =
+    (config.functions?.['src/app/api/voice/filler/route.ts']?.maxDuration ?? 0) * 1000;
+  const proxyTimeoutMs = constants.get('BACKEND_PROXY_TIMEOUT_MS');
+  const worstObservedLatencyMs = constants.get('ISSUE_696_WORST_OBSERVED_LATENCY_MS');
+  const cloudRunTimeoutMs = constants.get('CLOUD_RUN_TIMEOUT_MS');
+
+  assert.equal(proxyTimeoutMs, 110_000);
+  assert.equal(worstObservedLatencyMs, 97_630);
+  assert.equal(cloudRunTimeoutMs, 300_000);
+  assert.ok(proxyTimeoutMs > worstObservedLatencyMs);
+  assert.ok(proxyTimeoutMs < voiceMaxDurationMs);
+  assert.ok(proxyTimeoutMs < fillerMaxDurationMs);
+  assert.ok(voiceMaxDurationMs < cloudRunTimeoutMs);
+});

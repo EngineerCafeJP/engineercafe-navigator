@@ -32,6 +32,7 @@ jobs:
           filters: |
             frontend:
               - 'frontend/**'
+              - 'scripts/validate-p0-cloudrun-vercel-timeouts.mjs'
               - 'pnpm-lock.yaml'
               - '.github/workflows/ci.yml'
               - '.github/workflows/voice-e2e-nightly.yml'
@@ -94,9 +95,40 @@ jobs:
         run: pnpm typecheck
         working-directory: frontend
 
+  # Frontend/Infra: P0 timeout guard
+  frontend-timeout-guard:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: frontend
+
+      - name: Validate Vercel timeout hierarchy
+        run: pnpm exec tsx src/__tests__/vercel-timeout-hierarchy.test.ts
+        working-directory: frontend
+
+      - name: Validate P0 Cloud Run/Vercel settings
+        run: node scripts/validate-p0-cloudrun-vercel-timeouts.mjs
+
   # Frontend: Build
   frontend-build:
-    needs: [changes, frontend-lint, frontend-typecheck]
+    needs: [changes, frontend-lint, frontend-typecheck, frontend-timeout-guard]
     if: needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -463,9 +495,10 @@ jobs:
             --memory 8Gi \
             --cpu 4 \
             --concurrency 1 \
-            --min-instances 3 \
-            --max-instances 10 \
+            --min-instances 5 \
+            --max-instances 15 \
             --cpu-boost \
+            --no-cpu-throttling \
             --update-env-vars "ENVIRONMENT=production,TTS_PROVIDER=piper,STT_PROVIDER=qwen-primary,STT_LLM_POSTPROCESS=false,QWEN_STT_TIMEOUT=45,QWEN_STT_HEDGE_DELAY_SECONDS=4,QWEN_STT_HEDGE_GRACE_SECONDS=6,STT_PRELOAD_QWEN_PRIMARY=true,HF_HOME=/app/.hf_cache,FRONTEND_PRODUCTION_ORIGIN=${FRONTEND_PRODUCTION_ORIGIN},ALLOWED_ORIGINS=${FRONTEND_PRODUCTION_ORIGIN},FAST_LLM_ENABLED=true,FAST_LLM_PRIMARY_PROVIDER=cerebras,FAST_LLM_PRIMARY_MODEL=google/gemini-3.1-flash-lite-preview,FAST_LLM_FALLBACK_PROVIDER=gemini,FAST_LLM_FALLBACK_MODEL=google/gemini-2.5-flash-lite,FAST_LLM_TERTIARY_PROVIDER=cerebras,CEREBRAS_ENABLED=true,CEREBRAS_FAST_MODEL=gpt-oss-120b,CEREBRAS_REASONING_EFFORT=low,DEEP_REASONING_MODEL=google/gemini-3.1-pro-preview,DEEP_REASONING_FALLBACK_MODEL=google/gemini-2.5-pro" \
             --update-secrets "OPENROUTER_API_KEY=OPENROUTER_API_KEY:latest,CEREBRAS_API_KEY=CEREBRAS_API_KEY:latest,SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_KEY=SUPABASE_KEY:latest,SUPABASE_DB_URI=SUPABASE_DB_URI:latest,API_SECRET_KEY=API_SECRET_KEY:latest,TAVILY_API_KEY=TAVILY_API_KEY:latest"
         env:
@@ -492,6 +525,7 @@ jobs:
     needs:
       - frontend-lint
       - frontend-typecheck
+      - frontend-timeout-guard
       - frontend-build
       - frontend-playwright-e2e
       - frontend-playwright-voice-live
@@ -510,6 +544,7 @@ jobs:
           for job_result in \
             "${{ needs.frontend-lint.result }}" \
             "${{ needs.frontend-typecheck.result }}" \
+            "${{ needs.frontend-timeout-guard.result }}" \
             "${{ needs.frontend-build.result }}" \
             "${{ needs.frontend-playwright-e2e.result }}" \
             "${{ needs.frontend-playwright-voice-live.result }}" \

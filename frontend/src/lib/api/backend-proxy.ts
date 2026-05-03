@@ -6,6 +6,10 @@
  */
 
 const BACKEND_API_URL = process.env.BACKEND_API_URL;
+export const BACKEND_PROXY_TIMEOUT_MS = 110_000;
+export const VERCEL_VOICE_MAX_DURATION_MS = 120_000;
+export const CLOUD_RUN_TIMEOUT_MS = 300_000;
+export const ISSUE_696_WORST_OBSERVED_LATENCY_MS = 97_630;
 
 if (!BACKEND_API_URL) {
   console.warn(
@@ -71,9 +75,10 @@ export async function backendFetch<T = unknown>(
     mergedHeaders["X-API-Key"] = apiKey;
   }
 
-  // Keep this below the Vercel route maxDuration (60s) so proxy requests fail
-  // with a controlled backend timeout response before the platform returns 504.
-  const effectiveSignal = signal ?? AbortSignal.timeout(timeoutMs ?? 55_000);
+  // Keep the default proxy timeout below Vercel's 120s route maxDuration and
+  // above the Issue #696 observed 60-97s cold-start range. This lets the client
+  // receive a controlled error instead of a platform-level silent timeout.
+  const effectiveSignal = signal ?? AbortSignal.timeout(timeoutMs ?? BACKEND_PROXY_TIMEOUT_MS);
 
   const fetchInit: RequestInit = {
     method,
@@ -89,7 +94,7 @@ export async function backendFetch<T = unknown>(
   try {
     response = await fetch(url, fetchInit);
   } catch (error) {
-    if (timeoutMs !== undefined && signal === undefined && isAbortLikeError(error)) {
+    if (signal === undefined && isAbortLikeError(error)) {
       return {
         ok: false,
         status: BACKEND_TIMEOUT_STATUS,
