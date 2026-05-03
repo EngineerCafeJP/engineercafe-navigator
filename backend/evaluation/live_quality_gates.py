@@ -306,12 +306,14 @@ async def post_json(
         "Content-Type": "application/json",
         "X-API-Key": api_key,
     }
-    started = time.perf_counter()
+    started: float | None = None
     raw = ""
     status = 0
     for attempt in range(retries + 1):
         if pacer:
             await pacer.wait(endpoint)
+        if started is None:
+            started = time.perf_counter()
         try:
             resp = await client.post(
                 f"{base_url.rstrip('/')}{endpoint}",
@@ -330,9 +332,11 @@ async def post_json(
                 delay = 0.0
             await asyncio.sleep(max(delay, 5.0 * (attempt + 1)))
         except Exception as exc:
-            duration_ms = int((time.perf_counter() - started) * 1000)
+            duration_started = started if started is not None else time.perf_counter()
+            duration_ms = int((time.perf_counter() - duration_started) * 1000)
             return 0, duration_ms, {}, f"{type(exc).__name__}: {exc}"
-    duration_ms = int((time.perf_counter() - started) * 1000)
+    duration_started = started if started is not None else time.perf_counter()
+    duration_ms = int((time.perf_counter() - duration_started) * 1000)
     try:
         parsed = json.loads(raw) if raw else {}
     except json.JSONDecodeError:
