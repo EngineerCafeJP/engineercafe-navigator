@@ -76,6 +76,13 @@ RUN bash scripts/download_vosk_models.sh models
 # Download Qwen3-ASR 0.6B model (~1.2GB) — primary STT provider (ADR-007)
 RUN bash scripts/download_qwen_model.sh
 
+# Download translation models for tRAG EN<->JA on Cloud Run. Without these
+# assets, live alpha runs retry and fall back before answering EN queries.
+RUN pip install --no-cache-dir torch transformers \
+    && bash scripts/download_translation_models.sh models/translation \
+    && pip uninstall -y torch transformers \
+    && pip cache purge
+
 # Pre-warm numba JIT cache for librosa resample used by qwen-asr audio preprocessing.
 RUN python -c "import librosa; import numpy as np; librosa.resample(np.zeros(16000, dtype=np.float32), orig_sr=16000, target_sr=8000); print('numba warm complete')" || echo 'numba warm failed (non-fatal)'
 
