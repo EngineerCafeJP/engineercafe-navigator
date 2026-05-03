@@ -83,7 +83,7 @@ export class AudioInteractionManager {
    */
   private setupInteractionListeners(): void {
     registerAudioInteractionCallback(async () => {
-      this.hasUserInteracted = true;
+      this.unlockFromUserGesture();
       this.hideInteractionPrompt();
 
       try {
@@ -292,7 +292,9 @@ export class AudioInteractionManager {
    * Check if audio context is ready
    */
   public isAudioContextReady(): boolean {
-    return this.isContextInitialized && this.globalAudioManager.isContextInitialized();
+    return this.isContextInitialized &&
+      this.globalAudioManager.isContextInitialized() &&
+      this.globalAudioManager.hasPlaybackUnlock();
   }
 
   /**
@@ -332,7 +334,9 @@ export class AudioInteractionManager {
   public unlockFromUserGesture(): AudioContext {
     markAudioUserInteraction();
     this.hasUserInteracted = true;
-    return this.globalAudioManager.initializeFromUserGesture();
+    const context = this.globalAudioManager.initializeFromUserGesture();
+    this.isContextInitialized = true;
+    return context;
   }
 
   /**
@@ -412,9 +416,6 @@ export const unlockAudioForUserGesture = (): void => {
     markAudioUserInteraction();
     const manager = AudioInteractionManager.getInstance();
     manager.unlockFromUserGesture();
-    void manager.forceInitialize().catch((error) => {
-      console.warn('[AudioInteractionManager] Failed to unlock audio from user gesture:', error);
-    });
   } catch (error) {
     console.warn('[AudioInteractionManager] Failed to start audio unlock:', error);
   }

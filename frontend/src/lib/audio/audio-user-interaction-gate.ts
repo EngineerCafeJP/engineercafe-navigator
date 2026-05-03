@@ -101,6 +101,22 @@ export const markAudioUserInteraction = (): void => {
 
 export const hasAudioUserInteraction = (): boolean => hasUserInteracted;
 
+export const isIOSWebKitAudio = (): boolean => {
+  if (!isBrowser()) {
+    return false;
+  }
+
+  const userAgent = navigator.userAgent;
+  const vendor = navigator.vendor;
+  return /iPad|iPhone|iPod/.test(userAgent) || (/Safari/.test(userAgent) && /Apple/.test(vendor));
+};
+
+export const getTapToEnableAudioMessage = (language: string = 'ja'): string => {
+  return language === 'ja'
+    ? '音声を有効にするには、もう一度画面をタップしてください'
+    : 'Tap once more to enable audio playback';
+};
+
 export const registerAudioContextResumeOnInteraction = (audioContext: AudioContext): void => {
   registerAudioInteractionCallback(async () => {
     if (audioContext.state === 'suspended') {

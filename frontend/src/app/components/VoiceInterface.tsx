@@ -3,7 +3,11 @@
 import { AudioQueue } from '@/lib/audio-queue';
 import { AudioDataProcessor } from '@/lib/audio/audio-data-processor';
 import { unlockAudioForUserGesture } from '@/lib/audio/audio-interaction-manager';
-import { markAudioUserInteraction } from '@/lib/audio/audio-user-interaction-gate';
+import {
+  getTapToEnableAudioMessage,
+  isIOSWebKitAudio,
+  markAudioUserInteraction,
+} from '@/lib/audio/audio-user-interaction-gate';
 import { MobileAudioService } from '@/lib/audio/mobile-audio-service';
 import { audioStateManager } from '@/lib/audio-state-manager';
 import { cn } from '@/lib/cn';
@@ -496,9 +500,16 @@ export default function VoiceInterface({
       }
       const detectedFormat = AudioDataProcessor.detectAudioFormat(audioBytes.buffer as ArrayBuffer);
       const audioBlob = new Blob([audioBytes], { type: detectedFormat });
-      const audioUrl = URL.createObjectURL(audioBlob);
       const audioService = ensureAudioService();
 
+      if (isIOSWebKitAudio() && !audioService.isAudioContextReady()) {
+        const message = getTapToEnableAudioMessage(currentLanguage);
+        setError(message);
+        voiceController.notifySpeakingComplete(true);
+        throw new Error(message);
+      }
+
+      const audioUrl = URL.createObjectURL(audioBlob);
       revokeAudioUrl();
       audioUrlRef.current = audioUrl;
 
@@ -1386,6 +1397,7 @@ export default function VoiceInterface({
       <div className="mt-6 flex items-center justify-center gap-3">
         <button
           type="button"
+          onPointerDown={!isListening ? unlockAudioForUserGesture : undefined}
           onClick={isListening ? stopListening : startListening}
           disabled={isBusy && !isListening}
           aria-label={isListening ? '録音を停止' : '録音を開始'}
@@ -1415,6 +1427,7 @@ export default function VoiceInterface({
 
         <button
           type="button"
+          onPointerDown={unlockAudioForUserGesture}
           onClick={() => setMuted(!isMuted)}
           aria-label={isMuted ? 'ミュートを解除' : 'ミュートにする'}
           className="flex size-12 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-sm transition-colors duration-200 hover:bg-slate-50"

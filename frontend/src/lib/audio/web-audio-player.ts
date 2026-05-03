@@ -20,6 +20,7 @@ import {
 } from './audio-user-interaction-gate';
 
 export class WebAudioPlayer {
+  private ownsAudioContext = false;
   private audioContext: AudioContext | null = null;
   private audioBuffer: AudioBuffer | null = null;
   private source: AudioBufferSourceNode | null = null;
@@ -56,10 +57,17 @@ export class WebAudioPlayer {
     }
 
     try {
-      // Use webkitAudioContext for Safari compatibility
-      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-      this.audioContext = new AudioContextClass();
-      registerAudioContextResumeOnInteraction(this.audioContext);
+      const globalAudioManager = GlobalAudioManager.getInstance();
+      const sharedContext = globalAudioManager.getContext();
+
+      if (sharedContext && sharedContext.state !== 'closed') {
+        this.audioContext = sharedContext;
+        this.ownsAudioContext = false;
+      } else {
+        this.audioContext = await globalAudioManager.initialize();
+        this.ownsAudioContext = false;
+      }
+
       await this.resumeContextIfNeeded();
 
       // Create gain node for volume control
@@ -354,10 +362,11 @@ export class WebAudioPlayer {
   public dispose(): void {
     this.stop();
     
-    if (this.audioContext && this.audioContext.state !== 'closed') {
+    if (this.ownsAudioContext && this.audioContext && this.audioContext.state !== 'closed') {
       this.audioContext.close();
     }
     this.audioContext = null;
+    this.ownsAudioContext = false;
     this.audioBuffer = null;
     this.gainNode = null;
     this.state = 'idle';
@@ -403,6 +412,7 @@ export class GlobalAudioManager {
   private static instance: GlobalAudioManager;
   private audioContext: AudioContext | null = null;
   private isInitialized = false;
+  private playbackUnlocked = false;
 
   private constructor() {}
 
@@ -448,6 +458,7 @@ export class GlobalAudioManager {
 
     this.playSilentWarmupBuffer(context);
     this.isInitialized = true;
+    this.playbackUnlocked = true;
 
     return context;
   }
@@ -503,11 +514,16 @@ export class GlobalAudioManager {
     return this.isInitialized && this.audioContext !== null;
   }
 
+  public hasPlaybackUnlock(): boolean {
+    return this.playbackUnlocked && this.audioContext !== null && this.audioContext.state !== 'closed';
+  }
+
   public dispose(): void {
     if (this.audioContext && this.audioContext.state !== 'closed') {
       this.audioContext.close();
     }
     this.audioContext = null;
     this.isInitialized = false;
+    this.playbackUnlocked = false;
   }
 }
