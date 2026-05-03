@@ -6,6 +6,9 @@
 
 import { lipSyncCache } from './lip-sync-cache';
 
+const DEFAULT_LIP_SYNC_DECODE_TIMEOUT_MS = 3000;
+const MOBILE_LIP_SYNC_ANALYSIS_LIMIT_BYTES = 1_000_000;
+
 export interface LipSyncFrame {
   time: number;
   volume: number;
@@ -16,6 +19,14 @@ export interface LipSyncFrame {
 export interface LipSyncData {
   frames: LipSyncFrame[];
   duration: number;
+}
+
+export function shouldSkipLipSyncAnalysis(audioBlob: Blob): boolean {
+  if (typeof navigator === 'undefined') {
+    return false;
+  }
+
+  return /Android/.test(navigator.userAgent) && audioBlob.size > MOBILE_LIP_SYNC_ANALYSIS_LIMIT_BYTES;
 }
 
 export class LipSyncAnalyzer {
@@ -55,6 +66,33 @@ export class LipSyncAnalyzer {
     }
   }
 
+  private async decodeAudioDataWithTimeout(
+    arrayBuffer: ArrayBuffer,
+    timeoutMs: number,
+  ): Promise<AudioBuffer> {
+    if (!this.audioContext) {
+      throw new Error('AudioContext is not available');
+    }
+
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    const timeoutPromise = new Promise<AudioBuffer>((_, reject) => {
+      timeoutId = setTimeout(() => {
+        reject(new Error(`Lip-sync audio decode timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
+    });
+
+    try {
+      return await Promise.race([
+        this.audioContext.decodeAudioData(arrayBuffer.slice(0)),
+        timeoutPromise,
+      ]);
+    } finally {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    }
+  }
+
   /**
    * Analyze audio blob and generate lip-sync data with intelligent caching and timeout protection
    */
@@ -68,6 +106,10 @@ export class LipSyncAnalyzer {
         return cachedResult;
       }
 
+      if (shouldSkipLipSyncAnalysis(audioBlob)) {
+        return { frames: [], duration: 0 };
+      }
+
       // Initialize AudioContext if needed
       await this.initializeAudioContext();
       
@@ -76,7 +118,11 @@ export class LipSyncAnalyzer {
       }
       
       const arrayBuffer = await audioBlob.arrayBuffer();
-      const audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
+      const decodeTimeoutMs = Math.min(
+        DEFAULT_LIP_SYNC_DECODE_TIMEOUT_MS,
+        Math.max(1, Math.floor(timeoutMs / 2)),
+      );
+      const audioBuffer = await this.decodeAudioDataWithTimeout(arrayBuffer, decodeTimeoutMs);
       
       const channelData = audioBuffer.getChannelData(0);
       const sampleRate = audioBuffer.sampleRate;
@@ -136,8 +182,9 @@ export class LipSyncAnalyzer {
     };
 
     // Use Promise.race for timeout handling without async Promise executor
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
     const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => {
+      timeoutId = setTimeout(() => {
         reject(new Error(`Lip-sync analysis timed out after ${timeoutMs}ms`));
       }, timeoutMs);
     });
@@ -147,6 +194,10 @@ export class LipSyncAnalyzer {
     } catch (error) {
       console.error('Error analyzing lip-sync:', error);
       throw error;
+    } finally {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
     }
   }
 

@@ -51,12 +51,25 @@ export function estimateAudioDataByteLength(audioData: AudioDataInput): number |
 }
 
 export function shouldUseHtmlAudioFirstForPlayback(audioData: AudioDataInput): boolean {
+  if (isAudioUrlString(audioData)) {
+    return true;
+  }
+
   if (!DeviceDetector.isAndroid()) {
     return false;
   }
 
   const byteLength = estimateAudioDataByteLength(audioData);
   return byteLength !== null && byteLength > ANDROID_WEB_AUDIO_DECODE_LIMIT_BYTES;
+}
+
+export function isAudioUrlString(audioData: AudioDataInput): audioData is string {
+  return (
+    typeof audioData === 'string' &&
+    (audioData.startsWith('blob:') ||
+      audioData.startsWith('http://') ||
+      audioData.startsWith('https://'))
+  );
 }
 
 export class MobileAudioService {
@@ -91,8 +104,10 @@ export class MobileAudioService {
   public async playAudio(audioData: AudioDataInput): Promise<AudioOperationResult> {
     try {
       const result = await this.withPlaybackStartTimeout(async () => {
+        const htmlAudioOnly =
+          this.options.preferredMethod === 'html-audio' || isAudioUrlString(audioData);
         if (
-          this.options.preferredMethod === 'html-audio' ||
+          htmlAudioOnly ||
           shouldUseHtmlAudioFirstForPlayback(audioData)
         ) {
           const htmlAudioResult = await this.tryHtmlAudio(audioData);
@@ -103,7 +118,7 @@ export class MobileAudioService {
           console.warn('[MOBILE-AUDIO] HTML audio fallback failed, retrying Web Audio:', htmlAudioResult.error);
         }
 
-        if (this.options.preferredMethod === 'html-audio') {
+        if (htmlAudioOnly) {
           return {
             success: false,
             method: 'html-audio',
@@ -213,10 +228,10 @@ export class MobileAudioService {
 
   private async tryHtmlAudio(audioData: AudioDataInput): Promise<AudioOperationResult> {
     try {
-      const audioBlob = await this.toAudioBlob(audioData);
       this.cleanupHtmlAudio();
 
-      const audioUrl = URL.createObjectURL(audioBlob);
+      const shouldReuseUrl = isAudioUrlString(audioData);
+      const audioUrl = shouldReuseUrl ? audioData : URL.createObjectURL(await this.toAudioBlob(audioData));
       const audio = new Audio(audioUrl);
       audio.preload = 'auto';
       audio.volume = this.options.volume ?? 0.8;
@@ -264,7 +279,7 @@ export class MobileAudioService {
       };
 
       this.htmlAudioElement = audio;
-      this.htmlAudioUrl = audioUrl;
+      this.htmlAudioUrl = shouldReuseUrl ? null : audioUrl;
 
       await audio.play();
       emitPlay();

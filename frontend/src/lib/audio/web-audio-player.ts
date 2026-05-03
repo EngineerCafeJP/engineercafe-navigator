@@ -20,6 +20,7 @@ import {
 } from './audio-user-interaction-gate';
 
 export class WebAudioPlayer {
+  private static readonly DEFAULT_DECODE_TIMEOUT_MS = 8000;
   private audioContext: AudioContext | null = null;
   private audioBuffer: AudioBuffer | null = null;
   private source: AudioBufferSourceNode | null = null;
@@ -45,6 +46,39 @@ export class WebAudioPlayer {
     this.options = { ...this.options, ...options };
     if (this.gainNode && options.volume !== undefined) {
       this.gainNode.gain.value = Math.max(0, Math.min(1, options.volume));
+    }
+  }
+
+  private getDecodeTimeoutMs(): number {
+    return typeof this.options.decodeTimeoutMs === 'number' && this.options.decodeTimeoutMs > 0
+      ? this.options.decodeTimeoutMs
+      : WebAudioPlayer.DEFAULT_DECODE_TIMEOUT_MS;
+  }
+
+  private async decodeAudioDataWithTimeout(arrayBuffer: ArrayBuffer): Promise<AudioBuffer> {
+    const timeoutMs = this.getDecodeTimeoutMs();
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+    const timeoutPromise = new Promise<AudioBuffer>((_, reject) => {
+      timeoutId = setTimeout(() => {
+        reject(
+          new AudioError(
+            AudioErrorType.DECODE_FAILED,
+            `Audio decode timed out after ${timeoutMs}ms`,
+          ),
+        );
+      }, timeoutMs);
+    });
+
+    try {
+      return await Promise.race([
+        this.audioContext!.decodeAudioData(arrayBuffer.slice(0)),
+        timeoutPromise,
+      ]);
+    } finally {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
     }
   }
 
@@ -164,7 +198,7 @@ export class WebAudioPlayer {
       }
       
       try {
-        this.audioBuffer = await this.audioContext!.decodeAudioData(arrayBuffer.slice(0)); // Clone to avoid issues
+        this.audioBuffer = await this.decodeAudioDataWithTimeout(arrayBuffer);
       } catch (decodeError) {
         console.error('[WebAudioPlayer] Failed to decode audio data:', {
           error: decodeError,
