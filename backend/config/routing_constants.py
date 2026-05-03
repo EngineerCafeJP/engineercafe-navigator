@@ -560,6 +560,11 @@ BOOKING_KEYWORDS = [
 FACILITY_EQUIPMENT_KEYWORDS = [
     "設備",
     "電源",
+    "充電器",
+    "充電ケーブル",
+    "USB-C",
+    "usb-c",
+    "Lightning",
     "プリンター",
     "コンセント",
     "モニター",

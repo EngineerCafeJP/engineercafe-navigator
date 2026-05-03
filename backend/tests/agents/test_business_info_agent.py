@@ -329,6 +329,61 @@ class TestBusinessInfoAgent:
         assert response is not None
         assert "2026年2月23日18:00" in response["answer"]
         assert "展示形式" in response["answer"]
+        assert "Fusic" in response["answer"]
+        assert "ヌーラボ" in response["answer"]
+
+    def test_alpha_c127_consultation_canonical(self):
+        """gt-019/020: CM相談とスキルチェンジ相談を固定する"""
+        response = self.agent._get_canonical_response(
+            "コミュニティマネージャーに相談できることは？",
+            "consultation",
+            "ja",
+        )
+
+        assert response is not None
+        assert "キャリア相談" in response["answer"]
+        assert "技術相談" in response["answer"]
+        assert "イベント企画サポート" in response["answer"]
+        assert "13:00〜21:00" in response["answer"]
+        assert "予約不要" in response["answer"]
+
+        skill_change = self.agent._get_canonical_response(
+            "エンジニアカフェでスキルチェンジ相談はできますか？",
+            "consultation",
+            "ja",
+        )
+        assert skill_change is not None
+        assert "スキルチェンジ相談は可能" in skill_change["answer"]
+        assert "相談会" in skill_change["answer"]
+
+    def test_alpha_c127_reception_welcome_canonical(self):
+        """gt-081/082/085: 初回・再訪ウェルカムを固定する"""
+        first_visit = self.agent._get_canonical_response("初めて来ました", "reception", "ja")
+        assert first_visit is not None
+        assert "ようこそ" in first_visit["answer"]
+        assert "1階受付" in first_visit["answer"]
+        assert "利用登録手続き" in first_visit["answer"]
+
+        returning = self.agent._get_canonical_response(
+            "前にも来たことがあります", "reception", "ja"
+        )
+        assert returning is not None
+        assert "またのご来館ありがとうございます" in returning["answer"]
+        assert "チェックイン" in returning["answer"]
+        assert "受付カード" in returning["answer"]
+
+    def test_alpha_c127_corporate_receipt_canonical(self):
+        """gt-055: 法人名義・領収書回答を固定する"""
+        response = self.agent._get_canonical_response(
+            "法人名義での利用や領収書は発行できますか？",
+            "price",
+            "ja",
+        )
+
+        assert response is not None
+        assert "領収書" in response["answer"]
+        assert "請求書" in response["answer"]
+        assert "赤煉瓦文化館管理" in response["answer"]
 
     def test_eic_completion_conditions_canonical(self):
         """gt-023: EICの修了認定条件を汎用EIC説明に倒さない"""

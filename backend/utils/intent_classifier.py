@@ -334,6 +334,9 @@ def classify_fast_intent(query: str) -> Optional[FastIntent]:
     if has_emergency:
         return FastIntent("facility", "emergency", "emergency", "Emergency keyword detected")
 
+    if _is_rain_route_query(lower_query):
+        return FastIntent("facility", "facility-info", "access", "Rain route query detected")
+
     if match_keywords(lower_query, LOST_FOUND_KEYWORDS):
         return FastIntent(
             "facility", "facility-info", "lost_found", "Lost-and-found keyword detected"
@@ -567,6 +570,14 @@ def _is_nearby_facility_query(lower_query: str) -> bool:
     )
     return any(marker in lower_query for marker in proximity_markers) and any(
         marker in lower_query for marker in target_markers
+    )
+
+
+def _is_rain_route_query(lower_query: str) -> bool:
+    rain_markers = ("雨の日", "雨天", "rainy", "rain route")
+    route_markers = ("ルート", "行き方", "行く", "最短", "route", "access")
+    return any(marker in lower_query for marker in rain_markers) and any(
+        marker in lower_query for marker in route_markers
     )
 
 

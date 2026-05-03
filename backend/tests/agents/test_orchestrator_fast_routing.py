@@ -518,9 +518,13 @@ class TestOrchestratorFastRouting:
             ("レーザー加工機で使える素材は？", "facility", "facility"),
             ("プロジェクターを借りることはできますか？", "facility", "facility"),
             ("ウォーターサーバーはありますか？", "facility", "facility"),
+            ("雨の日にエンジニアカフェへ行く最短ルートは？", "facility", "access"),
+            ("充電器を借りることはできますか？", "facility", "facility"),
+            ("メインホールを貸切利用できますか？", "facility", "exclusive_rental"),
             ("営利目的の勧誘はできますか？", "facility", "children_noise"),
             ("エンジニアカフェの公式SNSアカウントは？", "business_info", "contact"),
             ("英語対応はしていますか？", "business_info", "contact"),
+            ("コミュニティマネージャーに相談できることは？", "business_info", "consultation"),
             ("エンジニアフレンドリーシティ福岡とは？", "business_info", "community"),
         ],
     )
