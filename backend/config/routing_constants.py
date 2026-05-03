@@ -535,6 +535,11 @@ FOOD_DRINK_KEYWORDS = [
     "外带食物",
     "饮料",
     "餐饮",
+    "음식",
+    "음료",
+    "외부 음식",
+    "가져와",
+    "반입",
 ]
 
 BOOKING_KEYWORDS = [
@@ -575,6 +580,22 @@ FACILITY_EQUIPMENT_KEYWORDS = [
     "online meeting",
     "video call",
     "take a call",
+]
+
+CONTACT_KEYWORDS = [
+    "連絡先",
+    "問い合わせ",
+    "問合せ",
+    "お問い合わせ",
+    "問い合わせフォーム",
+    "電話番号",
+    "contact",
+    "contact form",
+    "phone number",
+    "联系",
+    "联系电话",
+    "연락",
+    "전화번호",
 ]
 
 EXCLUSIVE_RENTAL_KEYWORDS = [
@@ -794,6 +815,7 @@ CATEGORY_TO_AGENT_MAP: Dict[str, AgentNodeName] = {
     "bicycle": "facility",
     "smoking": "facility",
     "food_drink": "facility",
+    "contact": "business_info",
     "policy": "facility",
     "emergency": "facility",
     "reception": "business_info",
@@ -889,6 +911,8 @@ def extract_request_type(query: str) -> Optional[str]:
         return "community"
     if match_keywords(lower_query, ACCESS_DIRECTION_KEYWORDS):
         return "access"
+    if match_keywords(lower_query, CONTACT_KEYWORDS):
+        return "contact"
     if match_keywords(lower_query, NEARBY_FACILITY_KEYWORDS):
         return "nearby"
     if match_keywords(lower_query, BUILDING_KEYWORDS):

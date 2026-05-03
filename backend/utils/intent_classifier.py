@@ -16,6 +16,7 @@ from backend.config.routing_constants import (
     CHILDREN_NOISE_KEYWORDS,
     COMMUNITY_KEYWORDS,
     CONSULTATION_KEYWORDS,
+    CONTACT_KEYWORDS,
     EMERGENCY_KEYWORDS,
     EXCLUSIVE_RENTAL_KEYWORDS,
     EVENT_KEYWORDS,
@@ -462,6 +463,13 @@ def classify_fast_intent(query: str) -> Optional[FastIntent]:
     if match_keywords(lower_query, FACILITY_EQUIPMENT_KEYWORDS):
         return FastIntent(
             "facility", "facility-info", "facility", "Facility equipment keyword detected"
+        )
+    if match_keywords(lower_query, CONTACT_KEYWORDS):
+        return FastIntent(
+            "business_info",
+            "contact",
+            "contact",
+            "Contact keyword detected",
         )
     if match_keywords(lower_query, FLOOR_LAYOUT_KEYWORDS):
         return FastIntent(

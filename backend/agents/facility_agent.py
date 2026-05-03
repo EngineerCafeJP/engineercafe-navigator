@@ -348,6 +348,13 @@ class FacilityAgent:
     ) -> Optional[Dict]:
         """Return complete answers for common visitor-critical facility questions."""
         normalized = query.lower()
+        from backend.agents.business_info_agent import BusinessInfoAgent
+
+        if BusinessInfoAgent._asks_saino_cafe(normalized):
+            answer = BusinessInfoAgent._saino_cafe_answer(normalized, language)
+            if answer:
+                return self._canonical_result(answer, request_type)
+
         if self._asks_3d_printer_filament_price(normalized):
             answers = {
                 "ja": (

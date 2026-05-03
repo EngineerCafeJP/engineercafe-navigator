@@ -220,6 +220,7 @@ class BusinessInfoAgent:
             "facility": "facility-info",
             "wifi": "facility-info",
             "reception": "general",
+            "contact": "contact",
         }
 
         return category_mapping.get(request_type or "", "general")
@@ -439,6 +440,11 @@ Information: {context}
     ) -> Optional[Dict]:
         """Return complete answers for common visitor-critical business questions."""
         normalized = query.lower()
+        if self._asks_saino_cafe(normalized):
+            answer = self._saino_cafe_answer(normalized, language)
+            if answer:
+                return self._canonical_result(answer, request_type)
+
         if self._asks_closed_days(normalized):
             answers = {
                 "ja": (
@@ -485,6 +491,32 @@ Information: {context}
                         "[relaxed]DevDay는 ENGINEER IGNITION CAMP(EIC)의 최종 전시회로, "
                         "2026년 2월 23일 18:00에 열릴 예정입니다. 피치가 아니라 "
                         "전시 형식으로 진행됩니다."
+                    ),
+                }
+                return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
+            if self._asks_eic_completion_conditions(normalized):
+                answers = {
+                    "ja": (
+                        "[relaxed]EICの修了認定には、講義3回への参加、LT発表、"
+                        "Dev & Tips 5回中3回への参加、Boot Camp 2日間への参加、"
+                        "DevDayでの展示発表の5要件をすべて満たす必要があります。"
+                    ),
+                    "en": (
+                        "[relaxed]To complete EIC, participants must attend three "
+                        "lectures, give an LT presentation, attend three of five "
+                        "Dev & Tips sessions, join the two-day Boot Camp, and exhibit "
+                        "at DevDay."
+                    ),
+                    "zh": (
+                        "[relaxed]EIC的结业认定需要满足五项条件：参加3次讲义、"
+                        "进行LT发表、参加5次Dev & Tips中的3次、参加2天Boot Camp、"
+                        "并在DevDay进行展示发表。"
+                    ),
+                    "ko": (
+                        "[relaxed]EIC 수료 인정에는 강의 3회 참가, LT 발표, "
+                        "Dev & Tips 5회 중 3회 참가, Boot Camp 2일 참가, "
+                        "DevDay 전시 발표의 5가지 조건을 모두 충족해야 합니다."
                     ),
                 }
                 return self._canonical_result(answers.get(language, answers["ja"]), request_type)
@@ -663,6 +695,128 @@ Information: {context}
         return None
 
     @staticmethod
+    def _asks_saino_cafe(query: str) -> bool:
+        return any(
+            keyword in query
+            for keyword in (
+                "saino",
+                "サイノ",
+                "サイノカフェ",
+                "cafe&bar",
+                "併設カフェ",
+            )
+        )
+
+    @staticmethod
+    def _saino_cafe_answer(query: str, language: str) -> Optional[str]:
+        if any(
+            keyword in query for keyword in ("営業時間", "business hours", "opening hours", "hours")
+        ):
+            answers = {
+                "ja": (
+                    "[relaxed]cafe&bar sainoの営業時間は、平日はDay Time "
+                    "12:00〜17:00、Night Time 18:00〜20:00、土日祝は"
+                    "11:00〜20:00です。定休日は月曜と水曜です。"
+                ),
+                "en": (
+                    "[relaxed]cafe&bar saino is open on weekdays from 12:00 to "
+                    "17:00 for Day Time and 18:00 to 20:00 for Night Time, and "
+                    "on weekends and holidays from 11:00 to 20:00. It is closed "
+                    "on Mondays and Wednesdays."
+                ),
+                "zh": (
+                    "[relaxed]cafe&bar saino平日Day Time为12:00到17:00，"
+                    "Night Time为18:00到20:00；周末和节假日为11:00到20:00。"
+                    "周一和周三定休。"
+                ),
+                "ko": (
+                    "[relaxed]cafe&bar saino의 영업시간은 평일 Day Time "
+                    "12:00-17:00, Night Time 18:00-20:00이며, 주말과 공휴일은 "
+                    "11:00-20:00입니다. 정기 휴일은 월요일과 수요일입니다."
+                ),
+            }
+            return answers.get(language, answers["ja"])
+
+        if any(keyword in query for keyword in ("フード", "food", "menu", "メニュー", "ランチ")):
+            answers = {
+                "ja": (
+                    "[relaxed]サイノカフェのフードは、てりたまハンバーグサンド"
+                    "700円、ツナチーズメルトサンド700円、あんバター白玉サンド"
+                    "650円、ワッフル420円、アイスクリーム420円などがあります。"
+                    "ドリンクセットは50円引きです。"
+                ),
+                "en": (
+                    "[relaxed]cafe&bar saino serves food such as teritama hamburger "
+                    "sandwiches for 700 yen, tuna cheese melt sandwiches for 700 yen, "
+                    "an-butter shiratama sandwiches for 650 yen, waffles for 420 yen, "
+                    "and ice cream for 420 yen. Drink sets are 50 yen off."
+                ),
+                "zh": (
+                    "[relaxed]saino咖啡有照烧鸡蛋汉堡三明治700日元、金枪鱼芝士"
+                    "热三明治700日元、红豆黄油白玉三明治650日元、华夫饼420日元、"
+                    "冰淇淋420日元等。饮料套餐可减50日元。"
+                ),
+                "ko": (
+                    "[relaxed]saino 카페의 푸드 메뉴에는 데리타마 햄버그 샌드 "
+                    "700엔, 참치 치즈 멜트 샌드 700엔, 앙버터 시라타마 샌드 "
+                    "650엔, 와플 420엔, 아이스크림 420엔 등이 있습니다. "
+                    "드링크 세트는 50엔 할인됩니다."
+                ),
+            }
+            return answers.get(language, answers["ja"])
+
+        if any(
+            keyword in query for keyword in ("コーヒー", "coffee", "カフェラテ", "値段", "price")
+        ):
+            answers = {
+                "ja": (
+                    "[relaxed]サイノカフェのコーヒーは、ブレンドコーヒー380円、"
+                    "シングルオリジン460円から、エスプレッソ400円、カフェラテ"
+                    "570円、カフェモカ700円です。"
+                ),
+                "en": (
+                    "[relaxed]At cafe&bar saino, blended coffee is 380 yen, single "
+                    "origin coffee starts at 460 yen, espresso is 400 yen, cafe latte "
+                    "is 570 yen, and cafe mocha is 700 yen."
+                ),
+                "zh": (
+                    "[relaxed]saino咖啡的拼配咖啡是380日元，单品咖啡460日元起，"
+                    "浓缩咖啡400日元，拿铁570日元，摩卡700日元。"
+                ),
+                "ko": (
+                    "[relaxed]saino 카페의 커피는 블렌드 커피 380엔, 싱글 오리진 "
+                    "460엔부터, 에스프레소 400엔, 카페라테 570엔, 카페모카 700엔입니다."
+                ),
+            }
+            return answers.get(language, answers["ja"])
+
+        if any(keyword in query for keyword in ("アルコール", "お酒", "alcohol", "beer", "bar")):
+            answers = {
+                "ja": (
+                    "[relaxed]はい、cafe&bar sainoはNight Timeの18:00〜20:00に"
+                    "バー営業をしています。ハイネケン500円、ハイボール450円から、"
+                    "カクテル各700円などがあります。"
+                ),
+                "en": (
+                    "[relaxed]Yes. cafe&bar saino operates as a bar during Night "
+                    "Time from 18:00 to 20:00. Heineken is 500 yen, highballs start "
+                    "at 450 yen, and cocktails are 700 yen each."
+                ),
+                "zh": (
+                    "[relaxed]可以。cafe&bar saino在Night Time 18:00到20:00作为酒吧营业。"
+                    "喜力啤酒500日元，Highball 450日元起，鸡尾酒每杯700日元等。"
+                ),
+                "ko": (
+                    "[relaxed]네, cafe&bar saino는 Night Time인 18:00-20:00에 "
+                    "바로도 운영합니다. 하이네켄은 500엔, 하이볼은 450엔부터, "
+                    "칵테일은 각 700엔입니다."
+                ),
+            }
+            return answers.get(language, answers["ja"])
+
+        return None
+
+    @staticmethod
     def _canonical_result(answer: str, request_type: Optional[str]) -> Dict:
         return {
             "answer": answer,
@@ -770,6 +924,27 @@ Information: {context}
         if request_type != "community":
             return False
         keywords = ("engineer ignition camp", "eic", "devday")
+        return any(keyword in query for keyword in keywords)
+
+    @staticmethod
+    def _asks_eic_completion_conditions(query: str) -> bool:
+        if not any(keyword in query for keyword in ("eic", "engineer ignition camp")):
+            return False
+        keywords = (
+            "修了",
+            "認定",
+            "条件",
+            "completion",
+            "complete",
+            "certificate",
+            "requirements",
+            "结业",
+            "认定",
+            "条件",
+            "수료",
+            "인정",
+            "조건",
+        )
         return any(keyword in query for keyword in keywords)
 
     @staticmethod

@@ -451,6 +451,24 @@ class TestOrchestratorFastRouting:
         assert result["category"] == "facility-info"
         assert result["request_type"] == request_type
 
+    def test_alpha_ko_food_policy_routes_to_facility(self, orchestrator):
+        """gt-113: Korean outside-food query must use facility knowledge, not fallback."""
+        result = orchestrator._try_fast_routing("외부 음식을 가져와도 되나요?")
+
+        assert result is not None
+        assert result["agent"] == "facility"
+        assert result["category"] == "facility-info"
+        assert result["request_type"] == "food_drink"
+
+    def test_alpha_en_contact_routes_to_business_info(self, orchestrator):
+        """gt-009b/gt-096: English contact questions should hit canonical contact answer."""
+        result = orchestrator._try_fast_routing("How can I contact Engineer Cafe?")
+
+        assert result is not None
+        assert result["agent"] == "business_info"
+        assert result["category"] == "contact"
+        assert result["request_type"] == "contact"
+
     def test_emergency_kaji_overrides_farewell(self, orchestrator):
         """P1 guard: 火事なので帰ります must not route to farewell."""
         result = orchestrator._try_fast_routing("火事なので帰ります")
