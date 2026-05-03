@@ -28,7 +28,6 @@ from backend.config.routing_constants import (
     LOST_FOUND_KEYWORDS,
     MEETING_ROOM_KEYWORDS,
     PARKING_KEYWORDS,
-    PET_POLICY_KEYWORDS,
     PHOTOGRAPHY_KEYWORDS,
     PRICING_KEYWORDS,
     RECEPTION_KEYWORDS,
@@ -39,6 +38,7 @@ from backend.config.routing_constants import (
     WIFI_KEYWORDS,
     match_farewell_keywords,
     match_keywords,
+    match_pet_policy_keywords,
 )
 
 _MATA_KIMASU_FAREWELL_RE = re.compile(r"また\s*来(ます|る|ました|るね|ますね)\s*[。!！?？\.]?\s*$")
@@ -452,7 +452,7 @@ def classify_fast_intent(query: str) -> Optional[FastIntent]:
             "temporary_exit",
             "Temporary exit policy keyword detected",
         )
-    if match_keywords(lower_query, PET_POLICY_KEYWORDS):
+    if match_pet_policy_keywords(lower_query):
         return FastIntent(
             "facility",
             "facility-info",

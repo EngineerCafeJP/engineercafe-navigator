@@ -44,6 +44,15 @@ class TestOrchestratorFastRouting:
         assert result["request_type"] == "food_drink", "Should be food_drink type"
         assert result["reasoning"] == "Food/drink policy keyword detected"
 
+    def test_pet_bottle_query_stays_food_drink(self, orchestrator):
+        """ペットボトル should not trigger the pet policy fast path."""
+        result = orchestrator._try_fast_routing("ペットボトルの飲み物は持ち込めますか？")
+
+        assert result is not None
+        assert result["agent"] == "facility"
+        assert result["request_type"] == "food_drink"
+        assert result["reasoning"] == "Food/drink policy keyword detected"
+
     def test_food_drink_verb_variations(self, orchestrator):
         """Test various food/drink verb patterns"""
         test_queries = [

@@ -12,6 +12,7 @@ from backend.config.prompts.facility_prompts import (
     FACILITY_ENHANCEMENT_KEYWORDS,
     build_facility_prompt,
 )
+from backend.config.routing_constants import match_pet_policy_keywords
 from backend.llm import get_llm_provider, get_model_config
 from backend.tools.enhanced_rag import EnhancedRAGSearch
 from backend.utils.language_types import DEFAULT_NOT_FOUND_RESPONSE
@@ -769,21 +770,7 @@ class FacilityAgent:
 
     @staticmethod
     def _asks_pet_policy(query: str) -> bool:
-        keywords = (
-            "ペット",
-            "動物",
-            "補助犬",
-            "盲導犬",
-            "聴導犬",
-            "介助犬",
-            "pet",
-            "pets",
-            "service animal",
-            "service dog",
-            "guide dog",
-            "assistance dog",
-        )
-        return any(keyword in query for keyword in keywords)
+        return match_pet_policy_keywords(query)
 
     @staticmethod
     def _asks_3d_printer_filament_price(query: str) -> bool:

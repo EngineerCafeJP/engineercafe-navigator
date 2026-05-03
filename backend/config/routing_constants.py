@@ -659,6 +659,13 @@ PET_POLICY_KEYWORDS = [
     "guide dog",
 ]
 
+PET_POLICY_EXCLUSION_KEYWORDS = [
+    "ペットボトル",
+    "petボトル",
+    "pet bottle",
+    "plastic bottle",
+]
+
 POLICY_KEYWORDS = [
     *ACCESSIBILITY_KEYWORDS,
     *PHOTOGRAPHY_KEYWORDS,
@@ -817,6 +824,35 @@ def match_farewell_keywords(text: str) -> bool:
     )
 
 
+def match_pet_policy_keywords(text: str) -> bool:
+    """Pet policy keywords with bottle/whole-word guards."""
+    lower_text = text.lower()
+    if any(kw.lower() in lower_text for kw in PET_POLICY_EXCLUSION_KEYWORDS):
+        return False
+
+    japanese_keywords = [
+        "ペット",
+        "動物",
+        "補助犬",
+        "盲導犬",
+        "聴導犬",
+        "介助犬",
+    ]
+    if any(kw in lower_text for kw in japanese_keywords):
+        return True
+
+    english_keywords = [
+        "pet",
+        "pets",
+        "animal",
+        "service animal",
+        "service dog",
+        "guide dog",
+        "assistance dog",
+    ]
+    return any(re.search(rf"\b{re.escape(kw)}\b", lower_text) for kw in english_keywords)
+
+
 LOCATION_KEYWORDS = ["場所", "どこ", "アクセス", "住所", "location", "where", "address"]
 
 
@@ -877,7 +913,7 @@ def extract_request_type(query: str) -> Optional[str]:
         return "children_noise"
     if match_keywords(lower_query, TEMPORARY_EXIT_KEYWORDS):
         return "temporary_exit"
-    if match_keywords(lower_query, PET_POLICY_KEYWORDS):
+    if match_pet_policy_keywords(lower_query):
         return "pets"
     if match_keywords(lower_query, FLOOR_LAYOUT_KEYWORDS):
         return "floor_layout"

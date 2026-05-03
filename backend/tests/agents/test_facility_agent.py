@@ -343,6 +343,13 @@ class TestFacilityAgent:
         assert "同伴できません" in response["answer"]
         assert response["metadata"]["sources"] == ["enhanced_rag"]
 
+    def test_pet_policy_does_not_match_pet_bottle_or_english_substrings(self):
+        """ペットボトル and English substrings should not use the pet policy answer."""
+        agent = FacilityAgent()
+
+        assert not agent._asks_pet_policy("ペットボトルは持ち込めますか？")
+        assert not agent._asks_pet_policy("Tell me about the competition rules.")
+
     def test_pet_policy_uses_policy_rag_category_when_not_canonical(self):
         """ペット系 request_type は policy カテゴリのKBを検索する"""
         agent = FacilityAgent()

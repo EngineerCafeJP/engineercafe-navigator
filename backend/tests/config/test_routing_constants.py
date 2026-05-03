@@ -68,6 +68,7 @@ class TestNewRoutingKeywords:
             ("食べ物の持ち込みはできますか？", "food_drink"),
             ("Can I bring food?", "food_drink"),
             ("飲み物は持ってきていいですか？", "food_drink"),
+            ("ペットボトルの飲み物は持ち込めますか？", "food_drink"),
         ],
     )
     def test_food_drink_keywords(self, query, expected):
@@ -86,6 +87,17 @@ class TestNewRoutingKeywords:
     def test_live_ragas_policy_keywords(self, query, expected):
         """C/RAGAS live source guard cases should have deterministic policy request types."""
         assert extract_request_type(query) == expected
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "ペットボトルは持ち込めますか？",
+            "Tell me about the competition rules.",
+        ],
+    )
+    def test_pet_policy_keywords_avoid_substring_false_positives(self, query):
+        """Pet policy should not catch bottle or English substring matches."""
+        assert extract_request_type(query) != "pets"
 
 
 class TestReceptionRouting:
