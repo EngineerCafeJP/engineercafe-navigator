@@ -409,6 +409,32 @@ class FacilityAgent:
             return self._canonical_result(answers.get(language, answers["ja"]), request_type)
 
         if request_type == "toilet" or self._asks_toilet(normalized):
+            if self._asks_multipurpose_toilet(normalized):
+                answers = {
+                    "ja": (
+                        "[relaxed]館内に多目的トイレはありません。"
+                        "通常のトイレは1階テラス奥にあります。"
+                        "車椅子利用など事前確認が必要な場合は、来館前に"
+                        "080-6742-7231へお問い合わせください。"
+                    ),
+                    "en": (
+                        "[relaxed]There is no multipurpose accessible restroom in "
+                        "the building. The regular restroom is at the back of the 1F "
+                        "terrace. If you need accessibility confirmation before your "
+                        "visit, please call 080-6742-7231."
+                    ),
+                    "zh": (
+                        "[relaxed]馆内没有多功能洗手间。普通洗手间在一楼露台深处。"
+                        "如需无障碍确认，请来馆前拨打080-6742-7231咨询。"
+                    ),
+                    "ko": (
+                        "[relaxed]건물 안에는 다목적 화장실이 없습니다. 일반 화장실은 "
+                        "1층 테라스 안쪽에 있습니다. 접근성 확인이 필요하면 방문 전에 "
+                        "080-6742-7231로 문의해 주세요."
+                    ),
+                }
+                return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
             answers = {
                 "ja": (
                     "[relaxed]トイレは1階テラスの奥にあります。館内から直接は"
@@ -484,6 +510,55 @@ class FacilityAgent:
             }
             return self._canonical_result(answers.get(language, answers["ja"]), request_type)
 
+        if request_type == "children_noise" or self._asks_children_policy(normalized):
+            if self._asks_solicitation_or_nap_policy(normalized):
+                answers = {
+                    "ja": (
+                        "[relaxed]営利目的の勧誘、強引な名刺交換、セールス行為は"
+                        "禁止されています。公的施設のルールとして、館内での仮眠や"
+                        "昼寝もできません。"
+                    ),
+                    "en": (
+                        "[relaxed]Commercial solicitation, aggressive business-card "
+                        "exchange, and sales activity are not allowed. Sleeping or "
+                        "napping in the facility is also not permitted."
+                    ),
+                    "zh": (
+                        "[relaxed]馆内禁止营利性推销、强行交换名片和销售行为。"
+                        "作为公共设施规则，也不能在馆内睡觉或午睡。"
+                    ),
+                    "ko": (
+                        "[relaxed]영리 목적의 권유, 강요하는 명함 교환, 판매 행위는 "
+                        "금지되어 있습니다. 공공 시설 규칙상 관내에서 수면이나 낮잠도 불가합니다."
+                    ),
+                }
+                return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
+            answers = {
+                "ja": (
+                    "[relaxed]お子様連れでも、保護者同伴であれば利用できます。"
+                    "特別な年齢制限はありませんが、安全管理のため走り回りや大声は避け、"
+                    "お子様から目を離さないでください。専用備品、授乳室、おむつ交換台はありません。"
+                ),
+                "en": (
+                    "[relaxed]Children may visit with a parent or guardian, and there "
+                    "is no special age limit. Please keep them supervised, avoid running "
+                    "or loud noise, and note that dedicated childcare equipment, nursing "
+                    "rooms, and diaper-changing tables are not available."
+                ),
+                "zh": (
+                    "[relaxed]儿童可在监护人陪同下使用，没有特别年龄限制。"
+                    "为安全起见，请避免奔跑或大声喧哗，并不要让儿童离开视线。"
+                    "馆内没有儿童专用备品、哺乳室或尿布更换台。"
+                ),
+                "ko": (
+                    "[relaxed]어린이는 보호자 동반 시 이용할 수 있으며 특별한 나이 제한은 "
+                    "없습니다. 안전을 위해 뛰어다니거나 큰 소리를 내지 않도록 하고, "
+                    "전용 비품, 수유실, 기저귀 교환대는 없습니다."
+                ),
+            }
+            return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
         if request_type == "lost_found" or self._asks_lost_found(normalized):
             answers = {
                 "ja": (
@@ -506,6 +581,106 @@ class FacilityAgent:
                     "[relaxed]분실물은 먼저 1층 엔지니어 카페 접수에 문의해 주세요. "
                     "2층 회의실이나 화장실 같은 공용부의 분실물은 아카렌가 문화관 접수에서 "
                     "보관하는 경우도 있습니다. 전화번호는 080-6742-7231입니다."
+                ),
+            }
+            return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
+        if self._asks_laser_cutter_materials(normalized):
+            answers = {
+                "ja": (
+                    "[relaxed]レーザー加工機では、アクリル、MDF、木材、紙、革、"
+                    "フェルトなどが使えます。素材は持ち込み制です。PVC（塩ビ）は"
+                    "有毒ガスが出るため禁止で、ポリカーボネート、ガラス、金属、"
+                    "発泡スチロールも使えません。"
+                ),
+                "en": (
+                    "[relaxed]The laser cutter can be used with acrylic, MDF, wood, "
+                    "paper, leather, and felt brought by the user. PVC is prohibited "
+                    "because it releases toxic gas, and polycarbonate, glass, metal, "
+                    "and styrofoam cannot be used."
+                ),
+                "zh": (
+                    "[relaxed]激光切割机可使用自带的亚克力、MDF、木材、纸、皮革、"
+                    "毛毡等材料。PVC会产生有毒气体，禁止使用；聚碳酸酯、玻璃、金属、"
+                    "泡沫塑料也不能使用。"
+                ),
+                "ko": (
+                    "[relaxed]레이저 가공기는 지참한 아크릴, MDF, 목재, 종이, 가죽, "
+                    "펠트 등을 사용할 수 있습니다. PVC는 유독 가스가 발생해 금지되며, "
+                    "폴리카보네이트, 유리, 금속, 스티로폼도 사용할 수 없습니다."
+                ),
+            }
+            return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
+        if self._asks_laser_cutter_use(normalized):
+            answers = {
+                "ja": (
+                    "[relaxed]レーザー加工機は地下1階のMAKER'sスペースで利用できます。"
+                    "初回は約30分の講習が必要で、利用はWeb予約優先制です。"
+                    "大きな加工や素材確認は事前にスタッフへ相談してください。"
+                ),
+                "en": (
+                    "[relaxed]The laser cutter is available in MAKER's Space on B1F. "
+                    "First-time users need about 30 minutes of training, and use is "
+                    "prioritized by web reservation. Please check materials with staff "
+                    "in advance."
+                ),
+                "zh": (
+                    "[relaxed]激光切割机可在地下一层MAKER's Space使用。首次使用需要约30分钟讲习，"
+                    "使用采用网页预约优先制，材料请事前向工作人员确认。"
+                ),
+                "ko": (
+                    "[relaxed]레이저 가공기는 지하 1층 MAKER's Space에서 이용할 수 있습니다. "
+                    "첫 이용 시 약 30분 강습이 필요하며, 웹 예약 우선제로 운영됩니다."
+                ),
+            }
+            return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
+        if self._asks_projector_or_av_loan(normalized):
+            answers = {
+                "ja": (
+                    "[relaxed]イベントや発表用に、プロジェクター、スクリーン、マイク、"
+                    "HDMIケーブル、4Kモニターなどを貸出できます。LT会やハッカソン発表に"
+                    "利用でき、大規模利用はコミュニティマネージャーへ相談してください。"
+                ),
+                "en": (
+                    "[relaxed]For events and presentations, equipment such as a "
+                    "projector, screen, microphone, HDMI cable, and 4K monitor can be "
+                    "borrowed. For larger use, please consult a community manager."
+                ),
+                "zh": (
+                    "[relaxed]活动或发表可借用投影仪、幕布、麦克风、HDMI线、4K显示器等。"
+                    "大规模使用请咨询社区经理。"
+                ),
+                "ko": (
+                    "[relaxed]이벤트나 발표용으로 프로젝터, 스크린, 마이크, HDMI 케이블, "
+                    "4K 모니터 등을 대여할 수 있습니다. 대규모 이용은 커뮤니티 "
+                    "매니저에게 상담해 주세요."
+                ),
+            }
+            return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
+        if self._asks_water_server(normalized):
+            answers = {
+                "ja": (
+                    "[relaxed]館内にウォーターサーバーや自動販売機はありません。"
+                    "ペットボトルや水筒など、ふた付き容器の飲料は持ち込みできます。"
+                    "飲み物はcafe&bar sainoや近隣コンビニでも購入できます。"
+                ),
+                "en": (
+                    "[relaxed]There is no water server or vending machine in the "
+                    "building. Drinks in lidded containers, such as plastic bottles or "
+                    "personal bottles, may be brought in. You can also buy drinks at "
+                    "cafe&bar saino or nearby convenience stores."
+                ),
+                "zh": (
+                    "[relaxed]馆内没有饮水机或自动售货机。可携带带盖饮料，如瓶装水或水壶。"
+                    "也可在cafe&bar saino或附近便利店购买饮料。"
+                ),
+                "ko": (
+                    "[relaxed]관내에는 워터 서버나 자동판매기가 없습니다. 페트병이나 텀블러처럼 "
+                    "뚜껑이 있는 음료는 반입할 수 있으며, cafe&bar saino나 근처 편의점에서도 "
+                    "음료를 구매할 수 있습니다."
                 ),
             }
             return self._canonical_result(answers.get(language, answers["ja"]), request_type)
@@ -533,7 +708,130 @@ class FacilityAgent:
             }
             return self._canonical_result(answers.get(language, answers["ja"]), request_type)
 
+        if request_type == "bicycle" or self._asks_bicycle_parking(normalized):
+            answers = {
+                "ja": (
+                    "[relaxed]エンジニアカフェ専用の駐輪場はありません。"
+                    "自転車で来館する場合は、近隣の公共駐輪場を利用してください。"
+                ),
+                "en": (
+                    "[relaxed]There is no dedicated bicycle parking at Engineer Cafe. "
+                    "Please use nearby public bicycle parking areas."
+                ),
+                "zh": (
+                    "[relaxed]工程师咖啡没有专用自行车停车场。骑自行车来访时，"
+                    "请使用附近的公共自行车停车场。"
+                ),
+                "ko": (
+                    "[relaxed]엔지니어 카페 전용 자전거 주차장은 없습니다. 자전거로 방문할 때는 "
+                    "근처 공공 자전거 주차장을 이용해 주세요."
+                ),
+            }
+            return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
+        if request_type == "meeting_room" or self._asks_meeting_room_pricing(normalized):
+            answers = {
+                "ja": (
+                    "[relaxed]2階会議室は赤煉瓦文化館管理の有料施設です。"
+                    "9時〜12時の料金例は、会議室1（12名）が800円、"
+                    "会議室2（8名）が500円、会議室3（30名）が1,700円です。"
+                    "時間帯により料金が変わるため、詳しくは赤煉瓦文化館側へ確認してください。"
+                ),
+                "en": (
+                    "[relaxed]The 2F meeting rooms are paid facilities managed by the "
+                    "Red Brick Culture Hall. Example 9:00-12:00 fees are 800 yen for "
+                    "Meeting Room 1 (12 people), 500 yen for Meeting Room 2 (8 people), "
+                    "and 1,700 yen for Meeting Room 3 (30 people)."
+                ),
+                "zh": (
+                    "[relaxed]二楼会议室是赤炼瓦文化馆管理的收费设施。"
+                    "9:00-12:00的费用例：会议室1（12人）800日元，会议室2（8人）500日元，"
+                    "会议室3（30人）1,700日元。"
+                ),
+                "ko": (
+                    "[relaxed]2층 회의실은 아카렌가 문화관이 관리하는 유료 시설입니다. "
+                    "9시-12시 요금 예시는 회의실1(12명) 800엔, 회의실2(8명) 500엔, "
+                    "회의실3(30명) 1,700엔입니다."
+                ),
+            }
+            return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
         if request_type == "access" or self._asks_location(normalized):
+            if self._asks_fukuoka_airport_route(normalized):
+                answers = {
+                    "ja": (
+                        "[relaxed]福岡空港からは地下鉄空港線で天神駅まで約11分、"
+                        "運賃は260円です。天神駅16番出口から昭和通りを東へ進み、"
+                        "徒歩約5分で福岡市赤煉瓦文化館内のエンジニアカフェに着きます。"
+                    ),
+                    "en": (
+                        "[relaxed]From Fukuoka Airport, take the Subway Airport Line "
+                        "to Tenjin Station; it takes about 11 minutes and costs 260 yen. "
+                        "From Tenjin Station Exit 16, walk east along Showa-dori for "
+                        "about five minutes to the Fukuoka City Red Brick Culture Hall."
+                    ),
+                    "zh": (
+                        "[relaxed]从福冈机场乘坐地铁机场线到天神站约11分钟，票价260日元。"
+                        "从天神站16号出口沿昭和通步行约5分钟即可到达福冈市赤炼瓦文化馆内的工程师咖啡。"
+                    ),
+                    "ko": (
+                        "[relaxed]후쿠오카공항에서는 지하철 공항선을 타고 텐진역까지 "
+                        "약 11분, 요금은 260엔입니다. 텐진역 16번 출구에서 쇼와도리를 "
+                        "동쪽으로 약 5분 걸으면 후쿠오카시 아카렌가 문화관 안의 "
+                        "엔지니어 카페입니다."
+                    ),
+                }
+                return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
+            if self._asks_hakata_route(normalized):
+                answers = {
+                    "ja": (
+                        "[relaxed]博多駅からは地下鉄空港線で天神駅まで約6分、"
+                        "運賃は210円です。バスの場合は天神方面行きで「天神」周辺で下車し、"
+                        "天神駅16番出口から徒歩約5分で到着します。"
+                    ),
+                    "en": (
+                        "[relaxed]From Hakata Station, take the Subway Airport Line "
+                        "to Tenjin Station; it takes about 6 minutes and costs 210 yen. "
+                        "Then walk about five minutes from Tenjin Station Exit 16."
+                    ),
+                    "zh": (
+                        "[relaxed]从博多站乘坐地铁机场线到天神站约6分钟，票价210日元。"
+                        "从天神站16号出口步行约5分钟即可到达。"
+                    ),
+                    "ko": (
+                        "[relaxed]하카타역에서는 지하철 공항선을 타고 텐진역까지 "
+                        "약 6분, 요금은 210엔입니다. 텐진역 16번 출구에서 약 5분 걸으면 도착합니다."
+                    ),
+                }
+                return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
+            if self._asks_rain_route(normalized):
+                answers = {
+                    "ja": (
+                        "[relaxed]雨の日は、天神駅16番出口から天神地下街とアクロス福岡側の"
+                        "通路を経由して、赤煉瓦文化館の近くで地上に出るルートが比較的"
+                        "濡れる区間を短くできます。地上に出たら昭和通り沿いに進んでください。"
+                    ),
+                    "en": (
+                        "[relaxed]On rainy days, use the Tenjin underground mall and "
+                        "the ACROS Fukuoka side passage from around Tenjin Station Exit 16, "
+                        "then come above ground near the Red Brick Culture Hall to minimize "
+                        "the exposed walking section."
+                    ),
+                    "zh": (
+                        "[relaxed]雨天可从天神站16号出口附近经由天神地下街和ACROS福冈侧通道，"
+                        "在赤炼瓦文化馆附近出地面，可减少淋雨路段。"
+                    ),
+                    "ko": (
+                        "[relaxed]비 오는 날에는 텐진역 16번 출구 주변에서 텐진 지하상가와 "
+                        "아크로스 후쿠오카 쪽 통로를 이용한 뒤 아카렌가 문화관 근처에서 "
+                        "지상으로 나오면 "
+                        "비를 맞는 구간을 줄일 수 있습니다."
+                    ),
+                }
+                return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
             answers = {
                 "ja": (
                     "[relaxed]エンジニアカフェは福岡市中央区天神1丁目15番30号、"
@@ -561,17 +859,45 @@ class FacilityAgent:
             }
             return self._canonical_result(answers.get(language, answers["ja"]), request_type)
 
+        if request_type == "building" or self._asks_building_history(normalized):
+            answers = {
+                "ja": (
+                    "[relaxed]福岡市赤煉瓦文化館は1909年に建てられ、"
+                    "1969年に国の重要文化財に指定されました。1994年に復元リニューアルされ、"
+                    "2019年にこの建物内でエンジニアカフェが開設されました。"
+                ),
+                "en": (
+                    "[relaxed]The Fukuoka City Red Brick Culture Hall was built in "
+                    "1909 and designated a National Important Cultural Property in "
+                    "1969. It was restored and renewed in 1994, and Engineer Cafe "
+                    "opened in the building in 2019."
+                ),
+                "zh": (
+                    "[relaxed]福冈市赤炼瓦文化馆建于1909年，1969年被指定为国家重要文化财。"
+                    "1994年修复更新，2019年工程师咖啡在馆内开设。"
+                ),
+                "ko": (
+                    "[relaxed]후쿠오카시 아카렌가 문화관은 1909년에 지어졌고 "
+                    "1969년에 국가 중요문화재로 지정되었습니다. 1994년에 복원 리뉴얼되었으며, "
+                    "2019년에 이 건물 안에 엔지니어 카페가 문을 열었습니다."
+                ),
+            }
+            return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
         if request_type == "food_drink" or self._asks_food_policy(normalized):
             answers = {
                 "ja": (
-                    "[relaxed]ふた付きの飲み物は持ち込みできますが、食べ物の持ち込みは"
-                    "原則として案内に従ってください。cafe&bar sainoで購入した飲食物は、"
-                    "テラスやラウンジなど指定エリアで食べられます。"
+                    "[relaxed]外部食品の持ち込みは原則禁止です。"
+                    "ふた付きの飲み物は持ち込みできます。cafe&bar sainoで購入した飲食物は、"
+                    "saino店内、談話室、テラスなど指定エリアで食べられます。"
+                    "メインホール、集中スペース、地下施設では飲食できません。"
                 ),
                 "en": (
                     "[relaxed]You can bring drinks in lidded containers. Outside food "
-                    "is not generally listed as allowed; food from cafe&bar saino can "
-                    "be eaten in designated areas such as the terrace and lounge."
+                    "is generally not allowed. Food and drinks bought at cafe&bar saino "
+                    "can be eaten in designated areas such as saino, the lounge, and "
+                    "the terrace; eating is not allowed in the main hall, Focus Space, "
+                    "or basement facilities."
                 ),
                 "zh": (
                     "[relaxed]可以携带有盖饮料。外带食物原则上不允许；"
@@ -584,6 +910,11 @@ class FacilityAgent:
                 ),
             }
             return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
+        if request_type == "nearby" or self._asks_nearby(normalized):
+            nearby = self._nearby_canonical_response(normalized, language)
+            if nearby:
+                return self._canonical_result(nearby, request_type)
 
         if request_type == "temporary_exit" or self._asks_temporary_exit_policy(normalized):
             answers = {
@@ -637,8 +968,9 @@ class FacilityAgent:
                 "ja": (
                     "[relaxed]館内で一般的な書類用プリンターやコピー機が使えるとは"
                     "案内されていません。地下1階のMAKER's Spaceには3Dプリンターや"
-                    "レーザーカッターがありますが、紙の印刷はスタッフに確認するか、"
-                    "近隣のコンビニ利用を検討してください。"
+                    "レーザーカッターがありますが、紙の印刷・コピー・スキャンは、"
+                    "徒歩2分ほどのファミリーマート天神一丁目店など近隣コンビニの"
+                    "ネットプリント利用を検討してください。"
                 ),
                 "en": (
                     "[relaxed]A standard document printer or copier is not listed as "
@@ -686,6 +1018,33 @@ class FacilityAgent:
             }
             return self._canonical_result(answers.get(language, answers["ja"]), request_type)
 
+        if self._asks_available_spaces(normalized):
+            answers = {
+                "ja": (
+                    "[relaxed]利用できる主なスペースは、1階のメインホール"
+                    "（コワーキング・イベント利用）、地下1階の集中スペース6席、"
+                    "MTGスペース、MAKER's Space、アンダースペース、防音室です。"
+                    "2階には赤煉瓦文化館管理の有料会議室が3室あります。"
+                ),
+                "en": (
+                    "[relaxed]Available spaces include the 1F Main Hall for coworking "
+                    "and events; B1F Focus Space with six silent booths, Meeting Space, "
+                    "MAKER's Space with 3D printers and laser cutters, Under Space, and "
+                    "one Soundproof Room; and three paid meeting rooms on 2F."
+                ),
+                "zh": (
+                    "[relaxed]可使用的主要空间包括一楼主厅（共享办公和活动）、"
+                    "地下一层集中空间6席、会议空间、MAKER's Space、Under Space和防音室，"
+                    "二楼还有3间收费会议室。"
+                ),
+                "ko": (
+                    "[relaxed]주요 이용 공간은 1층 메인 홀(코워킹・이벤트), "
+                    "지하 1층 집중 스페이스 6석, 미팅 스페이스, MAKER's Space, "
+                    "언더 스페이스, 방음실이며, 2층에는 유료 회의실 3개가 있습니다."
+                ),
+            }
+            return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
         return None
 
     @staticmethod
@@ -717,6 +1076,102 @@ class FacilityAgent:
         return any(keyword in query for keyword in keywords)
 
     @staticmethod
+    def _asks_fukuoka_airport_route(query: str) -> bool:
+        return any(keyword in query for keyword in ("福岡空港", "fukuoka airport", "机场", "공항"))
+
+    @staticmethod
+    def _asks_hakata_route(query: str) -> bool:
+        return any(keyword in query for keyword in ("博多駅", "hakata station", "하카타역"))
+
+    @staticmethod
+    def _asks_rain_route(query: str) -> bool:
+        return any(keyword in query for keyword in ("雨の日", "rainy", "rain", "下雨", "비 오는"))
+
+    @staticmethod
+    def _asks_nearby(query: str) -> bool:
+        keywords = (
+            "周辺",
+            "近く",
+            "近隣",
+            "ランチ",
+            "病院",
+            "ホテル",
+            "コンビニ",
+            "nearby",
+            "lunch",
+            "clinic",
+            "hospital",
+            "hotel",
+            "convenience store",
+        )
+        return any(keyword in query for keyword in keywords)
+
+    @staticmethod
+    def _nearby_canonical_response(query: str, language: str) -> Optional[str]:
+        if any(keyword in query for keyword in ("ランチ", "lunch", "restaurant", "レストラン")):
+            answers = {
+                "ja": (
+                    "[relaxed]周辺でランチを探すなら、天神地下街に徒歩3〜5分で多数の飲食店があります。"
+                    "西中洲エリアも徒歩約5分で、アクロス福岡内にも飲食店があります。"
+                    "軽食なら近隣コンビニも利用できます。"
+                ),
+                "en": (
+                    "[relaxed]For lunch nearby, Tenjin Underground Mall has many "
+                    "restaurants about a 3 to 5 minute walk away. Nishinakasu is about "
+                    "five minutes away, and ACROS Fukuoka also has restaurants. "
+                    "Nearby convenience stores are useful for light meals."
+                ),
+            }
+            return answers.get(language, answers["ja"])
+
+        if any(keyword in query for keyword in ("病院", "clinic", "hospital", "医療")):
+            answers = {
+                "ja": (
+                    "[relaxed]近くの医療機関として、アクロス福岡4階の麻生クリニック、"
+                    "あやすぎビルクリニック、黒田クリニックが徒歩1〜3分圏内にあります。"
+                    "総合病院が必要な場合は博多方面も候補です。緊急時は119番に通報してください。"
+                ),
+                "en": (
+                    "[relaxed]Nearby clinics include Aso Clinic on the 4F of ACROS "
+                    "Fukuoka, Ayasugi Building Clinic, and Kuroda Clinic, about a "
+                    "1 to 3 minute walk away. For emergencies, call 119."
+                ),
+            }
+            return answers.get(language, answers["ja"])
+
+        if any(keyword in query for keyword in ("ホテル", "hotel", "accommodation", "宿泊")):
+            answers = {
+                "ja": (
+                    "[relaxed]近くのホテルなら、高級ホテルでは西鉄グランドホテルが徒歩約5分、"
+                    "ソラリア西鉄ホテルが徒歩約7分です。ビジネス利用ならプラザホテル天神が"
+                    "徒歩約3分です。ゲストハウスならWeBase博多なども候補になります。"
+                ),
+                "en": (
+                    "[relaxed]Nearby hotel options include Nishitetsu Grand Hotel "
+                    "about five minutes away, Solaria Nishitetsu Hotel about seven "
+                    "minutes away, and Plaza Hotel Tenjin about three minutes away."
+                ),
+            }
+            return answers.get(language, answers["ja"])
+
+        if any(keyword in query for keyword in ("コンビニ", "convenience store")):
+            answers = {
+                "ja": (
+                    "[relaxed]近くのコンビニは、ファミリーマート天神一丁目店、"
+                    "ファミリーマート天神四丁目店、ローソンS天神ブリック店が徒歩1〜3分圏内です。"
+                    "ATMや軽食の利用にも便利です。"
+                ),
+                "en": (
+                    "[relaxed]Nearby convenience stores include FamilyMart Tenjin "
+                    "1-chome, FamilyMart Tenjin 4-chome, and Lawson S Tenjin Brick, "
+                    "about a 1 to 3 minute walk away."
+                ),
+            }
+            return answers.get(language, answers["ja"])
+
+        return None
+
+    @staticmethod
     def _asks_power_outlet(query: str) -> bool:
         keywords = (
             "power",
@@ -733,6 +1188,18 @@ class FacilityAgent:
             "콘센트",
         )
         return any(keyword in query for keyword in keywords)
+
+    @staticmethod
+    def _asks_meeting_room_pricing(query: str) -> bool:
+        return any(keyword in query for keyword in ("会議室", "meeting room")) and any(
+            keyword in query for keyword in ("料金", "いくら", "fee", "cost", "price")
+        )
+
+    @staticmethod
+    def _asks_building_history(query: str) -> bool:
+        return any(
+            keyword in query for keyword in ("重要文化財", "赤煉瓦", "red brick", "historic")
+        )
 
     @staticmethod
     def _asks_food_policy(query: str) -> bool:
@@ -841,6 +1308,19 @@ class FacilityAgent:
         return any(keyword in query for keyword in keywords)
 
     @staticmethod
+    def _asks_multipurpose_toilet(query: str) -> bool:
+        return any(
+            keyword in query
+            for keyword in (
+                "多目的トイレ",
+                "多目的",
+                "accessible restroom",
+                "accessible toilet",
+                "multipurpose",
+            )
+        )
+
+    @staticmethod
     def _asks_online_meeting_place(query: str) -> bool:
         keywords = (
             "オンライン会議",
@@ -877,6 +1357,37 @@ class FacilityAgent:
         return any(keyword in query for keyword in keywords)
 
     @staticmethod
+    def _asks_children_policy(query: str) -> bool:
+        keywords = (
+            "子連れ",
+            "子供",
+            "子ども",
+            "お子様",
+            "ベビーカー",
+            "children",
+            "kids",
+            "stroller",
+        )
+        return any(keyword in query for keyword in keywords)
+
+    @staticmethod
+    def _asks_solicitation_or_nap_policy(query: str) -> bool:
+        keywords = (
+            "勧誘",
+            "名刺交換",
+            "セールス",
+            "営業行為",
+            "営利目的",
+            "仮眠",
+            "昼寝",
+            "solicitation",
+            "sales",
+            "nap",
+            "sleep",
+        )
+        return any(keyword in query for keyword in keywords)
+
+    @staticmethod
     def _asks_lost_found(query: str) -> bool:
         keywords = (
             "忘れ物",
@@ -897,6 +1408,117 @@ class FacilityAgent:
         return any(keyword in query for keyword in keywords)
 
     @staticmethod
+    def _asks_laser_cutter_materials(query: str) -> bool:
+        laser_markers = (
+            "レーザー加工機",
+            "レーザーカッター",
+            "laser cutter",
+            "激光",
+            "레이저",
+        )
+        material_markers = (
+            "素材",
+            "材料",
+            "使える",
+            "使えますか",
+            "material",
+            "materials",
+            "acrylic",
+            "pvc",
+            "材质",
+            "材料",
+            "소재",
+            "재료",
+        )
+        return any(marker in query for marker in laser_markers) and any(
+            marker in query for marker in material_markers
+        )
+
+    @staticmethod
+    def _asks_laser_cutter_use(query: str) -> bool:
+        laser_markers = (
+            "レーザー加工機",
+            "レーザーカッター",
+            "laser cutter",
+            "激光",
+            "레이저",
+        )
+        use_markers = (
+            "使いたい",
+            "使えますか",
+            "利用",
+            "予約",
+            "講習",
+            "use",
+            "reservation",
+            "training",
+            "使用",
+            "预约",
+            "사용",
+        )
+        return any(marker in query for marker in laser_markers) and any(
+            marker in query for marker in use_markers
+        )
+
+    @staticmethod
+    def _asks_projector_or_av_loan(query: str) -> bool:
+        equipment_markers = (
+            "プロジェクター",
+            "スクリーン",
+            "マイク",
+            "4kモニター",
+            "hdmi",
+            "projector",
+            "screen",
+            "microphone",
+            "4k monitor",
+        )
+        loan_markers = (
+            "借り",
+            "貸出",
+            "貸し出し",
+            "使えますか",
+            "利用",
+            "borrow",
+            "loan",
+            "lend",
+            "available",
+            "rent",
+        )
+        return any(marker in query for marker in equipment_markers) and any(
+            marker in query for marker in loan_markers
+        )
+
+    @staticmethod
+    def _asks_water_server(query: str) -> bool:
+        keywords = (
+            "ウォーターサーバー",
+            "給水",
+            "自動販売機",
+            "water server",
+            "water dispenser",
+            "vending machine",
+            "饮水机",
+            "自动售货机",
+            "워터 서버",
+            "자판기",
+        )
+        return any(keyword in query for keyword in keywords)
+
+    @staticmethod
+    def _asks_bicycle_parking(query: str) -> bool:
+        keywords = (
+            "駐輪場",
+            "駐輪",
+            "自転車",
+            "bicycle parking",
+            "bike parking",
+            "cycle parking",
+            "자전거 주차",
+        )
+        return any(keyword in query for keyword in keywords)
+
+    @staticmethod
     def _asks_printer_or_copier(query: str) -> bool:
         keywords = (
             "printer",
@@ -911,6 +1533,18 @@ class FacilityAgent:
             "복사",
         )
         return any(keyword in query for keyword in keywords)
+
+    @staticmethod
+    def _asks_available_spaces(query: str) -> bool:
+        space_markers = (
+            "スペースを使いたい",
+            "利用可能スペース",
+            "どんなスペース",
+            "available spaces",
+            "what spaces",
+            "spaces are available",
+        )
+        return any(marker in query for marker in space_markers)
 
     @staticmethod
     def _asks_wifi_credential(query: str) -> bool:

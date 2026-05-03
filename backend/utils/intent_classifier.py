@@ -42,7 +42,7 @@ from backend.config.routing_constants import (
     match_pet_policy_keywords,
 )
 
-_MATA_KIMASU_FAREWELL_RE = re.compile(r"また\s*来(ます|る|ました|るね|ますね)\s*[。!！?？\.]?\s*$")
+_MATA_KIMASU_FAREWELL_RE = re.compile(r"また\s*来(ます|る|るね|ますね)\s*[。!！?？\.]?\s*$")
 _SERVICE_INTENT_RE = re.compile(r"(受付|予約|会員|問合せ|問い合わせ)")
 
 FILLER_INTENTS = frozenset(
@@ -409,6 +409,8 @@ def classify_fast_intent(query: str) -> Optional[FastIntent]:
         return FastIntent(
             "facility", "facility-info", "access", "Access/direction keyword detected"
         )
+    if _is_nearby_facility_query(lower_query):
+        return FastIntent("facility", "facility-info", "nearby", "Nearby facility keyword detected")
     if match_keywords(lower_query, BUILDING_KEYWORDS):
         return FastIntent("facility", "facility-info", "building", "Building keyword detected")
     if match_keywords(lower_query, PARKING_KEYWORDS):
@@ -533,6 +535,39 @@ def _static_community_program_route(lower_query: str) -> Optional[FastIntent]:
             "Static community/program keyword detected",
         )
     return None
+
+
+def _is_nearby_facility_query(lower_query: str) -> bool:
+    proximity_markers = (
+        "周辺",
+        "近く",
+        "近所",
+        "近隣",
+        "そば",
+        "nearby",
+        "around here",
+        "close by",
+    )
+    target_markers = (
+        "ランチ",
+        "レストラン",
+        "食事",
+        "コンビニ",
+        "病院",
+        "クリニック",
+        "ホテル",
+        "宿泊",
+        "lunch",
+        "restaurant",
+        "convenience store",
+        "clinic",
+        "hospital",
+        "hotel",
+        "accommodation",
+    )
+    return any(marker in lower_query for marker in proximity_markers) and any(
+        marker in lower_query for marker in target_markers
+    )
 
 
 def _is_3d_printer_price_query(lower_query: str) -> bool:

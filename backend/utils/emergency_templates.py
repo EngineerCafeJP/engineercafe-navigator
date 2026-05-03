@@ -19,6 +19,7 @@ EmergencySubtype = Literal[
     "earthquake",
     "fire",
     "medical_emergency",
+    "evacuation_route",
     "general_emergency",
 ]
 
@@ -91,6 +92,20 @@ _MEDICAL_EMERGENCY: dict[str, str] = {
     ),
 }
 
+_EVACUATION_ROUTE: dict[str, str] = {
+    "ja": (
+        "避難経路は1階正面玄関と地下1階職員通路の2箇所です。"
+        "火災や地震など緊急時は、近い出口から避難し、スタッフの指示に従ってください。"
+        "AEDは1階受付横にあります。"
+        "医療機関が必要な場合は、アクロス福岡側のクリニック群が徒歩1〜3分圏内にあります。"
+    ),
+    "en": (
+        "Evacuation routes are the 1F main entrance and the B1F staff corridor. "
+        "In an emergency, use the nearest safe exit and follow staff instructions. "
+        "The AED is next to the 1F reception."
+    ),
+}
+
 _GENERAL_EMERGENCY: dict[str, str] = {
     "ja": (
         "緊急事態を確認しました。スタッフに連絡中です。"
@@ -113,6 +128,7 @@ _TEMPLATES: dict[EmergencySubtype, tuple[dict[str, str], float]] = {
     "earthquake": (_EARTHQUAKE, 0.95),
     "fire": (_FIRE, 0.95),
     "medical_emergency": (_MEDICAL_EMERGENCY, 0.95),
+    "evacuation_route": (_EVACUATION_ROUTE, 0.9),
     "general_emergency": (_GENERAL_EMERGENCY, 0.85),
 }
 
@@ -148,6 +164,11 @@ def classify_emergency_subtype(query: str) -> EmergencySubtype:
     for kw in MEDICAL_EMERGENCY_KEYWORDS:
         if kw.lower() in lower_query:
             return "medical_emergency"
+
+    if any(
+        marker in lower_query for marker in ("避難経路", "evacuation route", "evacuation routes")
+    ):
+        return "evacuation_route"
 
     return "general_emergency"
 

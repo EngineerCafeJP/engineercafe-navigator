@@ -122,8 +122,14 @@ class EventAgent:
         """
         logger.info("Processing query: %s..., language: %s", query[:50], language)
 
+        if self._asks_event_hosting(query):
+            return self._get_event_hosting_response(language)
+
         if self._asks_connpass(query):
             return self._get_connpass_response(language)
+
+        if self._asks_event_clarification(query):
+            return self._get_event_clarification_response(language)
 
         # クエリから時間範囲を抽出
         time_range = self.calendar_service.extract_time_range_from_query(query)
@@ -377,9 +383,10 @@ class EventAgent:
                 "早めの申込をおすすめします。"
             ),
             "en": (
-                "[relaxed]Yes. Event listings and sign-up information are available "
-                "on Connpass at https://engineercafe.connpass.com/. Most events are "
-                "free, and many are first-come, first-served."
+                "[relaxed]Yes, you can check Engineer Cafe events on Connpass. "
+                "Event listings and sign-up information are available at "
+                "https://engineercafe.connpass.com/. Most events are free, and many "
+                "are first-come, first-served."
             ),
             "zh": (
                 "[relaxed]可以在Connpass上查看工程师咖啡的活动信息。"
@@ -397,6 +404,98 @@ class EventAgent:
             "metadata": {
                 "agent": "EventAgent",
                 "time_range": "thisWeek",
+                "event_count": 0,
+                "sources": ["connpass"],
+            },
+        }
+
+    @staticmethod
+    def _asks_event_hosting(query: str) -> bool:
+        normalized = query.lower()
+        hosting_markers = (
+            "イベントを開催",
+            "イベント開催",
+            "開催したい",
+            "勉強会を開催",
+            "イベントを開き",
+            "host an event",
+            "hold an event",
+            "organize an event",
+        )
+        return any(marker in normalized for marker in hosting_markers)
+
+    @staticmethod
+    def _get_event_hosting_response(language: str) -> Dict:
+        answers = {
+            "ja": (
+                "[relaxed]エンジニアカフェでイベントを開催したい場合は、事前に"
+                "コミュニティマネージャーまたはスタッフへ相談してください。"
+                "福岡市の許可が必要になる場合があります。開催が決まったイベントは、"
+                "Connpassで情報公開や参加申込の案内を行えます。"
+            ),
+            "en": (
+                "[relaxed]To host an event at Engineer Cafe, please consult the "
+                "community manager or staff in advance. Fukuoka City permission may "
+                "be required. Once approved, event information and sign-up can be "
+                "published on Connpass."
+            ),
+            "zh": (
+                "[relaxed]如果想在工程师咖啡举办活动，请提前咨询社区经理或工作人员。"
+                "有时需要福冈市许可。活动确定后，可以在Connpass公开信息并引导报名。"
+            ),
+            "ko": (
+                "[relaxed]엔지니어 카페에서 이벤트를 열고 싶다면 사전에 커뮤니티 매니저나 "
+                "직원에게 상담해 주세요. 후쿠오카시의 허가가 필요할 수 있습니다. "
+                "확정된 이벤트는 Connpass에 정보와 신청 안내를 공개할 수 있습니다."
+            ),
+        }
+        return {
+            "answer": answers.get(language, answers["ja"]),
+            "emotion": "relaxed",
+            "metadata": {
+                "agent": "EventAgent",
+                "time_range": "none",
+                "event_count": 0,
+                "sources": ["connpass", "enhanced_rag"],
+            },
+        }
+
+    @staticmethod
+    def _asks_event_clarification(query: str) -> bool:
+        normalized = query.lower().strip()
+        return normalized in {"イベントについて", "イベント", "event", "events"}
+
+    @staticmethod
+    def _get_event_clarification_response(language: str) -> Dict:
+        answers = {
+            "ja": (
+                "[relaxed]イベントについて知りたい場合は、開催予定、参加方法、"
+                "イベント開催相談のどれを知りたいか教えてください。"
+                "一般的なイベント一覧と申込はConnpass "
+                "https://engineercafe.connpass.com/ で確認できます。"
+            ),
+            "en": (
+                "[relaxed]For events, please tell me whether you want upcoming events, "
+                "how to sign up, or how to host an event. Event listings and sign-up "
+                "are available on Connpass at https://engineercafe.connpass.com/."
+            ),
+            "zh": (
+                "[relaxed]关于活动，请告诉我是想了解近期活动、报名方法，还是举办活动咨询。"
+                "活动列表和报名可在Connpass确认：https://engineercafe.connpass.com/。"
+            ),
+            "ko": (
+                "[relaxed]이벤트에 대해서는 예정된 이벤트, 참가 신청 방법, 이벤트 개최 상담 중 "
+                "무엇을 알고 싶은지 알려 주세요. 이벤트 목록과 신청은 Connpass에서 "
+                "확인할 수 있습니다: "
+                "https://engineercafe.connpass.com/."
+            ),
+        }
+        return {
+            "answer": answers.get(language, answers["ja"]),
+            "emotion": "relaxed",
+            "metadata": {
+                "agent": "EventAgent",
+                "time_range": "clarification",
                 "event_count": 0,
                 "sources": ["connpass"],
             },

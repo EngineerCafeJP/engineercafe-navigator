@@ -496,6 +496,44 @@ class TestOrchestratorFastRouting:
         if result is not None:
             assert result["agent"] != "farewell", f"reception query leaked to farewell: {result}"
 
+    def test_alpha_c127_returning_visit_routes_to_reception(self, orchestrator):
+        """gt-082: 'また来ました' is an arrival signal, not farewell."""
+        result = orchestrator._try_fast_routing("また来ました")
+
+        assert result is not None
+        assert result["agent"] == "business_info"
+        assert result["request_type"] == "reception"
+
+    def test_alpha_c127_nearby_lunch_routes_to_facility(self, orchestrator):
+        """gt-046: nearby lunch should use facility nearby canonical answer."""
+        result = orchestrator._try_fast_routing("周辺でランチを食べられる場所は？")
+
+        assert result is not None
+        assert result["agent"] == "facility"
+        assert result["request_type"] == "nearby"
+
+    @pytest.mark.parametrize(
+        ("query", "agent", "request_type"),
+        [
+            ("レーザー加工機で使える素材は？", "facility", "facility"),
+            ("プロジェクターを借りることはできますか？", "facility", "facility"),
+            ("ウォーターサーバーはありますか？", "facility", "facility"),
+            ("営利目的の勧誘はできますか？", "facility", "children_noise"),
+            ("エンジニアカフェの公式SNSアカウントは？", "business_info", "contact"),
+            ("英語対応はしていますか？", "business_info", "contact"),
+            ("エンジニアフレンドリーシティ福岡とは？", "business_info", "community"),
+        ],
+    )
+    def test_alpha_c127_low_quality_queries_fast_route(
+        self, orchestrator, query, agent, request_type
+    ):
+        """Low-scoring C-127 cases should reach deterministic canonical agents."""
+        result = orchestrator._try_fast_routing(query)
+
+        assert result is not None
+        assert result["agent"] == agent
+        assert result["request_type"] == request_type
+
     def test_english_see_your_floor_map_not_farewell(self, orchestrator):
         result = orchestrator._try_fast_routing("Can I see your floor map?")
 

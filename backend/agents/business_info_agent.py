@@ -470,7 +470,60 @@ Information: {context}
             }
             return self._canonical_result(answers.get(language, answers["ja"]), request_type)
 
+        if self._asks_engineer_friendly_city(normalized):
+            answers = {
+                "ja": (
+                    "[relaxed]エンジニアフレンドリーシティ福岡は、福岡市が推進する"
+                    "「エンジニアが活躍する街」を実現するためのムーブメントです。"
+                    "エンジニアカフェはその中核施設で、EFCアワードや外国人エンジニア支援なども"
+                    "実施されています。"
+                ),
+                "en": (
+                    "[relaxed]Engineer Friendly City Fukuoka is a Fukuoka City "
+                    "initiative to make the city a place where engineers can gather, "
+                    "grow, and thrive. Engineer Cafe is its core facility, and the "
+                    "initiative also includes programs such as the EFC Awards and "
+                    "support for international engineers."
+                ),
+                "zh": (
+                    "[relaxed]Engineer Friendly City Fukuoka是福冈市推进的、让工程师聚集、"
+                    "成长并活跃的城市运动。工程师咖啡是其核心设施，也开展EFC奖项和外国工程师支援等。"
+                ),
+                "ko": (
+                    "[relaxed]Engineer Friendly City Fukuoka는 엔지니어가 모이고 성장하며 "
+                    "활약하는 도시를 만들기 위한 후쿠오카시의 움직임입니다. 엔지니어 카페는 "
+                    "그 핵심 시설이며 EFC 어워드와 외국인 엔지니어 지원도 진행합니다."
+                ),
+            }
+            return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
         if self._asks_community_program(normalized, request_type):
+            if self._asks_engineer_cafe_lab(normalized):
+                answers = {
+                    "ja": (
+                        "[relaxed]Engineer Cafe Labは25歳以下を対象にした会員制コミュニティです。"
+                        "利用には事前応募と面接があり、会費は無料です。VRやドローンなどの"
+                        "専門機材貸出、限定ワークショップなどの特典があります。"
+                    ),
+                    "en": (
+                        "[relaxed]Engineer Cafe Lab is a membership community for "
+                        "people age 25 or younger. It requires advance application and "
+                        "an interview, has no membership fee, and offers benefits such "
+                        "as specialist equipment loans including VR and drones plus "
+                        "members-only workshops."
+                    ),
+                    "zh": (
+                        "[relaxed]Engineer Cafe Lab是面向25岁以下人群的会员制社区。"
+                        "需要事前申请和面试，会费免费，并提供VR、无人机等专业设备借用和会员限定工作坊。"
+                    ),
+                    "ko": (
+                        "[relaxed]Engineer Cafe Lab은 25세 이하를 대상으로 한 회원제 "
+                        "커뮤니티입니다. 사전 신청과 면접이 필요하고 회비는 무료이며, "
+                        "VR・드론 같은 전문 장비 대여와 회원 한정 워크숍 혜택이 있습니다."
+                    ),
+                }
+                return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
             if "devday" in normalized:
                 answers = {
                     "ja": (
@@ -597,7 +650,7 @@ Information: {context}
         if self._asks_first_visit_registration(normalized, request_type):
             answers = {
                 "ja": (
-                    "[relaxed]初めて利用する場合は、来館時に1階受付で利用登録をします。"
+                    "[relaxed]ようこそ。初めて利用する場合は、来館時に1階受付で利用登録をします。"
                     "所要時間は約5〜10分で、登録料は無料です。"
                     "受付で案内されるWebフォームに入力します。オンライン事前登録ではなく、"
                     "受付でスタッフに声をかけてください。"
@@ -616,6 +669,30 @@ Information: {context}
                     "[relaxed]처음 방문하실 때는 1층 안내 데스크에서 등록하시면 "
                     "됩니다. 등록은 무료이고 약 5분에서 10분 정도 걸리며, "
                     "직원에게 문의하시면 안내받을 수 있습니다."
+                ),
+            }
+            return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
+        if self._asks_returning_visit(normalized, request_type):
+            answers = {
+                "ja": (
+                    "[relaxed]またのご来館ありがとうございます。以前ご利用いただいた方も、"
+                    "来館時は1階受付でチェックインしてください。受付カードを受け取れば、"
+                    "コワーキングスペースを無料で利用できます。"
+                ),
+                "en": (
+                    "[relaxed]Welcome back. If you have visited before, please still "
+                    "check in at the 1F reception when you arrive. After receiving a "
+                    "reception card, you can use the coworking space for free."
+                ),
+                "zh": (
+                    "[relaxed]欢迎再次来访。以前来过的访客也请先到一楼前台签到。"
+                    "领取接待卡后即可免费使用共享办公空间。"
+                ),
+                "ko": (
+                    "[relaxed]다시 방문해 주셔서 감사합니다. 이전에 이용하신 분도 "
+                    "방문 시 1층 접수에서 체크인해 주세요. 접수 카드를 받은 뒤 "
+                    "코워킹 공간을 무료로 이용할 수 있습니다."
                 ),
             }
             return self._canonical_result(answers.get(language, answers["ja"]), request_type)
@@ -667,18 +744,74 @@ Information: {context}
             }
             return self._canonical_result(answers.get(language, answers["ja"]), request_type)
 
+        if self._asks_official_social(normalized):
+            answers = {
+                "ja": (
+                    "[relaxed]エンジニアカフェの公式SNSはX（旧Twitter）の"
+                    "@EngineerCafeJPです。イベント情報はConnpass "
+                    "https://engineercafe.connpass.com/ でも発信しています。"
+                    "公式サイトは https://engineercafe.jp/ です。LINEアカウントはありません。"
+                ),
+                "en": (
+                    "[relaxed]Engineer Cafe's official social account is "
+                    "@EngineerCafeJP on X, formerly Twitter. Event information is also "
+                    "posted on Connpass at https://engineercafe.connpass.com/. "
+                    "The official website is https://engineercafe.jp/. There is no LINE account."
+                ),
+                "zh": (
+                    "[relaxed]工程师咖啡的官方SNS是X（原Twitter）@EngineerCafeJP。"
+                    "活动信息也会在Connpass https://engineercafe.connpass.com/ 发布。"
+                    "官网是 https://engineercafe.jp/，没有LINE账号。"
+                ),
+                "ko": (
+                    "[relaxed]엔지니어 카페의 공식 SNS는 X(구 Twitter)의 @EngineerCafeJP입니다. "
+                    "이벤트 정보는 Connpass https://engineercafe.connpass.com/ 에도 게시됩니다. "
+                    "공식 사이트는 https://engineercafe.jp/ 이며 LINE 계정은 없습니다."
+                ),
+            }
+            return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
+        if self._asks_english_support(normalized):
+            answers = {
+                "ja": (
+                    "[relaxed]公式サイトには英語版 https://engineercafe.jp/en/ があります。"
+                    "スタッフの英語対応は限定的ですが、簡単なコミュニケーションは可能です。"
+                    "国際イベント時は英語対応が強化され、外国人利用者も多く来館します。"
+                ),
+                "en": (
+                    "[relaxed]The official website has an English version at "
+                    "https://engineercafe.jp/en/. Staff English support is limited, "
+                    "but simple communication is possible. Support is stronger during "
+                    "international events, and many international visitors use the facility."
+                ),
+                "zh": (
+                    "[relaxed]官方网站有英文版 https://engineercafe.jp/en/。工作人员的英语支持有限，"
+                    "但可进行简单沟通。国际活动期间英语支持会加强，也有很多外国访客使用。"
+                ),
+                "ko": (
+                    "[relaxed]공식 사이트에는 영어판 https://engineercafe.jp/en/ 이 있습니다. "
+                    "직원의 영어 대응은 제한적이지만 간단한 의사소통은 가능합니다. "
+                    "국제 이벤트 때는 영어 대응이 강화되고 외국인 이용자도 많이 방문합니다."
+                ),
+            }
+            return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
         if self._asks_contact(normalized):
             answers = {
                 "ja": (
                     "[relaxed]エンジニアカフェへの連絡は、13時から21時の間に"
                     "080-6742-7231へお電話ください。公式サイトは"
-                    "https://engineercafe.jp/ で、お問い合わせフォームも利用できます。"
+                    "https://engineercafe.jp/ で、お問い合わせフォームは"
+                    "https://engineercafe.jp/ja/contact です。"
+                    "2階会議室は別途問い合わせが必要な場合があります。"
                 ),
                 "en": (
                     "[relaxed]Phone: 080-6742-7231 (13:00-21:00). "
                     "Website: https://engineercafe.jp/. "
                     "Contact form: https://engineercafe.jp/ja/contact. "
-                    "For second-floor meeting rooms, a separate inquiry may be needed. "
+                    "You can contact Engineer Cafe by phone or through the inquiry form "
+                    "on the official website. For second-floor meeting rooms, a separate "
+                    "inquiry may be needed. "
                     "You can also visit reception in person during opening hours."
                 ),
                 "zh": (
@@ -926,6 +1059,56 @@ Information: {context}
         if request_type != "community":
             return False
         keywords = ("engineer ignition camp", "eic", "devday")
+        return any(
+            keyword in query for keyword in keywords
+        ) or BusinessInfoAgent._asks_engineer_cafe_lab(query)
+
+    @staticmethod
+    def _asks_engineer_friendly_city(query: str) -> bool:
+        keywords = (
+            "エンジニアフレンドリーシティ",
+            "engineer friendly city",
+            "efcとは",
+            "efc ",
+            "efcアワード",
+        )
+        return any(keyword in query for keyword in keywords)
+
+    @staticmethod
+    def _asks_engineer_cafe_lab(query: str) -> bool:
+        keywords = (
+            "engineer cafe lab",
+            "エンジニアカフェlab",
+            "エンジニアカフェラボ",
+            "カフェラボ",
+        )
+        return any(keyword in query for keyword in keywords)
+
+    @staticmethod
+    def _asks_official_social(query: str) -> bool:
+        keywords = (
+            "公式sns",
+            "snsアカウント",
+            "twitter",
+            "x（旧twitter）",
+            "xアカウント",
+            "official sns",
+            "social media",
+            "sns account",
+            "official x",
+        )
+        return any(keyword in query for keyword in keywords)
+
+    @staticmethod
+    def _asks_english_support(query: str) -> bool:
+        keywords = (
+            "英語対応",
+            "英語版",
+            "英語で",
+            "english support",
+            "english website",
+            "english version",
+        )
         return any(keyword in query for keyword in keywords)
 
     @staticmethod
@@ -1033,6 +1216,21 @@ Information: {context}
             "코워킹",
         )
         return any(marker in query for marker in regular_use_markers)
+
+    @staticmethod
+    def _asks_returning_visit(query: str, request_type: Optional[str]) -> bool:
+        if request_type != "reception":
+            return False
+        markers = (
+            "また来ました",
+            "前にも来た",
+            "前にも来たこと",
+            "以前来た",
+            "以前利用",
+            "returning visitor",
+            "welcome back",
+        )
+        return any(marker in query for marker in markers)
 
     @staticmethod
     def _asks_what_is_engineer_cafe(query: str, language: str) -> bool:
