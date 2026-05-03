@@ -2,6 +2,7 @@ from evaluation.live_quality_gates import (
     check_answer_quality,
     check_safety,
     denies_explicit_ltm_recall,
+    recalled_facts,
 )
 
 
@@ -48,3 +49,36 @@ def test_explicit_ltm_denial_does_not_hide_concrete_ssid_recall() -> None:
     answer = "前に伝えたWi-FiのSSIDはcafe-freeです。"
 
     assert denies_explicit_ltm_recall(answer) is False
+
+
+def test_explicit_ltm_denial_does_not_treat_history_reference_as_denial() -> None:
+    answer = "会話履歴にはWi-FiのSSIDはcafe-freeと残っています。"
+
+    assert denies_explicit_ltm_recall(answer) is False
+
+
+def test_explicit_ltm_denial_accepts_not_asked_wording() -> None:
+    answer = "これまでの会話履歴を確認した限りでは、SSIDに関する情報は伺っておりません。"
+
+    assert denies_explicit_ltm_recall(answer) is True
+
+
+def test_cross_session_recall_does_not_count_denial_suggestions_as_fact() -> None:
+    answer = (
+        "現時点の会話履歴にはお客様の好きな席に関する具体的な記録が見当たりません。"
+        "もしよろしければ、窓際の席などを改めて教えてください。"
+    )
+
+    assert recalled_facts(answer, ["窓"]) == []
+
+
+def test_cross_session_recall_does_not_count_fact_inside_denial_sentence() -> None:
+    answer = "好きな席が窓側という記録は見当たりません。"
+
+    assert recalled_facts(answer, ["窓"]) == []
+
+
+def test_cross_session_recall_counts_fact_when_denial_phrase_is_corrected() -> None:
+    answer = "記録が見当たりませんでしたが、以前伺った内容では好きな席は窓側です。"
+
+    assert recalled_facts(answer, ["窓"]) == ["窓"]

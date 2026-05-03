@@ -175,30 +175,118 @@ def check_safety(answer: str) -> bool:
 
 
 def denies_explicit_ltm_recall(answer: str) -> bool:
-    """Return true when the answer explicitly says the prior SSID is not remembered."""
+    """Return true when the answer explicitly says prior information is not remembered."""
     text = answer.lower()
     explicit_denials = (
         "含まれていない",
         "残っておりません",
         "残っていません",
+        "残っていない",
         "記録がありません",
         "記録にはありません",
+        "記録が見当たりません",
+        "記録は見当たりません",
         "覚えていません",
         "覚えておりません",
         "把握できておりません",
+        "把握しておりません",
         "確認できません",
-        "履歴には",
+        "伺っておりません",
+        "伺っていません",
+        "保存されていません",
+        "保存されておりません",
         "not in",
+        "no record",
+        "no history",
+        "no information",
         "do not have",
         "don't have",
         "cannot find",
         "can't find",
+        "not found",
+        "not recorded",
+        "not saved",
+        "not stored",
         "not remember",
         "don't remember",
         "do not remember",
         "was not saved",
     )
     return any(phrase in text for phrase in explicit_denials)
+
+
+def recalled_facts(answer: str, facts: list[str]) -> list[str]:
+    """Return expected facts, excluding denial-only suggestion text."""
+    found = [f for f in facts if f in answer]
+    if denies_explicit_ltm_recall(answer):
+        return [f for f in found if _fact_appears_affirmatively_recalled(answer, f)]
+    return found
+
+
+def _fact_appears_affirmatively_recalled(answer: str, fact: str) -> bool:
+    affirmative_markers = (
+        "前に",
+        "以前",
+        "覚えています",
+        "覚えております",
+        "記憶しています",
+        "記憶しております",
+        "保存されています",
+        "保存されております",
+        "残っています",
+        "残っております",
+        "伺いました",
+        "伺っています",
+        "お聞き",
+        "好き",
+        "希望",
+        "です",
+        "でした",
+        "previously",
+        "you told",
+        "remember",
+        "recorded",
+        "saved",
+        "preference",
+    )
+    contrast_markers = ("が、", "が,", "しかし", "ただし", "but", "however")
+    suggestion_markers = (
+        "もし",
+        "よろしければ",
+        "改めて",
+        "教えて",
+        "など",
+        "例えば",
+        "例:",
+        "例：",
+        "if you",
+        "please tell",
+        "let me know",
+        "for example",
+    )
+
+    segments = [s.strip() for s in re.split(r"(?<=[。.!！?？])\s*|[\r\n]+", answer) if s.strip()]
+    for segment in segments:
+        if fact not in segment:
+            continue
+        lower = segment.lower()
+        has_affirmative_marker = any(
+            marker in segment or marker in lower for marker in affirmative_markers
+        )
+        has_contrast_marker = any(
+            marker in segment or marker in lower for marker in contrast_markers
+        )
+        has_suggestion_marker = any(
+            marker in segment or marker in lower for marker in suggestion_markers
+        )
+        segment_denies = denies_explicit_ltm_recall(segment)
+        if segment_denies:
+            if has_contrast_marker and has_affirmative_marker and not has_suggestion_marker:
+                return True
+            continue
+        if not has_suggestion_marker:
+            return True
+    return False
 
 
 def flatten_metadata_sources(value: Any) -> set[str]:
@@ -596,7 +684,7 @@ async def run_m_suite(
                     client, base_url, api_key, q, "ja", s2, visitor_id, timeout, pacer
                 )
             facts = case["expected_recall_facts"]
-            found = [f for f in facts if f in last_answer]
+            found = recalled_facts(last_answer, facts)
             if http != 200:
                 status = "FAIL"
             elif len(found) == len(facts):
@@ -604,7 +692,7 @@ async def run_m_suite(
             elif found:
                 status = "WARN"
             else:
-                status = "WARN"
+                status = "FAIL"
             record(
                 rows,
                 suite="m",

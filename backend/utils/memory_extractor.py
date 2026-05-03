@@ -313,10 +313,12 @@ def _extract_location_preference(query: str, language: str) -> str | None:
 
 def _extract_remember_request(query: str, language: str) -> str | None:
     """明示的な「覚えて」リクエストを抽出"""
+    query_for_match = query.strip().rstrip("。.!！?？")
     if language == "ja":
         patterns = [
-            r"(?:覚えて|記憶して|忘れないで)[：:、,]?\s*(.+)",
-            r"(.+)(?:を覚えて|を記憶して|を忘れないで)",
+            r"(.+?)(?:を|として)?(?:覚えて|記憶して|忘れないで)(?:ください|おいてください|おいて|ね)?$",
+            r"(?:覚えて|記憶して|忘れないで)[：:、,]\s*(.+)",
+            r"(?:覚えて|記憶して|忘れないで)\s+(.+)",
         ]
     else:
         patterns = [
@@ -325,9 +327,27 @@ def _extract_remember_request(query: str, language: str) -> str | None:
         ]
 
     for pattern in patterns:
-        match = re.search(pattern, query, re.IGNORECASE)
+        match = re.search(pattern, query_for_match, re.IGNORECASE)
         if match:
-            content = match.group(1).strip().rstrip("。.!！")
-            if len(content) > 2:
+            content = _clean_remember_content(match.group(1))
+            if _is_actionable_remember_content(content):
                 return content
     return None
+
+
+def _clean_remember_content(content: str) -> str:
+    """記憶対象から評価用のvisitor句や末尾の助詞を落とす。"""
+    cleaned = content.strip().rstrip("。.!！?？")
+    cleaned = re.sub(
+        r"(?:[。.!！?？]\s*)?visitor\s+[\w:-]+(?:\s+として)?\s*$",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(r"(?:こと|内容)?を$", "", cleaned).strip()
+    return cleaned.rstrip("。.!！?？").strip()
+
+
+def _is_actionable_remember_content(content: str) -> bool:
+    normalized = content.strip().lower()
+    return normalized not in {"ください", "お願いします", "please"} and len(normalized) > 2
