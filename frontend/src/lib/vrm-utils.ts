@@ -56,8 +56,79 @@ export class VRMUtils {
     'leftShoulder', 'leftUpperArm', 'leftLowerArm', 'leftHand',
     'rightShoulder', 'rightUpperArm', 'rightLowerArm', 'rightHand',
     'leftUpperLeg', 'leftLowerLeg', 'leftFoot',
-    'rightUpperLeg', 'rightLowerLeg', 'rightFoot'
+    'rightUpperLeg', 'rightLowerLeg', 'rightFoot',
   ];
+
+  /**
+   * Hips translation track as produced by {@code createVRMAnimationClip}:
+   * {@code `${hipsNode.name}.position`}.
+   */
+  static findHipsVectorPositionTrack(
+    clip: THREE.AnimationClip,
+    vrm: VRM,
+  ): THREE.VectorKeyframeTrack | null {
+    const humanoid = vrm.humanoid;
+    if (!humanoid) {
+      return null;
+    }
+    const hips = humanoid.getNormalizedBoneNode('hips' as never);
+    if (!hips?.name) {
+      return null;
+    }
+    const trackName = `${hips.name}.position`;
+    const track = clip.tracks.find((t) => t.name === trackName);
+    return track instanceof THREE.VectorKeyframeTrack ? track : null;
+  }
+
+  /** Samples hips `.position` keyframes at {@code time} (expects VectorKeyframeTrack). */
+  static sampleHipsPositionXZAtTime(
+    clip: THREE.AnimationClip,
+    vrm: VRM,
+    time: number,
+  ): { x: number; z: number } | null {
+    const track = VRMUtils.findHipsVectorPositionTrack(clip, vrm);
+    if (!track) {
+      return null;
+    }
+    const interpolant = new THREE.LinearInterpolant(track.times, track.values, 3);
+    const out = interpolant.evaluate(time) as Float32Array | number[];
+    return { x: out[0], z: out[2] };
+  }
+
+  /**
+   * Re-bases hips horizontal translation so t=0 matches {@code refIdleXZ}:
+   * {@code p'(t) = p(t) + (refIdle - refOther)} on X and Z; Y keys unchanged.
+   */
+  static rebaseHipsHorizontalInClip(
+    clip: THREE.AnimationClip,
+    vrm: VRM,
+    refIdleXZ: { x: number; z: number },
+    refOtherXZ: { x: number; z: number },
+  ): THREE.AnimationClip {
+    const target = VRMUtils.findHipsVectorPositionTrack(clip, vrm);
+    if (!target) {
+      return clip;
+    }
+    const dx = refIdleXZ.x - refOtherXZ.x;
+    const dz = refIdleXZ.z - refOtherXZ.z;
+    if (Math.abs(dx) < 1e-9 && Math.abs(dz) < 1e-9) {
+      return clip;
+    }
+    const hipsTrackName = target.name;
+    const newTracks = clip.tracks.map((tr) => {
+      if (tr.name !== hipsTrackName || !(tr instanceof THREE.VectorKeyframeTrack)) {
+        return tr;
+      }
+      const cloned = tr.clone();
+      const { values } = cloned;
+      for (let i = 0; i < values.length; i += 3) {
+        values[i] += dx;
+        values[i + 2] += dz;
+      }
+      return cloned;
+    });
+    return new THREE.AnimationClip(clip.name, clip.duration, newTracks);
+  }
 
   // VRM Loading
   static async loadVRM(
