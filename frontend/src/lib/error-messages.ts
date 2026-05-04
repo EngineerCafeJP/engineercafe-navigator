@@ -25,6 +25,12 @@ export const ERROR_MESSAGES: Record<string, ErrorMessage> = {
     en:
       'No microphone was found. Check your cable or Bluetooth connection, make sure no other app is using the mic, then try again.',
   },
+  MIC_NOT_FOUND_IOS: {
+    ja:
+      '画面録画中、別アプリで通話中、または Safari の Web サイト設定でマイクが拒否されている可能性があります。画面録画を停止し、設定 → Safari → Web サイト → マイクで「許可」になっているか確認してから、もう一度お試しください。',
+    en:
+      'iPhone may be screen recording, another app is using the microphone, or Safari has blocked microphone access. Stop screen recording and check Settings → Safari → Websites → Microphone, then try again.',
+  },
   MIC_INVALID_STATE: {
     ja:
       'マイクの状態が不正です（録音パイプラインの競合など）。タブを開き直すかページを再読み込みしてから、もう一度マイクボタンを押してください。',
@@ -145,6 +151,19 @@ export const ERROR_MESSAGES: Record<string, ErrorMessage> = {
   },
 };
 
+/** True when running on iPhone/iPad/iPod Safari or iPad-as-desktop (Mac UA + touch). */
+export function isIOSUserAgent(): boolean {
+  if (typeof navigator === 'undefined') {
+    return false;
+  }
+  const ua =
+    typeof navigator.userAgent === 'string' ? navigator.userAgent : '';
+  return (
+    /iPad|iPhone|iPod/.test(ua) ||
+    (ua.includes('Mac') && navigator.maxTouchPoints > 1)
+  );
+}
+
 /**
  * Get error message in specified language
  */
@@ -177,7 +196,10 @@ export function formatError(
       case 'notfounderror':
       case 'devicesnotfounderror':
       case 'overconstrainederror':
-        return getErrorMessage('MIC_NOT_FOUND', language);
+        return getErrorMessage(
+          isIOSUserAgent() ? 'MIC_NOT_FOUND_IOS' : 'MIC_NOT_FOUND',
+          language,
+        );
       case 'notreadableerror':
       case 'trackstarterror':
         return getErrorMessage('MICROPHONE_IN_USE', language);
