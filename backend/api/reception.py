@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import time
+import uuid
 from collections import OrderedDict
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Literal, Optional
@@ -149,6 +150,14 @@ def _parse_datetime(value: Any) -> datetime | None:
     return None
 
 
+def _is_uuid(value: str) -> bool:
+    try:
+        uuid.UUID(value)
+    except (TypeError, ValueError):
+        return False
+    return True
+
+
 def _deserialize_session(record: dict[str, Any]) -> ReceptionSession:
     session_data = record.get("session_data") or {}
 
@@ -222,24 +231,28 @@ async def _persist_session(session: ReceptionSession, *, status: str = "active")
 async def _load_session(
     reception_session_id: str, *, allow_completed: bool = False
 ) -> Optional[ReceptionSession]:
-    try:
-        record = await _get_session_repository().get_session_record(
-            reception_session_id,
-            include_completed=allow_completed,
-        )
-    except Exception as exc:
-        logger.warning("Reception persistence read failed; using in-memory fallback: %s", exc)
-        record = None
+    record = None
+    if _is_uuid(reception_session_id):
+        try:
+            record = await _get_session_repository().get_session_record(
+                reception_session_id,
+                include_completed=allow_completed,
+            )
+        except Exception as exc:
+            logger.warning("Reception persistence read failed; using in-memory fallback: %s", exc)
+            record = None
+    else:
+        logger.debug("Skipping reception persistence UUID lookup for non-UUID reception_session_id")
 
     if record is not None:
-        session = _deserialize_session(record)
-        _store_session(session)
-        return session
+        persisted_session = _deserialize_session(record)
+        _store_session(persisted_session)
+        return persisted_session
 
-    session = _active_sessions.get(reception_session_id)
-    if session is not None:
+    cached_session = _active_sessions.get(reception_session_id)
+    if cached_session is not None:
         _active_sessions.move_to_end(reception_session_id)
-    return session
+    return cached_session
 
 
 # ---------------------------------------------------------------------------
