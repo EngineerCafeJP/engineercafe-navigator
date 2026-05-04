@@ -90,12 +90,12 @@ def test_alpha_127_coverage_requires_all_languages_and_all_cases():
 
 
 def test_alpha_live_gate_uses_phase1_japanese_answer_target():
-    assert TARGETS["ja"] == 0.81
+    assert TARGETS["ja"] == 0.80
 
     report = _format_report(
         {
             "ja": {
-                "metrics": {"answer_correctness": 0.81},
+                "metrics": {"answer_correctness": 0.80},
                 "requested_case_count": 1,
                 "collected_case_count": 1,
                 "evaluated_case_count": 1,
@@ -106,7 +106,7 @@ def test_alpha_live_gate_uses_phase1_japanese_answer_target():
         {
             "per_language": {
                 "ja": {
-                    "answer_correctness": {"actual": 0.81, "target": 0.81},
+                    "answer_correctness": {"actual": 0.80, "target": 0.80},
                     "answer_target_passed": True,
                     "evaluation_complete": {
                         "requested": 1,
@@ -130,7 +130,7 @@ def test_alpha_live_gate_uses_phase1_japanese_answer_target():
         case_suite=CASE_SUITE_ALPHA_127,
     )
 
-    assert "Targets: ja >= 0.81, en >= 0.75, zh >= 0.65, ko >= 0.65" in report
+    assert "Targets: ja >= 0.80, en >= 0.75, zh >= 0.75, ko >= 0.70" in report
 
 
 def test_alpha_source_requirements_allow_live_metadata_aliases():
