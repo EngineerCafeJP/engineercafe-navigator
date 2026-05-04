@@ -129,6 +129,11 @@ export function KioskBottomBar({
             <button
               data-testid="kiosk-voice-button"
               type="button"
+              onTouchStart={(event) => {
+                if (isPushToTalk) {
+                  event.preventDefault();
+                }
+              }}
               onPointerDown={(event) => {
                 if (!isPushToTalk) {
                   return;
@@ -176,14 +181,17 @@ export function KioskBottomBar({
                 void handleKioskVoiceStart();
               }}
               className={cn(
-                'flex min-h-[72px] min-w-[min(100%,7rem)] flex-1 flex-col items-center justify-center gap-1 rounded-2xl px-3 py-3 shadow-md backdrop-blur-sm transition-transform sm:min-h-[80px] sm:flex-initial sm:px-5',
+                'flex min-h-[72px] min-w-[min(100%,7rem)] flex-1 flex-col items-center justify-center gap-1 rounded-2xl px-3 py-3 shadow-md backdrop-blur-sm transition-transform sm:min-h-[80px] sm:flex-initial sm:px-5 select-none touch-manipulation [-webkit-touch-callout:none]',
                 isVoiceCaptureActive
                   ? 'border border-emerald-300/70 bg-emerald-500/55 text-white shadow-lg'
                   : 'border border-white/35 bg-white/15 text-white hover:scale-[1.02]',
               )}
             >
-              <Mic className="size-6 shrink-0 sm:size-7" aria-hidden />
-              <span className="text-center text-xs font-semibold leading-tight sm:text-sm">
+              <Mic
+                className="pointer-events-none select-none touch-manipulation [-webkit-touch-callout:none] size-6 shrink-0 sm:size-7"
+                aria-hidden
+              />
+              <span className="pointer-events-none select-none touch-manipulation [-webkit-touch-callout:none] text-center text-xs font-semibold leading-tight sm:text-sm">
                 {voiceButtonLabel}
               </span>
             </button>
