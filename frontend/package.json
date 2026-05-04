@@ -14,7 +14,6 @@
     "install:css": "sh scripts/install-css.sh",
     "seed:knowledge": "tsx -r dotenv/config scripts/seed-knowledge-base.ts",
     "migrate:embeddings": "tsx -r dotenv/config scripts/migrate-embeddings.ts",
-    "import:narration": "tsx -r dotenv/config scripts/import-slide-narrations.ts",
     "import:markdown": "tsx -r dotenv/config scripts/import-markdown-knowledge.ts",
     "setup:admin": "tsx -r dotenv/config scripts/setup-admin-knowledge.ts",
     "test": "cd scripts/tests && tsx run-tests.ts",

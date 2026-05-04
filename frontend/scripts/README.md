@@ -42,7 +42,6 @@
 ### Knowledge Base Management
 - **`seed-knowledge-base.ts`** - 知識ベースの初期データ投入
 - **`import-markdown-knowledge.ts`** - Markdownファイルからの知識インポート
-- **`import-slide-narrations.ts`** - スライドナレーションのインポート
 - **`migrate-to-openai-embeddings.ts`** - OpenAI embeddings移行
 
 ### Database Operations

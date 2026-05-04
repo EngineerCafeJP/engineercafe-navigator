@@ -19,8 +19,7 @@ pnpm deploy:dev       # Deploy to Vercel dev environment
 ## Frontend-Specific Constraints
 
 - **Tailwind CSS v3.4.17** — DO NOT upgrade to v4. PostCSS: `tailwindcss: {}` not `@tailwindcss/postcss: {}`.
-- **Marp**: `@marp-team/marp-core` is already installed. MarpProcessor at `src/lib/marp-processor.ts`.
-- **Kiosk slides (PDF)**: Bundled `public/reception/engineer-cafe-ja.pdf` via `ReceptionPdfGuide` + pdfjs (`pnpm build` copies `pdf.worker.min.mjs` to `public/`, gitignored). Override: `NEXT_PUBLIC_RECEPTION_SLIDE_RENDERER=marp`.
+- **Kiosk slides (PDF)**: Bundled `public/reception/engineer-cafe-{ja,en}.pdf` via `ReceptionPdfGuide` + pdfjs (`pnpm build` copies `pdf.worker.min.mjs` to `public/`, gitignored). Static narration audio is served from `public/reception/audio/{ja,en}/`.
 - **Audio**: All playback via Web Audio API (`src/lib/audio/`). No HTMLAudioElement.
 - **Vercel**: Deployed to the Vercel dev environment with the Node.js runtime configured in `vercel.json`.
 
@@ -35,7 +34,7 @@ pnpm deploy:dev       # Deploy to Vercel dev environment
 
 ```
 src/app/           Pages (App Router) and API routes
-src/app/api/       Route handlers: voice, slides, marp, qa, character, calendar, admin
+src/app/api/       Route handlers: voice, slides, qa, character, calendar, admin
 src/lib/           Shared libs: audio, memory, STT correction, lip-sync
 src/lib/audio/     AudioPlaybackService, MobileAudioService, WebAudioPlayer
 src/lib/api/       Backend proxy (backendFetch)

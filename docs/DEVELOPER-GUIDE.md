@@ -85,8 +85,7 @@ Frontend API routes proxy requests to the backend:
 | Endpoint | Method | Description | Backend Proxy |
 |----------|--------|-------------|---------------|
 | `/api/voice` | POST | Voice processing | Yes -> `/api/voice/*` |
-| `/api/marp` | POST | Slide rendering | Yes -> `/api/slides` |
-| `/api/slides` | POST | Slide navigation | Yes |
+| `/api/slides` | POST | Slide narration metadata / slide Q&A | Yes |
 | `/api/character` | POST | Character control | Yes |
 | `/api/qa` | POST | Q&A | Yes |
 | `/api/backgrounds` | GET | Background images | Local |
@@ -259,7 +258,7 @@ See [PRODUCTION-DIAGNOSTIC-REPORT.md](PRODUCTION-DIAGNOSTIC-REPORT.md) for detai
 
 ### "Slides not loading"
 
-`/api/marp` proxies to backend `/api/slides`. Check backend health: `curl https://engineer-cafe-backend-639959525777.asia-northeast1.run.app/health`
+The kiosk uses the bundled PDF guide in `frontend/public/reception/` and static narration audio in `frontend/public/reception/audio/`. Check backend health only for slide-agent metadata or slide Q&A: `curl https://engineer-cafe-backend-639959525777.asia-northeast1.run.app/health`
 
 ### Backend Swagger UI
 

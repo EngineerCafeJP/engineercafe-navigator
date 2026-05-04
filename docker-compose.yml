@@ -109,35 +109,6 @@ services:
       retries: 5
       start_period: 30s
 
-  # piper-plus TTS Engine (Local) - lightweight bilingual TTS (ja/en)
-  # TTS_PROVIDER=piper を設定した場合に使用。VOICEVOX + Kokoro の代替候補。
-  # モデルダウンロード方法: docker/piper-plus/README.md を参照
-  piper-plus:
-    build:
-      context: ./docker/piper-plus
-    container_name: engineer-cafe-piper-plus
-    ports:
-      - "8090:8090"
-    environment:
-      - PIPER_MODEL_REPO=ayousanz/piper-plus-tsukuyomi-chan
-      - PIPER_MODEL_DIR=/models/piper
-      - HF_HOME=/models/hf
-      - PIPER_SPEED=0.65
-      - PIPER_USE_CUDA=false
-    volumes:
-      - piper-models:/models
-    networks:
-      - engineer-cafe-network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8090/health')"]
-      interval: 15s
-      timeout: 10s
-      retries: 5
-      start_period: 60s
-    profiles:
-      - piper
-
 networks:
   engineer-cafe-network:
     driver: bridge
@@ -148,4 +119,3 @@ volumes:
   backend-pycache:
   voicevox-cache:
   backend-vosk-models:
-  piper-models:

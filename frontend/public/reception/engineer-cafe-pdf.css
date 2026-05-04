@@ -1,7 +1,7 @@
 /* @theme engineer-cafe-pdf */
 /*!
- * Landscape PDF export for engineer-cafe.md (16:9).
- * Use: marp engineer-cafe.md -t marp-themes/engineer-cafe-pdf.css --pdf ...
+ * Legacy PDF theme kept only as provenance for the bundled reception PDFs.
+ * Runtime slide guide uses static PDF assets and does not invoke Marp.
  */
 @import 'default';
 
