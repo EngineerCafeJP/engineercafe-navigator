@@ -13,7 +13,9 @@ from backend.evaluation.run_live_api_eval import (
     CASE_SUITE_DIAGNOSTIC_29,
     EVENT_SOURCE_REQUIREMENT,
     LOCAL_KNOWLEDGE_SOURCE_REQUIREMENT,
+    TARGETS,
     _call_chat_api,
+    _format_report,
     _load_case_suite_config,
     _required_live_sources,
     _source_requirement_ok,
@@ -85,6 +87,50 @@ def test_alpha_127_coverage_requires_all_languages_and_all_cases():
     assert full["passed"] is True
     assert partial_languages["passed"] is False
     assert short_count["passed"] is False
+
+
+def test_alpha_live_gate_uses_phase1_japanese_answer_target():
+    assert TARGETS["ja"] == 0.81
+
+    report = _format_report(
+        {
+            "ja": {
+                "metrics": {"answer_correctness": 0.81},
+                "requested_case_count": 1,
+                "collected_case_count": 1,
+                "evaluated_case_count": 1,
+                "collection_error_count": 0,
+                "ragas_error_count": 0,
+            }
+        },
+        {
+            "per_language": {
+                "ja": {
+                    "answer_correctness": {"actual": 0.81, "target": 0.81},
+                    "answer_target_passed": True,
+                    "evaluation_complete": {
+                        "requested": 1,
+                        "collected": 1,
+                        "evaluated": 1,
+                        "collection_errors": 0,
+                        "ragas_errors": 0,
+                        "passed": True,
+                    },
+                    "collection_errors": 0,
+                    "ragas_errors": 0,
+                    "source_failures": 0,
+                }
+            },
+            "failed_targets": [],
+            "failed_source_cases": [],
+            "all_targets_met": True,
+        },
+        ("ja",),
+        check_live_sources=True,
+        case_suite=CASE_SUITE_ALPHA_127,
+    )
+
+    assert "Targets: ja >= 0.81, en >= 0.75, zh >= 0.65, ko >= 0.65" in report
 
 
 def test_alpha_source_requirements_allow_live_metadata_aliases():
