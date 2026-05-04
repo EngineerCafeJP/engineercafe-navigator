@@ -96,7 +96,7 @@ OrchestratorAgent (LLM-based Supervisor Pattern routing)
     ├─→ FacilityAgent (Enhanced RAG: equipment, nearby, lost & found, parking)
     ├─→ EventAgent (Google Calendar ICS + Connpass API v2)
     ├─→ GeneralKnowledgeAgent (Web search: Tavily + memory queries)
-    ├─→ SlideAgent (Marp slide presentation + narration)
+    ├─→ SlideAgent (PDF slide guide + narration / slide Q&A)
     └─→ FarewellAgent (Departure flow: card return, belongings check)
     ↓
 Response Generation (OpenRouter LLM)

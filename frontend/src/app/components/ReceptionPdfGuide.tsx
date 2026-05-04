@@ -7,7 +7,6 @@
  */
 import { useKeyboardControls } from '@/app/hooks/useKeyboardControls';
 import { audioStateManager } from '@/lib/audio-state-manager';
-import type { LipSyncData } from '@/lib/audio/audio-playback-service';
 import { AudioPlaybackService } from '@/lib/audio/audio-playback-service';
 import {
   AudioInteractionManager,
@@ -16,7 +15,6 @@ import {
 import {
   RECEPTION_GUIDE_AUDIO_EXT,
   receptionGuideAudioPrefix,
-  receptionGuideLipsyncPrefix,
   receptionGuidePageStem,
   receptionGuidePdfUrl,
 } from '@/lib/reception/reception-pdf-constants';
@@ -30,6 +28,13 @@ import type { PresentationCompleteReason } from './presentation-types';
 
 const SLIDE_DELAY_MS = 500;
 const NARRATION_GAP_MS = 300;
+
+function toSameOriginUrl(path: string): string {
+  if (typeof window === 'undefined') {
+    return path;
+  }
+  return new URL(path, window.location.origin).toString();
+}
 
 function useLandscapeReady(): boolean {
   const [landscape, setLandscape] = useState(false);
@@ -117,17 +122,6 @@ function measurePdfWrapContent(
   return { width, height };
 }
 
-function parseLipSyncJson(raw: unknown): LipSyncData | null {
-  if (!raw || typeof raw !== 'object') {
-    return null;
-  }
-  const o = raw as Record<string, unknown>;
-  if (typeof o.duration !== 'number' || !Array.isArray(o.frames)) {
-    return null;
-  }
-  return { duration: o.duration, frames: o.frames as LipSyncData['frames'] };
-}
-
 interface ReceptionPdfGuideProps {
   language: 'ja' | 'en';
   rotateLandscapeHint: string;
@@ -179,6 +173,7 @@ export default function ReceptionPdfGuide({
   const autoPlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const narrationScheduleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const narrationAbortRef = useRef<AbortController | null>(null);
+  const preloadedAudioRef = useRef<Map<string, HTMLAudioElement>>(new Map());
 
   const playbackSessionRef = useRef(0);
   const isPlayingRef = useRef(isPlaying);
@@ -327,14 +322,53 @@ export default function ReceptionPdfGuide({
   }, []);
 
   useEffect(() => {
+    const preloadedAudio = preloadedAudioRef.current;
     return () => {
       try {
         window.speechSynthesis?.cancel();
       } catch {
         /* ignore */
       }
+      for (const audio of Array.from(preloadedAudio.values())) {
+        audio.pause();
+        audio.removeAttribute('src');
+        audio.load();
+      }
+      preloadedAudio.clear();
     };
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || totalPages <= 0) {
+      return;
+    }
+
+    const expected = new Set<string>();
+    const audioPrefix = receptionGuideAudioPrefix(language);
+    for (let page = 1; page <= totalPages; page += 1) {
+      const stem = receptionGuidePageStem(page);
+      const audioUrl = toSameOriginUrl(`${audioPrefix}/${stem}.${RECEPTION_GUIDE_AUDIO_EXT}`);
+      expected.add(audioUrl);
+      if (preloadedAudioRef.current.has(audioUrl)) {
+        continue;
+      }
+      const audio = new Audio(audioUrl);
+      audio.preload = 'auto';
+      audio.setAttribute('playsinline', 'true');
+      audio.setAttribute('webkit-playsinline', 'true');
+      audio.load();
+      preloadedAudioRef.current.set(audioUrl, audio);
+    }
+
+    for (const [url, audio] of Array.from(preloadedAudioRef.current.entries())) {
+      if (!expected.has(url)) {
+        audio.pause();
+        audio.removeAttribute('src');
+        audio.load();
+        preloadedAudioRef.current.delete(url);
+      }
+    }
+  }, [language, totalPages]);
 
   const tryConsumePendingAutoStart = useCallback(() => {
     if (
@@ -536,32 +570,13 @@ export default function ReceptionPdfGuide({
     const pageAtStart = currentPageRef.current;
     const stem = receptionGuidePageStem(pageAtStart);
     const audioPrefix = receptionGuideAudioPrefix(language);
-    const lipsyncPrefix = receptionGuideLipsyncPrefix(language);
-    const audioUrl = `${audioPrefix}/${stem}.${RECEPTION_GUIDE_AUDIO_EXT}`;
+    const audioUrl = toSameOriginUrl(`${audioPrefix}/${stem}.${RECEPTION_GUIDE_AUDIO_EXT}`);
 
     narrationAbortRef.current = new AbortController();
     const { signal } = narrationAbortRef.current;
 
     try {
-      const res = await fetch(audioUrl, { signal });
-      if (res.ok) {
-        const buf = await res.arrayBuffer();
-        if (!isActiveSession(sid) || currentPageRef.current !== pageAtStart) {
-          return;
-        }
-
-        let precomputed: LipSyncData | null = null;
-        try {
-          const lipRes = await fetch(`${lipsyncPrefix}/${stem}.json`, {
-            signal,
-          });
-          if (lipRes.ok) {
-            precomputed = parseLipSyncJson(await lipRes.json());
-          }
-        } catch {
-          /* optional */
-        }
-
+      if (preloadedAudioRef.current.has(audioUrl)) {
         if (!isActiveSession(sid) || currentPageRef.current !== pageAtStart) {
           return;
         }
@@ -570,10 +585,9 @@ export default function ReceptionPdfGuide({
         setIsNarrating(true);
         try {
           await AudioInteractionManager.getInstance().ensureAudioContext();
-          const result = await AudioPlaybackService.playAudioWithLipSync(buf, {
+          const result = await AudioPlaybackService.playAudioWithLipSync(audioUrl, {
             volume: volume / 100,
             enableLipSync: settings.enableLipSync,
-            precomputedLipSync: precomputed,
             onVisemeUpdate: onVisemeControl || undefined,
           });
           if (!result.success) {

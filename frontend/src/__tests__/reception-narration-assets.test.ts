@@ -36,5 +36,16 @@ for (const language of ['ja', 'en'] as const) {
     assert.equal(pdfPageCount, 5);
     assert.equal(markdownSlides.length, pdfPageCount);
     assert.equal(backendSlides.length, pdfPageCount);
+
+    for (let page = 1; page <= pdfPageCount; page += 1) {
+      const audioPath = path.join(
+        publicReceptionDir,
+        'audio',
+        language,
+        `${String(page).padStart(2, '0')}.mp3`,
+      );
+      assert.ok(fs.existsSync(audioPath), `missing narration audio: ${audioPath}`);
+      assert.ok(fs.statSync(audioPath).size > 100_000, `narration audio too small: ${audioPath}`);
+    }
   });
 }

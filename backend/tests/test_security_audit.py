@@ -93,17 +93,16 @@ def test_reception_endpoints_require_api_key(api_key_guard: dict[str, str]) -> N
     assert complete_without_key.status_code == 403
 
 
-def test_slides_content_requires_api_key(api_key_guard: dict[str, str]) -> None:
+def test_legacy_slides_content_removed(api_key_guard: dict[str, str]) -> None:
     response = client.post("/api/slides/content", json={"language": "ja"})
-    assert response.status_code == 403
+    assert response.status_code == 404
 
     authorized = client.post(
         "/api/slides/content",
         json={"language": "ja"},
         headers=api_key_guard,
     )
-    assert authorized.status_code == 200
-    assert authorized.json()["success"] is True
+    assert authorized.status_code == 404
 
 
 def test_voice_get_supported_languages(api_key_guard: dict[str, str]) -> None:

@@ -39,7 +39,6 @@ function shouldTraceUserAgent(pathname: string): boolean {
     pathname === '/api/qa' ||
     pathname === '/api/character' ||
     pathname === '/api/slides' ||
-    pathname === '/api/marp' ||
     pathname.startsWith('/api/reception/')
   );
 }
@@ -106,7 +105,6 @@ export const config = {
     '/api/qa',
     '/api/character',
     '/api/slides',
-    '/api/marp',
     '/api/reception/:path*',
   ],
 };

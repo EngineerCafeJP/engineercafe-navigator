@@ -122,7 +122,6 @@ test('/api/alerts/webhook is not matched by middleware config', () => {
     '/api/qa',
     '/api/character',
     '/api/slides',
-    '/api/marp',
     '/api/reception/:path*',
   ]);
   assert.equal(config.matcher.includes('/api/alerts/webhook'), false);

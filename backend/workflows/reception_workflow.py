@@ -17,9 +17,11 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from typing_extensions import TypedDict
 
+from backend.agents.general_knowledge_agent import GeneralKnowledgeAgent
 from backend.domain.reception.models import VisitPurpose
 from backend.domain.reception.service import ReceptionDomainService
 from backend.services.visitor_identification_service import VisitorIdentificationService
+from backend.utils.intent_classifier import is_assistant_profile_question
 from backend.utils import purpose_classifier as purpose_classifier_module
 from backend.utils.reception_templates import (
     get_personalized_greeting,
@@ -44,6 +46,12 @@ _PURPOSE_REQUEST_TYPE_MAP: dict[str, str] = {
     "consultation": "consultation",
     "other": "general",
 }
+
+
+def _assistant_profile_detour(user_response: str, language: str) -> Optional[str]:
+    if not is_assistant_profile_question(user_response.lower()):
+        return None
+    return GeneralKnowledgeAgent.assistant_profile_message(language)
 
 
 # =============================================================================
@@ -221,6 +229,16 @@ async def classify_purpose(state: ReceptionState) -> dict:
             "response": prompt.text,
             "reception_action": "clarify_purpose",
             "messages": [AIMessage(content=prompt.text)],
+        }
+
+    assistant_profile_response = _assistant_profile_detour(user_response, language)
+    if assistant_profile_response is not None:
+        return {
+            "purpose": state.get("purpose"),
+            "stage": "purpose_hearing",
+            "response": assistant_profile_response,
+            "reception_action": "answer_assistant_profile",
+            "messages": [AIMessage(content=assistant_profile_response)],
         }
 
     try:

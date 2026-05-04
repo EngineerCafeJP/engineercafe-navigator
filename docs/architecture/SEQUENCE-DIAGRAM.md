@@ -167,20 +167,20 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     actor User as ユーザー
-    participant Marp as MarpViewer
+    participant PdfGuide as ReceptionPdfGuide
     participant SlidesAPI as /api/slides
     participant Backend as バックエンド<br/>/api/slides
     participant SlideAgent as SlideAgent
 
-    User->>Marp: スライド操作（next/previous）またはスライド上で質問
-    Marp->>SlidesAPI: POST action, (question), language
+    User->>PdfGuide: スライド操作またはスライド上で質問
+    PdfGuide->>SlidesAPI: POST action, (question), language
     SlidesAPI->>Backend: プロキシ
     Backend->>SlideAgent: handle_slide_action(action, query, language)
     SlideAgent-->>Backend: answer, emotion, slideNumber, metadata
     Backend-->>SlidesAPI: success, answer, emotion, slideNumber
-    SlidesAPI-->>Marp: 応答
-    Marp->>Marp: スライド更新・音声再生（必要時）
-    Marp-->>User: 表示・音声
+    SlidesAPI-->>PdfGuide: 応答
+    PdfGuide->>PdfGuide: PDF 表示・静的音声再生（必要時）
+    PdfGuide-->>User: 表示・音声
 ```
 
 ---

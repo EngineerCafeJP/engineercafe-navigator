@@ -304,6 +304,26 @@ class TestClassifyPurposeNode:
         assert result["purpose"]["category"] == "tour"
 
     @pytest.mark.asyncio
+    async def test_assistant_profile_question_detours_without_classification(self):
+        """Assistant identity questions are answered without advancing reception."""
+        from backend.workflows.reception_workflow import classify_purpose
+
+        state = _make_initial_state(language="ja")
+        state["stage"] = "purpose_hearing"
+        state["messages"] = [HumanMessage(content="あなたの名前は？")]
+
+        with patch(
+            "backend.utils.purpose_classifier.classify_purpose",
+            new_callable=AsyncMock,
+            side_effect=AssertionError("purpose classifier must not be called"),
+        ):
+            result = await classify_purpose(state)
+
+        assert result["stage"] == "purpose_hearing"
+        assert result["reception_action"] == "answer_assistant_profile"
+        assert "エンナビ" in result["response"]
+
+    @pytest.mark.asyncio
     async def test_classify_purpose_no_human_message_defaults_other(self):
         """When no human message is present, stay in purpose_hearing and re-prompt."""
         from backend.workflows.reception_workflow import classify_purpose

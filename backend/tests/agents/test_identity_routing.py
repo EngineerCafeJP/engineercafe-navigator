@@ -7,7 +7,7 @@ See issue #615.
 
 Coverage:
 - Fast-path detection in ja/en/ko/zh (multilingual identity + capability queries)
-- _assistant_profile_response returns hardcoded "Engineer Cafe Navigator" text
+- _assistant_profile_response returns hardcoded "エンナビ" text
   in all four languages, never calls web_search or any LLM provider
 - Visitor self-introduction ("私の名前は田中です") is NOT misrouted
 - Returned metadata has web_search_used=False and provider_called=False
@@ -198,10 +198,10 @@ class TestAssistantProfileResponse:
             query_type="assistant_profile",
         )
 
-        # Hardcoded brand string MUST appear, regardless of language.
-        assert (
-            "Engineer Cafe Navigator" in result["answer"]
-        ), f"[{language}] response missing brand identity: {result['answer']!r}"
+        # Hardcoded name string MUST appear, localized by language.
+        assert any(
+            name in result["answer"] for name in ("エンナビ", "EnNavi", "엔나비")
+        ), f"[{language}] response missing fixed name: {result['answer']!r}"
 
         # Provider/web_search must not have been touched.
         gka.provider.generate.assert_not_called()
@@ -230,5 +230,5 @@ class TestAssistantProfileResponse:
         # SupportedLanguage is Literal["ja","en","zh","ko"]; passing an unknown
         # value is a defensive guard. We expect the ja fallback string.
         result = gka._assistant_profile_response("xx")  # type: ignore[arg-type]
-        assert "Engineer Cafe Navigator" in result["answer"]
+        assert "エンナビ" in result["answer"]
         assert result["metadata"]["web_search_used"] is False

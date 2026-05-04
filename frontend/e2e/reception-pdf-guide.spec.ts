@@ -2,7 +2,6 @@ import { expect, test } from '@playwright/test';
 
 /**
  * Reception PDF slide guide (ReceptionPdfGuide + autoStartPresentation).
- * Requires default PDF renderer (NEXT_PUBLIC_RECEPTION_SLIDE_RENDERER !== marp).
  */
 
 async function dismissInitialModal(page: import('@playwright/test').Page) {
@@ -41,10 +40,6 @@ async function mockReceptionApis(page: import('@playwright/test').Page) {
 
 test.describe('Reception PDF guide', () => {
   test.beforeEach(async ({ page }) => {
-    test.skip(
-      process.env.NEXT_PUBLIC_RECEPTION_SLIDE_RENDERER === 'marp',
-      'PDF guide tests require PDF renderer',
-    );
     await mockReceptionApis(page);
     await page.goto('/');
     await dismissInitialModal(page);

@@ -40,7 +40,7 @@ Engineer Cafe Navigator は 2 層構成の API を採用しています。
 フロントエンドの `/api/*` route は、そのままバックエンドそのものではありません。
 
 - `/api/voice`、`/api/qa`、`/api/slides`、`/api/character`、`/api/ocr`、`/api/reception/*` はバックエンド route への proxy です。
-- `/api/marp` はフロントエンド専用のレンダリング endpoint です。バックエンド `/api/slides/content` から markdown を取得し、`MarpProcessor` で HTML 化します。
+- 受付スライド表示は `frontend/public/reception` の静的 PDF と、`frontend/public/reception/audio` の事前生成済みページ別音声を使います。
 - `/api/admin/*` は edge 保護されたフロントエンド admin route です。バックエンドへ proxy するものと、フロントエンド側の admin utility を使うものがあります。
 
 ## フロントエンド API
@@ -92,66 +92,11 @@ Engineer Cafe Navigator は 2 層構成の API を採用しています。
 }
 ```
 
-### POST /api/marp
-
-フロントエンド専用の Marp レンダリング endpoint です。
-
-現在の処理フロー:
-
-1. `{ "language": "ja" }` または `{ "language": "en" }` を受け取る
-2. バックエンド `POST /api/slides/content` を呼ぶ
-3. 返却された markdown を `MarpProcessor` で処理する
-4. レンダリング済み HTML、解析済み slide data、narration data を返す
-
-リクエスト例:
-
-```json
-{
-  "language": "ja"
-}
-```
-
-レスポンス例:
-
-```json
-{
-  "success": true,
-  "html": "<!DOCTYPE html><html>...</html>",
-  "slideData": {
-    "slides": [
-      {
-        "slideNumber": 1,
-        "title": "Engineer Cafe"
-      }
-    ]
-  },
-  "narrationData": {
-    "metadata": {
-      "title": "Engineer Cafe"
-    }
-  },
-  "slideCount": 12,
-  "metadata": {
-    "language": "ja",
-    "title": "Engineer Cafe"
-  }
-}
-```
-
-`GET /api/marp` は簡易ステータスを返します。
-
-```json
-{
-  "status": "ok",
-  "backend": "connected"
-}
-```
-
 ### POST /api/slides
 
 バックエンド `POST /api/slides` への proxy です。
 
-この route はスライド移動、ナレーション、スライド内質問のための endpoint です。Marp レンダリング用 endpoint ではありません。
+この route は SlideAgent のナレーションとスライド内質問のための endpoint です。キオスクのスライド表示 UI は静的 PDF ガイドを使います。
 
 現在のバックエンドでサポートされる action:
 
@@ -380,14 +325,6 @@ LangGraph を直接実行する endpoint です。
   }
 }
 ```
-
-### 内部用スライド helper
-
-`POST /api/slides/content` はフロントエンド `/api/marp` が使う内部向け backend helper です。
-
-- request body: `{ "language": "ja" }`
-- raw markdown と narration data を返します
-- 公開 Marp render endpoint そのものではありません
 
 ## Admin API
 

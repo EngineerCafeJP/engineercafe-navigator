@@ -1,10 +1,10 @@
 import { expect, test } from '@playwright/test';
 import { dismissInitialSettingsModal } from './helpers/home';
-import { gotoGuide } from './helpers/marp';
 
 test.describe('Navigation', () => {
   test('opens the onboarding guide and returns to the reception screen', async ({ page }) => {
-    await gotoGuide(page, 'ja');
+    await page.goto('/onboarding?lang=ja');
+    await expect(page.getByTestId('customer-guide-shell')).toBeVisible({ timeout: 15_000 });
     await Promise.all([
       page.waitForURL(/\/$/, { timeout: 60_000, waitUntil: 'domcontentloaded' }),
       page.getByTestId('guide-back-button').click(),

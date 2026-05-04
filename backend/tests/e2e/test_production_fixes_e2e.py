@@ -4,7 +4,7 @@ Production Fixes E2E Tests
 3 critical production issues の修正を検証するテストスイート:
 1. Checkpointer: AsyncPostgresSaver context manager fix
 2. TTS: VoiceVox/Kokoro sidecar TTS パイプライン
-3. Marp API: フロントエンド slide rendering の再有効化
+3. PDF slide guide: static PDF rendering and narration assets
 
 テスト分類:
 - マーカーなし: モック使用、外部サービス不要（CI で常時実行可）
@@ -803,38 +803,45 @@ class TestChatE2E:
 
 
 # ---------------------------------------------------------------------------
-# 6. Marp API E2E Tests (Frontend)
+# 6. PDF slide guide asset tests (Frontend)
 # ---------------------------------------------------------------------------
 
 
-class TestMarpAPIUnit:
-    """Marp API (frontend) の現状検証"""
+class TestPdfSlideGuideUnit:
+    """PDF slide guide frontend assets are present."""
 
-    def test_marp_route_file_exists(self):
-        """Marp API の route.ts ファイルが存在すること"""
+    def test_reception_pdf_guide_component_exists(self):
+        component_path = os.path.join(
+            _PROJECT_ROOT, "frontend", "src", "app", "components", "ReceptionPdfGuide.tsx"
+        )
+        assert os.path.exists(component_path), f"PDF guide component not found: {component_path}"
+
+    def test_reception_pdf_assets_exist(self):
+        for language in ("ja", "en"):
+            pdf_path = os.path.join(
+                _PROJECT_ROOT, "frontend", "public", "reception", f"engineer-cafe-{language}.pdf"
+            )
+            assert os.path.exists(pdf_path), f"PDF asset not found: {pdf_path}"
+
+    def test_static_narration_assets_exist(self):
+        for language in ("ja", "en"):
+            for slide_number in range(1, 6):
+                audio_path = os.path.join(
+                    _PROJECT_ROOT,
+                    "frontend",
+                    "public",
+                    "reception",
+                    "audio",
+                    language,
+                    f"{slide_number:02d}.mp3",
+                )
+                assert os.path.getsize(audio_path) > 100_000
+
+    def test_legacy_slide_render_route_removed(self):
         route_path = os.path.join(
             _PROJECT_ROOT, "frontend", "src", "app", "api", "marp", "route.ts"
         )
-        assert os.path.exists(route_path), f"Marp route file not found: {route_path}"
-
-    def test_marp_route_contains_post_handler(self):
-        """route.ts に POST ハンドラーが定義されていること"""
-        route_path = os.path.join(
-            _PROJECT_ROOT, "frontend", "src", "app", "api", "marp", "route.ts"
-        )
-        with open(route_path, "r", encoding="utf-8") as f:
-            content = f.read()
-        assert "export async function POST" in content
-
-    def test_marp_route_proxies_to_backend(self):
-        """Marp API がバックエンドプロキシとして実装されていること"""
-        route_path = os.path.join(
-            _PROJECT_ROOT, "frontend", "src", "app", "api", "marp", "route.ts"
-        )
-        with open(route_path, "r", encoding="utf-8") as f:
-            content = f.read()
-        assert "backendFetch" in content, "Marp route should proxy to backend via backendFetch"
-        assert "503" not in content, "Marp route should not return hardcoded 503"
+        assert not os.path.exists(route_path), f"Legacy slide render route should be removed: {route_path}"
 
 
 # ---------------------------------------------------------------------------

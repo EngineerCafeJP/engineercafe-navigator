@@ -16,12 +16,14 @@ from typing import TYPE_CHECKING, Any, Literal, Optional
 from fastapi import APIRouter, HTTPException, Path, Query
 from pydantic import BaseModel, Field
 
+from backend.agents.general_knowledge_agent import GeneralKnowledgeAgent
 from backend.domain.reception.models import (
     ReceptionSession,
     VisitPurpose,
     VisitorIdentity,
     VisitorType,
 )
+from backend.utils.intent_classifier import is_assistant_profile_question
 from backend.utils.purpose_classifier import classify_purpose as canonical_classify_purpose
 from backend.utils.reception_templates import (
     get_purpose_followup,
@@ -529,6 +531,13 @@ async def respond_reception(request: ReceptionRespondRequest) -> ReceptionRespon
         )
 
     if current_stage == "purpose_hearing":
+        if is_assistant_profile_question(request.message.lower()):
+            return ReceptionRespondResponse(
+                response=GeneralKnowledgeAgent.assistant_profile_message(language),
+                stage=session.stage,
+                next_action="answer_assistant_profile",
+            )
+
         try:
             category, detail, confidence = await canonical_classify_purpose(
                 request.message,

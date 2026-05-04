@@ -213,6 +213,34 @@ class TestRespondReception:
         assert data["stage"] == "routing"
         assert data["purpose"]["category"] == "facility_use"
 
+    def test_assistant_profile_question_does_not_advance_purpose_hearing(self):
+        start = _start_session(session_id="s1")
+        rid = start["reception_session_id"]
+
+        client.post(
+            "/api/reception/respond",
+            json={"session_id": "s1", "reception_session_id": rid, "message": "初めて来ました"},
+        )
+        with patch(
+            "backend.api.reception.canonical_classify_purpose",
+            new_callable=AsyncMock,
+            side_effect=AssertionError("purpose classifier must not be called"),
+        ):
+            response = client.post(
+                "/api/reception/respond",
+                json={
+                    "session_id": "s1",
+                    "reception_session_id": rid,
+                    "message": "あなたの名前は？",
+                },
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["stage"] == "purpose_hearing"
+        assert data["next_action"] == "answer_assistant_profile"
+        assert "エンナビ" in data["response"]
+
     def test_respond_with_event_purpose_classified(self):
         start = _start_session(session_id="s1", language="en")
         rid = start["reception_session_id"]

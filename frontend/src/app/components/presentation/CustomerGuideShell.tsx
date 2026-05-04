@@ -5,7 +5,7 @@ import { ArrowLeft, Languages } from 'lucide-react';
 import { useState } from 'react';
 
 import CharacterAvatar from '@/app/components/CharacterAvatar';
-import MarpViewer from '@/app/components/MarpViewer';
+import ReceptionPdfGuide from '@/app/components/ReceptionPdfGuide';
 
 const guideCopy = {
   ja: {
@@ -17,6 +17,7 @@ const guideCopy = {
     agenda: ['施設の概要', '文化財での利用マナー', '会員登録の流れ', '次回以降の受付'],
     back: '受付画面に戻る',
     toggle: '英語に切り替え',
+    rotate: 'ガイドを見るには端末を横向きにしてください。',
   },
   en: {
     badge: 'Customer Surface',
@@ -27,6 +28,7 @@ const guideCopy = {
     agenda: ['Facility overview', 'Etiquette and terms', 'Registration flow', 'Future check-in process'],
     back: 'Back to reception',
     toggle: 'Switch to Japanese',
+    rotate: 'Please rotate your device sideways to view the guide.',
   },
 } as const;
 
@@ -121,10 +123,12 @@ export default function CustomerGuideShell({
           </section>
 
           <section className="min-h-[560px] overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-            <MarpViewer
+            <ReceptionPdfGuide
               language={language}
-              autoPlay={autoPlay}
-              surface="customer"
+              rotateLandscapeHint={copy.rotate}
+              autoStartKey={autoPlay ? 1 : undefined}
+              className="h-full"
+              sessionId="customer-guide"
               onVisemeControl={setViseme}
               onExpressionControl={setExpression}
             />

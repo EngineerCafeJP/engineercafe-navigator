@@ -338,7 +338,7 @@ make debug-agent   # インタラクティブなエージェントデバッガ�
 engineer-cafe-navigator2025/
 ├── frontend/          Next.js 15 (App Router) + TypeScript
 │   ├── src/app/       ページと API ルート
-│   ├── src/app/api/   APIルートハンドラ (voice, slides, marp, qa, character, calendar, admin)
+│   ├── src/app/api/   APIルートハンドラ (voice, slides, qa, character, calendar, admin)
 │   ├── src/lib/       共通ライブラリ (audio, memory, STT補正 など)
 │   └── e2e/           Playwright E2E テスト
 │
@@ -369,10 +369,11 @@ engineer-cafe-navigator2025/
 
 | エンドポイント | 場所 | 目的 |
 |--------------|------|------|
-| `/api/marp` | フロントエンド | Markdown → HTML レンダリング (スライド表示) |
-| `/api/slides` | バックエンド | ナレーション / ナビゲーション |
+| 静的 PDF (`/reception/*.pdf`) | フロントエンド | スライド表示 |
+| 静的音声 (`/reception/audio/*/*.mp3`) | フロントエンド | ページ別ナレーション |
+| `/api/slides` | バックエンド | SlideAgent のナレーション / スライド内質問 |
 
-この2つは別物です。混同しないように注意してください。
+表示は PDF、質問応答は SlideAgent という役割分担です。
 
 ### データフローの概要
 
@@ -380,7 +381,7 @@ engineer-cafe-navigator2025/
 音声:     ブラウザ → /api/voice (FE proxy) → Backend STT/TTS → ブラウザ
 Q&A:      ブラウザ → /api/qa (FE proxy) → Backend /api/chat → LangGraph → RAG/Web検索 → レスポンス
 カレンダー: ブラウザ → /api/calendar (FE proxy) → Backend /api/calendar → Google Calendar ICS
-スライド:  Marp markdown → /api/marp (FE) → HTML レンダリング → MarpViewer
+スライド:  静的 PDF + 事前生成音声 → ReceptionPdfGuide
 ```
 
 ---

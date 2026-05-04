@@ -119,10 +119,27 @@ interface VoiceInterfaceProps {
   onVoiceTurnThinkingVisual?: () => void;
   /** Optional VRM hook when assistant audio is about to play (after filler). */
   onVoiceTurnAssistantSpeakingVisual?: () => void;
+  /** Consumes SlideAgent responses so the kiosk can open the PDF guide instead of speaking slide text. */
+  onSlideAgentResponse?: (payload: {
+    answer: string;
+    metadata: VoiceInterfaceMetadata | null;
+  }) => void;
 }
 
 const DEFAULT_WAKE_WORDS = ['すみません', 'hello'];
 const VISITOR_ID_STORAGE_KEY = 'engineer_cafe_visitor_id';
+
+function isSlideAgentMetadata(metadata: VoiceInterfaceMetadata | null): boolean {
+  if (!metadata) {
+    return false;
+  }
+  return (
+    metadata.agent === 'SlideAgent' ||
+    metadata.route === 'slide' ||
+    metadata.reception_target_agent === 'slide_agent' ||
+    metadata.reception_target_agent === 'SlideAgent'
+  );
+}
 
 const STATUS_LABELS: Record<'ja' | 'en', Record<VoiceSessionState, string>> = {
   ja: {
@@ -274,6 +291,7 @@ export default function VoiceInterface({
   onAssistantPlaybackEnd,
   onVoiceTurnThinkingVisual,
   onVoiceTurnAssistantSpeakingVisual,
+  onSlideAgentResponse,
 }: VoiceInterfaceProps) {
   const skipAssistantTurnAutoResume = !autoResumeListeningAfterAssistant;
   const [currentLanguage, setCurrentLanguage] = useState<'ja' | 'en'>(language);
@@ -777,8 +795,18 @@ export default function VoiceInterface({
         );
         const cleanAnswer = parsedAnswer.cleanText;
 
+        const qaMeta = (qaResult.metadata as VoiceInterfaceMetadata | null) ?? null;
         setResponse(cleanAnswer);
-        setMetadata((qaResult.metadata as VoiceInterfaceMetadata | null) ?? null);
+        setMetadata(qaMeta);
+
+        if (onSlideAgentResponse && isSlideAgentMetadata(qaMeta)) {
+          fillerGate.close();
+          void fillerTask.catch(() => {});
+          cancelFastFiller();
+          onSlideAgentResponse({ answer: cleanAnswer, metadata: qaMeta });
+          voiceController.notifySpeakingComplete(true);
+          return;
+        }
 
         const ttsBody: Record<string, unknown> = {
           action: 'text_to_speech',
@@ -814,7 +842,6 @@ export default function VoiceInterface({
         // Filler runs in parallel; do not await — slow filler must not delay main TTS enqueue.
         void fillerTask.catch(() => {});
 
-        const qaMeta = (qaResult.metadata as VoiceInterfaceMetadata | null) ?? null;
         const playbackMetadata = mergePlaybackMetadataWithTtsVrmControl(qaMeta, ttsResult);
 
         if (isMuted) {
@@ -912,6 +939,7 @@ export default function VoiceInterface({
       ensureVisitorId,
       isMuted,
       onAssistantPlaybackStart,
+      onSlideAgentResponse,
       onVisemeControl,
       onVoiceTurnAssistantSpeakingVisual,
       onVoiceTurnThinkingVisual,
@@ -977,8 +1005,16 @@ export default function VoiceInterface({
         );
         const cleanAnswer = parsedAnswer.cleanText;
 
+        const qaMeta = (qaResult.metadata as VoiceInterfaceMetadata | null) ?? null;
         setResponse(cleanAnswer);
-        setMetadata((qaResult.metadata as VoiceInterfaceMetadata | null) ?? null);
+        setMetadata(qaMeta);
+
+        if (onSlideAgentResponse && isSlideAgentMetadata(qaMeta)) {
+          cancelFastFiller();
+          onSlideAgentResponse({ answer: cleanAnswer, metadata: qaMeta });
+          voiceController.notifySpeakingComplete(true);
+          return;
+        }
 
         const ttsBody: Record<string, unknown> = {
           action: 'text_to_speech',
@@ -1010,7 +1046,6 @@ export default function VoiceInterface({
           throw ttsError;
         }
 
-        const qaMeta = (qaResult.metadata as VoiceInterfaceMetadata | null) ?? null;
         const playbackMetadata = mergePlaybackMetadataWithTtsVrmControl(qaMeta, ttsResult);
 
         if (typeof ttsResult.audioResponse === 'string' && ttsResult.audioResponse.length > 0) {
@@ -1044,6 +1079,7 @@ export default function VoiceInterface({
       cancelFastFiller,
       currentLanguage,
       ensureVisitorId,
+      onSlideAgentResponse,
       playAssistantAudio,
       scheduleFastFiller,
       skipAssistantTurnAutoResume,

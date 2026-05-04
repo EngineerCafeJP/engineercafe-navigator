@@ -45,49 +45,6 @@ export const MOCK_EDITOR_CONFIG = {
 };
 
 /**
- * Marp レスポンスのモックデータ
- */
-export const MOCK_MARP_RESPONSE = {
-  success: true,
-  html: `<!DOCTYPE html><html><head><title>Slides</title></head><body>
-    <div class="marpit">
-      <svg id="slide1"><text>Slide 1 Content</text></svg>
-      <svg id="slide2"><text>Slide 2 Content</text></svg>
-      <svg id="slide3"><text>Slide 3 Content</text></svg>
-    </div>
-  </body></html>`,
-  slideData: {
-    slides: [
-      { slideNumber: 1, title: 'スライド1', content: '内容1', notes: 'ノート1' },
-      { slideNumber: 2, title: 'スライド2', content: '内容2', notes: '' },
-      { slideNumber: 3, title: 'スライド3', content: '内容3', notes: '' },
-    ],
-  },
-  narrationData: {
-    metadata: { title: 'テスト', language: 'ja', speaker: 'sakura', version: '1' },
-    slides: [
-      {
-        slideNumber: 1,
-        narration: { auto: 'ナレーション1', onEnter: '', onDemand: {} },
-        transitions: { next: 'next', previous: null },
-      },
-      {
-        slideNumber: 2,
-        narration: { auto: 'ナレーション2', onEnter: '', onDemand: {} },
-        transitions: { next: 'next', previous: 'prev' },
-      },
-      {
-        slideNumber: 3,
-        narration: { auto: '', onEnter: '', onDemand: {} },
-        transitions: { next: null, previous: 'prev' },
-      },
-    ],
-  },
-  slideCount: 3,
-  metadata: { title: 'テストスライド', language: 'ja' },
-};
-
-/**
  * 音声レスポンスのモックデータ
  * 最小の有効な MP3: ID3 ヘッダ + 1フレーム（無音）
  */
@@ -127,19 +84,6 @@ export async function setupKnowledgeMocks(page: Page) {
     }
     return route.continue();
   });
-}
-
-/**
- * Marp API ルートをモック
- */
-export async function setupMarpMocks(page: Page) {
-  await page.route('/api/marp', (route) => route.fulfill({ json: MOCK_MARP_RESPONSE }));
-
-  await page.route('/api/voice', (route) => route.fulfill({ json: MOCK_VOICE_RESPONSE }));
-
-  await page.route('/api/slides', (route) =>
-    route.fulfill({ json: { success: true } }),
-  );
 }
 
 /**

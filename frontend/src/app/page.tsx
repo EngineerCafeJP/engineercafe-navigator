@@ -33,7 +33,6 @@ import { KioskBottomBar } from './components/KioskBottomBar';
 import { KioskOcrOverlay } from './components/KioskOcrOverlay';
 import { KioskWelcomeOverlay } from './components/KioskWelcomeOverlay';
 import InitialSettingsModal from './components/InitialSettingsModal';
-import MarpViewer from './components/MarpViewer';
 import ReceptionPdfGuide from './components/ReceptionPdfGuide';
 import ClockBadge from './components/ClockBadge';
 import SettingsPanel, {
@@ -46,10 +45,6 @@ import VoiceInterface, {
 import type { OcrResponse } from '@/lib/api/ocr-api';
 import { startReception } from '@/lib/reception-api';
 import { cancelSttWarmup, sendSttWarmup } from '@/lib/stt-warmup';
-
-const kioskReceptionSlidesUsePdf =
-  process.env.NEXT_PUBLIC_RECEPTION_SLIDE_RENDERER !== 'marp';
-
 
 function kioskVoiceModeBadgeLabel(
   voice: VoiceInterfaceRenderProps,
@@ -314,6 +309,18 @@ export default function Home() {
     returnToIdle();
   }, [returnToIdle]);
 
+  const isSlideAgentMetadata = useCallback((metadata: VoiceInterfaceMetadata | null): boolean => {
+    if (!metadata) {
+      return false;
+    }
+    return (
+      metadata.agent === 'SlideAgent' ||
+      metadata.route === 'slide' ||
+      metadata.reception_target_agent === 'slide_agent' ||
+      metadata.reception_target_agent === 'SlideAgent'
+    );
+  }, []);
+
   return (
     <>
       <InitialSettingsModal
@@ -335,7 +342,15 @@ export default function Home() {
         }
         onVisemeControl={setVisemeFunction}
         showDefaultUI={false}
-        onMetadataChange={setLatestMetadata}
+        onMetadataChange={(metadata) => {
+          setLatestMetadata(metadata);
+          if (isSlideAgentMetadata(metadata)) {
+            startPresentation(currentLanguage);
+          }
+        }}
+        onSlideAgentResponse={() => {
+          startPresentation(currentLanguage);
+        }}
         onAssistantPlaybackEnd={() => {
           if (kioskPhaseRef.current === 'voice') {
             scheduleReturnToIdle();
@@ -689,75 +704,39 @@ export default function Home() {
                 />
 
                 {showSlideMode ? (
-                  kioskReceptionSlidesUsePdf ? (
+                  <div
+                    className="pointer-events-none absolute inset-0 z-50 flex h-full w-full flex-col"
+                    style={screenPadding}
+                  >
                     <div
-                      className="pointer-events-none absolute inset-0 z-50 flex h-full w-full flex-col"
-                      style={screenPadding}
+                      className="pointer-events-auto relative flex h-full min-h-0 w-full flex-col overflow-hidden rounded-2xl bg-white/95 shadow-2xl transition-all duration-300 ease-out sm:rounded-[28px]"
+                      onPointerDownCapture={bumpUserActivity}
                     >
-                      <div
-                        className="pointer-events-auto relative flex h-full min-h-0 w-full flex-col overflow-hidden rounded-2xl bg-white/95 shadow-2xl transition-all duration-300 ease-out sm:rounded-[28px]"
-                        onPointerDownCapture={bumpUserActivity}
+                      <button
+                        type="button"
+                        onClick={handleCloseSlides}
+                        aria-label={labels.closeSlides}
+                        className="absolute right-2 top-2 z-30 inline-flex size-9 items-center justify-center rounded-full bg-black/70 text-white shadow-lg transition-transform duration-200 ease-out hover:scale-105 sm:right-3 sm:top-3 sm:size-10"
                       >
-                        <button
-                          type="button"
-                          onClick={handleCloseSlides}
-                          aria-label={labels.closeSlides}
-                          className="absolute right-2 top-2 z-30 inline-flex size-9 items-center justify-center rounded-full bg-black/70 text-white shadow-lg transition-transform duration-200 ease-out hover:scale-105 sm:right-3 sm:top-3 sm:size-10"
-                        >
-                          <X className="size-4 sm:size-5" />
-                        </button>
-                        <ReceptionPdfGuide
-                          language={voice.currentLanguage}
-                          rotateLandscapeHint={labels.slideRotateHint}
-                          autoStartKey={presentationAutoStartKey}
-                          className="min-h-0 flex-1"
-                          sessionId={voice.sessionId}
-                          onVisemeControl={setVisemeFunction}
-                          onExpressionControl={setExpressionFunction}
-                          volume={Math.round(voice.volume * 100)}
-                          onPresentationComplete={() => {
-                            if (kioskPhaseRef.current === 'slides') {
-                              scheduleReturnToIdle();
-                            }
-                          }}
-                        />
-                      </div>
+                        <X className="size-4 sm:size-5" />
+                      </button>
+                      <ReceptionPdfGuide
+                        language={voice.currentLanguage}
+                        rotateLandscapeHint={labels.slideRotateHint}
+                        autoStartKey={presentationAutoStartKey}
+                        className="min-h-0 flex-1"
+                        sessionId={voice.sessionId}
+                        onVisemeControl={setVisemeFunction}
+                        onExpressionControl={setExpressionFunction}
+                        volume={Math.round(voice.volume * 100)}
+                        onPresentationComplete={() => {
+                          if (kioskPhaseRef.current === 'slides') {
+                            scheduleReturnToIdle();
+                          }
+                        }}
+                      />
                     </div>
-                  ) : (
-                    <div
-                      className="pointer-events-none absolute inset-y-0 right-0 z-50 flex w-full justify-end"
-                      style={screenPadding}
-                    >
-                      <div
-                        className="pointer-events-auto flex h-full w-full max-w-6xl transform-gpu rounded-[32px] bg-white/95 shadow-2xl transition-all duration-300 ease-out"
-                        onPointerDownCapture={bumpUserActivity}
-                      >
-                        <div className="relative flex h-full w-full flex-col overflow-hidden rounded-[32px]">
-                          <button
-                            type="button"
-                            onClick={handleCloseSlides}
-                            aria-label={labels.closeSlides}
-                            className="absolute right-4 top-4 z-10 inline-flex size-11 items-center justify-center rounded-full bg-black/70 text-white shadow-lg transition-transform duration-200 ease-out hover:scale-105"
-                          >
-                            <X className="size-5" />
-                          </button>
-                          <div className="h-full w-full pt-4">
-                            <MarpViewer
-                              language={voice.currentLanguage}
-                              onVisemeControl={setVisemeFunction}
-                              onExpressionControl={setExpressionFunction}
-                              volume={Math.round(voice.volume * 100)}
-                              onPresentationComplete={() => {
-                                if (kioskPhaseRef.current === 'slides') {
-                                  scheduleReturnToIdle();
-                                }
-                              }}
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )
+                  </div>
                 ) : null}
               </main>
             </>

@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { ArrowRight, FlaskConical } from 'lucide-react';
 
 import CharacterAvatar from '@/app/components/CharacterAvatar';
-import MarpViewer from '@/app/components/MarpViewer';
+import ReceptionPdfGuide from '@/app/components/ReceptionPdfGuide';
 
 export default function AvatarLabShell() {
   return (
@@ -61,7 +61,7 @@ export default function AvatarLabShell() {
                   'Keyframe: JSON animation playback',
                   'Background / lighting tuning',
                   'Audio mute / volume checks',
-                  'Slide viewer settings and debug panel',
+                  'PDF slide guide and static narration checks',
                 ].map((item) => (
                   <div key={item} className="rounded-2xl bg-slate-100 px-4 py-3 text-sm text-slate-800">
                     {item}
@@ -74,7 +74,12 @@ export default function AvatarLabShell() {
               className="min-h-[320px] overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm"
               data-testid="avatar-lab-slide-stage"
             >
-              <MarpViewer language="ja" surface="developer" />
+              <ReceptionPdfGuide
+                language="ja"
+                rotateLandscapeHint="スライド確認には端末を横向きにしてください。"
+                className="h-[420px]"
+                sessionId="avatar-lab"
+              />
             </section>
           </section>
         </div>

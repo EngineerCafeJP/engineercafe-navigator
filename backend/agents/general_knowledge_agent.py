@@ -646,25 +646,31 @@ class GeneralKnowledgeAgent:
     # leaked "I am trained by Google..." into identity replies.
     _ASSISTANT_PROFILE_MESSAGES: Dict[str, str] = {
         "ja": (
-            "私は Engineer Cafe Navigator です。福岡市のエンジニアカフェの受付キオスク"
-            "として、施設利用、イベント、会員証、Wi-Fi、スライド案内に加えて、"
+            "私はエンナビです。福岡市のエンジニアカフェの受付キオスクとして、"
+            "施設利用、イベント、会員証、Wi-Fi、スライド案内に加えて、"
             "受付でよくある日常的な質問にもお答えします。"
+            "「Wi-Fiを教えて」「イベントに参加したい」「施設を使いたい」のように聞いてください。"
         ),
         "en": (
-            "I am Engineer Cafe Navigator, the reception kiosk for Engineer Cafe in "
+            "I am EnNavi, the reception kiosk for Engineer Cafe in "
             "Fukuoka. I can help with facilities, events, membership check-in, Wi-Fi, "
             "slide guidance, and everyday questions visitors commonly ask at reception."
         ),
         "ko": (
-            "저는 Engineer Cafe Navigator 입니다. 후쿠오카의 엔지니어 카페 안내 키오스크로서, "
+            "저는 엔나비입니다. 후쿠오카의 엔지니어 카페 안내 키오스크로서, "
             "시설 이용, 이벤트, 회원증, Wi-Fi, 슬라이드 안내와 함께 접수처에서 자주 받는 "
             "일상적인 질문에도 답해 드립니다."
         ),
         "zh": (
-            "我是 Engineer Cafe Navigator，福冈工程师咖啡馆的前台导览终端。我可以为您介绍"
+            "我是 EnNavi，福冈工程师咖啡馆的前台导览终端。我可以为您介绍"
             "设施使用、活动信息、会员证、Wi-Fi、幻灯片导览，以及前台常见的日常问题。"
         ),
     }
+
+    @classmethod
+    def assistant_profile_message(cls, language: str) -> str:
+        """Return the deterministic assistant self-introduction without constructing an agent."""
+        return cls._ASSISTANT_PROFILE_MESSAGES.get(language, cls._ASSISTANT_PROFILE_MESSAGES["ja"])
 
     def _assistant_profile_response(self, language: SupportedLanguage) -> Dict[str, Any]:
         """Return the hardcoded self-introduction; never calls any LLM/web_search.
@@ -675,9 +681,7 @@ class GeneralKnowledgeAgent:
         Returns:
             Response dict with metadata.web_search_used=False and provider_called=False.
         """
-        message = self._ASSISTANT_PROFILE_MESSAGES.get(
-            language, self._ASSISTANT_PROFILE_MESSAGES["ja"]
-        )
+        message = self.assistant_profile_message(language)
         logger.info(
             "Identity fast-path response served (language=%s, no LLM, no web_search)",
             language,

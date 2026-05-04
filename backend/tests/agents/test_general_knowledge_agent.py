@@ -118,7 +118,7 @@ class TestGeneralKnowledgeAgent:
     def test_assistant_profile_response_never_self_discloses_provider(self):
         response = self.agent._assistant_profile_response("ja")
 
-        assert "Engineer Cafe Navigator" in response["answer"]
+        assert "エンナビ" in response["answer"]
         assert "Google" not in response["answer"]
         assert "OpenAI" not in response["answer"]
         assert response["metadata"]["query_type"] == "assistant_profile"

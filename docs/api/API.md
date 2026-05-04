@@ -40,7 +40,7 @@ Notes:
 Frontend `/api/*` routes are not the backend itself. They are a proxy and integration layer:
 
 - `/api/voice`, `/api/qa`, `/api/slides`, `/api/character`, `/api/ocr`, and `/api/reception/*` forward requests to backend routes.
-- `/api/marp` is a frontend-only render endpoint. It fetches backend slide markdown from `/api/slides/content`, then renders it with `MarpProcessor`.
+- Reception slide display uses the static PDF guide under `frontend/public/reception` with pre-generated per-page audio under `frontend/public/reception/audio`.
 - Admin routes under `/api/admin/*` are edge-protected frontend routes. Some proxy to backend APIs, and some use frontend-side admin utilities directly.
 
 ## Frontend API
@@ -92,66 +92,11 @@ Example response:
 }
 ```
 
-### POST /api/marp
-
-Frontend-only Marp render endpoint.
-
-Current flow:
-
-1. Accepts `{ "language": "ja" }` or `{ "language": "en" }`
-2. Calls backend `POST /api/slides/content`
-3. Processes returned markdown with `MarpProcessor`
-4. Returns rendered HTML, parsed slide data, and narration data
-
-Example request:
-
-```json
-{
-  "language": "ja"
-}
-```
-
-Example response:
-
-```json
-{
-  "success": true,
-  "html": "<!DOCTYPE html><html>...</html>",
-  "slideData": {
-    "slides": [
-      {
-        "slideNumber": 1,
-        "title": "Engineer Cafe"
-      }
-    ]
-  },
-  "narrationData": {
-    "metadata": {
-      "title": "Engineer Cafe"
-    }
-  },
-  "slideCount": 12,
-  "metadata": {
-    "language": "ja",
-    "title": "Engineer Cafe"
-  }
-}
-```
-
-`GET /api/marp` returns a simple status payload:
-
-```json
-{
-  "status": "ok",
-  "backend": "connected"
-}
-```
-
 ### POST /api/slides
 
 Frontend proxy for backend `POST /api/slides`.
 
-This route is for slide navigation, narration, and slide-specific questions. It is not the Marp render path.
+This route is for SlideAgent narration and slide-specific questions. The kiosk presentation UI itself uses the static PDF guide.
 
 Supported actions in the current backend:
 
@@ -380,14 +325,6 @@ Example response:
   }
 }
 ```
-
-### Internal slide content helper
-
-`POST /api/slides/content` is an internal backend helper used by frontend `/api/marp`.
-
-- Request body: `{ "language": "ja" }`
-- Returns raw markdown plus narration data
-- It is not the public Marp render endpoint
 
 ## Admin API
 

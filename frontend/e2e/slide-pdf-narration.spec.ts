@@ -1,7 +1,5 @@
-import fs from 'node:fs';
-import path from 'node:path';
-
 import { expect, test } from '@playwright/test';
+import { setupWebAudioMock } from './helpers/mocks';
 
 async function dismissInitialModal(page: import('@playwright/test').Page) {
   const modal = page.getByRole('dialog');
@@ -14,12 +12,8 @@ async function dismissInitialModal(page: import('@playwright/test').Page) {
 }
 
 test.describe('Slide PDF narration deck (#624)', () => {
-  test('five-page autoplay triggers Piper TTS per slide', async ({ page }) => {
-    test.skip(
-      process.env.NEXT_PUBLIC_RECEPTION_SLIDE_RENDERER === 'marp',
-      'PDF narration tests require PDF renderer',
-    );
-
+  test('autoplay uses static slide audio and does not call Piper TTS', async ({ page }) => {
+    await setupWebAudioMock(page);
     await page.route('**/api/reception/start', async (route) => {
       await route.fulfill({
         status: 200,
@@ -31,8 +25,6 @@ test.describe('Slide PDF narration deck (#624)', () => {
         }),
       });
     });
-
-    const wavB64 = fs.readFileSync(path.resolve(__dirname, 'fixtures/voice/sample.wav')).toString('base64');
 
     let piperHits = 0;
 
@@ -50,11 +42,7 @@ test.describe('Slide PDF narration deck (#624)', () => {
       }
       if (body.action === 'text_to_speech') {
         piperHits++;
-        await route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify({ success: true, audioResponse: wavB64 }),
-        });
+        await route.fulfill({ status: 500, contentType: 'application/json', body: '{}' });
         return;
       }
       await route.fulfill({
@@ -77,6 +65,7 @@ test.describe('Slide PDF narration deck (#624)', () => {
       timeout: 15_000,
     });
 
-    await expect.poll(() => piperHits, { timeout: 45_000 }).toBeGreaterThanOrEqual(5);
+    await page.waitForTimeout(3_000);
+    expect(piperHits).toBe(0);
   });
 });
