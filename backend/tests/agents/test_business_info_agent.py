@@ -102,7 +102,7 @@ class TestBusinessInfoAgent:
         response = self.agent._get_canonical_response("前にも来たことがあります", "reception", "ja")
 
         assert response is not None
-        assert "またのご来館" in response["answer"]
+        assert "おかえりなさい" in response["answer"]
         assert "チェックイン" in response["answer"]
         assert "受付カード" in response["answer"]
         assert "ありがとうございました" not in response["answer"]
