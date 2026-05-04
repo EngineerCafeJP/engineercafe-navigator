@@ -607,7 +607,7 @@ class EnhancedRAGSearch:
             query_builder = (
                 self.supabase.table("knowledge_base")
                 .select("id, content, category, subcategory, language, source, metadata")
-                .filter("content_embedding", "not.is", None)
+                .not_.is_("content_embedding", "null")
             )
 
             # カテゴリフィルタ（generalカテゴリ以外の場合）
@@ -630,7 +630,7 @@ class EnhancedRAGSearch:
                 result = (
                     self.supabase.table("knowledge_base")
                     .select("id, content, category, subcategory, language, source, metadata")
-                    .filter("content_embedding", "not.is", None)
+                    .not_.is_("content_embedding", "null")
                     .eq("language", "ja")
                     .limit(max_results)
                     .execute()

@@ -5,8 +5,10 @@ RAG検索のクエリ拡張、スコアリング、テキストフォールバ�
 エンベディング生成のロジックを検証する。
 """
 
-import pytest
+import inspect
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from backend.tools.enhanced_rag import (
     DEFAULT_EMBEDDING_DIMENSIONS,
@@ -589,6 +591,13 @@ class TestSearchIntegration:
 class TestTextFallbackSearch:
     """テキストフォールバック検索のテスト"""
 
+    def test_text_fallback_uses_valid_postgrest_null_filter_syntax(self):
+        """content_embedding null filter should use valid PostgREST syntax."""
+        source = inspect.getsource(EnhancedRAGSearch._text_fallback_search)
+
+        assert '.filter("content_embedding", "not.is", None)' not in source
+        assert '.not_.is_("content_embedding", "null")' in source
+
     @pytest.mark.asyncio
     async def test_text_fallback_with_category_match(self, rag_search, mock_supabase):
         """カテゴリ一致でテキストフォールバックが結果を返す"""
@@ -611,14 +620,14 @@ class TestTextFallbackSearch:
         mock_eq_lang.limit.return_value = mock_result
         mock_eq_cat = MagicMock()
         mock_eq_cat.eq.return_value = mock_eq_lang
-        # PR #546 (#541): _text_fallback_search now chains
-        # .filter("content_embedding", "not.is", None) after .select(...)
-        # before the category/language .eq(...) calls, so the mock chain
-        # must route through a filter node before reaching category eq.
+        # _text_fallback_search filters to rows with embeddings before
+        # category/language predicates.
         mock_filter = MagicMock()
         mock_filter.eq.return_value = mock_eq_cat
+        mock_not = MagicMock()
+        mock_not.is_.return_value = mock_filter
         mock_select = MagicMock()
-        mock_select.filter.return_value = mock_filter
+        mock_select.not_ = mock_not
         mock_select.eq.return_value = mock_eq_cat
         mock_table = MagicMock()
         mock_table.select.return_value = mock_select
@@ -634,6 +643,7 @@ class TestTextFallbackSearch:
         # カテゴリ一致＋テキストマッチがあるので結果が返る
         assert len(results) > 0
         assert results[0]["similarity"] > 0
+        mock_not.is_.assert_called_once_with("content_embedding", "null")
 
     @pytest.mark.asyncio
     async def test_text_fallback_handles_error(self, rag_search, mock_supabase):

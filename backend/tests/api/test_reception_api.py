@@ -360,6 +360,35 @@ class TestReceptionStatus:
         assert data["visitor_type"] is None
         assert data["purpose"] is None
 
+    def test_status_non_uuid_reception_session_id_uses_memory_without_db(self, caplog):
+        synthetic_id = "alpha-a-20260502_020830-a-A2-EN-002"
+        fake_repo = AsyncMock()
+        fake_repo.get_session_record.side_effect = AssertionError(
+            "non-UUID reception_session_id should not query persistence"
+        )
+        reception_module._session_repository = fake_repo
+
+        session = reception_module.ReceptionSession(
+            id=synthetic_id,
+            session_id="sess-alpha",
+            stage="greeting",
+            language="en",
+            trigger_type="button_press",
+        )
+        reception_module._store_session(session)
+
+        with caplog.at_level("DEBUG", logger="backend.api.reception"):
+            response = client.get(
+                f"/api/reception/status/{synthetic_id}",
+                params={"session_id": "sess-alpha"},
+            )
+
+        assert response.status_code == 200
+        assert response.json()["stage"] == "greeting"
+        fake_repo.get_session_record.assert_not_awaited()
+        assert "invalid input syntax for type uuid" not in caplog.text
+        assert not [record for record in caplog.records if record.levelname in {"WARNING", "ERROR"}]
+
     def test_status_reflects_advanced_stage(self):
         start = _start_session(session_id="s1")
         rid = start["reception_session_id"]
