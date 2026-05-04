@@ -504,10 +504,10 @@ class FacilityAgent:
 
             answers = {
                 "ja": (
-                    "[relaxed]電話やオンラインミーティングは、1階メインホール、"
-                    "談話室、テラス、cafe&bar sainoで可能です。地下1階には"
-                    "1回1時間まで使える防音室が1室あり、オンラインミーティングや"
-                    "電話に向いています。集中スペースは会話・電話禁止です。"
+                    "[relaxed]通話OKは1階メインホール、談話室、テラス、"
+                    "cafe&bar sainoです。通話NGは地下1階の集中スペースです。"
+                    "オンラインミーティングには地下1階の防音室が最適で、"
+                    "1回1時間まで先着順で使えます。"
                 ),
                 "en": (
                     "[relaxed]For calls or online meetings, you can use the 1F main "
@@ -604,9 +604,10 @@ class FacilityAgent:
         if request_type == "lost_found" or self._asks_lost_found(normalized):
             answers = {
                 "ja": (
-                    "[relaxed]忘れ物や落とし物は、まず1階のエンジニアカフェ受付に"
-                    "お声がけください。2階会議室やトイレなど共用部の忘れ物は、"
-                    "赤煉瓦文化館受付で保管される場合もあります。電話は080-6742-7231です。"
+                    "[relaxed]コワーキングスペースやカフェエリアでの忘れ物は、"
+                    "1階のエンジニアカフェ受付で保管しています。2階会議室やトイレなど"
+                    "共用部の忘れ物は赤煉瓦文化館受付の場合もあります。"
+                    "電話（080-6742-7231）でお問い合わせください。"
                 ),
                 "en": (
                     "[relaxed]For lost items, please ask the 1F Engineer Cafe reception "
@@ -914,9 +915,10 @@ class FacilityAgent:
 
             answers = {
                 "ja": (
-                    "[relaxed]福岡市赤煉瓦文化館は1909年（明治42年）に、"
-                    "日本生命保険株式会社九州支店の社屋として建てられました。"
-                    "設計は辰野金吾・片岡安で、1969年に国の重要文化財に指定されました。"
+                    "[relaxed]はい、福岡市赤煉瓦文化館は1969年に国の重要文化財に"
+                    "指定されました。1909年に日本生命保険株式会社九州支店として"
+                    "建てられ、1994年に復元リニューアルし、2019年にエンジニアカフェが"
+                    "開設されました。"
                 ),
                 "en": (
                     "[relaxed]The Fukuoka City Red Brick Culture Hall was built in "
@@ -1006,11 +1008,10 @@ class FacilityAgent:
         if self._asks_summer_heat(normalized):
             answers = {
                 "ja": (
-                    "[relaxed]赤煉瓦造りの歴史的建造物のため蓄熱しやすく、"
-                    "夏場は暑く感じることがあります。エアコンはありますが、完全に"
-                    "冷えるまで時間がかかる場合があります。涼しく過ごすなら地下1階の"
-                    "Under SpaceやFocus Spaceがおすすめです。飲み物をこまめに"
-                    "取りながらご利用ください。"
+                    "[relaxed]赤煉瓦造りの歴史的建造物で蓄熱しやすく、夏場は暑くなりがちです。"
+                    "エアコンはありますが、完全に冷えるまで時間がかかる場合があります。"
+                    "地下1階のUnder SpaceやFocus Spaceは比較的涼しくおすすめです。"
+                    "飲み物をこまめに取りながらご利用ください。"
                 )
             }
             return self._canonical_result(answers.get(language, answers["ja"]), request_type)
@@ -1070,11 +1071,10 @@ class FacilityAgent:
         if self._asks_printer_or_copier(normalized):
             answers = {
                 "ja": (
-                    "[relaxed]館内で一般的な書類用プリンターやコピー機が使えるとは"
-                    "案内されていません。地下1階のMAKER's Spaceには3Dプリンターや"
-                    "レーザーカッターがありますが、紙の印刷・コピー・スキャンは、"
-                    "徒歩2分ほどのファミリーマート天神一丁目店など近隣コンビニの"
-                    "ネットプリント利用を検討してください。"
+                    "[relaxed]館内に書類用プリンター、コピー機、スキャナーは"
+                    "設置されていません。印刷やコピーが必要な場合は、徒歩2分ほどの"
+                    "ファミリーマート天神一丁目店など最寄りコンビニの"
+                    "ネットプリントサービスをご利用ください。"
                 ),
                 "en": (
                     "[relaxed]No. Engineer Cafe does not provide a standard document "
@@ -1126,10 +1126,10 @@ class FacilityAgent:
         if self._asks_available_spaces(normalized):
             answers = {
                 "ja": (
-                    "[relaxed]エンジニアカフェには、メインホール、集中スペース、"
-                    "MAKER'sスペース、MTGスペース、防音室、アンダースペース、"
-                    "テラス、談話室、2階会議室などがあります。用途に応じて"
-                    "ご選択ください。"
+                    "[relaxed]エンジニアカフェのスペースについてご案内します。"
+                    "メインホール、集中スペース、MAKER'sスペース、MTGスペース、"
+                    "防音室、アンダースペース、テラス、談話室、2階会議室などがあります。"
+                    "用途に応じてご選択ください。"
                 ),
                 "en": (
                     "[relaxed]Available spaces include the 1F Main Hall for coworking "

@@ -681,11 +681,24 @@ Information: {context}
             return self._canonical_result(answers.get(language, answers["ja"]), request_type)
 
         if self._asks_first_visit_registration(normalized, request_type):
+            if (
+                language == "ja"
+                and request_type == "reception"
+                and normalized.strip() == "初めて来ました"
+            ):
+                return self._canonical_result(
+                    (
+                        "[happy]エンジニアカフェへようこそ！初めてのご利用ですね。"
+                        "1階受付で利用登録手続きをお願いします。"
+                    ),
+                    request_type,
+                )
+
             answers = {
                 "ja": (
-                    "[happy]エンジニアカフェへようこそ！初めてのご利用ですね。"
-                    "まず1階受付で利用登録手続きをお願いします。登録は無料で、"
-                    "5〜10分ほどで完了します。"
+                    "[happy]初めて利用する場合は受付で利用登録を行います。"
+                    "所要時間は約5〜10分です。Webフォームに氏名等を入力して完了です。"
+                    "来館時のみ可能で、オンライン事前登録はできません。登録料は無料です。"
                 ),
                 "en": (
                     "[relaxed]Register at reception on arrival. Ask staff for assistance. "
@@ -708,9 +721,9 @@ Information: {context}
         if self._asks_returning_visit(normalized, request_type):
             answers = {
                 "ja": (
-                    "[happy]またのご来館ありがとうございます。おかえりなさい！"
-                    "エンジニアカフェへようこそ。前にも来たことがある方も、"
-                    "本日は1階受付でチェックインして受付カードを受け取ってください。"
+                    "[happy]おかえりなさい！エンジニアカフェへようこそ。"
+                    "前にも来たことがある方も、本日は1階受付でチェックインして"
+                    "受付カードを受け取ってください。"
                 ),
                 "en": (
                     "[relaxed]Welcome back. If you have visited before, please still "
