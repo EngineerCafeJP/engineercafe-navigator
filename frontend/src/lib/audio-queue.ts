@@ -142,30 +142,9 @@ export class AudioQueue {
    * Play a single audio item using Web Audio API
    */
   private async playAudio(item: AudioQueueItem): Promise<void> {
-    const audioService = new MobileAudioService({
-      volume: this.volume,
-      onPlay: () => {
-        item.onPlaybackStart?.();
-      },
-      onEnded: () => {
-        this.currentAudioService = null;
-      },
-      onError: (error) => {
-        this.currentAudioService = null;
-        throw error;
-      },
-    });
-
-    this.currentAudioService = audioService;
-
-    const result = await audioService.playAudio(item.audioData);
-    if (!result.success) {
-      item.onPlaybackEnd?.();
-      throw result.error || new AudioError(AudioErrorType.PLAYBACK_FAILED, 'Audio playback failed');
-    }
-
     return new Promise((resolve, reject) => {
-      audioService.updateEventHandlers({
+      const audioService = new MobileAudioService({
+        volume: this.volume,
         onPlay: () => {
           item.onPlaybackStart?.();
         },
@@ -180,6 +159,22 @@ export class AudioQueue {
           reject(error);
         },
       });
+
+      this.currentAudioService = audioService;
+
+      audioService.playAudio(item.audioData)
+        .then((result) => {
+          if (!result.success) {
+            this.currentAudioService = null;
+            item.onPlaybackEnd?.();
+            reject(result.error || new AudioError(AudioErrorType.PLAYBACK_FAILED, 'Audio playback failed'));
+          }
+        })
+        .catch((error) => {
+          this.currentAudioService = null;
+          item.onPlaybackEnd?.();
+          reject(error);
+        });
     });
   }
 

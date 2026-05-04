@@ -18,6 +18,7 @@ import {
   registerAudioContextResumeOnInteraction,
   waitForAudioUserInteraction
 } from './audio-user-interaction-gate';
+import { dispatchAudioInteractionRequired } from './audio-interaction-events';
 
 export class WebAudioPlayer {
   private static readonly DEFAULT_DECODE_TIMEOUT_MS = 15000;
@@ -200,6 +201,13 @@ export class WebAudioPlayer {
       try {
         this.audioBuffer = await this.decodeAudioDataWithTimeout(arrayBuffer);
       } catch (decodeError) {
+        if (decodeError instanceof Error && AudioError.isInteractionRequired(decodeError)) {
+          dispatchAudioInteractionRequired({
+            reason: 'decode-blocked',
+            message: decodeError.message,
+            audioContextState: this.audioContext?.state ?? null,
+          });
+        }
         console.error('[WebAudioPlayer] Failed to decode audio data:', {
           error: decodeError,
           arrayBufferSize: arrayBuffer.byteLength,
@@ -283,6 +291,14 @@ export class WebAudioPlayer {
         error as Error, 
         AudioErrorType.PLAYBACK_FAILED
       );
+
+      if (audioError.requiresUserInteraction || AudioError.isInteractionRequired(audioError)) {
+        dispatchAudioInteractionRequired({
+          reason: 'playback-blocked',
+          message: audioError.message,
+          audioContextState: this.audioContext?.state ?? null,
+        });
+      }
       
       this.state = 'error';
       this.options.onError?.(audioError);
@@ -447,6 +463,8 @@ export class GlobalAudioManager {
   private static instance: GlobalAudioManager;
   private audioContext: AudioContext | null = null;
   private isInitialized = false;
+  private suspensionListeners = new Set<(state: AudioContextState | 'interrupted') => void>();
+  private monitoredContext: AudioContext | null = null;
 
   private constructor() {}
 
@@ -496,6 +514,24 @@ export class GlobalAudioManager {
     return context;
   }
 
+  public registerAudioContextSuspensionListener(
+    listener: (state: AudioContextState | 'interrupted') => void,
+  ): () => void {
+    this.suspensionListeners.add(listener);
+
+    if (this.audioContext) {
+      this.attachSuspensionMonitor(this.audioContext);
+      const state = this.audioContext.state as AudioContextState | 'interrupted';
+      if (state === 'suspended' || state === 'interrupted') {
+        queueMicrotask(() => listener(state));
+      }
+    }
+
+    return () => {
+      this.suspensionListeners.delete(listener);
+    };
+  }
+
   private createContext(): AudioContext {
     if (this.audioContext && this.audioContext.state !== 'closed') {
       return this.audioContext;
@@ -504,8 +540,29 @@ export class GlobalAudioManager {
     const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
     const context = new AudioContextClass();
     this.audioContext = context;
+    this.attachSuspensionMonitor(context);
     registerAudioContextResumeOnInteraction(context);
     return context;
+  }
+
+  private attachSuspensionMonitor(context: AudioContext): void {
+    if (this.monitoredContext === context) {
+      return;
+    }
+
+    this.monitoredContext = context;
+    context.addEventListener('statechange', () => {
+      const state = context.state as AudioContextState | 'interrupted';
+      if (state !== 'suspended' && state !== 'interrupted') {
+        return;
+      }
+
+      this.suspensionListeners.forEach((listener) => listener(state));
+      dispatchAudioInteractionRequired({
+        reason: state === 'interrupted' ? 'context-interrupted' : 'context-suspended',
+        audioContextState: state,
+      });
+    });
   }
 
   private playSilentWarmupBuffer(context: AudioContext): void {
@@ -552,6 +609,7 @@ export class GlobalAudioManager {
       this.audioContext.close();
     }
     this.audioContext = null;
+    this.monitoredContext = null;
     this.isInitialized = false;
   }
 }

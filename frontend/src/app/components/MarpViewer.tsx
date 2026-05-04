@@ -4,15 +4,18 @@ import { useKeyboardControls } from '@/app/hooks/useKeyboardControls';
 import { audioStateManager } from '@/lib/audio-state-manager';
 import {
   AudioInteractionManager,
+  registerAudioContextSuspensionListener,
   unlockAudioForUserGesture,
 } from '@/lib/audio/audio-interaction-manager';
 import {
   getTapToEnableAudioMessage,
   type SupportedLang,
 } from '@/lib/audio/audio-user-interaction-gate';
+import { addAudioInteractionRequiredListener } from '@/lib/audio/audio-interaction-events';
 import DOMPurify from 'dompurify';
 import { ChevronLeft, Keyboard, MessageCircle, Pause, Play, RotateCcw, Settings } from 'lucide-react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import Toast from '@/components/ui/Toast';
 import SlideDebugPanel from './SlideDebugPanel';
 import type { PresentationCompleteReason } from './presentation-types';
 
@@ -192,6 +195,10 @@ export default function MarpViewer({
   const [retryCount, setRetryCount] = useState(0);
   const [presentationStartTime, setPresentationStartTime] = useState<number | null>(null);
   const [showAudioPermissionPrompt, setShowAudioPermissionPrompt] = useState(false);
+  const [audioInteractionToast, setAudioInteractionToast] = useState<{
+    message: string;
+    actionLabel: string;
+  } | null>(null);
   const [isNarrationInProgress, setIsNarrationInProgress] = useState(false);
   const [slideViewTimes, setSlideViewTimes] = useState<Map<number, number>>(new Map());
   const [lipSyncCacheStats, setLipSyncCacheStats] = useState<any>(null);
@@ -199,6 +206,42 @@ export default function MarpViewer({
   useEffect(() => {
     setCurrentLanguage(language);
   }, [language]);
+
+  const showAudioResumeToast = useCallback(() => {
+    setShowAudioPermissionPrompt(false);
+    setAudioInteractionToast({
+      message:
+        currentLanguageRef.current === 'ja'
+          ? '音声を有効化するにはタップしてください'
+          : 'Tap to enable audio',
+      actionLabel: currentLanguageRef.current === 'ja' ? '再開' : 'Resume',
+    });
+  }, []);
+
+  const handleAudioToastAction = useCallback(async () => {
+    try {
+      unlockAudioForUserGesture();
+      await AudioInteractionManager.getInstance().forceInitialize();
+      setAudioInteractionToast(null);
+    } catch (error) {
+      console.error('[MarpViewer] Failed to resume audio from toast:', error);
+      showAudioResumeToast();
+    }
+  }, [showAudioResumeToast]);
+
+  useEffect(() => {
+    const unsubscribeSuspension = registerAudioContextSuspensionListener(() => {
+      showAudioResumeToast();
+    });
+    const unsubscribeInteractionRequired = addAudioInteractionRequiredListener(() => {
+      showAudioResumeToast();
+    });
+
+    return () => {
+      unsubscribeSuspension();
+      unsubscribeInteractionRequired();
+    };
+  }, [showAudioResumeToast]);
 
   useEffect(() => {
     if (!autoPlay) {
@@ -991,6 +1034,14 @@ export default function MarpViewer({
           isNarrationGestureRequiredError(error)
         ) {
           console.warn('[MarpViewer] autoplay blocked — user interaction required');
+          showAudioResumeToast();
+          setIsPlaying(false);
+          onPresentationComplete?.('stopped');
+          return;
+        }
+
+        if (getErrorName(error) === 'NotAllowedError') {
+          console.warn('[MarpViewer] autoplay blocked — permission denied');
           setShowAudioPermissionPrompt(true);
           setIsPlaying(false);
           onPresentationComplete?.('stopped');
@@ -1767,6 +1818,15 @@ export default function MarpViewer({
           style={{ width: `${totalSlides ? (currentSlide / totalSlides) * 100 : 0}%` }}
         />
       </div>
+
+      {/* Audio interaction toast */}
+      <Toast
+        open={audioInteractionToast !== null}
+        message={audioInteractionToast?.message ?? ''}
+        actionLabel={audioInteractionToast?.actionLabel}
+        onAction={handleAudioToastAction}
+        onDismiss={() => setAudioInteractionToast(null)}
+      />
 
       {/* Audio Permission Prompt */}
       {showAudioPermissionPrompt && (
