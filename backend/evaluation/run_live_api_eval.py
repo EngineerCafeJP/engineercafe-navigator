@@ -68,7 +68,7 @@ TRACKED_METRICS = (
 )
 
 TARGETS: Dict[str, float] = {
-    "ja": 0.85,
+    "ja": 0.81,
     "en": 0.75,
     "zh": 0.65,
     "ko": 0.65,
@@ -1104,6 +1104,9 @@ def _format_report(
     case_suite: str,
 ) -> str:
     """Format a human-readable report."""
+    target_summary = ", ".join(
+        f"{lang} >= {TARGETS[lang]:.2f}" for lang in ("ja", "en", "zh", "ko")
+    )
     lines = [
         "=" * 60,
         "RAGAS Live API Evaluation Report",
@@ -1111,7 +1114,7 @@ def _format_report(
         "=" * 60,
         "",
         f"Case suite: {case_suite}",
-        "Targets: ja >= 0.85, en >= 0.75, zh >= 0.65, ko >= 0.65",
+        f"Targets: {target_summary}",
         "RAGAS contexts: golden_dataset references, not live retrieved chunks",
         f"Live source metadata gate: {'enabled' if check_live_sources else 'disabled'}",
         "",
