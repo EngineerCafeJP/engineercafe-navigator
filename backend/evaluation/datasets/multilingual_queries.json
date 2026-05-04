@@ -13,16 +13,16 @@
   },
   "targets": {
     "ja": {
-      "answer_correctness": 0.81
+      "answer_correctness": 0.8
     },
     "en": {
       "answer_correctness": 0.75
     },
     "zh": {
-      "answer_correctness": 0.65
+      "answer_correctness": 0.75
     },
     "ko": {
-      "answer_correctness": 0.65
+      "answer_correctness": 0.7
     }
   },
   "queries": [

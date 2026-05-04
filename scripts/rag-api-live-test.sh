@@ -21,6 +21,8 @@ set -euo pipefail
 #                                   Whole runner wall-clock timeout; 0 disables (default: 7200).
 #   RAGAS_PROGRESS_HEARTBEAT_SECONDS
 #                                   Seconds between RAGAS in-progress heartbeat logs (default: 60).
+#   RAGAS_BATCH_STRATEGY            batch or single/per_case (default: batch).
+#   RAGAS_MAX_WORKERS               RAGAS RunConfig worker count (default: 16).
 #   OPENAI_API_KEY / OPENROUTER_API_KEY are required by the RAGAS evaluator.
 #   If neither is set, this script tries Secret Manager. Direct OpenAI is preferred.
 
@@ -43,6 +45,9 @@ CHAT_TIMEOUT_SECONDS="${RAG_API_LIVE_CHAT_TIMEOUT_SECONDS:-60}"
 CHAT_RETRY_ATTEMPTS="${RAG_API_LIVE_CHAT_RETRY_ATTEMPTS:-4}"
 CHAT_RETRY_BACKOFF_SECONDS="${RAG_API_LIVE_CHAT_RETRY_BACKOFF_SECONDS:-2.0}"
 TOTAL_TIMEOUT_SECONDS="${RAG_API_LIVE_TOTAL_TIMEOUT_SECONDS:-7200}"
+RAGAS_BATCH_STRATEGY_VALUE="${RAGAS_BATCH_STRATEGY:-batch}"
+RAGAS_OUTER_SINGLE_TIMEOUT_VALUE="${RAGAS_OUTER_SINGLE_TIMEOUT:-180}"
+RAGAS_MAX_WORKERS_VALUE="${RAGAS_MAX_WORKERS:-16}"
 DRY_RUN=0
 CHECK_TARGETS=1
 
@@ -264,7 +269,9 @@ main() {
     echo "RAGAS progress heartbeat seconds: ${RAGAS_PROGRESS_HEARTBEAT_SECONDS:-60}"
     echo "Expected progress JSON: $OUTPUT_DIR/live_api_eval_${TIMESTAMP}.progress.json"
     echo "Expected progress log: $OUTPUT_DIR/live_api_eval_${TIMESTAMP}.progress.log"
-    echo "RAGAS max workers: ${RAGAS_MAX_WORKERS:-1}"
+    echo "RAGAS batch strategy: $RAGAS_BATCH_STRATEGY_VALUE"
+    echo "RAGAS per-case timeout: ${RAGAS_OUTER_SINGLE_TIMEOUT_VALUE}s"
+    echo "RAGAS max workers: $RAGAS_MAX_WORKERS_VALUE"
     if [ "$CHECK_TARGETS" = "1" ]; then
       echo "Target check: enabled"
       echo "Live source metadata gate: enabled"
@@ -296,9 +303,9 @@ main() {
   echo "Chat timeout seconds: $CHAT_TIMEOUT_SECONDS"
   echo "Chat retry attempts: $CHAT_RETRY_ATTEMPTS"
   echo "Chat retry backoff seconds: $CHAT_RETRY_BACKOFF_SECONDS"
-  echo "RAGAS batch strategy: ${RAGAS_BATCH_STRATEGY:-single}"
-  echo "RAGAS per-case timeout: ${RAGAS_OUTER_SINGLE_TIMEOUT:-300}s"
-  echo "RAGAS max workers: ${RAGAS_MAX_WORKERS:-1}"
+  echo "RAGAS batch strategy: $RAGAS_BATCH_STRATEGY_VALUE"
+  echo "RAGAS per-case timeout: ${RAGAS_OUTER_SINGLE_TIMEOUT_VALUE}s"
+  echo "RAGAS max workers: $RAGAS_MAX_WORKERS_VALUE"
   echo "Runner total timeout: ${TOTAL_TIMEOUT_SECONDS}s"
   echo "Expected JSON report: $OUTPUT_DIR/live_api_eval_${TIMESTAMP}.json"
   echo "Expected text report: $OUTPUT_DIR/live_api_eval_${TIMESTAMP}.txt"
@@ -328,9 +335,9 @@ main() {
     fi
     if [ -n "$timeout_binary" ]; then
       API_SECRET_KEY="$API_KEY" \
-        RAGAS_BATCH_STRATEGY="${RAGAS_BATCH_STRATEGY:-single}" \
-        RAGAS_OUTER_SINGLE_TIMEOUT="${RAGAS_OUTER_SINGLE_TIMEOUT:-300}" \
-        RAGAS_MAX_WORKERS="${RAGAS_MAX_WORKERS:-1}" \
+        RAGAS_BATCH_STRATEGY="$RAGAS_BATCH_STRATEGY_VALUE" \
+        RAGAS_OUTER_SINGLE_TIMEOUT="$RAGAS_OUTER_SINGLE_TIMEOUT_VALUE" \
+        RAGAS_MAX_WORKERS="$RAGAS_MAX_WORKERS_VALUE" \
         PYTHONPATH="$ROOT_DIR:$ROOT_DIR/backend:${PYTHONPATH:-}" \
         "$timeout_binary" --kill-after=30s "${TOTAL_TIMEOUT_SECONDS}s" "${runner_cmd[@]}"
     else
@@ -338,9 +345,9 @@ main() {
         echo "Warning: timeout command not found; running without whole-runner timeout" >&2
       fi
       API_SECRET_KEY="$API_KEY" \
-        RAGAS_BATCH_STRATEGY="${RAGAS_BATCH_STRATEGY:-single}" \
-        RAGAS_OUTER_SINGLE_TIMEOUT="${RAGAS_OUTER_SINGLE_TIMEOUT:-300}" \
-        RAGAS_MAX_WORKERS="${RAGAS_MAX_WORKERS:-1}" \
+        RAGAS_BATCH_STRATEGY="$RAGAS_BATCH_STRATEGY_VALUE" \
+        RAGAS_OUTER_SINGLE_TIMEOUT="$RAGAS_OUTER_SINGLE_TIMEOUT_VALUE" \
+        RAGAS_MAX_WORKERS="$RAGAS_MAX_WORKERS_VALUE" \
         PYTHONPATH="$ROOT_DIR:$ROOT_DIR/backend:${PYTHONPATH:-}" \
         "${runner_cmd[@]}"
     fi

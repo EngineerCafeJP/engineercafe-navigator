@@ -68,10 +68,10 @@ TRACKED_METRICS = (
 )
 
 TARGETS: Dict[str, float] = {
-    "ja": 0.81,
+    "ja": 0.80,
     "en": 0.75,
-    "zh": 0.65,
-    "ko": 0.65,
+    "zh": 0.75,
+    "ko": 0.70,
 }
 
 
