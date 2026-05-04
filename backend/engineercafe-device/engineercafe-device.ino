@@ -338,7 +338,8 @@ void loop() {
 
   } else if (currentState == GREETING) {
     int  tofMM     = measureToF_MM();
-    bool personGone = (tofMM != 9999 && tofMM > LEAVE_THRESHOLD_MM);
+    // 9999 = VL53L0X out-of-range, treat as visitor left.
+    bool personGone = (tofMM == 9999 || tofMM > LEAVE_THRESHOLD_MM);
 
     if (personGone) {
       leaveCount++;
