@@ -30,6 +30,8 @@ Current confirmed target:
 - RAGAS は direct RAG 評価と `/api/chat` live API 評価を分離します。`scripts/rag-live-test.sh` は `EnhancedRAGSearch` 直評価、`scripts/rag-api-live-test.sh` は `/api/chat` 経由評価です。
 - A 系の音声本実行前に `scripts/stt-live-preflight.sh` で直近の `stt_winner` latency / timeout 分布を確認します。
 - Alpha GO proof の C/RAGAS は direct OpenAI を必須にします。`RAGAS judge provider: direct OpenAI` が出ない run は diagnostic として扱い、GO 証跡にしません。
+- Alpha Phase 1 の C/RAGAS answer_correctness targets は ja=0.81, en=0.75, zh=0.65, ko=0.65 です。
+  JA 0.85 target は beta scope の回答品質改善で再設定します。
 - C/RAGAS の 29-case path は diagnostic only です。Alpha GO proof では
   `scripts/rag-api-live-test.sh --case-suite alpha-127 --languages ja,en,zh,ko`、または
   `alpha-live-verification.yml` の `suites=c-127` / `c_ragas_suite=alpha-127` を使います。
