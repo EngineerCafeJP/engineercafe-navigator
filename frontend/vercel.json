@@ -23,9 +23,6 @@
     },
     "src/app/api/character/route.ts": {
       "maxDuration": 120
-    },
-    "src/app/api/marp/route.ts": {
-      "maxDuration": 15
     }
   },
   "env": {

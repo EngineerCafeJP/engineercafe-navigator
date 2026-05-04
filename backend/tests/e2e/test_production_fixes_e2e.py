@@ -841,7 +841,9 @@ class TestPdfSlideGuideUnit:
         route_path = os.path.join(
             _PROJECT_ROOT, "frontend", "src", "app", "api", "marp", "route.ts"
         )
-        assert not os.path.exists(route_path), f"Legacy slide render route should be removed: {route_path}"
+        assert not os.path.exists(route_path), (
+            f"Legacy slide render route should be removed: {route_path}"
+        )
 
 
 # ---------------------------------------------------------------------------

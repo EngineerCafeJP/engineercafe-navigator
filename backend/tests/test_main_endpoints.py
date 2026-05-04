@@ -3,7 +3,6 @@
 import logging
 
 import pytest
-from httpx import ASGITransport, AsyncClient
 from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi.testclient import TestClient
 from starlette.requests import Request
