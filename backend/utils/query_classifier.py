@@ -450,7 +450,17 @@ class QueryClassifier:
         meeting_room_keywords = ["会議室", "meeting room", "ミーティング", "mtg"]
         has_meeting_room = any(keyword in normalized_question for keyword in meeting_room_keywords)
 
-        floor_keywords = ["2階", "2f", "地下", "basement", "under"]
+        floor_keywords = [
+            "2階",
+            "２階",
+            "二階",
+            "2f",
+            "２f",
+            "２Ｆ",
+            "地下",
+            "basement",
+            "under",
+        ]
         has_specific_floor = any(keyword in normalized_question for keyword in floor_keywords)
 
         if has_meeting_room and not has_specific_floor:

@@ -87,6 +87,13 @@ class TestQueryClassifier:
         assert result.confidence == 0.7
 
     @pytest.mark.asyncio
+    async def test_meeting_room_with_kanji_floor_is_not_ambiguous(self):
+        """二階表記も2階指定として扱う"""
+        result = await self.classifier.classify_with_details("二階の会議室の予約方法教えて")
+
+        assert result.category != "meeting-room-clarification-needed"
+
+    @pytest.mark.asyncio
     async def test_facility_query(self):
         """施設情報クエリの分類"""
         result = await self.classifier.classify_with_details("福岡市の施設について")

@@ -316,9 +316,9 @@ def _extract_remember_request(query: str, language: str) -> str | None:
     query_for_match = query.strip().rstrip("。.!！?？")
     if language == "ja":
         patterns = [
-            r"(.+?)(?:を|として)?(?:覚えて|記憶して|忘れないで)(?:ください|おいてください|おいて|ね)?$",
-            r"(?:覚えて|記憶して|忘れないで)[：:、,]\s*(.+)",
-            r"(?:覚えて|記憶して|忘れないで)\s+(.+)",
+            r"(.+?)(?:を|として|と)?(?:覚えて|覚えといて|覚えておいて|記憶して|忘れないで)(?:ください|おいてください|おいて|ね)?$",
+            r"(?:覚えて|覚えといて|覚えておいて|記憶して|忘れないで)[：:、,]\s*(.+)",
+            r"(?:覚えて|覚えといて|覚えておいて|記憶して|忘れないで)\s+(.+)",
         ]
     else:
         patterns = [
@@ -344,7 +344,7 @@ def _clean_remember_content(content: str) -> str:
         cleaned,
         flags=re.IGNORECASE,
     )
-    cleaned = re.sub(r"(?:こと|内容)?を$", "", cleaned).strip()
+    cleaned = re.sub(r"(?:こと|内容)?[をと]$", "", cleaned).strip()
     return cleaned.rstrip("。.!！?？").strip()
 
 

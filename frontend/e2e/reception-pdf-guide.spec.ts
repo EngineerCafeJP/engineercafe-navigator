@@ -48,6 +48,8 @@ test.describe('Reception PDF guide', () => {
   test('portrait viewport shows rotate hint before landscape panel', async ({ page }) => {
     await page.setViewportSize({ width: 600, height: 900 });
     await page.getByTestId('kiosk-slides-button').click();
+    await expect(page.getByTestId('slide-language-ja')).toBeVisible({ timeout: 5_000 });
+    await page.getByTestId('slide-language-ja').click();
 
     await expect(page.getByTestId('reception-pdf-rotate-hint')).toBeVisible({ timeout: 8_000 });
     await expect(page.getByTestId('reception-pdf-landscape-panel')).toHaveCount(0);
@@ -56,6 +58,7 @@ test.describe('Reception PDF guide', () => {
   test('landscape shows PDF counter 1/5 and auto-starts playback', async ({ page }) => {
     await page.setViewportSize({ width: 960, height: 540 });
     await page.getByTestId('kiosk-slides-button').click();
+    await page.getByTestId('slide-language-ja').click();
 
     await expect(page.getByTestId('reception-pdf-counter')).toHaveText('1 / 5', {
       timeout: 15_000,
@@ -69,9 +72,21 @@ test.describe('Reception PDF guide', () => {
   test('close slides returns to Welcome', async ({ page }) => {
     await page.setViewportSize({ width: 960, height: 540 });
     await page.getByTestId('kiosk-slides-button').click();
+    await page.getByTestId('slide-language-ja').click();
     await expect(page.getByTestId('reception-pdf-guide')).toBeVisible({ timeout: 15_000 });
 
     await page.getByRole('button', { name: /スライドを閉じる|Close slides/ }).click();
     await expect(page.getByRole('button', { name: 'Welcome' })).toBeVisible({ timeout: 5_000 });
+  });
+
+  test('slide button lets visitors choose English guide', async ({ page }) => {
+    await page.setViewportSize({ width: 960, height: 540 });
+    await page.getByTestId('kiosk-slides-button').click();
+    await page.getByTestId('slide-language-en').click();
+
+    await expect(page.getByTestId('reception-pdf-counter')).toHaveText('1 / 5', {
+      timeout: 15_000,
+    });
+    await expect(page.getByText('Auto-advance')).toBeVisible();
   });
 });

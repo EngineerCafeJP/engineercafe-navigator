@@ -376,6 +376,8 @@ class GeneralKnowledgeAgent:
         remember_keywords = [
             "覚えて",
             "憶えて",
+            "覚えといて",
+            "覚えておいて",
             "記憶して",
             "忘れないで",
             "remember",
@@ -396,6 +398,18 @@ class GeneralKnowledgeAgent:
             "i'm ",
             "call me",
         ]
+        if any(kw in lower_query for kw in remember_keywords):
+            try:
+                from backend.utils.memory_extractor import _extract_remember_request
+
+                if _extract_remember_request(query, "ja") or _extract_remember_request(
+                    query,
+                    "en",
+                ):
+                    return True
+            except Exception:
+                pass
+
         return any(kw in lower_query for kw in remember_keywords) and any(
             kw in lower_query for kw in self_disclosure_keywords
         )

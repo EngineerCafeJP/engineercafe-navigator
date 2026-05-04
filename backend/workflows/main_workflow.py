@@ -426,6 +426,118 @@ class MainWorkflow:
 
         return RoutingLogicAgent._is_memory_related_question(self, stripped_query)
 
+    @staticmethod
+    def _looks_like_information_query(query: str) -> bool:
+        """Return true when an active reception turn is actually a normal QA request."""
+        normalized = query.strip().lower()
+        if not normalized:
+            return False
+
+        question_markers = (
+            "?",
+            "？",
+            "教えて",
+            "知りたい",
+            "方法",
+            "どこ",
+            "いつ",
+            "何時",
+            "いくら",
+            "ありますか",
+            "できますか",
+            "違い",
+            "営業時間",
+            "予約",
+            "料金",
+            "how",
+            "what",
+            "where",
+            "when",
+            "which",
+            "tell me",
+        )
+        return any(marker in normalized for marker in question_markers)
+
+    def _should_bypass_active_reception(self, query: str, reception_status: dict[str, Any]) -> bool:
+        """Do not let stale reception state hijack ordinary information questions."""
+        if not self._looks_like_information_query(query):
+            return False
+
+        stage = reception_status.get("stage")
+        if stage not in {"purpose_hearing", "routing"}:
+            return False
+
+        lower_query = query.strip().lower()
+        fast_route = RoutingLogicAgent._try_fast_routing(self, lower_query)
+        if fast_route is not None and fast_route.get("request_type") not in {
+            "reception",
+            "greeting",
+        }:
+            return True
+
+        return False
+
+    async def _should_bypass_active_reception_async(
+        self,
+        query: str,
+        reception_status: dict[str, Any],
+    ) -> bool:
+        if self._should_bypass_active_reception(query, reception_status):
+            return True
+        if not self._looks_like_information_query(query):
+            return False
+        if reception_status.get("stage") not in {"purpose_hearing", "routing"}:
+            return False
+        try:
+            from backend.utils.query_classifier import QueryClassifier
+
+            classification = await QueryClassifier().classify_with_details(query)
+        except Exception:
+            return False
+
+        return classification.category not in {
+            "general",
+            "daily_conversation",
+            "assistant_profile",
+        }
+
+    def _active_reception_assistant_profile_response(
+        self,
+        query: str,
+        language: str,
+    ) -> dict[str, Any] | None:
+        """Answer assistant identity/capability questions without advancing reception."""
+        from backend.agents.general_knowledge_agent import GeneralKnowledgeAgent
+        from backend.utils.intent_classifier import is_assistant_profile_question
+
+        if not is_assistant_profile_question(query.lower()):
+            return None
+
+        response_language = self._get_response_language(query, language)
+        return {
+            "answer": GeneralKnowledgeAgent.assistant_profile_message(response_language),
+            "emotion": "helpful",
+            "language": response_language,
+            "routing": {
+                "agent": "general_knowledge",
+                "category": "assistant_profile",
+                "request_type": "assistant_profile",
+                "confidence": 1.0,
+                "reasoning": "Assistant profile question during active reception",
+                "debug_info": {},
+            },
+            "metadata": {
+                "agent": "GeneralKnowledgeAgent",
+                "status": "success",
+                "category": "general_knowledge",
+                "query_type": "assistant_profile",
+                "reception_action": "answer_assistant_profile",
+                "web_search_used": False,
+                "rag_used": False,
+                "provider_called": False,
+            },
+        }
+
     def _get_response_language(self, query: str, fallback_language: str) -> str:
         from backend.utils.language_processor import LanguageProcessor
 
@@ -984,29 +1096,51 @@ class MainWorkflow:
             reception_status = await check_reception_status(session_id)
 
         if self._reception_is_active(reception_status):
-            reception_result = await invoke_reception_subgraph(
-                state,
-                reception_status,
-                self._store_reception_session,
+            assistant_profile_response = self._active_reception_assistant_profile_response(
+                query,
+                state.get("language", "ja"),
             )
-            if reception_result.get("target_agent"):
+            if assistant_profile_response is not None:
                 return Command(
-                    goto=cast(RoutingTarget, reception_result["target_agent"]),
+                    goto="format_response",
+                    update=assistant_profile_response,
+                )
+
+            if await self._should_bypass_active_reception_async(query, reception_status):
+                await self._store_reception_session(
+                    session_id=session_id,
+                    stage="completed",
+                    language=state.get("language", "ja"),
+                    trigger_type=reception_status.get("trigger_type", "voice"),
+                    status="completed",
+                    metadata={"reception_action": "bypass_for_information_query"},
+                    purpose=reception_status.get("purpose"),
+                    visitor_identity=reception_status.get("visitor_identity"),
+                )
+            else:
+                reception_result = await invoke_reception_subgraph(
+                    state,
+                    reception_status,
+                    self._store_reception_session,
+                )
+                if reception_result.get("target_agent"):
+                    return Command(
+                        goto=cast(RoutingTarget, reception_result["target_agent"]),
+                        update={
+                            "language": state.get("language", "ja"),
+                            "routing": reception_result["routing"],
+                            "metadata": reception_result["metadata"],
+                        },
+                    )
+
+                return Command(
+                    goto="format_response",
                     update={
-                        "language": state.get("language", "ja"),
-                        "routing": reception_result["routing"],
+                        "answer": reception_result["answer"],
+                        "emotion": reception_result["emotion"],
                         "metadata": reception_result["metadata"],
                     },
                 )
-
-            return Command(
-                goto="format_response",
-                update={
-                    "answer": reception_result["answer"],
-                    "emotion": reception_result["emotion"],
-                    "metadata": reception_result["metadata"],
-                },
-            )
 
         # --- Normal orchestrator LLM routing ---
         memory_context = state.get("context", {}).get("memory")

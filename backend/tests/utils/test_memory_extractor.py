@@ -291,6 +291,14 @@ class TestExtractRememberRequest:
         result = _extract_remember_request("私の名前は田中を覚えて", "ja")
         assert result is not None
 
+    def test_to_particle_oboete_pattern(self):
+        result = _extract_remember_request("窓側の席が好きだと覚えて", "ja")
+        assert result == "窓側の席が好きだ"
+
+    def test_oboetoite_pattern(self):
+        result = _extract_remember_request("窓側の席が好きだと覚えといてね", "ja")
+        assert result == "窓側の席が好きだ"
+
     def test_en_remember_pattern(self):
         result = _extract_remember_request("remember: I like Python", "en")
         assert result is not None

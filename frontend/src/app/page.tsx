@@ -20,7 +20,7 @@ import {
   writeKioskTriggerMode,
 } from '@/lib/kiosk-constants';
 import { cn } from '@/lib/cn';
-import { Settings, X } from 'lucide-react';
+import { Languages, Settings, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import type { CharacterAnimationData } from './utils/character-animation-utils';
 import type { BackgroundOption } from './components/BackgroundSelector';
@@ -116,6 +116,8 @@ export default function Home() {
   const [settingsPanelProps, setSettingsPanelProps] =
     useState<SettingsPanelPropsFromSource | null>(null);
   const [presentationAutoStartKey, setPresentationAutoStartKey] = useState(0);
+  const [presentationLanguage, setPresentationLanguage] = useState<'ja' | 'en'>('ja');
+  const [slideLanguagePickerOpen, setSlideLanguagePickerOpen] = useState(false);
   const playKeyframeAnimationRef = useRef<((data: CharacterAnimationData) => void) | null>(null);
   const lastVrmControlPlayedRef = useRef<unknown>(null);
   const pendingVrmPlaybackRef = useRef<CharacterAnimationData | null>(null);
@@ -290,6 +292,8 @@ export default function Home() {
     (language: 'ja' | 'en') => {
       unlockAudioForUserGesture();
       clearReturnToIdleTimer();
+      setSlideLanguagePickerOpen(false);
+      setPresentationLanguage(language);
       setCurrentLanguage(language);
       setPresentationAutoStartKey((key) => key + 1);
       setKioskPhaseSynced('slides');
@@ -305,7 +309,14 @@ export default function Home() {
     [clearReturnToIdleTimer, setKioskPhaseSynced],
   );
 
+  const openSlideLanguagePicker = useCallback(() => {
+    unlockAudioForUserGesture();
+    clearReturnToIdleTimer();
+    setSlideLanguagePickerOpen(true);
+  }, [clearReturnToIdleTimer]);
+
   const handleCloseSlides = useCallback(() => {
+    setSlideLanguagePickerOpen(false);
     returnToIdle();
   }, [returnToIdle]);
 
@@ -655,7 +666,7 @@ export default function Home() {
                           ),
                         }}
                         slide_mode_open={showSlideMode}
-                        on_open_slides={() => startPresentation(voice.currentLanguage)}
+                        on_open_slides={openSlideLanguagePicker}
                         on_close_slides={handleCloseSlides}
                         open_slides_label={labels.openSlides}
                         close_slides_label={labels.closeSlides}
@@ -677,7 +688,7 @@ export default function Home() {
                     ocrStatus={ocrStatus}
                     voice={voice}
                     onPlayWelcome={() => kioskPlayWelcomeRef.current?.()}
-                    onStartPresentation={() => startPresentation(voice.currentLanguage)}
+                    onStartPresentation={openSlideLanguagePicker}
                     clearReturnToIdleTimer={clearReturnToIdleTimer}
                     setWelcomeMemberOcrOpen={setWelcomeMemberOcrOpen}
                     setOcrMode={setOcrMode}
@@ -703,6 +714,60 @@ export default function Home() {
                   }}
                 />
 
+                {slideLanguagePickerOpen && !showSlideMode ? (
+                  <div className="pointer-events-auto absolute inset-0 z-50 flex items-center justify-center bg-black/55 px-4 backdrop-blur-sm">
+                    <div className="w-full max-w-sm rounded-lg border border-white/25 bg-white p-5 text-slate-900 shadow-2xl">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex items-center gap-3">
+                          <span className="inline-flex size-10 items-center justify-center rounded-lg bg-slate-900 text-white">
+                            <Languages className="size-5" aria-hidden />
+                          </span>
+                          <div>
+                            <h2 className="text-base font-semibold leading-6">
+                              {voice.currentLanguage === 'ja'
+                                ? 'スライド案内の言語'
+                                : 'Slide Guide Language'}
+                            </h2>
+                            <p className="mt-1 text-sm leading-5 text-slate-600">
+                              {voice.currentLanguage === 'ja'
+                                ? '表示と音声の言語を選んでください。'
+                                : 'Choose the language for slides and narration.'}
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setSlideLanguagePickerOpen(false)}
+                          aria-label={voice.currentLanguage === 'ja' ? '閉じる' : 'Close'}
+                          className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-600 transition-colors hover:bg-slate-50"
+                        >
+                          <X className="size-4" aria-hidden />
+                        </button>
+                      </div>
+                      <div className="mt-5 grid grid-cols-2 gap-3">
+                        <button
+                          type="button"
+                          data-testid="slide-language-ja"
+                          onClick={() => startPresentation('ja')}
+                          className="flex min-h-20 flex-col items-center justify-center rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-center transition-colors hover:border-slate-900 hover:bg-white"
+                        >
+                          <span className="text-lg font-semibold">日本語</span>
+                          <span className="mt-1 text-xs text-slate-500">Japanese</span>
+                        </button>
+                        <button
+                          type="button"
+                          data-testid="slide-language-en"
+                          onClick={() => startPresentation('en')}
+                          className="flex min-h-20 flex-col items-center justify-center rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-center transition-colors hover:border-slate-900 hover:bg-white"
+                        >
+                          <span className="text-lg font-semibold">English</span>
+                          <span className="mt-1 text-xs text-slate-500">英語</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+
                 {showSlideMode ? (
                   <div
                     className="pointer-events-none absolute inset-0 z-50 flex h-full w-full flex-col"
@@ -721,7 +786,7 @@ export default function Home() {
                         <X className="size-4 sm:size-5" />
                       </button>
                       <ReceptionPdfGuide
-                        language={voice.currentLanguage}
+                        language={presentationLanguage}
                         rotateLandscapeHint={labels.slideRotateHint}
                         autoStartKey={presentationAutoStartKey}
                         className="min-h-0 flex-1"

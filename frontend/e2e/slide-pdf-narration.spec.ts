@@ -5,7 +5,21 @@ async function dismissInitialModal(page: import('@playwright/test').Page) {
   const modal = page.getByRole('dialog');
   const closeButton = page.getByTestId('initial-settings-close');
   if (await closeButton.isVisible({ timeout: 3_000 }).catch(() => false)) {
-    await closeButton.click({ force: true }).catch(() => {});
+    await page.waitForTimeout(1_500);
+    const deadline = Date.now() + 30_000;
+    while (Date.now() < deadline && !(await modal.isHidden().catch(() => false))) {
+      await closeButton.click({ timeout: 1_000, force: true }).catch(() => {});
+      if (!(await modal.isHidden().catch(() => false))) {
+        await closeButton
+          .evaluate((button) => {
+            if (button instanceof HTMLButtonElement) {
+              button.click();
+            }
+          })
+          .catch(() => {});
+      }
+      await page.waitForTimeout(250);
+    }
     await expect(modal).toBeHidden({ timeout: 10_000 });
   }
   await expect(page.getByRole('button', { name: 'Welcome' })).toBeVisible({ timeout: 5_000 });
@@ -57,6 +71,7 @@ test.describe('Slide PDF narration deck (#624)', () => {
 
     await page.setViewportSize({ width: 960, height: 540 });
     await page.getByTestId('kiosk-slides-button').click();
+    await page.getByTestId('slide-language-ja').click();
 
     await expect(page.getByTestId('reception-pdf-counter')).toHaveText('1 / 5', {
       timeout: 15_000,

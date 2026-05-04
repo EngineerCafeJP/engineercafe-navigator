@@ -247,6 +247,14 @@ class TestGKADetectMemoryQueryType:
         assert agent._detect_memory_query_type("覚えてる？") == "general_memory"
         assert agent._detect_memory_query_type("remember anything?") == "general_memory"
 
+    def test_memory_write_query_accepts_to_particle_oboete(self):
+        agent = self._create_agent()
+        assert agent._is_memory_write_query("窓側の席が好きだと覚えて") is True
+
+    def test_memory_write_query_accepts_oboetoite(self):
+        agent = self._create_agent()
+        assert agent._is_memory_write_query("僕の名前は寺田。覚えといてね。") is True
+
 
 class TestGKADetermineMemoryEmotion:
     """メモリ感情決定テスト"""

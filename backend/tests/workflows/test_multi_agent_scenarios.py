@@ -208,7 +208,7 @@ class TestPreMemoryRoutingScenario:
 
     @patch("backend.utils.memory_helper.get_memory_helper")
     @patch("backend.workflows.main_workflow.OrchestratorAgent")
-    async def test_active_reception_always_uses_normal_path(
+    async def test_active_reception_information_query_bypasses_reception(
         self,
         mock_orchestrator_class,
         mock_get_helper,
@@ -216,8 +216,14 @@ class TestPreMemoryRoutingScenario:
         from backend.workflows.main_workflow import MainWorkflow
 
         stub_orchestrator = _StubOrchestrator()
-        stub_orchestrator.decide_next_agent.side_effect = AssertionError(
-            "active reception should short-circuit before LLM routing"
+        stub_orchestrator.decide_next_agent.return_value = OrchestratorDecision(
+            next_agent="facility",
+            language="ja",
+            category="facility-info",
+            request_type="wifi",
+            confidence=0.9,
+            reasoning="test",
+            debug_info={},
         )
         mock_orchestrator_class.return_value = stub_orchestrator
 
@@ -244,6 +250,13 @@ class TestPreMemoryRoutingScenario:
             ),
         ):
             workflow = MainWorkflow(checkpointer=checkpointer)
+            workflow._facility_agent.answer_facility_query = AsyncMock(
+                return_value={
+                    "answer": "WiFi is available. Please ask reception for the password.",
+                    "emotion": "happy",
+                    "metadata": {"agent": "FacilityAgent", "status": "success"},
+                }
+            )
 
             result = await workflow.ainvoke(
                 {
@@ -253,8 +266,64 @@ class TestPreMemoryRoutingScenario:
                 }
             )
 
-        assert result["answer"] == "受付フローを続けます。ご用件を教えてください。"
+        assert "Wi" in result["answer"] or "wifi" in result["answer"].lower()
         mock_helper.get_context.assert_awaited_once()
+        stub_orchestrator.decide_next_agent.assert_awaited()
+
+    @patch("backend.utils.memory_helper.get_memory_helper")
+    @patch("backend.workflows.main_workflow.OrchestratorAgent")
+    async def test_active_reception_assistant_profile_does_not_complete_stale_route(
+        self,
+        mock_orchestrator_class,
+        mock_get_helper,
+    ):
+        from backend.workflows.main_workflow import MainWorkflow
+
+        stub_orchestrator = _StubOrchestrator()
+        mock_orchestrator_class.return_value = stub_orchestrator
+
+        mock_helper = _make_memory_helper_mock()
+        mock_get_helper.return_value = mock_helper
+
+        checkpointer = MemorySaver()
+        reception_subgraph = AsyncMock(
+            return_value={
+                "target_agent": "slide",
+                "routing": {"agent": "slide"},
+                "metadata": {"reception_stage": "completed"},
+            }
+        )
+
+        with (
+            _patch_memory_loader_deps(),
+            patch(
+                "backend.utils.reception_status.check_reception_status",
+                new=AsyncMock(
+                    return_value={
+                        "completed": False,
+                        "stage": "routing",
+                        "purpose": {"category": "tour", "target_agent": "slide"},
+                    }
+                ),
+            ),
+            patch(
+                "backend.workflows.reception_workflow.invoke_reception_subgraph",
+                new=reception_subgraph,
+            ),
+        ):
+            workflow = MainWorkflow(checkpointer=checkpointer)
+            result = await workflow.ainvoke(
+                {
+                    "query": "あなたの名前は？",
+                    "session_id": "active-reception-profile",
+                    "language": "ja",
+                }
+            )
+
+        assert "エンナビ" in result["answer"]
+        assert result["metadata"]["query_type"] == "assistant_profile"
+        assert result["metadata"]["reception_action"] == "answer_assistant_profile"
+        reception_subgraph.assert_not_awaited()
         stub_orchestrator.decide_next_agent.assert_not_awaited()
 
 

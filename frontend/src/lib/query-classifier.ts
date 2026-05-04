@@ -358,9 +358,16 @@ export class QueryClassifier {
     // 会議室の曖昧性
     const meetingRoomKeywords = ['会議室', 'meeting room', 'ミーティング', 'mtg'];
     const hasMeetingRoom = meetingRoomKeywords.some(keyword => normalizedQuestion.includes(keyword));
-    const hasSpecificFloor = normalizedQuestion.includes('2階') || normalizedQuestion.includes('2f') || 
-                            normalizedQuestion.includes('地下') || normalizedQuestion.includes('basement') ||
-                            normalizedQuestion.includes('under');
+    const hasSpecificFloor =
+      normalizedQuestion.includes('2階') ||
+      normalizedQuestion.includes('２階') ||
+      normalizedQuestion.includes('二階') ||
+      normalizedQuestion.includes('2f') ||
+      normalizedQuestion.includes('２f') ||
+      normalizedQuestion.includes('２Ｆ') ||
+      normalizedQuestion.includes('地下') ||
+      normalizedQuestion.includes('basement') ||
+      normalizedQuestion.includes('under');
     
     if (hasMeetingRoom && !hasSpecificFloor) {
       return {
@@ -421,9 +428,16 @@ export class QueryClassifier {
   private checkMeetingRoomAmbiguity(normalizedQuestion: string): QueryClassificationResult | null {
     const meetingRoomKeywords = ['会議室', 'meeting room', 'ミーティング', 'mtg'];
     const hasMeetingRoom = meetingRoomKeywords.some(keyword => normalizedQuestion.includes(keyword));
-    const hasSpecificFloor = normalizedQuestion.includes('2階') || normalizedQuestion.includes('2f') || 
-                            normalizedQuestion.includes('地下') || normalizedQuestion.includes('basement') ||
-                            normalizedQuestion.includes('under');
+    const hasSpecificFloor =
+      normalizedQuestion.includes('2階') ||
+      normalizedQuestion.includes('２階') ||
+      normalizedQuestion.includes('二階') ||
+      normalizedQuestion.includes('2f') ||
+      normalizedQuestion.includes('２f') ||
+      normalizedQuestion.includes('２Ｆ') ||
+      normalizedQuestion.includes('地下') ||
+      normalizedQuestion.includes('basement') ||
+      normalizedQuestion.includes('under');
     
     if (hasMeetingRoom && !hasSpecificFloor) {
       return {
