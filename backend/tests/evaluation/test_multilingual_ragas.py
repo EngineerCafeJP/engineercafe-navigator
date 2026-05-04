@@ -56,7 +56,7 @@ class TestMultilingualComparison:
             "ja": {
                 "metrics": {
                     "context_precision": 1.0,
-                    "answer_correctness": 0.84,
+                    "answer_correctness": 0.80,
                     "answer_relevancy": 0.92,
                     "faithfulness": 0.90,
                 },
@@ -84,14 +84,14 @@ class TestMultilingualComparison:
         assert comparison["all_targets_met"] is False
         assert comparison["per_language"]["ja"]["passed"] is False
         assert comparison["per_language"]["en"]["passed"] is True
-        assert comparison["per_language"]["ja"]["metrics"]["answer_correctness"]["target"] == 0.85
+        assert comparison["per_language"]["ja"]["metrics"]["answer_correctness"]["target"] == 0.81
         assert comparison["per_language"]["ja"]["metrics"]["answer_correctness"]["baseline"] == 0.77
         assert comparison["failed_targets"] == [
             {
                 "language": "ja",
                 "metric": "answer_correctness",
-                "actual": 0.84,
-                "target": 0.85,
+                "actual": 0.80,
+                "target": 0.81,
             }
         ]
 

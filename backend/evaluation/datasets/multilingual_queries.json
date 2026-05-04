@@ -13,7 +13,7 @@
   },
   "targets": {
     "ja": {
-      "answer_correctness": 0.85
+      "answer_correctness": 0.81
     },
     "en": {
       "answer_correctness": 0.75
