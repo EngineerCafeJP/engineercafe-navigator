@@ -20,7 +20,7 @@ import {
 } from './audio-user-interaction-gate';
 
 export class WebAudioPlayer {
-  private static readonly DEFAULT_DECODE_TIMEOUT_MS = 8000;
+  private static readonly DEFAULT_DECODE_TIMEOUT_MS = 15000;
   private audioContext: AudioContext | null = null;
   private audioBuffer: AudioBuffer | null = null;
   private source: AudioBufferSourceNode | null = null;

@@ -82,7 +82,7 @@ export function shouldResetWebAudioPlayerForDevice(): boolean {
 }
 
 export class MobileAudioService {
-  private static readonly PLAYBACK_START_TIMEOUT_MS = 8000;
+  private static readonly PLAYBACK_START_TIMEOUT_MS = 15000;
   private webAudioPlayer: WebAudioPlayer | null = null;
   private htmlAudioElement: HTMLAudioElement | null = null;
   private htmlAudioUrl: string | null = null;
