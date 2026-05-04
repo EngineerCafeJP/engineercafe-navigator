@@ -10,6 +10,7 @@ import {
   registerAudioInteractionCallback,
   resetAudioUserInteractionGate
 } from './audio-user-interaction-gate';
+import { dispatchAudioInteractionRequired } from './audio-interaction-events';
 
 type AudioContextSuspensionListener = (state: AudioContextState) => void;
 
@@ -168,6 +169,11 @@ export class AudioInteractionManager {
     this.hasUserInteracted = this.hasUserInteracted || hasAudioUserInteraction();
     if (!this.hasUserInteracted) {
       this.interactionEventListeners.onInteractionRequired?.();
+      dispatchAudioInteractionRequired({
+        reason: 'playback-blocked',
+        message: 'User interaction required for audio playback',
+        audioContextState: this.getAudioContextState(),
+      });
       throw new Error('User interaction required for audio playback');
     }
 

@@ -173,10 +173,13 @@ export async function setupWebAudioMock(page: Page) {
       }
 
       start() {
-        // 10ms後にonendedを呼び出して再生完了をシミュレート
+        (window as Window & { __PLAYWRIGHT_AUDIO_STARTS__?: number }).__PLAYWRIGHT_AUDIO_STARTS__ =
+          ((window as Window & { __PLAYWRIGHT_AUDIO_STARTS__?: number }).__PLAYWRIGHT_AUDIO_STARTS__ ?? 0) + 1;
+        // AudioQueue swaps event handlers after playAudio resolves, so leave
+        // enough time for the queue-level onEnded handler to attach.
         setTimeout(() => {
           this.onended?.();
-        }, 10);
+        }, 100);
       }
 
       stop() {}
