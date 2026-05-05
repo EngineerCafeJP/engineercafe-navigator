@@ -3,7 +3,7 @@
 **作成日**: 2026-05-05  
 **更新**: 2026-05-05 — §3A を追加し、`main.py` / `main_workflow.py` のファイル単位・PR 粒度まで具体化。  
 **スコープ**: 現行実装を **変更しない** 前提での調査結果と、今後の改善計画の整理  
-**正本との関係**: 運用上の優先判断は引き続き `[docs/STATUS.md](../STATUS.md)`、[ADR 018](../adr/018-alpha-fast-response-and-assistant-profile-routing.md)、および実装コードを優先する。
+**正本との関係**: 運用上の優先判断は引き続き [`docs/STATUS.md`](../STATUS.md)、[ADR 018](../adr/018-alpha-fast-response-and-assistant-profile-routing.md)、および実装コードを優先する。
 
 ---
 
@@ -33,14 +33,14 @@
 | オーケストレータ            | `backend/agents/orchestrator_agent.py` **約 379 行**。                                                                                                                                                                                                                 |
 | エージェントモジュール         | `backend/agents/*.py` **13 ファイル**。                                                                                                                                                                                                                                  |
 | バックエンドテスト           | `backend/tests/`** に **約 183 個** の `test_*.py`。markers は `pyproject.toml` に集約（`ragas`, `e2e`, `integration`, `slow`, `vision`, `perf`, `adversarial`, `voice_pipeline` 等）。                                                                                          |
-| フロントエンド API プロキシ    | `frontend/src/app/api/**/route.ts` **28 ファイル**。共通ユーティリティ `[frontend/src/lib/api/backend-proxy.ts](../../frontend/src/lib/api/backend-proxy.ts)` で `BACKEND_API_URL` / `BACKEND_API_KEY` / タイムアウトを集約。                                                                |
+| フロントエンド API プロキシ    | `frontend/src/app/api/**/route.ts` **28 ファイル**。共通ユーティリティ [`frontend/src/lib/api/backend-proxy.ts`](../../frontend/src/lib/api/backend-proxy.ts) で `BACKEND_API_URL` / `BACKEND_API_KEY` / タイムアウトを集約。                                                                |
 | フロントエンド TS/TSX      | `frontend/src` 配下 **約 190 ファイル**。                                                                                                                                                                                                                                   |
-| ミドルウェア              | `[frontend/src/middleware.ts](../../frontend/src/middleware.ts)`: `/api/admin`, `/api/cron`, `/api/monitoring` は Bearer、`/api/voice`, `/api/qa`, `/api/character`, `/api/slides`, `/api/reception/*` は UA トレース用マッチ。**新規の機密 API は matcher に明示追加が必要**（README の警告どおり）。 |
-| Docker              | `[backend/Dockerfile](../../backend/Dockerfile)`: development / production マルチステージ、Vosk・Qwen・翻訳モデル取得、`PYTHONPATH` の symlink パターン。 `[frontend/Dockerfile](../../frontend/Dockerfile)` 別途。                                                                            |
-| 依存関係定義              | `backend/requirements.txt` と `[backend/pyproject.toml](../../backend/pyproject.toml)`（Poetry セクション + Hatch + uv dev-deps）の **二重管理**。Makefile は `pip install -r requirements.txt`。                                                                                   |
-| Supabase（リポジトリ内）    | `supabase/migrations` にマイグレーションSQLは見当たらず、`[supabase/snippets/create_sensor_events.sql](../../supabase/snippets/create_sensor_events.sql)` のみ。**スキーマの単一ソースがリポジトリ外（Dashboard／別ブランチ）にある可能性** — 運用確認が必要。                                                                |
-| Terraform           | `[infra/terraform/](../../infra/terraform/)` にダッシュボード・アラート等 **9 `.tf` ファイル**。`.github/workflows/terraform-plan.yml` が連動。                                                                                                                                            |
-| ルートスクリプト            | `[scripts/](../../scripts/)` に検証・スモーク・RAG live・STT・音声パイプライン・P0 タイムアウト検証（`.mjs`）など複数。                                                                                                                                                                                |
+| ミドルウェア              | [`frontend/src/middleware.ts`](../../frontend/src/middleware.ts): `/api/admin`, `/api/cron`, `/api/monitoring` は Bearer、`/api/voice`, `/api/qa`, `/api/character`, `/api/slides`, `/api/reception/*` は UA トレース用マッチ。**新規の機密 API は matcher に明示追加が必要**（README の警告どおり）。 |
+| Docker              | [`backend/Dockerfile`](../../backend/Dockerfile): development / production マルチステージ、Vosk・Qwen・翻訳モデル取得、`PYTHONPATH` の symlink パターン。 [`frontend/Dockerfile`](../../frontend/Dockerfile) 別途。                                                                            |
+| 依存関係定義              | `backend/requirements.txt` と [`backend/pyproject.toml`](../../backend/pyproject.toml)（Poetry セクション + Hatch + uv dev-deps）の **二重管理**。Makefile は `pip install -r requirements.txt`。                                                                                   |
+| Supabase（リポジトリ内）    | [`backend/supabase/migrations/`](../../backend/supabase/migrations/) に **12 個** のマイグレーション SQL（init / RAG / metrics / monitoring / embedding 次元 / hierarchical RAG / reception 系）。リポジトリルートには [`supabase/snippets/create_sensor_events.sql`](../../supabase/snippets/create_sensor_events.sql) のみ。`backend/supabase/migrations` が **schema の単一ソース**として運用されているかを runbook で明文化する余地あり（dashboard 適用差分の検知は `db-schema-drift.yml`）。 |
+| Terraform           | [`infra/terraform/`](../../infra/terraform/) にダッシュボード・アラート等 **9 `.tf` ファイル**。`.github/workflows/terraform-plan.yml` が連動。                                                                                                                                            |
+| ルートスクリプト            | [`scripts/`](../../scripts/) に検証・スモーク・RAG live・STT・音声パイプライン・P0 タイムアウト検証（`.mjs`）など複数。                                                                                                                                                                                |
 | CI ワークフロー           | `.github/workflows/` に `ci.yml`, `alpha-live-verification.yml`, `ragas-evaluation.yml`, `voice-e2e-nightly.yml`, `db-schema-drift.yml`, `frontend-latency-probe.yml`, `frontend-production-smoke.yml`, `terraform-plan.yml` 等。                                      |
 
 
@@ -58,7 +58,10 @@
 
 **計画の詳細（行レンジ・ファイル名・PR 順）は [§3A](#3a-具体分割仕様粒度ファイルpr順) に集約した。** ここでは論点のみ。
 
-- **ルータ分割**: 既存の `backend/api/reception.py` パターン（`APIRouter` + `router = APIRouter()`）に合わせ、`main.py` は `include_router` とアプリファクトリに縮小する。
+- **ルータ分割**: 現状の `backend/api/*` には **2 系統のルータパターン**が混在しているため、抽出時はどちらに揃えるかを 1 行目で明示する:
+  - **A 系**: `APIRouter(prefix="/api/<domain>")` を内部に持ち、`main.py` 側は `include_router(<router>)`（prefix 引数なし）。例: `reception.py` (`/api/reception`)、`ocr.py` (`/api/ocr`)、`monitoring.py` (`/api/monitoring`)、`alerts.py` (`/api/alerts`)。
+  - **B 系**: `APIRouter(tags=[...])` だけを定義し、`main.py` 側で `include_router(<router>, prefix="/api")` を付与。例: `knowledge.py`、`stt_vocabulary.py`。
+  - 新規抽出ルータは、ドメイン名がそのままパス先頭に立つもの（calendar / voice / chat / character / slides 等）を **A 系**に揃え、`main.py` 末尾は `include_router` のみに縮小する方針が単純。`dependencies=[Depends(verify_api_key)]` は **A 系では `include_router` 側に付与**する（`backend/main.py:1554-1579` の現行パターンに合わせる）。
 - **ワークフロー分割**: `MainWorkflow` を **Mixin／サブモジュールへの移動のみ** から始め、ノードを「素の関数」に落とすかどうかは第2段で判断する（`add_node` は Callable を受け取れるが、`self` 依存の整理コストが大きい）。
 - **import エイリアス**: `OrchestratorAgent as RoutingLogicAgent` は実装時にどちらかへ統一し、grep で参照を一括置換する。
 
@@ -206,7 +209,7 @@
 
 **B. ドメインルータ（`main.py` から完全搬出）**
 
-既存と同型で `**APIRouter(prefix="/api", tags=[...])`** とし、`dependencies=[Depends(verify_api_key)]` はルータ合成時に付与（`reception.py` と同じパターン）。
+A 系パターン（§3.1 参照）に合わせ `APIRouter(prefix="/api/<domain>", tags=[...])` で抽出し、`dependencies=[Depends(verify_api_key)]` は **`include_router` 側で付与**する（`backend/main.py:1554-1579` の現行慣習に合わせる）。`reception.py` / `ocr.py` / `monitoring.py` / `alerts.py` がこのパターン。
 
 
 | 概ね行       | 公開パス                                                                | 移動先ファイル（提案）                                                    | 含めるもの                                                                                                                                                           |
