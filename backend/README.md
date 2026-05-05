@@ -15,7 +15,7 @@ FastAPI + LangGraph。**会話・音声・スライド・キャラ・ナレッ�
 
 ## エンドポイント早見
 
-`GET /health`、`GET /api/calendar`、`POST /api/chat`、`POST /api/chat/stream`、`POST /api/voice`、`POST /api/slides`、`POST /api/character`、`POST /api/ocr`、`POST /api/interrupt`、`/api/knowledge/*`、`/api/stt-vocabulary/*`、`/api/reception/*`。**詳細は OpenAPI `/docs`**。
+`GET /health`、`GET /api/calendar`、`POST /api/chat`、`POST /api/chat/stream`、`POST /api/agent/invoke`、`POST /api/voice`、`POST /api/slides`、`POST /api/character`、`POST /api/ocr`、`POST /api/interrupt`、`/api/knowledge/*`、`/api/stt-vocabulary/*`、`/api/reception/*`。**詳細は OpenAPI `/docs`**。
 
 ## 実装上のメモ
 

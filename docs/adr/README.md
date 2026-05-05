@@ -44,3 +44,8 @@
 - [architecture/SYSTEM-ARCHITECTURE.md](../architecture/SYSTEM-ARCHITECTURE.md)
 - ルート [CLAUDE.md](../../CLAUDE.md)（コマンド・API フロー制約）
 
+## メモ
+
+- ADR 番号は 005 以降を運用しており、**015 は欠番**です（採番のみ存在し、文書化に至らなかったため）。新しい ADR を起票する際は 020 から付番してください。
+- 001–004 についても、本リポジトリでは初期から ADR 005 以降のみを保守しています。
+
