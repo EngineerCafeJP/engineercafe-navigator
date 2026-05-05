@@ -1,8 +1,8 @@
 # API ドキュメント - Engineer Cafe Navigator
 
-[English](./API.md) | 日本語版
+英語でのリポジトリ概要はルートの [README-EN.md](../../README-EN.md)。API 詳細は本ページが正。
 
-現在の Vercel + Cloud Run 構成に合わせて更新した API リファレンスです。
+現在の Vercel + Cloud Run 構成に合わせた API リファレンスです。
 
 ## 概要
 

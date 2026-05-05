@@ -1,24 +1,18 @@
-# Archive
+# アーカイブ
 
-This directory contains historical documents that are preserved for reference but are not the source of truth for the current system.
+現行システムの**正本ではない**史料です。
 
-## What lives here
+## ここにあるもの
 
-- migration-era planning and implementation notes
-- old frontend-only documentation sets
-- historical reports, audits, and summaries
-- issue-specific deep dives that no longer describe the live architecture
+移行期メモ、旧フロント文書、過去レポート、Issue 深掘りなど。
 
-## How to use the archive
+## 読み方
 
-- Start with [../STATUS.md](../STATUS.md) before trusting any archived document.
-- Treat Mastra-era docs as historical context unless explicitly revalidated against code.
-- Prefer current README files for runtime and setup information.
+先に [../STATUS.md](../STATUS.md)。Mastra 時代は歴史として。運用は現行 README / `docs/README.md`。
 
-## Current cleanup note
+## 最近のアーカイブ移動
 
-As part of the 2026-03-14 documentation cleanup pass:
+| 元パス | 移動先 | 移動日 | 理由 |
+| --- | --- | --- | --- |
+| `Plans.md`（リポジトリルート） | [Plans-2026-03-07-wave1.md](Plans-2026-03-07-wave1.md) | 2026-05-05 | Wave 1 era の凍結スナップショット。運用判断は [`STATUS.md`](../STATUS.md)、構造リファクタは [`comprehensive-refactoring-plan-2026-05-05.md`](../plans/comprehensive-refactoring-plan-2026-05-05.md)、ADR 一覧は [`adr/README.md`](../adr/README.md) に集約。 |
 
-- active entry docs were refreshed
-- current-vs-legacy boundaries were clarified
-- one duplicate file under `docs/spaces/` was removed

@@ -1,7 +1,8 @@
 # セキュリティドキュメント
 
-> Last updated: 2026-04-19. 現在の production 構成
-> (Vercel frontend / Cloud Run backend / Supabase) に合わせて更新しています。
+> **索引**: [Documentation hub（README.md）](README.md) · [STATUS.md](STATUS.md)
+>
+> Last updated: 2026-05-05（運用数値・ゲートの正本は [STATUS.md](STATUS.md)）。現在の production 構成（Vercel frontend / Cloud Run backend / Supabase）に合わせています。
 
 ## 概要
 
@@ -17,7 +18,7 @@ protected route が一時的に `403` を返すことです。
 
 ## 認証アーキテクチャ
 
-### Layer 1: Frontend Middleware
+### レイヤー 1: フロントエンド Middleware
 
 **対象ファイル**: `frontend/src/middleware.ts`
 
@@ -32,7 +33,7 @@ protected route が一時的に `403` を返すことです。
 
 保護対象:
 
-| Pattern | Purpose |
+| パターン | 用途 |
 |---|---|
 | `/api/admin/:path*` | Knowledge base 管理、STT vocabulary、admin 操作 |
 | `/api/cron/:path*` | 定期 import や運用ジョブ |
@@ -43,7 +44,7 @@ protected route が一時的に `403` を返すことです。
 - `/api/alerts/webhook` は middleware の対象外
 - こちらは `ALERT_WEBHOOK_SECRET` で独立保護
 
-### Layer 2: Frontend -> Backend API Key
+### レイヤー 2: Frontend → Backend の API キー
 
 **対象ファイル**:
 
@@ -62,24 +63,24 @@ backend は `API_SECRET_KEY` と `hmac.compare_digest` で照合します。
 
 つまり backend 単体では fail-closed ですが、end-to-end の release は smoke check をしないと壊れたまま通る可能性があります。
 
-### Layer 3: Backend Startup Gate
+### レイヤー 3: Backend 起動ゲート
 
 `backend/main.py` は次を保証します。
 
 - `ENVIRONMENT=production` かつ `API_SECRET_KEY` 未設定なら起動失敗
 - protected route に invalid / missing `X-API-Key` で来た request は `403`
 
-### Defense-in-Depth Summary
+### 防御の深さ（要約）
 
-| Scenario | Frontend middleware | Frontend proxy key | Backend dependency | Result |
+| シナリオ | FE middleware | FE プロキシ鍵 | BE 依存 | 結果 |
 |---|---|---|---|---|
-| Valid Bearer token, valid `BACKEND_API_KEY`, valid `API_SECRET_KEY` | Pass | Pass | Pass | Request served |
-| Valid Bearer token, missing or stale `BACKEND_API_KEY` | Pass | Fail | 403 | Backend で block |
-| Invalid Bearer token | 401 | Not reached | Not reached | Edge で block |
-| `ADMIN_API_SECRET` missing in production | 401 | Not reached | Not reached | Edge で block |
-| `API_SECRET_KEY` missing in production | — | — | Startup exit | Process never starts |
+| 有効な Bearer、`BACKEND_API_KEY`、`API_SECRET_KEY` が揃う | 通過 | 通過 | 通過 | 処理される |
+| 有効な Bearer だが `BACKEND_API_KEY` が欠落／古い | 通過 | 失敗 | 403 | BE で拒否 |
+| Bearer が無効 | 401 | — | — | Edge で拒否 |
+| production で `ADMIN_API_SECRET` 欠落 | 401 | — | — | Edge で拒否 |
+| production で `API_SECRET_KEY` 欠落 | — | — | 起動失敗 | プロセスが立ち上がらない |
 
-## Server-Side Data Access
+## サーバー側のデータアクセス
 
 Supabase service-role access は引き続き server-side に限定されています。
 
@@ -88,7 +89,7 @@ Supabase service-role access は引き続き server-side に限定されてい�
 
 主な table:
 
-| Table | Access path |
+| テーブル | アクセス経路 |
 |---|---|
 | `knowledge_base` | backend または authenticated frontend admin proxy |
 | `reception_sessions` | backend repository |
@@ -96,7 +97,7 @@ Supabase service-role access は引き続き server-side に限定されてい�
 | `conversation_history` | backend |
 | `agent_memory` | backend |
 
-## Rate Limiting
+## レート制限
 
 FastAPI backend は `slowapi` を使用します。
 
@@ -121,7 +122,7 @@ FastAPI backend は `slowapi` を使用します。
 
 production deploy に関わる主要変数:
 
-| Variable | Service | Blocks startup | Purpose |
+| 変数名 | サービス | 起動ブロック | 目的 |
 |---|---|---|---|
 | `ADMIN_API_SECRET` | Frontend (Vercel) | Yes, middleware behavior | `/api/admin/*`, `/api/cron/*`, `/api/monitoring/*` を保護 |
 | `BACKEND_API_KEY` | Frontend (Vercel server runtime) | No | protected backend route に `X-API-Key` を付ける |
@@ -159,9 +160,9 @@ kiosk 側の smoke coverage の方が強く、operator-only surface の E2E は�
 
 この audit では linked project は確認できましたが、data layer の recent runtime log を同じ密度では追えていません。
 
-## Security Testing
+## セキュリティテスト
 
-### Pre-merge checks
+### マージ前チェック
 
 - `ruff check .`
 - `black --check .`
@@ -169,7 +170,7 @@ kiosk 側の smoke coverage の方が強く、operator-only surface の E2E は�
 - `pnpm typecheck`
 - 既存 backend / frontend test suite
 
-### Production 前の manual checks
+### 本番リリース前の手動確認
 
 - `ADMIN_API_SECRET`, `BACKEND_API_KEY`, `API_SECRET_KEY` が target 環境にあることを確認
 - `/api/admin/knowledge` に `Authorization` なしで投げて `401` を確認
@@ -179,14 +180,14 @@ kiosk 側の smoke coverage の方が強く、operator-only surface の E2E は�
   - `POST /api/character`
 - deploy 直後の Cloud Run ログに `403` / `5xx` スパイクがないことを確認
 
-## Incident Response
+## インシデント対応
 
-| Severity | Description | Target response |
+| 深刻度 | 説明 | 目標対応時間 |
 |---|---|---|
-| Critical | auth bypass, broad outage, data exfiltration | 30 minutes |
-| High | repeated 403 deploy drift, secret rotation, major disruption | 2 hours |
-| Medium | suspicious access pattern, rate-limit breach, dependency CVE | 24 hours |
-| Low | informational finding, low-risk dependency issue | 1 week |
+| Critical | 認証バイパス、広範な障害、データ流出 | 30 分 |
+| High | 403 のデプロイ不整合の反復、秘密鍵ローテーション、重大な機能低下 | 2 時間 |
+| Medium | 疑わしいアクセス、レート制限超過、依存 CVE | 24 時間 |
+| Low | 情報レベルの指摘、低リスクな依存の問題 | 1 週間 |
 
 credential 漏えい時:
 
@@ -201,4 +202,4 @@ credential 漏えい時:
 - [plans/production-readiness-followup-2026-04-19.md](plans/production-readiness-followup-2026-04-19.md)
 - [adr/008-operational-verification-and-deployment-guardrails.md](adr/008-operational-verification-and-deployment-guardrails.md)
 
-[Home](../README.md) | [API Documentation](api/API.md) | [Deployment](DEPLOYMENT.md) | [Status](STATUS.md)
+[Home](../README.md) | [API 説明（日本語）](api/API-ja.md) | [Deployment](DEPLOYMENT.md) | [Status](STATUS.md)

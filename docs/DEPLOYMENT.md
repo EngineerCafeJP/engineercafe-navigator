@@ -1,7 +1,9 @@
 # デプロイガイド
 
-> Engineer Cafe Navigator の production deployment 運用ガイド
-> Last updated: 2026-04-30
+> **索引**: [Documentation hub（README.md）](README.md)
+>
+> Engineer Cafe Navigator の本番デプロイ運用ガイド
+> Last updated: 2026-05-05（ライブ revision・run ID は [STATUS.md](STATUS.md) を正とする）
 
 ## インフラ構成
 
@@ -25,30 +27,30 @@ Cloud Run: engineer-cafe-backend (asia-northeast1)
      +---> OpenRouter / Gemini / Cerebras (LLM 経路)
 ```
 
-### Service Registry
+### サービス一覧
 
-| Service | Platform | Region | Purpose |
+| サービス | プラットフォーム | リージョン | 用途 |
 | --- | --- | --- | --- |
-| Frontend | Vercel | Global CDN | Next.js UI + API proxy routes |
-| Backend | Cloud Run `engineer-cafe-backend` | `asia-northeast1` | FastAPI + LangGraph agents |
+| Frontend | Vercel | Global CDN | Next.js UI + API プロキシ |
+| Backend | Cloud Run `engineer-cafe-backend` | `asia-northeast1` | FastAPI + LangGraph |
 | PiperPlus / VoiceVox | Cloud Run | `asia-northeast1` / `asia-northeast2` | TTS 経路（deploy 設定に従う） |
-| Database | Supabase (PostgreSQL + pgvector) | Managed | chat history, knowledge base, session data |
-| LLM providers | OpenRouter / Gemini / Cerebras | Managed | answer generation, fast fallback, filler |
+| Database | Supabase (PostgreSQL + pgvector) | Managed | 会話履歴・ナレッジ・セッション等 |
+| LLM プロバイダ | OpenRouter / Gemini / Cerebras | Managed | 応答生成・fast フォールバック・フィラー |
 
-### Frontend origin の source of truth
+### フロントエンド origin の正本
 
-- canonical な production origin は Vercel project の primary production domain
-- arbitrary な preview URL を source of truth にしない
+- 正規の production origin は Vercel プロジェクトの primary production ドメイン
+- 任意の preview URL を正本にしない
 - backend 側の `FRONTEND_PRODUCTION_ORIGIN` と `ALLOWED_ORIGINS` はこの値と一致させる
 
-### Legacy note
+### レガシー注記
 
 - 旧 Cloudflare Workers frontend は現行 production default ではない
 - 運用判断は Vercel + Cloud Run を正とする
 
 ## 環境変数
 
-### Frontend (Vercel)
+### フロントエンド（Vercel）
 
 Vercel project の Environment Variables に設定する。
 
@@ -64,9 +66,9 @@ Vercel project の Environment Variables に設定する。
 | `SUPABASE_SERVICE_ROLE_KEY` | Yes | server-only の service role |
 | Other AI / optional keys | As needed | frontend README と CI 設定に合わせる |
 
-### Backend (Cloud Run)
+### バックエンド（Cloud Run）
 
-source of truth は `.github/workflows/ci.yml` の deploy job。
+正本は `.github/workflows/ci.yml` の deploy job。
 
 典型的な deploy 設定:
 
@@ -109,13 +111,13 @@ source of truth は `.github/workflows/ci.yml` の deploy job。
 
 ## デプロイ手順
 
-### Frontend: Vercel
+### デプロイ手順: フロントエンド（Vercel）
 
 1. `develop` へ merge する
 2. Vercel の Git integration または deploy hook で build / deploy を走らせる
 3. production domain を canonical URL として扱う
 
-release 前の local check:
+リリース前のローカル確認:
 
 ```bash
 cd frontend
@@ -124,7 +126,7 @@ pnpm typecheck
 pnpm build
 ```
 
-### Backend: Cloud Run
+### デプロイ手順: バックエンド（Cloud Run）
 
 `develop` への push で backend path に変更がある場合、GitHub Actions の
 `backend-deploy-staging` が image build と Cloud Run deploy を実施する。
@@ -136,7 +138,7 @@ manual deploy をする場合も、workflow と同じ前提に寄せる:
 - `gcloud run deploy`
 - secret は `--update-secrets`
 
-### Cerebras secret setup
+### Cerebras のシークレット設定
 
 Cerebras を有効化する場合は、local secret を chat や issue comment に貼らない。
 
@@ -166,13 +168,13 @@ Terraform では `infra/terraform/secrets.tf` に runtime secret container を�
 
 ## CI / CD
 
-- Pull request: lint, typecheck, build, backend tests, Playwright merge-gate
-- Backend auto-deploy: `develop` push -> GitHub Actions -> Cloud Run
-- Frontend auto-deploy: `develop` push -> Vercel
+- Pull request: lint・typecheck・build・backend テスト・Playwright マージゲート
+- Backend 自動デプロイ: `develop` push → GitHub Actions → Cloud Run
+- Frontend 自動デプロイ: `develop` push → Vercel
 
-## live 設定の確認方法
+## 本番設定の確認方法
 
-### Backend (Cloud Run)
+### バックエンド（Cloud Run）
 
 ```bash
 gcloud run services describe engineer-cafe-backend \
@@ -188,19 +190,19 @@ gcloud run services describe engineer-cafe-backend \
 - secret bindings
 - traffic / revision
 
-### Frontend (Vercel)
+### フロントエンド（Vercel）
 
 - Vercel dashboard の Deployments / Domains を確認
 - CLI を使う場合は `vercel list --yes`
 - `FRONTEND_PRODUCTION_ORIGIN` が production domain と一致していることを確認
 
-### Recent log review
+### 最近のログ確認
 
 - Cloud Run: deploy 後 15-60 分は `gcloud logging read` を見る
 - Vercel: deployment history を first signal とし、`vercel logs` だけに依存しない
 - Supabase: 現行 operator flow では CLI だけで十分な recent runtime log が取れない場合がある
 
-### Health
+### ヘルスチェック
 
 ```bash
 curl -sf "$(gcloud run services describe engineer-cafe-backend --region asia-northeast1 --format='value(status.url)')/health"
@@ -208,7 +210,7 @@ curl -sf "$(gcloud run services describe engineer-cafe-backend --region asia-nor
 
 ## リリース前チェック
 
-### Before every release
+### リリース前（毎回）
 
 - CI が green
 - Vercel target 環境に `BACKEND_API_KEY` がある
@@ -223,7 +225,7 @@ curl -sf "$(gcloud run services describe engineer-cafe-backend --region asia-nor
 - daily/general light route が RAG miss だけで Tavily / web search に落ちない
 - Gemini / Cerebras の model id は公式 API availability check と benchmark 結果で採用理由が残っている
 
-### After deployment
+### デプロイ後
 
 - backend `/health` が `200`
 - backend protected route に `X-API-Key` なしで投げると `403`
@@ -237,7 +239,7 @@ curl -sf "$(gcloud run services describe engineer-cafe-backend --region asia-nor
 - Cloud Run logs で `assistant_profile` / `daily_conversation` / `general_light` / `current_info` の route 分布を確認する
 - `あなたの名前は`, `何ができますか`, `明日のイベントを教えて` を production frontend 経由で確認する
 
-## Release Guardrails
+## リリース時のガードレール
 
 現在の最重要 release risk は、backend auth 自体の欠如ではなく、次の不整合です。
 
@@ -259,11 +261,11 @@ frontend は `BACKEND_API_KEY` が missing / stale でも startup 自体は止�
 - manual / local 実行: `scripts/verify-frontend-production.sh`
 - GitHub Actions: `.github/workflows/frontend-production-smoke.yml`
 
-## Latency Baseline
+## レイテンシのベースライン
 
 live 検証の前に、frontend 実経路の遅延を最低 1 回は採取する。
 
-### GitHub Actions
+### GitHub Actions（ワークフロー）
 
 - workflow: `Frontend Latency Probe`
 - trigger: `workflow_dispatch`
@@ -271,7 +273,7 @@ live 検証の前に、frontend 実経路の遅延を最低 1 回は採取する
   - `artifacts/latency-probe.json`
   - `artifacts/latency-probe.md`
 
-### Local execution
+### ローカル実行
 
 ```bash
 python scripts/latency_probe.py \
@@ -287,11 +289,11 @@ python scripts/latency_probe.py \
 
 field verification で iPad 系の音声停止が出たため、数値だけでなく実機再生も合わせて確認する。
 
-### Alpha fast response gate
+### Alpha fast response のゲート
 
 ADR 018 の実装後は、release 前に次の gate を通す。
 
-| Path | Gate |
+| 経路 | ゲート |
 | --- | --- |
 | identity / help / capability | p95 1s 未満、LLM / RAG / web search 不使用、provider self-disclosure 0 件 |
 | daily/general light | p95 3s 未満、current-info でない限り Tavily / web search 不使用 |
@@ -300,11 +302,11 @@ ADR 018 の実装後は、release 前に次の gate を通す。
 
 ## ロールバック
 
-### Frontend (Vercel)
+### フロントエンド（Vercel）
 
 - Vercel Deployments から previous deployment を promote / revert
 
-### Backend (Cloud Run)
+### バックエンド（Cloud Run）
 
 ```bash
 gcloud run revisions list \
@@ -318,7 +320,7 @@ gcloud run services update-traffic engineer-cafe-backend \
   --to-revisions REVISION_NAME=100
 ```
 
-## Database: Supabase
+## データベース（Supabase）
 
 - RLS は有効
 - service role access は server-side only
@@ -337,7 +339,7 @@ supabase db push
 
 ## トラブルシューティング
 
-### Backend errors after deploy
+### デプロイ後のバックエンドエラー
 
 ```bash
 gcloud logging read \
@@ -347,7 +349,7 @@ gcloud logging read \
   --format "table(timestamp, textPayload)"
 ```
 
-### Frontend admin routes misconfigured
+### フロントの admin ルート設定ミス
 
 - `ADMIN_API_SECRET` が Vercel 側と一致しているか確認
 
@@ -364,7 +366,7 @@ gcloud logging read \
 
 - `SUPABASE_DB_URI` が CI placeholder になっていないか確認
 
-## 現在の production risk
+## 現在の本番リスク
 
 追跡先:
 
@@ -373,4 +375,4 @@ gcloud logging read \
 - `#458`: emotion / animation contract mismatch
 - `#138` / `#398`: multilingual quality closure
 
-[Back to docs index](README.md)
+[ドキュメント索引へ](README.md)

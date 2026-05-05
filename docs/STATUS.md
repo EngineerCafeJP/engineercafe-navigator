@@ -1,6 +1,8 @@
 # 現在の状態
 
-Last updated: 2026-05-03
+Last updated: 2026-05-05（git 同期メモ。**ライブの run / revision は 2026-05-03 のまま**で、再 dispatch していないため数値は更新していません）。
+
+> **2026-05-05 git 同期メモ**: ルート README / `docs/README.md` / `docs/architecture/SYSTEM-ARCHITECTURE.md` / `docs/SECURITY.md` / `docs/DEPLOYMENT.md` / `docs/DEVELOPER-GUIDE.md` / `docs/api/API.md` / `frontend/README.md` / `backend/README.md` をスタブ化・索引化し、`docs/adr/README.md` と `docs/plans/comprehensive-refactoring-plan-2026-05-05.md` を新規追加しました（コード・運用ゲートには変更なし）。alpha NO-GO 判定は本ページの 2026-05-03 Reset Snapshot を引き続き正本とします。次に live workflow を再実行したタイミングで、本ページの run ID / revision を更新してください。
 
 ## 概要
 

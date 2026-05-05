@@ -1,28 +1,25 @@
-# Alpha Live Verification Status 2026-05-03
+# Alpha Live 検証ステータス（2026-05-03）
 
-This is the stop-point status after the 2026-05-03 merge and verification sweep. It supersedes
-the "watch in progress" parts of
+2026-05-03 のマージおよび検証スイープ後の **停止点スナップショット**です。
 [Alpha Live Verification Status 2026-05-02](alpha-live-verification-status-2026-05-02.md)
-for next implementation planning.
+の「進行中ウォッチ」は本書に置き換わります。
 
-## Conclusion
+## 結論
 
-**NO-GO**.
+**NO-GO**。
 
-The alpha gate is now failing on runtime proof, not on missing workflow plumbing:
+アルファゲートは **ランタイム証跡**で落ちています（ワークフロー欠落ではありません）。
 
-- Direct OpenAI RAGAS is confirmed.
-- C-127 manifest accounting is fixed: the gate can prove `requested=127`.
-- Q quality is currently green on the latest valid run.
-- D/log hygiene is green for the latest D/M run window.
-- STT current-revision latency is red again.
-- C-127 answer/source quality is still red after complete collection.
-- Mobile/iOS/Android and onsite kiosk proof remain open until target-device evidence is attached.
+- Direct OpenAI RAGAS は確認済み。
+- C-127 マニフェスト会計は修正済み（`requested=127` を証明可能）。
+- Q は最新有効ランで緑。D／ログ衛生も該当ウィンドウで緑。
+- STT 現 revision レイテンシは再び赤。
+- C-127 answer/source は全集約後も赤。
+- Mobile／オンサイトキオスク証跡はデバイス証跡までオープン。
 
-Do not dispatch another full `suites=all` run until the targeted STT and C/RAGAS blockers below are
-fixed or explicitly waived. Full-suite runs are now expensive confirmation, not the fastest debugger.
+STT と C/RAGAS のブロッカーを直すかウェイブするまで **full `suites=all` を再投入しない**こと。フルスイートは高コストな確認用途です。
 
-## Develop / PR State
+## develop / PR の状態
 
 - Current documented base: `develop` at `3b3b370265834d8db032917d4452e9a488d055ca`
   (`Merge pull request #735 from EngineerCafeJP/codex/alpha-verification-bounds`).
@@ -37,7 +34,7 @@ fixed or explicitly waived. Full-suite runs are now expensive confirmation, not 
   - #716: memory warning tightening, draft and conflicting/outdated.
   - #706: M5Stack hardware integration, open for hardware readiness; simulation coverage from #731 does not replace it.
 
-## Verification Runs
+## 検証ラン（実行結果）
 
 ### C/Q: run `25274709049`
 
@@ -89,7 +86,7 @@ Interpretation: #721 is closed because the null-byte/persistence class is proven
 reopened because STT latency is again a current-revision alpha blocker. #655/#716 remain the memory
 warning track, but they are not the current primary NO-GO reason.
 
-## Issue State To Carry Forward
+## 引き継ぐ Issue 状態
 
 Primary alpha blockers:
 
@@ -113,7 +110,7 @@ Closed from this sweep:
 - #729: backend pytest timeout dependency.
 - #732: unbounded alpha workflow step timeout.
 
-## Next Efficient Order
+## 次に効率的な順序
 
 1. Merge this docs reset PR, then avoid broad implementation until the issue map is stable.
 2. Fix #658 with a targeted STT latency investigation. Re-run only `suites=stt` or `suites=stt,v`.
@@ -127,7 +124,7 @@ Closed from this sweep:
 7. Prove #717/#719 with workflow/env evidence, then close them.
 8. Run `suites=all` only after targeted STT and C are green.
 
-## Useful Targeted Commands
+## 便利なターゲットコマンド
 
 ```bash
 gh workflow run alpha-live-verification.yml \

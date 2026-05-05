@@ -1,63 +1,54 @@
 # Engineer Cafe Navigator
 
-> 福岡市エンジニアカフェ向けの音声 AI ナビゲーター。モノレポ構成で、`frontend/` は UI と API proxy、`backend/` は FastAPI + LangGraph の実処理を担います。
+> 福岡・エンジニアカフェ向けの **キオスク／多言語ボイス対応のプロダクション AI エージェント**。単一 LLM にセリフを丸投げする「AI チューバー型」のスタックではなく、**バックエンドに集約したマルチエージェント・RAG・評価ゲート**まで含んだ構成です。
 
 **[English](README-EN.md)** | **日本語**
 
-## 現在の要約
+## 現在地（要約）
 
-- 2026-05-03 時点で、alpha live verification の workflow は Cloud Run SHA match 付きで targeted / full suite を実行できます。
-- Cloud Run staging は develop SHA `6ce1ac81983c7ae53ddfdfc58eba1ee043a83fa8` の revision `engineer-cafe-backend-00162-mlr` で SHA 一致、`/health` OK です。
-- B routing / slide live smoke は targeted run `25254789937` で `64 passed, 0 warned, 0 failed` まで復旧しました。
-- Welcome UI, compact artifact, Cloud Run Supabase UUID/log hygiene は resolved として issue close 済みです。
-- ただし alpha はまだ **NO-GO** です。最新 full suite run `25272361091` の完走結果、C-127 live collection completion、Q/C answer quality、live/device proof が残っています。
-- PR #692/#693/#695/#699/#700/#701/#702/#703/#705/#707/#709 は merge 済みです。#696 は live proof 後に close 済み、#697/#698 は live/device proof が終わるまで open 維持です。
+運用上の**正本**は **[docs/STATUS.md](docs/STATUS.md)** です（**2026-05-05** に git 同期メモと読み方を追記済み。live workflow を再実行するまで NO-GO 記録の日付は 05-03 のまま参照されます）。スナップショット・Issue・品質ゲートの判断は、`README` ではなく常にそちらを優先してください。
 
-詳細は [docs/STATUS.md](docs/STATUS.md) を参照してください。
+**ドキュメントの地図**: **[docs/README.md](docs/README.md)**  
+ツール向けの CI・コマンド・レイヤ制約: **[CLAUDE.md](CLAUDE.md)**
 
-## 現在のアーキテクチャ
+---
+
+## 一般的な AI アバター／単一エージェント実装との違い
+
+| 観点 | よくあるスタック | Engineer Cafe Navigator |
+|------|------------------|-------------------------|
+| 知性の置き場所 | フロントまたは単一エンドポイントにロジックが分散しがち | **[バックエンドファースト](docs/adr/005-backend-first-logic.md)** — ルーティング・RAG・受付・音声の正本は FastAPI + LangGraph（[ADR 一覧](docs/adr/README.md)） |
+| フロントとの関係 | アプリとモデル呼び出しが一体化しやすい | Next.js は **UI と `/api/*` プロキシ**。バックエンドは **HTTP 契約**で別クライアント（Unity 等）とも統合しやすい（ADR 005） |
+| エージェント構造 | 1 システムプロンプトで全部処理 | **LangGraph + Supervisor**。**受付はサブグラフ**（[ADR 006](docs/adr/006-langgraph-workflow-redesign.md)、`invoke_reception_subgraph`） |
+| ナレッジ検索 | 単純ベクトル検索のみ | **Enhanced RAG** — 階層検索・親コンテキスト（`backend/tools/enhanced_rag.py`）。多言語 **tRAG** |
+| 記憶 | セッション内のみ | **短期**: Checkpointer / `agent_memory`。**長期**: [ADR 011](docs/adr/011-ltm-cross-session-design.md) / [012](docs/adr/012-ltm-connection-pool-migration.md)（コード・STATUS と突合） |
+| 品質 | 手動デモ中心 | **RAGAS**、`backend/evaluation/`、[ADR 019](docs/adr/019-alpha-live-ragas-case-accounting.md)、[STATUS](docs/STATUS.md) |
+| キオスク UX | 緩い | **[ADR 018](docs/adr/018-alpha-fast-response-and-assistant-profile-routing.md)** — identity/help の経路契約 |
+
+設計議論: [docs/architecture/HIERARCHICAL-RAG-ARCHITECTURE.md](docs/architecture/HIERARCHICAL-RAG-ARCHITECTURE.md)
+
+---
+
+## アーキテクチャ（概要）
 
 ```text
-Browser
-  -> Next.js 15 frontend
-     - UI rendering
-     - VRM / audio client
-     - /api/* proxy routes
-  -> FastAPI backend
-     - LangGraph workflow
-     - knowledge / reception / STT vocabulary APIs
-     - voice, chat, slides, character endpoints
-  -> Supabase / OpenRouter / Google / external calendar services
+Browser / Kiosk
+  -> Next.js 15（UI / VRM / /api/* プロキシ）
+  -> FastAPI（LangGraph・Enhanced RAG・受付・音声・カレンダー・キャラ制御）
+  -> Supabase（pgvector・会話状態・ナレッジ）/ OpenRouter / 外部フィード
 ```
 
-主な責務:
+- `frontend/` … [frontend/README.md](frontend/README.md)
+- `backend/` … [backend/README.md](backend/README.md)
+- `docs/` … STATUS・ADR・手順
 
-- `frontend/`: 画面、音声 UX、VRM 表示、Next.js API route、管理 UI
-- `backend/`: LangGraph オーケストレーション、RAG、受付フロー、STT/TTS、外部サービス連携
-- `docs/`: 現役ドキュメントと履歴アーカイブ
-
-## 現時点の主要リスク
-
-- alpha gate は end-to-end で回るが、latest `suites=all` の green proof はまだありません。
-- `continue-on-error` のため、GitHub step が success に見えても suite outcome が failure の場合があります。
-- STT / voice preflight は run `25258764528` で PASS し、#658 は close 済みです。
-- RAGAS は direct OpenAI と C-127 manifest accounting まで修正済みですが、post-#692 run `25270459825`
-  は `/api/chat` 429 により `35/127` evaluated でした。current proof run `25272361091` の artifact 確認が必要です。
-- Q suite は PR #693 merge 後の proof を、最新 full suite run `25272361091` で再確認中です。
-- Voice timeout / mobile audio は PR #705/#707/#709 で修正済みです。#696 は close 済み、#697/#698 は live/device proof 待ちです。
-- B routing / slide live smoke と Cloud Run UUID log hygiene は 2026-05-03 時点の deployed staging で解消確認済みです。
-
-この README は現況の入口だけを扱います。監査結果と production readiness の論点は [docs/STATUS.md](docs/STATUS.md) に集約しています。
+---
 
 ## クイックスタート
 
 ### 前提
 
-- Node.js 20 系推奨
-- pnpm 10 系推奨
-- Python 3.11+
-- Supabase
-- 必要に応じて Docker
+Node.js 20 / pnpm 10 / Python 3.11+（細目は CLAUDE.md）。Docker は `make dev` で利用可能。
 
 ### フロントエンド
 
@@ -72,38 +63,33 @@ pnpm dev
 
 ```bash
 cd backend
-python -m venv .venv
-source .venv/bin/activate
+python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-### モノレポ全体
+### モノレポ（Docker）
 
 ```bash
 make dev
 ```
 
-## ドキュメント
+---
 
-- [docs/STATUS.md](docs/STATUS.md): 現在の alpha / production readiness 状態
-- [docs/README.md](docs/README.md): 現役ドキュメントと履歴ドキュメントの整理
-- [docs/testing/alpha-live-verification-status-2026-05-02.md](docs/testing/alpha-live-verification-status-2026-05-02.md): 最新 alpha live verification 結果
-- [docs/plans/alpha-remediation-plan-2026-05-02.md](docs/plans/alpha-remediation-plan-2026-05-02.md): 次実装順
-- [frontend/README.md](frontend/README.md): フロントエンドの現況と環境変数
-- [backend/README.md](backend/README.md): バックエンドの現況と運用上の注意
-- [docs/DEVELOPER-GUIDE.md](docs/DEVELOPER-GUIDE.md): 現行の開発導線
+## ドキュメントを読む順番（推奨）
 
-## GitHub の現況
+| 順 | 内容 |
+| --- | --- |
+| 1 | [docs/STATUS.md](docs/STATUS.md) |
+| 2 | [docs/README.md](docs/README.md) |
+| 3 | [docs/architecture/SYSTEM-ARCHITECTURE.md](docs/architecture/SYSTEM-ARCHITECTURE.md) |
+| 4 | [docs/DEVELOPER-GUIDE.md](docs/DEVELOPER-GUIDE.md) |
+| 5 | [CLAUDE.md](CLAUDE.md) |
+| 6 | [frontend/README.md](frontend/README.md) / [backend/README.md](backend/README.md) |
 
-2026-05-03 時点で把握した主要な alpha open items:
+計画のみ: [docs/plans/comprehensive-refactoring-plan-2026-05-05.md](docs/plans/comprehensive-refactoring-plan-2026-05-05.md)
 
-- P0 / alpha-scope: `#583`, `#584`, `#585`, `#611`, `#612`, `#643`, `#697`
-- P1 / alpha-scope: `#653`, `#670`, `#672`, `#698`
-- Resolved in the latest remediation pass: `#658`, `#659`, `#660`, `#661`, `#662`, `#671`, `#691`, `#694`, `#696`
-- Merged and awaiting live proof: PR `#693` for Q quality, PR `#695/#701` for C-127 pacing / coverage, PR `#699` for C source routing, PR `#700/#703` for live harness hardening, PR `#702` for log hygiene, PR `#705/#709` for voice timeout budget, PR `#707` for mobile audio playback
+---
 
-## 注意
+古い Mastra 前提の長文は [docs/archive/](docs/archive/) にあります。現行は **STATUS.md** とコードを優先してください。
 
-- ワークツリーにはこの README 更新と無関係なローカル変更が存在する可能性があります。今回の更新では既存の未コミット実装には触れていません。
-- 古い Mastra / RouterAgent / MemoryAgent 前提の文書は一部アーカイブ、一部保留です。現行判断は必ず [docs/STATUS.md](docs/STATUS.md) と照合してください。

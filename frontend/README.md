@@ -1,84 +1,43 @@
-# Frontend
+> **Docs hub**: [docs/README.md](../docs/README.md) · **STATUS**: [docs/STATUS.md](../docs/STATUS.md)
 
-Next.js 15 frontend for Engineer Cafe Navigator.
+# フロントエンド
 
-The frontend is primarily responsible for:
+Engineer Cafe Navigator の Next.js 15 フロントエンドです。
 
-- UI rendering
-- VRM character presentation
-- browser-side audio interaction
-- operator/admin screens
-- proxying browser requests to the FastAPI backend
+## ドキュメント動線
 
-It should not be treated as the source of truth for AI workflow logic.
+1. この README … フロント固有
+2. [docs/README.md](../docs/README.md) … **索引**
+3. [docs/STATUS.md](../docs/STATUS.md) … 運用正本
+4. [docs/adr/README.md](../docs/adr/README.md) · [SYSTEM-ARCHITECTURE](../docs/architecture/SYSTEM-ARCHITECTURE.md) · [setup-guide](../docs/setup-guide.md) · [DEVELOPER-GUIDE](../docs/DEVELOPER-GUIDE.md) · [CLAUDE.md](../CLAUDE.md)
 
-## Current Architecture
+**注意**: キオスクスライドは **静的 PDF + `public/reception/audio/`**。SlideAgent Q&A は **`/api/slides`（FE→BE）**。**`/api/marp` と BE `/api/slides` を同一視しない**（`CLAUDE.md`）。
 
-Main route groups:
+## 役割
 
-- `src/app/page.tsx`: main kiosk UI
-- `src/app/api/voice/route.ts`: proxy to backend voice API
-- `src/app/api/qa/route.ts`: proxy to backend chat API
-- `src/app/api/calendar/route.ts`: proxy to backend calendar API
-- `src/app/api/slides/route.ts`: proxy to backend slides API
-- `src/app/api/character/route.ts`: proxy to backend character API
-- `src/app/api/reception/*`: proxy to backend reception API
-- `src/app/api/admin/*`: server-side admin endpoints
-- `src/app/api/monitoring/*`: server-side monitoring endpoints
-- `src/app/api/cron/*`: scheduled or operator-style actions
+UI・VRM・ブラウザ音声・管理画面・バックエンドへのプロキシ。AI ワークフローの正本ではない。
 
-Recent cleanup removed most direct Mastra-era remnants from active request paths.
+## 構成の要点
 
-## Environment
+`src/app/page.tsx`、`src/app/api/voice`、`qa`、`calendar`、`slides`、`character`、`reception/*`、`admin/*`、`monitoring/*`、`cron/*`。
 
-Actual usage varies by feature, but the important frontend-side variables currently include:
+## 環境変数
 
-- `BACKEND_API_URL`
-- `BACKEND_API_KEY`
-- `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- `SUPABASE_SERVICE_ROLE_KEY` (server-only; still needed by legacy cron/admin paths)
-- `CRON_SECRET`
-- `ADMIN_API_SECRET`
-- `ALERT_WEBHOOK_SECRET`
-- `SLACK_WEBHOOK_URL`
+`BACKEND_API_URL`、`BACKEND_API_KEY`、`NEXT_PUBLIC_SUPABASE_*`、`SUPABASE_SERVICE_ROLE_KEY`、`ADMIN_API_SECRET` 等。必須度は [docs/STATUS.md](../docs/STATUS.md) とコードで確認。
 
-Important caveat:
-
-- `src/lib/env.ts` and `src/lib/env-client.ts` do not yet define a fully authoritative runtime contract.
-- Some documented variables are optional in practice.
-- Some validation helpers are not wired into startup.
-
-Use [docs/STATUS.md](../docs/STATUS.md) when deciding what is actually required right now.
-
-## Local Run
+## ローカル・コマンド
 
 ```bash
-cd frontend
-pnpm install
-cp .env.example .env.local
-pnpm dev
+cd frontend && pnpm install && cp .env.example .env.local && pnpm dev
 ```
-
-## Commands
 
 ```bash
-cd frontend
-pnpm dev
-pnpm lint
-pnpm typecheck
-pnpm build
-pnpm test
-pnpm test:e2e
-pnpm test:e2e:ui
+pnpm lint && pnpm typecheck && pnpm build && pnpm test
 ```
 
-`pnpm test:e2e` は `frontend/playwright.config.ts` を使って Next.js 開発サーバーを自動起動します。`chat.spec.ts` を通すには `BACKEND_API_URL` と `BACKEND_API_KEY` を `.env.local` かシェル環境へ設定してください。
+`pnpm test:e2e` は `BACKEND_API_URL` と `BACKEND_API_KEY` が必要な場合あり。
 
-## Current Risks
+## リスク
 
-- Admin, cron, and monitoring API routes are protected by `src/middleware.ts`; any new sensitive API prefix must be added to that matcher explicitly.
-- Audio behavior still depends on real browser/device validation even after recent fixes.
-- Some server routes still talk directly to Supabase, so auth and secret handling need tightening.
+middleware の matcher 更新、`src/lib/env.ts` の契約が完全ではない点など — [docs/STATUS.md](../docs/STATUS.md)。
 
-The tracked status and GitHub issues are summarized in [docs/STATUS.md](../docs/STATUS.md).
