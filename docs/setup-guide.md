@@ -1,5 +1,7 @@
 # ローカル開発環境セットアップガイド
 
+> **運用・ゲートの正本**: [STATUS.md](STATUS.md) · **ドキュメント索引**: [docs/README.md](README.md) · **CI・コマンド**: ルート [CLAUDE.md](../CLAUDE.md)
+
 対象読者: プロジェクトに参加するすべての開発者 (takegawa, Jun ほか)
 所要時間: 約30〜45分 (ネットワーク速度による)
 
@@ -98,11 +100,19 @@ source .venv/bin/activate   # Windows: .venv\Scripts\activate
 
 ### 3-2. 依存パッケージをインストールする
 
+**推奨（ランタイム依存・本リポジトリの手順と揃える）**: `requirements.txt` を使います。
+
+```bash
+pip install -r requirements.txt
+```
+
+開発ツール（pytest / ruff / black 等）までまとめて入れる場合は editable + extras:
+
 ```bash
 pip install -e ".[dev]"
 ```
 
-`[dev]` を付けることで pytest / black / ruff など開発ツールも一緒にインストールされます。
+詳細は `backend/pyproject.toml` とルート `CLAUDE.md` を参照してください。
 
 ### 3-3. 環境変数ファイルを作成する
 
@@ -436,7 +446,7 @@ ffprobe -version  # 動作確認
 ```bash
 cd backend
 source .venv/bin/activate  # 仮想環境を有効化
-pip install -e ".[dev]"    # 再インストール
+pip install -r requirements.txt    # または pip install -e ".[dev]" で再インストール
 ```
 
 ### `pnpm install` でエラーが出る

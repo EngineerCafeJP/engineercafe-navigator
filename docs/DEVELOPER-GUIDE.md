@@ -1,265 +1,74 @@
-# Developer Guide - Engineer Cafe Navigator
+# 開発者ガイド — Engineer Cafe Navigator
+
+> **前のページ**: [Documentation hub（docs/README.md）](README.md) · [ADR 一覧](adr/README.md)
+
+> **運用・ゲートの正本**: [STATUS.md](STATUS.md)  
+> **環境変数**: [development/ENVIRONMENT-VARIABLES.md](development/ENVIRONMENT-VARIABLES.md)  
+> **CI・コマンド**: ルート [CLAUDE.md](../CLAUDE.md)
+
+最終整理: 2026-05-05 — エンドポイント一覧は [backend/README.md](../backend/README.md) と OpenAPI に一本化。
 
 ## 言語ルール
 
-- Issue、Pull Request、レビューコメント、進行メモは原則として日本語で記述する
-- 外部仕様名、ライブラリ名、API 名、コード識別子は必要に応じて英語のまま記載してよい
-- 英語で記録する必然性がある場合でも、日本語の要約を先に置く
-- GitHub の title / body / template も日本語を既定とする
+- Issue / PR / レビューは原則 **日本語**
+- 識別子・API 名は英語のままでよい
 
-## Quick Start
+## クイックスタート
 
-### Prerequisites
-- Node.js 20+ with pnpm
-- Python 3.11+ with pip
-- Docker (for VoiceVox/Kokoro TTS in local dev)
-- Supabase project (PostgreSQL + pgvector)
+### 前提条件
 
-### Local Development
+- Node.js 20 + pnpm 10
+- Python 3.11+
+- Docker（任意、`make dev` や Voice 検証用）
+
+### ローカル開発
 
 ```bash
-# Frontend
 cd frontend
-cp .env.example .env.local  # Configure environment variables
+cp .env.example .env.local
 pnpm install
-pnpm dev                     # http://localhost:3000
+pnpm dev    # http://localhost:3000
 
-# Backend
 cd backend
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-uvicorn backend.main:app --reload --port 8000
-
-# Voice Services (Docker)
-docker run -d --name voicevox -p 50021:50021 voicevox/voicevox_engine:latest
-docker run -d --name kokoro -p 8880:8880 ghcr.io/remsky/kokoro-fastapi:latest
+python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
----
-
-## Architecture
+### アーキテクチャ（一行）
 
 ```
-User Browser
-    |
-    v
-Vercel (Frontend: Next.js 15)
-    |  Proxy: /api/* -> BACKEND_API_URL
-    v
-Cloud Run (Backend: FastAPI + LangGraph)
-    |
-    +-> Supabase PostgreSQL (pgvector, checkpointer, store)
-    +-> OpenRouter API (LLM: Gemini, GPT, Claude)
-    +-> OpenAI API (Embeddings: text-embedding-3-small)
-    +-> VoiceVox Docker (TTS Japanese, local only)
-    +-> Kokoro Docker (TTS English, local only)
-    +-> Google Cloud (TTS/STT fallback)
-    +-> Google Calendar ICS / Connpass API v2
+Browser → Next.js（/api/* プロキシ）→ FastAPI（LangGraph）→ Supabase / OpenRouter / 外部
 ```
 
-### Frontend -> Backend Communication
+詳細: [architecture/SYSTEM-ARCHITECTURE.md](architecture/SYSTEM-ARCHITECTURE.md)
 
-Frontend API routes proxy requests to the backend:
-- `BACKEND_API_URL` / `NEXT_PUBLIC_BACKEND_API_URL` env vars in the Vercel project for production
-- `getBackendApiUrl()` in `frontend/src/lib/api/backend-url.ts` resolves the URL
-- Falls back to `http://localhost:8000` in local dev
+## API とエンドポイント
 
----
+**正**: `http://localhost:8000/docs`（OpenAPI）。早見: [backend/README.md](../backend/README.md)。
 
-## Endpoints Reference
+**注意**: `/api/marp`（FE）と `/api/slides`（BE）は別用途（`CLAUDE.md`）。
 
-### Backend (FastAPI) - Port 8000
+## 環境変数
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/health` | GET | Health check |
-| `/api/chat` | POST | Main AI chat (LangGraph) |
-| `/api/voice/tts` | POST | Text-to-Speech |
-| `/api/voice/stt` | POST | Speech-to-Text |
-| `/api/character` | POST | VRM character control |
-| `/api/calendar/events` | GET | Calendar events |
-| `/admin/knowledge` | GET/POST | Knowledge base CRUD |
+[development/ENVIRONMENT-VARIABLES.md](development/ENVIRONMENT-VARIABLES.md) と [frontend/README.md](../frontend/README.md)。
 
-### Frontend (Next.js) - Port 3000
+## エージェントとルーティング（概要）
 
-| Endpoint | Method | Description | Backend Proxy |
-|----------|--------|-------------|---------------|
-| `/api/voice` | POST | Voice processing | Yes -> `/api/voice/*` |
-| `/api/slides` | POST | Slide narration metadata / slide Q&A | Yes |
-| `/api/character` | POST | Character control | Yes |
-| `/api/qa` | POST | Q&A | Yes |
-| `/api/backgrounds` | GET | Background images | Local |
+`backend/config/routing_constants.py`、`backend/workflows/main_workflow.py`。詳細は SYSTEM-ARCHITECTURE と [リファクタ計画](plans/comprehensive-refactoring-plan-2026-05-05.md)。
 
-### Test URLs
-
-| Environment | URL |
-|-------------|-----|
-| Local Frontend | http://localhost:3000 |
-| Local Backend | http://localhost:8000 |
-| Local Backend Docs | http://localhost:8000/docs (Swagger UI) |
-| Production Frontend | Vercel Production domain (`docs/DEPLOYMENT.md` を参照) |
-| Production Backend | https://engineer-cafe-backend-639959525777.asia-northeast1.run.app |
-| Backend Health | `GET /api/health` |
-
----
-
-## Environment Variables
-
-### Backend (.env)
-
-```env
-# Required
-OPENROUTER_API_KEY=          # LLM access (Gemini, GPT, Claude)
-SUPABASE_URL=                # Supabase project URL
-SUPABASE_KEY=                # Supabase service role key
-SUPABASE_DB_URI=             # PostgreSQL connection string (for checkpointer/store)
-OPENAI_API_KEY=              # Embeddings (text-embedding-3-small)
-
-# TTS Provider
-TTS_PROVIDER=voicevox        # "voicevox" for local & production
-VOICEVOX_API_URL=http://localhost:50021  # Local: localhost, Production: Cloud Run VoiceVox service
-KOKORO_API_URL=http://localhost:8880     # Local only
-
-# Optional
-GOOGLE_CLOUD_PROJECT_ID=     # Google Cloud TTS/STT fallback
-GOOGLE_CALENDAR_ICAL_URL=    # Public calendar ICS feed
-CONNPASS_API_KEY=            # Connpass API v2
-TAVILY_API_KEY=              # Web search
-```
-
-### Frontend (.env.local)
-
-```env
-NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_ANON_KEY=
-SUPABASE_SERVICE_ROLE_KEY=
-BACKEND_API_URL=http://localhost:8000  # For local dev
-```
-
-### Production (Cloud Run)
-
-Environment variables are set via GCP Secret Manager. Key difference from local:
-- `TTS_PROVIDER=voicevox` with `VOICEVOX_API_URL` pointing to VoiceVox Cloud Run service
-- `SUPABASE_DB_URI` must be set for checkpointer/store
-
----
-
-## Agent Architecture
-
-### 7 Workflow Agents (LangGraph nodes)
-
-| Agent | Purpose | Data Source |
-|-------|---------|-------------|
-| OrchestratorAgent | LLM-based routing | Supervisor Pattern |
-| BusinessInfoAgent | Hours, pricing, access | Enhanced RAG |
-| FacilityAgent | Equipment, basement, nearby, lost-found | Enhanced RAG |
-| EventAgent | Calendar events | Google Calendar + Connpass |
-| SlideAgent | Presentations | Marp slides |
-| GeneralKnowledgeAgent | Web search, memory | Tavily + RAG |
-| FarewellAgent | Departure flow | RAG + templates |
-
-### 3 Support Agents
-
-| Agent | Purpose |
-|-------|---------|
-| VoiceAgent | TTS (VoiceVox/Kokoro/Google) + STT |
-| CharacterControlAgent | VRM avatar expressions |
-| OCRAgent | Image/OCR processing |
-
-### Routing Flow
-
-```
-User Query
-  -> extract_request_type() (keyword matching in routing_constants.py)
-  -> CATEGORY_TO_AGENT_MAP (category -> agent name)
-  -> main_workflow.py (LangGraph node execution)
-  -> format_response (output)
-```
-
----
-
-## Common Development Tasks
-
-### Adding a new routing keyword
-
-1. Add keyword to `backend/config/routing_constants.py` (appropriate `*_KEYWORDS` list)
-2. Update `extract_request_type()` if new category
-3. Add to `CATEGORY_TO_AGENT_MAP` if new agent mapping
-4. Add tests in `backend/tests/config/`
-
-### Adding a new agent
-
-1. Create `backend/agents/new_agent.py` following BusinessInfoAgent pattern
-2. Add node in `backend/workflows/main_workflow.py`
-3. Add routing in `routing_constants.py`
-4. Add tests in `backend/tests/agents/`
-
-### Running Tests
+## テストと CI（必須）
 
 ```bash
-# Backend
-cd backend
-pytest                           # All tests
-pytest tests/agents/             # Agent tests only
-pytest -x --tb=short             # Stop on first failure
-
-# Frontend
-cd frontend
-pnpm lint                        # Linting
-pnpm typecheck                   # TypeScript check
-pnpm build                       # Build check
+cd backend && ruff check . && black --check .
+cd frontend && pnpm lint && pnpm typecheck && pnpm build
 ```
 
-### CI Checks (must pass before PR)
+## トラブルシュート
 
-```bash
-# Backend
-cd backend
-ruff check .                     # Linting
-black --check .                  # Formatting (line-length=100)
-pytest                           # Tests
+1. **音声**: `TTS_PROVIDER` — [backend/README.md](../backend/README.md)、[DEPLOYMENT.md](DEPLOYMENT.md)
+2. **チャット**: `SUPABASE_DB_URI`、`OPENROUTER_API_KEY`
+3. **スライド**: Marp と BE slides の混同に注意
 
-# Frontend
-cd frontend
-pnpm lint
-pnpm typecheck
-pnpm build
-```
+歴史資料: [archive/](archive/) · 旧長文 [development/DEVELOPER-GUIDE.md](development/DEVELOPER-GUIDE.md)
 
----
-
-## Production Issues (2026-03-07) — ALL FIXED (PR #188, 2026-03-08)
-
-See [PRODUCTION-DIAGNOSTIC-REPORT.md](PRODUCTION-DIAGNOSTIC-REPORT.md) for details.
-
-| Issue | Status | Fix |
-|-------|--------|-----|
-| VoiceVox TTS fails on Cloud Run | FIXED | VoiceVox deployed as separate Cloud Run service |
-| Checkpointer TypeError | FIXED | Context manager pattern applied in `checkpointer.py` |
-| Marp API 503 | FIXED | Frontend proxies to backend `/api/slides` |
-| CI/CD env var overwrite | FIXED | `--set-env-vars` → `--update-env-vars` in ci.yml |
-| VRM 0.0 warnings | Cosmetic | Ignore |
-
----
-
-## Troubleshooting
-
-### "Voice not working"
-
-1. Check `TTS_PROVIDER` env var (`voicevox` for both local and production)
-2. Check VoiceVox Docker is running: `curl http://localhost:50021/version`
-3. Check Google Cloud credentials if using `google` provider
-
-### "Chat returns internal error"
-
-1. Check `SUPABASE_DB_URI` is set and reachable
-2. Check `OPENROUTER_API_KEY` is valid
-3. Check Cloud Run logs: `gcloud run services logs read engineer-cafe-backend`
-
-### "Slides not loading"
-
-The kiosk uses the bundled PDF guide in `frontend/public/reception/` and static narration audio in `frontend/public/reception/audio/`. Check backend health only for slide-agent metadata or slide Q&A: `curl https://engineer-cafe-backend-639959525777.asia-northeast1.run.app/health`
-
-### Backend Swagger UI
-
-Visit `http://localhost:8000/docs` for interactive API documentation.
