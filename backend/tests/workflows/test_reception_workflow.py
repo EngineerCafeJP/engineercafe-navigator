@@ -324,6 +324,27 @@ class TestClassifyPurposeNode:
         assert "エンナビ" in result["response"]
 
     @pytest.mark.asyncio
+    async def test_information_question_bypasses_purpose_classification(self):
+        """明確な施設情報質問は目的不明として聞き返さず、通常QAへ渡す。"""
+        from backend.workflows.reception_workflow import classify_purpose
+
+        state = _make_initial_state(language="ja")
+        state["stage"] = "purpose_hearing"
+        state["messages"] = [HumanMessage(content="エンジニアカフェの営業時間を教えてください")]
+
+        with patch(
+            "backend.utils.purpose_classifier.classify_purpose",
+            new_callable=AsyncMock,
+            side_effect=AssertionError("purpose classifier must not be called"),
+        ):
+            result = await classify_purpose(state)
+
+        assert result["stage"] == "completed"
+        assert result["target_agent"] == "business_info"
+        assert result["reception_action"] == "bypass_for_information_query"
+        assert result["purpose"]["request_type"] == "hours"
+
+    @pytest.mark.asyncio
     async def test_classify_purpose_no_human_message_defaults_other(self):
         """When no human message is present, stay in purpose_hearing and re-prompt."""
         from backend.workflows.reception_workflow import classify_purpose
