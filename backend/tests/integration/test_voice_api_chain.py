@@ -18,9 +18,9 @@ from backend.main import app
 
 
 def _minimal_wav_b64() -> str:
-    """Return a minimal valid WAV file encoded as base64."""
+    """Return a small valid WAV file above the STT no-speech byte guard."""
     sample_rate = 16000
-    num_samples = 1
+    num_samples = 256
     bits_per_sample = 16
     num_channels = 1
     byte_rate = sample_rate * num_channels * bits_per_sample // 8
@@ -42,7 +42,7 @@ def _minimal_wav_b64() -> str:
         b"data",
         data_size,
     )
-    return base64.b64encode(header + b"\x00\x00").decode()
+    return base64.b64encode(header + (b"\x00" * data_size)).decode()
 
 
 def _mock_stt_success(
