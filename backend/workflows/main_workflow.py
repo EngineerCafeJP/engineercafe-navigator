@@ -464,7 +464,7 @@ class MainWorkflow:
             return False
 
         stage = reception_status.get("stage")
-        if stage not in {"purpose_hearing", "routing"}:
+        if stage not in {"greeting", "purpose_hearing", "routing"}:
             return False
 
         lower_query = query.strip().lower()
@@ -486,7 +486,7 @@ class MainWorkflow:
             return True
         if not self._looks_like_information_query(query):
             return False
-        if reception_status.get("stage") not in {"purpose_hearing", "routing"}:
+        if reception_status.get("stage") not in {"greeting", "purpose_hearing", "routing"}:
             return False
         try:
             from backend.utils.query_classifier import QueryClassifier

@@ -18,6 +18,11 @@ import {
   receptionGuidePageStem,
   receptionGuidePdfUrl,
 } from '@/lib/reception/reception-pdf-constants';
+import {
+  canUseStaticNarrationAudio,
+  shouldFallbackToGeneratedNarration,
+  type StaticNarrationAudioState,
+} from '@/lib/reception/reception-audio-readiness';
 import { parseReceptionNarrationMarkdown } from '@/lib/reception/parse-reception-narration-md';
 import { preprocessTTS } from '@/utils/tts-preprocess';
 import { cn } from '@/lib/cn';
@@ -174,6 +179,7 @@ export default function ReceptionPdfGuide({
   const narrationScheduleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const narrationAbortRef = useRef<AbortController | null>(null);
   const preloadedAudioRef = useRef<Map<string, HTMLAudioElement>>(new Map());
+  const preloadedAudioStateRef = useRef<Map<string, StaticNarrationAudioState>>(new Map());
 
   const playbackSessionRef = useRef(0);
   const isPlayingRef = useRef(isPlaying);
@@ -335,6 +341,7 @@ export default function ReceptionPdfGuide({
         audio.load();
       }
       preloadedAudio.clear();
+      preloadedAudioStateRef.current.clear();
     };
   }, []);
 
@@ -356,8 +363,25 @@ export default function ReceptionPdfGuide({
       audio.preload = 'auto';
       audio.setAttribute('playsinline', 'true');
       audio.setAttribute('webkit-playsinline', 'true');
-      audio.load();
+      const markReady = () => {
+        if (preloadedAudioRef.current.get(audioUrl) === audio) {
+          preloadedAudioStateRef.current.set(audioUrl, 'ready');
+        }
+      };
+      const markFailed = () => {
+        if (preloadedAudioRef.current.get(audioUrl) === audio) {
+          preloadedAudioStateRef.current.set(audioUrl, 'failed');
+        }
+      };
+      audio.addEventListener('canplay', markReady, { once: true });
+      audio.addEventListener('canplaythrough', markReady, { once: true });
+      audio.addEventListener('error', markFailed, { once: true });
       preloadedAudioRef.current.set(audioUrl, audio);
+      preloadedAudioStateRef.current.set(audioUrl, audio.readyState >= 3 ? 'ready' : 'pending');
+      audio.load();
+      if (audio.readyState >= 3) {
+        preloadedAudioStateRef.current.set(audioUrl, 'ready');
+      }
     }
 
     for (const [url, audio] of Array.from(preloadedAudioRef.current.entries())) {
@@ -366,6 +390,7 @@ export default function ReceptionPdfGuide({
         audio.removeAttribute('src');
         audio.load();
         preloadedAudioRef.current.delete(url);
+        preloadedAudioStateRef.current.delete(url);
       }
     }
   }, [language, totalPages]);
@@ -576,13 +601,14 @@ export default function ReceptionPdfGuide({
     const { signal } = narrationAbortRef.current;
 
     try {
-      if (preloadedAudioRef.current.has(audioUrl)) {
+      if (canUseStaticNarrationAudio(preloadedAudioStateRef.current.get(audioUrl))) {
         if (!isActiveSession(sid) || currentPageRef.current !== pageAtStart) {
           return;
         }
 
         setIsNarrationInProgress(true);
         setIsNarrating(true);
+        let playedStaticAudio = false;
         try {
           await AudioInteractionManager.getInstance().ensureAudioContext();
           const result = await AudioPlaybackService.playAudioWithLipSync(audioUrl, {
@@ -593,6 +619,7 @@ export default function ReceptionPdfGuide({
           if (!result.success) {
             throw result.error ?? new Error('Audio playback failed');
           }
+          playedStaticAudio = true;
           if (!isActiveSession(sid) || currentPageRef.current !== pageAtStart) {
             return;
           }
@@ -600,25 +627,20 @@ export default function ReceptionPdfGuide({
             advancePresentation(SLIDE_DELAY_MS);
           }
         } catch (err: unknown) {
-          const e = err as { name?: string; message?: string; requiresUserInteraction?: boolean };
-          if (
-            e?.name === 'NotAllowedError' ||
-            e?.requiresUserInteraction ||
-            e?.message?.includes('interaction')
-          ) {
+          if (!shouldFallbackToGeneratedNarration(err)) {
             setAudioPermissionRequired(true);
             setIsPlaying(false);
             onPresentationComplete?.('stopped');
             return;
           }
-          if (isActiveSession(sid)) {
-            advancePresentation(800);
-          }
+          preloadedAudioStateRef.current.set(audioUrl, 'failed');
         } finally {
           setIsNarrating(false);
           setIsNarrationInProgress(false);
         }
-        return;
+        if (playedStaticAudio) {
+          return;
+        }
       }
 
       const text =

@@ -63,3 +63,49 @@ async def test_chat_emits_structured_observability_log(caplog, monkeypatch):
     assert record.ltm_store_write == "success"
     assert isinstance(record.latency_ms, int)
     assert record.latency_ms >= 0
+
+
+async def test_chat_uses_response_language_for_metadata_and_logs(caplog, monkeypatch):
+    monkeypatch.setattr(main_mod, "_API_SECRET_KEY", None)
+    caplog.set_level(logging.INFO, logger="backend.observability.chat_response")
+
+    mock_result = {
+        "answer": "Engineer Cafe is a public engineer support facility in Fukuoka.",
+        "emotion": "neutral",
+        "language": "en",
+        "metadata": {
+            "category": "business_info",
+            "sources": ["enhanced_rag"],
+        },
+    }
+
+    with patch.object(
+        main_mod,
+        "_run_workflow_with_tracking",
+        new_callable=AsyncMock,
+        return_value=mock_result,
+    ):
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.post(
+                "/api/chat",
+                headers={"X-Request-ID": "req-lang-780"},
+                json={
+                    "query": "tell me about engineer cafe",
+                    "session_id": "s1",
+                    "language": "ja",
+                },
+            )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["metadata"]["language"] == "en"
+    assert body["metadata"]["response_language"] == "en"
+
+    record = next(
+        record
+        for record in caplog.records
+        if record.name == "backend.observability.chat_response"
+        and getattr(record, "request_id", None) == "req-lang-780"
+    )
+    assert record.language == "en"

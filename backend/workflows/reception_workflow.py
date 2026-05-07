@@ -22,6 +22,7 @@ from backend.domain.reception.models import VisitPurpose
 from backend.domain.reception.service import ReceptionDomainService
 from backend.services.visitor_identification_service import VisitorIdentificationService
 from backend.utils.intent_classifier import is_assistant_profile_question
+from backend.utils.intent_classifier import classify_fast_intent
 from backend.utils import purpose_classifier as purpose_classifier_module
 from backend.utils.reception_templates import (
     get_personalized_greeting,
@@ -46,6 +47,70 @@ _PURPOSE_REQUEST_TYPE_MAP: dict[str, str] = {
     "consultation": "consultation",
     "other": "general",
 }
+
+_RECEPTION_NON_QA_REQUEST_TYPES = {
+    "assistant_profile",
+    "clarification",
+    "daily_conversation",
+    "farewell",
+    "greeting",
+    "reception",
+}
+
+
+_INFORMATION_QUERY_MARKERS = (
+    "?",
+    "？",
+    "教えて",
+    "知りたい",
+    "確認したい",
+    "わかりますか",
+    "ありますか",
+    "できますか",
+    "どこ",
+    "どちら",
+    "いつ",
+    "何時",
+    "いくら",
+    "料金",
+    "営業時間",
+    "予約",
+    "方法",
+    "違い",
+    "how",
+    "what",
+    "where",
+    "when",
+    "which",
+    "tell me",
+)
+
+
+def _looks_like_information_query(user_response: str) -> bool:
+    normalized = user_response.strip().lower()
+    return bool(normalized) and any(marker in normalized for marker in _INFORMATION_QUERY_MARKERS)
+
+
+def _information_route_from_fast_intent(user_response: str) -> Optional[dict[str, Any]]:
+    """Return a normal QA route when a reception turn is clearly an information query."""
+    if not _looks_like_information_query(user_response):
+        return None
+
+    route = classify_fast_intent(user_response)
+    if route is None:
+        return None
+    if route.request_type in _RECEPTION_NON_QA_REQUEST_TYPES:
+        return None
+    if route.agent not in {"business_info", "facility", "event", "general_knowledge", "slide"}:
+        return None
+    return {
+        "agent": route.agent,
+        "category": route.category,
+        "request_type": route.request_type,
+        "confidence": 1.0,
+        "reasoning": f"Information query bypassed reception purpose flow: {route.reasoning}",
+        "debug_info": {"source": "fast_intent"},
+    }
 
 
 def _assistant_profile_detour(user_response: str, language: str) -> Optional[str]:
@@ -239,6 +304,23 @@ async def classify_purpose(state: ReceptionState) -> dict:
             "response": assistant_profile_response,
             "reception_action": "answer_assistant_profile",
             "messages": [AIMessage(content=assistant_profile_response)],
+        }
+
+    information_route = _information_route_from_fast_intent(user_response)
+    if information_route is not None:
+        purpose_dict = {
+            "category": information_route["category"],
+            "detail": user_response,
+            "confidence": information_route["confidence"],
+            "request_type": information_route["request_type"],
+            "routing": information_route,
+            "target_agent": information_route["agent"],
+        }
+        return {
+            "purpose": purpose_dict,
+            "stage": "completed",
+            "target_agent": information_route["agent"],
+            "reception_action": "bypass_for_information_query",
         }
 
     try:
@@ -463,19 +545,23 @@ def reception_state_to_workflow_result(
     if target_agent:
         metadata["reception_target_agent"] = target_agent
         category = purpose.get("category", "other")
-        request_type = _PURPOSE_REQUEST_TYPE_MAP.get(category, "general")
+        request_type = purpose.get("request_type") or _PURPOSE_REQUEST_TYPE_MAP.get(
+            category,
+            "general",
+        )
+        routing = purpose.get("routing") or {
+            "agent": target_agent,
+            "category": category,
+            "request_type": request_type,
+            "confidence": purpose.get("confidence", 1.0),
+            "reasoning": "Routed from reception subgraph",
+            "debug_info": {},
+        }
         return ReceptionSubgraphResult(
             answer=None,
             emotion=None,
             metadata=metadata,
-            routing={
-                "agent": target_agent,
-                "category": category,
-                "request_type": request_type,
-                "confidence": purpose.get("confidence", 1.0),
-                "reasoning": "Routed from reception subgraph",
-                "debug_info": {},
-            },
+            routing=routing,
             target_agent=target_agent,
         )
 

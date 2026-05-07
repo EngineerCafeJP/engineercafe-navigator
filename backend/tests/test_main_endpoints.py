@@ -1,5 +1,6 @@
 """Tests for backend/main.py endpoint fixes (Sprint 5)"""
 
+import base64
 import logging
 
 import pytest
@@ -460,7 +461,8 @@ class TestVoiceEndpoint:
         with patch("backend.main._get_stt_agent", return_value=mock_stt):
             from backend.main import voice_api, VoiceRequest
 
-            body = VoiceRequest(action="speech_to_text", audioData="ZHVtbXk=", sessionId="s1")
+            audio = base64.b64encode(b"\0" * 1024).decode("ascii")
+            body = VoiceRequest(action="speech_to_text", audioData=audio, sessionId="s1")
             response = await voice_api(_mock_request(), body)
 
         assert response.success is True
@@ -470,6 +472,42 @@ class TestVoiceEndpoint:
         assert response.requestId
         assert response.phase == "speech_to_text"
         assert response.upstreamStatus["phase"] == "stt"
+
+    @pytest.mark.asyncio
+    async def test_voice_stt_short_audio_returns_controlled_failure(self):
+        mock_stt = AsyncMock()
+        mock_stt.speech_to_text = AsyncMock()
+
+        with patch("backend.main._get_stt_agent", return_value=mock_stt):
+            from backend.main import VoiceRequest, voice_api
+
+            audio = base64.b64encode(b"\0" * 448).decode("ascii")
+            body = VoiceRequest(action="speech_to_text", audioData=audio, sessionId="s1")
+            response = await voice_api(_mock_request(), body)
+
+        assert response.success is False
+        assert response.error == "No speech detected"
+        assert response.phase == "speech_to_text"
+        assert response.upstreamStatus["ok"] is False
+        assert response.upstreamStatus["errorType"] == "AudioTooShort"
+        mock_stt.speech_to_text.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_voice_stt_runtime_error_returns_controlled_failure(self):
+        mock_stt = AsyncMock()
+        mock_stt.speech_to_text = AsyncMock(side_effect=RuntimeError("Both STT failed"))
+
+        with patch("backend.main._get_stt_agent", return_value=mock_stt):
+            from backend.main import VoiceRequest, voice_api
+
+            audio = base64.b64encode(b"\0" * 1024).decode("ascii")
+            body = VoiceRequest(action="speech_to_text", audioData=audio, sessionId="s1")
+            response = await voice_api(_mock_request(), body)
+
+        assert response.success is False
+        assert response.error == "No speech detected"
+        assert response.upstreamStatus["ok"] is False
+        assert response.upstreamStatus["errorType"] == "RuntimeError"
 
     @pytest.mark.asyncio
     async def test_voice_invalid_tts_provider_returns_400(self):
