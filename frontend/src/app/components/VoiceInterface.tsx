@@ -19,6 +19,7 @@ import { EmotionTagParser } from '@/lib/emotion-tag-parser';
 import { formatError } from '@/lib/error-messages';
 import { LipSyncAnalyzer, type LipSyncFrame } from '@/lib/lip-sync-analyzer';
 import { createVoiceFillerPlaybackGate } from '@/lib/voice-filler-playback';
+import { resolveVoiceResponseLanguage } from '@/lib/voice/response-language';
 import { mergePlaybackMetadataWithTtsVrmControl } from '@/lib/voice/tts-vrm-metadata';
 import { preprocessTTS } from '@/utils/tts-preprocess';
 import { AlertCircle, Loader2, Mic, MicOff, Volume2, VolumeX, XCircle } from 'lucide-react';
@@ -796,6 +797,7 @@ export default function VoiceInterface({
         const cleanAnswer = parsedAnswer.cleanText;
 
         const qaMeta = (qaResult.metadata as VoiceInterfaceMetadata | null) ?? null;
+        const responseLanguage = resolveVoiceResponseLanguage(qaMeta, currentLanguage);
         setResponse(cleanAnswer);
         setMetadata(qaMeta);
 
@@ -810,8 +812,8 @@ export default function VoiceInterface({
 
         const ttsBody: Record<string, unknown> = {
           action: 'text_to_speech',
-          text: preprocessTTS(cleanAnswer, currentLanguage),
-          language: currentLanguage,
+          text: preprocessTTS(cleanAnswer, responseLanguage),
+          language: responseLanguage,
           sessionId: sessionIdRef.current,
           includeVrmControl: true,
         };
@@ -1006,6 +1008,7 @@ export default function VoiceInterface({
         const cleanAnswer = parsedAnswer.cleanText;
 
         const qaMeta = (qaResult.metadata as VoiceInterfaceMetadata | null) ?? null;
+        const responseLanguage = resolveVoiceResponseLanguage(qaMeta, currentLanguage);
         setResponse(cleanAnswer);
         setMetadata(qaMeta);
 
@@ -1018,8 +1021,8 @@ export default function VoiceInterface({
 
         const ttsBody: Record<string, unknown> = {
           action: 'text_to_speech',
-          text: preprocessTTS(cleanAnswer, currentLanguage),
-          language: currentLanguage,
+          text: preprocessTTS(cleanAnswer, responseLanguage),
+          language: responseLanguage,
           sessionId: sessionIdRef.current,
           includeVrmControl: true,
         };
@@ -1115,10 +1118,11 @@ export default function VoiceInterface({
       requestAbortRef.current = abortController;
 
       try {
+        const responseLanguage = resolveVoiceResponseLanguage(metadataForPlayback, currentLanguage);
         const ttsBody: Record<string, unknown> = {
           action: 'text_to_speech',
-          text: preprocessTTS(cleanAnswer, currentLanguage),
-          language: currentLanguage,
+          text: preprocessTTS(cleanAnswer, responseLanguage),
+          language: responseLanguage,
           sessionId: sessionIdRef.current,
           includeVrmControl: true,
         };

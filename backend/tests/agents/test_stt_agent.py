@@ -24,6 +24,7 @@ from backend.agents.stt_agent import (
     STAGE_GRAMMARS,
     VALID_STAGES,
     _normalize_vosk_route_transcript,
+    _vosk_fallback_transcript_suspicious,
     _vosk_transcript_trusted_for_early_return,
 )
 
@@ -1109,6 +1110,24 @@ class TestSTTAgent:
         assert not _vosk_transcript_trusted_for_early_return(
             "今の時間を教えてください",
             "ja",
+        )
+
+    def test_vosk_fallback_rejects_low_confidence_fragmented_transcript(self):
+        """Live-log garbage Vosk output should not be accepted as user intent."""
+        assert _vosk_fallback_transcript_suspicious(
+            "本番 り こ 黒板 を し です 今晩 は で",
+            "ja",
+            0.6994,
+        )
+        assert not _vosk_fallback_transcript_suspicious(
+            "エンジニア カフェ の 営業 時間 教え て ください",
+            "ja",
+            0.70,
+        )
+        assert not _vosk_fallback_transcript_suspicious(
+            "fallback ok",
+            "en",
+            0.80,
         )
 
     def test_vosk_route_transcript_normalizes_hours_confusion(self):
@@ -2641,6 +2660,48 @@ class TestQwenPrimaryFallback:
             if record.name == "backend.observability.stt"
         ]
         assert "stt_qwen_hedge_grace_complete" in events
+
+    @pytest.mark.asyncio
+    async def test_low_confidence_fragmented_vosk_fallback_is_rejected(self, caplog):
+        """Suspicious Vosk fallback raises instead of becoming a chat transcript."""
+        caplog.set_level(logging.INFO, logger="backend.observability.stt")
+
+        async def too_late_qwen(*args, **kwargs):
+            await asyncio.sleep(0.30)
+            return TranscriptionResult(text="too late", confidence=0.9, language="ja")
+
+        async def fragmented_vosk(*args, **kwargs):
+            await asyncio.sleep(0.01)
+            return TranscriptionResult(
+                text="本番 り こ 黒板 を し です 今晩 は で",
+                confidence=0.6994,
+                language="ja",
+            )
+
+        mock_qwen = MagicMock()
+        mock_qwen.transcribe = too_late_qwen
+        mock_vosk = MagicMock(spec=LocalSTTClient)
+        mock_vosk.transcribe = AsyncMock(side_effect=fragmented_vosk)
+
+        agent = self._make_agent(mock_qwen, mock_vosk)
+        agent._qwen_timeout = 10.0
+        agent._qwen_hedge_delay = 0.01
+        agent._qwen_hedge_grace = 0.02
+
+        with pytest.raises(RuntimeError, match="Both Qwen and Vosk STT failed"):
+            await agent.speech_to_text(b"audio", language="ja")
+
+        events = [
+            getattr(record, "event", None)
+            for record in caplog.records
+            if record.name == "backend.observability.stt"
+        ]
+        assert "stt_vosk_rejected" in events
+        winner = next(
+            record for record in caplog.records if getattr(record, "event", None) == "stt_winner"
+        )
+        assert winner.stt_winner == "none"
+        assert winner.vosk_error_type == "RejectedVoskFallback"
 
     @pytest.mark.asyncio
     async def test_qwen_grace_skips_when_latency_budget_is_exhausted(self, caplog):

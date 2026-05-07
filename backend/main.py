@@ -6,6 +6,7 @@ FastAPIアプリケーションとLangGraphエージェントの統合
 import hmac
 import asyncio
 import base64
+import binascii
 import json
 import logging
 import os
@@ -63,6 +64,8 @@ def _float_env(name: str, default: float) -> float:
 
 
 _REQUEST_TIMING_LOG_THRESHOLD_MS = _float_env("REQUEST_TIMING_LOG_THRESHOLD_MS", 10000)
+MIN_STT_AUDIO_BYTES = int(_float_env("STT_MIN_AUDIO_BYTES", 512))
+_SUPPORTED_RESPONSE_LANGUAGES = frozenset({"ja", "en", "zh", "ko"})
 
 
 class RequestIDMiddleware(BaseHTTPMiddleware):
@@ -588,6 +591,65 @@ def _upstream_status(phase: str, ok: bool = True, **extra: Any) -> Dict[str, Any
     return {"phase": phase, "ok": ok, **extra}
 
 
+def _normalize_response_language(value: Any, fallback: str = "ja") -> str:
+    if isinstance(value, str) and value.strip():
+        normalized = value.strip().lower().split("-", 1)[0]
+        if normalized in _SUPPORTED_RESPONSE_LANGUAGES:
+            return normalized
+    return fallback if fallback in _SUPPORTED_RESPONSE_LANGUAGES else "ja"
+
+
+def _resolve_chat_response_language(
+    *,
+    query: str,
+    requested_language: Optional[str],
+    result: Dict[str, Any],
+    metadata: Dict[str, Any],
+) -> str:
+    fallback = _normalize_response_language(requested_language)
+    for key in ("response_language", "language", "detected_language"):
+        if key in metadata:
+            return _normalize_response_language(metadata.get(key), fallback)
+    for key in ("response_language", "language", "detected_language"):
+        if key in result:
+            return _normalize_response_language(result.get(key), fallback)
+
+    try:
+        from backend.utils.language_processor import LanguageProcessor
+
+        language_processor = LanguageProcessor()
+        language_result = language_processor.detect_language(query)
+        detected = language_processor.determine_response_language(language_result)
+        return _normalize_response_language(detected, fallback)
+    except Exception as exc:
+        logger.debug("Response language detection skipped: %s", exc)
+        return fallback
+
+
+def _stt_failure_response(
+    *,
+    body: "VoiceRequest",
+    request_id: str,
+    error: str,
+    provider: Optional[str] = None,
+    error_type: Optional[str] = None,
+) -> "VoiceResponse":
+    return VoiceResponse(
+        success=False,
+        error=error,
+        sessionId=body.sessionId,
+        requestId=request_id,
+        phase="speech_to_text",
+        upstreamStatus=_upstream_status(
+            "stt",
+            ok=False,
+            provider=provider,
+            error=error,
+            errorType=error_type,
+        ),
+    )
+
+
 @app.get("/health")
 @_rate_limit("60/minute")
 async def health_check(request: Request):
@@ -716,10 +778,19 @@ async def chat(request: Request, body: ChatRequest):
 
         metadata = result.get("metadata", {"query": body.query, "session_id": session_id})
         metadata_dict = metadata if isinstance(metadata, dict) else {}
+        response_language = _resolve_chat_response_language(
+            query=body.query,
+            requested_language=body.language,
+            result=result,
+            metadata=metadata_dict,
+        )
+        if isinstance(metadata, dict):
+            metadata.setdefault("response_language", response_language)
+            metadata.setdefault("language", response_language)
         latency_ms = int((time.perf_counter() - started_at) * 1000)
         log_chat_response(
             request_id=request_id,
-            language=body.language,
+            language=response_language,
             metadata=metadata_dict,
             latency_ms=latency_ms,
         )
@@ -1068,27 +1139,46 @@ async def _handle_stt(body: VoiceRequest, request_id: str) -> VoiceResponse:
     if not body.audioData:
         raise HTTPException(status_code=400, detail="Missing audioData")
 
-    audio_bytes = base64.b64decode(body.audioData)
+    try:
+        audio_bytes = base64.b64decode(body.audioData, validate=True)
+    except (binascii.Error, ValueError):
+        raise HTTPException(status_code=400, detail="Invalid audioData")
 
-    stt_result = await _get_stt_agent().speech_to_text(
-        audio_bytes,
-        language=body.language,
-        conversation_stage=body.conversationStage,
-    )
+    if len(audio_bytes) < MIN_STT_AUDIO_BYTES:
+        logger.info(
+            "STT skipped: audio too short request_id=%s bytes=%s min=%s",
+            request_id,
+            len(audio_bytes),
+            MIN_STT_AUDIO_BYTES,
+        )
+        return _stt_failure_response(
+            body=body,
+            request_id=request_id,
+            error="No speech detected",
+            error_type="AudioTooShort",
+        )
+
+    try:
+        stt_result = await _get_stt_agent().speech_to_text(
+            audio_bytes,
+            language=body.language,
+            conversation_stage=body.conversationStage,
+        )
+    except RuntimeError as exc:
+        logger.warning("STT runtime failure: %s", exc)
+        return _stt_failure_response(
+            body=body,
+            request_id=request_id,
+            error="No speech detected",
+            error_type=type(exc).__name__,
+        )
 
     if not stt_result["success"]:
-        return VoiceResponse(
-            success=False,
+        return _stt_failure_response(
+            body=body,
+            request_id=request_id,
             error=stt_result.get("error", "STT failed"),
-            sessionId=body.sessionId,
-            requestId=request_id,
-            phase="speech_to_text",
-            upstreamStatus=_upstream_status(
-                "stt",
-                ok=False,
-                provider=stt_result.get("provider"),
-                error=stt_result.get("error", "STT failed"),
-            ),
+            provider=stt_result.get("provider"),
         )
 
     return VoiceResponse(

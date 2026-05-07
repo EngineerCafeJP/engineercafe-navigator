@@ -270,6 +270,10 @@ class HedgedFallback(Exception):
     """Qwen exceeded the latency budget, so Vosk was allowed to race it."""
 
 
+class RejectedVoskFallback(Exception):
+    """Vosk fallback produced a transcript too risky to treat as user intent."""
+
+
 def _parse_qwen_stt_hedge_delay(
     raw_value: Optional[str],
     *,
@@ -502,6 +506,39 @@ def _vosk_transcript_trusted_for_early_return(transcript: str, language: Optiona
     return ("営業" in normalized and "時間" in normalized) or (
         "開館" in normalized and "時間" in normalized
     )
+
+
+def _vosk_fallback_transcript_suspicious(
+    transcript: str,
+    language: Optional[str],
+    confidence: Optional[float],
+) -> bool:
+    """Identify low-confidence segmented Vosk text that should not drive chat intent."""
+
+    normalized_transcript = _normalize_vosk_route_transcript(transcript, language)
+    compact = "".join(normalized_transcript.split())
+    if not compact:
+        return True
+
+    if _vosk_transcript_trusted_for_early_return(normalized_transcript, language):
+        return False
+
+    if confidence is None or confidence >= 0.75:
+        return False
+
+    tokens = [token for token in normalized_transcript.split() if token]
+    if len(tokens) < 6:
+        return len(compact) <= 3
+
+    single_char_tokens = [token for token in tokens if len(token) == 1]
+    single_char_ratio = len(single_char_tokens) / len(tokens)
+    if single_char_ratio >= 0.45:
+        return True
+
+    ja_particles = {"が", "を", "に", "へ", "で", "と", "の", "は", "も", "や"}
+    particle_ratio = sum(1 for token in tokens if token in ja_particles) / len(tokens)
+    content_tokens = [token for token in tokens if token not in ja_particles and len(token) > 1]
+    return particle_ratio >= 0.30 and len(content_tokens) <= 3
 
 
 def _env_flag(name: str, default: bool = False) -> bool:
@@ -1894,8 +1931,30 @@ class STTAgent:
                 except Exception as exc:
                     vosk_result = exc
 
+            if isinstance(
+                vosk_result, TranscriptionResult
+            ) and _vosk_fallback_transcript_suspicious(
+                vosk_result.text,
+                vosk_result.language,
+                vosk_result.confidence,
+            ):
+                log_stt_event(
+                    event="stt_vosk_rejected",
+                    stt_trace_id=stt_trace_id,
+                    provider="vosk-fallback",
+                    language=vosk_result.language,
+                    success=False,
+                    transcript_chars=len(vosk_result.text),
+                    confidence=vosk_result.confidence,
+                    stt_overall_duration_ms=_duration_ms(overall_started_at),
+                    qwen_error_type=type(qwen_error_for_log).__name__,
+                    rejection_reason="low_confidence_fragmented_transcript",
+                )
+                vosk_result = RejectedVoskFallback("Rejected suspicious Vosk fallback transcript")
+
             if (
                 isinstance(vosk_result, Exception)
+                and not isinstance(vosk_result, RejectedVoskFallback)
                 and self._qwen_hedge_delay is not None
                 and not qwen_task.done()
             ):

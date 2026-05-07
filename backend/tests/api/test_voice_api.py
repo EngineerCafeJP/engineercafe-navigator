@@ -54,6 +54,7 @@ class VoiceResponse(BaseModel):
 mock_voice_agent = MagicMock()
 mock_stt_agent = MagicMock()
 mock_session_task_manager = MagicMock()
+MIN_STT_AUDIO_BYTES = 512
 
 _test_app = FastAPI()
 
@@ -64,12 +65,25 @@ async def _handle_stt_test(request: VoiceRequest) -> VoiceResponse:
         raise HTTPException(status_code=400, detail="Missing audioData")
 
     audio_bytes = base64.b64decode(request.audioData)
+    if len(audio_bytes) < MIN_STT_AUDIO_BYTES:
+        return VoiceResponse(
+            success=False,
+            error="No speech detected",
+            sessionId=request.sessionId,
+        )
 
-    stt_result = await mock_stt_agent.speech_to_text(
-        audio_bytes,
-        language=request.language,
-        conversation_stage=request.conversationStage,
-    )
+    try:
+        stt_result = await mock_stt_agent.speech_to_text(
+            audio_bytes,
+            language=request.language,
+            conversation_stage=request.conversationStage,
+        )
+    except RuntimeError:
+        return VoiceResponse(
+            success=False,
+            error="No speech detected",
+            sessionId=request.sessionId,
+        )
 
     if not stt_result["success"]:
         return VoiceResponse(
@@ -174,8 +188,8 @@ SAMPLE_SESSION_ID = "test-session-001"
 
 
 def _fake_wav_b64() -> str:
-    """最小限のダミー WAV の base64 文字列"""
-    return base64.b64encode(b"\x00" * 100).decode()
+    """STT minimum-size guardを越えるダミー WAV の base64 文字列"""
+    return base64.b64encode(b"\x00" * 1024).decode()
 
 
 @pytest.fixture(autouse=True)
@@ -537,8 +551,8 @@ class TestSpeechToText:
         assert body["success"] is False
         assert body["error"] is not None
 
-    def test_stt_exception_returns_500(self):
-        """STT が例外を投げた場合は 500 エラー"""
+    def test_stt_exception_returns_controlled_failure(self):
+        """STT が例外を投げた場合も 500 にせず success=False を返す"""
         mock_stt_agent.speech_to_text = AsyncMock(side_effect=RuntimeError("STT crashed"))
 
         resp = client.post(
@@ -550,7 +564,29 @@ class TestSpeechToText:
             },
         )
 
-        assert resp.status_code == 500
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["success"] is False
+        assert body["error"] == "No speech detected"
+
+    def test_stt_short_audio_returns_controlled_failure(self):
+        """短すぎる音声はSTT実行前に no-speech として返す"""
+        mock_stt_agent.speech_to_text = AsyncMock()
+
+        resp = client.post(
+            "/api/voice",
+            json={
+                "action": "speech_to_text",
+                "audioData": base64.b64encode(b"\0" * 448).decode(),
+                "sessionId": SAMPLE_SESSION_ID,
+            },
+        )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["success"] is False
+        assert body["error"] == "No speech detected"
+        mock_stt_agent.speech_to_text.assert_not_called()
 
 
 # =============================================================================
