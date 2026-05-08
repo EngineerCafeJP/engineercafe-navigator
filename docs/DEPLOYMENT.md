@@ -78,7 +78,7 @@ Vercel project の Environment Variables に設定する。
   - `TTS_PROVIDER=piper`
   - `STT_PROVIDER=qwen-primary`
   - `QWEN_STT_TIMEOUT=45`
-  - `QWEN_STT_HEDGE_DELAY_SECONDS=4`
+  - `QWEN_STT_HEDGE_DELAY_SECONDS=2`
   - `QWEN_STT_HEDGE_GRACE_SECONDS=6`
   - `FRONTEND_PRODUCTION_ORIGIN=<vercel-production-origin>`
   - `ALLOWED_ORIGINS=<vercel-production-origin>`

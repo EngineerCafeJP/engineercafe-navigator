@@ -1023,7 +1023,7 @@ class TestSTTAgent:
             agent = STTAgent(stt_provider="qwen-primary")
 
         assert agent._qwen_timeout == pytest.approx(24.0)
-        assert agent._qwen_hedge_delay == pytest.approx(4.0)
+        assert agent._qwen_hedge_delay == pytest.approx(2.0)
         assert agent._qwen_hedge_grace == pytest.approx(6.0)
         assert agent._qwen_latency_budget == pytest.approx(10.0)
 
@@ -1139,11 +1139,23 @@ class TestSTTAgent:
                 "エンジニアカフェの営業時間を教えてください。",
             ),
             (
+                "園児 に 変 な 影響 時間 教え て ください",
+                "エンジニアカフェの営業時間を教えてください。",
+            ),
+            (
                 "はい はい ば 瀬田 作 方法 を 教え て ください",
                 "Wi-Fiの接続方法を教えてください。",
             ),
             (
+                "はい はい な 接続 方法 を 教え て ください",
+                "Wi-Fiの接続方法を教えてください。",
+            ),
+            (
                 "パート の 仮想 環境 と 何 です か",
+                "Python の仮想環境とは何ですか。",
+            ),
+            (
+                "配管 の か か と は 何 です か",
                 "Python の仮想環境とは何ですか。",
             ),
         ],
@@ -2696,11 +2708,23 @@ class TestQwenPrimaryFallback:
                 "エンジニアカフェの営業時間を教えてください。",
             ),
             (
+                "園児 に 変 な 影響 時間 教え て ください",
+                "エンジニアカフェの営業時間を教えてください。",
+            ),
+            (
                 "はい はい ば 瀬田 作 方法 を 教え て ください",
                 "Wi-Fiの接続方法を教えてください。",
             ),
             (
+                "はい はい な 接続 方法 を 教え て ください",
+                "Wi-Fiの接続方法を教えてください。",
+            ),
+            (
                 "パート の 仮想 環境 と 何 です か",
+                "Python の仮想環境とは何ですか。",
+            ),
+            (
+                "配管 の か か と は 何 です か",
                 "Python の仮想環境とは何ですか。",
             ),
         ],
