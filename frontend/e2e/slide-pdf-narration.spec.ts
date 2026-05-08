@@ -418,6 +418,35 @@ test.describe('Slide PDF narration deck (#624)', () => {
     expect(counters?.maxActive).toBe(1);
   });
 
+  test('closing slides during static narration stops the active slide audio', async ({ page }) => {
+    await setupWebAudioMock(page);
+    await setupSlideAudioElementMock(page, { staticAudioReady: true });
+    await mockReceptionStart(page, 'mock-close-static-narration');
+    await page.route('**/api/voice', async (route) => {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+    });
+
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await dismissInitialModal(page);
+
+    await page.setViewportSize({ width: 960, height: 540 });
+    await page.getByTestId('kiosk-slides-button').click();
+    await page.getByTestId('slide-language-ja').click();
+
+    await expect(page.getByTestId('reception-pdf-counter')).toHaveText('1 / 5', {
+      timeout: 15_000,
+    });
+    await page.waitForFunction(() => window.__SLIDE_AUDIO_COUNTERS__?.active === 1);
+
+    await page.getByRole('button', { name: /スライドを閉じる|Close slides/ }).click();
+    await expect(page.getByRole('button', { name: 'Welcome' })).toBeVisible({ timeout: 5_000 });
+
+    const counters = await page.evaluate(() => window.__SLIDE_AUDIO_COUNTERS__);
+    expect(counters?.active).toBe(0);
+    expect(counters?.starts).toBe(1);
+    expect(counters?.maxActive).toBe(1);
+  });
+
   test('autoplay waits for narration markdown instead of fast-advancing without audio', async ({
     page,
   }) => {

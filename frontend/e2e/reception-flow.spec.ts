@@ -352,6 +352,108 @@ test.describe('Reception flow — voice mode', () => {
   });
 });
 
+test.describe('Reception flow — voice locking and interruption', () => {
+  test('STT locks other actions, then LLM processing can be interrupted by opening slides', async ({
+    page,
+  }) => {
+    await installDeterministicVoiceRecorder(page);
+    await mockReceptionStart(page);
+
+    let releaseStt!: () => void;
+    const sttGate = new Promise<void>((resolve) => {
+      releaseStt = resolve;
+    });
+    let releaseQa!: () => void;
+    const qaGate = new Promise<void>((resolve) => {
+      releaseQa = resolve;
+    });
+
+    let sttRequests = 0;
+    let qaRequests = 0;
+    let interruptRequests = 0;
+    let ttsRequests = 0;
+
+    await page.route(`**${QA_CHAT_URL}`, async (route) => {
+      qaRequests += 1;
+      await qaGate;
+      await route
+        .fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            answer: '割り込みテスト応答です。',
+            emotion: 'neutral',
+            metadata: {},
+          }),
+        })
+        .catch(() => {});
+    });
+
+    await page.route('**/api/voice', async (route) => {
+      let body: Record<string, unknown> = {};
+      try {
+        body = route.request().postDataJSON() as Record<string, unknown>;
+      } catch {
+        body = {};
+      }
+
+      if (body.action === 'speech_to_text') {
+        sttRequests += 1;
+        await sttGate;
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true, transcript: 'スライド案内を見たいです' }),
+        });
+        return;
+      }
+
+      if (body.action === 'interrupt') {
+        interruptRequests += 1;
+      }
+      if (body.action === 'text_to_speech') {
+        ttsRequests += 1;
+      }
+
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true, sttWarmupStatus: 'ready' }),
+      });
+    });
+
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await dismissInitialModal(page);
+
+    const voiceButton = page.getByTestId('kiosk-voice-button');
+    const slidesButton = page.getByTestId('kiosk-slides-button');
+
+    await voiceButton.click();
+    await expect(page.getByTestId('kiosk-voice-status')).toHaveAttribute(
+      'data-session-state',
+      'listening',
+      { timeout: 8_000 },
+    );
+    await voiceButton.click();
+
+    await expect.poll(() => sttRequests, { timeout: 8_000 }).toBe(1);
+    await expect(slidesButton).toBeDisabled();
+
+    releaseStt();
+    await expect.poll(() => qaRequests, { timeout: 8_000 }).toBe(1);
+    await expect(slidesButton).toBeEnabled();
+
+    await slidesButton.click();
+    await expect(page.getByTestId('slide-language-ja')).toBeVisible({ timeout: 5_000 });
+    await expect.poll(() => interruptRequests, { timeout: 5_000 }).toBeGreaterThanOrEqual(1);
+
+    releaseQa();
+    await page.waitForTimeout(300);
+    expect(ttsRequests).toBe(0);
+  });
+});
+
 test.describe('Reception flow — microphone errors', () => {
   test.beforeEach(async ({ page }) => {
     await rejectMicrophonePermission(page);
