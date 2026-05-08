@@ -1181,6 +1181,19 @@ class TestSTTAgent:
     @pytest.mark.parametrize(
         "transcript",
         [
+            "配管 の 加圧 と は 何 です か",
+            "はい はい Bluetooth の 接続 方法 を 教え て ください",
+            "はい はい プロジェクター の 接続 方法 を 教え て ください",
+            "園児 に 変 な 影響 が 出る 時間 を 教え て ください",
+        ],
+    )
+    def test_vosk_route_transcript_does_not_normalize_near_misses(self, transcript):
+        """Near-miss phrases must not be rewritten to unrelated canonical intents."""
+        assert _normalize_vosk_route_transcript(transcript, "ja") == transcript
+
+    @pytest.mark.parametrize(
+        "transcript",
+        [
             "エンジニア カフェ の 営業 時間 教え て ください",
             "Wi-Fi の 接続 方法 を 教え て ください",
             "接続 方法 を 教え て ください",

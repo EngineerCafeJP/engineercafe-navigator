@@ -440,21 +440,24 @@ def _normalize_vosk_route_transcript(transcript: str, language: Optional[str]) -
         return transcript
 
     has_repeated_hai = "はいはい" in normalized or "ハイハイ" in normalized
+    has_other_connection_target = any(
+        marker in normalized for marker in ("bluetooth", "プロジェクター")
+    )
     is_wifi_connection_confusion = has_repeated_hai and (
         ("セット" in normalized and "逆方法" in normalized)
         or ("瀬田" in normalized and "作方法" in normalized)
-        or ("接続" in normalized and "方法" in normalized)
+        or ("接続" in normalized and "方法" in normalized and not has_other_connection_target)
     )
     if is_wifi_connection_confusion:
         return "Wi-Fiの接続方法を教えてください。"
 
-    if (
+    is_python_venv_confusion = (
         "仮想環境" in normalized and any(marker in normalized for marker in ("パート", "ぱいと"))
-    ) or (
-        "配管" in normalized
-        and "かか" in normalized
-        and ("何ですか" in normalized or "とは何" in normalized)
-    ):
+    ) or normalized in {
+        "配管のかかとは何ですか",
+        "配管のかかととは何ですか",
+    }
+    if is_python_venv_confusion:
         return "Python の仮想環境とは何ですか。"
 
     has_time_context = any(marker in normalized for marker in ("時間", "影響時", "液状時"))
@@ -489,7 +492,12 @@ def _normalize_vosk_route_transcript(transcript: str, language: Optional[str]) -
             and ("新潟" in normalized or "県" in normalized)
             and "影響" in normalized
         )
-        or ("園児" in normalized and "変" in normalized and "影響" in normalized)
+        or (
+            "園児" in normalized
+            and "変" in normalized
+            and "影響" in normalized
+            and "出る" not in normalized
+        )
     )
     if not has_engineer_cafe_context:
         return transcript
