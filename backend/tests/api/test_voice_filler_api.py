@@ -1,3 +1,5 @@
+import asyncio
+import base64
 import time
 
 import httpx
@@ -114,3 +116,63 @@ async def test_voice_filler_accepts_wav_meeting_minimum_size(monkeypatch, tmp_pa
     body = response.json()
     assert body["upstreamStatus"]["ok"] is True
     assert len(body["audioResponse"]) > 0
+
+
+async def test_voice_filler_uses_static_fallback_clip_when_intent_clip_missing(
+    monkeypatch,
+    tmp_path,
+):
+    monkeypatch.setattr(main_mod, "_API_SECRET_KEY", "expected-key")
+    monkeypatch.setattr(main_mod, "_FILLER_DIR", tmp_path)
+    main_mod._filler_audio_cache.clear()
+
+    fallback_file = tmp_path / "fallback_ja.wav"
+    fallback_file.write_bytes(bytes([255]) * 9000)
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/api/voice/filler",
+            headers={"X-API-Key": "expected-key"},
+            json={"query": "WiFiのパスワードは？", "language": "ja"},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["intent"] == "wifi"
+    assert body["audioResponse"]
+    assert body["upstreamStatus"]["ok"] is True
+    assert body["upstreamStatus"]["fallbackUsed"] is True
+    assert body["upstreamStatus"]["actualIntent"] == "fallback"
+    assert body["upstreamStatus"]["actualLanguage"] == "ja"
+
+
+async def test_handle_stt_times_out_and_returns_recoverable_failure(monkeypatch):
+    monkeypatch.setenv("VOICE_STT_REQUEST_TIMEOUT_SECONDS", "0.01")
+
+    class SlowSTTAgent:
+        async def speech_to_text(self, audio_data, language=None, conversation_stage=None):
+            await asyncio.sleep(1)
+            return {
+                "success": True,
+                "transcript": "too late",
+                "language": language or "ja",
+                "provider": "slow",
+            }
+
+    monkeypatch.setattr(main_mod, "_get_stt_agent", lambda: SlowSTTAgent())
+
+    body = main_mod.VoiceRequest(
+        action="speech_to_text",
+        audioData=base64.b64encode(b"\x00" * 1024).decode("ascii"),
+        language="ja",
+        sessionId="stt-timeout",
+    )
+
+    response = await main_mod._handle_stt(body, "req-stt-timeout")
+
+    assert response.success is False
+    assert response.error == "No speech detected"
+    assert response.requestId == "req-stt-timeout"
+    assert response.upstreamStatus["ok"] is False
+    assert response.upstreamStatus["errorType"] == "TimeoutError"

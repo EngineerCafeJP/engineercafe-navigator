@@ -32,6 +32,24 @@ def _cache_key(agent: VoiceAgent, text: str, language: str = "ja", emotion: str 
     return agent._tts_cache_key(text, language, agent.tts_provider, emotion)
 
 
+def _assert_cached_audio_entry(
+    agent: VoiceAgent,
+    cache_key: str,
+    *,
+    audio_b64: str,
+    audio_format: str = "audio/wav",
+    fallback_used: bool = False,
+    fallback_provider: str | None = None,
+) -> None:
+    cached = agent._tts_cache[cache_key]
+    assert cached == {
+        "audioResponse": audio_b64,
+        "format": audio_format,
+        "fallback_used": fallback_used,
+        "fallback_provider": fallback_provider,
+    }
+
+
 @pytest.mark.asyncio
 async def test_text_to_speech_lazy_inits_cache_for_new_bypass():
     agent, calls = _make_new_voice_agent()
@@ -80,7 +98,7 @@ async def test_text_to_speech_ignores_invalid_cached_audio(monkeypatch):
     assert result["audioResponse"] == "D" * 128
     assert result["tts_cache_hit"] is False
     assert calls["count"] == 1
-    assert agent._tts_cache[cache_key] == "D" * 128
+    _assert_cached_audio_entry(agent, cache_key, audio_b64="D" * 128)
     log_tts_cache_event.assert_called_once_with(hit=False, cache_key=cache_key, language="ja")
 
 
@@ -103,7 +121,7 @@ async def test_text_to_speech_caches_valid_audio():
     await agent.text_to_speech(text="こんにちは", language="ja")
 
     cache_key = _cache_key(agent, "こんにちは")
-    assert agent._tts_cache[cache_key] == "D" * 128
+    _assert_cached_audio_entry(agent, cache_key, audio_b64="D" * 128)
 
 
 @pytest.mark.asyncio

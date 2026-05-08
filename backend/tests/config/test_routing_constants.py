@@ -7,6 +7,7 @@ import pytest
 from backend.config.routing_constants import (
     CATEGORY_TO_AGENT_MAP,
     extract_request_type,
+    normalize_agent_node,
 )
 
 
@@ -110,6 +111,58 @@ class TestNewRoutingKeywords:
     def test_pet_policy_keywords_avoid_substring_false_positives(self, query):
         """Pet policy should not catch bottle or English substring matches."""
         assert extract_request_type(query) != "pets"
+
+
+class TestAgentNodeNormalization:
+    """LangGraph node transition names are normalized from routing output."""
+
+    @pytest.mark.parametrize(
+        ("raw_agent", "category", "expected_agent", "expected_source"),
+        [
+            ("BusinessInfoAgent", None, "business_info", "alias"),
+            ("GeneralKnowledgeAgent", None, "general_knowledge", "alias"),
+            ("facility", None, "facility", "agent"),
+            ("greeting", "greeting", "business_info", "category"),
+            ("unknown", "pricing", "business_info", "category"),
+            ("unknown", None, "general_knowledge", "fallback"),
+        ],
+    )
+    def test_normalize_agent_node(self, raw_agent, category, expected_agent, expected_source):
+        agent, source = normalize_agent_node(raw_agent, category=category)
+
+        assert agent == expected_agent
+        assert source == expected_source
+
+    def test_specific_category_overrides_stale_agent_when_requested(self):
+        agent, source = normalize_agent_node(
+            "GeneralKnowledgeAgent",
+            category="pricing",
+            prefer_category=True,
+        )
+
+        assert agent == "business_info"
+        assert source == "category"
+
+    def test_request_type_overrides_broad_or_wrong_category_when_requested(self):
+        agent, source = normalize_agent_node(
+            "FacilityAgent",
+            category="facility-info",
+            request_type="hours",
+            prefer_category=True,
+        )
+
+        assert agent == "business_info"
+        assert source == "request_type"
+
+    def test_broad_category_does_not_override_explicit_agent(self):
+        agent, source = normalize_agent_node(
+            "FacilityAgent",
+            category="general",
+            prefer_category=True,
+        )
+
+        assert agent == "facility"
+        assert source == "alias"
 
 
 class TestReceptionRouting:

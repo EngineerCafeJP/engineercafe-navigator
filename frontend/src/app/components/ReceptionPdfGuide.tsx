@@ -12,7 +12,12 @@ import {
   unlockAudioForUserGesture,
 } from '@/lib/audio/audio-interaction-manager';
 import { MobileAudioService } from '@/lib/audio/mobile-audio-service';
-import type { AudioDataInput, AudioOperationResult } from '@/lib/audio/audio-interfaces';
+import {
+  AudioError,
+  AudioErrorType,
+  type AudioDataInput,
+  type AudioOperationResult,
+} from '@/lib/audio/audio-interfaces';
 import {
   RECEPTION_GUIDE_AUDIO_EXT,
   receptionGuideAudioPrefix,
@@ -24,6 +29,7 @@ import {
   shouldFallbackToGeneratedNarration,
   type StaticNarrationAudioState,
 } from '@/lib/reception/reception-audio-readiness';
+import { getReceptionNarrationAdvanceDelay } from '@/lib/reception/reception-narration-timing';
 import { parseReceptionNarrationMarkdown } from '@/lib/reception/parse-reception-narration-md';
 import { preprocessTTS } from '@/utils/tts-preprocess';
 import { cn } from '@/lib/cn';
@@ -35,11 +41,15 @@ import type { PresentationCompleteReason } from './presentation-types';
 
 const SLIDE_DELAY_MS = 500;
 const NARRATION_GAP_MS = 300;
+const NARRATION_ASSET_RETRY_MS = 250;
+const MIN_STATIC_NARRATION_PLAYBACK_MS = 1200;
 
 type NarrationRun = {
   id: number;
   playbackSessionId: number;
   page: number;
+  slideShownAtMs: number;
+  playbackStartedAtMs: number | null;
   controller: AbortController;
   audioService: MobileAudioService | null;
 };
@@ -180,6 +190,7 @@ export default function ReceptionPdfGuide({
   const [isNarrationInProgress, setIsNarrationInProgress] = useState(false);
   const [containerBounds, setContainerBounds] = useState({ width: 800, height: 600 });
   const [narrationTexts, setNarrationTexts] = useState<string[]>([]);
+  const [isNarrationTextReady, setIsNarrationTextReady] = useState(false);
   const [audioPermissionRequired, setAudioPermissionRequired] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -219,6 +230,7 @@ export default function ReceptionPdfGuide({
 
   useEffect(() => {
     let cancelled = false;
+    setIsNarrationTextReady(false);
     (async () => {
       const mdUrl =
         language === 'ja'
@@ -230,10 +242,12 @@ export default function ReceptionPdfGuide({
         const slides = parseReceptionNarrationMarkdown(md, language);
         if (!cancelled) {
           setNarrationTexts(slides);
+          setIsNarrationTextReady(true);
         }
       } catch {
         if (!cancelled) {
           setNarrationTexts([]);
+          setIsNarrationTextReady(true);
         }
       }
     })();
@@ -589,6 +603,8 @@ export default function ReceptionPdfGuide({
         id: narrationRunSeqRef.current + 1,
         playbackSessionId,
         page,
+        slideShownAtMs: Date.now(),
+        playbackStartedAtMs: null,
         controller: new AbortController(),
         audioService: null,
       };
@@ -632,6 +648,7 @@ export default function ReceptionPdfGuide({
 
       return new Promise<AudioOperationResult>((resolve) => {
         let settled = false;
+        let didStartPlayback = false;
         let service: MobileAudioService | null = null;
 
         const settle = (result: AudioOperationResult) => {
@@ -648,7 +665,6 @@ export default function ReceptionPdfGuide({
         };
 
         const stopAsCancelled = () => {
-          service?.stop();
           settle({ success: false, method: 'cancelled' });
         };
 
@@ -661,10 +677,28 @@ export default function ReceptionPdfGuide({
           onPlay: () => {
             if (!isActiveNarrationRun(run)) {
               stopAsCancelled();
+              return;
             }
+            didStartPlayback = true;
+            run.playbackStartedAtMs = Date.now();
           },
           onEnded: () => {
             onVisemeControl?.('Closed', 0);
+            if (!isActiveNarrationRun(run)) {
+              stopAsCancelled();
+              return;
+            }
+            if (!didStartPlayback) {
+              settle({
+                success: false,
+                method: service?.getCurrentMethod() ?? undefined,
+                error: new AudioError(
+                  AudioErrorType.PLAYBACK_FAILED,
+                  'Audio ended before playback start was observed',
+                ),
+              });
+              return;
+            }
             settle({ success: true, method: service?.getCurrentMethod() ?? undefined });
           },
           onError: (error) => {
@@ -770,6 +804,42 @@ export default function ReceptionPdfGuide({
     [onPresentationComplete, setPageState]
   );
 
+  const advanceAfterSafeDwell = useCallback(
+    (run: NarrationRun, requestedDelayMs = SLIDE_DELAY_MS) => {
+      if (!isActiveNarrationRun(run)) {
+        return;
+      }
+      advancePresentation(
+        getReceptionNarrationAdvanceDelay({
+          slideShownAtMs: run.slideShownAtMs,
+          nowMs: Date.now(),
+          requestedDelayMs,
+        }),
+      );
+    },
+    [advancePresentation, isActiveNarrationRun],
+  );
+
+  const scheduleNarrationRetry = useCallback(
+    (playbackSessionId: number, page: number) => {
+      if (narrationScheduleRef.current) {
+        clearTimeout(narrationScheduleRef.current);
+      }
+      narrationScheduleRef.current = setTimeout(() => {
+        narrationScheduleRef.current = null;
+        if (
+          isActiveSession(playbackSessionId) &&
+          currentPageRef.current === page &&
+          !isNarratingRef.current &&
+          !isNarrationInProgressRef.current
+        ) {
+          void narrateWithRetryRef.current();
+        }
+      }, NARRATION_ASSET_RETRY_MS);
+    },
+    [],
+  );
+
   const narrateCurrentSlide = useCallback(async () => {
     if (
       !isPlayingRef.current ||
@@ -794,19 +864,25 @@ export default function ReceptionPdfGuide({
 
         let playedStaticAudio = false;
         try {
+          const playbackStartedAt = Date.now();
           const result = await playNarrationAudio(audioUrl, run);
+          const playbackElapsedMs = Date.now() - playbackStartedAt;
           if (!isActiveNarrationRun(run)) {
             return;
           }
           if (!result.success) {
             throw result.error ?? new Error('Audio playback failed');
           }
-          playedStaticAudio = true;
+          if (playbackElapsedMs < MIN_STATIC_NARRATION_PLAYBACK_MS) {
+            preloadedAudioStateRef.current.set(audioUrl, 'failed');
+          } else {
+            playedStaticAudio = true;
+          }
           if (!isActiveNarrationRun(run)) {
             return;
           }
-          if (settings.autoAdvance) {
-            advancePresentation(SLIDE_DELAY_MS);
+          if (playedStaticAudio && settings.autoAdvance) {
+            advanceAfterSafeDwell(run, SLIDE_DELAY_MS);
           }
         } catch (err: unknown) {
           if (!isActiveNarrationRun(run)) {
@@ -828,8 +904,14 @@ export default function ReceptionPdfGuide({
       const text =
         narrationTexts[pageAtStart - 1]?.trim() ?? '';
       if (!text) {
+        if (!isNarrationTextReady) {
+          if (isActiveNarrationRun(run)) {
+            scheduleNarrationRetry(sid, pageAtStart);
+          }
+          return;
+        }
         if (isActiveNarrationRun(run)) {
-          advancePresentation(400);
+          advanceAfterSafeDwell(run, SLIDE_DELAY_MS);
         }
         return;
       }
@@ -883,27 +965,31 @@ export default function ReceptionPdfGuide({
         return;
       }
       if (settings.autoAdvance) {
-        advancePresentation(SLIDE_DELAY_MS);
+        advanceAfterSafeDwell(run, SLIDE_DELAY_MS);
       }
     } catch (e) {
       if (e instanceof Error && e.name === 'AbortError') {
         return;
       }
       if (isActiveNarrationRun(run)) {
-        advancePresentation(400);
+        invalidatePlaybackSession();
+        setIsPlaying(false);
+        onPresentationComplete?.('stopped');
       }
     } finally {
       finishNarrationRun(run);
     }
   }, [
-    advancePresentation,
+    advanceAfterSafeDwell,
     beginNarrationRun,
     finishNarrationRun,
     isActiveNarrationRun,
+    isNarrationTextReady,
     language,
     narrationTexts,
     onPresentationComplete,
     playNarrationAudio,
+    scheduleNarrationRetry,
     sessionId,
     settings.autoAdvance,
   ]);
@@ -921,14 +1007,16 @@ export default function ReceptionPdfGuide({
           return;
         } catch {
           if (i === retries - 1 && isActiveSession(sid)) {
-            advancePresentation(600);
+            invalidatePlaybackSession();
+            setIsPlaying(false);
+            onPresentationComplete?.('stopped');
           } else {
             await new Promise((r) => setTimeout(r, 300 * (i + 1)));
           }
         }
       }
     },
-    [advancePresentation, narrateCurrentSlide]
+    [narrateCurrentSlide, onPresentationComplete]
   );
   narrateWithRetryRef.current = narrateWithRetry;
 

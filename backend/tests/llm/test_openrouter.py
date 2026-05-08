@@ -236,6 +236,56 @@ class TestOpenRouterProvider:
         assert openrouter_mock.call_count == 1
 
     @pytest.mark.asyncio
+    async def test_cerebras_direct_call_uses_fast_timeout_env(self):
+        """Cerebras direct path should not inherit the old 60s minimum wait."""
+        messages = [HumanMessage(content="Test message")]
+        config = ModelConfig(
+            model_id=SupportedModel.GEMINI_3_1_FLASH_LITE,
+            fallback_model=SupportedModel.GEMINI_2_5_FLASH_LITE,
+            allow_cerebras_primary=True,
+            cerebras_primary_use_case="qa_response",
+            timeout=30.0,
+        )
+
+        class FakeCerebrasResponse:
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return {"choices": [{"message": {"content": "fast cerebras"}}]}
+
+        class FakeAsyncClient:
+            timeouts = []
+
+            def __init__(self, *, timeout, headers):
+                self.timeouts.append(timeout)
+                self.headers = headers
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc_val, exc_tb):
+                return None
+
+            async def post(self, url, json):
+                return FakeCerebrasResponse()
+
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "CEREBRAS_API_KEY": "test_cerebras_key",
+                    "CEREBRAS_TIMEOUT_SECONDS": "1.25",
+                },
+            ),
+            patch("backend.llm.openrouter.httpx.AsyncClient", FakeAsyncClient),
+        ):
+            response = await self.provider._cerebras_generate(messages, config)
+
+        assert response == "fast cerebras"
+        assert FakeAsyncClient.timeouts == [1.25]
+
+    @pytest.mark.asyncio
     async def test_cerebras_fast_primary_requires_config_opt_in(self):
         """施設・イベント系のfast configへCerebras primaryが波及しないこと"""
         messages = [HumanMessage(content="Test message")]

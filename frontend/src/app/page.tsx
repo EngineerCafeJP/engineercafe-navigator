@@ -337,9 +337,7 @@ export default function Home() {
         language={currentLanguage}
         onLanguageChange={setCurrentLanguage}
         wakeWordEnabled={false}
-        autoResumeListeningAfterAssistant={
-          micInputMode === 'push_to_talk' ? false : kioskVoiceLocked
-        }
+        autoResumeListeningAfterAssistant={false}
         onVisemeControl={setVisemeFunction}
         showDefaultUI={false}
         onMetadataChange={(metadata) => {

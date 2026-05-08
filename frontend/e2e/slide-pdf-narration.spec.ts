@@ -14,9 +14,11 @@ declare global {
 
 async function setupSlideAudioElementMock(
   page: import('@playwright/test').Page,
-  options: { staticAudioReady: boolean } = { staticAudioReady: true },
+  options: { staticAudioReady: boolean; endAfterMs?: number; duration?: number } = {
+    staticAudioReady: true,
+  },
 ) {
-  await page.addInitScript(({ staticAudioReady }) => {
+  await page.addInitScript(({ staticAudioReady, endAfterMs, duration }) => {
     type Listener = {
       callback: EventListenerOrEventListenerObject;
       once: boolean;
@@ -40,10 +42,11 @@ async function setupSlideAudioElementMock(
       public paused = true;
       public ended = false;
       public currentTime = 0;
-      public duration = 30;
+      public duration = duration ?? 30;
       public readyState = staticAudioReady ? 4 : 0;
       public src = '';
       private readonly listeners = new Map<string, Set<Listener>>();
+      private endTimer: number | null = null;
 
       constructor(url?: string) {
         super();
@@ -73,6 +76,10 @@ async function setupSlideAudioElementMock(
         if (!this.paused) {
           return;
         }
+        if (this.endTimer !== null) {
+          clearTimeout(this.endTimer);
+          this.endTimer = null;
+        }
         this.paused = false;
         this.ended = false;
         if (isSlideAudio(this.src)) {
@@ -81,9 +88,27 @@ async function setupSlideAudioElementMock(
           counters.maxActive = Math.max(counters.maxActive, counters.active);
         }
         this.emit('play');
+        if (typeof endAfterMs === 'number') {
+          this.endTimer = window.setTimeout(() => {
+            this.endTimer = null;
+            if (this.paused) {
+              return;
+            }
+            this.paused = true;
+            this.ended = true;
+            if (isSlideAudio(this.src)) {
+              counters.active = Math.max(0, counters.active - 1);
+            }
+            this.emit('ended');
+          }, Math.max(0, endAfterMs));
+        }
       }
 
       pause() {
+        if (this.endTimer !== null) {
+          clearTimeout(this.endTimer);
+          this.endTimer = null;
+        }
         if (this.paused) {
           return;
         }
@@ -181,6 +206,8 @@ async function dismissInitialModal(page: import('@playwright/test').Page) {
 }
 
 test.describe('Slide PDF narration deck (#624)', () => {
+  test.describe.configure({ mode: 'serial' });
+
   test('autoplay uses static slide audio and does not call Piper TTS', async ({ page }) => {
     await setupWebAudioMock(page);
     await setupSlideAudioElementMock(page, { staticAudioReady: true });
@@ -230,6 +257,132 @@ test.describe('Slide PDF narration deck (#624)', () => {
     expect(piperHits).toBe(0);
   });
 
+  test('autoplay does not fast-forward while static audio and narration markdown are not ready', async ({ page }) => {
+    await setupWebAudioMock(page);
+    await setupSlideAudioElementMock(page, { staticAudioReady: false });
+    await mockReceptionStart(page, 'mock-pending-assets-narration');
+    await page.route('**/reception/engineer-cafe-narration-ja.md', async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 3_000));
+      await route.fulfill({
+        status: 200,
+        contentType: 'text/markdown',
+        body: '## スライド 1\n\nテスト案内です。\n',
+      });
+    });
+    await page.route('**/api/voice', async (route) => {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+    });
+
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await dismissInitialModal(page);
+
+    await page.setViewportSize({ width: 960, height: 540 });
+    await page.getByTestId('kiosk-slides-button').click();
+    await page.getByTestId('slide-language-ja').click();
+
+    await expect(page.getByTestId('reception-pdf-counter')).toHaveText('1 / 5', {
+      timeout: 15_000,
+    });
+    await expect(page.getByTestId('reception-pdf-play')).toHaveAttribute('data-state', 'playing', {
+      timeout: 15_000,
+    });
+
+    await page.waitForTimeout(2_000);
+    await expect(page.getByTestId('reception-pdf-counter')).toHaveText('1 / 5');
+  });
+
+  test('zero-duration static audio ending immediately does not cascade through slides', async ({ page }) => {
+    await setupWebAudioMock(page);
+    await setupSlideAudioElementMock(page, {
+      staticAudioReady: true,
+      duration: 0,
+      endAfterMs: 0,
+    });
+    await mockReceptionStart(page, 'mock-immediate-ended-narration');
+    await page.route('**/api/voice', async (route) => {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+    });
+
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await dismissInitialModal(page);
+
+    await page.setViewportSize({ width: 960, height: 540 });
+    await page.getByTestId('kiosk-slides-button').click();
+    await page.getByTestId('slide-language-ja').click();
+
+    await expect(page.getByTestId('reception-pdf-counter')).toHaveText('1 / 5', {
+      timeout: 15_000,
+    });
+    await page.waitForFunction(() => window.__SLIDE_AUDIO_COUNTERS__?.starts === 1);
+
+    await page.waitForTimeout(2_000);
+    await expect(page.getByTestId('reception-pdf-counter')).toHaveText('1 / 5');
+
+    const counters = await page.evaluate(() => window.__SLIDE_AUDIO_COUNTERS__);
+    expect(counters?.active).toBe(0);
+    expect(counters?.maxActive).toBe(1);
+  });
+
+  test('short generated narration audio does not fast-forward the deck', async ({ page }) => {
+    await setupWebAudioMock(page);
+    await setupSlideAudioElementMock(page, { staticAudioReady: false });
+    await mockReceptionStart(page, 'mock-short-generated-narration');
+    await page.route('**/reception/engineer-cafe-narration-ja.md', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'text/markdown',
+        body: [
+          '# test',
+          '',
+          '## スライド1：テスト',
+          '',
+          '短い生成音声のテストナレーションです。',
+          '',
+          '---',
+          '',
+          '## スライド2：テスト',
+          '',
+          '二枚目のテストナレーションです。',
+        ].join('\n'),
+      });
+    });
+    await page.route('**/api/voice', async (route) => {
+      const req = route.request();
+      if (req.method() === 'POST') {
+        let body: Record<string, unknown> = {};
+        try {
+          body = req.postDataJSON() as Record<string, unknown>;
+        } catch {
+          body = {};
+        }
+        if (body.action === 'text_to_speech') {
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify(MOCK_VOICE_RESPONSE),
+          });
+          return;
+        }
+      }
+      await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+    });
+
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await dismissInitialModal(page);
+
+    await page.setViewportSize({ width: 960, height: 540 });
+    await page.getByTestId('kiosk-slides-button').click();
+    await page.getByTestId('slide-language-ja').click();
+
+    await expect(page.getByTestId('reception-pdf-counter')).toHaveText('1 / 5', {
+      timeout: 15_000,
+    });
+    await page.waitForFunction(() => (window.__PLAYWRIGHT_AUDIO_STARTS__ ?? 0) >= 1);
+
+    await page.waitForTimeout(2_000);
+    await expect(page.getByTestId('reception-pdf-counter')).toHaveText('1 / 5');
+  });
+
   test('rapid slide changes stop current narration before another slide can play', async ({ page }) => {
     await setupWebAudioMock(page);
     await setupSlideAudioElementMock(page, { staticAudioReady: true });
@@ -263,6 +416,106 @@ test.describe('Slide PDF narration deck (#624)', () => {
     const counters = await page.evaluate(() => window.__SLIDE_AUDIO_COUNTERS__);
     expect(counters?.starts).toBe(2);
     expect(counters?.maxActive).toBe(1);
+  });
+
+  test('closing slides during static narration stops the active slide audio', async ({ page }) => {
+    await setupWebAudioMock(page);
+    await setupSlideAudioElementMock(page, { staticAudioReady: true });
+    await mockReceptionStart(page, 'mock-close-static-narration');
+    await page.route('**/api/voice', async (route) => {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+    });
+
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await dismissInitialModal(page);
+
+    await page.setViewportSize({ width: 960, height: 540 });
+    await page.getByTestId('kiosk-slides-button').click();
+    await page.getByTestId('slide-language-ja').click();
+
+    await expect(page.getByTestId('reception-pdf-counter')).toHaveText('1 / 5', {
+      timeout: 15_000,
+    });
+    await page.waitForFunction(() => window.__SLIDE_AUDIO_COUNTERS__?.active === 1);
+
+    await page.getByRole('button', { name: /スライドを閉じる|Close slides/ }).click();
+    await expect(page.getByRole('button', { name: 'Welcome' })).toBeVisible({ timeout: 5_000 });
+
+    const counters = await page.evaluate(() => window.__SLIDE_AUDIO_COUNTERS__);
+    expect(counters?.active).toBe(0);
+    expect(counters?.starts).toBe(1);
+    expect(counters?.maxActive).toBe(1);
+  });
+
+  test('autoplay waits for narration markdown instead of fast-advancing without audio', async ({
+    page,
+  }) => {
+    await setupWebAudioMock(page);
+    await setupSlideAudioElementMock(page, { staticAudioReady: false });
+    await mockReceptionStart(page, 'mock-delayed-narration-assets');
+
+    let releaseNarration!: () => void;
+    const narrationGate = new Promise<void>((resolve) => {
+      releaseNarration = resolve;
+    });
+    await page.route('**/reception/engineer-cafe-narration-ja.md', async (route) => {
+      await narrationGate;
+      await route.fulfill({
+        status: 200,
+        contentType: 'text/markdown',
+        body: [
+          '# test',
+          '',
+          '## スライド1：テスト',
+          '',
+          'スライド一枚目のテストナレーションです。',
+          '',
+          '---',
+          '',
+          '## スライド2：テスト',
+          '',
+          'スライド二枚目のテストナレーションです。',
+        ].join('\n'),
+      });
+    });
+
+    let ttsRequests = 0;
+    await page.route('**/api/voice', async (route) => {
+      const req = route.request();
+      if (req.method() === 'POST') {
+        let body: Record<string, unknown> = {};
+        try {
+          body = req.postDataJSON() as Record<string, unknown>;
+        } catch {
+          body = {};
+        }
+        if (body.action === 'text_to_speech') {
+          ttsRequests += 1;
+        }
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(MOCK_VOICE_RESPONSE),
+      });
+    });
+
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await dismissInitialModal(page);
+
+    await page.setViewportSize({ width: 960, height: 540 });
+    await page.getByTestId('kiosk-slides-button').click();
+    await page.getByTestId('slide-language-ja').click();
+
+    await expect(page.getByTestId('reception-pdf-counter')).toHaveText('1 / 5', {
+      timeout: 15_000,
+    });
+    await page.waitForTimeout(1_300);
+    await expect(page.getByTestId('reception-pdf-counter')).toHaveText('1 / 5');
+    expect(ttsRequests).toBe(0);
+
+    releaseNarration();
+    await expect.poll(() => ttsRequests, { timeout: 5_000 }).toBeGreaterThan(0);
   });
 
   test('closing slides during pending generated narration prevents stale audio playback', async ({ page }) => {

@@ -153,6 +153,27 @@ def cerebras_reasoning_effort() -> str | None:
     return raw if raw else None
 
 
+def cerebras_timeout_seconds(config: "ModelConfig") -> float:
+    """Bound direct Cerebras attempts so fast-path failures recover quickly."""
+
+    raw = (
+        os.getenv("CEREBRAS_TIMEOUT_SECONDS", "").strip()
+        or os.getenv("FAST_LLM_TIMEOUT_SECONDS", "").strip()
+    )
+    default = min(max(float(getattr(config, "timeout", 30.0) or 30.0), 0.1), 8.0)
+    if not raw:
+        return default
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        logger.warning("Invalid Cerebras timeout %r; using %.1fs", raw, default)
+        return default
+    if value <= 0:
+        logger.warning("Invalid Cerebras timeout %r; using %.1fs", raw, default)
+        return default
+    return max(0.1, value)
+
+
 def merge_gemini_openrouter_extra(payload: dict) -> None:
     """Merge JSON from GEMINI_OPENROUTER_EXTRA_JSON into the completion payload (optional)."""
     extra = os.getenv("GEMINI_OPENROUTER_EXTRA_JSON", "").strip()

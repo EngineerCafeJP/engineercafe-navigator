@@ -1,6 +1,7 @@
 declare global {
   interface Window {
     __PLAYWRIGHT_VOICE_AUDIO_BASE64__?: string;
+    __PLAYWRIGHT_VOICE_RECORDER_ERROR_NAME__?: string;
   }
 }
 
@@ -80,6 +81,18 @@ export class VoiceRecorder {
     try {
       const playwrightAudioBase64 =
         typeof window !== 'undefined' ? window.__PLAYWRIGHT_VOICE_AUDIO_BASE64__ : undefined;
+      const playwrightRecorderErrorName =
+        typeof window !== 'undefined' ? window.__PLAYWRIGHT_VOICE_RECORDER_ERROR_NAME__ : undefined;
+
+      if (typeof playwrightRecorderErrorName === 'string' && playwrightRecorderErrorName.length > 0) {
+        delete window.__PLAYWRIGHT_VOICE_RECORDER_ERROR_NAME__;
+        this.onError(
+          this.createRecorderError('Playwright injected recorder failure', {
+            name: playwrightRecorderErrorName,
+          }),
+        );
+        return;
+      }
 
       if (typeof playwrightAudioBase64 === 'string' && playwrightAudioBase64.length > 0) {
         this.stream = new MediaStream();

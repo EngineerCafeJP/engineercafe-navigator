@@ -17,7 +17,7 @@ LangGraph の Supervisor Agent パターンに従い、クエリを適切なエ�
 import json
 import logging
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Optional
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -25,15 +25,15 @@ from langgraph.graph import END
 
 from backend.config.routing_constants import (
     AGENT_DESCRIPTIONS,
-    CATEGORY_TO_AGENT_MAP,
     MEMORY_EXCLUSION_BUSINESS,
     MEMORY_EXCLUSION_FACILITY,
     MEMORY_KEYWORDS,
     RoutingTarget,
     extract_request_type,
     match_keywords,
+    normalize_agent_node,
 )
-from backend.llm.models import ModelConfig, SupportedModel
+from backend.llm.models import get_model_config
 from backend.llm.openrouter import OpenRouterProvider
 from backend.utils.input_sanitizer import (
     MAX_CONTEXT_LENGTH,
@@ -158,12 +158,9 @@ class OrchestratorAgent:
         if not isinstance(raw_decision, dict):
             raise ValueError("Response must be a JSON object")
 
-        next_agent = raw_decision.get("next_agent")
-        if not isinstance(next_agent, str):
+        raw_next_agent = raw_decision.get("next_agent")
+        if not isinstance(raw_next_agent, str):
             raise ValueError("next_agent must be a string")
-
-        if next_agent not in AGENT_DESCRIPTIONS:
-            next_agent = "general_knowledge"
 
         reasoning = str(raw_decision.get("reasoning", ""))[:200]
         category = str(raw_decision.get("category", "general"))[:50]
@@ -171,8 +168,17 @@ class OrchestratorAgent:
         if request_type is not None:
             request_type = str(request_type)[:50]
 
+        next_agent, resolution_source = normalize_agent_node(
+            raw_next_agent,
+            category=category,
+            request_type=request_type,
+            prefer_category=True,
+        )
+
         return {
             "next_agent": next_agent,
+            "raw_next_agent": raw_next_agent,
+            "agent_resolution_source": resolution_source,
             "reasoning": reasoning,
             "category": category,
             "request_type": request_type,
@@ -254,11 +260,10 @@ class OrchestratorAgent:
                 HumanMessage(content=user_message),
             ]
 
-            routing_config = ModelConfig(
-                model_id=SupportedModel.GEMINI_3_1_FLASH_LITE,
+            routing_config = replace(
+                get_model_config("router"),
                 temperature=0.15,
                 max_tokens=200,
-                fallback_model=SupportedModel.GEMINI_2_5_FLASH_LITE,
             )
 
             response_content = await self.provider.generate(
@@ -279,6 +284,8 @@ class OrchestratorAgent:
                     fast_path=False,
                     language_result=language_result,
                     llm_response_length=len(response_content),
+                    raw_next_agent=decision["raw_next_agent"],
+                    agent_resolution_source=decision["agent_resolution_source"],
                 ),
             )
 
@@ -286,13 +293,19 @@ class OrchestratorAgent:
             logger.warning("LLM routing failed: %s", e, exc_info=True)
 
             classification = await self.query_classifier.classify_with_details(sanitized_query)
-            next_agent = CATEGORY_TO_AGENT_MAP.get(classification.category, "general_knowledge")
+            request_type = extract_request_type(sanitized_query)
+            next_agent, resolution_source = normalize_agent_node(
+                None,
+                category=classification.category,
+                request_type=request_type,
+                prefer_category=True,
+            )
 
             return OrchestratorDecision(
                 next_agent=next_agent,
                 language=response_language,
                 category=classification.category,
-                request_type=extract_request_type(sanitized_query),
+                request_type=request_type,
                 confidence=classification.confidence,
                 reasoning="Fallback to QueryClassifier",
                 debug_info=self._create_debug_info(
@@ -300,6 +313,7 @@ class OrchestratorAgent:
                     language_result=language_result,
                     fallback=True,
                     error_type=type(e).__name__,
+                    agent_resolution_source=resolution_source,
                 ),
             )
 
@@ -310,6 +324,8 @@ class OrchestratorAgent:
         llm_response_length: Optional[int] = None,
         fallback: bool = False,
         error_type: Optional[str] = None,
+        raw_next_agent: Optional[str] = None,
+        agent_resolution_source: Optional[str] = None,
     ) -> dict:
         """デバッグ情報を作成（本番環境では最小限）"""
         if self._is_production:
@@ -331,6 +347,12 @@ class OrchestratorAgent:
 
         if error_type:
             info["error_type"] = error_type
+
+        if raw_next_agent:
+            info["raw_next_agent"] = raw_next_agent
+
+        if agent_resolution_source:
+            info["agent_resolution_source"] = agent_resolution_source
 
         return info
 
