@@ -174,6 +174,35 @@ def cerebras_timeout_seconds(config: "ModelConfig") -> float:
     return max(0.1, value)
 
 
+def openrouter_timeout_seconds(config: "ModelConfig") -> float:
+    """Bound OpenRouter attempts so fast-path fallback can actually trigger."""
+
+    raw = os.getenv("OPENROUTER_TIMEOUT_SECONDS", "").strip()
+    if not raw and is_fast_primary_config(config):
+        raw = os.getenv("FAST_LLM_TIMEOUT_SECONDS", "").strip()
+
+    try:
+        config_timeout = float(getattr(config, "timeout", 30.0) or 30.0)
+    except (TypeError, ValueError):
+        config_timeout = 30.0
+
+    default = max(config_timeout, 0.1)
+    if is_fast_primary_config(config):
+        default = min(default, 8.0)
+
+    if not raw:
+        return default
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        logger.warning("Invalid OpenRouter timeout %r; using %.1fs", raw, default)
+        return default
+    if value <= 0:
+        logger.warning("Invalid OpenRouter timeout %r; using %.1fs", raw, default)
+        return default
+    return max(0.1, value)
+
+
 def merge_gemini_openrouter_extra(payload: dict) -> None:
     """Merge JSON from GEMINI_OPENROUTER_EXTRA_JSON into the completion payload (optional)."""
     extra = os.getenv("GEMINI_OPENROUTER_EXTRA_JSON", "").strip()

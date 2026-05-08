@@ -7,6 +7,7 @@ import pytest
 from backend.llm.model_resolve import (
     cerebras_primary_enabled,
     cerebras_primary_use_cases,
+    openrouter_timeout_seconds,
 )
 from backend.llm.models import MODEL_CONFIGS
 from backend.llm.models import ModelConfig, SupportedModel
@@ -100,3 +101,22 @@ def test_cerebras_primary_allows_explicit_all_for_opted_in_configs(
     assert cerebras_primary_use_cases() is None
     assert cerebras_primary_enabled(MODEL_CONFIGS["facility_info"]) is True
     assert cerebras_primary_enabled(MODEL_CONFIGS["router"]) is False
+
+
+def test_openrouter_fast_timeout_default_is_bounded(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.delenv("OPENROUTER_TIMEOUT_SECONDS", raising=False)
+    monkeypatch.delenv("FAST_LLM_TIMEOUT_SECONDS", raising=False)
+
+    config = ModelConfig(
+        model_id=SupportedModel.GEMINI_3_1_FLASH_LITE,
+        fallback_model=SupportedModel.GEMINI_2_5_FLASH_LITE,
+        timeout=30.0,
+    )
+
+    assert openrouter_timeout_seconds(config) == 8.0
+
+
+def test_openrouter_timeout_env_override(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("OPENROUTER_TIMEOUT_SECONDS", "2.25")
+
+    assert openrouter_timeout_seconds(MODEL_CONFIGS["qa_response"]) == 2.25

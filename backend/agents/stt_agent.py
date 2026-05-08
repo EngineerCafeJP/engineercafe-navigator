@@ -436,13 +436,15 @@ def _normalize_vosk_route_transcript(transcript: str, language: Optional[str]) -
     if not normalized:
         return transcript
 
-    is_wifi_connection_confusion = (
-        "セット" in normalized
-        and "逆方法" in normalized
-        and ("はいはい" in normalized or "ハイハイ" in normalized)
+    is_wifi_connection_confusion = ("はいはい" in normalized or "ハイハイ" in normalized) and (
+        ("セット" in normalized and "逆方法" in normalized)
+        or ("瀬田" in normalized and "作方法" in normalized)
     )
     if is_wifi_connection_confusion:
         return "Wi-Fiの接続方法を教えてください。"
+
+    if "仮想環境" in normalized and any(marker in normalized for marker in ("パート", "ぱいと")):
+        return "Python の仮想環境とは何ですか。"
 
     has_time_context = any(marker in normalized for marker in ("時間", "影響時", "液状時"))
     if not has_time_context:
@@ -469,6 +471,11 @@ def _normalize_vosk_route_transcript(transcript: str, language: Optional[str]) -
             "壁",
         )
     ) or ("赤毛" in normalized and "アン" in normalized)
+    has_engineer_cafe_context = has_engineer_cafe_context or (
+        "元気" in normalized
+        and ("新潟" in normalized or "県" in normalized)
+        and "影響" in normalized
+    )
     if not has_engineer_cafe_context:
         return transcript
 
@@ -513,12 +520,66 @@ def _vosk_transcript_trusted_for_early_return(transcript: str, language: Optiona
     )
 
 
+def _vosk_japanese_fragmented_request_suspicious(
+    transcript: str,
+    language: Optional[str],
+) -> bool:
+    """Catch live Vosk Japanese fallback fragments that look fluent but lack intent."""
+
+    if language not in {None, "ja"}:
+        return False
+
+    tokens = [token for token in transcript.split() if token]
+    compact = "".join(tokens)
+    if not re.search(r"[\u3040-\u30ff\u3400-\u9fff]", compact):
+        return False
+
+    asks_for_help = "教え" in compact and ("ください" in compact or "下さい" in compact)
+    has_generic_subject = any(marker in compact for marker in ("時間", "時刻", "方法"))
+    if not asks_for_help or not has_generic_subject:
+        return False
+
+    has_time_word = "時間" in compact or "時刻" in compact
+    if (
+        "影響" in compact
+        and has_time_word
+        and any(marker in compact for marker in ("元気", "新潟", "県"))
+    ):
+        return True
+
+    has_repeated_hai = compact.startswith("はいはい") or tokens.count("はい") >= 2
+    if has_repeated_hai and "方法" in compact:
+        compact_lower = compact.lower()
+        known_connection_confusion = "セット" in compact and "逆方法" in compact
+        has_connection_context = "接続" in compact or any(
+            marker in compact_lower for marker in ("wi-fi", "wifi")
+        )
+        method_confusion_markers = {
+            "瀬田",
+            "世田",
+            "田中",
+            "セタ",
+            "せた",
+            "作",
+            "策",
+            "昨",
+        }
+        if (
+            not known_connection_confusion
+            and not has_connection_context
+            and any(marker in compact for marker in method_confusion_markers)
+        ):
+            return True
+
+    return False
+
+
 def _vosk_fallback_transcript_suspicious(
     transcript: str,
     language: Optional[str],
     confidence: Optional[float],
 ) -> bool:
-    """Identify low-confidence segmented Vosk text that should not drive chat intent."""
+    """Identify risky Vosk fallback text that should not drive chat intent."""
 
     normalized_transcript = _normalize_vosk_route_transcript(transcript, language)
     compact = "".join(normalized_transcript.split())
@@ -527,6 +588,9 @@ def _vosk_fallback_transcript_suspicious(
 
     if _vosk_transcript_trusted_for_early_return(normalized_transcript, language):
         return False
+
+    if _vosk_japanese_fragmented_request_suspicious(normalized_transcript, language):
+        return True
 
     if confidence is None or confidence >= 0.75:
         return False

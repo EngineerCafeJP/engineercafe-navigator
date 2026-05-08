@@ -323,7 +323,24 @@ def classify_fast_intent(query: str) -> Optional[FastIntent]:
             "Farewell keyword detected",
         )
 
-    if is_daily_conversation_request(lower_query):
+    has_explicit_service_intent = any(
+        match_keywords(lower_query, keywords)
+        for keywords in (
+            WIFI_KEYWORDS,
+            BUSINESS_HOURS_KEYWORDS,
+            PRICING_KEYWORDS,
+            EVENT_KEYWORDS,
+            COMMUNITY_KEYWORDS,
+            CONSULTATION_KEYWORDS,
+            ACCESS_DIRECTION_KEYWORDS,
+            FACILITY_EQUIPMENT_KEYWORDS,
+            CONTACT_KEYWORDS,
+            FLOOR_LAYOUT_KEYWORDS,
+            RECEPTION_KEYWORDS,
+        )
+    )
+
+    if is_daily_conversation_request(lower_query) and not has_explicit_service_intent:
         return FastIntent(
             agent="general_knowledge",
             category="daily_conversation",

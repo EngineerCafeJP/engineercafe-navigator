@@ -1131,6 +1131,54 @@ class TestSTTAgent:
             0.80,
         )
 
+    @pytest.mark.parametrize(
+        ("transcript", "expected"),
+        [
+            (
+                "元気 新潟 県 の 影響 時間 教え て ください",
+                "エンジニアカフェの営業時間を教えてください。",
+            ),
+            (
+                "はい はい ば 瀬田 作 方法 を 教え て ください",
+                "Wi-Fiの接続方法を教えてください。",
+            ),
+            (
+                "パート の 仮想 環境 と 何 です か",
+                "Python の仮想環境とは何ですか。",
+            ),
+        ],
+    )
+    def test_vosk_route_transcript_normalizes_live_preflight_confusions(self, transcript, expected):
+        """Known domain-bearing live confusions become route-stable transcripts."""
+        assert _normalize_vosk_route_transcript(transcript, "ja") == expected
+        assert not _vosk_fallback_transcript_suspicious(transcript, "ja", 0.95)
+
+    @pytest.mark.parametrize(
+        "transcript",
+        [
+            "元気 田中 の 影響 時間 を 教え て ください",
+            "はい はい ば 田中 作 方法 を 教え て ください",
+            "はい はい な 田中 作 方法 を 教え て ください",
+        ],
+    )
+    def test_vosk_fallback_rejects_high_confidence_unknown_live_fragments(self, transcript):
+        """Unknown high-confidence fragments should not become chat intent."""
+        assert _normalize_vosk_route_transcript(transcript, "ja") == transcript
+        assert _vosk_fallback_transcript_suspicious(transcript, "ja", 0.95)
+
+    @pytest.mark.parametrize(
+        "transcript",
+        [
+            "エンジニア カフェ の 営業 時間 教え て ください",
+            "Wi-Fi の 接続 方法 を 教え て ください",
+            "接続 方法 を 教え て ください",
+            "今日 の イベント を 教え て ください",
+        ],
+    )
+    def test_vosk_fallback_preserves_domain_fallback_transcripts(self, transcript):
+        """Domain-bearing Vosk fallback remains usable even when segmented."""
+        assert not _vosk_fallback_transcript_suspicious(transcript, "ja", 0.95)
+
     def test_qwen_primary_rejects_short_noisy_transcripts(self):
         """Qwen should not accept low-confidence filler as user intent."""
         assert _qwen_primary_transcript_suspicious("え", "ja", 0.40)
@@ -2640,6 +2688,67 @@ class TestQwenPrimaryFallback:
         assert "stt_qwen_hedge_grace_start" not in events
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("vosk_text", "expected"),
+        [
+            (
+                "元気 新潟 県 の 影響 時間 教え て ください",
+                "エンジニアカフェの営業時間を教えてください。",
+            ),
+            (
+                "はい はい ば 瀬田 作 方法 を 教え て ください",
+                "Wi-Fiの接続方法を教えてください。",
+            ),
+            (
+                "パート の 仮想 環境 と 何 です か",
+                "Python の仮想環境とは何ですか。",
+            ),
+        ],
+    )
+    async def test_live_preflight_vosk_confusions_return_canonical_transcripts(
+        self, caplog, vosk_text, expected
+    ):
+        """Domain-bearing live preflight Vosk confusions can normalize safely."""
+        caplog.set_level(logging.INFO, logger="backend.observability.stt")
+
+        async def slow_qwen(*args, **kwargs):
+            await asyncio.sleep(0.30)
+            return TranscriptionResult(text="late qwen", confidence=0.9, language="ja")
+
+        async def confused_vosk(*args, **kwargs):
+            await asyncio.sleep(0.01)
+            return TranscriptionResult(
+                text=vosk_text,
+                confidence=0.8,
+                language="ja",
+            )
+
+        mock_qwen = MagicMock()
+        mock_qwen.transcribe = slow_qwen
+        mock_vosk = MagicMock(spec=LocalSTTClient)
+        mock_vosk.transcribe = AsyncMock(side_effect=confused_vosk)
+
+        agent = self._make_agent(mock_qwen, mock_vosk)
+        agent._qwen_timeout = 10.0
+        agent._qwen_hedge_delay = 0.01
+        agent._qwen_hedge_grace = 0.20
+
+        result = await agent.speech_to_text(b"audio", language="ja")
+
+        assert result["success"] is True
+        assert result["provider"] == "vosk-fallback"
+        assert result["transcript"] == expected
+
+        events = [
+            getattr(record, "event", None)
+            for record in caplog.records
+            if record.name == "backend.observability.stt"
+        ]
+        assert "stt_vosk_route_normalize" in events
+        assert "stt_vosk_early_accept" in events
+        assert "stt_qwen_hedge_grace_start" not in events
+
+    @pytest.mark.asyncio
     async def test_qwen_grace_expires_then_vosk_wins(self, caplog):
         """Vosk remains the fallback if Qwen misses the grace window."""
         caplog.set_level(logging.INFO, logger="backend.observability.stt")
@@ -2785,6 +2894,61 @@ class TestQwenPrimaryFallback:
             for record in caplog.records
             if record.name == "backend.observability.stt"
         ]
+        assert "stt_qwen_hedge_grace_start" in events
+        assert "stt_vosk_rejected" in events
+        winner = next(
+            record for record in caplog.records if getattr(record, "event", None) == "stt_winner"
+        )
+        assert winner.stt_winner == "none"
+        assert winner.vosk_error_type == "RejectedVoskFallback"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "transcript",
+        [
+            "元気 田中 の 影響 時間 を 教え て ください",
+            "はい はい ば 田中 作 方法 を 教え て ください",
+        ],
+    )
+    async def test_high_confidence_unknown_live_fragment_vosk_fallback_is_rejected(
+        self,
+        transcript,
+        caplog,
+    ):
+        """Unknown high-confidence Vosk fragments should fail instead of hitting chat."""
+        caplog.set_level(logging.INFO, logger="backend.observability.stt")
+
+        async def too_late_qwen(*args, **kwargs):
+            await asyncio.sleep(0.30)
+            return TranscriptionResult(text="too late", confidence=0.9, language="ja")
+
+        async def live_log_vosk(*args, **kwargs):
+            await asyncio.sleep(0.01)
+            return TranscriptionResult(
+                text=transcript,
+                confidence=0.95,
+                language="ja",
+            )
+
+        mock_qwen = MagicMock()
+        mock_qwen.transcribe = too_late_qwen
+        mock_vosk = MagicMock(spec=LocalSTTClient)
+        mock_vosk.transcribe = AsyncMock(side_effect=live_log_vosk)
+
+        agent = self._make_agent(mock_qwen, mock_vosk)
+        agent._qwen_timeout = 10.0
+        agent._qwen_hedge_delay = 0.01
+        agent._qwen_hedge_grace = 0.02
+
+        with pytest.raises(RuntimeError, match="Both Qwen and Vosk STT failed"):
+            await agent.speech_to_text(b"audio", language="ja")
+
+        events = [
+            getattr(record, "event", None)
+            for record in caplog.records
+            if record.name == "backend.observability.stt"
+        ]
+        assert "stt_qwen_hedge_grace_start" in events
         assert "stt_vosk_rejected" in events
         winner = next(
             record for record in caplog.records if getattr(record, "event", None) == "stt_winner"
