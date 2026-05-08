@@ -1,6 +1,8 @@
+import asyncio
 from unittest.mock import AsyncMock
 
 import httpx
+import time
 import pytest
 from cachetools import TTLCache
 
@@ -342,6 +344,90 @@ async def test_text_to_speech_fallback_on_error(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_text_to_speech_piper_timeout_falls_back_quickly(monkeypatch):
+    monkeypatch.setenv("TTS_PIPER_PRIMARY_TIMEOUT_SECONDS", "0.01")
+    agent = VoiceAgent(tts_provider="piper")
+
+    async def slow_piper(text, lang):
+        await asyncio.sleep(1)
+        return "TOO_LATE"
+
+    async def fake_voicevox_synth(text, lang, speaker_id=None):
+        return "VOICEVOX_FALLBACK_BASE64"
+
+    monkeypatch.setattr(agent.tts_client, "synthesize_wav_base64", slow_piper)
+    monkeypatch.setattr(
+        agent.voicevox_fallback_client, "synthesize_wav_base64", fake_voicevox_synth
+    )
+
+    started_at = time.perf_counter()
+    result = await agent.text_to_speech(text="こんにちは", language="ja")
+    elapsed = time.perf_counter() - started_at
+
+    assert elapsed < 0.25
+    assert result["success"] is True
+    assert result["fallback_used"] is True
+    assert result["fallback_provider"] == "voicevox"
+    assert result["audioResponse"] == "VOICEVOX_FALLBACK_BASE64"
+    assert "timed out" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_text_to_speech_caches_successful_fallback(monkeypatch):
+    monkeypatch.setenv("TTS_PIPER_PRIMARY_TIMEOUT_SECONDS", "0.01")
+    agent = VoiceAgent(tts_provider="piper")
+    calls = {"piper": 0, "voicevox": 0}
+    fallback_audio = "V" * 128
+
+    async def slow_piper(text, lang):
+        calls["piper"] += 1
+        await asyncio.sleep(1)
+        return "TOO_LATE"
+
+    async def fake_voicevox_synth(text, lang, speaker_id=None):
+        calls["voicevox"] += 1
+        return fallback_audio
+
+    monkeypatch.setattr(agent.tts_client, "synthesize_wav_base64", slow_piper)
+    monkeypatch.setattr(
+        agent.voicevox_fallback_client, "synthesize_wav_base64", fake_voicevox_synth
+    )
+
+    first = await agent.text_to_speech(text="こんにちは", language="ja")
+    second = await agent.text_to_speech(text="こんにちは", language="ja")
+
+    assert first["success"] is True
+    assert first["fallback_used"] is True
+    assert second["tts_cache_hit"] is True
+    assert second["fallback_used"] is True
+    assert second["fallback_provider"] == "voicevox"
+    assert second["audioResponse"] == fallback_audio
+    assert calls == {"piper": 1, "voicevox": 1}
+
+
+@pytest.mark.asyncio
+async def test_text_to_speech_empty_primary_audio_uses_fallback(monkeypatch):
+    agent = VoiceAgent(tts_provider="google")
+    state = {"n": 0}
+
+    async def fake_synth(text, lang, tts_emotion):
+        state["n"] += 1
+        if state["n"] == 1:
+            return ""
+        return "FALLBACK_BASE64"
+
+    monkeypatch.setattr(agent.tts_client, "synthesize_mp3_base64", fake_synth)
+
+    result = await agent.text_to_speech(text="こんにちは", language="ja")
+
+    assert result["success"] is True
+    assert result["fallback_used"] is True
+    assert result["fallback_provider"] == "google"
+    assert result["audioResponse"] == "FALLBACK_BASE64"
+    assert "empty audio response" in result["error"]
+
+
+@pytest.mark.asyncio
 async def test_text_to_speech_cache_hit_reuses_audio(monkeypatch):
     agent = VoiceAgent(tts_provider="google")
     calls = {"count": 0}
@@ -455,6 +541,59 @@ async def test_text_to_speech_routes_english_to_kokoro(monkeypatch):
     assert result["audioResponse"] == "KOKORO_BASE64_WAV"
     assert result["format"] == "audio/wav"
     assert result["language"] == "en"
+
+
+@pytest.mark.asyncio
+async def test_text_to_speech_google_english_without_kokoro_uses_google_mp3(monkeypatch):
+    monkeypatch.delenv("KOKORO_API_URL", raising=False)
+    agent = VoiceAgent(tts_provider="google")
+    google_called = {"called": False}
+
+    async def fake_google_synth(text, lang, tts_emotion):
+        google_called["called"] = True
+        return "GOOGLE_BASE64_MP3"
+
+    monkeypatch.setattr(agent.tts_client, "synthesize_mp3_base64", fake_google_synth)
+
+    result = await agent.text_to_speech(
+        text="Hello, how are you?",
+        language="en",
+    )
+
+    assert google_called["called"] is True
+    assert result["success"] is True
+    assert result["audioResponse"] == "GOOGLE_BASE64_MP3"
+    assert result["format"] == "audio/mpeg"
+    assert result["language"] == "en"
+
+
+@pytest.mark.asyncio
+async def test_text_to_speech_google_english_kokoro_failure_falls_back_to_google(
+    monkeypatch,
+):
+    monkeypatch.setenv("KOKORO_API_URL", "http://localhost:8880")
+    agent = VoiceAgent(tts_provider="google")
+
+    async def fake_kokoro_fail(text, lang, voice=None):
+        raise RuntimeError("kokoro down")
+
+    async def fake_google_synth(text, lang, tts_emotion):
+        return "GOOGLE_FALLBACK_MP3"
+
+    monkeypatch.setattr(agent.kokoro_client, "synthesize_wav_base64", fake_kokoro_fail)
+    monkeypatch.setattr(agent.tts_client, "synthesize_mp3_base64", fake_google_synth)
+
+    result = await agent.text_to_speech(
+        text="Hello, how are you?",
+        language="en",
+    )
+
+    assert result["success"] is True
+    assert result["audioResponse"] == "GOOGLE_FALLBACK_MP3"
+    assert result["format"] == "audio/mpeg"
+    assert result["fallback_used"] is True
+    assert result["fallback_provider"] == "google"
+    assert "kokoro down" in result["error"]
 
 
 @pytest.mark.asyncio

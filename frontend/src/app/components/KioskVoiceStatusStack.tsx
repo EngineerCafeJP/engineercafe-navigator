@@ -141,10 +141,15 @@ export function KioskVoiceStatusStack({
   }
 
   const isSttLoading = isLoading && loadingPhase === 'stt';
-  const isListeningVisible = phase === 'voice' && sessionState === 'listening';
   const isAnswerLoading = isLoading && loadingPhase === 'llm';
   const isTtsSynthesizing =
     isLoading && response.length > 0 && sessionState !== 'speaking';
+  const isListeningVisible =
+    phase === 'voice' &&
+    sessionState === 'listening' &&
+    !isSttLoading &&
+    !isAnswerLoading &&
+    !isTtsSynthesizing;
   const isErrorVisible = Boolean(error) && errorVisibleUntil > now;
   const isOcrStatusVisible = Boolean(ocrStatus && ocrStatus.visibleUntil > now);
   const responseDisplay = getKioskResponseDisplayState({

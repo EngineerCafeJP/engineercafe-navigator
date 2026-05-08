@@ -5,7 +5,7 @@ import { cn } from '@/lib/cn';
 import { overlayLabels } from '@/lib/kiosk-labels';
 import type { KioskMicMode, KioskPhase } from '@/lib/kiosk-constants';
 import { Camera, Mic, PenLine, Presentation, Sparkles } from 'lucide-react';
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { KioskVoiceStatusStack } from './KioskVoiceStatusStack';
 import type { VoiceInterfaceRenderProps } from './VoiceInterface';
 
@@ -46,13 +46,20 @@ export function KioskBottomBar({
   setWelcomeMemberOcrOpen: (open: boolean) => void;
   setOcrMode: (mode: 'member_card' | 'handwriting') => void;
 }) {
-  const isVoiceCaptureActive = kioskPhase === 'voice' && kioskVoiceLocked;
+  const isVoiceCaptureActive =
+    kioskPhase === 'voice' &&
+    ((voice.sessionState === 'listening' &&
+      voice.loadingPhase !== 'llm' &&
+      voice.loadingPhase !== 'tts') ||
+      voice.loadingPhase === 'mic' ||
+      voice.loadingPhase === 'stt');
   const controlsLocked = voice.uiLockState === 'locked';
   const controlsInterruptible = voice.uiLockState === 'interruptible';
-  const welcomeDisabled = controlsLocked || controlsInterruptible || welcomeCooldown;
+  const welcomeDisabled = controlsLocked || welcomeCooldown;
   const nonWelcomeDisabled = controlsLocked;
   const isPushToTalk = micInputMode === 'push_to_talk';
   const pushToTalkPointerActiveRef = useRef(false);
+  const voiceRestartSuppressedUntilRef = useRef(0);
   const voiceButtonLabel = isPushToTalk
     ? isVoiceCaptureActive
       ? labels.kioskVoicePushActive
@@ -63,6 +70,12 @@ export function KioskBottomBar({
 
   const handleKioskVoiceStart = async () => {
     if (controlsLocked) {
+      return;
+    }
+    if (voice.uiLockState === 'normal') {
+      voiceRestartSuppressedUntilRef.current = 0;
+    }
+    if (Date.now() < voiceRestartSuppressedUntilRef.current) {
       return;
     }
     if (voice.unlockAudioPlayback()) {
@@ -84,6 +97,7 @@ export function KioskBottomBar({
   };
 
   const handleKioskVoiceStop = () => {
+    voiceRestartSuppressedUntilRef.current = Date.now() + 450;
     setKioskVoiceLocked(false);
     if (isPushToTalk) {
       voice.stopListening();
@@ -102,6 +116,20 @@ export function KioskBottomBar({
       voice.cancelSession();
     }
   };
+
+  useEffect(() => {
+    if (voice.uiLockState === 'normal') {
+      voiceRestartSuppressedUntilRef.current = 0;
+    }
+  }, [voice.uiLockState]);
+
+  useEffect(() => {
+    if (!kioskVoiceLocked || !voice.error || voice.uiLockState !== 'normal') {
+      return;
+    }
+
+    setKioskVoiceLocked(false);
+  }, [kioskVoiceLocked, setKioskVoiceLocked, voice.error, voice.uiLockState]);
 
   const statusEnabled =
     kioskPhase === 'voice' || kioskPhase === 'idle' || kioskPhase === 'notice';
@@ -126,6 +154,7 @@ export function KioskBottomBar({
             <button
               type="button"
               onClick={() => {
+                interruptActiveVoiceTurn();
                 unlockAudioForUserGesture();
                 void onPlayWelcome();
               }}

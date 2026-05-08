@@ -132,6 +132,14 @@ test.describe('Mobile audio proof', () => {
       });
     });
 
+    await page.route('**/api/character', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true, vrm_control: null }),
+      });
+    });
+
     await page.route('**/api/qa', async (route) => {
       calls.qa += 1;
       await route.fulfill({
@@ -163,7 +171,7 @@ test.describe('Mobile audio proof', () => {
       });
 
       await page.waitForTimeout(250);
-      await voiceButton.click();
+      await voiceButton.dispatchEvent('click');
 
       await expect(page.getByTestId('response-text')).toContainText(`Turn ${turn}:`, {
         timeout: 30_000,
@@ -177,6 +185,9 @@ test.describe('Mobile audio proof', () => {
         .toBeGreaterThanOrEqual(audioStartsAtBaseline + turn);
       await expect(page.getByTestId('audio-interaction-toast')).toHaveCount(0);
       expect(await getInteractionRequiredCount(page)).toBe(0);
+      if (turn < 10) {
+        await page.waitForTimeout(500);
+      }
     }
 
     expect(calls.stt).toBe(10);

@@ -8,7 +8,7 @@ Note: このモジュールはリーフ依存（他のエージェントモジ�
 """
 
 import re
-from typing import Dict, List, Literal, Optional
+from typing import Dict, List, Literal, Optional, TypeAlias, cast
 
 # =============================================================================
 # エージェントノード名の型定義
@@ -22,6 +22,17 @@ AgentNodeName = Literal[
     "slide",
     "farewell",
 ]
+
+EXECUTABLE_AGENT_NODES: frozenset[AgentNodeName] = frozenset(
+    (
+        "business_info",
+        "facility",
+        "event",
+        "general_knowledge",
+        "slide",
+        "farewell",
+    )
+)
 
 RoutingTarget = Literal[
     "business_info",
@@ -837,19 +848,25 @@ AGENT_DESCRIPTIONS: Dict[str, str] = {
 }
 
 CATEGORY_TO_AGENT_MAP: Dict[str, AgentNodeName] = {
+    "business-hours": "business_info",
     "facility-info": "facility",
+    "basement-facility": "facility",
     "saino-cafe": "business_info",
     "calendar": "event",
     "events": "event",
     "current-time": "general_knowledge",
+    "current_info": "general_knowledge",
+    "assistant_profile": "general_knowledge",
+    "daily_conversation": "general_knowledge",
     "general": "general_knowledge",
     "memory": "general_knowledge",
-    "consultation": "general_knowledge",
+    "consultation": "business_info",
     "community": "business_info",
     "cafe-clarification-needed": "general_knowledge",
     "meeting-room-clarification-needed": "general_knowledge",
     "event-clarification-needed": "general_knowledge",
     "space-clarification-needed": "general_knowledge",
+    "general-clarification-needed": "general_knowledge",
     # query_classifier._detect_specific_category が返すカテゴリ
     "pricing": "business_info",
     "facilities": "facility",
@@ -868,7 +885,122 @@ CATEGORY_TO_AGENT_MAP: Dict[str, AgentNodeName] = {
     "lost_found": "facility",
     "greeting": "business_info",
     "farewell": "farewell",
+    "slide": "slide",
 }
+
+_BROAD_ROUTING_CATEGORIES = frozenset(
+    (
+        "general",
+        "general-clarification-needed",
+        "cafe-clarification-needed",
+        "meeting-room-clarification-needed",
+        "event-clarification-needed",
+        "space-clarification-needed",
+    )
+)
+
+_AGENT_NODE_ALIASES: dict[str, AgentNodeName] = {
+    "businessinfoagent": "business_info",
+    "business_info_agent": "business_info",
+    "business-info": "business_info",
+    "business info": "business_info",
+    "facilityagent": "facility",
+    "facility_agent": "facility",
+    "eventagent": "event",
+    "event_agent": "event",
+    "generalknowledgeagent": "general_knowledge",
+    "general_knowledge_agent": "general_knowledge",
+    "general-knowledge": "general_knowledge",
+    "general knowledge": "general_knowledge",
+    "gka": "general_knowledge",
+    "timeagent": "general_knowledge",
+    "time_agent": "general_knowledge",
+    "slideagent": "slide",
+    "slide_agent": "slide",
+    "farewellagent": "farewell",
+    "farewell_agent": "farewell",
+}
+
+REQUEST_TYPE_TO_AGENT_MAP: dict[str, AgentNodeName] = {
+    "hours": "business_info",
+    "price": "business_info",
+    "pricing": "business_info",
+    "contact": "business_info",
+    "reception": "business_info",
+    "consultation": "business_info",
+    "community": "business_info",
+    "wifi": "facility",
+    "lost_found": "facility",
+    "basement": "facility",
+    "facility": "facility",
+    "meeting_room": "facility",
+    "meeting-room": "facility",
+    "access": "facility",
+    "location": "facility",
+    "building": "facility",
+    "parking": "facility",
+    "bicycle": "facility",
+    "smoking": "facility",
+    "food_drink": "facility",
+    "floor_layout": "facility",
+    "nearby": "facility",
+    "exclusive_rental": "facility",
+    "toilet": "facility",
+    "accessibility": "facility",
+    "photography": "facility",
+    "children_noise": "facility",
+    "temporary_exit": "facility",
+    "pets": "facility",
+    "emergency": "facility",
+    "event": "event",
+    "slide": "slide",
+    "farewell": "farewell",
+    "memory": "general_knowledge",
+    "assistant_profile": "general_knowledge",
+    "daily_conversation": "general_knowledge",
+    "current_info": "general_knowledge",
+}
+
+AgentResolutionSource: TypeAlias = Literal["request_type", "category", "agent", "alias", "fallback"]
+
+
+def normalize_agent_node(
+    raw_agent: object,
+    *,
+    category: Optional[str] = None,
+    request_type: Optional[str] = None,
+    fallback: AgentNodeName = "general_knowledge",
+    prefer_category: bool = False,
+) -> tuple[AgentNodeName, AgentResolutionSource]:
+    """Resolve routing output to an executable LangGraph agent node.
+
+    LLMs and integration layers can return display class names
+    (``BusinessInfoAgent``), inline pseudo-targets (``greeting``), or stale
+    defaults. LangGraph ``Command.goto`` must receive one of the concrete node
+    names, so this helper is the single normalization point for routing and
+    state-transition code.
+    """
+    request_type_agent = REQUEST_TYPE_TO_AGENT_MAP.get(request_type or "")
+    if prefer_category and request_type_agent:
+        return request_type_agent, "request_type"
+
+    category_agent = CATEGORY_TO_AGENT_MAP.get(category or "")
+    if prefer_category and category_agent and category not in _BROAD_ROUTING_CATEGORIES:
+        return category_agent, "category"
+
+    if isinstance(raw_agent, str):
+        normalized = raw_agent.strip()
+        if normalized in EXECUTABLE_AGENT_NODES:
+            return cast(AgentNodeName, normalized), "agent"
+
+        alias = _AGENT_NODE_ALIASES.get(normalized.lower())
+        if alias:
+            return alias, "alias"
+
+    if category_agent:
+        return category_agent, "category"
+
+    return fallback, "fallback"
 
 
 # =============================================================================

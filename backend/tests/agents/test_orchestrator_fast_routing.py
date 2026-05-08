@@ -24,6 +24,47 @@ class TestOrchestratorFastRouting:
         assert result["request_type"] == "food_drink", "rt-011 should be food_drink type"
         assert result["category"] == "facility-info", "rt-011 should be facility-info category"
 
+    def test_llm_agent_class_name_is_normalized_to_graph_node(self, orchestrator):
+        decision = orchestrator._parse_llm_response("""
+            {
+              "next_agent": "BusinessInfoAgent",
+              "reasoning": "営業時間の質問",
+              "category": "business-hours",
+              "request_type": "hours"
+            }
+            """)
+
+        assert decision["next_agent"] == "business_info"
+        assert decision["raw_next_agent"] == "BusinessInfoAgent"
+        assert decision["agent_resolution_source"] == "request_type"
+
+    def test_llm_specific_category_overrides_stale_default_agent(self, orchestrator):
+        decision = orchestrator._parse_llm_response("""
+            {
+              "next_agent": "GeneralKnowledgeAgent",
+              "reasoning": "料金カテゴリだがagentが古い既定値",
+              "category": "pricing",
+              "request_type": "price"
+            }
+            """)
+
+        assert decision["next_agent"] == "business_info"
+        assert decision["agent_resolution_source"] == "request_type"
+
+    def test_llm_request_type_overrides_wrong_facility_category(self, orchestrator):
+        decision = orchestrator._parse_llm_response("""
+            {
+              "next_agent": "FacilityAgent",
+              "reasoning": "施設全般カテゴリだが営業時間の質問",
+              "category": "facility-info",
+              "request_type": "hours"
+            }
+            """)
+
+        assert decision["next_agent"] == "business_info"
+        assert decision["raw_next_agent"] == "FacilityAgent"
+        assert decision["agent_resolution_source"] == "request_type"
+
     def test_rt_014_meeting_room_with_floor(self, orchestrator):
         """Test rt-014: 会議室+階情報 fast-path"""
         result = orchestrator._try_fast_routing("2階の会議室を借りたいのですが")

@@ -68,6 +68,10 @@ MIN_STT_AUDIO_BYTES = int(_float_env("STT_MIN_AUDIO_BYTES", 512))
 _SUPPORTED_RESPONSE_LANGUAGES = frozenset({"ja", "en", "zh", "ko"})
 
 
+def _voice_stt_request_timeout_seconds() -> float:
+    return _float_env("VOICE_STT_REQUEST_TIMEOUT_SECONDS", 12.0)
+
+
 class RequestIDMiddleware(BaseHTTPMiddleware):
     """X-Request-ID ヘッダーの生成/伝播"""
 
@@ -988,6 +992,40 @@ def _read_filler_audio(intent: str, language: str) -> str:
     return encoded
 
 
+def _read_filler_audio_with_static_fallback(
+    intent: str,
+    language: str,
+) -> tuple[str, str, str, bool]:
+    candidates: list[tuple[str, str]] = [(intent, language)]
+    for candidate in (("fallback", language), ("fallback", "ja")):
+        if candidate not in candidates:
+            candidates.append(candidate)
+
+    first_error: Exception | None = None
+    for candidate_intent, candidate_language in candidates:
+        try:
+            audio = _read_filler_audio(candidate_intent, candidate_language)
+            return (
+                audio,
+                candidate_intent,
+                candidate_language,
+                (candidate_intent, candidate_language) != (intent, language),
+            )
+        except Exception as exc:
+            if first_error is None:
+                first_error = exc
+            logger.warning(
+                "Filler audio unavailable: intent=%s language=%s error=%s",
+                candidate_intent,
+                candidate_language,
+                exc,
+            )
+
+    if first_error is not None:
+        raise first_error
+    raise FileNotFoundError(f"No filler audio candidates for {intent}_{language}")
+
+
 def _filler_text(intent: str, language: str) -> str:
     fallback = FILLER_TEXTS["fallback"]["ja"]
     return FILLER_TEXTS.get(intent, FILLER_TEXTS["fallback"]).get(language, fallback)
@@ -1012,12 +1050,17 @@ async def voice_filler_api(request: Request, body: FillerRequest):
     if intent not in FILLER_INTENTS:
         intent = "fallback"
 
+    actual_intent = intent
+    actual_language = body.language
+    fallback_used = False
     try:
-        audio = _read_filler_audio(intent, body.language)
+        audio, actual_intent, actual_language, fallback_used = (
+            _read_filler_audio_with_static_fallback(intent, body.language)
+        )
         ok = bool(audio)
     except Exception as exc:
         logger.warning(
-            "Filler audio unavailable: intent=%s language=%s error=%s",
+            "Filler audio unavailable after static fallback: intent=%s language=%s error=%s",
             intent,
             body.language,
             exc,
@@ -1031,7 +1074,14 @@ async def voice_filler_api(request: Request, body: FillerRequest):
         intent=intent,
         fillerText=_filler_text(intent, body.language),
         requestId=request_id,
-        upstreamStatus=_upstream_status("filler", ok=ok, latencyMs=latency_ms),
+        upstreamStatus=_upstream_status(
+            "filler",
+            ok=ok,
+            latencyMs=latency_ms,
+            fallbackUsed=fallback_used,
+            actualIntent=actual_intent,
+            actualLanguage=actual_language,
+        ),
     )
 
 
@@ -1199,10 +1249,28 @@ async def _handle_stt(body: VoiceRequest, request_id: str) -> VoiceResponse:
         )
 
     try:
-        stt_result = await _get_stt_agent().speech_to_text(
+        stt_call = _get_stt_agent().speech_to_text(
             audio_bytes,
             language=body.language,
             conversation_stage=body.conversationStage,
+        )
+        stt_timeout_s = _voice_stt_request_timeout_seconds()
+        if stt_timeout_s > 0:
+            stt_result = await asyncio.wait_for(stt_call, timeout=stt_timeout_s)
+        else:
+            stt_result = await stt_call
+    except asyncio.TimeoutError:
+        logger.warning(
+            "STT request timed out: request_id=%s timeout_s=%.2f",
+            request_id,
+            _voice_stt_request_timeout_seconds(),
+        )
+        return _stt_failure_response(
+            body=body,
+            request_id=request_id,
+            error="No speech detected",
+            provider=os.getenv("STT_PROVIDER"),
+            error_type="TimeoutError",
         )
     except RuntimeError as exc:
         logger.warning("STT runtime failure: %s", exc)

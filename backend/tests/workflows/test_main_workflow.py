@@ -991,6 +991,87 @@ class TestOrchestratorIntegration:
 
     @pytest.mark.asyncio
     @patch("backend.workflows.main_workflow.OrchestratorAgent")
+    async def test_orchestrator_node_normalizes_stale_agent_before_goto(
+        self, mock_orchestrator_class
+    ):
+        """routing category と実際の LangGraph 遷移先をずらさない。"""
+        from backend.workflows.main_workflow import MainWorkflow
+        from backend.agents.orchestrator_agent import OrchestratorDecision
+
+        mock_decision = OrchestratorDecision(
+            next_agent="GeneralKnowledgeAgent",
+            language="ja",
+            category="pricing",
+            request_type="price",
+            confidence=0.8,
+            reasoning="Fallback agent label was stale",
+            debug_info={},
+        )
+        mock_orchestrator = AsyncMock()
+        mock_orchestrator.decide_next_agent = AsyncMock(return_value=mock_decision)
+        mock_orchestrator_class.return_value = mock_orchestrator
+
+        workflow = MainWorkflow()
+
+        state = {
+            "query": "料金はいくらですか？",
+            "session_id": "test-session",
+            "language": "ja",
+            "context": {"memory": {}},
+        }
+
+        with patch("backend.utils.topic_guard.check_topic_adherence", return_value=(True, None)):
+            result = await workflow._orchestrator_node(state)
+
+        assert result.goto == "business_info"
+        assert result.update["routing"]["agent"] == "business_info"
+        assert result.update["routing"]["category"] == "pricing"
+        assert result.update["routing"]["request_type"] == "price"
+        assert result.update["routing"]["debug_info"]["raw_next_agent"] == "GeneralKnowledgeAgent"
+        assert result.update["routing"]["debug_info"]["agent_resolution_source"] == "request_type"
+
+    @pytest.mark.asyncio
+    @patch("backend.workflows.main_workflow.OrchestratorAgent")
+    async def test_orchestrator_node_uses_request_type_when_category_is_too_broad(
+        self, mock_orchestrator_class
+    ):
+        """facility-info + hours のような広いカテゴリでも営業時間は business_info へ送る。"""
+        from backend.workflows.main_workflow import MainWorkflow
+        from backend.agents.orchestrator_agent import OrchestratorDecision
+
+        mock_decision = OrchestratorDecision(
+            next_agent="facility",
+            language="ja",
+            category="facility-info",
+            request_type="hours",
+            confidence=0.8,
+            reasoning="Broad facility category with business-hours request type",
+            debug_info={},
+        )
+        mock_orchestrator = AsyncMock()
+        mock_orchestrator.decide_next_agent = AsyncMock(return_value=mock_decision)
+        mock_orchestrator_class.return_value = mock_orchestrator
+
+        workflow = MainWorkflow()
+
+        state = {
+            "query": "開館時間を教えてください",
+            "session_id": "test-session",
+            "language": "ja",
+            "context": {"memory": {}},
+        }
+
+        with patch("backend.utils.topic_guard.check_topic_adherence", return_value=(True, None)):
+            result = await workflow._orchestrator_node(state)
+
+        assert result.goto == "business_info"
+        assert result.update["routing"]["agent"] == "business_info"
+        assert result.update["routing"]["category"] == "facility-info"
+        assert result.update["routing"]["request_type"] == "hours"
+        assert result.update["routing"]["debug_info"]["agent_resolution_source"] == "request_type"
+
+    @pytest.mark.asyncio
+    @patch("backend.workflows.main_workflow.OrchestratorAgent")
     async def test_format_response_node(self, mock_orchestrator_class):
         """_format_response_nodeが正しくメッセージをフォーマットすることを確認"""
         from backend.workflows.main_workflow import MainWorkflow

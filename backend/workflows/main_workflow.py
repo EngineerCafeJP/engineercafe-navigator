@@ -36,7 +36,7 @@ from backend.agents.orchestrator_agent import (
     RoutingTarget,
 )
 from backend.agents.orchestrator_agent import OrchestratorAgent as RoutingLogicAgent
-from backend.config.routing_constants import GREETING_KEYWORDS, match_keywords
+from backend.config.routing_constants import GREETING_KEYWORDS, match_keywords, normalize_agent_node
 from backend.services.memory_promoter import MemoryPromoter
 from backend.utils.postgres_sanitizer import sanitize_for_postgres
 from backend.utils.store import store_with_retry
@@ -611,7 +611,11 @@ class MainWorkflow:
         except Exception as guard_err:
             logger.debug("Pre-memory topic guard skipped: %s", guard_err)
 
-        fast_path_agent = fast_route["agent"]
+        fast_path_agent, resolution_source = normalize_agent_node(
+            fast_route.get("agent"),
+            category=fast_route.get("category"),
+            request_type=fast_route.get("request_type"),
+        )
         if fast_path_agent not in self._PRE_MEMORY_DIRECT_AGENTS:
             return {
                 "language": response_language,
@@ -625,11 +629,13 @@ class MainWorkflow:
             "routing": {
                 **state.get("routing", {}),
                 **fast_route,
+                "agent": fast_path_agent,
                 "pre_memory_fast_path_agent": fast_path_agent,
                 "confidence": 0.9,
                 "debug_info": {
                     "fast_path": True,
                     "path": "keyword_router",
+                    "agent_resolution_source": resolution_source,
                 },
             },
         }
@@ -1124,12 +1130,29 @@ class MainWorkflow:
                     self._store_reception_session,
                 )
                 if reception_result.get("target_agent"):
+                    routing = reception_result.get("routing") or {}
+                    target_agent, resolution_source = normalize_agent_node(
+                        reception_result["target_agent"],
+                        category=routing.get("category"),
+                        request_type=routing.get("request_type"),
+                    )
                     return Command(
-                        goto=cast(RoutingTarget, reception_result["target_agent"]),
+                        goto=cast(RoutingTarget, target_agent),
                         update={
                             "language": state.get("language", "ja"),
-                            "routing": reception_result["routing"],
-                            "metadata": reception_result["metadata"],
+                            "routing": {
+                                **routing,
+                                "agent": target_agent,
+                                "debug_info": {
+                                    **routing.get("debug_info", {}),
+                                    "raw_target_agent": reception_result["target_agent"],
+                                    "agent_resolution_source": resolution_source,
+                                },
+                            },
+                            "metadata": {
+                                **reception_result["metadata"],
+                                "reception_target_agent": target_agent,
+                            },
                         },
                     )
 
@@ -1150,6 +1173,17 @@ class MainWorkflow:
             session_id=session_id,
             memory_context=memory_context,
         )
+        next_agent, resolution_source = normalize_agent_node(
+            decision.next_agent,
+            category=decision.category,
+            request_type=decision.request_type,
+            prefer_category=True,
+        )
+        debug_info = {
+            **decision.debug_info,
+            "raw_next_agent": decision.next_agent,
+            "agent_resolution_source": resolution_source,
+        }
 
         for handler in (
             lambda current_state, current_decision: self._handle_emergency(
@@ -1175,13 +1209,16 @@ class MainWorkflow:
                 return cmd
 
         return Command(
-            goto=decision.next_agent,
+            goto=next_agent,
             update={
                 "language": decision.language,
-                "routing": self._build_routing_payload(
-                    decision,
-                    agent=decision.next_agent,
-                ),
+                "routing": {
+                    **self._build_routing_payload(
+                        decision,
+                        agent=next_agent,
+                    ),
+                    "debug_info": debug_info,
+                },
             },
         )
 
@@ -1725,14 +1762,27 @@ class MainWorkflow:
         Raises:
             ValueError: If the target agent is not a known node.
         """
-        target = handoff.target_agent
+        routing = handoff.workflow_state.get("routing", {})
+        target, resolution_source = normalize_agent_node(handoff.target_agent)
         node_attr = self._AGENT_NODE_MAP.get(target)
-        if node_attr is None:
+        if node_attr is None or resolution_source == "fallback":
             raise ValueError(
-                f"Unknown target agent '{target}'. Valid agents: {sorted(self._AGENT_NODE_MAP)}"
+                f"Unknown target agent '{handoff.target_agent}'. "
+                f"Valid agents: {sorted(self._AGENT_NODE_MAP)}"
             )
 
-        state = handoff.workflow_state
+        state = {
+            **handoff.workflow_state,
+            "routing": {
+                **(routing if isinstance(routing, dict) else {}),
+                "agent": target,
+                "debug_info": {
+                    **(routing.get("debug_info", {}) if isinstance(routing, dict) else {}),
+                    "raw_target_agent": handoff.target_agent,
+                    "agent_resolution_source": resolution_source,
+                },
+            },
+        }
         self._current_visitor_id = state.get("session_id", "anonymous")
 
         agent_node = getattr(self, node_attr)

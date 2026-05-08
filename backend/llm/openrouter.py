@@ -30,6 +30,7 @@ from .model_resolve import (
     cerebras_model_slug,
     cerebras_primary_enabled,
     cerebras_reasoning_effort,
+    cerebras_timeout_seconds,
     merge_gemini_openrouter_extra,
     resolved_openrouter_model_slug,
 )
@@ -174,7 +175,7 @@ class OpenRouterProvider(LLMProvider):
         if effort:
             body["reasoning_effort"] = effort
         async with httpx.AsyncClient(
-            timeout=max(config.timeout, 60.0),
+            timeout=cerebras_timeout_seconds(config),
             headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
         ) as cerebras_http:
             response = await cerebras_http.post(CEREBRAS_CHAT_URL, json=body)
