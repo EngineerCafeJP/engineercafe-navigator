@@ -30,6 +30,7 @@ import logging
 import math
 import numpy as np
 import os
+import re
 import time
 import uuid
 import wave
@@ -272,6 +273,10 @@ class HedgedFallback(Exception):
 
 class RejectedVoskFallback(Exception):
     """Vosk fallback produced a transcript too risky to treat as user intent."""
+
+
+class RejectedQwenPrimary(Exception):
+    """Qwen primary produced a transcript too risky to treat as user intent."""
 
 
 def _parse_qwen_stt_hedge_delay(
@@ -539,6 +544,104 @@ def _vosk_fallback_transcript_suspicious(
     particle_ratio = sum(1 for token in tokens if token in ja_particles) / len(tokens)
     content_tokens = [token for token in tokens if token not in ja_particles and len(token) > 1]
     return particle_ratio >= 0.30 and len(content_tokens) <= 3
+
+
+_QWEN_SHORT_COMMANDS = {
+    "はい",
+    "いいえ",
+    "うん",
+    "お願い",
+    "お願いします",
+    "キャンセル",
+    "戻る",
+    "終了",
+    "予約",
+    "料金",
+    "無料",
+    "受付",
+    "yes",
+    "no",
+    "ok",
+    "okay",
+    "cancel",
+    "stop",
+    "back",
+    "help",
+    "thanks",
+    "hello",
+    "hi",
+}
+
+_QWEN_SHORT_NOISE = {
+    "あ",
+    "あー",
+    "ああ",
+    "あああ",
+    "え",
+    "えー",
+    "ええ",
+    "えええ",
+    "う",
+    "うー",
+    "ん",
+    "んー",
+    "えっと",
+    "えと",
+    "まあ",
+    "uh",
+    "um",
+    "umm",
+    "mmm",
+    "hmm",
+}
+
+
+def _qwen_primary_transcript_suspicious(
+    transcript: str,
+    language: Optional[str],
+    confidence: Optional[float],
+) -> bool:
+    """Identify short/noisy Qwen output that should not drive chat intent.
+
+    Qwen generally returns less segmented text than Vosk, so this gate focuses
+    on empty, punctuation-only, repeated-character, and low-confidence short
+    fragments while preserving known high-confidence short commands.
+    """
+
+    normalized = " ".join((transcript or "").split())
+    compact = "".join(normalized.split())
+    if not compact:
+        return True
+
+    compact_lower = compact.lower()
+    if _vosk_transcript_trusted_for_early_return(normalized, language):
+        return False
+
+    if compact_lower in _QWEN_SHORT_COMMANDS:
+        return confidence is not None and confidence < 0.60
+
+    if compact_lower in _QWEN_SHORT_NOISE:
+        return confidence is None or confidence < 0.95
+
+    if re.fullmatch(r"[\W_]+", compact, flags=re.UNICODE):
+        return True
+
+    if len(compact) >= 3 and len(set(compact_lower)) == 1:
+        return confidence is None or confidence < 0.95
+
+    tokens = [token for token in normalized.split() if token]
+    if len(tokens) >= 3:
+        single_char_ratio = sum(1 for token in tokens if len(token) == 1) / len(tokens)
+        if single_char_ratio >= 0.60 and (confidence is None or confidence < 0.85):
+            return True
+
+    if len(compact) <= 2:
+        return confidence is None or confidence < 0.85
+
+    if len(compact) <= 4 and (confidence is None or confidence < 0.70):
+        return True
+
+    return False
 
 
 def _env_flag(name: str, default: bool = False) -> bool:
@@ -1761,6 +1864,57 @@ class STTAgent:
                 raise
             return await _run_vosk()
 
+        def _remaining_latency_budget() -> float | None:
+            if self._qwen_latency_budget is None:
+                return None
+            return self._qwen_latency_budget - (time.perf_counter() - overall_started_at)
+
+        def _reject_suspicious_qwen_result(
+            result: TranscriptionResult,
+        ) -> RejectedQwenPrimary | None:
+            if not _qwen_primary_transcript_suspicious(
+                result.text,
+                result.language,
+                result.confidence,
+            ):
+                return None
+            log_stt_event(
+                event="stt_qwen_rejected",
+                stt_trace_id=stt_trace_id,
+                provider="qwen-primary",
+                language=result.language,
+                success=False,
+                transcript_chars=len(result.text),
+                confidence=result.confidence,
+                stt_overall_duration_ms=_duration_ms(overall_started_at),
+                rejection_reason="suspicious_transcript",
+            )
+            return RejectedQwenPrimary("Rejected suspicious Qwen primary transcript")
+
+        async def _await_qwen_after_vosk_failure() -> TranscriptionResult:
+            remaining_budget = _remaining_latency_budget()
+            if remaining_budget is None:
+                return await qwen_task
+            if remaining_budget <= 0:
+                raise asyncio.TimeoutError("Qwen exceeded configured STT latency budget")
+            try:
+                return await asyncio.wait_for(
+                    asyncio.shield(qwen_task),
+                    timeout=remaining_budget,
+                )
+            except asyncio.TimeoutError:
+                log_stt_event(
+                    event="stt_qwen_latency_budget_complete",
+                    stt_trace_id=stt_trace_id,
+                    provider="qwen-primary",
+                    language=language,
+                    success=False,
+                    error_type="TimeoutError",
+                    latency_budget_s=self._qwen_latency_budget,
+                    stt_qwen_duration_ms=_duration_ms(overall_started_at),
+                )
+                raise
+
         qwen_task = asyncio.create_task(_run_qwen())
         vosk_task = asyncio.create_task(_run_vosk_after_qwen_failure())
 
@@ -1837,12 +1991,9 @@ class STTAgent:
                             and not vosk_trusted
                         ):
                             remaining_budget = self._qwen_hedge_grace
-                            if self._qwen_latency_budget is not None:
-                                remaining_budget = min(
-                                    remaining_budget,
-                                    self._qwen_latency_budget
-                                    - (time.perf_counter() - overall_started_at),
-                                )
+                            latency_budget_remaining = _remaining_latency_budget()
+                            if latency_budget_remaining is not None:
+                                remaining_budget = min(remaining_budget, latency_budget_remaining)
                             if remaining_budget <= 0:
                                 log_stt_event(
                                     event="stt_qwen_hedge_grace_skipped",
@@ -1893,27 +2044,32 @@ class STTAgent:
                     qwen_error_for_log = exc
 
             if isinstance(qwen_result, TranscriptionResult):
-                if not vosk_task.done():
-                    vosk_task.cancel()
-                    await asyncio.gather(vosk_task, return_exceptions=True)
-                log_stt_event(
-                    event="stt_winner",
-                    stt_trace_id=stt_trace_id,
-                    stt_winner="qwen",
-                    provider="qwen-primary",
-                    language=qwen_result.language,
-                    success=True,
-                    stt_overall_duration_ms=_duration_ms(overall_started_at),
-                    hedge_grace_s=self._qwen_hedge_grace,
-                    qwen_postprocess_enabled=qwen_postprocess_enabled,
-                )
-                return {
-                    "success": True,
-                    "transcript": qwen_result.text,
-                    "confidence": qwen_result.confidence,
-                    "language": qwen_result.language,
-                    "provider": "qwen-primary",
-                }
+                qwen_rejection = _reject_suspicious_qwen_result(qwen_result)
+                if qwen_rejection is not None:
+                    qwen_result = qwen_rejection
+                    qwen_error_for_log = qwen_rejection
+                else:
+                    if not vosk_task.done():
+                        vosk_task.cancel()
+                        await asyncio.gather(vosk_task, return_exceptions=True)
+                    log_stt_event(
+                        event="stt_winner",
+                        stt_trace_id=stt_trace_id,
+                        stt_winner="qwen",
+                        provider="qwen-primary",
+                        language=qwen_result.language,
+                        success=True,
+                        stt_overall_duration_ms=_duration_ms(overall_started_at),
+                        hedge_grace_s=self._qwen_hedge_grace,
+                        qwen_postprocess_enabled=qwen_postprocess_enabled,
+                    )
+                    return {
+                        "success": True,
+                        "transcript": qwen_result.text,
+                        "confidence": qwen_result.confidence,
+                        "language": qwen_result.language,
+                        "provider": "qwen-primary",
+                    }
 
             # Qwen failed or exceeded the hedge latency budget -> Vosk fallback
             if qwen_error_for_log is None:
@@ -1959,30 +2115,38 @@ class STTAgent:
                 and not qwen_task.done()
             ):
                 try:
-                    qwen_result = await qwen_task
+                    qwen_result = await _await_qwen_after_vosk_failure()
+                except asyncio.TimeoutError as exc:
+                    qwen_result = HedgedFallback(str(exc))
+                    qwen_error_for_log = qwen_result
                 except Exception as exc:
                     qwen_result = exc
                     qwen_error_for_log = exc
                 if isinstance(qwen_result, TranscriptionResult):
-                    log_stt_event(
-                        event="stt_winner",
-                        stt_trace_id=stt_trace_id,
-                        stt_winner="qwen",
-                        provider="qwen-primary",
-                        language=qwen_result.language,
-                        success=True,
-                        stt_overall_duration_ms=_duration_ms(overall_started_at),
-                        hedge_grace_s=self._qwen_hedge_grace,
-                        qwen_postprocess_enabled=qwen_postprocess_enabled,
-                        vosk_error_type=type(vosk_result).__name__,
-                    )
-                    return {
-                        "success": True,
-                        "transcript": qwen_result.text,
-                        "confidence": qwen_result.confidence,
-                        "language": qwen_result.language,
-                        "provider": "qwen-primary",
-                    }
+                    qwen_rejection = _reject_suspicious_qwen_result(qwen_result)
+                    if qwen_rejection is not None:
+                        qwen_result = qwen_rejection
+                        qwen_error_for_log = qwen_rejection
+                    else:
+                        log_stt_event(
+                            event="stt_winner",
+                            stt_trace_id=stt_trace_id,
+                            stt_winner="qwen",
+                            provider="qwen-primary",
+                            language=qwen_result.language,
+                            success=True,
+                            stt_overall_duration_ms=_duration_ms(overall_started_at),
+                            hedge_grace_s=self._qwen_hedge_grace,
+                            qwen_postprocess_enabled=qwen_postprocess_enabled,
+                            vosk_error_type=type(vosk_result).__name__,
+                        )
+                        return {
+                            "success": True,
+                            "transcript": qwen_result.text,
+                            "confidence": qwen_result.confidence,
+                            "language": qwen_result.language,
+                            "provider": "qwen-primary",
+                        }
 
             if isinstance(vosk_result, TranscriptionResult):
                 transcript = vosk_result.text

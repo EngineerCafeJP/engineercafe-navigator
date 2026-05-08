@@ -1,7 +1,7 @@
 # Engineer Cafe Navigator — 総合リファクタリング計画（ドキュメントのみ）
 
 **作成日**: 2026-05-05  
-**更新**: 2026-05-05 — §3A を追加し、`main.py` / `main_workflow.py` のファイル単位・PR 粒度まで具体化。  
+**更新**: 2026-05-08 — Post-alpha 実行注記を追加。2026-05-05 — §3A を追加し、`main.py` / `main_workflow.py` のファイル単位・PR 粒度まで具体化。
 **スコープ**: 現行実装を **変更しない** 前提での調査結果と、今後の改善計画の整理  
 **正本との関係**: 運用上の優先判断は引き続き [`docs/STATUS.md`](../STATUS.md)、[ADR 018](../adr/018-alpha-fast-response-and-assistant-profile-routing.md)、および実装コードを優先する。
 
@@ -18,6 +18,12 @@
 
 - 機能追加・プロンプト改変・RAG 品質そのものの「改善」（別Issue／Remediation と連動）。
 - 本番環境の無検証デプロイや、`--set-env-vars` による Cloud Run 全上書き。
+
+### 1.3 Post-alpha 実行注記（2026-05-08）
+
+- 別ロードマップ上の Phase 2 新機能／外部連携拡張は、現時点では優先度を下げる。
+- 当面の実行範囲は、既存の voice / STT / TTS / OCR / RAG 品質の hardening と、安全なリファクタリング hygiene に限定する。
+- 本書 §5 の Phase 2（`backend/main.py` 分割）は、新機能追加ではなく既存挙動を保つ機械的整理として扱う。
 
 ---
 

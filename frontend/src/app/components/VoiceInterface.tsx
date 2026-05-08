@@ -45,6 +45,7 @@ export type VoiceSessionState = 'idle' | 'listening' | 'processing' | 'speaking'
 
 /** Semantic loading stage for kiosk UI; avoids coupling to localized loadingMessage strings. */
 export type VoiceLoadingPhase = 'mic' | 'stt' | 'llm' | 'tts' | null;
+export type VoiceUiLockState = 'normal' | 'locked' | 'interruptible';
 
 export interface VoiceInterfaceMetadata {
   clarification?: {
@@ -53,7 +54,7 @@ export interface VoiceInterfaceMetadata {
   };
   clarification_options?: string[];
   requires_followup?: boolean;
-   reception_type?: string;
+  reception_type?: string;
   vrm_control?: CharacterAnimationData | null;
   [key: string]: unknown;
 }
@@ -69,6 +70,7 @@ export interface VoiceInterfaceRenderProps {
   isLoading: boolean;
   loadingMessage: string;
   loadingPhase: VoiceLoadingPhase;
+  uiLockState: VoiceUiLockState;
   currentLanguage: 'ja' | 'en';
   volume: number;
   isMuted: boolean;
@@ -181,6 +183,7 @@ const FAST_FILLER_TEXT = {
   ja: '確認しています。',
   en: 'Let me check.',
 } as const;
+const AUTO_VRM_PLAYBACK_WAIT_MS = 180;
 
 /** UUID v4 を生成する。crypto.randomUUID が無い環境（HTTP や古いブラウザ）用のフォールバック付き。 */
 const generateUuid = (): string => {
@@ -305,6 +308,7 @@ export default function VoiceInterface({
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState('');
   const [loadingPhase, setLoadingPhase] = useState<VoiceLoadingPhase>(null);
+  const [exclusiveUiLock, setExclusiveUiLock] = useState(false);
   const [mediaStream, setMediaStream] = useState<MediaStream | null>(null);
 
   const sessionIdRef = useRef(createSessionId());
@@ -376,6 +380,28 @@ export default function VoiceInterface({
     requestAbortRef.current?.abort();
     requestAbortRef.current = null;
   }, []);
+
+  const requestBackendInterrupt = useCallback(() => {
+    const sessionId = sessionIdRef.current;
+    if (!sessionId) {
+      return;
+    }
+
+    void fetch('/api/voice', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        action: 'interrupt',
+        sessionId,
+        language: currentLanguage,
+      }),
+      keepalive: true,
+    }).catch(() => {
+      /* best-effort interrupt */
+    });
+  }, [currentLanguage]);
 
   const cancelFastFiller = useCallback(() => {
     if (fastFillerTimerRef.current !== null) {
@@ -501,6 +527,7 @@ export default function VoiceInterface({
     setIsLoading(false);
     setLoadingMessage('');
     setLoadingPhase(null);
+    setExclusiveUiLock(false);
     voiceController.notifySpeakingComplete(true);
     return true;
   }, [cleanupAudioPlayback, currentLanguage, voiceController]);
@@ -513,6 +540,7 @@ export default function VoiceInterface({
     setIsLoading(false);
     setLoadingMessage('');
     setLoadingPhase(null);
+    setExclusiveUiLock(false);
     sessionIdRef.current = createSessionId();
   }, []);
 
@@ -676,6 +704,48 @@ export default function VoiceInterface({
     ],
   );
 
+  const fetchAutoVrmControl = useCallback(
+    async (
+      cleanText: string,
+      emotion: string | null | undefined,
+      signal: AbortSignal,
+    ): Promise<Record<string, unknown> | null> => {
+      try {
+        const response = await fetch('/api/character', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            action: 'auto',
+            cleanText,
+            emotion: emotion?.trim() || 'neutral',
+          }),
+          signal,
+        });
+        if (!response.ok) {
+          return null;
+        }
+        return (await response.json()) as Record<string, unknown>;
+      } catch {
+        return null;
+      }
+    },
+    [],
+  );
+
+  const resolveAutoVrmControlForPlayback = useCallback(
+    async (vrmTask: Promise<Record<string, unknown> | null>) => {
+      return Promise.race([
+        vrmTask,
+        new Promise<null>((resolve) => {
+          window.setTimeout(resolve, AUTO_VRM_PLAYBACK_WAIT_MS, null);
+        }),
+      ]);
+    },
+    [],
+  );
+
   const unlockAudioPlayback = useCallback((): boolean => {
     if (sessionState === 'listening') {
       return false;
@@ -815,11 +885,15 @@ export default function VoiceInterface({
           text: preprocessTTS(cleanAnswer, responseLanguage),
           language: responseLanguage,
           sessionId: sessionIdRef.current,
-          includeVrmControl: true,
         };
         if (typeof qaResult.emotion === 'string' && qaResult.emotion.trim()) {
           ttsBody.emotion = qaResult.emotion.trim();
         }
+        const vrmTask = fetchAutoVrmControl(
+          cleanAnswer,
+          typeof qaResult.emotion === 'string' ? qaResult.emotion : null,
+          signal,
+        );
 
         const ttsResponse = await fetch('/api/voice', {
           method: 'POST',
@@ -844,7 +918,11 @@ export default function VoiceInterface({
         // Filler runs in parallel; do not await — slow filler must not delay main TTS enqueue.
         void fillerTask.catch(() => {});
 
-        const playbackMetadata = mergePlaybackMetadataWithTtsVrmControl(qaMeta, ttsResult);
+        const vrmResult = await resolveAutoVrmControlForPlayback(vrmTask);
+        const playbackMetadata = mergePlaybackMetadataWithTtsVrmControl(
+          qaMeta,
+          vrmResult ?? ttsResult,
+        );
 
         if (isMuted) {
           cancelFastFiller();
@@ -946,9 +1024,11 @@ export default function VoiceInterface({
       onVoiceTurnAssistantSpeakingVisual,
       onVoiceTurnThinkingVisual,
       playAssistantAudio,
+      resolveAutoVrmControlForPlayback,
       scheduleLipSyncFrames,
       skipAssistantTurnAutoResume,
       deferForIOSAudioUnlock,
+      fetchAutoVrmControl,
       stopPlayback,
       volume,
       voiceController,
@@ -1024,11 +1104,15 @@ export default function VoiceInterface({
           text: preprocessTTS(cleanAnswer, responseLanguage),
           language: responseLanguage,
           sessionId: sessionIdRef.current,
-          includeVrmControl: true,
         };
         if (typeof qaResult.emotion === 'string' && qaResult.emotion.trim()) {
           ttsBody.emotion = qaResult.emotion.trim();
         }
+        const vrmTask = fetchAutoVrmControl(
+          cleanAnswer,
+          typeof qaResult.emotion === 'string' ? qaResult.emotion : null,
+          abortController.signal,
+        );
 
         const ttsResponse = await fetch('/api/voice', {
           method: 'POST',
@@ -1049,7 +1133,11 @@ export default function VoiceInterface({
           throw ttsError;
         }
 
-        const playbackMetadata = mergePlaybackMetadataWithTtsVrmControl(qaMeta, ttsResult);
+        const vrmResult = await resolveAutoVrmControlForPlayback(vrmTask);
+        const playbackMetadata = mergePlaybackMetadataWithTtsVrmControl(
+          qaMeta,
+          vrmResult ?? ttsResult,
+        );
 
         if (typeof ttsResult.audioResponse === 'string' && ttsResult.audioResponse.length > 0) {
           await playAssistantAudio(ttsResult.audioResponse, playbackMetadata);
@@ -1075,6 +1163,7 @@ export default function VoiceInterface({
         setIsLoading(false);
         setLoadingMessage('');
         setLoadingPhase(null);
+        setExclusiveUiLock(false);
       }
     },
     [
@@ -1082,8 +1171,10 @@ export default function VoiceInterface({
       cancelFastFiller,
       currentLanguage,
       ensureVisitorId,
+      fetchAutoVrmControl,
       onSlideAgentResponse,
       playAssistantAudio,
+      resolveAutoVrmControlForPlayback,
       scheduleFastFiller,
       skipAssistantTurnAutoResume,
       stopPlayback,
@@ -1100,6 +1191,7 @@ export default function VoiceInterface({
 
       cancelPendingRequest();
       stopPlayback(false);
+      setExclusiveUiLock(true);
       setError(null);
       setTranscript('');
 
@@ -1124,11 +1216,15 @@ export default function VoiceInterface({
           text: preprocessTTS(cleanAnswer, responseLanguage),
           language: responseLanguage,
           sessionId: sessionIdRef.current,
-          includeVrmControl: true,
         };
         if (parsedAnswer.primaryEmotion) {
           ttsBody.emotion = parsedAnswer.primaryEmotion;
         }
+        const vrmTask = fetchAutoVrmControl(
+          cleanAnswer,
+          parsedAnswer.primaryEmotion,
+          abortController.signal,
+        );
 
         const ttsResponse = await fetch('/api/voice', {
           method: 'POST',
@@ -1147,9 +1243,10 @@ export default function VoiceInterface({
           );
         }
 
+        const vrmResult = await resolveAutoVrmControlForPlayback(vrmTask);
         const playbackMetadata = mergePlaybackMetadataWithTtsVrmControl(
           metadataForPlayback ?? null,
-          ttsResult,
+          vrmResult ?? ttsResult,
         );
 
         if (typeof ttsResult.audioResponse === 'string' && ttsResult.audioResponse.length > 0) {
@@ -1174,12 +1271,15 @@ export default function VoiceInterface({
         setIsLoading(false);
         setLoadingMessage('');
         setLoadingPhase(null);
+        setExclusiveUiLock(false);
       }
     },
     [
       cancelPendingRequest,
       currentLanguage,
+      fetchAutoVrmControl,
       playAssistantAudio,
+      resolveAutoVrmControlForPlayback,
       skipAssistantTurnAutoResume,
       stopPlayback,
       voiceController,
@@ -1198,6 +1298,7 @@ export default function VoiceInterface({
       setIsLoading(true);
       setLoadingMessage(LOADING_LABELS[currentLanguage].recognize);
       setLoadingPhase('stt');
+      scheduleFastFiller();
 
       const abortController = new AbortController();
       requestAbortRef.current = abortController;
@@ -1232,6 +1333,7 @@ export default function VoiceInterface({
           return;
         }
 
+        cancelFastFiller();
         setError(formatError(recordingError, currentLanguage));
         voiceController.notifySpeakingComplete(true);
       } finally {
@@ -1243,7 +1345,14 @@ export default function VoiceInterface({
         setLoadingPhase(null);
       }
     },
-    [cancelPendingRequest, currentLanguage, processVoiceTurnWithParallelFiller, voiceController],
+    [
+      cancelPendingRequest,
+      cancelFastFiller,
+      currentLanguage,
+      processVoiceTurnWithParallelFiller,
+      scheduleFastFiller,
+      voiceController,
+    ],
   );
 
   const ensureRecorder = useCallback(async () => {
@@ -1406,6 +1515,7 @@ export default function VoiceInterface({
     isReplayingPendingIOSAudioRef.current = false;
     cancelSttWarmup();
     cancelFastFiller();
+    requestBackendInterrupt();
     cancelPendingRequest();
     stopPlayback(false);
     shouldDiscardNextAudioRef.current = true;
@@ -1413,10 +1523,12 @@ export default function VoiceInterface({
     setIsLoading(false);
     setLoadingMessage('');
     setLoadingPhase(null);
+    setExclusiveUiLock(false);
     voiceController.endManualSession();
   }, [
     cancelFastFiller,
     cancelPendingRequest,
+    requestBackendInterrupt,
     stopPlayback,
     stopRecorderCapture,
     voiceController,
@@ -1467,6 +1579,24 @@ export default function VoiceInterface({
     });
   }, [currentLanguage]);
 
+  const uiLockState = useMemo<VoiceUiLockState>(() => {
+    if (exclusiveUiLock) {
+      return 'locked';
+    }
+    if (sessionState === 'listening' || loadingPhase === 'mic' || loadingPhase === 'stt') {
+      return 'locked';
+    }
+    if (
+      sessionState === 'processing' ||
+      sessionState === 'speaking' ||
+      loadingPhase === 'llm' ||
+      loadingPhase === 'tts'
+    ) {
+      return 'interruptible';
+    }
+    return 'normal';
+  }, [exclusiveUiLock, loadingPhase, sessionState]);
+
   useEffect(() => {
     return () => {
       pendingIOSPlaybackRef.current = null;
@@ -1492,6 +1622,7 @@ export default function VoiceInterface({
       isLoading,
       loadingMessage,
       loadingPhase,
+      uiLockState,
       currentLanguage,
       volume,
       isMuted,
@@ -1524,6 +1655,7 @@ export default function VoiceInterface({
       isMuted,
       loadingMessage,
       loadingPhase,
+      uiLockState,
       metadata,
       response,
       sendMessage,

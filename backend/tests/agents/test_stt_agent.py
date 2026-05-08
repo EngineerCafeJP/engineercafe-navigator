@@ -24,6 +24,7 @@ from backend.agents.stt_agent import (
     STAGE_GRAMMARS,
     VALID_STAGES,
     _normalize_vosk_route_transcript,
+    _qwen_primary_transcript_suspicious,
     _vosk_fallback_transcript_suspicious,
     _vosk_transcript_trusted_for_early_return,
 )
@@ -1129,6 +1130,18 @@ class TestSTTAgent:
             "en",
             0.80,
         )
+
+    def test_qwen_primary_rejects_short_noisy_transcripts(self):
+        """Qwen should not accept low-confidence filler as user intent."""
+        assert _qwen_primary_transcript_suspicious("え", "ja", 0.40)
+        assert _qwen_primary_transcript_suspicious("???", "en", 0.99)
+        assert _qwen_primary_transcript_suspicious("あ あ あ", "ja", 0.80)
+
+    def test_qwen_primary_preserves_high_confidence_short_commands(self):
+        """Legitimate short confirmations must keep working."""
+        assert not _qwen_primary_transcript_suspicious("はい", "ja", 0.95)
+        assert not _qwen_primary_transcript_suspicious("OK", "en", 0.95)
+        assert not _qwen_primary_transcript_suspicious("予約", "ja", 0.80)
 
     def test_vosk_route_transcript_normalizes_hours_confusion(self):
         """Known Vosk brand/hour confusions become route-stable hours queries."""
@@ -2660,6 +2673,82 @@ class TestQwenPrimaryFallback:
             if record.name == "backend.observability.stt"
         ]
         assert "stt_qwen_hedge_grace_complete" in events
+
+    @pytest.mark.asyncio
+    async def test_suspicious_qwen_primary_falls_back_to_vosk(self, caplog):
+        """Short/noisy Qwen output should not beat a usable Vosk fallback."""
+        caplog.set_level(logging.INFO, logger="backend.observability.stt")
+
+        mock_qwen = MagicMock()
+        mock_qwen.transcribe = AsyncMock(
+            return_value=TranscriptionResult(text="え", confidence=0.40, language="ja")
+        )
+        mock_vosk = MagicMock(spec=LocalSTTClient)
+        mock_vosk.transcribe = AsyncMock(
+            return_value=TranscriptionResult(
+                text="エンジニア カフェ の 営業 時間 教え て ください",
+                confidence=0.80,
+                language="ja",
+            )
+        )
+
+        agent = self._make_agent(mock_qwen, mock_vosk)
+        agent._qwen_hedge_delay = 0.50
+        result = await agent.speech_to_text(b"audio", language="ja")
+
+        assert result["success"] is True
+        assert result["provider"] == "vosk-fallback"
+        assert "営業" in result["transcript"]
+
+        events = [
+            getattr(record, "event", None)
+            for record in caplog.records
+            if record.name == "backend.observability.stt"
+        ]
+        assert "stt_qwen_rejected" in events
+        winner = next(
+            record for record in caplog.records if getattr(record, "event", None) == "stt_winner"
+        )
+        assert winner.stt_winner == "vosk"
+        assert winner.qwen_error_type == "RejectedQwenPrimary"
+
+    @pytest.mark.asyncio
+    async def test_vosk_failure_does_not_wait_past_qwen_latency_budget(self, caplog):
+        """A configured UX budget caps late Qwen wait after fallback failure."""
+        caplog.set_level(logging.INFO, logger="backend.observability.stt")
+
+        async def too_late_qwen(*args, **kwargs):
+            await asyncio.sleep(0.30)
+            return TranscriptionResult(text="late qwen", confidence=0.90, language="ja")
+
+        async def failing_vosk(*args, **kwargs):
+            await asyncio.sleep(0.01)
+            raise RuntimeError("Vosk model missing")
+
+        mock_qwen = MagicMock()
+        mock_qwen.transcribe = too_late_qwen
+        mock_vosk = MagicMock(spec=LocalSTTClient)
+        mock_vosk.transcribe = AsyncMock(side_effect=failing_vosk)
+
+        agent = self._make_agent(mock_qwen, mock_vosk)
+        agent._qwen_timeout = 10.0
+        agent._qwen_hedge_delay = 0.01
+        agent._qwen_hedge_grace = 0.20
+        agent._qwen_latency_budget = 0.05
+
+        loop = asyncio.get_running_loop()
+        started_at = loop.time()
+        with pytest.raises(RuntimeError, match="Both Qwen and Vosk STT failed"):
+            await agent.speech_to_text(b"audio", language="ja")
+        elapsed = loop.time() - started_at
+
+        assert elapsed < 0.15
+        events = [
+            getattr(record, "event", None)
+            for record in caplog.records
+            if record.name == "backend.observability.stt"
+        ]
+        assert "stt_qwen_latency_budget_complete" in events
 
     @pytest.mark.asyncio
     async def test_low_confidence_fragmented_vosk_fallback_is_rejected(self, caplog):

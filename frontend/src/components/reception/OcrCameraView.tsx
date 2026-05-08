@@ -47,7 +47,7 @@ const STATE_LABELS: Record<OcrCameraState, string> = {
 
 const MODE_LABELS: Record<OcrMode, string> = {
   member_card: '会員証を読み取り範囲に映してください',
-  handwriting: '文字を読み取り範囲に映してください',
+  handwriting: '紙やボードに書いた文字をカメラの読み取り範囲に映してください',
 };
 
 export function OcrCameraView({
@@ -107,15 +107,15 @@ export function OcrCameraView({
   const statusTitleClass = compact ? 'text-sm font-semibold' : 'text-lg font-medium';
   const modeHintClass = compact ? 'text-xs text-gray-500' : 'text-sm text-gray-500';
   const videoWrapClass = compact
-    ? 'relative w-full max-w-[200px] overflow-hidden rounded-md bg-black'
-    : 'relative w-full max-w-md overflow-hidden rounded-lg bg-black';
+    ? 'relative aspect-[4/3] w-full max-h-[min(24dvh,9.375rem)] max-w-[min(100%,12.5rem,32dvh)] overflow-hidden rounded-md bg-black'
+    : 'relative aspect-[4/3] w-full max-h-[min(42dvh,21rem)] max-w-[min(100%,28rem,56dvh)] overflow-hidden rounded-lg bg-black';
   const scanBoxClass = compact
-    ? 'h-24 w-36 rounded-md border-2 border-white/60'
-    : 'h-48 w-64 rounded-lg border-2 border-white/60';
+    ? 'h-[min(6rem,70%)] w-[min(9rem,78%)] rounded-md border-2 border-white/60'
+    : 'h-[min(12rem,70%)] w-[min(16rem,78%)] rounded-lg border-2 border-white/60';
   const spinnerClass = compact ? 'size-6 border-2' : 'size-8 border-4';
 
   return (
-    <div className={cn('flex flex-col items-center', compact ? 'gap-2' : 'gap-4')}>
+    <div className={cn('flex min-h-0 w-full flex-col items-center', compact ? 'gap-2' : 'gap-4')}>
       {/* Status */}
       <div className="text-center">
         <p className={statusTitleClass}>{STATE_LABELS[state]}</p>
@@ -129,7 +129,7 @@ export function OcrCameraView({
           autoPlay
           playsInline
           muted
-          className="w-full"
+          className="h-full w-full object-contain"
         />
 
         {/* Scanning overlay */}

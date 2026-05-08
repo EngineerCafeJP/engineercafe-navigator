@@ -1,5 +1,6 @@
 from unittest.mock import AsyncMock
 
+import httpx
 import pytest
 from cachetools import TTLCache
 
@@ -11,7 +12,9 @@ from backend.agents.voice_agent import (
     get_tts_max_bytes,
     truncate_by_bytes,
     map_vrm_to_tts_emotion,
+    PiperPlusTTSClient,
     VoiceAgent,
+    VoiceVoxClient,
 )
 
 
@@ -24,6 +27,19 @@ class FakeTimer:
 
     def advance(self, seconds: float) -> None:
         self.current += seconds
+
+
+class FakeTTSHTTPResponse:
+    def __init__(
+        self, *, status_code: int = 200, content: bytes = b"", json_data=None, text: str = ""
+    ):
+        self.status_code = status_code
+        self.content = content
+        self._json_data = json_data if json_data is not None else {}
+        self.text = text
+
+    def json(self):
+        return self._json_data
 
 
 def test_parse_emotion_tags_removes_tags_and_maps_alias():
@@ -136,6 +152,107 @@ def test_map_vrm_to_tts_emotion():
     assert map_vrm_to_tts_emotion("happy") == "happy"
     assert map_vrm_to_tts_emotion("sad") == "sad"
     assert map_vrm_to_tts_emotion("angry") == "angry"
+
+
+@pytest.mark.asyncio
+async def test_piper_client_reuses_async_client_and_closes(monkeypatch):
+    class FakeAsyncClient:
+        instances = []
+
+        def __init__(self, timeout):
+            self.timeout = timeout
+            self.is_closed = False
+            self.posts = []
+            FakeAsyncClient.instances.append(self)
+
+        async def post(self, url, **kwargs):
+            self.posts.append((url, kwargs))
+            return FakeTTSHTTPResponse(content=b"wav-data")
+
+        async def aclose(self):
+            self.is_closed = True
+
+    monkeypatch.setattr("backend.agents.voice_agent.httpx.AsyncClient", FakeAsyncClient)
+    client = PiperPlusTTSClient(api_url="http://piper")
+
+    await client.synthesize_wav_base64("こんにちは", "ja")
+    await client.synthesize_wav_base64("Hello", "en", speaker_id=2)
+
+    assert len(FakeAsyncClient.instances) == 1
+    instance = FakeAsyncClient.instances[0]
+    assert instance.timeout == 30
+    assert len(instance.posts) == 2
+    assert instance.posts[0][0] == "http://piper/synthesize"
+    assert instance.posts[0][1]["json"] == {"text": "こんにちは", "language": "ja"}
+    assert instance.posts[1][1]["json"] == {"text": "Hello", "language": "en", "speaker_id": 2}
+
+    await client.close()
+
+    assert instance.is_closed is True
+    assert client._client is None
+
+
+@pytest.mark.asyncio
+async def test_voicevox_client_reuses_async_client_and_closes(monkeypatch):
+    class FakeAsyncClient:
+        instances = []
+
+        def __init__(self, timeout):
+            self.timeout = timeout
+            self.is_closed = False
+            self.posts = []
+            FakeAsyncClient.instances.append(self)
+
+        async def post(self, url, **kwargs):
+            self.posts.append((url, kwargs))
+            if url.endswith("/audio_query"):
+                return FakeTTSHTTPResponse(json_data={"query": "ok"})
+            return FakeTTSHTTPResponse(content=b"voicevox-wav")
+
+        async def aclose(self):
+            self.is_closed = True
+
+    monkeypatch.setattr("backend.agents.voice_agent.httpx.AsyncClient", FakeAsyncClient)
+    client = VoiceVoxClient(api_url="http://voicevox")
+
+    await client.synthesize_wav_base64("こんにちは", "ja")
+    await client.synthesize_wav_base64("こんばんは", "ja")
+
+    assert len(FakeAsyncClient.instances) == 1
+    instance = FakeAsyncClient.instances[0]
+    assert instance.timeout == 30
+    assert [url for url, _kwargs in instance.posts] == [
+        "http://voicevox/initialize_speaker",
+        "http://voicevox/audio_query",
+        "http://voicevox/synthesis",
+        "http://voicevox/audio_query",
+        "http://voicevox/synthesis",
+    ]
+
+    await client.aclose()
+
+    assert instance.is_closed is True
+    assert client._client is None
+
+
+@pytest.mark.asyncio
+async def test_piper_client_preserves_timeout_error(monkeypatch):
+    class TimeoutAsyncClient:
+        def __init__(self, timeout):
+            self.timeout = timeout
+            self.is_closed = False
+
+        async def post(self, url, **kwargs):
+            raise httpx.TimeoutException("request timed out")
+
+        async def aclose(self):
+            self.is_closed = True
+
+    monkeypatch.setattr("backend.agents.voice_agent.httpx.AsyncClient", TimeoutAsyncClient)
+    client = PiperPlusTTSClient(api_url="http://piper")
+
+    with pytest.raises(RuntimeError, match="PiperPlus TTS connection timeout"):
+        await client.synthesize_wav_base64("こんにちは", "ja")
 
 
 @pytest.mark.asyncio
