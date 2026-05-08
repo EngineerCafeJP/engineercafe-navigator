@@ -146,6 +146,13 @@ export class AudioStateManager {
     this.activeAudioServices.add(audioService);
     // Volume settings will be applied when creating the service
   }
+
+  unregisterAudioService(audioService: MobileAudioService) {
+    this.activeAudioServices.delete(audioService);
+    if (this.currentAudioService === audioService) {
+      this.currentAudioService = null;
+    }
+  }
   
   setVolume(vol: number) {
     this.globalVolume = Math.max(0, Math.min(1, vol));

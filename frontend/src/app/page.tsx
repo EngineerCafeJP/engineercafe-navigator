@@ -246,6 +246,7 @@ export default function Home() {
   useEffect(() => {
     if (kioskPhase === 'slides') {
       setWelcomeMemberOcrOpen(false);
+      setShowSettingsPanel(false);
     }
   }, [kioskPhase]);
 
@@ -320,18 +321,6 @@ export default function Home() {
     returnToIdle();
   }, [returnToIdle]);
 
-  const isSlideAgentMetadata = useCallback((metadata: VoiceInterfaceMetadata | null): boolean => {
-    if (!metadata) {
-      return false;
-    }
-    return (
-      metadata.agent === 'SlideAgent' ||
-      metadata.route === 'slide' ||
-      metadata.reception_target_agent === 'slide_agent' ||
-      metadata.reception_target_agent === 'SlideAgent'
-    );
-  }, []);
-
   return (
     <>
       <InitialSettingsModal
@@ -355,9 +344,6 @@ export default function Home() {
         showDefaultUI={false}
         onMetadataChange={(metadata) => {
           setLatestMetadata(metadata);
-          if (isSlideAgentMetadata(metadata)) {
-            startPresentation(currentLanguage);
-          }
         }}
         onSlideAgentResponse={() => {
           startPresentation(currentLanguage);
@@ -555,34 +541,36 @@ export default function Home() {
                   />
                 </div>
 
-                <div className="pointer-events-none absolute inset-0 z-30">
-                  <div
-                  className="pointer-events-none absolute"
-                  style={{
-                    top: screenPadding.paddingTop,
-                    left: screenPadding.paddingLeft,
-                  }}
-                >
-                  <ClockBadge language={voice.currentLanguage} />
-                </div>
-                <div
-                    className="pointer-events-auto absolute"
-                    style={{
-                      top: screenPadding.paddingTop,
-                      right: screenPadding.paddingRight,
-                    }}
-                  >
-                    <button
-                      data-testid="kiosk-settings-button"
-                      type="button"
-                      onClick={() => setShowSettingsPanel(true)}
-                      aria-label={voice.currentLanguage === 'ja' ? '設定' : 'Settings'}
-                      className="inline-flex size-11 shrink-0 items-center justify-center rounded-full border border-white/15 bg-black/45 text-white shadow-lg backdrop-blur-md transition-transform duration-200 ease-out hover:scale-105"
+                {!showSlideMode ? (
+                  <div className="pointer-events-none absolute inset-0 z-30">
+                    <div
+                      className="pointer-events-none absolute"
+                      style={{
+                        top: screenPadding.paddingTop,
+                        left: screenPadding.paddingLeft,
+                      }}
                     >
-                      <Settings className="size-5" />
-                    </button>
+                      <ClockBadge language={voice.currentLanguage} />
+                    </div>
+                    <div
+                      className="pointer-events-auto absolute"
+                      style={{
+                        top: screenPadding.paddingTop,
+                        right: screenPadding.paddingRight,
+                      }}
+                    >
+                      <button
+                        data-testid="kiosk-settings-button"
+                        type="button"
+                        onClick={() => setShowSettingsPanel(true)}
+                        aria-label={voice.currentLanguage === 'ja' ? '設定' : 'Settings'}
+                        className="inline-flex size-11 shrink-0 items-center justify-center rounded-full border border-white/15 bg-black/45 text-white shadow-lg backdrop-blur-md transition-transform duration-200 ease-out hover:scale-105"
+                      >
+                        <Settings className="size-5" />
+                      </button>
+                    </div>
                   </div>
-                </div>
+                ) : null}
 
                 <KioskWelcomeOverlay
                   open={welcomeMemberOcrOpen}
@@ -596,7 +584,7 @@ export default function Home() {
                   onMemberOcrEnd={handleWelcomeMemberOcrEndSilent}
                 />
 
-                {showSettingsPanel && settingsPanelProps ? (
+                {showSettingsPanel && settingsPanelProps && !showSlideMode ? (
                   <div
                     className="absolute inset-0 z-40 pointer-events-none"
                     aria-hidden={!showSettingsPanel}

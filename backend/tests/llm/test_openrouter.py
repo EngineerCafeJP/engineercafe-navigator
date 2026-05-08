@@ -166,6 +166,7 @@ class TestOpenRouterProvider:
             model_id=SupportedModel.GEMINI_3_1_FLASH_LITE,
             fallback_model=SupportedModel.GEMINI_2_5_FLASH_LITE,
             allow_cerebras_primary=True,
+            cerebras_primary_use_case="qa_response",
         )
 
         with (
@@ -199,6 +200,7 @@ class TestOpenRouterProvider:
             model_id=SupportedModel.GEMINI_3_1_FLASH_LITE,
             fallback_model=SupportedModel.GEMINI_2_5_FLASH_LITE,
             allow_cerebras_primary=True,
+            cerebras_primary_use_case="qa_response",
         )
 
         mock_response = MagicMock()

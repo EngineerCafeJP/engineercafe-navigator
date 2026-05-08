@@ -20,6 +20,7 @@ import { formatError } from '@/lib/error-messages';
 import { LipSyncAnalyzer, type LipSyncFrame } from '@/lib/lip-sync-analyzer';
 import { createVoiceFillerPlaybackGate } from '@/lib/voice-filler-playback';
 import { resolveVoiceResponseLanguage } from '@/lib/voice/response-language';
+import { isSlideAgentMetadata } from '@/lib/voice/slide-agent-metadata';
 import { mergePlaybackMetadataWithTtsVrmControl } from '@/lib/voice/tts-vrm-metadata';
 import { preprocessTTS } from '@/utils/tts-preprocess';
 import { AlertCircle, Loader2, Mic, MicOff, Volume2, VolumeX, XCircle } from 'lucide-react';
@@ -131,18 +132,6 @@ interface VoiceInterfaceProps {
 
 const DEFAULT_WAKE_WORDS = ['すみません', 'hello'];
 const VISITOR_ID_STORAGE_KEY = 'engineer_cafe_visitor_id';
-
-function isSlideAgentMetadata(metadata: VoiceInterfaceMetadata | null): boolean {
-  if (!metadata) {
-    return false;
-  }
-  return (
-    metadata.agent === 'SlideAgent' ||
-    metadata.route === 'slide' ||
-    metadata.reception_target_agent === 'slide_agent' ||
-    metadata.reception_target_agent === 'SlideAgent'
-  );
-}
 
 const STATUS_LABELS: Record<'ja' | 'en', Record<VoiceSessionState, string>> = {
   ja: {

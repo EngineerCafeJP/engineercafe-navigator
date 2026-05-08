@@ -38,6 +38,24 @@ async function mockReceptionApis(page: import('@playwright/test').Page) {
   });
 }
 
+async function dragOnSlidePanel(
+  page: import('@playwright/test').Page,
+  deltaX: number,
+  deltaY: number,
+) {
+  const box = await page.getByTestId('reception-pdf-landscape-panel').boundingBox();
+  expect(box).not.toBeNull();
+  if (!box) {
+    return;
+  }
+  const startX = box.x + box.width / 2;
+  const startY = box.y + box.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX + deltaX, startY + deltaY, { steps: 6 });
+  await page.mouse.up();
+}
+
 test.describe('Reception PDF guide', () => {
   test.beforeEach(async ({ page }) => {
     await mockReceptionApis(page);
@@ -67,6 +85,7 @@ test.describe('Reception PDF guide', () => {
     await expect(page.getByTestId('reception-pdf-play')).toHaveAttribute('data-state', 'playing', {
       timeout: 15_000,
     });
+    await expect(page.getByTestId('kiosk-settings-button')).toHaveCount(0);
   });
 
   test('close slides returns to Welcome', async ({ page }) => {
@@ -87,6 +106,36 @@ test.describe('Reception PDF guide', () => {
     await expect(page.getByTestId('reception-pdf-counter')).toHaveText('1 / 5', {
       timeout: 15_000,
     });
-    await expect(page.getByText('Auto-advance')).toBeVisible();
+    await expect(page.getByTestId('reception-pdf-controls')).toBeVisible();
+    await expect(page.getByText('Auto-advance')).toHaveCount(0);
+  });
+
+  test('horizontal swipes navigate slides while short or vertical drags are ignored', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 960, height: 540 });
+    await page.getByTestId('kiosk-slides-button').click();
+    await page.getByTestId('slide-language-ja').click();
+
+    await expect(page.getByTestId('reception-pdf-counter')).toHaveText('1 / 5', {
+      timeout: 15_000,
+    });
+    await expect(page.getByTestId('reception-pdf-play')).toHaveAttribute('data-state', 'playing', {
+      timeout: 15_000,
+    });
+    await page.getByTestId('reception-pdf-play').click();
+    await expect(page.getByTestId('reception-pdf-play')).toHaveAttribute('data-state', 'paused');
+
+    await dragOnSlidePanel(page, -180, 8);
+    await expect(page.getByTestId('reception-pdf-counter')).toHaveText('2 / 5');
+
+    await dragOnSlidePanel(page, -32, 0);
+    await expect(page.getByTestId('reception-pdf-counter')).toHaveText('2 / 5');
+
+    await dragOnSlidePanel(page, -180, 170);
+    await expect(page.getByTestId('reception-pdf-counter')).toHaveText('2 / 5');
+
+    await dragOnSlidePanel(page, 180, 6);
+    await expect(page.getByTestId('reception-pdf-counter')).toHaveText('1 / 5');
   });
 });

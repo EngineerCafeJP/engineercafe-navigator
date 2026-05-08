@@ -344,3 +344,65 @@ test("playAudioWithLipSync skips analyzer for blob audio URLs", async () => {
   assert.equal(result.method, "html-audio");
   assert.equal(audioContextConstructed, false);
 });
+
+test("playAudioWithLipSync reports aborted playback as cancelled", async () => {
+  class MockAudioElement {
+    public preload = "";
+    public volume = 1;
+    public paused = true;
+    public ended = false;
+    private listeners = new Map<string, Set<() => void>>();
+
+    constructor(public readonly url: string) {}
+
+    setAttribute() {}
+    removeAttribute() {}
+    load() {}
+    pause() {
+      if (this.paused) {
+        return;
+      }
+      this.paused = true;
+      this.listeners.get("pause")?.forEach((listener) => listener());
+    }
+    addEventListener(event: string, listener: () => void) {
+      const listeners = this.listeners.get(event) ?? new Set<() => void>();
+      listeners.add(listener);
+      this.listeners.set(event, listeners);
+    }
+    removeEventListener(event: string, listener: () => void) {
+      this.listeners.get(event)?.delete(listener);
+    }
+    async play() {
+      this.paused = false;
+      this.listeners.get("play")?.forEach((listener) => listener());
+    }
+  }
+
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: { innerWidth: 390, setTimeout, clearTimeout },
+  });
+  Object.defineProperty(globalThis, "document", {
+    configurable: true,
+    value: {
+      addEventListener() {},
+      removeEventListener() {},
+    },
+  });
+  Object.defineProperty(globalThis, "Audio", {
+    configurable: true,
+    value: MockAudioElement,
+  });
+
+  const controller = new AbortController();
+  const playback = AudioPlaybackService.playAudioWithLipSync("blob:playback-audio", {
+    signal: controller.signal,
+  });
+
+  controller.abort();
+
+  const result = await playback;
+  assert.equal(result.success, false);
+  assert.equal(result.method, "cancelled");
+});

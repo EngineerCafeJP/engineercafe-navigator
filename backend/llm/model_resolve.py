@@ -21,6 +21,14 @@ from backend.llm.models import SupportedModel
 logger = logging.getLogger(__name__)
 
 _DEFAULT_FAST_PRIMARY = SupportedModel.GEMINI_3_1_FLASH_LITE.value
+_DEFAULT_CEREBRAS_PRIMARY_USE_CASES = frozenset(
+    {
+        "qa_response",
+        "general_knowledge",
+        "event_info",
+        "facility_info",
+    }
+)
 
 
 def resolved_openrouter_model_slug(config: "ModelConfig", *, branch: str = "primary") -> str:
@@ -76,6 +84,38 @@ def fast_llm_enabled() -> bool:
     return raw not in {"0", "false", "no", "off"}
 
 
+def cerebras_primary_use_cases() -> frozenset[str] | None:
+    """
+    Use cases eligible for direct Cerebras primary.
+
+    None means all ModelConfig-level opt-ins are allowed. An empty set means
+    none are allowed. Unset defaults to lightweight response configs only.
+    """
+    raw = os.getenv("CEREBRAS_PRIMARY_USE_CASES")
+    if raw is None:
+        return _DEFAULT_CEREBRAS_PRIMARY_USE_CASES
+
+    values = frozenset(part.strip().lower() for part in raw.split(",") if part.strip())
+    if values & {"*", "all"}:
+        return None
+    if not values or values & {"0", "false", "no", "none", "off"}:
+        return frozenset()
+    return values
+
+
+def cerebras_primary_use_case_allowed(config: "ModelConfig") -> bool:
+    allowed = cerebras_primary_use_cases()
+    if allowed is None:
+        return True
+    if not allowed:
+        return False
+
+    use_case = getattr(config, "cerebras_primary_use_case", None)
+    if not use_case:
+        return False
+    return use_case.strip().lower() in allowed
+
+
 def cerebras_primary_enabled(config: "ModelConfig") -> bool:
     """Whether direct Cerebras should be attempted before OpenRouter for fast configs."""
     provider = os.getenv("FAST_LLM_PRIMARY_PROVIDER", "").strip().lower()
@@ -85,6 +125,7 @@ def cerebras_primary_enabled(config: "ModelConfig") -> bool:
         and provider == "cerebras"
         and bool(key)
         and bool(getattr(config, "allow_cerebras_primary", False))
+        and cerebras_primary_use_case_allowed(config)
         and is_fast_primary_config(config)
     )
 

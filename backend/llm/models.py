@@ -74,6 +74,7 @@ class ModelConfig:
         fallback_model: Backup model if primary fails (same OpenRouter API)
         timeout: Request timeout in seconds
         allow_cerebras_primary: Allow direct Cerebras before OpenRouter for lightweight answers
+        cerebras_primary_use_case: Stable use-case name for env allowlist checks
     """
 
     model_id: SupportedModel
@@ -83,6 +84,7 @@ class ModelConfig:
     fallback_model: Optional[SupportedModel] = None
     timeout: float = 30.0
     allow_cerebras_primary: bool = False
+    cerebras_primary_use_case: Optional[str] = None
 
     input_cost_per_1k: float = field(default=0.0, repr=False)
     output_cost_per_1k: float = field(default=0.0, repr=False)
@@ -116,6 +118,7 @@ MODEL_CONFIGS: dict[str, ModelConfig] = {
         max_tokens=1024,
         fallback_model=SupportedModel.GEMINI_2_5_FLASH_LITE,
         allow_cerebras_primary=True,
+        cerebras_primary_use_case="qa_response",
         input_cost_per_1k=0.0001,
         output_cost_per_1k=0.0004,
     ),
@@ -133,6 +136,7 @@ MODEL_CONFIGS: dict[str, ModelConfig] = {
         max_tokens=1024,
         fallback_model=SupportedModel.GEMINI_2_5_FLASH_LITE,
         allow_cerebras_primary=True,
+        cerebras_primary_use_case="general_knowledge",
         input_cost_per_1k=0.0001,
         output_cost_per_1k=0.0004,
     ),
@@ -150,6 +154,8 @@ MODEL_CONFIGS: dict[str, ModelConfig] = {
         temperature=0.4,
         max_tokens=512,
         fallback_model=SupportedModel.GEMINI_2_5_FLASH_LITE,
+        allow_cerebras_primary=True,
+        cerebras_primary_use_case="event_info",
         input_cost_per_1k=0.0001,
         output_cost_per_1k=0.0004,
     ),
@@ -158,6 +164,8 @@ MODEL_CONFIGS: dict[str, ModelConfig] = {
         temperature=0.5,
         max_tokens=768,
         fallback_model=SupportedModel.GEMINI_2_5_FLASH_LITE,
+        allow_cerebras_primary=True,
+        cerebras_primary_use_case="facility_info",
         input_cost_per_1k=0.0001,
         output_cost_per_1k=0.0004,
     ),
