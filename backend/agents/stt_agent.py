@@ -286,7 +286,10 @@ def _parse_qwen_stt_hedge_delay(
 ) -> float | None:
     """Parse the latency budget before Vosk fallback starts racing Qwen."""
 
-    default = 4.0
+    # Cloud Run /api/stt has a 12s HTTP budget in production; starting the
+    # fallback earlier keeps slow Qwen runs from making Vosk finish just after
+    # the caller has already timed out.
+    default = 2.0
     if raw_value is None or raw_value.strip() == "":
         timeout = default
     else:
@@ -436,14 +439,25 @@ def _normalize_vosk_route_transcript(transcript: str, language: Optional[str]) -
     if not normalized:
         return transcript
 
-    is_wifi_connection_confusion = ("はいはい" in normalized or "ハイハイ" in normalized) and (
+    has_repeated_hai = "はいはい" in normalized or "ハイハイ" in normalized
+    has_other_connection_target = any(
+        marker in normalized for marker in ("bluetooth", "プロジェクター")
+    )
+    is_wifi_connection_confusion = has_repeated_hai and (
         ("セット" in normalized and "逆方法" in normalized)
         or ("瀬田" in normalized and "作方法" in normalized)
+        or ("接続" in normalized and "方法" in normalized and not has_other_connection_target)
     )
     if is_wifi_connection_confusion:
         return "Wi-Fiの接続方法を教えてください。"
 
-    if "仮想環境" in normalized and any(marker in normalized for marker in ("パート", "ぱいと")):
+    is_python_venv_confusion = (
+        "仮想環境" in normalized and any(marker in normalized for marker in ("パート", "ぱいと"))
+    ) or normalized in {
+        "配管のかかとは何ですか",
+        "配管のかかととは何ですか",
+    }
+    if is_python_venv_confusion:
         return "Python の仮想環境とは何ですか。"
 
     has_time_context = any(marker in normalized for marker in ("時間", "影響時", "液状時"))
@@ -471,10 +485,19 @@ def _normalize_vosk_route_transcript(transcript: str, language: Optional[str]) -
             "壁",
         )
     ) or ("赤毛" in normalized and "アン" in normalized)
-    has_engineer_cafe_context = has_engineer_cafe_context or (
-        "元気" in normalized
-        and ("新潟" in normalized or "県" in normalized)
-        and "影響" in normalized
+    has_engineer_cafe_context = (
+        has_engineer_cafe_context
+        or (
+            "元気" in normalized
+            and ("新潟" in normalized or "県" in normalized)
+            and "影響" in normalized
+        )
+        or (
+            "園児" in normalized
+            and "変" in normalized
+            and "影響" in normalized
+            and "出る" not in normalized
+        )
     )
     if not has_engineer_cafe_context:
         return transcript

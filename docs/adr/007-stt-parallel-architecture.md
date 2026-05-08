@@ -62,7 +62,7 @@ Engineer Cafe Navigator のアルファテストに向けて、STT (Speech-to-Te
 |---|---|---|
 | `STT_PROVIDER` | コード既定: production=`google`, non-production=`qwen0.6b-cpu`; Cloud Run deploy は `qwen-primary` を明示設定 | STT プロバイダー選択 |
 | `QWEN_STT_TIMEOUT` | `24` | Qwen hard timeout (秒)。Cloud Run は `45` |
-| `QWEN_STT_HEDGE_DELAY_SECONDS` | `4` | Qwen 先行後、Vosk fallback を開始するまでの soft latency budget |
+| `QWEN_STT_HEDGE_DELAY_SECONDS` | `2` | Qwen 先行後、Vosk fallback を開始するまでの soft latency budget |
 | `QWEN_STT_HEDGE_GRACE_SECONDS` | `6` | Vosk fallback 完了後も Qwen を優先するために待つ grace window |
 | `STT_LLM_POSTPROCESS` | `false` | Vosk フォールバック時の LLM 後処理 |
 | `HF_HOME` | `/app/.hf_cache` | HuggingFace モデルキャッシュ |
