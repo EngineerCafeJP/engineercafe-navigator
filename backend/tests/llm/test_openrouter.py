@@ -286,6 +286,34 @@ class TestOpenRouterProvider:
         assert FakeAsyncClient.timeouts == [1.25]
 
     @pytest.mark.asyncio
+    async def test_openrouter_fast_request_uses_fast_timeout_env(self, monkeypatch):
+        """OpenRouter fast path should time out quickly enough for fallback routing."""
+        messages = [HumanMessage(content="Test message")]
+        config = ModelConfig(
+            model_id=SupportedModel.GEMINI_3_1_FLASH_LITE,
+            fallback_model=SupportedModel.GEMINI_2_5_FLASH_LITE,
+            timeout=30.0,
+        )
+        monkeypatch.setenv("FAST_LLM_TIMEOUT_SECONDS", "1.5")
+        monkeypatch.delenv("OPENROUTER_TIMEOUT_SECONDS", raising=False)
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "choices": [{"message": {"content": "OpenRouter fast response"}}]
+        }
+        observed_timeouts = []
+
+        async def mock_post(*args, **kwargs):
+            observed_timeouts.append(kwargs.get("timeout"))
+            return mock_response
+
+        with patch.object(self.provider._http_client, "post", side_effect=mock_post):
+            response = await self.provider.generate(messages, config)
+
+        assert response == "OpenRouter fast response"
+        assert observed_timeouts == [1.5]
+
+    @pytest.mark.asyncio
     async def test_cerebras_fast_primary_requires_config_opt_in(self):
         """施設・イベント系のfast configへCerebras primaryが波及しないこと"""
         messages = [HumanMessage(content="Test message")]

@@ -40,6 +40,7 @@ def _assert_cached_audio_entry(
     audio_format: str = "audio/wav",
     fallback_used: bool = False,
     fallback_provider: str | None = None,
+    actual_provider: str | None = "voicevox",
 ) -> None:
     cached = agent._tts_cache[cache_key]
     assert cached == {
@@ -47,6 +48,7 @@ def _assert_cached_audio_entry(
         "format": audio_format,
         "fallback_used": fallback_used,
         "fallback_provider": fallback_provider,
+        "actual_provider": actual_provider,
     }
 
 

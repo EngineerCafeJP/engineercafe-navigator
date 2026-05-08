@@ -1421,12 +1421,46 @@ async def voice_api(request: Request, body: VoiceRequest):
                         "tts",
                         ok=False,
                         provider=body.ttsProvider or os.getenv("TTS_PROVIDER", "voicevox"),
+                        actualProvider=result.get("actual_provider"),
+                        latencyMs=result.get("tts_duration_ms"),
+                        cacheHit=result.get("tts_cache_hit"),
+                        fallbackUsed=bool(result.get("fallback_used")),
+                        fallbackProvider=result.get("fallback_provider"),
                         error=result.get("error", "TTS failed"),
                     ),
                 )
 
             audio_b64 = result.get("audioResponse")
             audio_format = result.get("format")
+            if not isinstance(audio_b64, str) or not audio_b64.strip():
+                error_message = "TTS completed without audioResponse"
+                logger.error(
+                    "%s: request_id=%s provider=%s actual_provider=%s",
+                    error_message,
+                    request_id,
+                    body.ttsProvider or os.getenv("TTS_PROVIDER", "voicevox"),
+                    result.get("actual_provider"),
+                )
+                return VoiceResponse(
+                    success=False,
+                    error=error_message,
+                    emotion=result.get("emotion"),
+                    audioFormat=audio_format,
+                    sessionId=body.sessionId,
+                    requestId=request_id,
+                    phase="text_to_speech",
+                    upstreamStatus=_upstream_status(
+                        "tts",
+                        ok=False,
+                        provider=body.ttsProvider or os.getenv("TTS_PROVIDER", "voicevox"),
+                        actualProvider=result.get("actual_provider"),
+                        latencyMs=result.get("tts_duration_ms"),
+                        cacheHit=result.get("tts_cache_hit"),
+                        fallbackUsed=bool(result.get("fallback_used")),
+                        fallbackProvider=result.get("fallback_provider"),
+                        error=error_message,
+                    ),
+                )
             tts_wav_b64_for_vrm: Optional[str] = None
             if audio_format == "audio/wav" and audio_b64:
                 tts_wav_b64_for_vrm = audio_b64
@@ -1471,6 +1505,12 @@ async def voice_api(request: Request, body: VoiceRequest):
                     tts_wav_b64=tts_wav_b64_for_vrm,
                 )
 
+            requested_tts_provider = body.ttsProvider or os.getenv("TTS_PROVIDER", "voicevox")
+            actual_tts_provider = result.get("actual_provider") or (
+                result.get("fallback_provider")
+                if result.get("fallback_used")
+                else requested_tts_provider
+            )
             return VoiceResponse(
                 success=True,
                 audioResponse=audio_b64,
@@ -1483,13 +1523,11 @@ async def voice_api(request: Request, body: VoiceRequest):
                 phase="text_to_speech",
                 upstreamStatus=_upstream_status(
                     "tts",
-                    provider=body.ttsProvider or os.getenv("TTS_PROVIDER", "voicevox"),
-                    actualProvider=(
-                        result.get("fallback_provider")
-                        if result.get("fallback_used")
-                        else (body.ttsProvider or os.getenv("TTS_PROVIDER", "voicevox"))
-                    ),
+                    provider=requested_tts_provider,
+                    actualProvider=actual_tts_provider,
                     format=audio_format,
+                    language=result.get("language"),
+                    latencyMs=result.get("tts_duration_ms"),
                     cacheHit=result.get("tts_cache_hit"),
                     fallbackUsed=bool(result.get("fallback_used")),
                     fallbackProvider=result.get("fallback_provider"),

@@ -11,6 +11,7 @@ from backend.agents.voice_agent import (
     parse_emotion_tags,
     preprocess_tts,
     clean_text_for_tts,
+    get_tts_timeout_seconds,
     get_tts_max_bytes,
     truncate_by_bytes,
     map_vrm_to_tts_emotion,
@@ -372,6 +373,23 @@ async def test_text_to_speech_piper_timeout_falls_back_quickly(monkeypatch):
     assert "timed out" in result["error"]
 
 
+def test_piper_primary_timeout_default_covers_live_answer_window(monkeypatch):
+    monkeypatch.delenv("TTS_PIPER_PRIMARY_TIMEOUT_SECONDS", raising=False)
+    monkeypatch.delenv("TTS_PRIMARY_TIMEOUT_SECONDS", raising=False)
+    monkeypatch.delenv("TTS_PIPER_TIMEOUT_SECONDS", raising=False)
+
+    assert get_tts_timeout_seconds("piper", "primary") == 4.0
+
+
+def test_piper_voicevox_fallback_requires_url_on_cloud_run(monkeypatch):
+    monkeypatch.setenv("K_SERVICE", "engineer-cafe-backend")
+    monkeypatch.delenv("VOICEVOX_API_URL", raising=False)
+
+    agent = VoiceAgent(tts_provider="piper")
+
+    assert agent.voicevox_fallback_client is None
+
+
 @pytest.mark.asyncio
 async def test_text_to_speech_caches_successful_fallback(monkeypatch):
     monkeypatch.setenv("TTS_PIPER_PRIMARY_TIMEOUT_SECONDS", "0.01")
@@ -424,6 +442,63 @@ async def test_text_to_speech_empty_primary_audio_uses_fallback(monkeypatch):
     assert result["fallback_used"] is True
     assert result["fallback_provider"] == "google"
     assert result["audioResponse"] == "FALLBACK_BASE64"
+    assert "empty audio response" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_text_to_speech_piper_empty_primary_audio_uses_voicevox_fallback(monkeypatch):
+    agent = VoiceAgent(tts_provider="piper")
+
+    async def fake_piper_empty(text, lang):
+        return ""
+
+    async def fake_voicevox_synth(text, lang, speaker_id=None):
+        return "VOICEVOX_FALLBACK_BASE64"
+
+    monkeypatch.setattr(agent.tts_client, "synthesize_wav_base64", fake_piper_empty)
+    monkeypatch.setattr(
+        agent.voicevox_fallback_client, "synthesize_wav_base64", fake_voicevox_synth
+    )
+
+    result = await agent.text_to_speech(text="こんにちは", language="ja")
+
+    assert result["success"] is True
+    assert result["fallback_used"] is True
+    assert result["fallback_provider"] == "voicevox"
+    assert result["actual_provider"] == "voicevox"
+    assert result["language"] == "ja"
+    assert result["audioResponse"] == "VOICEVOX_FALLBACK_BASE64"
+    assert "empty audio response" in result["error"]
+    assert isinstance(result["tts_duration_ms"], int)
+
+
+@pytest.mark.asyncio
+async def test_text_to_speech_piper_local_fallback_failure_uses_google(monkeypatch):
+    agent = VoiceAgent(tts_provider="piper")
+
+    async def fake_piper_empty(text, lang):
+        return ""
+
+    async def fake_voicevox_fail(text, lang, speaker_id=None):
+        raise RuntimeError("voicevox unavailable")
+
+    async def fake_google_synth(text, lang, emotion):
+        return "GOOGLE_FALLBACK_MP3_BASE64"
+
+    monkeypatch.setattr(agent.tts_client, "synthesize_wav_base64", fake_piper_empty)
+    monkeypatch.setattr(agent.voicevox_fallback_client, "synthesize_wav_base64", fake_voicevox_fail)
+    agent.google_fallback_client.credentials_source = "{}"
+    monkeypatch.setattr(agent.google_fallback_client, "synthesize_mp3_base64", fake_google_synth)
+
+    result = await agent.text_to_speech(text="こんにちは", language="ja")
+
+    assert result["success"] is True
+    assert result["fallback_used"] is True
+    assert result["fallback_provider"] == "google"
+    assert result["actual_provider"] == "google"
+    assert result["format"] == "audio/mpeg"
+    assert result["language"] == "ja"
+    assert result["audioResponse"] == "GOOGLE_FALLBACK_MP3_BASE64"
     assert "empty audio response" in result["error"]
 
 

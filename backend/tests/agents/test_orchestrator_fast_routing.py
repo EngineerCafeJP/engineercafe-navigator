@@ -400,6 +400,23 @@ class TestOrchestratorFastRouting:
         assert result["category"] == "daily_conversation"
         assert result["request_type"] == "daily_conversation"
 
+    @pytest.mark.parametrize(
+        ("query", "agent", "request_type"),
+        [
+            ("元気ですか？営業時間も教えてください。", "business_info", "hours"),
+            ("ありがとう、Wi-Fiの接続方法も知りたいです。", "facility", "wifi"),
+            ("少し雑談してから今日のイベントを教えてください。", "event", "event"),
+        ],
+    )
+    def test_daily_conversation_marker_does_not_preempt_specific_intent(
+        self, orchestrator, query, agent, request_type
+    ):
+        result = orchestrator._try_fast_routing(query)
+
+        assert result is not None
+        assert result["agent"] == agent
+        assert result["request_type"] == request_type
+
     def test_current_weather_routes_to_current_info(self, orchestrator):
         result = orchestrator._try_fast_routing("今日の福岡の天気は？")
 

@@ -257,7 +257,7 @@ def clean_text_for_tts(text: str) -> str:
 DEFAULT_TTS_MAX_BYTES = 900
 MIN_CACHEABLE_TTS_AUDIO_BASE64_CHARS = 100
 _DEFAULT_TTS_TIMEOUTS: Dict[str, float] = {
-    "piper": 2.5,
+    "piper": 4.0,
     "kokoro": 3.0,
     "voicevox": 4.0,
     "google": 6.0,
@@ -787,13 +787,28 @@ class VoiceAgent:
 
         # piper障害時の日本語フォールバック用 VoiceVox クライアント
         if tts_provider == "piper":
-            voicevox_fallback_url = os.getenv("VOICEVOX_API_URL", "http://localhost:50021")
-            self.voicevox_fallback_client: Optional[VoiceVoxClient] = VoiceVoxClient(
-                api_url=voicevox_fallback_url
-            )
-            logger.info("VoiceVox fallback client initialized for piper: %s", voicevox_fallback_url)
+            voicevox_fallback_url = os.getenv("VOICEVOX_API_URL")
+            if voicevox_fallback_url or not os.getenv("K_SERVICE"):
+                voicevox_fallback_url = voicevox_fallback_url or "http://localhost:50021"
+                self.voicevox_fallback_client = VoiceVoxClient(api_url=voicevox_fallback_url)
+                logger.info(
+                    "VoiceVox fallback client initialized for piper: %s",
+                    voicevox_fallback_url,
+                )
+            else:
+                self.voicevox_fallback_client = None
+                logger.info(
+                    "VoiceVox fallback client disabled for piper "
+                    "(Cloud Run without VOICEVOX_API_URL)"
+                )
         else:
             self.voicevox_fallback_client = None
+
+        self.google_fallback_client: Optional[GoogleTTSClient]
+        if tts_provider == "google":
+            self.google_fallback_client = None
+        else:
+            self.google_fallback_client = GoogleTTSClient()
 
         self._tts_cache: TTLCache = TTLCache(maxsize=200, ttl=3600)
 
@@ -803,6 +818,7 @@ class VoiceAgent:
             getattr(self, "tts_client", None),
             getattr(self, "kokoro_client", None),
             getattr(self, "voicevox_fallback_client", None),
+            getattr(self, "google_fallback_client", None),
         ]
         seen: set[int] = set()
         for client in clients:
@@ -877,6 +893,16 @@ class VoiceAgent:
             return await asyncio.wait_for(awaitable, timeout=timeout_s)
         except asyncio.TimeoutError as exc:
             raise RuntimeError(f"{provider} TTS {role} timed out after {timeout_s:.2f}s") from exc
+
+    def _google_fallback_available(self) -> bool:
+        google_client = getattr(self, "google_fallback_client", None)
+        if google_client is None:
+            return False
+        credentials_source = getattr(google_client, "credentials_source", None)
+        default_key_path = getattr(google_client, "default_key_path", None)
+        return bool(credentials_source) or bool(
+            default_key_path and os.path.exists(default_key_path)
+        )
 
     def _detect_category(self, text: str, language: str) -> Optional[ClarificationCategory]:
         """
@@ -996,6 +1022,7 @@ class VoiceAgent:
                     "language": language,
                     "ambiguity_resolved": False,
                     "tts_cache_hit": True,
+                    "tts_duration_ms": int((time.perf_counter() - tts_started_at) * 1000),
                     "fallback_used": (
                         cached_entry.get("fallback_used")
                         if isinstance(cached_entry, dict)
@@ -1005,6 +1032,11 @@ class VoiceAgent:
                         cached_entry.get("fallback_provider")
                         if isinstance(cached_entry, dict)
                         else None
+                    ),
+                    "actual_provider": (
+                        cached_entry.get("actual_provider")
+                        if isinstance(cached_entry, dict)
+                        else self.tts_provider
                     ),
                 }
 
@@ -1064,6 +1096,7 @@ class VoiceAgent:
                     "format": audio_format,
                     "fallback_used": False,
                     "fallback_provider": None,
+                    "actual_provider": primary_attempt_provider or self.tts_provider,
                 }
 
             log_tts_event(
@@ -1083,34 +1116,57 @@ class VoiceAgent:
                 "language": language,
                 "ambiguity_resolved": False,
                 "tts_cache_hit": False,
+                "tts_duration_ms": int((time.perf_counter() - tts_started_at) * 1000),
+                "fallback_used": False,
+                "fallback_provider": None,
+                "actual_provider": primary_attempt_provider or self.tts_provider,
             }
         except Exception as e:
             logger.exception("TTS failed, trying fallback: %s", e)
             fallback_provider: Optional[str] = None
+
+            async def _google_fallback_audio() -> str:
+                google_client = getattr(self, "google_fallback_client", None)
+                if google_client is None:
+                    raise RuntimeError("Google fallback client is not configured")
+                if language not in ("ja", "en"):
+                    raise RuntimeError(f"Google fallback does not support language={language}")
+                return await self._await_tts_attempt(
+                    google_client.synthesize_mp3_base64(processed, language, "sad"),
+                    provider="google",
+                    role="fallback",
+                )
+
             try:
                 if self.tts_provider == "piper":
-                    # piper障害時: 日本語 → VoiceVox、英語 → Kokoro にフォールバック
-                    if language == "en":
-                        logger.warning("piper failed, falling back to Kokoro for en")
-                        if self.kokoro_client:
+                    # piper障害時: ローカルfallbackを優先し、未設定/失敗時だけGoogleへ退避する。
+                    try:
+                        if language == "en":
+                            logger.warning("piper failed, falling back to Kokoro for en")
+                            if not self.kokoro_client:
+                                raise RuntimeError(
+                                    "Piper unavailable and Kokoro not configured for English TTS"
+                                )
                             fallback_provider = "kokoro"
                             audio_b64 = await self._await_tts_attempt(
                                 self.kokoro_client.synthesize_wav_base64(processed, language),
                                 provider="kokoro",
                                 role="fallback",
                             )
+                            audio_format = "audio/wav"
                         else:
-                            raise RuntimeError(
-                                "Piper unavailable and Kokoro not configured for English TTS"
-                            )
-                    else:
-                        if language not in ("ja",):
+                            if language not in ("ja",):
+                                logger.warning(
+                                    "piper fallback to VoiceVox for unsupported language: %s",
+                                    language,
+                                )
                             logger.warning(
-                                "piper fallback to VoiceVox for unsupported language: %s",
-                                language,
+                                "piper failed, falling back to VoiceVox for %s", language
                             )
-                        logger.warning("piper failed, falling back to VoiceVox for %s", language)
-                        if self.voicevox_fallback_client:
+                            if not self.voicevox_fallback_client:
+                                raise RuntimeError(
+                                    "No VoiceVox fallback client available for piper TTS fallback"
+                                )
                             fallback_provider = "voicevox"
                             audio_b64 = await self._await_tts_attempt(
                                 self.voicevox_fallback_client.synthesize_wav_base64(
@@ -1119,11 +1175,17 @@ class VoiceAgent:
                                 provider="voicevox",
                                 role="fallback",
                             )
-                        else:
-                            raise RuntimeError(
-                                "No VoiceVox fallback client available for piper TTS fallback"
-                            )
-                    audio_format = "audio/wav"
+                            audio_format = "audio/wav"
+                    except Exception as local_fallback_error:
+                        if not self._google_fallback_available():
+                            raise local_fallback_error
+                        logger.warning(
+                            "Local piper TTS fallback failed, trying Google fallback: %s",
+                            local_fallback_error,
+                        )
+                        fallback_provider = "google"
+                        audio_b64 = await _google_fallback_audio()
+                        audio_format = "audio/mpeg"
                 elif language == "en":
                     # 英語フォールバック: 同じ失敗 provider の即時再試行は避ける。
                     if self.tts_provider == "google" and primary_attempt_provider != "google":
@@ -1142,6 +1204,10 @@ class VoiceAgent:
                             role="fallback",
                         )
                         audio_format = "audio/wav"
+                    elif self._google_fallback_available():
+                        fallback_provider = "google"
+                        audio_b64 = await _google_fallback_audio()
+                        audio_format = "audio/mpeg"
                     elif self.tts_provider == "voicevox" and primary_attempt_provider != "voicevox":
                         fallback_provider = "voicevox"
                         audio_b64 = await self._await_tts_attempt(
@@ -1155,14 +1221,18 @@ class VoiceAgent:
                             "English TTS failed and no alternate fallback provider is configured"
                         )
                 elif self.tts_provider == "voicevox":
-                    # 日本語フォールバック → VoiceVox
-                    fallback_provider = "voicevox"
-                    audio_b64 = await self._await_tts_attempt(
-                        self.tts_client.synthesize_wav_base64(processed, language),
-                        provider="voicevox",
-                        role="fallback",
-                    )
-                    audio_format = "audio/wav"
+                    if self._google_fallback_available():
+                        fallback_provider = "google"
+                        audio_b64 = await _google_fallback_audio()
+                        audio_format = "audio/mpeg"
+                    else:
+                        fallback_provider = "voicevox"
+                        audio_b64 = await self._await_tts_attempt(
+                            self.tts_client.synthesize_wav_base64(processed, language),
+                            provider="voicevox",
+                            role="fallback",
+                        )
+                        audio_format = "audio/wav"
                 else:
                     # Google TTSフォールバック
                     fallback_provider = "google"
@@ -1183,6 +1253,7 @@ class VoiceAgent:
                         "format": audio_format,
                         "fallback_used": True,
                         "fallback_provider": fallback_provider,
+                        "actual_provider": fallback_provider,
                     }
 
                 log_tts_event(
@@ -1203,9 +1274,12 @@ class VoiceAgent:
                     "cleanText": processed,
                     "error": str(e),
                     "format": audio_format,
+                    "language": language,
                     "fallback_used": True,
                     "fallback_provider": fallback_provider,
                     "tts_cache_hit": False,
+                    "tts_duration_ms": int((time.perf_counter() - tts_started_at) * 1000),
+                    "actual_provider": fallback_provider,
                 }
             except Exception as fallback_error:
                 logger.error("Fallback TTS also failed: %s", fallback_error)
@@ -1223,4 +1297,8 @@ class VoiceAgent:
                     "error": f"Failed to generate speech: {str(e)}",
                     "emotion": "confused",
                     "tts_cache_hit": False,
+                    "tts_duration_ms": int((time.perf_counter() - tts_started_at) * 1000),
+                    "fallback_used": False,
+                    "fallback_provider": None,
+                    "actual_provider": None,
                 }

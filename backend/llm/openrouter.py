@@ -32,6 +32,7 @@ from .model_resolve import (
     cerebras_reasoning_effort,
     cerebras_timeout_seconds,
     merge_gemini_openrouter_extra,
+    openrouter_timeout_seconds,
     resolved_openrouter_model_slug,
 )
 from .provider import LLMProvider
@@ -235,7 +236,11 @@ class OpenRouterProvider(LLMProvider):
         primary_slug = payload["model"]
 
         try:
-            response = await self._http_client.post("/chat/completions", json=payload)
+            response = await self._http_client.post(
+                "/chat/completions",
+                json=payload,
+                timeout=openrouter_timeout_seconds(config),
+            )
             response.raise_for_status()
             data = response.json()
 
@@ -269,6 +274,7 @@ class OpenRouterProvider(LLMProvider):
                     max_tokens=config.max_tokens,
                     top_p=config.top_p,
                     fallback_model=None,
+                    timeout=config.timeout,
                 )
                 return await self.generate(
                     messages,
@@ -303,6 +309,7 @@ class OpenRouterProvider(LLMProvider):
                     max_tokens=config.max_tokens,
                     top_p=config.top_p,
                     fallback_model=None,
+                    timeout=config.timeout,
                 )
                 return await self.generate(
                     messages,
@@ -349,6 +356,7 @@ class OpenRouterProvider(LLMProvider):
                 "POST",
                 "/chat/completions",
                 json=payload,
+                timeout=openrouter_timeout_seconds(config),
             ) as response:
                 response.raise_for_status()
 

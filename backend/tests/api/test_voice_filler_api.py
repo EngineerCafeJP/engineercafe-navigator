@@ -71,6 +71,9 @@ async def test_voice_filler_static_lookup_under_100ms(monkeypatch):
     assert response.intent == "event"
     assert response.audioResponse
     assert elapsed_ms < 100
+    assert response.upstreamStatus["ok"] is True
+    assert response.upstreamStatus["latencyMs"] < 100
+    assert response.upstreamStatus["fallbackUsed"] is False
 
 
 async def test_voice_filler_rejects_undersized_wav(monkeypatch, tmp_path):
@@ -145,6 +148,7 @@ async def test_voice_filler_uses_static_fallback_clip_when_intent_clip_missing(
     assert body["upstreamStatus"]["fallbackUsed"] is True
     assert body["upstreamStatus"]["actualIntent"] == "fallback"
     assert body["upstreamStatus"]["actualLanguage"] == "ja"
+    assert body["upstreamStatus"]["latencyMs"] < 100
 
 
 async def test_handle_stt_times_out_and_returns_recoverable_failure(monkeypatch):

@@ -597,6 +597,9 @@ class TestVoiceEndpoint:
                 "error": "Piper unavailable",
                 "fallback_used": True,
                 "fallback_provider": "voicevox",
+                "actual_provider": "voicevox",
+                "tts_duration_ms": 42,
+                "tts_cache_hit": False,
             }
         )
         with patch("backend.main._get_voice_agent_for_provider_key", return_value=mock_agent):
@@ -608,9 +611,42 @@ class TestVoiceEndpoint:
         assert resp.success is True
         assert resp.upstreamStatus["provider"] == "piper"
         assert resp.upstreamStatus["actualProvider"] == "voicevox"
+        assert resp.upstreamStatus["latencyMs"] == 42
+        assert resp.upstreamStatus["cacheHit"] is False
         assert resp.upstreamStatus["fallbackUsed"] is True
         assert resp.upstreamStatus["fallbackProvider"] == "voicevox"
         assert resp.upstreamStatus["error"] == "Piper unavailable"
+
+    @pytest.mark.asyncio
+    async def test_voice_tts_success_without_audio_is_reported_as_failure(self):
+        mock_agent = AsyncMock()
+        mock_agent.text_to_speech = AsyncMock(
+            return_value={
+                "success": True,
+                "audioResponse": "",
+                "format": "audio/wav",
+                "emotion": "neutral",
+                "fallback_used": False,
+                "fallback_provider": None,
+                "actual_provider": "piper",
+                "tts_duration_ms": 17,
+                "tts_cache_hit": False,
+            }
+        )
+        with patch("backend.main._get_voice_agent_for_provider_key", return_value=mock_agent):
+            from backend.main import VoiceRequest, voice_api
+
+            body = VoiceRequest(action="text_to_speech", text="hello", ttsProvider="piper")
+            resp = await voice_api(_mock_request(), body)
+
+        assert resp.success is False
+        assert resp.error == "TTS completed without audioResponse"
+        assert resp.upstreamStatus["ok"] is False
+        assert resp.upstreamStatus["provider"] == "piper"
+        assert resp.upstreamStatus["actualProvider"] == "piper"
+        assert resp.upstreamStatus["latencyMs"] == 17
+        assert resp.upstreamStatus["cacheHit"] is False
+        assert resp.upstreamStatus["fallbackUsed"] is False
 
 
 class TestSlidesEndpoint:
