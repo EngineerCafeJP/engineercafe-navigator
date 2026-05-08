@@ -110,6 +110,8 @@ class TestModelConfig:
         assert config.top_p == 0.9
         assert config.fallback_model is None
         assert config.timeout == 30.0
+        assert config.allow_cerebras_primary is False
+        assert config.cerebras_primary_use_case is None
         assert config.input_cost_per_1k == 0.0
         assert config.output_cost_per_1k == 0.0
 
@@ -310,6 +312,23 @@ class TestModelConfigs:
         config = MODEL_CONFIGS["general_knowledge"]
         assert config.model_id == SupportedModel.GEMINI_3_1_FLASH_LITE
         assert config.fallback_model == SupportedModel.GEMINI_2_5_FLASH_LITE
+
+    @pytest.mark.parametrize(
+        "use_case",
+        ["qa_response", "general_knowledge", "event_info", "facility_info"],
+    )
+    def test_lightweight_response_configs_allow_cerebras_primary(self, use_case: str):
+        """低遅延レスポンス用途だけが Cerebras primary opt-in を持つこと"""
+        config = MODEL_CONFIGS[use_case]
+        assert config.allow_cerebras_primary is True
+        assert config.cerebras_primary_use_case == use_case
+
+    @pytest.mark.parametrize("use_case", ["router", "clarification", "deep_reasoning", "vision"])
+    def test_non_response_configs_do_not_allow_cerebras_primary(self, use_case: str):
+        """routing/vision/deep reasoning は Cerebras primary に自動波及させないこと"""
+        config = MODEL_CONFIGS[use_case]
+        assert config.allow_cerebras_primary is False
+        assert config.cerebras_primary_use_case is None
 
     def test_deep_reasoning_keeps_gemini_pro(self):
         """deep_reasoning は明示 keyword 用に Pro モデルを保持すること"""

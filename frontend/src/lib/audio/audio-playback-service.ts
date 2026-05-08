@@ -9,6 +9,7 @@
  */
 
 import { AudioDataProcessor } from './audio-data-processor';
+import { audioStateManager } from '../audio-state-manager';
 import {
   AudioError,
   AudioErrorType,
@@ -35,6 +36,7 @@ export interface AudioPlaybackOptions {
   onError?: (error: AudioError) => void;
   /** Skip analyzer when frames are pre-baked (e.g. public/reception/lipsync). */
   precomputedLipSync?: LipSyncData | null;
+  signal?: AbortSignal;
 }
 
 async function analyzeLipSyncFromAudioData(
@@ -204,11 +206,62 @@ export class AudioPlaybackService {
             safeReject(audioError);
           }
         });
+        audioStateManager.registerAudioService(audioService);
+
+        const cleanup = () => {
+          isPlaying = false;
+          audioStateManager.unregisterAudioService(audioService);
+          audioService.dispose();
+          if (options.onVisemeUpdate) {
+            options.onVisemeUpdate('Closed', 0);
+          }
+        };
+        const onAbort = () => {
+          audioService.stop();
+          cleanup();
+          safeResolve({ success: false, method: 'cancelled' });
+        };
+        if (options.signal?.aborted) {
+          onAbort();
+          return;
+        }
+        options.signal?.addEventListener('abort', onAbort, { once: true });
+
+        audioService.updateEventHandlers({
+          onPlay: () => {
+            isPlaying = true;
+            playbackStartTime = performance.now();
+            if (lipSyncData && options.onVisemeUpdate) {
+              updateLipSync();
+            }
+          },
+          onEnded: () => {
+            cleanup();
+            options.signal?.removeEventListener('abort', onAbort);
+            options.onPlaybackEnd?.();
+            safeResolve({ success: true, method: playbackMethod });
+          },
+          onError: (error) => {
+            cleanup();
+            options.signal?.removeEventListener('abort', onAbort);
+            const audioError = error instanceof AudioError
+              ? error
+              : new AudioError(
+                  AudioErrorType.PLAYBACK_FAILED,
+                  (error as Error)?.message || 'Audio playback failed'
+                );
+            console.error('[AudioPlayback] Playback failed:', audioError);
+            options.onError?.(audioError);
+            safeReject(audioError);
+          }
+        });
         
         // Start audio playback
         audioService.playAudio(audioData)
           .then((result) => {
             if (!result.success) {
+              cleanup();
+              options.signal?.removeEventListener('abort', onAbort);
               const audioError = result.error ?? new AudioError(
                 AudioErrorType.PLAYBACK_FAILED,
                 'Audio playback failed'
@@ -221,6 +274,8 @@ export class AudioPlaybackService {
             // Don't resolve here - wait for onEnded callback
           })
           .catch((error) => {
+            cleanup();
+            options.signal?.removeEventListener('abort', onAbort);
             const audioError = AudioError.fromError(error as Error, AudioErrorType.PLAYBACK_FAILED);
             options.onError?.(audioError);
             safeReject(audioError);

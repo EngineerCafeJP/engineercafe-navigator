@@ -7,11 +7,12 @@
  */
 import { useKeyboardControls } from '@/app/hooks/useKeyboardControls';
 import { audioStateManager } from '@/lib/audio-state-manager';
-import { AudioPlaybackService } from '@/lib/audio/audio-playback-service';
 import {
   AudioInteractionManager,
   unlockAudioForUserGesture,
 } from '@/lib/audio/audio-interaction-manager';
+import { MobileAudioService } from '@/lib/audio/mobile-audio-service';
+import type { AudioDataInput, AudioOperationResult } from '@/lib/audio/audio-interfaces';
 import {
   RECEPTION_GUIDE_AUDIO_EXT,
   receptionGuideAudioPrefix,
@@ -26,6 +27,7 @@ import {
 import { parseReceptionNarrationMarkdown } from '@/lib/reception/parse-reception-narration-md';
 import { preprocessTTS } from '@/utils/tts-preprocess';
 import { cn } from '@/lib/cn';
+import { slideEventManager } from '@/lib/slide-events';
 import { ChevronLeft, ChevronRight, Pause, Play, RotateCw, RotateCcw } from 'lucide-react';
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
@@ -33,6 +35,16 @@ import type { PresentationCompleteReason } from './presentation-types';
 
 const SLIDE_DELAY_MS = 500;
 const NARRATION_GAP_MS = 300;
+
+type NarrationRun = {
+  id: number;
+  playbackSessionId: number;
+  page: number;
+  controller: AbortController;
+  audioService: MobileAudioService | null;
+};
+const SWIPE_MIN_DISTANCE_PX = 64;
+const SWIPE_HORIZONTAL_DOMINANCE = 1.35;
 
 function toSameOriginUrl(path: string): string {
   if (typeof window === 'undefined') {
@@ -177,9 +189,15 @@ export default function ReceptionPdfGuide({
 
   const autoPlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const narrationScheduleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const narrationAbortRef = useRef<AbortController | null>(null);
+  const activeNarrationRunRef = useRef<NarrationRun | null>(null);
+  const narrationRunSeqRef = useRef(0);
   const preloadedAudioRef = useRef<Map<string, HTMLAudioElement>>(new Map());
   const preloadedAudioStateRef = useRef<Map<string, StaticNarrationAudioState>>(new Map());
+  const swipeStartRef = useRef<{
+    pointerId: number | null;
+    x: number;
+    y: number;
+  } | null>(null);
 
   const playbackSessionRef = useRef(0);
   const isPlayingRef = useRef(isPlaying);
@@ -329,6 +347,7 @@ export default function ReceptionPdfGuide({
 
   useEffect(() => {
     const preloadedAudio = preloadedAudioRef.current;
+    const preloadedAudioState = preloadedAudioStateRef.current;
     return () => {
       try {
         window.speechSynthesis?.cancel();
@@ -341,7 +360,7 @@ export default function ReceptionPdfGuide({
         audio.load();
       }
       preloadedAudio.clear();
-      preloadedAudioStateRef.current.clear();
+      preloadedAudioState.clear();
     };
   }, []);
 
@@ -438,8 +457,20 @@ export default function ReceptionPdfGuide({
         clearTimeout(narrationScheduleRef.current);
         narrationScheduleRef.current = null;
       }
-      narrationAbortRef.current?.abort();
-      narrationAbortRef.current = null;
+      const run = activeNarrationRunRef.current;
+      if (run) {
+        run.controller.abort();
+        run.audioService?.stop();
+        run.audioService?.dispose();
+        run.audioService = null;
+        slideEventManager.emitNarrationComplete(run.page, {
+          sessionId: String(run.playbackSessionId),
+          narrationRunId: run.id,
+        });
+        activeNarrationRunRef.current = null;
+      }
+      isNarratingRef.current = false;
+      isNarrationInProgressRef.current = false;
       setIsNarrating(false);
       setIsNarrationInProgress(false);
       try {
@@ -497,7 +528,36 @@ export default function ReceptionPdfGuide({
     };
   }, [currentPage, totalPages, containerBounds]);
 
+  const setNarrationFlags = useCallback((active: boolean) => {
+    isNarratingRef.current = active;
+    isNarrationInProgressRef.current = active;
+    setIsNarrating(active);
+    setIsNarrationInProgress(active);
+  }, []);
+
+  const stopActiveNarration = useCallback(
+    (resetUi = true) => {
+      const run = activeNarrationRunRef.current;
+      if (run) {
+        run.controller.abort();
+        run.audioService?.stop();
+        run.audioService?.dispose();
+        run.audioService = null;
+        slideEventManager.emitNarrationComplete(run.page, {
+          sessionId: String(run.playbackSessionId),
+          narrationRunId: run.id,
+        });
+        activeNarrationRunRef.current = null;
+      }
+      if (resetUi) {
+        setNarrationFlags(false);
+      }
+    },
+    [setNarrationFlags],
+  );
+
   const startPlaybackSession = () => {
+    stopActiveNarration();
     playbackSessionRef.current += 1;
     isPlayingRef.current = true;
     return playbackSessionRef.current;
@@ -512,9 +572,132 @@ export default function ReceptionPdfGuide({
   const isActiveSession = (id: number) =>
     playbackSessionRef.current === id && isPlayingRef.current;
 
+  const isActiveNarrationRun = useCallback(
+    (run: NarrationRun) =>
+      activeNarrationRunRef.current === run &&
+      !run.controller.signal.aborted &&
+      playbackSessionRef.current === run.playbackSessionId &&
+      isPlayingRef.current &&
+      currentPageRef.current === run.page,
+    [],
+  );
+
+  const beginNarrationRun = useCallback(
+    (playbackSessionId: number, page: number): NarrationRun => {
+      stopActiveNarration(false);
+      const run: NarrationRun = {
+        id: narrationRunSeqRef.current + 1,
+        playbackSessionId,
+        page,
+        controller: new AbortController(),
+        audioService: null,
+      };
+      narrationRunSeqRef.current = run.id;
+      activeNarrationRunRef.current = run;
+      setNarrationFlags(true);
+      slideEventManager.emitNarrationStart(page, {
+        sessionId: String(playbackSessionId),
+        narrationRunId: run.id,
+      });
+      return run;
+    },
+    [setNarrationFlags, stopActiveNarration],
+  );
+
+  const finishNarrationRun = useCallback(
+    (run: NarrationRun) => {
+      if (activeNarrationRunRef.current !== run) {
+        return;
+      }
+      run.audioService?.dispose();
+      run.audioService = null;
+      activeNarrationRunRef.current = null;
+      setNarrationFlags(false);
+      slideEventManager.emitNarrationComplete(run.page, {
+        sessionId: String(run.playbackSessionId),
+        narrationRunId: run.id,
+      });
+    },
+    [setNarrationFlags],
+  );
+
+  const playNarrationAudio = useCallback(
+    async (
+      audioData: AudioDataInput,
+      run: NarrationRun,
+    ): Promise<AudioOperationResult> => {
+      if (!isActiveNarrationRun(run)) {
+        return { success: false, method: 'cancelled' };
+      }
+
+      return new Promise<AudioOperationResult>((resolve) => {
+        let settled = false;
+        let service: MobileAudioService | null = null;
+
+        const settle = (result: AudioOperationResult) => {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          run.controller.signal.removeEventListener('abort', onAbort);
+          if (run.audioService === service) {
+            run.audioService = null;
+          }
+          service?.dispose();
+          resolve(result);
+        };
+
+        const stopAsCancelled = () => {
+          service?.stop();
+          settle({ success: false, method: 'cancelled' });
+        };
+
+        const onAbort = () => {
+          stopAsCancelled();
+        };
+
+        service = new MobileAudioService({
+          volume: volume / 100,
+          onPlay: () => {
+            if (!isActiveNarrationRun(run)) {
+              stopAsCancelled();
+            }
+          },
+          onEnded: () => {
+            onVisemeControl?.('Closed', 0);
+            settle({ success: true, method: service?.getCurrentMethod() ?? undefined });
+          },
+          onError: (error) => {
+            settle({ success: false, error, method: service?.getCurrentMethod() ?? undefined });
+          },
+        });
+        run.audioService = service;
+        run.controller.signal.addEventListener('abort', onAbort, { once: true });
+
+        service
+          .playAudio(audioData)
+          .then((result) => {
+            if (!isActiveNarrationRun(run)) {
+              stopAsCancelled();
+              return;
+            }
+            if (!result.success) {
+              settle(result);
+            }
+          })
+          .catch(() => {
+            settle({
+              success: false,
+              method: service?.getCurrentMethod() ?? undefined,
+            });
+          });
+      });
+    },
+    [isActiveNarrationRun, onVisemeControl, volume],
+  );
+
   const clearPlaybackWork = useCallback(() => {
-    narrationAbortRef.current?.abort();
-    narrationAbortRef.current = null;
+    stopActiveNarration();
     try {
       window.speechSynthesis?.cancel();
     } catch {
@@ -528,17 +711,21 @@ export default function ReceptionPdfGuide({
       clearTimeout(narrationScheduleRef.current);
       narrationScheduleRef.current = null;
     }
-    setIsNarrating(false);
-    setIsNarrationInProgress(false);
     audioStateManager.stopAll();
     onVisemeControl?.('Closed', 0);
     onExpressionControl?.('neutral', 1.0);
-  }, [onExpressionControl, onVisemeControl]);
+  }, [onExpressionControl, onVisemeControl, stopActiveNarration]);
 
-  const setPageState = (p: number) => {
+  const setPageState = useCallback((p: number) => {
+    slideEventManager.emitSlideTransitionStart(p, {
+      sessionId: String(playbackSessionRef.current),
+    });
     currentPageRef.current = p;
     setCurrentPage(p);
-  };
+    slideEventManager.emitSlideTransitionComplete(p, {
+      sessionId: String(playbackSessionRef.current),
+    });
+  }, []);
 
   const advancePresentation = useCallback(
     (delayMs = SLIDE_DELAY_MS) => {
@@ -580,7 +767,7 @@ export default function ReceptionPdfGuide({
         step();
       }, delayMs);
     },
-    [onPresentationComplete]
+    [onPresentationComplete, setPageState]
   );
 
   const narrateCurrentSlide = useCallback(async () => {
@@ -593,40 +780,38 @@ export default function ReceptionPdfGuide({
     }
     const sid = playbackSessionRef.current;
     const pageAtStart = currentPageRef.current;
+    const run = beginNarrationRun(sid, pageAtStart);
     const stem = receptionGuidePageStem(pageAtStart);
     const audioPrefix = receptionGuideAudioPrefix(language);
     const audioUrl = toSameOriginUrl(`${audioPrefix}/${stem}.${RECEPTION_GUIDE_AUDIO_EXT}`);
-
-    narrationAbortRef.current = new AbortController();
-    const { signal } = narrationAbortRef.current;
+    const { signal } = run.controller;
 
     try {
       if (canUseStaticNarrationAudio(preloadedAudioStateRef.current.get(audioUrl))) {
-        if (!isActiveSession(sid) || currentPageRef.current !== pageAtStart) {
+        if (!isActiveNarrationRun(run)) {
           return;
         }
 
-        setIsNarrationInProgress(true);
-        setIsNarrating(true);
         let playedStaticAudio = false;
         try {
-          await AudioInteractionManager.getInstance().ensureAudioContext();
-          const result = await AudioPlaybackService.playAudioWithLipSync(audioUrl, {
-            volume: volume / 100,
-            enableLipSync: settings.enableLipSync,
-            onVisemeUpdate: onVisemeControl || undefined,
-          });
+          const result = await playNarrationAudio(audioUrl, run);
+          if (!isActiveNarrationRun(run)) {
+            return;
+          }
           if (!result.success) {
             throw result.error ?? new Error('Audio playback failed');
           }
           playedStaticAudio = true;
-          if (!isActiveSession(sid) || currentPageRef.current !== pageAtStart) {
+          if (!isActiveNarrationRun(run)) {
             return;
           }
           if (settings.autoAdvance) {
             advancePresentation(SLIDE_DELAY_MS);
           }
         } catch (err: unknown) {
+          if (!isActiveNarrationRun(run)) {
+            return;
+          }
           if (!shouldFallbackToGeneratedNarration(err)) {
             setAudioPermissionRequired(true);
             setIsPlaying(false);
@@ -634,9 +819,6 @@ export default function ReceptionPdfGuide({
             return;
           }
           preloadedAudioStateRef.current.set(audioUrl, 'failed');
-        } finally {
-          setIsNarrating(false);
-          setIsNarrationInProgress(false);
         }
         if (playedStaticAudio) {
           return;
@@ -646,87 +828,84 @@ export default function ReceptionPdfGuide({
       const text =
         narrationTexts[pageAtStart - 1]?.trim() ?? '';
       if (!text) {
-        if (isActiveSession(sid)) {
+        if (isActiveNarrationRun(run)) {
           advancePresentation(400);
         }
         return;
       }
-      if (!isActiveSession(sid) || currentPageRef.current !== pageAtStart) {
+      if (!isActiveNarrationRun(run)) {
         return;
       }
-      setIsNarrationInProgress(true);
-      setIsNarrating(true);
-      try {
-        let playedPiper = false;
-        const sidTrim = sessionId.trim();
-        if (sidTrim.length > 0) {
-          try {
-            const res = await fetch('/api/voice', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                action: 'text_to_speech',
-                text: preprocessTTS(text, language),
-                language,
-                sessionId: sidTrim,
-                includeVrmControl: false,
-              }),
-              signal,
-            });
-            const data = (await res.json()) as Record<string, unknown>;
-            if (
-              res.ok &&
-              data.success &&
-              typeof data.audioResponse === 'string' &&
-              data.audioResponse.length > 0
-            ) {
-              const raw = Uint8Array.from(atob(data.audioResponse), (c) => c.charCodeAt(0));
-              const buf = raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength);
-              await AudioInteractionManager.getInstance().ensureAudioContext();
-              const result = await AudioPlaybackService.playAudioWithLipSync(buf, {
-                volume: volume / 100,
-                enableLipSync: settings.enableLipSync,
-                onVisemeUpdate: onVisemeControl || undefined,
-              });
-              playedPiper = result.success;
+      let playedPiper = false;
+      const sidTrim = sessionId.trim();
+      if (sidTrim.length > 0) {
+        try {
+          const res = await fetch('/api/voice', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              action: 'text_to_speech',
+              text: preprocessTTS(text, language),
+              language,
+              sessionId: sidTrim,
+              includeVrmControl: false,
+            }),
+            signal,
+          });
+          const data = (await res.json()) as Record<string, unknown>;
+          if (
+            res.ok &&
+            data.success &&
+            typeof data.audioResponse === 'string' &&
+            data.audioResponse.length > 0
+          ) {
+            const raw = Uint8Array.from(atob(data.audioResponse), (c) => c.charCodeAt(0));
+            const buf = raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength);
+            if (!isActiveNarrationRun(run)) {
+              return;
             }
-          } catch {
-            playedPiper = false;
+            const result = await playNarrationAudio(buf, run);
+            playedPiper = result.success;
           }
+        } catch {
+          if (!isActiveNarrationRun(run)) {
+            return;
+          }
+          playedPiper = false;
         }
-        if (!playedPiper) {
-          await speakNarrationText(text, language, signal);
-        }
-        if (!isActiveSession(sid) || currentPageRef.current !== pageAtStart) {
-          return;
-        }
-        if (settings.autoAdvance) {
-          advancePresentation(SLIDE_DELAY_MS);
-        }
-      } finally {
-        setIsNarrating(false);
-        setIsNarrationInProgress(false);
+      }
+      if (!playedPiper) {
+        await speakNarrationText(text, language, signal);
+      }
+      if (!isActiveNarrationRun(run)) {
+        return;
+      }
+      if (settings.autoAdvance) {
+        advancePresentation(SLIDE_DELAY_MS);
       }
     } catch (e) {
       if (e instanceof Error && e.name === 'AbortError') {
         return;
       }
-      if (isActiveSession(sid)) {
+      if (isActiveNarrationRun(run)) {
         advancePresentation(400);
       }
+    } finally {
+      finishNarrationRun(run);
     }
   }, [
     advancePresentation,
+    beginNarrationRun,
+    finishNarrationRun,
+    isActiveNarrationRun,
     language,
     narrationTexts,
     onPresentationComplete,
-    onVisemeControl,
+    playNarrationAudio,
     sessionId,
     settings.autoAdvance,
-    settings.enableLipSync,
-    volume,
   ]);
 
   const narrateWithRetryRef = useRef<(retries?: number) => Promise<void>>(async () => {});
@@ -774,11 +953,11 @@ export default function ReceptionPdfGuide({
     };
   }, [isPlaying, totalPages, landscapeReady, language]);
 
-  const stopAutoPlay = () => {
+  const stopAutoPlay = useCallback(() => {
     pendingAutoStartRef.current = false;
     invalidatePlaybackSession();
     clearPlaybackWork();
-  };
+  }, [clearPlaybackWork]);
 
   const toggleAutoPlay = () => {
     if (isPlaying) {
@@ -815,7 +994,7 @@ export default function ReceptionPdfGuide({
     setIsPlaying(true);
   };
 
-  const previousSlide = () => {
+  const previousSlide = useCallback(() => {
     if (currentPage > 1) {
       const was = isPlayingRef.current;
       stopAutoPlay();
@@ -825,9 +1004,9 @@ export default function ReceptionPdfGuide({
       }
       setPageState(currentPage - 1);
     }
-  };
+  }, [currentPage, onPresentationComplete, setPageState, stopAutoPlay]);
 
-  const nextSlide = () => {
+  const nextSlide = useCallback(() => {
     if (currentPage < totalPages) {
       const was = isPlayingRef.current;
       stopAutoPlay();
@@ -837,9 +1016,9 @@ export default function ReceptionPdfGuide({
       }
       setPageState(currentPage + 1);
     }
-  };
+  }, [currentPage, onPresentationComplete, setPageState, stopAutoPlay, totalPages]);
 
-  const gotoSlide = (n: number) => {
+  const gotoSlide = useCallback((n: number) => {
     if (n >= 1 && n <= totalPages) {
       const was = isPlayingRef.current;
       if (was) {
@@ -848,6 +1027,53 @@ export default function ReceptionPdfGuide({
         onPresentationComplete?.('stopped');
       }
       setPageState(n);
+    }
+  }, [onPresentationComplete, setPageState, stopAutoPlay, totalPages]);
+
+  const handleSwipeDelta = useCallback(
+    (deltaX: number, deltaY: number) => {
+      const absX = Math.abs(deltaX);
+      const absY = Math.abs(deltaY);
+      if (
+        absX < SWIPE_MIN_DISTANCE_PX ||
+        absX < absY * SWIPE_HORIZONTAL_DOMINANCE
+      ) {
+        return;
+      }
+      if (deltaX < 0) {
+        nextSlide();
+      } else {
+        previousSlide();
+      }
+    },
+    [nextSlide, previousSlide],
+  );
+
+  const onSlidePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!event.isPrimary || event.button !== 0) {
+      return;
+    }
+    swipeStartRef.current = {
+      pointerId: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+    };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  };
+
+  const onSlidePointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+    const start = swipeStartRef.current;
+    if (!start || start.pointerId !== event.pointerId) {
+      return;
+    }
+    swipeStartRef.current = null;
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+    handleSwipeDelta(event.clientX - start.x, event.clientY - start.y);
+  };
+
+  const onSlidePointerCancel = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (swipeStartRef.current?.pointerId === event.pointerId) {
+      swipeStartRef.current = null;
     }
   };
 
@@ -908,85 +1134,77 @@ export default function ReceptionPdfGuide({
       data-testid="reception-pdf-guide"
       className={cn('relative flex h-full min-h-0 flex-col', className)}
     >
-      <div className="absolute left-2 right-12 top-2 z-20 flex flex-wrap items-center justify-between gap-1.5 rounded-xl border border-white/70 bg-white/85 px-2 py-1.5 shadow-lg backdrop-blur-md sm:left-3 sm:right-14 sm:top-3 sm:gap-2 sm:px-3 sm:py-2">
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            data-testid="reception-pdf-prev"
-            onClick={previousSlide}
-            disabled={currentPage === 1}
-            className="rounded bg-blue-500 p-1.5 text-white disabled:bg-gray-300 sm:p-2"
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </button>
-          <button
-            type="button"
-            data-testid="reception-pdf-next"
-            onClick={nextSlide}
-            disabled={currentPage >= totalPages}
-            className="rounded bg-blue-500 p-1.5 text-white disabled:bg-gray-300 sm:p-2"
-          >
-            <ChevronRight className="h-4 w-4" />
-          </button>
-          <span data-testid="reception-pdf-counter" className="text-sm font-medium text-gray-700">
-            {totalPages > 0 ? `${currentPage} / ${totalPages}` : '—'}
-          </span>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            data-testid="reception-pdf-play"
-            onClick={toggleAutoPlay}
-            aria-pressed={isPlaying}
-            data-state={isPlaying ? 'playing' : 'paused'}
-            className={cn(
-              'rounded p-1.5 text-white sm:p-2',
-              isPlaying ? 'bg-red-500' : 'bg-green-500'
-            )}
-          >
-            {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-          </button>
-          {isNarrating ? (
-            <span className="hidden text-xs text-blue-700 sm:inline">
-              {language === 'ja' ? 'ナレーション中…' : 'Narrating…'}
-            </span>
-          ) : null}
-          <button
-            type="button"
-            data-testid="reception-pdf-reset"
-            onClick={() => gotoSlide(1)}
-            className="rounded bg-gray-500 p-1.5 text-white sm:p-2"
-          >
-            <RotateCcw className="h-4 w-4" />
-          </button>
-          <label className="flex items-center gap-1 text-xs text-gray-600">
-            <input
-              type="checkbox"
-              checked={settings.enableLipSync}
-              onChange={(e) =>
-                setSettings((s) => ({ ...s, enableLipSync: e.target.checked }))
-              }
-            />
-            <span className="hidden sm:inline">{language === 'ja' ? 'リップ' : 'Lip'}</span>
-          </label>
-          <label className="flex items-center gap-1 text-xs text-gray-600">
-            <input
-              type="checkbox"
-              checked={settings.autoAdvance}
-              onChange={(e) =>
-                setSettings((s) => ({ ...s, autoAdvance: e.target.checked }))
-              }
-            />
-            <span className="hidden sm:inline">{language === 'ja' ? '自動送り' : 'Auto-advance'}</span>
-          </label>
-        </div>
-      </div>
       <div
         ref={wrapRef}
         data-testid="reception-pdf-landscape-panel"
-        className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-slate-100 p-0.5 sm:p-1"
+        onPointerDown={onSlidePointerDown}
+        onPointerUp={onSlidePointerUp}
+        onPointerCancel={onSlidePointerCancel}
+        className="relative flex min-h-0 flex-1 touch-pan-y items-center justify-center overflow-hidden bg-slate-100 p-0.5 sm:p-1"
       >
         <canvas ref={canvasRef} className="max-h-full max-w-full shadow-lg" data-testid="reception-pdf-canvas" />
+      </div>
+      <div
+        data-testid="reception-pdf-controls"
+        className="absolute bottom-2 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1.5 rounded-lg border border-white/70 bg-slate-950/75 px-2 py-1.5 text-white shadow-lg backdrop-blur-md sm:bottom-3 sm:gap-2 sm:px-3 sm:py-2"
+      >
+        <button
+          type="button"
+          data-testid="reception-pdf-prev"
+          onClick={previousSlide}
+          disabled={currentPage === 1}
+          aria-label={language === 'ja' ? '前のスライド' : 'Previous slide'}
+          className="inline-flex size-9 items-center justify-center rounded bg-white/15 text-white transition-colors hover:bg-white/25 disabled:bg-white/5 disabled:text-white/35 sm:size-10"
+        >
+          <ChevronLeft className="h-4 w-4" aria-hidden />
+        </button>
+        <button
+          type="button"
+          data-testid="reception-pdf-play"
+          onClick={toggleAutoPlay}
+          aria-label={
+            isPlaying
+              ? language === 'ja'
+                ? '一時停止'
+                : 'Pause'
+              : language === 'ja'
+                ? '再生'
+                : 'Play'
+          }
+          aria-pressed={isPlaying}
+          data-state={isPlaying ? 'playing' : 'paused'}
+          className={cn(
+            'inline-flex size-9 items-center justify-center rounded text-white transition-colors sm:size-10',
+            isPlaying ? 'bg-red-500 hover:bg-red-600' : 'bg-emerald-600 hover:bg-emerald-700',
+          )}
+        >
+          {isPlaying ? <Pause className="h-4 w-4" aria-hidden /> : <Play className="h-4 w-4" aria-hidden />}
+        </button>
+        <span
+          data-testid="reception-pdf-counter"
+          className="min-w-14 text-center text-sm font-semibold tabular-nums text-white"
+        >
+          {totalPages > 0 ? `${currentPage} / ${totalPages}` : '—'}
+        </span>
+        <button
+          type="button"
+          data-testid="reception-pdf-reset"
+          onClick={() => gotoSlide(1)}
+          aria-label={language === 'ja' ? '最初のスライドへ' : 'Reset to first slide'}
+          className="inline-flex size-9 items-center justify-center rounded bg-white/15 text-white transition-colors hover:bg-white/25 sm:size-10"
+        >
+          <RotateCcw className="h-4 w-4" aria-hidden />
+        </button>
+        <button
+          type="button"
+          data-testid="reception-pdf-next"
+          onClick={nextSlide}
+          disabled={currentPage >= totalPages}
+          aria-label={language === 'ja' ? '次のスライド' : 'Next slide'}
+          className="inline-flex size-9 items-center justify-center rounded bg-white/15 text-white transition-colors hover:bg-white/25 disabled:bg-white/5 disabled:text-white/35 sm:size-10"
+        >
+          <ChevronRight className="h-4 w-4" aria-hidden />
+        </button>
       </div>
       {audioPermissionRequired ? (
         <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/45 p-4">

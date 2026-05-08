@@ -59,6 +59,13 @@ async def my_agent_node(state):
 | Gemini 2.5 Pro | `google/gemini-2.5-pro` | 高度な推論の安定版 fallback |
 | GPT-5.4 Nano | `openai/gpt-5.4-nano` | OpenAI 側の高速・低コスト候補 |
 
+## Cerebras fast primary
+
+`FAST_LLM_PRIMARY_PROVIDER=cerebras` と `CEREBRAS_API_KEY` が設定されている場合、
+`CEREBRAS_PRIMARY_USE_CASES` で許可された軽量レスポンス設定だけが Cerebras を先に試します。
+既定値は `qa_response,general_knowledge,event_info,facility_info` です。
+失敗時は既存の OpenRouter primary/fallback に戻ります。`none` で primary 利用を無効化できます。
+
 ## モデル設定
 
 用途別に事前設定されたコンフィグ:

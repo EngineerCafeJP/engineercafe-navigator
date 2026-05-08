@@ -1,25 +1,43 @@
+export interface SlideEventDetail {
+  slideNumber: number;
+  sessionId?: string;
+  narrationRunId?: number;
+}
+
 export class SlideEventManager extends EventTarget {
-  emitSlideTransitionStart(slideNumber: number): void {
-    this.dispatchEvent(new CustomEvent('slideTransitionStart', {
-      detail: { slideNumber }
+  emitSlideTransitionStart(
+    slideNumber: number,
+    detail: Omit<SlideEventDetail, 'slideNumber'> = {},
+  ): void {
+    this.dispatchEvent(new CustomEvent<SlideEventDetail>('slideTransitionStart', {
+      detail: { slideNumber, ...detail }
     }));
   }
-  
-  emitSlideTransitionComplete(slideNumber: number): void {
-    this.dispatchEvent(new CustomEvent('slideTransitionComplete', {
-      detail: { slideNumber }
+
+  emitSlideTransitionComplete(
+    slideNumber: number,
+    detail: Omit<SlideEventDetail, 'slideNumber'> = {},
+  ): void {
+    this.dispatchEvent(new CustomEvent<SlideEventDetail>('slideTransitionComplete', {
+      detail: { slideNumber, ...detail }
     }));
   }
-  
-  emitNarrationStart(slideNumber: number): void {
-    this.dispatchEvent(new CustomEvent('narrationStart', {
-      detail: { slideNumber }
+
+  emitNarrationStart(
+    slideNumber: number,
+    detail: Omit<SlideEventDetail, 'slideNumber'> = {},
+  ): void {
+    this.dispatchEvent(new CustomEvent<SlideEventDetail>('narrationStart', {
+      detail: { slideNumber, ...detail }
     }));
   }
-  
-  emitNarrationComplete(slideNumber: number): void {
-    this.dispatchEvent(new CustomEvent('narrationComplete', {
-      detail: { slideNumber }
+
+  emitNarrationComplete(
+    slideNumber: number,
+    detail: Omit<SlideEventDetail, 'slideNumber'> = {},
+  ): void {
+    this.dispatchEvent(new CustomEvent<SlideEventDetail>('narrationComplete', {
+      detail: { slideNumber, ...detail }
     }));
   }
 }
