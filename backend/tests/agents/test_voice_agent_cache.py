@@ -65,6 +65,26 @@ async def test_text_to_speech_cache_hit_returns_cached_audio_without_tts(monkeyp
 
 
 @pytest.mark.asyncio
+async def test_text_to_speech_ignores_invalid_cached_audio(monkeypatch):
+    agent, calls = _make_new_voice_agent(audio_b64="D" * 128)
+    agent._tts_cache = TTLCache(maxsize=200, ttl=3600)
+    cache_key = _cache_key(agent, "こんにちは")
+    agent._tts_cache[cache_key] = "short-audio"
+    log_tts_cache_event = Mock()
+
+    monkeypatch.setattr(voice_agent_module, "log_tts_cache_event", log_tts_cache_event)
+
+    result = await agent.text_to_speech(text="こんにちは", language="ja")
+
+    assert result["success"] is True
+    assert result["audioResponse"] == "D" * 128
+    assert result["tts_cache_hit"] is False
+    assert calls["count"] == 1
+    assert agent._tts_cache[cache_key] == "D" * 128
+    log_tts_cache_event.assert_called_once_with(hit=False, cache_key=cache_key, language="ja")
+
+
+@pytest.mark.asyncio
 async def test_text_to_speech_does_not_cache_short_audio():
     agent, calls = _make_new_voice_agent(audio_b64="short-audio")
 

@@ -225,6 +225,12 @@ async def lifespan(app: FastAPI):
         logger.warning("Error closing store on shutdown: %s", e)
 
     try:
+        await _close_voice_agents()
+        logger.info("Voice agents closed on shutdown")
+    except Exception as e:
+        logger.warning("Error closing voice agents on shutdown: %s", e)
+
+    try:
         session_task_manager = get_session_task_manager()
         await session_task_manager.shutdown()
         logger.info("Session task manager shutdown complete")
@@ -1035,6 +1041,40 @@ _ALLOWED_TTS_PROVIDERS = frozenset({"voicevox", "piper", "google"})
 _stt_agent: Optional[Any] = None  # STTAgent (lazy-loaded)
 _slide_agent: Optional[Any] = None  # SlideAgent (lazy-loaded)
 _session_task_manager: Optional[Any] = None
+
+
+async def _close_voice_agents() -> None:
+    """Close cached VoiceAgent instances and clear the singletons."""
+    global _voice_agent, _voice_agents_by_provider
+
+    agents = []
+    if _voice_agent is not None:
+        agents.append(_voice_agent)
+    agents.extend(_voice_agents_by_provider.values())
+
+    seen: set[int] = set()
+    try:
+        for agent in agents:
+            agent_id = id(agent)
+            if agent_id in seen:
+                continue
+            seen.add(agent_id)
+
+            close = getattr(agent, "close", None)
+            if callable(close):
+                result = close()
+                if asyncio.iscoroutine(result):
+                    await result
+                continue
+
+            aclose = getattr(agent, "aclose", None)
+            if callable(aclose):
+                result = aclose()
+                if asyncio.iscoroutine(result):
+                    await result
+    finally:
+        _voice_agent = None
+        _voice_agents_by_provider = {}
 
 
 def _get_stm():

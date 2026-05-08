@@ -32,10 +32,16 @@ export function KioskOcrOverlay({
   return (
     <div
       data-testid="kiosk-ocr-overlay"
-      className="absolute inset-0 z-40 overflow-y-auto bg-black/60 p-4"
+      className="absolute inset-0 z-40 grid min-h-0 place-items-center overflow-y-auto bg-black/60"
+      style={{
+        paddingTop: 'max(1rem, env(safe-area-inset-top))',
+        paddingRight: 'max(1rem, env(safe-area-inset-right))',
+        paddingBottom: 'max(1rem, env(safe-area-inset-bottom))',
+        paddingLeft: 'max(1rem, env(safe-area-inset-left))',
+      }}
       onPointerDownCapture={bumpUserActivity}
     >
-      <div className="mx-auto max-w-lg rounded-[28px] border border-white/15 bg-white/95 p-5 shadow-xl md:p-8">
+      <div className="mx-auto max-h-full w-full max-w-lg overflow-y-auto rounded-[28px] border border-white/15 bg-white/95 p-5 shadow-xl md:p-8">
         <h3
           data-testid="kiosk-ocr-overlay-title"
           className="mb-4 text-center text-lg font-semibold text-slate-900"

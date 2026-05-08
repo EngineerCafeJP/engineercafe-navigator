@@ -255,6 +255,7 @@ def clean_text_for_tts(text: str) -> str:
 # -----------------------------------------------------------------------------
 
 DEFAULT_TTS_MAX_BYTES = 900
+MIN_CACHEABLE_TTS_AUDIO_BASE64_CHARS = 100
 
 
 def get_tts_max_bytes() -> int:
@@ -461,7 +462,21 @@ class VoiceVoxClient:
         """
         self.api_url = api_url.rstrip("/")
         self._initialized_speakers: set[int] = set()
+        self._client: Optional[httpx.AsyncClient] = None
         logger.info("VoiceVoxClient initialized: %s", self.api_url)
+
+    def _get_client(self) -> httpx.AsyncClient:
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(timeout=30)
+        return self._client
+
+    async def close(self) -> None:
+        if self._client is not None and not self._client.is_closed:
+            await self._client.aclose()
+        self._client = None
+
+    async def aclose(self) -> None:
+        await self.close()
 
     async def _ensure_speaker_initialized(self, client: httpx.AsyncClient, speaker_id: int) -> None:
         """初回遅延回避のためスピーカーを事前初期化 (公式推奨)"""
@@ -488,41 +503,39 @@ class VoiceVoxClient:
             speaker_id = self.DEFAULT_SPEAKER_JA if lang == "ja" else self.DEFAULT_SPEAKER_EN
 
         try:
-            async with httpx.AsyncClient(timeout=30) as client:
-                # Step 0: スピーカー初期化 (初回のみ、公式推奨)
-                await self._ensure_speaker_initialized(client, speaker_id)
+            client = self._get_client()
+            # Step 0: スピーカー初期化 (初回のみ、公式推奨)
+            await self._ensure_speaker_initialized(client, speaker_id)
 
-                # Step 1: Query 作成
-                query_url = f"{self.api_url}/audio_query"
-                query_response = await client.post(
-                    query_url,
-                    params={"text": text, "speaker": speaker_id},
-                )
+            # Step 1: Query 作成
+            query_url = f"{self.api_url}/audio_query"
+            query_response = await client.post(
+                query_url,
+                params={"text": text, "speaker": speaker_id},
+            )
 
-                if query_response.status_code >= 400:
-                    raise RuntimeError(f"VoiceVox audio_query failed: {query_response.status_code}")
+            if query_response.status_code >= 400:
+                raise RuntimeError(f"VoiceVox audio_query failed: {query_response.status_code}")
 
-                query_data = query_response.json()
+            query_data = query_response.json()
 
-                # Step 2: 音声合成
-                synthesis_url = f"{self.api_url}/synthesis"
-                synthesis_response = await client.post(
-                    synthesis_url,
-                    params={"speaker": speaker_id},
-                    json=query_data,
-                    headers={"Content-Type": "application/json"},
-                )
+            # Step 2: 音声合成
+            synthesis_url = f"{self.api_url}/synthesis"
+            synthesis_response = await client.post(
+                synthesis_url,
+                params={"speaker": speaker_id},
+                json=query_data,
+                headers={"Content-Type": "application/json"},
+            )
 
-                if synthesis_response.status_code >= 400:
-                    raise RuntimeError(
-                        f"VoiceVox synthesis failed: {synthesis_response.status_code}"
-                    )
+            if synthesis_response.status_code >= 400:
+                raise RuntimeError(f"VoiceVox synthesis failed: {synthesis_response.status_code}")
 
-                wav_data = synthesis_response.content
-                wav_b64 = base64.b64encode(wav_data).decode("utf-8")
+            wav_data = synthesis_response.content
+            wav_b64 = base64.b64encode(wav_data).decode("utf-8")
 
-                logger.info("VoiceVox synthesis success: text_len=%d", len(text))
-                return wav_b64
+            logger.info("VoiceVox synthesis success: text_len=%d", len(text))
+            return wav_b64
 
         except httpx.TimeoutException as e:
             logger.error("VoiceVox timeout: %s", e)
@@ -619,7 +632,21 @@ class PiperPlusTTSClient:
 
     def __init__(self, api_url: str = "http://localhost:8090"):
         self.api_url = api_url.rstrip("/")
+        self._client: Optional[httpx.AsyncClient] = None
         logger.info("PiperPlusTTSClient initialized: %s", self.api_url)
+
+    def _get_client(self) -> httpx.AsyncClient:
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(timeout=30)
+        return self._client
+
+    async def close(self) -> None:
+        if self._client is not None and not self._client.is_closed:
+            await self._client.aclose()
+        self._client = None
+
+    async def aclose(self) -> None:
+        await self.close()
 
     async def synthesize_wav_base64(
         self, text: str, lang: str, speaker_id: Optional[int] = None
@@ -640,20 +667,20 @@ class PiperPlusTTSClient:
             payload["speaker_id"] = speaker_id
 
         try:
-            async with httpx.AsyncClient(timeout=30) as client:
-                response = await client.post(
-                    f"{self.api_url}/synthesize",
-                    json=payload,
+            client = self._get_client()
+            response = await client.post(
+                f"{self.api_url}/synthesize",
+                json=payload,
+            )
+
+            if response.status_code >= 400:
+                raise RuntimeError(
+                    f"PiperPlus TTS API Error {response.status_code}: {response.text}"
                 )
 
-                if response.status_code >= 400:
-                    raise RuntimeError(
-                        f"PiperPlus TTS API Error {response.status_code}: {response.text}"
-                    )
-
-                wav_b64 = base64.b64encode(response.content).decode("utf-8")
-                logger.info("PiperPlus TTS synthesis success: text_len=%d", len(text))
-                return wav_b64
+            wav_b64 = base64.b64encode(response.content).decode("utf-8")
+            logger.info("PiperPlus TTS synthesis success: text_len=%d", len(text))
+            return wav_b64
 
         except httpx.TimeoutException as e:
             logger.error("PiperPlus TTS timeout: %s", e)
@@ -732,10 +759,51 @@ class VoiceAgent:
 
         self._tts_cache: TTLCache = TTLCache(maxsize=200, ttl=3600)
 
+    async def close(self) -> None:
+        """Close reusable TTS clients owned by this agent."""
+        clients = [
+            getattr(self, "tts_client", None),
+            getattr(self, "kokoro_client", None),
+            getattr(self, "voicevox_fallback_client", None),
+        ]
+        seen: set[int] = set()
+        for client in clients:
+            if client is None:
+                continue
+            client_id = id(client)
+            if client_id in seen:
+                continue
+            seen.add(client_id)
+            close = getattr(client, "close", None)
+            if callable(close):
+                result = close()
+                if asyncio.iscoroutine(result):
+                    await result
+                continue
+            aclose = getattr(client, "aclose", None)
+            if callable(aclose):
+                result = aclose()
+                if asyncio.iscoroutine(result):
+                    await result
+
+    async def aclose(self) -> None:
+        await self.close()
+
     @staticmethod
     def _tts_cache_key(text: str, language: str, provider: str, emotion: str) -> str:
         raw = f"{text}|{language}|{provider}|{emotion or 'neutral'}"
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+    def _ensure_tts_cache(self) -> TTLCache:
+        cache_store = getattr(self, "_tts_cache", None)
+        if cache_store is None:
+            cache_store = TTLCache(maxsize=200, ttl=3600)
+            self._tts_cache = cache_store
+        return cache_store
+
+    @staticmethod
+    def _is_cacheable_audio(audio_b64: Any) -> bool:
+        return isinstance(audio_b64, str) and len(audio_b64) > MIN_CACHEABLE_TTS_AUDIO_BASE64_CHARS
 
     def _tts_audio_format(self, language: str) -> str:
         if self.tts_provider == "piper" or language == "en" or self.tts_provider == "voicevox":
@@ -828,33 +896,33 @@ class VoiceAgent:
             processed = truncate_by_bytes(processed, max_tts_bytes)
             logger.warning("Text truncated to %d bytes for TTS", max_tts_bytes)
 
-        cache_store = getattr(self, "_tts_cache", None)
-        if cache_store is None:
-            cache_store = TTLCache(maxsize=200, ttl=3600)
-            self._tts_cache = cache_store
-
+        cache_store = self._ensure_tts_cache()
         cache_key = self._tts_cache_key(processed, language, self.tts_provider, vrm_emotion)
         cached_audio = cache_store.get(cache_key)
         if cached_audio is not None:
-            log_tts_cache_event(hit=True, cache_key=cache_key, language=language)
-            log_tts_event(
-                event="tts_complete",
-                provider=self.tts_provider,
-                language=language,
-                success=True,
-                tts_cache_hit=True,
-                tts_overall_duration_ms=int((time.perf_counter() - tts_started_at) * 1000),
-            )
-            return {
-                "success": True,
-                "audioResponse": cached_audio,
-                "emotion": vrm_emotion,
-                "cleanText": processed,
-                "format": self._tts_audio_format(language),
-                "language": language,
-                "ambiguity_resolved": False,
-                "tts_cache_hit": True,
-            }
+            if not self._is_cacheable_audio(cached_audio):
+                cache_store.pop(cache_key, None)
+                logger.warning("Ignored invalid TTS cache entry: cache_key=%s", cache_key)
+            else:
+                log_tts_cache_event(hit=True, cache_key=cache_key, language=language)
+                log_tts_event(
+                    event="tts_complete",
+                    provider=self.tts_provider,
+                    language=language,
+                    success=True,
+                    tts_cache_hit=True,
+                    tts_overall_duration_ms=int((time.perf_counter() - tts_started_at) * 1000),
+                )
+                return {
+                    "success": True,
+                    "audioResponse": cached_audio,
+                    "emotion": vrm_emotion,
+                    "cleanText": processed,
+                    "format": self._tts_audio_format(language),
+                    "language": language,
+                    "ambiguity_resolved": False,
+                    "tts_cache_hit": True,
+                }
 
         log_tts_cache_event(hit=False, cache_key=cache_key, language=language)
 
@@ -884,7 +952,7 @@ class VoiceAgent:
                 )
                 audio_format = "audio/mpeg"
 
-            if audio_b64 and len(audio_b64) > 100:
+            if self._is_cacheable_audio(audio_b64):
                 cache_store[cache_key] = audio_b64
 
             log_tts_event(

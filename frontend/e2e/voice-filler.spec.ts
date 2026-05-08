@@ -6,10 +6,17 @@ import { expect, test } from '@playwright/test';
 async function dismissInitialModal(page: import('@playwright/test').Page) {
   const modal = page.getByRole('dialog');
   const closeButton = page.getByTestId('initial-settings-close');
-  if (await closeButton.isVisible({ timeout: 3_000 }).catch(() => false)) {
-    await closeButton.click({ force: true }).catch(() => {});
-    await expect(modal).toBeHidden({ timeout: 10_000 });
-  }
+  await expect
+    .poll(async () => {
+      if (await modal.isHidden().catch(() => true)) {
+        return true;
+      }
+      if (await closeButton.isVisible({ timeout: 1_000 }).catch(() => false)) {
+        await closeButton.click({ force: true }).catch(() => {});
+      }
+      return modal.isHidden().catch(() => true);
+    }, { timeout: 10_000 })
+    .toBe(true);
   await expect(page.getByRole('button', { name: 'Welcome' })).toBeVisible({ timeout: 5_000 });
 }
 

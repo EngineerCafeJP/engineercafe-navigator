@@ -47,6 +47,10 @@ export function KioskBottomBar({
   setOcrMode: (mode: 'member_card' | 'handwriting') => void;
 }) {
   const isVoiceCaptureActive = kioskPhase === 'voice' && kioskVoiceLocked;
+  const controlsLocked = voice.uiLockState === 'locked';
+  const controlsInterruptible = voice.uiLockState === 'interruptible';
+  const welcomeDisabled = controlsLocked || controlsInterruptible || welcomeCooldown;
+  const nonWelcomeDisabled = controlsLocked;
   const isPushToTalk = micInputMode === 'push_to_talk';
   const pushToTalkPointerActiveRef = useRef(false);
   const voiceButtonLabel = isPushToTalk
@@ -58,10 +62,16 @@ export function KioskBottomBar({
       : labels.kioskVoice;
 
   const handleKioskVoiceStart = async () => {
+    if (controlsLocked) {
+      return;
+    }
     if (voice.unlockAudioPlayback()) {
       return;
     }
 
+    if (controlsInterruptible) {
+      voice.cancelSession();
+    }
     unlockAudioForUserGesture();
     clearReturnToIdleTimer();
     setWelcomeMemberOcrOpen(false);
@@ -86,6 +96,13 @@ export function KioskBottomBar({
     voice.cancelSession();
   };
 
+  const interruptActiveVoiceTurn = () => {
+    if (controlsInterruptible) {
+      setKioskVoiceLocked(false);
+      voice.cancelSession();
+    }
+  };
+
   const statusEnabled =
     kioskPhase === 'voice' || kioskPhase === 'idle' || kioskPhase === 'notice';
 
@@ -105,17 +122,17 @@ export function KioskBottomBar({
           sessionState={voice.sessionState}
         />
         <div className="flex w-full flex-row flex-wrap items-stretch justify-center gap-2 sm:gap-3">
-            {showKioskScreenChrome && (
+          {showKioskScreenChrome && (
             <button
               type="button"
               onClick={() => {
                 unlockAudioForUserGesture();
                 void onPlayWelcome();
               }}
-              disabled={isVoiceCaptureActive || voice.isLoading || welcomeCooldown}
+              disabled={welcomeDisabled}
               className={cn(
                 'flex min-h-[72px] min-w-[min(100%,7rem)] flex-1 flex-col items-center justify-center gap-1 rounded-2xl px-3 py-3 shadow-md backdrop-blur-sm transition-transform sm:min-h-[80px] sm:flex-initial sm:px-5',
-                isVoiceCaptureActive || voice.isLoading || welcomeCooldown
+                welcomeDisabled
                   ? 'cursor-not-allowed border border-slate-500/40 bg-slate-600/40 text-slate-300'
                   : 'border border-white/35 bg-white/15 text-white hover:scale-[1.02]',
               )}
@@ -125,140 +142,152 @@ export function KioskBottomBar({
                 {labels.kioskWelcome}
               </span>
             </button>
-            )}
-            <button
-              data-testid="kiosk-voice-button"
-              type="button"
-              onTouchStart={(event) => {
-                if (isPushToTalk) {
-                  event.preventDefault();
-                }
-              }}
-              onPointerDown={(event) => {
-                if (!isPushToTalk) {
-                  return;
-                }
+          )}
+          <button
+            data-testid="kiosk-voice-button"
+            type="button"
+            onTouchStart={(event) => {
+              if (isPushToTalk) {
                 event.preventDefault();
-                event.currentTarget.setPointerCapture(event.pointerId);
-                pushToTalkPointerActiveRef.current = true;
-                if (!isVoiceCaptureActive) {
-                  void handleKioskVoiceStart();
-                }
-              }}
-              onPointerUp={(event) => {
-                if (!isPushToTalk) {
-                  return;
-                }
-                if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-                  event.currentTarget.releasePointerCapture(event.pointerId);
-                }
-                if (pushToTalkPointerActiveRef.current) {
-                  pushToTalkPointerActiveRef.current = false;
-                  handleKioskVoiceStop();
-                }
-              }}
-              onPointerCancel={(event) => {
-                if (!isPushToTalk) {
-                  return;
-                }
-                if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-                  event.currentTarget.releasePointerCapture(event.pointerId);
-                }
-                if (pushToTalkPointerActiveRef.current) {
-                  pushToTalkPointerActiveRef.current = false;
-                  handleKioskVoiceStop();
-                }
-              }}
-              onClick={(event) => {
-                if (isPushToTalk) {
-                  event.preventDefault();
-                  return;
-                }
-                if (isVoiceCaptureActive) {
-                  handleKioskVoiceStop();
-                  return;
-                }
+              }
+            }}
+            onPointerDown={(event) => {
+              if (!isPushToTalk) {
+                return;
+              }
+              if (nonWelcomeDisabled && !isVoiceCaptureActive) {
+                return;
+              }
+              event.preventDefault();
+              event.currentTarget.setPointerCapture(event.pointerId);
+              pushToTalkPointerActiveRef.current = true;
+              if (!isVoiceCaptureActive) {
                 void handleKioskVoiceStart();
-              }}
-              className={cn(
-                'flex min-h-[72px] min-w-[min(100%,7rem)] flex-1 flex-col items-center justify-center gap-1 rounded-2xl px-3 py-3 shadow-md backdrop-blur-sm transition-transform sm:min-h-[80px] sm:flex-initial sm:px-5 select-none touch-manipulation [-webkit-touch-callout:none]',
-                isVoiceCaptureActive
-                  ? 'border border-emerald-300/70 bg-emerald-500/55 text-white shadow-lg'
-                  : 'border border-white/35 bg-white/15 text-white hover:scale-[1.02]',
-              )}
-            >
-              <Mic
-                className="pointer-events-none select-none touch-manipulation [-webkit-touch-callout:none] size-6 shrink-0 sm:size-7"
-                aria-hidden
-              />
-              <span className="pointer-events-none select-none touch-manipulation [-webkit-touch-callout:none] text-center text-xs font-semibold leading-tight sm:text-sm">
-                {voiceButtonLabel}
-              </span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                unlockAudioForUserGesture();
-                setWelcomeMemberOcrOpen(false);
-                setOcrMode('member_card');
-                setKioskPhase('ocr');
-              }}
-              disabled={isVoiceCaptureActive}
-              className={cn(
-                'flex min-h-[72px] min-w-[min(100%,7rem)] flex-1 flex-col items-center justify-center gap-1 rounded-2xl px-3 py-3 shadow-md backdrop-blur-sm transition-transform sm:min-h-[80px] sm:flex-initial sm:px-5',
-                isVoiceCaptureActive
+              }
+            }}
+            onPointerUp={(event) => {
+              if (!isPushToTalk) {
+                return;
+              }
+              if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+                event.currentTarget.releasePointerCapture(event.pointerId);
+              }
+              if (pushToTalkPointerActiveRef.current) {
+                pushToTalkPointerActiveRef.current = false;
+                handleKioskVoiceStop();
+              }
+            }}
+            onPointerCancel={(event) => {
+              if (!isPushToTalk) {
+                return;
+              }
+              if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+                event.currentTarget.releasePointerCapture(event.pointerId);
+              }
+              if (pushToTalkPointerActiveRef.current) {
+                pushToTalkPointerActiveRef.current = false;
+                handleKioskVoiceStop();
+              }
+            }}
+            onClick={(event) => {
+              if (isPushToTalk) {
+                event.preventDefault();
+                return;
+              }
+              if (nonWelcomeDisabled && !isVoiceCaptureActive) {
+                return;
+              }
+              if (isVoiceCaptureActive) {
+                handleKioskVoiceStop();
+                return;
+              }
+              void handleKioskVoiceStart();
+            }}
+            disabled={nonWelcomeDisabled && !isVoiceCaptureActive}
+            className={cn(
+              'flex min-h-[72px] min-w-[min(100%,7rem)] flex-1 touch-manipulation select-none flex-col items-center justify-center gap-1 rounded-2xl px-3 py-3 shadow-md backdrop-blur-sm transition-transform [-webkit-touch-callout:none] sm:min-h-[80px] sm:flex-initial sm:px-5',
+              isVoiceCaptureActive
+                ? 'border border-emerald-300/70 bg-emerald-500/55 text-white shadow-lg'
+                : nonWelcomeDisabled
                   ? 'cursor-not-allowed border border-slate-500/40 bg-slate-600/40 text-slate-300'
                   : 'border border-white/35 bg-white/15 text-white hover:scale-[1.02]',
-              )}
-            >
-              <Camera className="size-6 shrink-0 sm:size-7" aria-hidden />
-              <span className="text-center text-xs font-semibold leading-tight sm:text-sm">
-                {labels.kioskOcrMember}
-              </span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                unlockAudioForUserGesture();
-                setWelcomeMemberOcrOpen(false);
-                setOcrMode('handwriting');
-                setKioskPhase('ocr');
-              }}
-              disabled={isVoiceCaptureActive}
-              className={cn(
-                'flex min-h-[72px] min-w-[min(100%,7rem)] flex-1 flex-col items-center justify-center gap-1 rounded-2xl px-3 py-3 shadow-md backdrop-blur-sm transition-transform sm:min-h-[80px] sm:flex-initial sm:px-5',
-                isVoiceCaptureActive
-                  ? 'cursor-not-allowed border border-slate-500/40 bg-slate-600/40 text-slate-300'
-                  : 'border border-white/35 bg-white/15 text-white hover:scale-[1.02]',
-              )}
-            >
-              <PenLine className="size-6 shrink-0 sm:size-7" aria-hidden />
-              <span className="text-center text-xs font-semibold leading-tight sm:text-sm">
-                {labels.kioskOcrHandwriting}
-              </span>
-            </button>
-            <button
-              data-testid="kiosk-slides-button"
-              type="button"
-              onClick={() => {
-                unlockAudioForUserGesture();
-                setWelcomeMemberOcrOpen(false);
-                onStartPresentation();
-              }}
-              disabled={isVoiceCaptureActive}
-              className={cn(
-                'flex min-h-[72px] min-w-[min(100%,7rem)] flex-1 flex-col items-center justify-center gap-1 rounded-2xl px-3 py-3 shadow-md backdrop-blur-sm transition-transform sm:min-h-[80px] sm:flex-initial sm:px-5',
-                isVoiceCaptureActive
-                  ? 'cursor-not-allowed border border-slate-500/40 bg-slate-600/40 text-slate-300'
-                  : 'border border-white/35 bg-white/15 text-white hover:scale-[1.02]',
-              )}
-            >
-              <Presentation className="size-6 shrink-0 sm:size-7" aria-hidden />
-              <span className="text-center text-xs font-semibold leading-tight sm:text-sm">
-                {labels.kioskSlides}
-              </span>
-            </button>
-          </div>
+            )}
+          >
+            <Mic
+              className="pointer-events-none size-6 shrink-0 touch-manipulation select-none [-webkit-touch-callout:none] sm:size-7"
+              aria-hidden
+            />
+            <span className="pointer-events-none touch-manipulation select-none text-center text-xs font-semibold leading-tight [-webkit-touch-callout:none] sm:text-sm">
+              {voiceButtonLabel}
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              interruptActiveVoiceTurn();
+              unlockAudioForUserGesture();
+              setWelcomeMemberOcrOpen(false);
+              setOcrMode('member_card');
+              setKioskPhase('ocr');
+            }}
+            disabled={nonWelcomeDisabled}
+            className={cn(
+              'flex min-h-[72px] min-w-[min(100%,7rem)] flex-1 flex-col items-center justify-center gap-1 rounded-2xl px-3 py-3 shadow-md backdrop-blur-sm transition-transform sm:min-h-[80px] sm:flex-initial sm:px-5',
+              nonWelcomeDisabled
+                ? 'cursor-not-allowed border border-slate-500/40 bg-slate-600/40 text-slate-300'
+                : 'border border-white/35 bg-white/15 text-white hover:scale-[1.02]',
+            )}
+          >
+            <Camera className="size-6 shrink-0 sm:size-7" aria-hidden />
+            <span className="text-center text-xs font-semibold leading-tight sm:text-sm">
+              {labels.kioskOcrMember}
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              interruptActiveVoiceTurn();
+              unlockAudioForUserGesture();
+              setWelcomeMemberOcrOpen(false);
+              setOcrMode('handwriting');
+              setKioskPhase('ocr');
+            }}
+            disabled={nonWelcomeDisabled}
+            className={cn(
+              'flex min-h-[72px] min-w-[min(100%,7rem)] flex-1 flex-col items-center justify-center gap-1 rounded-2xl px-3 py-3 shadow-md backdrop-blur-sm transition-transform sm:min-h-[80px] sm:flex-initial sm:px-5',
+              nonWelcomeDisabled
+                ? 'cursor-not-allowed border border-slate-500/40 bg-slate-600/40 text-slate-300'
+                : 'border border-white/35 bg-white/15 text-white hover:scale-[1.02]',
+            )}
+          >
+            <PenLine className="size-6 shrink-0 sm:size-7" aria-hidden />
+            <span className="text-center text-xs font-semibold leading-tight sm:text-sm">
+              {labels.kioskOcrHandwriting}
+            </span>
+          </button>
+          <button
+            data-testid="kiosk-slides-button"
+            type="button"
+            onClick={() => {
+              interruptActiveVoiceTurn();
+              unlockAudioForUserGesture();
+              setWelcomeMemberOcrOpen(false);
+              onStartPresentation();
+            }}
+            disabled={nonWelcomeDisabled}
+            className={cn(
+              'flex min-h-[72px] min-w-[min(100%,7rem)] flex-1 flex-col items-center justify-center gap-1 rounded-2xl px-3 py-3 shadow-md backdrop-blur-sm transition-transform sm:min-h-[80px] sm:flex-initial sm:px-5',
+              nonWelcomeDisabled
+                ? 'cursor-not-allowed border border-slate-500/40 bg-slate-600/40 text-slate-300'
+                : 'border border-white/35 bg-white/15 text-white hover:scale-[1.02]',
+            )}
+          >
+            <Presentation className="size-6 shrink-0 sm:size-7" aria-hidden />
+            <span className="text-center text-xs font-semibold leading-tight sm:text-sm">
+              {labels.kioskSlides}
+            </span>
+          </button>
+        </div>
       </div>
     </div>
   );

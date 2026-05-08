@@ -70,9 +70,18 @@ async function getSupportedAnimations() {
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
+    const rawBody = await request.text();
+    const body =
+      rawBody.trim().length > 0
+        ? (JSON.parse(rawBody) as Record<string, unknown>)
+        : {};
+    const action = typeof body?.action === 'string' ? body.action : null;
+    const backendPath = action === 'auto' ? '/api/character/auto' : '/api/character';
+    if (action === 'auto') {
+      delete body.action;
+    }
 
-    const response = await backendFetch('/api/character', {
+    const response = await backendFetch(backendPath, {
       body,
     });
 

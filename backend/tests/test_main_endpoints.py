@@ -162,12 +162,49 @@ class TestLifespan:
             patch("backend.utils.checkpointer.prewarm_checkpointer", new=AsyncMock()) as prewarm,
             patch("backend.utils.checkpointer.close_checkpointer", new=AsyncMock()),
             patch("backend.utils.store.close_store", new=AsyncMock()),
+            patch("backend.main._close_voice_agents", new=AsyncMock()) as close_voice_agents,
         ):
             async with main_mod.lifespan(app):
                 prewarm.assert_awaited_once()
                 session_task_manager.initialize.assert_awaited_once()
 
+        close_voice_agents.assert_awaited_once()
         session_task_manager.shutdown.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_close_voice_agents_closes_cached_agents_once_and_resets(self, monkeypatch):
+        import backend.main as main_mod
+
+        class CloseAgent:
+            def __init__(self):
+                self.close = AsyncMock()
+
+        class AcloseAgent:
+            def __init__(self):
+                self.aclose = AsyncMock()
+
+        default_agent = CloseAgent()
+        provider_agent = CloseAgent()
+        aclose_agent = AcloseAgent()
+
+        monkeypatch.setattr(main_mod, "_voice_agent", default_agent)
+        monkeypatch.setattr(
+            main_mod,
+            "_voice_agents_by_provider",
+            {
+                "piper": default_agent,
+                "voicevox": provider_agent,
+                "google": aclose_agent,
+            },
+        )
+
+        await main_mod._close_voice_agents()
+
+        default_agent.close.assert_awaited_once()
+        provider_agent.close.assert_awaited_once()
+        aclose_agent.aclose.assert_awaited_once()
+        assert main_mod._voice_agent is None
+        assert main_mod._voice_agents_by_provider == {}
 
 
 class TestChatEndpoint:
