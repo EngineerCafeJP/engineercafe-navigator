@@ -20,10 +20,14 @@ export const clientEnvSchema = z.object({
     .string()
     .min(1, "NEXT_PUBLIC_SUPABASE_ANON_KEY is required"),
 
+  // Backend URL visible to the browser. Used only by direct-call feature flags.
+  NEXT_PUBLIC_BACKEND_API_URL: z.string().url().optional(),
+
   // Feature toggles (optional)
   NEXT_PUBLIC_ENABLE_FACIAL_EXPRESSION: z.string().optional(),
   NEXT_PUBLIC_USE_WEB_SPEECH_API: z.string().optional(),
   NEXT_PUBLIC_SKIP_BACKEND: z.string().optional(),
+  NEXT_PUBLIC_QA_API_MODE: z.enum(['proxy', 'direct']).optional(),
 });
 
 export type ClientEnv = z.infer<typeof clientEnvSchema>;
@@ -47,9 +51,11 @@ export function validateClientEnv(): ClientEnvValidationResult {
   const envValues = {
     NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
     NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    NEXT_PUBLIC_BACKEND_API_URL: process.env.NEXT_PUBLIC_BACKEND_API_URL,
     NEXT_PUBLIC_ENABLE_FACIAL_EXPRESSION: process.env.NEXT_PUBLIC_ENABLE_FACIAL_EXPRESSION,
     NEXT_PUBLIC_USE_WEB_SPEECH_API: process.env.NEXT_PUBLIC_USE_WEB_SPEECH_API,
     NEXT_PUBLIC_SKIP_BACKEND: process.env.NEXT_PUBLIC_SKIP_BACKEND,
+    NEXT_PUBLIC_QA_API_MODE: process.env.NEXT_PUBLIC_QA_API_MODE,
   };
 
   const result = clientEnvSchema.safeParse(envValues);
