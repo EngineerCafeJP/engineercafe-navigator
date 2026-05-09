@@ -636,7 +636,7 @@ class TestAmbiguousToClarificationToCorrectRouting:
 
             result = await workflow.ainvoke(
                 {
-                    "query": "カフェの情報教えて",
+                    "query": "カフェはどっちですか？",
                     "session_id": "flow3-cafe-clarify",
                     "language": "ja",
                 }
@@ -801,7 +801,7 @@ class TestEnglishQueryLanguageDetectionAndResponse:
 
             result = await workflow.ainvoke(
                 {
-                    "query": "Tell me about the cafe",
+                    "query": "Which cafe do you mean?",
                     "session_id": "flow4-english-clarify",
                     "language": "en",
                 }

@@ -969,6 +969,9 @@ class VoiceAgent:
             default_key_path and os.path.exists(default_key_path)
         )
 
+    def _requires_primary_tts_provider(self) -> bool:
+        return bool(getattr(self, "require_primary_tts_provider", tts_require_primary_provider()))
+
     def _detect_category(self, text: str, language: str) -> Optional[ClarificationCategory]:
         """
         テキストから曖昧性カテゴリを検出
@@ -1191,7 +1194,7 @@ class VoiceAgent:
                 "actual_provider": primary_attempt_provider or self.tts_provider,
             }
         except Exception as e:
-            if self.require_primary_tts_provider:
+            if self._requires_primary_tts_provider():
                 logger.error("TTS failed and fallback is disabled: %s", e)
                 log_tts_event(
                     event="tts_complete",

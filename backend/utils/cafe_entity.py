@@ -173,10 +173,29 @@ def is_saino_cafe_query(text: str) -> bool:
     return any(compact_cafe_entity_text(marker) in compact for marker in _SAINO_CONTEXT_MARKERS)
 
 
+def is_explicit_cafe_choice_query(text: str) -> bool:
+    if not has_cafe_reference(text):
+        return False
+    compact = compact_cafe_entity_text(text)
+    return any(
+        marker in compact
+        for marker in (
+            "カフェはどっち",
+            "カフェはどちら",
+            "どっちのカフェ",
+            "どちらのカフェ",
+            "どのカフェ",
+            "whichcafe",
+        )
+    )
+
+
 def resolve_cafe_entity(text: str) -> CafeEntity | None:
     """Resolve a user utterance to a cafe entity when deterministic enough."""
 
     canonical = canonicalize_facility_aliases(text)
+    if is_explicit_cafe_choice_query(canonical):
+        return "ambiguous-cafe"
     if is_saino_cafe_query(canonical):
         return "saino"
     if is_engineer_cafe_query(canonical) or is_engineer_cafe_context_query(canonical):
