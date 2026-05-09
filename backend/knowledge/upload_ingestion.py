@@ -18,6 +18,7 @@ from backend.knowledge.loader import (
     count_tokens,
     get_strategy_for_category,
 )
+from backend.knowledge.metadata import normalize_user_metadata
 
 EmbeddingFn = Callable[[str], Awaitable[Sequence[float]] | Sequence[float]]
 ChunkLevel = Literal["document", "section", "chunk"]
@@ -67,8 +68,9 @@ def plan_upload_chunks(
     resolved_strategy = get_strategy_for_category(category, strategy)
     entry_id = _derive_entry_id(normalized_filename, normalized_title)
 
+    user_metadata = normalize_user_metadata(metadata, reserved_policy="drop")
     base_metadata = {
-        **dict(metadata or {}),
+        **user_metadata,
         "language": language,
         "original_filename": normalized_filename,
         "file_type": file_type,

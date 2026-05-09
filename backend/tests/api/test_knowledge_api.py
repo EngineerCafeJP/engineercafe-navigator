@@ -369,6 +369,26 @@ def test_create_knowledge_unique_violation_returns_structured_detail(mock_get_sb
     }
 
 
+@patch("backend.api.knowledge.generate_embedding", new_callable=AsyncMock)
+@patch("backend.api.knowledge._get_supabase")
+def test_create_knowledge_rejects_reserved_metadata_fields(mock_get_sb, mock_embed):
+    """Text CRUD must not accept upload-owned RAG identity metadata."""
+    response = client.post(
+        "/api/knowledge",
+        json={
+            "title": "Reserved metadata proof",
+            "content": "Reserved metadata content",
+            "category": "general",
+            "metadata": {"document_id": "user-controlled-document"},
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Invalid metadata: metadata field 'document_id' is reserved"
+    mock_embed.assert_not_called()
+    mock_get_sb.assert_not_called()
+
+
 # =============================================================================
 # PUT /api/knowledge/{id}
 # =============================================================================
@@ -433,6 +453,21 @@ def test_update_knowledge_unique_violation_returns_structured_detail(mock_get_sb
         "message": "duplicate titles",
         "conflicts": [{"title": "更新後タイトル", "chunk_index": None}],
     }
+
+
+@patch("backend.api.knowledge.generate_embedding", new_callable=AsyncMock)
+@patch("backend.api.knowledge._get_supabase")
+def test_update_knowledge_rejects_reserved_metadata_fields(mock_get_sb, mock_embed):
+    """Updates must not let callers mutate generated RAG identity metadata."""
+    response = client.put(
+        f"/api/knowledge/{SAMPLE_ROW['id']}",
+        json={"metadata": {"entry_id": "user-controlled-entry"}},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Invalid metadata: metadata field 'entry_id' is reserved"
+    mock_embed.assert_not_called()
+    mock_get_sb.assert_not_called()
 
 
 # =============================================================================
@@ -526,6 +561,59 @@ def test_upload_markdown(mock_get_sb, mock_embed, mock_parse_md):
     assert inserted["chunk_level"] == "document"
     assert inserted["chunk_index"] == 0
     assert inserted["token_count"] > 0
+
+
+@patch("backend.api.knowledge.parse_markdown")
+@patch("backend.api.knowledge.generate_embedding", new_callable=AsyncMock)
+@patch("backend.api.knowledge._get_supabase")
+def test_upload_strips_reserved_metadata_before_generating_chunk_identity(
+    mock_get_sb, mock_embed, mock_parse_md
+):
+    """Upload remains compatible while preventing user metadata from owning identity."""
+    mock_embed.return_value = FAKE_EMBEDDING
+    mock_parse_md.return_value = "Parsed markdown content"
+    mock_sb = _mock_supabase()
+    mock_get_sb.return_value = mock_sb
+
+    mock_sb.table.return_value.select.return_value.in_.return_value.execute.return_value = (
+        _mock_table_result([])
+    )
+    uploaded_row = {
+        **SAMPLE_ROW,
+        "title": "metadata_doc",
+        "content": "Parsed markdown content",
+        "source": "file:metadata_doc.md",
+        "metadata": {
+            "original_filename": "metadata_doc.md",
+            "file_type": "markdown",
+            "chunk_index": 0,
+            "total_chunks": 1,
+        },
+    }
+    mock_sb.table.return_value.insert.return_value.execute.return_value = _mock_table_result(
+        [uploaded_row]
+    )
+
+    response = client.post(
+        "/api/knowledge/upload",
+        data={
+            "category": "general",
+            "language": "en",
+            "metadata": (
+                '{"document_id":"user-document","entry_id":"user-entry",'
+                '"language":"ja","total_chunks":99,"owner":"operations"}'
+            ),
+        },
+        files={"file": ("metadata_doc.md", io.BytesIO(b"# Test"), "text/markdown")},
+    )
+
+    assert response.status_code == 201
+    inserted = mock_sb.table.return_value.insert.call_args.args[0]
+    assert inserted["metadata"]["owner"] == "operations"
+    assert inserted["metadata"]["language"] == "en"
+    assert inserted["metadata"]["entry_id"].startswith("upload-metadata_doc-")
+    assert inserted["metadata"]["document_id"] == inserted["metadata"]["entry_id"]
+    assert inserted["metadata"]["total_chunks"] == 1
 
 
 @patch("backend.api.knowledge.parse_pdf")
