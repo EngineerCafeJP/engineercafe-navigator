@@ -1145,6 +1145,11 @@ def _normalize_tts_provider_override(raw: str) -> str:
     return key
 
 
+def _tts_require_primary_provider() -> bool:
+    raw = os.getenv("TTS_REQUIRE_PRIMARY_PROVIDER", "").strip().lower()
+    return raw in {"1", "true", "yes", "on"}
+
+
 def _get_voice_agent_for_provider_key(provider_key: str):
     """Lazily construct and cache VoiceAgent per TTS provider (for per-request override)."""
     global _voice_agents_by_provider
@@ -1168,7 +1173,21 @@ def _get_voice_agent():
 def _resolve_tts_agent(body: VoiceRequest):
     """Default env-based singleton, or a cached agent when ttsProvider is set."""
     if body.ttsProvider and body.ttsProvider.strip():
-        return _get_voice_agent_for_provider_key(_normalize_tts_provider_override(body.ttsProvider))
+        provider_key = _normalize_tts_provider_override(body.ttsProvider)
+        default_provider = (os.getenv("TTS_PROVIDER", "voicevox") or "voicevox").strip().lower()
+        if (
+            _tts_require_primary_provider()
+            and default_provider == "piper"
+            and provider_key != "piper"
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "ttsProvider overrides are disabled while "
+                    "TTS_REQUIRE_PRIMARY_PROVIDER=true and TTS_PROVIDER=piper"
+                ),
+            )
+        return _get_voice_agent_for_provider_key(provider_key)
     return _get_voice_agent()
 
 
@@ -1399,6 +1418,15 @@ async def voice_get_api(action: str = ""):
             ]
         }
     default_tts = (os.getenv("TTS_PROVIDER", "voicevox") or "voicevox").strip().lower()
+    tts_providers = [
+        {"id": "voicevox", "label": "VoiceVox"},
+        {"id": "piper", "label": "Piper-plus"},
+        {"id": "google", "label": "Google Cloud TTS"},
+    ]
+    override_enabled = True
+    if _tts_require_primary_provider() and default_tts == "piper":
+        tts_providers = [{"id": "piper", "label": "Piper-plus"}]
+        override_enabled = False
     return {
         "status": "ok",
         "actions": [
@@ -1409,11 +1437,8 @@ async def voice_get_api(action: str = ""):
             "filler",
         ],
         "defaultTtsProvider": default_tts,
-        "ttsProviders": [
-            {"id": "voicevox", "label": "VoiceVox"},
-            {"id": "piper", "label": "Piper-plus"},
-            {"id": "google", "label": "Google Cloud TTS"},
-        ],
+        "ttsProviderOverrideEnabled": override_enabled,
+        "ttsProviders": tts_providers,
     }
 
 

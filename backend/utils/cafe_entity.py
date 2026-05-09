@@ -82,6 +82,43 @@ _ENGINEER_CAFE_ASR_MARKERS = (
     "エンジンやカフェ",
 )
 
+_ENGINEER_CAFE_CONTEXT_MARKERS = (
+    "コワーキング",
+    "coworking",
+    "作業",
+    "作業席",
+    "仕事",
+    "勉強",
+    "ワーク",
+    "イベント",
+    "event",
+    "勉強会",
+    "セミナー",
+    "ワークショップ",
+    "施設利用",
+    "施設を利用",
+    "施設の利用",
+    "利用登録",
+    "受付",
+    "会員",
+    "登録",
+    "会議室",
+    "ミーティング",
+    "meeting",
+    "メインホール",
+    "ホール",
+    "集中スペース",
+    "地下",
+    "wifi",
+    "wi-fi",
+    "電源",
+    "無料",
+    "予約",
+    "貸切",
+    "貸し切り",
+    "機材",
+)
+
 _CAFE_MARKERS = ("カフェ", "cafe", "coffee", "喫茶", "咖啡", "카페")
 
 
@@ -114,6 +151,16 @@ def is_engineer_cafe_query(text: str) -> bool:
     ) or any(compact_cafe_entity_text(marker) in compact for marker in _ENGINEER_CAFE_ASR_MARKERS)
 
 
+def is_engineer_cafe_context_query(text: str) -> bool:
+    """Detect Engineer Cafe facility-use context without requiring the name."""
+
+    normalized = normalize_cafe_entity_text(canonicalize_facility_aliases(text))
+    compact = compact_cafe_entity_text(canonicalize_facility_aliases(text))
+    return any(
+        compact_cafe_entity_text(marker) in compact for marker in _ENGINEER_CAFE_CONTEXT_MARKERS
+    ) or any(marker.lower() in normalized for marker in _ENGINEER_CAFE_CONTEXT_MARKERS)
+
+
 def is_saino_cafe_query(text: str) -> bool:
     compact = compact_cafe_entity_text(text)
 
@@ -132,10 +179,10 @@ def resolve_cafe_entity(text: str) -> CafeEntity | None:
     canonical = canonicalize_facility_aliases(text)
     if is_saino_cafe_query(canonical):
         return "saino"
-    if is_engineer_cafe_query(canonical):
+    if is_engineer_cafe_query(canonical) or is_engineer_cafe_context_query(canonical):
         return "engineer-cafe"
     if has_cafe_reference(canonical):
-        return "ambiguous-cafe"
+        return "saino"
     return None
 
 
@@ -182,9 +229,16 @@ def is_colocated_or_adjacent_saino_reference(query: str) -> bool:
 def is_ambiguous_cafe_hours_query(query: str) -> bool:
     if not has_cafe_or_bar_token(query):
         return False
-    if is_saino_reference(query) or is_explicit_engineer_cafe_query(query):
+    if (
+        is_saino_reference(query)
+        or is_explicit_engineer_cafe_query(query)
+        or is_engineer_cafe_context_query(query)
+    ):
         return False
-    return has_business_hours_signal(query)
+    compact = compact_query(query)
+    if any(marker in compact for marker in ("どっち", "どちら", "どのカフェ", "whichcafe")):
+        return has_business_hours_signal(query)
+    return False
 
 
 def _public_entity_name(entity: str | None) -> str:

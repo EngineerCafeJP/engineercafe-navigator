@@ -373,6 +373,27 @@ async def test_text_to_speech_piper_timeout_falls_back_quickly(monkeypatch):
     assert "timed out" in result["error"]
 
 
+@pytest.mark.asyncio
+async def test_text_to_speech_piper_primary_required_disables_fallback(monkeypatch):
+    monkeypatch.setenv("TTS_REQUIRE_PRIMARY_PROVIDER", "true")
+    agent = VoiceAgent(tts_provider="piper")
+
+    async def fake_piper_empty(text, lang):
+        return ""
+
+    monkeypatch.setattr(agent.tts_client, "synthesize_wav_base64", fake_piper_empty)
+
+    result = await agent.text_to_speech(text="こんにちは", language="ja")
+
+    assert agent.voicevox_fallback_client is None
+    assert agent.google_fallback_client is None
+    assert result["success"] is False
+    assert result["fallback_used"] is False
+    assert result["fallback_provider"] is None
+    assert result["actual_provider"] is None
+    assert "primary piper provider" in result["error"]
+
+
 def test_piper_primary_timeout_default_covers_live_answer_window(monkeypatch):
     monkeypatch.delenv("TTS_PIPER_PRIMARY_TIMEOUT_SECONDS", raising=False)
     monkeypatch.delenv("TTS_PRIMARY_TIMEOUT_SECONDS", raising=False)

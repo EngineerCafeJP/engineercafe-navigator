@@ -266,6 +266,11 @@ _DEFAULT_TTS_TIMEOUTS: Dict[str, float] = {
 }
 
 
+def tts_require_primary_provider() -> bool:
+    raw = os.getenv("TTS_REQUIRE_PRIMARY_PROVIDER", "").strip().lower()
+    return raw in {"1", "true", "yes", "on"}
+
+
 def get_tts_max_bytes() -> int:
     raw = os.getenv("TTS_MAX_BYTES", "").strip()
     if not raw:
@@ -770,6 +775,7 @@ class VoiceAgent:
                 chat workflow; TTS speaks the supplied text without rewriting it.
         """
         self.tts_provider = tts_provider
+        self.require_primary_tts_provider = tts_require_primary_provider()
 
         if tts_client:
             self.tts_client = tts_client
@@ -794,7 +800,11 @@ class VoiceAgent:
 
         # Kokoro TTSクライアント（英語TTS用 / piper障害時の英語フォールバック）
         # Cloud Run環境でKOKORO_API_URL未設定の場合は初期化しない
-        kokoro_api_url = os.getenv("KOKORO_API_URL")
+        kokoro_api_url = (
+            os.getenv("KOKORO_API_URL")
+            if not (self.require_primary_tts_provider and tts_provider == "piper")
+            else None
+        )
         if kokoro_api_url:
             self.kokoro_client = KokoroTTSClient(api_url=kokoro_api_url)
             logger.info("Kokoro TTS client initialized: %s", kokoro_api_url)
@@ -803,7 +813,7 @@ class VoiceAgent:
             logger.info("Kokoro TTS client not configured (KOKORO_API_URL not set)")
 
         # piper障害時の日本語フォールバック用 VoiceVox クライアント
-        if tts_provider == "piper":
+        if tts_provider == "piper" and not self.require_primary_tts_provider:
             voicevox_fallback_url = os.getenv("VOICEVOX_API_URL")
             if voicevox_fallback_url or not os.getenv("K_SERVICE"):
                 voicevox_fallback_url = voicevox_fallback_url or "http://localhost:50021"
@@ -822,7 +832,7 @@ class VoiceAgent:
             self.voicevox_fallback_client = None
 
         self.google_fallback_client: Optional[GoogleTTSClient]
-        if tts_provider == "google":
+        if tts_provider == "google" or self.require_primary_tts_provider:
             self.google_fallback_client = None
         else:
             self.google_fallback_client = GoogleTTSClient()
@@ -1181,6 +1191,36 @@ class VoiceAgent:
                 "actual_provider": primary_attempt_provider or self.tts_provider,
             }
         except Exception as e:
+            if self.require_primary_tts_provider:
+                logger.error("TTS failed and fallback is disabled: %s", e)
+                log_tts_event(
+                    event="tts_complete",
+                    provider=self.tts_provider,
+                    language=language,
+                    success=False,
+                    tts_cache_hit=False,
+                    tts_overall_duration_ms=int((time.perf_counter() - tts_started_at) * 1000),
+                    fallback_used=False,
+                    fallback_provider=None,
+                    error_type=type(e).__name__,
+                )
+                return {
+                    "success": False,
+                    "error": (
+                        f"Failed to generate speech with primary "
+                        f"{self.tts_provider} provider: {str(e)}"
+                    ),
+                    "emotion": "confused",
+                    "cleanText": processed,
+                    "format": self._tts_audio_format(language),
+                    "language": language,
+                    "tts_cache_hit": False,
+                    "tts_duration_ms": int((time.perf_counter() - tts_started_at) * 1000),
+                    "fallback_used": False,
+                    "fallback_provider": None,
+                    "actual_provider": None,
+                }
+
             logger.exception("TTS failed, trying fallback: %s", e)
             fallback_provider: Optional[str] = None
 
