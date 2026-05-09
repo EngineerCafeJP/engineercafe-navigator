@@ -204,6 +204,7 @@ class TestClarificationIntegration:
         # ClarificationAgentにルーティングされた場合のみ確認
         metadata = result.get("metadata", {})
         if metadata.get("requires_followup"):
-            assert "[surprised]" in result["answer"]
             assert result["emotion"] == "surprised"
             assert "clarification" in metadata
+            assert "エンジニアカフェ" in result["answer"]
+            assert "サイノカフェ" in result["answer"]

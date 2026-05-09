@@ -177,15 +177,15 @@ class TestIsSessionActive:
         client.table.assert_called_with("conversation_sessions")
 
     @pytest.mark.asyncio
-    async def test_returns_false_when_no_data(self, helper_with_client):
-        """データが空の場合 False を返す"""
+    async def test_returns_true_when_uuid_session_row_missing(self, helper_with_client):
+        """conversation_sessions 行が未作成の UUID セッションは継続を許可する"""
         helper, client = helper_with_client
         chain = _build_chain_mock(Mock(data=[]))
         client.table.return_value = chain
 
         result = await helper._is_session_active(_MISSING_SESSION_ID)
 
-        assert result is False
+        assert result is True
 
     @pytest.mark.asyncio
     async def test_returns_false_for_ended_session(self, helper_with_client):

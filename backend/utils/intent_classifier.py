@@ -66,6 +66,10 @@ FILLER_INTENTS = frozenset(
 )
 
 
+def _matches_any_lower(lower_query: str, keywords: tuple[str, ...] | list[str]) -> bool:
+    return any(keyword.lower() in lower_query for keyword in keywords)
+
+
 @dataclass(frozen=True)
 class FastIntent:
     agent: str
@@ -661,23 +665,63 @@ def _is_3d_printer_price_query(lower_query: str) -> bool:
 
 def filler_intent_for_query(query: str) -> str:
     """Map a user query to the static filler catalog."""
-    route = classify_fast_intent(query)
-    if route is None:
-        return "thinking"
-    if route.request_type == "wifi":
+    lower_query = query.lower()
+
+    if _matches_any_lower(lower_query, WIFI_KEYWORDS):
         return "wifi"
-    if route.category == "emergency":
+    if _matches_any_lower(lower_query, EMERGENCY_KEYWORDS):
         return "emergency"
-    if route.category == "greeting":
-        return "greeting"
-    if route.agent == "business_info":
-        return "business_info"
-    if route.agent == "facility":
-        return "facility"
-    if route.agent == "event":
+    if _matches_any_lower(lower_query, EVENT_KEYWORDS):
         return "event"
-    if route.agent == "slide":
+    if _matches_any_lower(lower_query, SLIDE_KEYWORDS):
         return "slide"
-    if route.agent == "general_knowledge":
+    if _matches_any_lower(lower_query, GREETING_KEYWORDS):
+        stripped = lower_query.strip()
+        remaining = stripped
+        for keyword in sorted(GREETING_KEYWORDS, key=len, reverse=True):
+            remaining = remaining.replace(keyword.lower(), "").strip()
+        if len(remaining.strip("!！?？。、.,  ")) <= 3:
+            return "greeting"
+
+    if _matches_any_lower(
+        lower_query,
+        BUSINESS_HOURS_KEYWORDS
+        + PRICING_KEYWORDS
+        + COMMUNITY_KEYWORDS
+        + CONSULTATION_KEYWORDS
+        + CONTACT_KEYWORDS
+        + RECEPTION_KEYWORDS,
+    ):
+        return "business_info"
+
+    if (
+        _matches_any_lower(
+            lower_query,
+            ACCESS_DIRECTION_KEYWORDS
+            + FACILITY_EQUIPMENT_KEYWORDS
+            + BASEMENT_KEYWORDS
+            + BUILDING_KEYWORDS
+            + PARKING_KEYWORDS
+            + BICYCLE_KEYWORDS
+            + SMOKING_KEYWORDS
+            + EXCLUSIVE_RENTAL_KEYWORDS
+            + TOILET_KEYWORDS
+            + ACCESSIBILITY_KEYWORDS
+            + PHOTOGRAPHY_KEYWORDS
+            + CHILDREN_NOISE_KEYWORDS
+            + TEMPORARY_EXIT_KEYWORDS
+            + FLOOR_LAYOUT_KEYWORDS
+            + FLOOR_KEYWORDS
+            + FOOD_DRINK_KEYWORDS
+            + FOOD_DRINK_VERBS,
+        )
+        or match_pet_policy_keywords(lower_query)
+        or _is_nearby_facility_query(lower_query)
+        or _is_rain_route_query(lower_query)
+    ):
+        return "facility"
+
+    if is_assistant_profile_question(lower_query) or is_current_info_request(lower_query):
         return "general"
-    return "fallback"
+
+    return "thinking"
