@@ -11,6 +11,31 @@
   body {
     @apply text-gray-900 bg-white;
   }
+
+  html.kiosk-viewport-lock {
+    width: 100%;
+    height: var(--kiosk-viewport-height, 100dvh);
+    min-height: var(--kiosk-viewport-height, 100dvh);
+    overflow: hidden;
+    overscroll-behavior: none;
+    scroll-behavior: auto;
+    background: #020617;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  html.kiosk-viewport-lock body {
+    position: fixed;
+    inset: 0;
+    width: var(--kiosk-viewport-width, 100dvw);
+    height: var(--kiosk-viewport-height, 100dvh);
+    min-height: var(--kiosk-viewport-height, 100dvh);
+    margin: 0;
+    overflow: hidden;
+    overscroll-behavior: none;
+    touch-action: manipulation;
+    background: #020617;
+  }
 }
 
 @layer components {
@@ -59,6 +84,34 @@
 }
 
 @layer utilities {
+  .kiosk-viewport-root {
+    position: fixed;
+    inset: 0;
+    width: var(--kiosk-viewport-width, 100dvw);
+    height: var(--kiosk-viewport-height, 100dvh);
+    min-width: var(--kiosk-viewport-width, 100dvw);
+    min-height: var(--kiosk-viewport-height, 100dvh);
+    max-width: var(--kiosk-viewport-width, 100dvw);
+    max-height: var(--kiosk-viewport-height, 100dvh);
+    overflow: hidden;
+    overscroll-behavior: none;
+    background: #020617;
+    contain: layout size style;
+  }
+
+  .kiosk-slide-surface {
+    touch-action: none;
+    overscroll-behavior: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  html.kiosk-viewport-lock .overflow-y-auto,
+  html.kiosk-viewport-lock .overflow-auto {
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
   /* Custom scrollbar */
   .scrollbar-thin::-webkit-scrollbar {
     width: 6px;

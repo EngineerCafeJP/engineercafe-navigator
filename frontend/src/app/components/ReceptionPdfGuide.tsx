@@ -67,20 +67,49 @@ function useLandscapeReady(): boolean {
   const [landscape, setLandscape] = useState(false);
 
   useEffect(() => {
-    const update = () => {
+    let frameId = 0;
+    let settleTimers: number[] = [];
+
+    const getLandscape = () => {
       const mq = window.matchMedia('(orientation: landscape)');
-      const bySize = window.innerWidth > window.innerHeight;
-      setLandscape(mq.matches || bySize);
+      const viewport = window.visualViewport;
+      const width = viewport?.width || window.innerWidth;
+      const height = viewport?.height || window.innerHeight;
+      return mq.matches || width > height;
     };
-    update();
+
+    const clearSettledTimers = () => {
+      for (const timer of settleTimers) {
+        window.clearTimeout(timer);
+      }
+      settleTimers = [];
+    };
+
+    const update = () => {
+      window.cancelAnimationFrame(frameId);
+      frameId = window.requestAnimationFrame(() => {
+        setLandscape(getLandscape());
+      });
+    };
+
+    const updateAfterViewportSettles = () => {
+      clearSettledTimers();
+      update();
+      settleTimers = [80, 180, 360].map((delay) => window.setTimeout(update, delay));
+    };
+    updateAfterViewportSettles();
     const mq = window.matchMedia('(orientation: landscape)');
-    mq.addEventListener('change', update);
-    window.addEventListener('resize', update);
-    window.addEventListener('orientationchange', update);
+    mq.addEventListener('change', updateAfterViewportSettles);
+    window.addEventListener('resize', updateAfterViewportSettles);
+    window.addEventListener('orientationchange', updateAfterViewportSettles);
+    window.visualViewport?.addEventListener('resize', updateAfterViewportSettles);
     return () => {
-      mq.removeEventListener('change', update);
-      window.removeEventListener('resize', update);
-      window.removeEventListener('orientationchange', update);
+      clearSettledTimers();
+      window.cancelAnimationFrame(frameId);
+      mq.removeEventListener('change', updateAfterViewportSettles);
+      window.removeEventListener('resize', updateAfterViewportSettles);
+      window.removeEventListener('orientationchange', updateAfterViewportSettles);
+      window.visualViewport?.removeEventListener('resize', updateAfterViewportSettles);
     };
   }, []);
 
@@ -1160,7 +1189,7 @@ export default function ReceptionPdfGuide({
       <div
         data-testid="reception-pdf-guide"
         className={cn(
-          'fixed inset-0 z-[100] flex min-h-[100dvh] flex-col items-center justify-center gap-6 bg-slate-950 p-8 text-center text-white',
+          'flex h-full min-h-0 flex-col items-center justify-center gap-6 bg-slate-950 p-8 text-center text-white',
           className,
         )}
       >
@@ -1186,7 +1215,7 @@ export default function ReceptionPdfGuide({
         onPointerDown={onSlidePointerDown}
         onPointerUp={onSlidePointerUp}
         onPointerCancel={onSlidePointerCancel}
-        className="relative flex min-h-0 flex-1 touch-pan-y items-center justify-center overflow-hidden bg-slate-100 p-0.5 sm:p-1"
+        className="kiosk-slide-surface relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-slate-100 p-0.5 sm:p-1"
       >
         <canvas ref={canvasRef} className="max-h-full max-w-full shadow-lg" data-testid="reception-pdf-canvas" />
       </div>

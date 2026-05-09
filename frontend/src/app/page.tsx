@@ -24,6 +24,7 @@ import { Languages, Settings, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import type { CharacterAnimationData } from './utils/character-animation-utils';
 import type { BackgroundOption } from './components/BackgroundSelector';
+import { useKioskViewportLock } from './hooks/useKioskViewportLock';
 import CharacterAvatar from './components/CharacterAvatar';
 import {
   ConversationHistoryEffects,
@@ -76,6 +77,8 @@ function kioskVoiceModeBadgeLabel(
 
 
 export default function Home() {
+  useKioskViewportLock();
+
   const [kioskPhase, setKioskPhase] = useState<KioskPhase>('notice');
   const kioskPhaseRef = useRef<KioskPhase>('notice');
   const [kioskVoiceLocked, setKioskVoiceLocked] = useState(false);
@@ -493,7 +496,7 @@ export default function Home() {
                 lastResponseRef={lastResponseRef}
                 setConversationHistory={setConversationHistory}
               />
-              <main className="relative h-[100svh] w-screen overflow-hidden">
+              <main data-testid="kiosk-viewport-root" className="kiosk-viewport-root">
                 {(kioskPhase === 'voice' || kioskPhase === 'idle') && (
                   <div
                     className="pointer-events-none absolute left-1/2 top-[max(0.5rem,env(safe-area-inset-top))] z-[38] max-w-[92vw] -translate-x-1/2 truncate rounded-full border border-white/25 bg-black/55 px-4 py-1.5 text-center text-[11px] font-semibold text-white shadow-md backdrop-blur-md sm:text-xs"
