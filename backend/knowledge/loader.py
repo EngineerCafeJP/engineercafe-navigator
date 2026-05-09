@@ -215,7 +215,58 @@ def _build_metadata(entry: KnowledgeEntry, language: str = "ja") -> dict[str, An
         "priority": entry.priority,
         "verified": entry.verified,
         "language": language,
+        "entity": _infer_entry_entity(entry),
     }
+
+
+def _infer_entry_entity(entry: KnowledgeEntry) -> str:
+    """Infer canonical entity metadata from a YAML knowledge entry."""
+    tag_text = " ".join(entry.tags)
+    strong_combined = " ".join(
+        part
+        for part in (
+            entry.id,
+            entry.title,
+            entry.title_en or "",
+            tag_text,
+        )
+        if part
+    ).lower()
+    full_combined = " ".join(
+        part
+        for part in (
+            strong_combined,
+            entry.content,
+            entry.content_en or "",
+        )
+        if part
+    ).lower()
+
+    if any(
+        term in strong_combined
+        for term in (
+            "saino",
+            "サイノ",
+            "サイノカフェ",
+            "cafe&bar",
+            "cafe and bar",
+            "併設カフェ",
+        )
+    ):
+        return "saino"
+    if (
+        "meeting-room" in strong_combined
+        or "meeting room" in strong_combined
+        or "会議室" in strong_combined
+    ):
+        return "meeting-room"
+    if (
+        "engineer-cafe" in full_combined
+        or "engineer cafe" in full_combined
+        or "エンジニアカフェ" in full_combined
+    ):
+        return "engineer-cafe"
+    return "general"
 
 
 def _chunk_english_content(

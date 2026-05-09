@@ -41,6 +41,11 @@ from backend.config.routing_constants import (
     match_keywords,
     match_pet_policy_keywords,
 )
+from backend.utils.cafe_entity import (
+    is_ambiguous_cafe_hours_query,
+    is_saino_reference,
+    resolve_cafe_entity,
+)
 
 _MATA_KIMASU_FAREWELL_RE = re.compile(r"また\s*来(ます|る|るね|ますね)\s*[。!！?？\.]?\s*$")
 _SERVICE_INTENT_RE = re.compile(r"(受付|予約|会員|問合せ|問い合わせ)")
@@ -373,14 +378,49 @@ def classify_fast_intent(query: str) -> Optional[FastIntent]:
                 f"Greeting keyword detected: {stripped[:30]}",
             )
 
-    if any(kw in lower_query for kw in ["カフェ", "cafe"]) and any(
-        kw in lower_query for kw in ["どっち", "どちら", "which"]
+    cafe_entity = resolve_cafe_entity(query)
+    if cafe_entity == "saino":
+        if match_keywords(lower_query, BUSINESS_HOURS_KEYWORDS):
+            return FastIntent(
+                "business_info",
+                "saino-cafe",
+                "hours",
+                "Saino cafe hours reference detected",
+            )
+        return FastIntent(
+            "facility",
+            "facility-info",
+            "food_drink" if match_keywords(lower_query, FOOD_DRINK_KEYWORDS) else "facility",
+            "Saino cafe facility reference detected",
+        )
+
+    if cafe_entity == "ambiguous-cafe" and (
+        any(kw in lower_query for kw in ["どっち", "どちら", "which"])
+        or match_keywords(lower_query, BUSINESS_HOURS_KEYWORDS)
+        or match_keywords(lower_query, PRICING_KEYWORDS)
+        or match_keywords(lower_query, ACCESS_DIRECTION_KEYWORDS)
     ):
         return FastIntent(
             "general_knowledge",
             "cafe-clarification-needed",
             "clarification",
             "Ambiguous cafe reference detected",
+        )
+
+    if is_ambiguous_cafe_hours_query(lower_query):
+        return FastIntent(
+            "general_knowledge",
+            "cafe-clarification-needed",
+            "clarification",
+            "Ambiguous cafe entity for hours query",
+        )
+
+    if is_saino_reference(lower_query) and match_keywords(lower_query, BUSINESS_HOURS_KEYWORDS):
+        return FastIntent(
+            "business_info",
+            "saino-cafe",
+            "hours",
+            "Saino cafe hours query detected",
         )
 
     if match_keywords(lower_query, WIFI_KEYWORDS):

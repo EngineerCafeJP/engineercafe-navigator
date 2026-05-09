@@ -25,6 +25,7 @@ from backend.agents.stt_agent import (
     STAGE_GRAMMARS,
     VALID_STAGES,
     _normalize_vosk_route_transcript,
+    _qwen_deterministic_post_process,
     _qwen_primary_transcript_suspicious,
     _vosk_fallback_transcript_suspicious,
     _vosk_transcript_trusted_for_early_return,
@@ -829,6 +830,60 @@ class TestQwenSTTClient:
 
         assert result.language == "en"
 
+    @pytest.mark.parametrize(
+        ("transcript", "expected"),
+        [
+            ("閉接のカフェはどう。", "併設のカフェはどう。"),
+            (
+                "エンジンやカベの営業時間を教えてください。",
+                "エンジニアカフェの営業時間を教えてください。",
+            ),
+            ("エンジニアカベの場所はどこですか。", "エンジニアカフェの場所はどこですか。"),
+            ("才能カフェの営業時間を教えてください。", "サイノカフェの営業時間を教えてください。"),
+            (
+                "カフェアンドバー 才能のメニューを教えてください。",
+                "サイノカフェのメニューを教えてください。",
+            ),
+        ],
+    )
+    def test_qwen_deterministic_post_process_corrects_live_cafe_variants(
+        self, transcript, expected
+    ):
+        """Observed Qwen cafe-name confusions are corrected without network calls."""
+        assert _qwen_deterministic_post_process(transcript, "ja") == expected
+
+    @pytest.mark.parametrize(
+        "transcript",
+        [
+            "エンジンの仕組みを教えてください。",
+            "壁の営業時間という表現は不自然です。",
+            "才能について相談したいです。",
+            "閉店のカフェはありますか。",
+        ],
+    )
+    def test_qwen_deterministic_post_process_preserves_near_misses(self, transcript):
+        """Non-domain near misses should stay untouched."""
+        assert _qwen_deterministic_post_process(transcript, "ja") == transcript
+        assert _qwen_deterministic_post_process(transcript, "en") == transcript
+
+    @pytest.mark.asyncio
+    async def test_qwen_transcribe_applies_deterministic_post_process(
+        self, test_wav_16khz, monkeypatch
+    ):
+        """The CPU Qwen client returns deterministic corrections by default."""
+        monkeypatch.delenv("STT_QWEN_POSTPROCESS_ENABLED", raising=False)
+        client = QwenSTTClient(model_variant="0.6b", device="cpu")
+        client._model = MagicMock()
+        client._model.transcribe.return_value = [
+            SimpleNamespace(text="閉接のカフェはどう。", language="Japanese")
+        ]
+
+        with patch.object(client, "_load_model"):
+            result = await client.transcribe(test_wav_16khz, language="ja")
+
+        assert result.text == "併設のカフェはどう。"
+        assert result.language == "ja"
+
     @pytest.mark.asyncio
     async def test_auto_detect_passes_none_to_qwen(self, test_wav_16khz):
         """When language=None, Qwen auto-detect is used (no forced default)."""
@@ -1167,6 +1222,27 @@ class OnnxAsrPipeline:
             if call.kwargs.get("event") == "stt_qwen_runtime_complete"
         )
         assert runtime_event.kwargs["device"] == "onnxruntime"
+
+    @pytest.mark.asyncio
+    async def test_qwen_onnx_client_applies_deterministic_post_process(
+        self, test_wav_16khz, monkeypatch
+    ):
+        """The ONNX Qwen client shares the same deterministic cafe corrections."""
+        monkeypatch.delenv("STT_QWEN_POSTPROCESS_ENABLED", raising=False)
+        mock_runtime = MagicMock()
+        mock_runtime.transcribe.return_value.text = "エンジンやカベの営業時間を教えてください。"
+        mock_runtime.transcribe.return_value.language = "ja"
+        mock_runtime.transcribe.return_value.confidence = None
+        client = QwenOnnxSTTClient(default_language="ja", runtime=mock_runtime)
+
+        result = await client.transcribe(test_wav_16khz, language="ja")
+
+        assert result == TranscriptionResult(
+            text="エンジニアカフェの営業時間を教えてください。",
+            confidence=None,
+            language="ja",
+            word_confidences=[],
+        )
 
     def test_init_qwen_primary_timeout_env_guard(self, monkeypatch):
         """qwen-primary keeps a separate 24s hard timeout."""

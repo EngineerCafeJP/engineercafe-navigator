@@ -1072,6 +1072,52 @@ class TestOrchestratorIntegration:
 
     @pytest.mark.asyncio
     @patch("backend.workflows.main_workflow.OrchestratorAgent")
+    async def test_orchestrator_node_resolves_saino_followup_from_session_memory(
+        self, mock_orchestrator_class
+    ):
+        """EC営業時間の直後の「隣のカフェ」はsaino営業時間として解決する。"""
+        from backend.workflows.main_workflow import MainWorkflow
+
+        mock_orchestrator = AsyncMock()
+        mock_orchestrator.decide_next_agent = AsyncMock(
+            side_effect=AssertionError("deterministic cafe follow-up should not call LLM router")
+        )
+        mock_orchestrator_class.return_value = mock_orchestrator
+
+        workflow = MainWorkflow()
+        state = {
+            "query": "隣のカフェは？",
+            "session_id": "test-session",
+            "language": "ja",
+            "context": {
+                "memory": {
+                    "recent_messages": [
+                        {
+                            "role": "user",
+                            "content": "エンジニアカフェの営業時間を教えて",
+                            "metadata": {"request_type": "hours"},
+                        }
+                    ],
+                    "inherited_request_type": "hours",
+                }
+            },
+            "metadata": {},
+            "reception_status": {"stage": "none"},
+        }
+
+        result = await workflow._orchestrator_node(state)
+
+        assert result.goto == "business_info"
+        assert result.update["routing"]["category"] == "saino-cafe"
+        assert result.update["routing"]["request_type"] == "hours"
+        resolution = result.update["metadata"]["cafe_entity_resolution"]
+        assert resolution["entity"] == "saino_cafe"
+        assert resolution["status"] == "resolved"
+        assert resolution["context_used"] is True
+        mock_orchestrator.decide_next_agent.assert_not_called()
+
+    @pytest.mark.asyncio
+    @patch("backend.workflows.main_workflow.OrchestratorAgent")
     async def test_format_response_node(self, mock_orchestrator_class):
         """_format_response_nodeが正しくメッセージをフォーマットすることを確認"""
         from backend.workflows.main_workflow import MainWorkflow

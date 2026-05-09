@@ -131,6 +131,11 @@ QUERY_EXPANSION_MAP: Dict[str, List[str]] = {
     "시설": ["設備", "施設", "facility"],
     "요금": ["料金", "値段", "無料"],
     "무료": ["無料", "料金", "pricing"],
+    "회원": ["会員", "利用登録", "会員番号", "受付", "無料"],
+    "회원 등록": ["利用登録", "会員", "受付", "会員番号", "無料"],
+    "회원가입": ["利用登録", "会員", "受付", "会員番号"],
+    "멤버십": ["会員", "会員制度", "利用登録", "無料"],
+    "가입": ["利用登録", "会員", "受付"],
     "등록": ["利用方法", "登録", "初回", "初めて"],
     "방문": ["来訪", "初めて", "利用方法"],
     "와이파이": ["Wi-Fi", "WiFi", "ネットワーク"],
@@ -140,6 +145,9 @@ QUERY_EXPANSION_MAP: Dict[str, List[str]] = {
     "register": ["利用登録", "登録", "会員", "初回", "受付"],
     "registration": ["利用登録", "登録", "会員", "初回", "受付"],
     "membership": ["会員", "利用登録", "無料", "受付", "会員番号"],
+    "membership system": ["会員制度", "会員", "利用登録", "無料", "会員番号"],
+    "about membership": ["会員制度", "会員", "利用登録", "無料", "受付"],
+    "membership like": ["会員制度", "会員", "利用登録", "無料", "受付"],
     "member benefits": ["無料", "利用料", "会員", "利用登録", "受付"],
     "sign up": ["利用登録", "登録", "初回", "会員"],
     "signing up": ["利用登録", "登録", "初回"],
@@ -162,6 +170,10 @@ QUERY_EXPANSION_MAP: Dict[str, List[str]] = {
     "费用": ["料金", "値段", "無料"],
     "位置": ["場所", "アクセス", "住所"],
     "设施": ["設備", "施設", "facility"],
+    "会员": ["会員", "利用登録", "会員番号", "受付", "無料"],
+    "會員": ["会員", "利用登録", "会員番号", "受付", "無料"],
+    "会员制度": ["会員制度", "会員", "利用登録", "無料"],
+    "加入会员": ["利用登録", "会員", "受付", "会員番号"],
     "登记": ["利用方法", "登録", "初回"],
     # Policy / space queries
     "spaces": ["スペース", "施設", "設備", "メインホール", "集中スペース"],
@@ -172,6 +184,67 @@ QUERY_EXPANSION_MAP: Dict[str, List[str]] = {
     "금연": ["禁煙", "喫煙"],
     "담배": ["喫煙", "禁煙", "喫煙所"],
 }
+
+RAG_CATEGORY_ALIASES: Dict[str, set[str]] = {
+    "access": {"access", "location"},
+    "location": {"access", "location"},
+    "facilities": {"facility-info"},
+    "facility": {"facility-info"},
+    "business-hours": {"hours"},
+    "saino-cafe": {"hours", "facility-info", "food_drink", "pricing", "general"},
+}
+
+SAINO_QUERY_TERMS = (
+    "saino",
+    "サイノ",
+    "サイノカフェ",
+    "cafe&bar",
+    "cafe and bar",
+    "say no cafe",
+    "coffee say no",
+    "併設カフェ",
+)
+
+MEMBERSHIP_QUERY_TERMS = (
+    "membership",
+    "member",
+    "registration",
+    "register",
+    "sign up",
+    "signup",
+    "join",
+    "会員",
+    "会員制度",
+    "会員登録",
+    "利用登録",
+    "登録",
+    "受付",
+    "会员",
+    "會員",
+    "登记",
+    "登記",
+    "회원",
+    "회원가입",
+    "멤버십",
+    "가입",
+    "등록",
+)
+
+MEMBERSHIP_RESULT_TERMS = (
+    "membership",
+    "member number",
+    "registration",
+    "register",
+    "reception",
+    "会員",
+    "会員制度",
+    "会員番号",
+    "利用登録",
+    "登録",
+    "受付",
+    "初回",
+    "無料",
+)
 
 
 class EnhancedRAGSearch:
@@ -343,16 +416,29 @@ class EnhancedRAGSearch:
 
             # 5.5. 品質グレーディング（軽量CRAG）
             scored_results = self._grade_result_relevance(
-                scored_results, query, category, context_signals=context_signals
+                scored_results,
+                query,
+                category,
+                language=language,
+                context_signals=context_signals,
             )
-            if not scored_results:
+            needs_entity_fallback = (
+                self._query_mentions_saino(query)
+                and not self._query_mentions_engineer_cafe(query)
+                and not any(r.get("entity") == "saino" for r in scored_results)
+            )
+            if not scored_results or needs_entity_fallback:
                 local_results = self._local_knowledge_fallback_search(
                     query, category, language, max_results
                 )
                 if local_results:
                     scored_results = self._score_results(local_results, query, category, language)
                     scored_results = self._grade_result_relevance(
-                        scored_results, query, category, context_signals=context_signals
+                        scored_results,
+                        query,
+                        category,
+                        language=language,
+                        context_signals=context_signals,
                     )
 
             # 6. トップ結果を取得
@@ -485,7 +571,11 @@ class EnhancedRAGSearch:
 
             # 5. 品質グレーディング
             scored_results = self._grade_result_relevance(
-                scored_results, query, category, context_signals=context_signals
+                scored_results,
+                query,
+                category,
+                language=language,
+                context_signals=context_signals,
             )
 
             # 6. トップ結果
@@ -531,9 +621,15 @@ class EnhancedRAGSearch:
         """
         expansions: list[str] = []
 
-        # Entity anchoring: short queries get "エンジニアカフェ" prepended
-        # Skip for "general" category to avoid biasing non-cafe queries (e.g. "Rust", "LLM")
-        if category != "general" and len(query) < 15 and "エンジニアカフェ" not in query:
+        # Entity anchoring: short non-general queries default to Engineer Cafe.
+        # Do not add that anchor to explicit Saino queries; it can make Saino
+        # business-hours questions rank as Engineer Cafe hours.
+        if (
+            category not in {"general", "saino-cafe"}
+            and len(query) < 15
+            and not self._query_mentions_engineer_cafe(query)
+            and not self._query_mentions_saino(query)
+        ):
             query = f"エンジニアカフェ {query}"
 
         # クエリ内のキーワードに基づく拡張
@@ -562,6 +658,15 @@ class EnhancedRAGSearch:
             "parking": ["駐車場", "parking"],
             "bicycle": ["駐輪場", "bicycle parking"],
             "policy": ["ルール", "ポリシー", "同伴", "補助犬", "一時外出", "policy"],
+            "saino-cafe": [
+                "saino",
+                "cafe&bar saino",
+                "サイノカフェ",
+                "営業時間",
+                "メニュー",
+                "カフェ",
+                "バー",
+            ],
         }
 
         if category in category_keywords:
@@ -672,14 +777,23 @@ class EnhancedRAGSearch:
             return {"success": False, "error": error}
 
         scored_results = self._score_results(results, query, category, language)
-        scored_results = self._grade_result_relevance(scored_results, query, category)
-        if not scored_results:
+        scored_results = self._grade_result_relevance(
+            scored_results, query, category, language=language
+        )
+        needs_entity_fallback = (
+            self._query_mentions_saino(query)
+            and not self._query_mentions_engineer_cafe(query)
+            and not any(r.get("entity") == "saino" for r in scored_results)
+        )
+        if not scored_results or needs_entity_fallback:
             local_results = self._local_knowledge_fallback_search(
                 query, category, language, max_results
             )
             if local_results:
                 scored_results = self._score_results(local_results, query, category, language)
-                scored_results = self._grade_result_relevance(scored_results, query, category)
+                scored_results = self._grade_result_relevance(
+                    scored_results, query, category, language=language
+                )
         top_results = scored_results[:max_results]
         context = self._build_context_from_results(top_results, category, language)
 
@@ -717,6 +831,7 @@ class EnhancedRAGSearch:
                     content = entry.get("content_en") if language == "en" else entry.get("content")
                     if not content:
                         content = entry.get("content") or entry.get("content_en") or ""
+                    entity = self._infer_entity_from_yaml_entry(entry)
                     row = {
                         "id": entry.get("id"),
                         "title": entry.get("title_en") if language == "en" else entry.get("title"),
@@ -726,7 +841,7 @@ class EnhancedRAGSearch:
                         "language": language,
                         "source": entry.get("source") or "official-yaml",
                         "metadata": {
-                            "entity": "engineer-cafe",
+                            "entity": entity,
                             "tags": entry.get("tags", []),
                             "priority": entry.get("priority", 50),
                             "verified": entry.get("verified", False),
@@ -769,23 +884,32 @@ class EnhancedRAGSearch:
             )
         ).lower()
         terms = self._extract_text_query_terms(query, category, language)
+        row_entity = self._detect_entity(row)
+
+        if (
+            self._query_mentions_saino(query)
+            and not self._query_mentions_engineer_cafe(query)
+            and row_entity != "saino"
+        ):
+            return 0.0
 
         row_category = row.get("category")
-        if category != "general" and row_category != category:
+        if not self._category_matches(row_category, category, row=row, query=query):
             return 0.0
-        if category == "general" and row_category not in {
-            "general",
-            "hours",
-            "pricing",
-            "access",
-            "contact",
-            "policy",
-            "parking",
-            "bicycle",
-            "food_drink",
-            "smoking",
-        }:
-            return 0.0
+        if category == "hours" and row_entity == "saino" and row_category != "hours":
+            if not any(
+                term in searchable
+                for term in (
+                    "営業時間",
+                    "opening hours",
+                    "business hours",
+                    "open",
+                    "night time",
+                    "12:00",
+                    "20:00",
+                )
+            ):
+                return 0.0
 
         match_score = 0.0
         has_content_match = False
@@ -832,11 +956,26 @@ class EnhancedRAGSearch:
         ):
             match_score += 0.3
             has_content_match = True
+        if self._is_membership_query(query) and any(
+            term.lower() in searchable for term in MEMBERSHIP_RESULT_TERMS
+        ):
+            match_score += 0.32
+            has_content_match = True
+        if self._query_mentions_saino(query) and row_entity == "saino":
+            match_score += 0.34
+            has_content_match = True
+            if category in {"hours", "saino-cafe"} and any(
+                term in searchable
+                for term in ("営業時間", "opening hours", "business hours", "12:00", "20:00")
+            ):
+                match_score += 0.18
 
         if not has_content_match:
             return 0.0
 
-        if row_category == category:
+        if category != "general" and self._category_matches(
+            row_category, category, row=row, query=query
+        ):
             match_score += 0.18
 
         priority = row.get("metadata", {}).get("priority", 50)
@@ -865,6 +1004,19 @@ class EnhancedRAGSearch:
             "初めて",
             "登録",
             "会員",
+            "会員制度",
+            "会員番号",
+            "membership",
+            "member",
+            "registration",
+            "register",
+            "会员",
+            "會員",
+            "登记",
+            "회원",
+            "멤버십",
+            "가입",
+            "등록",
             "予約",
             "営業時間",
             "開館",
@@ -899,6 +1051,11 @@ class EnhancedRAGSearch:
             "して",
             "した",
             "the",
+            "tell",
+            "about",
+            "me",
+            "your",
+            "like",
             "can",
             "how",
             "what",
@@ -915,6 +1072,120 @@ class EnhancedRAGSearch:
             "\u3040" <= c <= "\u30ff" or "\u4e00" <= c <= "\u9fff" or "\uac00" <= c <= "\ud7af"
             for c in text
         )
+
+    @staticmethod
+    def _query_mentions_saino(query: str) -> bool:
+        query_lower = query.lower()
+        return any(term.lower() in query_lower for term in SAINO_QUERY_TERMS)
+
+    @staticmethod
+    def _query_mentions_engineer_cafe(query: str) -> bool:
+        query_lower = query.lower()
+        return any(
+            term in query_lower
+            for term in (
+                "engineer cafe",
+                "engineercafe",
+                "エンジニアカフェ",
+                "エンジニア カフェ",
+            )
+        )
+
+    @staticmethod
+    def _is_membership_query(query: str) -> bool:
+        query_lower = query.lower()
+        return any(term.lower() in query_lower for term in MEMBERSHIP_QUERY_TERMS)
+
+    @staticmethod
+    def _infer_entity_from_yaml_entry(entry: Dict) -> str:
+        tags = entry.get("tags", [])
+        tag_text = " ".join(str(tag) for tag in tags if tag is not None)
+        strong_combined = " ".join(
+            str(part)
+            for part in (
+                entry.get("id", ""),
+                entry.get("title", ""),
+                entry.get("title_en", ""),
+                tag_text,
+            )
+            if part is not None
+        ).lower()
+        full_combined = " ".join(
+            str(part)
+            for part in (
+                strong_combined,
+                entry.get("content", ""),
+                entry.get("content_en", ""),
+            )
+            if part is not None
+        ).lower()
+
+        if any(term.lower() in strong_combined for term in SAINO_QUERY_TERMS):
+            return "saino"
+        if (
+            "meeting-room" in strong_combined
+            or "meeting room" in strong_combined
+            or "会議室" in strong_combined
+        ):
+            return "meeting-room"
+        if (
+            "engineer-cafe" in full_combined
+            or "engineer cafe" in full_combined
+            or "エンジニアカフェ" in full_combined
+        ):
+            return "engineer-cafe"
+        return "general"
+
+    def _category_matches(
+        self,
+        row_category: str,
+        requested_category: str,
+        row: Optional[Dict] = None,
+        query: str = "",
+    ) -> bool:
+        if not requested_category:
+            return True
+
+        if requested_category == "general":
+            return row_category in {
+                "general",
+                "hours",
+                "pricing",
+                "access",
+                "location",
+                "contact",
+                "policy",
+                "parking",
+                "bicycle",
+                "food_drink",
+                "smoking",
+            }
+
+        accepted_categories = RAG_CATEGORY_ALIASES.get(requested_category, {requested_category})
+        if row_category in accepted_categories:
+            return True
+
+        if not row:
+            return False
+
+        entity = self._detect_entity(row)
+        if entity == "saino" and self._query_mentions_saino(query):
+            if requested_category in {
+                "hours",
+                "saino-cafe",
+                "facility-info",
+                "food_drink",
+                "pricing",
+            }:
+                return row_category in {
+                    "hours",
+                    "facility-info",
+                    "food_drink",
+                    "pricing",
+                    "general",
+                }
+
+        return False
 
     async def _generate_embedding(self, text: str) -> List[float]:
         """OpenRouter API経由でエンベディングを生成。
@@ -959,6 +1230,7 @@ class EnhancedRAGSearch:
         scored_results: List[Dict],
         query: str,
         category: str = "general",
+        language: str = "ja",
         context_signals=None,
     ) -> List[Dict]:
         """スコアリング済み結果の品質グレーディング（軽量CRAG）。
@@ -975,6 +1247,7 @@ class EnhancedRAGSearch:
             scored_results: _score_results()でスコアリング済みの結果リスト
             query: 元のクエリ文字列
             category: クエリカテゴリ（hours, pricing, location等）
+            language: 言語コード
             context_signals: コンテキストシグナル（Noneの場合は静的閾値を使用）
 
         Returns:
@@ -1017,45 +1290,16 @@ class EnhancedRAGSearch:
             medium_threshold += 0.03
             term_match_threshold += 0.03
 
-        query_lower = query.lower()
-
-        # CJK文字（日本語・中国語・韓国語）の検出
-        has_cjk = any(
-            "\u4e00" <= c <= "\u9fff" or "\u3040" <= c <= "\u309f" or "\u30a0" <= c <= "\u30ff"
-            for c in query_lower
-        )
-
-        if has_cjk:
-            # 日本語: 2文字スライディングウィンドウマッチング
-            query_terms = [query_lower[i : i + 2] for i in range(len(query_lower) - 1)]
-            # 助詞・一般的な文字を除外
-            stop_bigrams = {
-                "は",
-                "の",
-                "が",
-                "を",
-                "に",
-                "で",
-                "と",
-                "も",
-                "か",
-                "です",
-                "ます",
-                "した",
-                "ません",
-                "まし",
-                "ませ",
-                "ありま",
-                "りま",
-            }
-            query_terms = [t for t in query_terms if t not in stop_bigrams]
-        else:
-            query_terms = query_lower.split()
+        query_terms = self._extract_text_query_terms(query, category, language)
+        membership_query = self._is_membership_query(query)
 
         graded_results: List[Dict] = []
 
         for result in scored_results:
             score = result.get("priority_score", 0.0)
+            content = result.get("content", "").lower()
+            title = result.get("title", "").lower()
+            combined = f"{title} {content}"
 
             # HIGH: 常に保持
             if score >= high_threshold:
@@ -1064,10 +1308,6 @@ class EnhancedRAGSearch:
 
             # MEDIUM: クエリ用語マッチがある場合保持
             if score >= medium_threshold:
-                content = result.get("content", "").lower()
-                title = result.get("title", "").lower()
-                combined = f"{title} {content}"
-
                 if query_terms:
                     match_count = sum(1 for term in query_terms if term in combined)
                     match_ratio = match_count / len(query_terms)
@@ -1075,6 +1315,12 @@ class EnhancedRAGSearch:
                     if match_ratio > term_match_threshold:
                         graded_results.append({**result, "grade": "MEDIUM"})
                         continue
+
+                if membership_query and any(
+                    term.lower() in combined for term in MEMBERSHIP_RESULT_TERMS
+                ):
+                    graded_results.append({**result, "grade": "MEDIUM"})
+                    continue
 
             # LOW: 除外
             logger.debug(
@@ -1122,6 +1368,11 @@ class EnhancedRAGSearch:
         # 優先度スコアでソート
         scored_results.sort(key=lambda x: x.get("priority_score", 0), reverse=True)
 
+        if self._query_mentions_saino(query) and not self._query_mentions_engineer_cafe(query):
+            saino_results = [r for r in scored_results if r.get("entity") == "saino"]
+            if saino_results:
+                return saino_results
+
         return scored_results
 
     def _detect_entity(self, result: Dict) -> str:
@@ -1137,10 +1388,15 @@ class EnhancedRAGSearch:
                 return entity
 
         # コンテンツからエンティティを推測
-        if "engineer cafe" in content or "engineer cafe" in title or "エンジニアカフェ" in content:
-            return "engineer-cafe"
-        elif "saino" in content or "saino" in title or "サイノ" in content or "saino" in content:
+        if "saino" in content or "saino" in title or "サイノ" in content or "サイノ" in title:
             return "saino"
+        elif (
+            "engineer cafe" in content
+            or "engineer cafe" in title
+            or "エンジニアカフェ" in content
+            or "エンジニアカフェ" in title
+        ):
+            return "engineer-cafe"
         elif "会議室" in content or "meeting room" in content:
             return "meeting-room"
 
@@ -1162,6 +1418,9 @@ class EnhancedRAGSearch:
             "facility-info": ["facility-info", "設備", "facilities"],
         }
 
+        if category != "general" and self._category_matches(result_category, category, result):
+            return 0.2
+
         if category in category_mapping:
             for keyword in category_mapping[category]:
                 if keyword in result_category.lower():
@@ -1176,8 +1435,8 @@ class EnhancedRAGSearch:
         # クエリに特定のエンティティが含まれている場合、そのエンティティを優先
         if entity == "engineer-cafe" and ("engineer" in query_lower or "エンジニア" in query_lower):
             return 0.3
-        elif entity == "saino" and ("saino" in query_lower or "サイノ" in query_lower):
-            return 0.3
+        elif entity == "saino" and self._query_mentions_saino(query):
+            return 0.35
         elif entity == "meeting-room" and (
             "会議室" in query_lower or "meeting room" in query_lower
         ):
@@ -1189,6 +1448,7 @@ class EnhancedRAGSearch:
             "pricing": ["engineer-cafe", "saino", "meeting-room", "general"],
             "facility-info": ["engineer-cafe", "general", "meeting-room", "saino"],
             "location": ["engineer-cafe", "general", "saino", "meeting-room"],
+            "saino-cafe": ["saino", "engineer-cafe", "general", "meeting-room"],
         }
 
         if category in entity_priority:
@@ -1302,6 +1562,7 @@ class EnhancedRAGSearch:
             "hours": ["engineer-cafe", "saino", "general", "meeting-room"],
             "facility-info": ["engineer-cafe", "general", "meeting-room", "saino"],
             "location": ["engineer-cafe", "general", "saino", "meeting-room"],
+            "saino-cafe": ["saino", "engineer-cafe", "general", "meeting-room"],
         }
 
         return priority_map.get(category, ["engineer-cafe", "general", "saino", "meeting-room"])

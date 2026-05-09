@@ -203,10 +203,43 @@ class TestOrchestratorFastRouting:
                 result["request_type"] == expected_type
             ), f"Query '{query}' should be {expected_type} type"
 
+    def test_ambiguous_cafe_hours_needs_clarification(self, orchestrator):
+        """Bare カフェ hours must not fast-route to Engineer Cafe hours."""
+        result = orchestrator._try_fast_routing("カフェの営業時間は？")
+
+        assert result is not None
+        assert result["agent"] == "general_knowledge"
+        assert result["category"] == "cafe-clarification-needed"
+        assert result["request_type"] == "clarification"
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "サイノカフェの営業時間は？",
+            "cafe&bar sainoの営業時間は？",
+            "併設のカフェの営業時間は？",
+        ],
+    )
+    def test_explicit_saino_hours_routes_to_business_info(self, orchestrator, query):
+        result = orchestrator._try_fast_routing(query)
+
+        assert result is not None
+        assert result["agent"] == "business_info"
+        assert result["category"] == "saino-cafe"
+        assert result["request_type"] == "hours"
+
+    def test_saino_menu_routes_to_facility_food_drink(self, orchestrator):
+        """Saino menu questions stay on facility food/drink canonical answers."""
+        result = orchestrator._try_fast_routing("サイノカフェのメニューを教えて")
+
+        assert result is not None
+        assert result["agent"] == "facility"
+        assert result["category"] == "facility-info"
+        assert result["request_type"] == "food_drink"
+
     def test_business_hours_english_extended(self, orchestrator):
         """英語: closed, holiday キーワード"""
         test_cases = [
-            ("Is the cafe closed on weekends?", "hours"),
             ("Are there any holidays?", "hours"),
             ("What is the last reception time today?", "hours"),
         ]
@@ -216,6 +249,15 @@ class TestOrchestratorFastRouting:
             assert (
                 result["agent"] == "business_info"
             ), f"Query '{query}' should route to business_info"
+
+    def test_ambiguous_english_cafe_hours_needs_clarification(self, orchestrator):
+        """Bare English cafe hours must not collapse to Engineer Cafe hours."""
+        result = orchestrator._try_fast_routing("Is the cafe closed on weekends?")
+
+        assert result is not None
+        assert result["agent"] == "general_knowledge"
+        assert result["category"] == "cafe-clarification-needed"
+        assert result["request_type"] == "clarification"
 
     def test_pricing_extended_keywords(self, orchestrator):
         """新規料金キーワード: free, フリー, タダ, 利用料"""

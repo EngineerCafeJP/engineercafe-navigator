@@ -102,6 +102,54 @@ def _get_vosk_stt_executor() -> concurrent.futures.ThreadPoolExecutor:
 # ---------------------------------------------------------------------------
 
 _QWEN_VOCAB_CACHE: Optional[List[str]] = None
+_JAPANESE_LANGUAGE_LABELS = {"ja", "japanese", "日本語"}
+_QWEN_BOUNDARY = r"(?=(?:の|は|を|に|へ|で|と|、|。|？|\?|！|!|$))"
+_SAINO_NAME_VARIANT = (
+    r"(?:才能|再能|最能|採納|彩野|才納|才脳|歳納|財野|財納|"
+    r"サイノウ|さいのう|サイナ|さいな|サイ\s*の|さい\s*の|才\s*の|"
+    r"saino|sino|cyno)"
+)
+_QWEN_DETERMINISTIC_CORRECTIONS: tuple[tuple[re.Pattern[str], str], ...] = (
+    # Observed Qwen CPU confusion for the cafe attached to Engineer Cafe.
+    (re.compile(r"閉\s*接\s*の\s*カフェ"), "併設のカフェ"),
+    (re.compile(r"閉\s*接\s*カフェ"), "併設カフェ"),
+    # Observed ONNX/CPU proper-noun confusions for エンジニアカフェ.
+    (re.compile(rf"エンジン\s*や\s*カ(?:ベ|べ){_QWEN_BOUNDARY}"), "エンジニアカフェ"),
+    (re.compile(rf"エンジン\s*カフェ{_QWEN_BOUNDARY}"), "エンジニアカフェ"),
+    (re.compile(rf"エンジニア\s*カ(?:ベ|べ|フ){_QWEN_BOUNDARY}"), "エンジニアカフェ"),
+    (re.compile(rf"エンジニア\s*か(?:べ|ふぇ){_QWEN_BOUNDARY}"), "エンジニアカフェ"),
+    # Saino variants are only corrected when cafe/cafe&bar context is explicit.
+    (
+        re.compile(rf"カフェ\s*(?:アンド|&|＆)\s*バー\s*{_SAINO_NAME_VARIANT}", re.IGNORECASE),
+        "サイノカフェ",
+    ),
+    (
+        re.compile(rf"{_SAINO_NAME_VARIANT}\s*(?:カフェ|cafe){_QWEN_BOUNDARY}", re.IGNORECASE),
+        "サイノカフェ",
+    ),
+)
+
+
+def _normalize_qwen_language_label(language: Optional[str]) -> str:
+    if language is None:
+        return ""
+    return str(language).strip().lower()
+
+
+def _is_japanese_qwen_language(language: Optional[str]) -> bool:
+    return _normalize_qwen_language_label(language) in _JAPANESE_LANGUAGE_LABELS
+
+
+def _qwen_deterministic_post_process(transcript: str, language: Optional[str]) -> str:
+    """Apply narrow, deterministic Qwen STT corrections for live cafe terms."""
+
+    if not _is_japanese_qwen_language(language) or not transcript:
+        return transcript
+
+    corrected = transcript
+    for pattern, replacement in _QWEN_DETERMINISTIC_CORRECTIONS:
+        corrected = pattern.sub(replacement, corrected)
+    return corrected
 
 
 def _load_qwen_vocab() -> List[str]:
@@ -159,7 +207,7 @@ async def _qwen_llm_post_process(transcript: str, language: str) -> str:
     """
     if not _qwen_postprocess_enabled():
         return transcript
-    if language != "ja":
+    if not _is_japanese_qwen_language(language):
         return transcript
     api_key = os.getenv("OPENROUTER_API_KEY", "")
     if not _is_real_openrouter_key(api_key) or not transcript.strip():
@@ -834,6 +882,65 @@ class TranscriptionResult:
     confidence: Optional[float]  # 平均 word confidence (0.0-1.0)
     language: str
     word_confidences: List[Dict[str, Any]] = field(default_factory=list)
+
+
+async def _post_process_qwen_transcription_result(
+    result: TranscriptionResult,
+    *,
+    stt_trace_id: Optional[str] = None,
+) -> TranscriptionResult:
+    """Apply deterministic Qwen fixes, then optional LLM post-processing."""
+
+    if not _is_japanese_qwen_language(result.language) or not result.text.strip():
+        return result
+
+    postprocess_started_at = time.perf_counter()
+    original_text = result.text
+    deterministic_text = _qwen_deterministic_post_process(original_text, result.language)
+    try:
+        corrected_text = await _qwen_llm_post_process(deterministic_text, result.language)
+        log_stt_event(
+            event="stt_qwen_postprocess_complete",
+            stt_trace_id=stt_trace_id,
+            provider="qwen-primary",
+            language=result.language,
+            success=True,
+            changed=corrected_text != original_text,
+            deterministic_changed=deterministic_text != original_text,
+            llm_changed=corrected_text != deterministic_text,
+            enabled=_qwen_postprocess_enabled(),
+            transcript_chars=len(original_text),
+            corrected_chars=len(corrected_text),
+            stt_qwen_postprocess_duration_ms=_duration_ms(postprocess_started_at),
+        )
+    except Exception as exc:
+        logger.warning("Qwen post-process wrapper failed: %s", exc)
+        corrected_text = deterministic_text
+        log_stt_event(
+            event="stt_qwen_postprocess_complete",
+            stt_trace_id=stt_trace_id,
+            provider="qwen-primary",
+            language=result.language,
+            success=False,
+            error_type=type(exc).__name__,
+            changed=corrected_text != original_text,
+            deterministic_changed=deterministic_text != original_text,
+            llm_changed=False,
+            enabled=_qwen_postprocess_enabled(),
+            transcript_chars=len(original_text),
+            corrected_chars=len(corrected_text),
+            stt_qwen_postprocess_duration_ms=_duration_ms(postprocess_started_at),
+        )
+
+    if corrected_text == result.text:
+        return result
+
+    return TranscriptionResult(
+        text=corrected_text,
+        confidence=result.confidence,
+        language=result.language,
+        word_confidences=result.word_confidences,
+    )
 
 
 # -----------------------------------------------------------------------------
@@ -1690,48 +1797,7 @@ class QwenSTTClient:
             lambda: self._sync_transcribe(audio_data, language, stt_trace_id=stt_trace_id),
         )
 
-        # Apply LLM post-processing for Japanese transcripts to correct
-        # domain-specific proper nouns (エンジニアカフェ, Wi-Fi, etc.).
-        # Env-toggled (STT_QWEN_POSTPROCESS_ENABLED), falls back to raw on
-        # any failure, guarded by edit-distance threshold.
-        if result.language == "ja" and result.text.strip():
-            postprocess_started_at = time.perf_counter()
-            try:
-                corrected_text = await _qwen_llm_post_process(result.text, result.language)
-                log_stt_event(
-                    event="stt_qwen_postprocess_complete",
-                    stt_trace_id=stt_trace_id,
-                    provider="qwen-primary",
-                    language=result.language,
-                    success=True,
-                    changed=corrected_text != result.text,
-                    enabled=_qwen_postprocess_enabled(),
-                    transcript_chars=len(result.text),
-                    corrected_chars=len(corrected_text),
-                    stt_qwen_postprocess_duration_ms=_duration_ms(postprocess_started_at),
-                )
-                if corrected_text != result.text:
-                    result = TranscriptionResult(
-                        text=corrected_text,
-                        confidence=result.confidence,
-                        language=result.language,
-                        word_confidences=result.word_confidences,
-                    )
-            except Exception as exc:
-                logger.warning("Qwen post-process wrapper failed: %s", exc)
-                log_stt_event(
-                    event="stt_qwen_postprocess_complete",
-                    stt_trace_id=stt_trace_id,
-                    provider="qwen-primary",
-                    language=result.language,
-                    success=False,
-                    error_type=type(exc).__name__,
-                    enabled=_qwen_postprocess_enabled(),
-                    transcript_chars=len(result.text),
-                    stt_qwen_postprocess_duration_ms=_duration_ms(postprocess_started_at),
-                )
-
-        return result
+        return await _post_process_qwen_transcription_result(result, stt_trace_id=stt_trace_id)
 
     async def preload_model(self) -> None:
         """Load the Qwen model in the shared executor before serving traffic."""
@@ -1914,10 +1980,11 @@ class QwenOnnxSTTClient:
         stt_trace_id: Optional[str] = None,
     ) -> TranscriptionResult:
         loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(
+        result = await loop.run_in_executor(
             _get_qwen_stt_executor(),
             lambda: self._sync_transcribe(audio_data, language, stt_trace_id=stt_trace_id),
         )
+        return await _post_process_qwen_transcription_result(result, stt_trace_id=stt_trace_id)
 
     async def preload_model(self) -> None:
         """Load the ONNX session in the shared executor before serving traffic."""

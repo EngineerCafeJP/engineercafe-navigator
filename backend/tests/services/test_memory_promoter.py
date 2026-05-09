@@ -156,6 +156,12 @@ class TestNFKCNormalization:
         key2 = MemoryPromoter._aggregate_key("test", "A B C")
         assert key1 == key2
 
+    def test_facility_aliases_in_aggregate_key(self):
+        """ASR揺れを同じ施設記憶として重複排除する"""
+        key1 = MemoryPromoter._aggregate_key("facility_interest", "エンジンやカベの営業時間")
+        key2 = MemoryPromoter._aggregate_key("facility_interest", "エンジニアカフェの営業時間")
+        assert key1 == key2
+
 
 class TestNewTypePromotionRules:
     """新メモリタイプ昇格ルールのテスト"""

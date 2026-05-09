@@ -8,8 +8,11 @@
 
 運用上の**正本**は **[docs/STATUS.md](docs/STATUS.md)** です（**2026-05-05** に git 同期メモと読み方を追記済み。live workflow を再実行するまで NO-GO 記録の日付は 05-03 のまま参照されます）。スナップショット・Issue・品質ゲートの判断は、`README` ではなく常にそちらを優先してください。
 
-**ドキュメントの地図**: **[docs/README.md](docs/README.md)**  
+**ドキュメントの地図**: **[docs/README.md](docs/README.md)**
+
 ツール向けの CI・コマンド・レイヤ制約: **[CLAUDE.md](CLAUDE.md)**
+
+OSS / ライセンス: **[LICENSE](LICENSE)**（ISC） / **[docs/OSS-LICENSE-POSTURE.md](docs/OSS-LICENSE-POSTURE.md)** / **[THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md)**
 
 ---
 

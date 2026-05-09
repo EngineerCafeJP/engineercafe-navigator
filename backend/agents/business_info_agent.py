@@ -10,6 +10,12 @@ from langchain_core.messages import HumanMessage
 
 from backend.llm import get_llm_provider, get_model_config
 from backend.tools.enhanced_rag import EnhancedRAGSearch
+from backend.utils.cafe_entity import (
+    cafe_entity_metadata,
+    is_ambiguous_cafe_hours_query,
+    is_saino_reference,
+    normalize_cafe_query,
+)
 from backend.utils.language_types import DEFAULT_NOT_FOUND_RESPONSE, LANGUAGE_INSTRUCTION
 
 logger = logging.getLogger(__name__)
@@ -439,11 +445,34 @@ Information: {context}
         self, query: str, request_type: Optional[str], language: str
     ) -> Optional[Dict]:
         """Return complete answers for common visitor-critical business questions."""
-        normalized = query.lower()
+        normalized = normalize_cafe_query(query)
+        if is_ambiguous_cafe_hours_query(normalized):
+            return self._canonical_result(
+                self._ambiguous_cafe_hours_answer(language),
+                request_type,
+                category="cafe-clarification-needed",
+                cafe_entity_resolution=cafe_entity_metadata(
+                    entity="ambiguous",
+                    status="needs_clarification",
+                    source="business_info_canonical",
+                    request_type=request_type,
+                ),
+            )
+
         if self._asks_saino_cafe(normalized):
-            answer = self._saino_cafe_answer(normalized, language)
+            answer = self._saino_cafe_answer(normalized, language, request_type)
             if answer:
-                return self._canonical_result(answer, request_type)
+                return self._canonical_result(
+                    answer,
+                    request_type,
+                    category="saino-cafe",
+                    cafe_entity_resolution=cafe_entity_metadata(
+                        entity="saino_cafe",
+                        status="resolved",
+                        source="business_info_canonical",
+                        request_type=request_type,
+                    ),
+                )
 
         if self._asks_closed_days(normalized):
             answers = {
@@ -876,21 +905,26 @@ Information: {context}
 
     @staticmethod
     def _asks_saino_cafe(query: str) -> bool:
-        return any(
-            keyword in query
-            for keyword in (
-                "saino",
-                "サイノ",
-                "サイノカフェ",
-                "cafe&bar",
-                "併設カフェ",
-            )
-        )
+        return is_saino_reference(query)
 
     @staticmethod
-    def _saino_cafe_answer(query: str, language: str) -> Optional[str]:
-        if any(
-            keyword in query for keyword in ("営業時間", "business hours", "opening hours", "hours")
+    def _saino_cafe_answer(
+        query: str, language: str, request_type: Optional[str] = None
+    ) -> Optional[str]:
+        if request_type == "hours" or any(
+            keyword in query
+            for keyword in (
+                "営業時間",
+                "営業",
+                "定休日",
+                "休業日",
+                "休み",
+                "business hours",
+                "opening hours",
+                "hours",
+                "closed",
+                "holiday",
+            )
         ):
             answers = {
                 "ja": (
@@ -997,16 +1031,54 @@ Information: {context}
         return None
 
     @staticmethod
-    def _canonical_result(answer: str, request_type: Optional[str]) -> Dict:
+    def _ambiguous_cafe_hours_answer(language: str) -> str:
+        answers = {
+            "ja": (
+                "[relaxed]カフェの営業時間は、エンジニアカフェなら9:00〜22:00、"
+                "併設のcafe&bar sainoなら平日12:00〜17:00と18:00〜20:00、"
+                "土日祝11:00〜20:00です。どちらのカフェについてか指定すると、"
+                "より正確に案内できます。"
+            ),
+            "en": (
+                "[relaxed]For cafe hours, Engineer Cafe is open from 9:00 to 22:00. "
+                "The attached cafe&bar saino is open weekdays 12:00-17:00 and "
+                "18:00-20:00, and weekends/holidays 11:00-20:00."
+            ),
+            "zh": (
+                "[relaxed]如果问“咖啡”的营业时间，工程师咖啡是9:00到22:00。"
+                "馆内cafe&bar saino平日为12:00到17:00和18:00到20:00，"
+                "周末和节假日为11:00到20:00。"
+            ),
+            "ko": (
+                "[relaxed]카페 영업시간이라면 엔지니어 카페는 9:00-22:00입니다. "
+                "함께 있는 cafe&bar saino는 평일 12:00-17:00 및 18:00-20:00, "
+                "주말과 공휴일은 11:00-20:00입니다."
+            ),
+        }
+        return answers.get(language, answers["ja"])
+
+    @staticmethod
+    def _canonical_result(
+        answer: str,
+        request_type: Optional[str],
+        *,
+        category: Optional[str] = None,
+        cafe_entity_resolution: Optional[dict] = None,
+    ) -> Dict:
+        metadata = {
+            "agent": "BusinessInfoAgent",
+            "confidence": 0.95,
+            "request_type": request_type,
+            "sources": ["enhanced_rag"],
+        }
+        if category:
+            metadata["category"] = category
+        if cafe_entity_resolution:
+            metadata["cafe_entity_resolution"] = cafe_entity_resolution
         return {
             "answer": answer,
             "emotion": "relaxed",
-            "metadata": {
-                "agent": "BusinessInfoAgent",
-                "confidence": 0.95,
-                "request_type": request_type,
-                "sources": ["enhanced_rag"],
-            },
+            "metadata": metadata,
         }
 
     @staticmethod
