@@ -59,12 +59,15 @@ CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 # Production stage (multi-stage build)
 FROM base AS production
 
+ARG INSTALL_QWEN_ONNX=false
+
 # Copy application code
 COPY . .
 
 # Set HuggingFace cache to writable path (avoids /nonexistent home dir issue)
 ENV HF_HOME=/app/.hf_cache
 ENV NUMBA_CACHE_DIR=/app/.numba_cache
+ENV STT_QWEN_ONNX_MODEL_DIR=/app/models/qwen3-asr-0.6b-onnx
 RUN mkdir -p $HF_HOME
 RUN mkdir -p $NUMBA_CACHE_DIR
 
@@ -75,6 +78,14 @@ RUN bash scripts/download_vosk_models.sh models
 # Download Qwen3-ASR 0.6B model (~1.2GB) — primary STT provider (ADR-007)
 RUN bash scripts/download_qwen_model.sh
 
+# Optional side-by-side candidate artifact for STT_QWEN_RUNTIME=onnx.
+# Disabled in normal CI/develop builds because the artifact is ~2.5GB.
+RUN if [ "$INSTALL_QWEN_ONNX" = "true" ]; then \
+      bash scripts/download_qwen_onnx_model.sh "$STT_QWEN_ONNX_MODEL_DIR"; \
+    else \
+      echo "Skipping optional Qwen ONNX artifact download"; \
+    fi
+
 # Download translation models for tRAG EN<->JA on Cloud Run. Without these
 # assets, live alpha runs retry and fall back before answering EN queries.
 # Qwen3-ASR uses torch/transformers at runtime, so keep them installed.
@@ -83,7 +94,7 @@ RUN pip install --no-cache-dir torch transformers \
     && pip cache purge
 
 # Fail Docker build before deploy if the production image loses Qwen runtime deps.
-RUN python -c "import torch; from qwen_asr import Qwen3ASRModel; print('qwen runtime import ok')"
+RUN python -c "import torch; import onnxruntime; import tokenizers; from qwen_asr import Qwen3ASRModel; print('qwen runtime import ok')"
 
 # Pre-warm numba JIT cache for librosa resample used by qwen-asr audio preprocessing.
 RUN python -c "import librosa; import numpy as np; librosa.resample(np.zeros(16000, dtype=np.float32), orig_sr=16000, target_sr=8000); print('numba warm complete')" || echo 'numba warm failed (non-fatal)'
