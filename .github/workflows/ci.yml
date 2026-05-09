@@ -124,6 +124,10 @@ jobs:
         run: pnpm exec tsx src/__tests__/vercel-timeout-hierarchy.test.ts
         working-directory: frontend
 
+      - name: Run knowledge updater node regression test
+        run: pnpm exec tsx --test --import ./src/__tests__/node-test-setup.ts src/__tests__/update-knowledge-base.test.ts
+        working-directory: frontend
+
       - name: Validate P0 Cloud Run/Vercel settings
         run: node scripts/validate-p0-cloudrun-vercel-timeouts.mjs
 
@@ -196,6 +200,7 @@ jobs:
         run: >-
           pnpm exec playwright test
           e2e/smoke.spec.ts
+          e2e/knowledge.spec.ts
           e2e/reception-flow.spec.ts
           e2e/webgl-fallback.spec.ts
           --project=chromium

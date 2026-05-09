@@ -7,6 +7,7 @@ from backend.knowledge.upload_ingestion import (
     build_upload_chunk_records,
     plan_upload_chunks,
 )
+from backend.utils.file_parser import parse_markdown
 
 
 def _content_with_tokens(min_tokens: int) -> str:
@@ -93,6 +94,30 @@ def test_plan_upload_chunks_preserves_section_chunk_levels_and_titles():
     assert plan.chunks[2].title == "Facility Guide - Facilities"
     assert plan.chunks[1].metadata["section"] == "Access"
     assert plan.chunks[2].metadata["section"] == "Facilities"
+
+
+def test_markdown_upload_parser_preserves_headings_for_section_chunking():
+    content = (
+        b"## Access\n"
+        + ("アクセス方法の説明です。".encode("utf-8") * 10)
+        + b"\n\n## Facilities\n"
+        + ("設備情報の説明です。".encode("utf-8") * 10)
+    )
+
+    parsed = parse_markdown(content, preserve_headings=True)
+    plan = plan_upload_chunks(
+        parsed,
+        filename="facility-info.md",
+        category="facility-info",
+        title="Facility Guide",
+        strategy=ChunkingStrategy(max_tokens=90, overlap_tokens=0, min_chunk_tokens=10),
+    )
+
+    assert [chunk.chunk_level for chunk in plan.chunks] == [
+        "document",
+        "section",
+        "section",
+    ]
 
 
 def test_plan_upload_chunks_applies_total_chunk_accounting_to_every_chunk():

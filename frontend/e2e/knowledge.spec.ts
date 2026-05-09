@@ -14,6 +14,27 @@ import {
   waitForToast,
 } from './helpers/knowledge';
 
+function extractMultipartField(body: string, name: string): string {
+  const match = body.match(new RegExp(`name="${name}"\\r\\n\\r\\n([\\s\\S]*?)\\r\\n--`));
+  return match?.[1] ?? '';
+}
+
+function extractMultipartFilename(body: string): string {
+  const match = body.match(/name="file"; filename="([^"]+)"/);
+  return match?.[1] ?? '';
+}
+
+function buildChunkTitles(baseTitle: string, chunkCount: number): string[] {
+  if (chunkCount === 1) {
+    return [baseTitle];
+  }
+
+  return [
+    baseTitle,
+    ...Array.from({ length: chunkCount - 1 }, (_, index) => `${baseTitle} [chunk ${index + 1}]`),
+  ];
+}
+
 test.describe('Knowledge 一覧ページ', () => {
   test.beforeEach(async ({ page }) => {
     await page.route(/\/api\/admin\/knowledge(\?|$)/, async (route) => {
@@ -257,7 +278,7 @@ test.describe('Knowledge アップロードページ', () => {
           file_type: 'markdown',
           extracted_preview: 'サーバーで抽出したMarkdownプレビュー本文です',
           estimated_chunks: 2,
-          chunk_titles: ['test (part 1)', 'test (part 2)'],
+          chunk_titles: ['test', 'test [chunk 1]'],
           total_chars: 1234,
         },
       });
@@ -278,9 +299,73 @@ test.describe('Knowledge アップロードページ', () => {
     await expect(page.getByText('# テスト')).toBeVisible({ timeout: 3_000 });
     await expect(page.getByText('サーバーで抽出したMarkdownプレビュー本文です')).toBeVisible();
     await expect(page.getByText('登録予定タイトル（2件）')).toBeVisible();
-    await expect(page.getByText('test (part 1)')).toBeVisible();
-    await expect(page.getByText('test (part 2)')).toBeVisible();
+    await expect(page.getByText('test', { exact: true })).toBeVisible();
+    await expect(page.getByText('test [chunk 1]')).toBeVisible();
     expect(previewRequests).toBe(1);
+  });
+
+  test('カテゴリ・言語・タイトル変更で解析プレビューを再取得して表示タイトルを更新する', async ({
+    page,
+  }) => {
+    const previewRequests: Array<{
+      category: string;
+      filename: string;
+      language: string;
+      title: string;
+    }> = [];
+
+    await page.route('/api/admin/knowledge/preview', async (route) => {
+      const body = route.request().postDataBuffer()?.toString('utf8') ?? '';
+      const request = {
+        category: extractMultipartField(body, 'category'),
+        filename: extractMultipartFilename(body),
+        language: extractMultipartField(body, 'language') || 'ja',
+        title: extractMultipartField(body, 'title'),
+      };
+      previewRequests.push(request);
+
+      const baseTitle = request.filename.replace(/\.[^.]+$/, '');
+      const estimatedChunks =
+        request.language === 'en' ? 2 : request.category === 'イベント' ? 3 : 1;
+
+      return route.fulfill({
+        json: {
+          file_type: 'markdown',
+          extracted_preview: `${request.category || '未分類'}:${request.language}`,
+          estimated_chunks: estimatedChunks,
+          chunk_titles: buildChunkTitles(baseTitle, estimatedChunks),
+          total_chars: 100 + estimatedChunks,
+        },
+      });
+    });
+
+    await page.goto('/admin/knowledge/upload');
+
+    await page.getByLabel('アップロードするファイル').setInputFiles({
+      name: 'refresh.md',
+      mimeType: 'text/markdown',
+      buffer: Buffer.from('# Refresh\npreview refresh test'),
+    });
+
+    await expect(page.getByText('登録予定タイトル（1件）')).toBeVisible({ timeout: 5_000 });
+    await expect.poll(() => previewRequests.at(-1)?.filename).toBe('refresh.md');
+    await expect.poll(() => previewRequests.at(-1)?.title).toBe('refresh');
+
+    await page.getByLabel(/カテゴリ/).selectOption('イベント');
+    await expect(page.getByText('登録予定タイトル（3件）')).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText('refresh [chunk 2]')).toBeVisible();
+    await expect.poll(() => previewRequests.at(-1)?.category).toBe('イベント');
+
+    await page.getByRole('radio', { name: 'English' }).check();
+    await expect(page.getByText('登録予定タイトル（2件）')).toBeVisible({ timeout: 5_000 });
+    await expect.poll(() => previewRequests.at(-1)?.language).toBe('en');
+
+    await page.getByLabel('タイトル（任意）').fill('Custom Preview');
+    await expect.poll(() => previewRequests.at(-1)?.title).toBe('Custom Preview');
+    await expect(page.getByText('Custom Preview', { exact: true })).toBeVisible({
+      timeout: 5_000,
+    });
+    await expect(page.getByText('Custom Preview [chunk 1]')).toBeVisible();
   });
 
   test('PDFファイルを選択するとPDF解析プレビューが表示される', async ({ page }) => {

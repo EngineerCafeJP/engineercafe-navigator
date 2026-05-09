@@ -109,6 +109,49 @@ function createSupabaseMock(existingByEventId = new Map<string, { id: string }>(
   return { client, inserts, updates, selectedEventIds };
 }
 
+function createRunUpdateSupabaseMock() {
+  const cleanupCalls: Array<Record<string, unknown>> = [];
+  const metricsInserts: Array<Record<string, unknown>> = [];
+
+  const client = {
+    from(table: string) {
+      if (table === 'knowledge_base') {
+        return {
+          delete() {
+            return {
+              in(column: string, values: string[]) {
+                assert.equal(column, 'category');
+                assert.deepEqual(values, ['event', 'events']);
+
+                return {
+                  async lt(column: string, value: string) {
+                    assert.equal(column, 'metadata->>end_date');
+                    cleanupCalls.push({ column, value });
+                    return { error: null };
+                  },
+                };
+              },
+            };
+          },
+        };
+      }
+
+      if (table === 'system_metrics') {
+        return {
+          async insert(payload: Record<string, unknown>) {
+            metricsInserts.push(payload);
+            return { error: null };
+          },
+        };
+      }
+
+      assert.fail(`Unexpected table: ${table}`);
+    },
+  };
+
+  return { client, cleanupCalls, metricsInserts };
+}
+
 test(
   'Connpass update embeds rows and writes RAG-visible event category',
   { concurrency: false },
@@ -183,16 +226,18 @@ test(
 );
 
 test(
-  'Connpass update skips database writes when OPENROUTER_API_KEY is missing',
+  'Connpass update rejects without database writes when OPENROUTER_API_KEY is missing',
   { concurrency: false },
   async () => {
     console.error = () => {};
     const KnowledgeBaseUpdater = await loadKnowledgeBaseUpdater();
+    let connpassCalled = false;
     let fetchCalled = false;
     let supabaseCalled = false;
     const updater = new KnowledgeBaseUpdater({
       connpassClient: {
         async searchEngineerCafeEvents() {
+          connpassCalled = true;
           return [createConnpassEvent(), createConnpassEvent({ event_id: 202 })];
         },
       },
@@ -209,12 +254,51 @@ test(
       getOpenRouterApiKey: () => undefined,
     });
 
-    const result = await (updater as any).updateFromConnpass();
+    await assert.rejects(
+      () => (updater as any).updateFromConnpass(),
+      /OPENROUTER_API_KEY is not set/
+    );
 
-    assert.match(result, /^Added 0, updated 0, skipped 2, failed 0 events/);
-    assert.match(result, /one-time migration to category 'event'/);
+    assert.equal(connpassCalled, false);
     assert.equal(fetchCalled, false);
     assert.equal(supabaseCalled, false);
+  }
+);
+
+test(
+  'runUpdate rejects when required Connpass embeddings are not configured',
+  { concurrency: false },
+  async () => {
+    console.error = () => {};
+    const KnowledgeBaseUpdater = await loadKnowledgeBaseUpdater();
+    let connpassCalled = false;
+    let fetchCalled = false;
+    const supabase = createRunUpdateSupabaseMock();
+    const updater = new KnowledgeBaseUpdater({
+      connpassClient: {
+        async searchEngineerCafeEvents() {
+          connpassCalled = true;
+          return [createConnpassEvent()];
+        },
+      },
+      supabaseAdmin: supabase.client,
+      fetch: (async () => {
+        fetchCalled = true;
+        throw new Error('Embedding fetch should not be called without an API key');
+      }) as typeof fetch,
+      getOpenRouterApiKey: () => '',
+    });
+
+    await assert.rejects(
+      () => updater.runUpdate(),
+      /Required knowledge base source Connpass failed: .*OPENROUTER_API_KEY is not set/
+    );
+
+    assert.equal(connpassCalled, false);
+    assert.equal(fetchCalled, false);
+    assert.equal(supabase.cleanupCalls.length, 1);
+    assert.equal(supabase.metricsInserts.length, 1);
+    assert.deepEqual((supabase.metricsInserts[0].metadata as Record<string, unknown>).connpass, false);
   }
 );
 

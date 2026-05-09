@@ -89,6 +89,7 @@ class _TableQuery:
         self.operation = "select"
         self.payload: dict[str, Any] | None = None
         self.eq_filters: list[tuple[str, Any]] = []
+        self.neq_filters: list[tuple[str, Any]] = []
         self.in_filters: list[tuple[str, list[Any]]] = []
         self.not_null_fields: list[str] = []
         self.limit_count: int | None = None
@@ -119,6 +120,10 @@ class _TableQuery:
 
     def eq(self, field: str, value: Any):
         self.eq_filters.append((field, value))
+        return self
+
+    def neq(self, field: str, value: Any):
+        self.neq_filters.append((field, value))
         return self
 
     def in_(self, field: str, values: list[Any]):
@@ -172,12 +177,21 @@ class _TableQuery:
     def _matches(self) -> list[dict[str, Any]]:
         rows = self.store.rows
         for field, value in self.eq_filters:
-            rows = [row for row in rows if row.get(field) == value]
+            rows = [row for row in rows if self._field_value(row, field) == value]
+        for field, value in self.neq_filters:
+            rows = [row for row in rows if self._field_value(row, field) != value]
         for field, values in self.in_filters:
-            rows = [row for row in rows if row.get(field) in values]
+            rows = [row for row in rows if self._field_value(row, field) in values]
         for field in self.not_null_fields:
-            rows = [row for row in rows if row.get(field) is not None]
+            rows = [row for row in rows if self._field_value(row, field) is not None]
         return rows
+
+    @staticmethod
+    def _field_value(row: dict[str, Any], field: str) -> Any:
+        if field.startswith("metadata->>"):
+            metadata = row.get("metadata") or {}
+            return metadata.get(field.removeprefix("metadata->>"))
+        return row.get(field)
 
 
 class _RpcQuery:
@@ -225,6 +239,14 @@ async def _fake_generate_embedding(text: str) -> list[float]:
 
 async def _fake_missing_embedding(_text: str) -> list[float]:
     return []
+
+
+def _rpc_contents_for_vector(store: InMemorySupabase, vector: list[float]) -> list[str]:
+    result = store.rpc(
+        "search_knowledge_base",
+        {"query_embedding": vector, "match_count": 10},
+    ).execute()
+    return [row["content"] for row in result.data]
 
 
 def _upload_contract_markdown() -> str:
@@ -331,7 +353,7 @@ async def test_upload_inserts_embedding_for_every_retrieval_visible_chunk(
     monkeypatch.setattr(knowledge_api, "_get_supabase", lambda: store)
     monkeypatch.setattr(knowledge_api, "generate_embedding", _fake_generate_embedding)
     monkeypatch.setattr(
-        knowledge_api, "parse_markdown", lambda _content: _upload_contract_markdown()
+        knowledge_api, "parse_markdown", lambda *_args, **_kwargs: _upload_contract_markdown()
     )
 
     response = client.post(
@@ -411,7 +433,7 @@ def test_uploaded_chunks_have_stable_document_identity_for_document_level_mutati
     monkeypatch.setattr(knowledge_api, "_get_supabase", lambda: store)
     monkeypatch.setattr(knowledge_api, "generate_embedding", _fake_generate_embedding)
     monkeypatch.setattr(
-        knowledge_api, "parse_markdown", lambda _content: _upload_contract_markdown()
+        knowledge_api, "parse_markdown", lambda *_args, **_kwargs: _upload_contract_markdown()
     )
 
     response = client.post(
@@ -424,3 +446,110 @@ def test_uploaded_chunks_have_stable_document_identity_for_document_level_mutati
     document_ids = {payload["metadata"].get("document_id") for payload in store.insert_payloads}
     assert len(document_ids) == 1
     assert None not in document_ids
+
+
+@pytest.mark.asyncio
+async def test_delete_uploaded_document_removes_all_retrieval_visible_chunks(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+):
+    store = InMemorySupabase()
+    monkeypatch.setattr(knowledge_api, "_get_supabase", lambda: store)
+    monkeypatch.setattr(knowledge_api, "generate_embedding", _fake_generate_embedding)
+    monkeypatch.setattr(
+        knowledge_api, "parse_markdown", lambda *_args, **_kwargs: _upload_contract_markdown()
+    )
+
+    response = client.post(
+        "/api/knowledge/upload",
+        data={"category": "pricing", "language": "ja"},
+        files={"file": ("delete_document.md", io.BytesIO(b"# Test"), "text/markdown")},
+    )
+
+    assert response.status_code == 201
+    assert len(store.rows) == 3
+    knowledge_id = response.json()["data"]["id"]
+
+    assert any(
+        "Chunk B token 540" in content
+        for content in _rpc_contents_for_vector(store, UPLOAD_VECTOR_B)
+    )
+
+    delete_response = client.delete(f"/api/knowledge/{knowledge_id}")
+
+    assert delete_response.status_code == 200
+    assert store.rows == []
+    assert _rpc_contents_for_vector(store, UPLOAD_VECTOR_B) == []
+
+
+@pytest.mark.asyncio
+async def test_update_uploaded_document_collapses_stale_sibling_chunks(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+):
+    store = InMemorySupabase()
+    monkeypatch.setattr(knowledge_api, "_get_supabase", lambda: store)
+    monkeypatch.setattr(knowledge_api, "generate_embedding", _fake_generate_embedding)
+    monkeypatch.setattr(
+        knowledge_api, "parse_markdown", lambda *_args, **_kwargs: _upload_contract_markdown()
+    )
+
+    response = client.post(
+        "/api/knowledge/upload",
+        data={"category": "pricing", "language": "ja"},
+        files={"file": ("update_document.md", io.BytesIO(b"# Test"), "text/markdown")},
+    )
+
+    assert response.status_code == 201
+    knowledge_id = response.json()["data"]["id"]
+    assert len(store.rows) == 3
+
+    update_response = client.put(
+        f"/api/knowledge/{knowledge_id}",
+        json={
+            "title": "Updated upload proof",
+            "content": "rag-updated-token-540 content",
+        },
+    )
+
+    assert update_response.status_code == 200
+    assert len(store.rows) == 1
+    row = store.rows[0]
+    assert row["title"] == "Updated upload proof"
+    assert row["content"] == "rag-updated-token-540 content"
+    assert row["content_embedding"] == NEW_VECTOR
+    assert row["chunk_level"] == "document"
+    assert row["chunk_index"] == 0
+    assert row["metadata"]["total_chunks"] == 1
+
+    assert _rpc_contents_for_vector(store, UPLOAD_VECTOR_B) == []
+    assert "rag-updated-token-540 content" in _rpc_contents_for_vector(store, NEW_VECTOR)
+
+
+def test_markdown_upload_preserves_section_chunks_through_real_parser_path(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+):
+    store = InMemorySupabase()
+    monkeypatch.setattr(knowledge_api, "_get_supabase", lambda: store)
+    monkeypatch.setattr(knowledge_api, "generate_embedding", _fake_generate_embedding)
+
+    response = client.post(
+        "/api/knowledge/upload",
+        data={"category": "pricing", "language": "ja"},
+        files={
+            "file": (
+                "real_parser_sections.md",
+                io.BytesIO(_upload_contract_markdown().encode("utf-8")),
+                "text/markdown",
+            )
+        },
+    )
+
+    assert response.status_code == 201
+    assert [payload["chunk_level"] for payload in store.insert_payloads] == [
+        "document",
+        "section",
+        "section",
+    ]
+    assert [payload["chunk_index"] for payload in store.insert_payloads] == [0, 1, 2]
+    assert all(isinstance(payload["token_count"], int) for payload in store.insert_payloads)
+    assert store.insert_payloads[1]["metadata"]["section"] == "Chunk A"
+    assert store.insert_payloads[2]["metadata"]["section"] == "Chunk B"

@@ -42,7 +42,11 @@ export class KnowledgeBaseUpdater {
     // Run every 6 hours: "0 */6 * * *"
     // For testing, can use every 5 minutes: "*/5 * * * *"
     this.job = new CronJob('0 */6 * * *', async () => {
-      await this.runUpdate();
+      try {
+        await this.runUpdate();
+      } catch (error) {
+        console.error('[KnowledgeBaseUpdater] Scheduled update failed:', error);
+      }
     });
   }
   
@@ -93,7 +97,7 @@ export class KnowledgeBaseUpdater {
       
       const duration = Date.now() - startTime;
       
-      // Track metrics
+      // Track metrics before surfacing required-source failures to the cron route.
       await this.trackUpdateMetrics({
         duration,
         sources: {
@@ -102,9 +106,16 @@ export class KnowledgeBaseUpdater {
           website: results[2].status === 'fulfilled',
         },
       });
+
+      if (results[0].status === 'rejected') {
+        throw new Error(
+          `Required knowledge base source Connpass failed: ${this.getErrorMessage(results[0].reason)}`
+        );
+      }
       
     } catch (error) {
       console.error('[KnowledgeBaseUpdater] Update failed:', error);
+      throw error;
     } finally {
       this.isRunning = false;
     }
@@ -115,6 +126,16 @@ export class KnowledgeBaseUpdater {
    */
   private async updateFromConnpass(): Promise<string> {
     try {
+      const openRouterApiKey = this.getOpenRouterApiKey()?.trim();
+      if (!openRouterApiKey) {
+        const message = [
+          '[updateFromConnpass] OPENROUTER_API_KEY is not set;',
+          'cannot update Connpass events because embeddings are required.',
+        ].join(' ');
+        console.error(message);
+        throw new Error(message);
+      }
+
       // Search for Engineer Cafe events
       const events = await this.connpassClient.searchEngineerCafeEvents({
         includeEnded: false,
@@ -125,15 +146,6 @@ export class KnowledgeBaseUpdater {
       let updated = 0;
       let skipped = 0;
       let failed = 0;
-
-      const openRouterApiKey = this.getOpenRouterApiKey()?.trim();
-      if (!openRouterApiKey) {
-        skipped = events.length;
-        console.error(
-          `[updateFromConnpass] OPENROUTER_API_KEY is not set; skipped ${skipped} Connpass event(s) without writing RAG-invisible rows.`
-        );
-        return this.formatConnpassUpdateResult({ added, updated, skipped, failed });
-      }
       
       for (const event of events) {
         const content = this.formatConnpassEvent(event);
@@ -325,6 +337,10 @@ export class KnowledgeBaseUpdater {
       "Existing Connpass rows with category 'events' still need a one-time migration to category 'event'.",
     ].join('. ');
   }
+
+  private getErrorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
+  }
   
   /**
    * Simple language detection
@@ -362,7 +378,7 @@ export class KnowledgeBaseUpdater {
     };
   }): Promise<void> {
     try {
-      await supabaseAdmin
+      await this.supabaseAdmin
         .from('system_metrics')
         .insert({
           metric_type: 'knowledge_base_update',

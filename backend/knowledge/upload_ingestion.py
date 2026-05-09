@@ -108,7 +108,7 @@ async def build_upload_chunk_records(
     records: list[dict[str, Any]] = []
     for chunk in plan.chunks:
         record: dict[str, Any] = {
-            "title": _record_title(chunk),
+            "title": upload_chunk_record_title(chunk),
             "content": chunk.content,
             "category": chunk.category,
             "source": f"file:{plan.original_filename}",
@@ -300,7 +300,9 @@ def _apply_total_chunk_metadata(chunks: list[KnowledgeChunk]) -> list[KnowledgeC
     ]
 
 
-def _record_title(chunk: KnowledgeChunk) -> str:
+def upload_chunk_record_title(chunk: KnowledgeChunk) -> str:
+    """Return the persisted title for an uploaded knowledge chunk."""
+
     if chunk.chunk_level == "document":
         return chunk.title
     return f"{chunk.title} [chunk {chunk.chunk_index}]"

@@ -523,6 +523,9 @@ def test_upload_markdown(mock_get_sb, mock_embed, mock_parse_md):
     assert inserted["metadata"]["chunk_level"] == "document"
     assert inserted["metadata"]["entry_id"].startswith("upload-test_doc-")
     assert inserted["metadata"]["document_id"] == inserted["metadata"]["entry_id"]
+    assert inserted["chunk_level"] == "document"
+    assert inserted["chunk_index"] == 0
+    assert inserted["token_count"] > 0
 
 
 @patch("backend.api.knowledge.parse_pdf")
@@ -588,7 +591,7 @@ def test_upload_markdown_splits_into_chunks(mock_get_sb, mock_embed, mock_parse_
     )
     first_row = {
         **SAMPLE_ROW,
-        "title": "multi_doc (part 1)",
+        "title": "multi_doc",
         "content": parsed_content[:200].rstrip() + "...",
         "source": "file:multi_doc.md",
         "metadata": {
@@ -600,7 +603,7 @@ def test_upload_markdown_splits_into_chunks(mock_get_sb, mock_embed, mock_parse_
     }
     second_row = {
         **SAMPLE_ROW,
-        "title": "multi_doc (part 2)",
+        "title": "multi_doc [chunk 1]",
         "content": "Chunk two",
         "source": "file:multi_doc.md",
         "metadata": {
@@ -617,7 +620,7 @@ def test_upload_markdown_splits_into_chunks(mock_get_sb, mock_embed, mock_parse_
             [
                 {
                     **SAMPLE_ROW,
-                    "title": "multi_doc (part 3)",
+                    "title": "multi_doc [chunk 2]",
                     "content": "Chunk three",
                 }
             ]
@@ -633,7 +636,7 @@ def test_upload_markdown_splits_into_chunks(mock_get_sb, mock_embed, mock_parse_
     assert response.status_code == 201
     body = response.json()
     assert body["success"] is True
-    assert body["data"]["title"] == "multi_doc (part 1)"
+    assert body["data"]["title"] == "multi_doc"
     assert body["data"]["metadata"]["chunk_index"] == 0
     assert body["data"]["metadata"]["total_chunks"] == 3
     assert body["data"]["metadata"]["chunks_created"] == 3
@@ -641,14 +644,19 @@ def test_upload_markdown_splits_into_chunks(mock_get_sb, mock_embed, mock_parse_
 
     insert_calls = mock_sb.table.return_value.insert.call_args_list
     assert len(insert_calls) == 3
-    assert insert_calls[0].args[0]["title"] == "multi_doc (part 1)"
-    assert insert_calls[1].args[0]["title"] == "multi_doc (part 2)"
-    assert insert_calls[2].args[0]["title"] == "multi_doc (part 3)"
+    assert insert_calls[0].args[0]["title"] == "multi_doc"
+    assert insert_calls[1].args[0]["title"] == "multi_doc [chunk 1]"
+    assert insert_calls[2].args[0]["title"] == "multi_doc [chunk 2]"
     assert insert_calls[0].args[0]["metadata"]["chunk_index"] == 0
     assert insert_calls[1].args[0]["metadata"]["chunk_index"] == 1
     assert insert_calls[0].args[0]["metadata"]["chunk_level"] == "document"
     assert insert_calls[1].args[0]["metadata"]["chunk_level"] == "chunk"
     assert insert_calls[2].args[0]["metadata"]["chunk_level"] == "chunk"
+    assert insert_calls[0].args[0]["chunk_level"] == "document"
+    assert insert_calls[1].args[0]["chunk_level"] == "chunk"
+    assert insert_calls[2].args[0]["chunk_level"] == "chunk"
+    assert insert_calls[1].args[0]["chunk_index"] == 1
+    assert insert_calls[1].args[0]["token_count"] > 0
     assert insert_calls[1].args[0]["metadata"]["total_chunks"] == 3
     entry_ids = {call.args[0]["metadata"]["entry_id"] for call in insert_calls}
     assert len(entry_ids) == 1
@@ -667,9 +675,7 @@ def test_upload_rejects_duplicate_chunk_title_from_batch_check(mock_get_sb, mock
     mock_get_sb.return_value = mock_sb
 
     mock_sb.table.return_value.select.return_value.in_.return_value.execute.return_value = (
-        _mock_table_result(
-            [{"title": "duplicate_doc (part 1)"}, {"title": "duplicate_doc (part 3)"}]
-        )
+        _mock_table_result([{"title": "duplicate_doc"}, {"title": "duplicate_doc [chunk 2]"}])
     )
 
     response = client.post(
@@ -683,11 +689,11 @@ def test_upload_rejects_duplicate_chunk_title_from_batch_check(mock_get_sb, mock
     assert detail["message"] == "duplicate titles"
     assert len(detail["conflicts"]) == 2
     conflict_titles = {c["title"] for c in detail["conflicts"]}
-    assert "duplicate_doc (part 1)" in conflict_titles
-    assert "duplicate_doc (part 3)" in conflict_titles
+    assert "duplicate_doc" in conflict_titles
+    assert "duplicate_doc [chunk 2]" in conflict_titles
     mock_sb.table.return_value.select.return_value.in_.assert_called_once_with(
         "title",
-        ["duplicate_doc (part 1)", "duplicate_doc (part 2)", "duplicate_doc (part 3)"],
+        ["duplicate_doc", "duplicate_doc [chunk 1]", "duplicate_doc [chunk 2]"],
     )
     mock_sb.table.return_value.insert.assert_not_called()
 
@@ -767,7 +773,9 @@ def test_upload_rolls_back_inserted_chunks_on_unique_violation(
         ),
         APIError(
             {
-                "message": 'duplicate key value violates unique constraint for "race_doc (part 2)"',
+                "message": (
+                    'duplicate key value violates unique constraint for "race_doc [chunk 1]"'
+                ),
                 "code": "23505",
                 "hint": "",
                 "details": "",
@@ -788,7 +796,7 @@ def test_upload_rolls_back_inserted_chunks_on_unique_violation(
     detail = response.json()["detail"]
     assert detail["message"] == "duplicate titles"
     assert len(detail["conflicts"]) == 1
-    assert detail["conflicts"][0]["title"] == "race_doc (part 2)"
+    assert detail["conflicts"][0]["title"] == "race_doc [chunk 1]"
     assert detail["conflicts"][0]["chunk_index"] == 1
     assert mock_sb.table.return_value.delete.return_value.eq.call_args_list == [
         call("id", "first-chunk-id")
@@ -959,39 +967,36 @@ def test_upload_all_chunks_succeed_returns_200(mock_get_sb, mock_embed, mock_par
 # =============================================================================
 
 
-@patch("backend.api.knowledge.parse_markdown")
-@patch("backend.api.knowledge.chunk_text")
 @patch("backend.api.knowledge._get_supabase")
-def test_preview_markdown(mock_get_sb, mock_chunk_text, mock_parse_md):
+@patch("backend.api.knowledge.parse_markdown")
+def test_preview_markdown(mock_parse_md, mock_get_sb):
     """Markdown ファイルのプレビュー"""
-    mock_parse_md.return_value = "Parsed markdown content for preview"
-    mock_chunk_text.return_value = ["Chunk one", "Chunk two"]
+    parsed_content = _pricing_upload_content(paragraph_count=4)
+    mock_parse_md.return_value = parsed_content
     mock_sb = _mock_supabase()
     mock_get_sb.return_value = mock_sb
 
     response = client.post(
         "/api/knowledge/preview",
-        data={"language": "ja"},
+        data={"language": "ja", "category": "pricing"},
         files={"file": ("test_doc.md", io.BytesIO(b"# Test"), "text/markdown")},
     )
 
     assert response.status_code == 200
     body = response.json()
     assert body["file_type"] == "markdown"
-    assert body["extracted_preview"] == "Parsed markdown content for preview"[:1500]
-    assert body["estimated_chunks"] == 2
-    assert body["chunk_titles"] == ["test_doc (part 1)", "test_doc (part 2)"]
-    assert body["total_chars"] == len("Parsed markdown content for preview")
+    assert body["extracted_preview"] == parsed_content[:1500]
+    assert body["estimated_chunks"] == 3
+    assert body["chunk_titles"] == ["test_doc", "test_doc [chunk 1]", "test_doc [chunk 2]"]
+    assert body["total_chars"] == len(parsed_content)
     mock_sb.table.return_value.insert.assert_not_called()
 
 
-@patch("backend.api.knowledge.parse_pdf")
-@patch("backend.api.knowledge.chunk_text")
 @patch("backend.api.knowledge._get_supabase")
-def test_preview_pdf(mock_get_sb, mock_chunk_text, mock_parse_pdf):
+@patch("backend.api.knowledge.parse_pdf")
+def test_preview_pdf(mock_parse_pdf, mock_get_sb):
     """PDF ファイルのプレビュー"""
     mock_parse_pdf.return_value = "Parsed PDF content for preview"
-    mock_chunk_text.return_value = ["Single chunk"]
     mock_sb = _mock_supabase()
     mock_get_sb.return_value = mock_sb
 
@@ -1026,20 +1031,19 @@ def test_preview_rejects_unsupported_file_type(mock_get_sb):
 
 
 @patch("backend.api.knowledge.parse_markdown")
-@patch("backend.api.knowledge.chunk_text")
-def test_preview_rejects_too_many_chunks(mock_chunk_text, mock_parse_md):
+def test_preview_rejects_too_many_chunks(mock_parse_md):
     """プレビューでチャンク上限を超えるファイルは400"""
-    mock_parse_md.return_value = "Parsed markdown content"
-    mock_chunk_text.return_value = [f"Chunk {index}" for index in range(51)]
+    mock_parse_md.return_value = _pricing_upload_content(paragraph_count=160)
 
     response = client.post(
         "/api/knowledge/preview",
-        data={"language": "ja"},
+        data={"language": "ja", "category": "pricing"},
         files={"file": ("large_doc.md", io.BytesIO(b"# Test"), "text/markdown")},
     )
 
     assert response.status_code == 400
-    assert response.json()["detail"] == "Document too large: 51 chunks exceeds limit of 50"
+    assert response.json()["detail"].startswith("Document too large:")
+    assert response.json()["detail"].endswith("chunks exceeds limit of 50")
 
 
 def test_preview_rejects_file_larger_than_10mb():
