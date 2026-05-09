@@ -12,6 +12,7 @@
 | [018 — Alpha fast response / assistant profile routing](018-alpha-fast-response-and-assistant-profile-routing.md)   | identity / fast path / モデル選択（メインワークフローと一体で読む） |
 | [008 — Operational verification & deployment guardrails](008-operational-verification-and-deployment-guardrails.md) | 監査・デプロイ・検証のガードレール                             |
 | [019 — Alpha live RAGAS case accounting](019-alpha-live-ragas-case-accounting.md)                                   | C-127 ケース数・収集の会計                              |
+| [020 — Knowledge ingestion mutation contract](020-knowledge-ingestion-mutation-contract.md)                         | RAG 投入・変更・preview の契約                           |
 
 
 ## ワークフロー・音声・観測
@@ -48,4 +49,3 @@
 
 - ADR 番号は 005 以降を運用しており、**015 は欠番**です（採番のみ存在し、文書化に至らなかったため）。新しい ADR を起票する際は 020 から付番してください。
 - 001–004 についても、本リポジトリでは初期から ADR 005 以降のみを保守しています。
-

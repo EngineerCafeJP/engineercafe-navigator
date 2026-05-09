@@ -3,9 +3,7 @@
   "version": "1.0.0",
   "description": "Engineer Cafe Navigator - NextJS Frontend + Python LangGraph Backend",
   "private": true,
-  "workspaces": [
-    "frontend"
-  ],
+  "packageManager": "pnpm@10.12.1",
   "scripts": {
     "dev:frontend": "cd frontend && pnpm dev",
     "dev:backend": "cd backend && python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000",
@@ -22,8 +20,8 @@
     "concurrently": "8.2.2"
   },
   "engines": {
-    "node": ">=18.0.0",
-    "pnpm": ">=8.0.0",
+    "node": ">=24.0.0",
+    "pnpm": ">=10.12.1",
     "python": ">=3.11.0"
   },
   "keywords": [

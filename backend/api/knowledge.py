@@ -21,6 +21,7 @@ from starlette.requests import Request
 from pydantic import BaseModel, Field
 from supabase import create_client
 
+from backend.knowledge.upload_ingestion import plan_upload_chunks
 from backend.utils.embedding_service import generate_embedding
 from backend.utils.file_parser import chunk_text, detect_file_type, parse_markdown, parse_pdf
 from backend.utils.rate_limit import rate_limit
@@ -32,6 +33,7 @@ router = APIRouter(tags=["knowledge"])
 # 10MB upload size limit
 MAX_UPLOAD_SIZE = 10 * 1024 * 1024
 MAX_CHUNKS = 50
+PREVIEW_TIMEOUT_SECONDS = 30
 
 
 # =============================================================================
@@ -350,6 +352,9 @@ async def create_knowledge(request: Request, body: KnowledgeCreateRequest):
         # Embedding生成
         embedding_text = f"{body.title}\n{body.content}"
         embedding = await generate_embedding(embedding_text)
+        if not embedding:
+            logger.warning("Embedding unavailable for knowledge create: title=%s", body.title)
+            raise HTTPException(status_code=503, detail="Embedding service unavailable")
 
         # DB挿入
         insert_data: Dict[str, Any] = {
@@ -360,9 +365,8 @@ async def create_knowledge(request: Request, body: KnowledgeCreateRequest):
             "subcategory": body.subcategory,
             "source": body.source,
             "metadata": body.metadata or {},
+            "content_embedding": embedding,
         }
-        if embedding:
-            insert_data["content_embedding"] = embedding
 
         result = supabase.table("knowledge_base").insert(insert_data).execute()
 
@@ -465,7 +469,15 @@ async def upload_knowledge(
         effective_title = title or file.filename.rsplit(".", 1)[0]
 
         supabase = _get_supabase()
-        chunks = chunk_text(parsed_content)
+        chunk_plan = plan_upload_chunks(
+            parsed_content,
+            filename=file.filename,
+            category=category,
+            language=language,
+            title=effective_title,
+            metadata=metadata_payload,
+        )
+        chunks = list(chunk_plan.chunks)
         if not chunks:
             raise HTTPException(status_code=400, detail="No text content extracted from file")
         if len(chunks) > MAX_CHUNKS:
@@ -504,7 +516,8 @@ async def upload_knowledge(
         failed_chunk_indices: List[int] = []
 
         try:
-            for index, chunk_content in enumerate(chunks):
+            for index, chunk in enumerate(chunks):
+                chunk_content = chunk.content
                 chunk_title = chunk_titles[index]
                 embedding: List[float] = []
                 embedding_input = (
@@ -570,11 +583,9 @@ async def upload_knowledge(
                     "source": f"file:{file.filename}",
                     "content_embedding": embedding,
                     "metadata": {
-                        "original_filename": file.filename,
-                        "file_type": file_type,
-                        "chunk_index": index,
-                        "total_chunks": total_chunks,
-                        **metadata_payload,
+                        **chunk.metadata,
+                        "entry_id": chunk.entry_id,
+                        "document_id": chunk.entry_id,
                     },
                 }
 
@@ -680,6 +691,45 @@ async def upload_knowledge(
         raise HTTPException(status_code=500, detail="Failed to upload knowledge entry")
 
 
+def _build_knowledge_preview(
+    *,
+    file_type: str,
+    filename: str,
+    content_bytes: bytes,
+) -> Dict[str, Any]:
+    """ファイルを解析して登録予定情報を返す（DBへは書き込まない）"""
+    try:
+        if file_type == "markdown":
+            parsed_content = parse_markdown(content_bytes)
+        else:
+            parsed_content = parse_pdf(content_bytes)
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+
+    if not parsed_content.strip():
+        raise HTTPException(status_code=400, detail="No text content extracted from file")
+
+    chunks = chunk_text(parsed_content)
+    if not chunks:
+        raise HTTPException(status_code=400, detail="No text content extracted from file")
+    if len(chunks) > MAX_CHUNKS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Document too large: {len(chunks)} chunks exceeds limit of {MAX_CHUNKS}",
+        )
+
+    base_title = filename.rsplit(".", 1)[0]
+    chunk_titles = [_chunk_title(base_title, index, len(chunks)) for index in range(len(chunks))]
+
+    return {
+        "file_type": file_type,
+        "extracted_preview": parsed_content[:1500],
+        "estimated_chunks": len(chunks),
+        "chunk_titles": chunk_titles,
+        "total_chars": len(parsed_content),
+    }
+
+
 @router.post("/knowledge/preview", status_code=200)
 @rate_limit("10/minute")
 async def preview_knowledge(
@@ -714,30 +764,27 @@ async def preview_knowledge(
         )
 
     try:
-        if file_type == "markdown":
-            parsed_content = parse_markdown(content_bytes)
-        else:
-            parsed_content = parse_pdf(content_bytes)
-    except ValueError as ve:
-        raise HTTPException(status_code=400, detail=str(ve))
-
-    if not parsed_content.strip():
-        raise HTTPException(status_code=400, detail="No text content extracted from file")
-
-    chunks = chunk_text(parsed_content)
-    if not chunks:
-        raise HTTPException(status_code=400, detail="No text content extracted from file")
-
-    base_title = file.filename.rsplit(".", 1)[0]
-    chunk_titles = [_chunk_title(base_title, index, len(chunks)) for index in range(len(chunks))]
-
-    return {
-        "file_type": file_type,
-        "extracted_preview": parsed_content[:1500],
-        "estimated_chunks": len(chunks),
-        "chunk_titles": chunk_titles,
-        "total_chars": len(parsed_content),
-    }
+        return await asyncio.wait_for(
+            asyncio.to_thread(
+                _build_knowledge_preview,
+                file_type=file_type,
+                filename=file.filename,
+                content_bytes=content_bytes,
+            ),
+            timeout=PREVIEW_TIMEOUT_SECONDS,
+        )
+    except HTTPException:
+        raise
+    except asyncio.TimeoutError:
+        logger.error(
+            "Knowledge preview timed out after %s seconds: filename=%s "
+            "file_type=%s content_size=%s",
+            PREVIEW_TIMEOUT_SECONDS,
+            file.filename,
+            file_type,
+            len(content_bytes),
+        )
+        raise HTTPException(status_code=504, detail="Knowledge preview timed out")
 
 
 @router.put("/knowledge/{knowledge_id}", response_model=KnowledgeResponse)
@@ -792,8 +839,14 @@ async def update_knowledge(request: Request, knowledge_id: str, body: KnowledgeU
         new_content = update_data.get("content", current.get("content", ""))
         if "content" in update_data or "title" in update_data:
             embedding = await generate_embedding(f"{new_title}\n{new_content}")
-            if embedding:
-                update_data["content_embedding"] = embedding
+            if not embedding:
+                logger.warning(
+                    "Embedding unavailable for knowledge update: id=%s title=%s",
+                    knowledge_id,
+                    new_title,
+                )
+                raise HTTPException(status_code=503, detail="Embedding service unavailable")
+            update_data["content_embedding"] = embedding
 
         result = (
             supabase.table("knowledge_base").update(update_data).eq("id", knowledge_id).execute()

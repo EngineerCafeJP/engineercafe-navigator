@@ -256,6 +256,8 @@ def clean_text_for_tts(text: str) -> str:
 
 DEFAULT_TTS_MAX_BYTES = 900
 MIN_CACHEABLE_TTS_AUDIO_BASE64_CHARS = 100
+DEFAULT_TTS_CACHE_MAX_ENTRIES = 200
+DEFAULT_TTS_CACHE_MAX_AUDIO_BYTES = 5 * 1024 * 1024
 _DEFAULT_TTS_TIMEOUTS: Dict[str, float] = {
     "piper": 4.0,
     "kokoro": 3.0,
@@ -274,6 +276,21 @@ def get_tts_max_bytes() -> int:
         logger.warning("Invalid TTS_MAX_BYTES=%r; using %d", raw, DEFAULT_TTS_MAX_BYTES)
         return DEFAULT_TTS_MAX_BYTES
     return max(200, value)
+
+
+def get_tts_cache_max_audio_bytes() -> int:
+    raw = os.getenv("TTS_CACHE_MAX_AUDIO_BYTES", "").strip()
+    if not raw:
+        return DEFAULT_TTS_CACHE_MAX_AUDIO_BYTES
+    try:
+        value = int(raw)
+    except ValueError:
+        logger.warning("Invalid TTS_CACHE_MAX_AUDIO_BYTES=%r; using default", raw)
+        return DEFAULT_TTS_CACHE_MAX_AUDIO_BYTES
+    if value <= 0:
+        logger.warning("TTS_CACHE_MAX_AUDIO_BYTES must be positive; using default")
+        return DEFAULT_TTS_CACHE_MAX_AUDIO_BYTES
+    return value
 
 
 def get_tts_timeout_seconds(provider: str, role: str = "primary") -> float:
@@ -810,7 +827,8 @@ class VoiceAgent:
         else:
             self.google_fallback_client = GoogleTTSClient()
 
-        self._tts_cache: TTLCache = TTLCache(maxsize=200, ttl=3600)
+        self._tts_cache_max_audio_bytes = get_tts_cache_max_audio_bytes()
+        self._tts_cache: TTLCache = TTLCache(maxsize=DEFAULT_TTS_CACHE_MAX_ENTRIES, ttl=3600)
 
     async def close(self) -> None:
         """Close reusable TTS clients owned by this agent."""
@@ -851,7 +869,7 @@ class VoiceAgent:
     def _ensure_tts_cache(self) -> TTLCache:
         cache_store = getattr(self, "_tts_cache", None)
         if cache_store is None:
-            cache_store = TTLCache(maxsize=200, ttl=3600)
+            cache_store = TTLCache(maxsize=DEFAULT_TTS_CACHE_MAX_ENTRIES, ttl=3600)
             self._tts_cache = cache_store
         return cache_store
 
@@ -867,6 +885,43 @@ class VoiceAgent:
             audio = cache_entry.get("audioResponse")
             return audio if isinstance(audio, str) else None
         return None
+
+    @classmethod
+    def _tts_cache_entry_audio_bytes(cls, cache_entry: Any) -> int:
+        audio = cls._cached_audio_from_entry(cache_entry)
+        if not isinstance(audio, str):
+            return 0
+        return len(audio.encode("utf-8"))
+
+    @classmethod
+    def _tts_cache_audio_bytes(cls, cache_store: TTLCache) -> int:
+        return sum(cls._tts_cache_entry_audio_bytes(entry) for entry in cache_store.values())
+
+    def _tts_cache_byte_budget(self) -> int:
+        budget = getattr(self, "_tts_cache_max_audio_bytes", None)
+        if isinstance(budget, int) and budget > 0:
+            return budget
+        budget = get_tts_cache_max_audio_bytes()
+        self._tts_cache_max_audio_bytes = budget
+        return budget
+
+    def _evict_tts_cache_over_byte_budget(self, cache_store: TTLCache) -> None:
+        expire = getattr(cache_store, "expire", None)
+        if callable(expire):
+            expire()
+
+        budget = self._tts_cache_byte_budget()
+        current_bytes = self._tts_cache_audio_bytes(cache_store)
+        while current_bytes > budget and cache_store:
+            key = next(iter(cache_store))
+            evicted_entry = cache_store.pop(key, None)
+            current_bytes -= self._tts_cache_entry_audio_bytes(evicted_entry)
+
+    def _store_tts_cache_entry(
+        self, cache_store: TTLCache, cache_key: str, entry: dict[str, Any]
+    ) -> None:
+        cache_store[cache_key] = entry
+        self._evict_tts_cache_over_byte_budget(cache_store)
 
     @staticmethod
     def _require_audio_response(audio_b64: Any, provider: str) -> str:
@@ -1091,13 +1146,17 @@ class VoiceAgent:
                 primary_attempt_provider or self.tts_provider,
             )
             if self._is_cacheable_audio(audio_b64):
-                cache_store[cache_key] = {
-                    "audioResponse": audio_b64,
-                    "format": audio_format,
-                    "fallback_used": False,
-                    "fallback_provider": None,
-                    "actual_provider": primary_attempt_provider or self.tts_provider,
-                }
+                self._store_tts_cache_entry(
+                    cache_store,
+                    cache_key,
+                    {
+                        "audioResponse": audio_b64,
+                        "format": audio_format,
+                        "fallback_used": False,
+                        "fallback_provider": None,
+                        "actual_provider": primary_attempt_provider or self.tts_provider,
+                    },
+                )
 
             log_tts_event(
                 event="tts_complete",
@@ -1248,13 +1307,17 @@ class VoiceAgent:
                     fallback_provider or "fallback",
                 )
                 if self._is_cacheable_audio(audio_b64):
-                    cache_store[cache_key] = {
-                        "audioResponse": audio_b64,
-                        "format": audio_format,
-                        "fallback_used": True,
-                        "fallback_provider": fallback_provider,
-                        "actual_provider": fallback_provider,
-                    }
+                    self._store_tts_cache_entry(
+                        cache_store,
+                        cache_key,
+                        {
+                            "audioResponse": audio_b64,
+                            "format": audio_format,
+                            "fallback_used": True,
+                            "fallback_provider": fallback_provider,
+                            "actual_provider": fallback_provider,
+                        },
+                    )
 
                 log_tts_event(
                     event="tts_complete",

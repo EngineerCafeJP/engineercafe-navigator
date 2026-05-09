@@ -18,6 +18,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
   DEFAULT_FRONTEND_PRODUCTION_ORIGIN: https://frontend-delta-six-20.vercel.app
   MAX_ATTEMPTS: '12'
   SLEEP_SECONDS: '15'
@@ -27,7 +28,7 @@ jobs:
     name: Verify production frontend -> backend chain
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6.0.2
 
       - name: Resolve target frontend URL
         id: target

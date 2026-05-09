@@ -144,3 +144,34 @@ async def test_text_to_speech_logs_cache_hit_and_miss(monkeypatch):
         call(hit=False, cache_key=cache_key, language="ja"),
         call(hit=True, cache_key=cache_key, language="ja"),
     ]
+
+
+@pytest.mark.asyncio
+async def test_text_to_speech_cache_enforces_total_byte_budget_contract():
+    agent, _calls = _make_new_voice_agent(audio_b64="A" * (2 * 1024 * 1024))
+    byte_budget = 5 * 1024 * 1024
+    first_key = _cache_key(agent, "cache entry 1")
+    second_key = _cache_key(agent, "cache entry 2")
+    third_key = _cache_key(agent, "cache entry 3")
+
+    await agent.text_to_speech(text="cache entry 1", language="ja")
+
+    async def synthesize_b(text: str, language: str, speaker_id: int | None = None) -> str:
+        del text, language, speaker_id
+        return "B" * (2 * 1024 * 1024)
+
+    agent.tts_client.synthesize_wav_base64 = synthesize_b
+    await agent.text_to_speech(text="cache entry 2", language="ja")
+
+    async def synthesize_c(text: str, language: str, speaker_id: int | None = None) -> str:
+        del text, language, speaker_id
+        return "C" * (2 * 1024 * 1024)
+
+    agent.tts_client.synthesize_wav_base64 = synthesize_c
+    await agent.text_to_speech(text="cache entry 3", language="ja")
+
+    cached_audio_bytes = VoiceAgent._tts_cache_audio_bytes(agent._tts_cache)
+    assert cached_audio_bytes <= byte_budget
+    assert first_key not in agent._tts_cache
+    assert second_key in agent._tts_cache
+    assert third_key in agent._tts_cache

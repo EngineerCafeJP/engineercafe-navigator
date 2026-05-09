@@ -48,7 +48,7 @@ Browser / Kiosk
 
 ### 前提
 
-Node.js 20 / pnpm 10 / Python 3.11+（細目は CLAUDE.md）。Docker は `make dev` で利用可能。
+Node.js 24 / pnpm 10.12.1 / Python 3.11+（細目は CLAUDE.md）。Docker は `make dev` で利用可能。
 
 ### フロントエンド
 

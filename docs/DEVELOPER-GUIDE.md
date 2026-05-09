@@ -17,7 +17,7 @@
 
 ### 前提条件
 
-- Node.js 20 + pnpm 10
+- Node.js 24 + pnpm 10.12.1
 - Python 3.11+
 - Docker（任意、`make dev` や Voice 検証用）
 

@@ -17,6 +17,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
   TERRAFORM_WORKING_DIRECTORY: infra/terraform
   TF_IN_AUTOMATION: 'true'
   TF_INPUT: 'false'
@@ -26,7 +27,7 @@ jobs:
     name: Terraform PR validation
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6.0.2
 
       - name: Detect Terraform directory
         id: terraform_directory

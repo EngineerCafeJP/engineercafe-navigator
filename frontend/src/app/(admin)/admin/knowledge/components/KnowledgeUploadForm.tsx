@@ -76,6 +76,7 @@ export function KnowledgeUploadForm({
         }}
         onDragLeave={onDragLeave}
         onDrop={handleDrop}
+        aria-label="ナレッジファイル選択エリア"
         className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
           isDragOver ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'
         }`}
@@ -86,12 +87,14 @@ export function KnowledgeUploadForm({
           <>
             <p className="text-gray-600 font-medium mb-2">☁ ファイルをドラッグ&ドロップ</p>
             <p className="text-gray-500 text-sm mb-3">または</p>
-            <label className="cursor-pointer mb-3 block">
+            <label htmlFor="knowledge-upload-file" className="cursor-pointer mb-3 block">
               <span className="inline-block bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium">
                 ファイルを選択
               </span>
               <input
+                id="knowledge-upload-file"
                 type="file"
+                aria-label="アップロードするファイル"
                 accept=".pdf,.md,.markdown"
                 onChange={(e) => {
                   const selected = e.target.files?.[0];
@@ -176,18 +179,21 @@ export function KnowledgeUploadForm({
                   </div>
                 </div>
 
-                <div className="bg-white border border-gray-100 rounded p-3 space-y-2">
-                  <div className="text-[11px] font-medium text-gray-500 uppercase tracking-wide">
-                    登録予定タイトル
-                  </div>
-                  <ul className="space-y-1 text-xs text-gray-600">
-                    {previewResult.chunk_titles.map((chunkTitle) => (
-                      <li key={chunkTitle} className="rounded bg-gray-50 px-2 py-1">
+                <details open className="bg-white border border-gray-100 rounded p-3">
+                  <summary className="cursor-pointer text-[11px] font-medium text-gray-500 uppercase tracking-wide">
+                    {`登録予定タイトル（${previewResult.chunk_titles.length.toLocaleString('ja-JP')}件）`}
+                  </summary>
+                  <ul className="mt-2 space-y-1 text-xs text-gray-600">
+                    {previewResult.chunk_titles.map((chunkTitle, index) => (
+                      <li
+                        key={`${chunkTitle}-${index}`}
+                        className="rounded bg-gray-50 px-2 py-1"
+                      >
                         {chunkTitle}
                       </li>
                     ))}
                   </ul>
-                </div>
+                </details>
               </div>
             ) : (
               <p className="text-xs text-gray-500 italic">
@@ -199,13 +205,17 @@ export function KnowledgeUploadForm({
       )}
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
+        <label
+          htmlFor="knowledge-upload-category"
+          className="block text-sm font-medium text-gray-700 mb-2"
+        >
           カテゴリ <span className="text-red-500">*</span>
         </label>
         {configLoading ? (
           <div className="h-10 bg-gray-200 rounded-lg animate-pulse" />
         ) : (
           <select
+            id="knowledge-upload-category"
             value={category}
             onChange={(e) => onCategoryChange(e.target.value)}
             required
@@ -221,8 +231,8 @@ export function KnowledgeUploadForm({
         )}
       </div>
 
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-3">言語</label>
+      <fieldset>
+        <legend className="block text-sm font-medium text-gray-700 mb-3">言語</legend>
         <div className="flex gap-6">
           <label className="flex items-center gap-2 cursor-pointer">
             <input
@@ -247,11 +257,17 @@ export function KnowledgeUploadForm({
             <span className="text-sm text-gray-700">English</span>
           </label>
         </div>
-      </div>
+      </fieldset>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">タイトル（任意）</label>
+        <label
+          htmlFor="knowledge-upload-title"
+          className="block text-sm font-medium text-gray-700 mb-2"
+        >
+          タイトル（任意）
+        </label>
         <input
+          id="knowledge-upload-title"
           type="text"
           value={title}
           onChange={(e) => onTitleChange(e.target.value.slice(0, 200))}

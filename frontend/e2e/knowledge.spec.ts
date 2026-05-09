@@ -242,13 +242,31 @@ test.describe('Knowledge アップロードページ', () => {
 
     await expect(page.getByRole('heading', { name: /アップロード|ファイル/ })).toBeVisible();
     await expect(page.getByText('☁ ファイルをドラッグ&ドロップ')).toBeVisible();
+    await expect(page.getByLabel('アップロードするファイル')).toBeAttached();
+    await expect(page.getByLabel(/カテゴリ/)).toBeVisible();
+    await expect(page.getByRole('group', { name: '言語' })).toBeVisible();
+    await expect(page.getByLabel('タイトル（任意）')).toBeVisible();
   });
 
-  test('Markdownファイルを選択するとプレビューが表示される', async ({ page }) => {
+  test('Markdownファイルを選択すると解析プレビューが表示される', async ({ page }) => {
+    let previewRequests = 0;
+    await page.route('/api/admin/knowledge/preview', async (route) => {
+      previewRequests += 1;
+      return route.fulfill({
+        json: {
+          file_type: 'markdown',
+          extracted_preview: 'サーバーで抽出したMarkdownプレビュー本文です',
+          estimated_chunks: 2,
+          chunk_titles: ['test (part 1)', 'test (part 2)'],
+          total_chars: 1234,
+        },
+      });
+    });
+
     await page.goto('/admin/knowledge/upload');
 
     const fileContent = '# テスト\nこれはテストコンテンツです';
-    const fileInput = page.locator('input[type="file"]').first();
+    const fileInput = page.getByLabel('アップロードするファイル');
 
     await fileInput.setInputFiles({
       name: 'test.md',
@@ -258,12 +276,72 @@ test.describe('Knowledge アップロードページ', () => {
 
     await expect(page.getByText('test.md', { exact: true })).toBeVisible({ timeout: 3_000 });
     await expect(page.getByText('# テスト')).toBeVisible({ timeout: 3_000 });
+    await expect(page.getByText('サーバーで抽出したMarkdownプレビュー本文です')).toBeVisible();
+    await expect(page.getByText('登録予定タイトル（2件）')).toBeVisible();
+    await expect(page.getByText('test (part 1)')).toBeVisible();
+    await expect(page.getByText('test (part 2)')).toBeVisible();
+    expect(previewRequests).toBe(1);
   });
 
-  test('キャンセルで一覧に戻る', async ({ page }) => {
+  test('PDFファイルを選択するとPDF解析プレビューが表示される', async ({ page }) => {
+    await page.route('/api/admin/knowledge/preview', async (route) => {
+      return route.fulfill({
+        json: {
+          file_type: 'pdf',
+          extracted_preview: 'PDFから抽出した本文プレビューです',
+          estimated_chunks: 1,
+          chunk_titles: ['report'],
+          total_chars: 456,
+        },
+      });
+    });
+
     await page.goto('/admin/knowledge/upload');
+
+    const fileInput = page.getByLabel('アップロードするファイル');
+
+    await fileInput.setInputFiles({
+      name: 'report.pdf',
+      mimeType: 'application/pdf',
+      buffer: Buffer.from('%PDF-1.4\nmock pdf'),
+    });
+
+    await expect(page.getByText('report.pdf', { exact: true })).toBeVisible({ timeout: 3_000 });
+    await expect(page.getByText('PDFから抽出した本文プレビューです')).toBeVisible();
+    await expect(page.getByText('PDF', { exact: true })).toBeVisible();
+    await expect(page.getByText('登録予定タイトル（1件）')).toBeVisible();
+    await expect(page.getByText('report', { exact: true })).toBeVisible();
+  });
+
+  test('プレビュー後にキャンセルしてもアップロードしない', async ({ page }) => {
+    let uploadRequests = 0;
+    await page.route('/api/admin/knowledge/preview', async (route) => {
+      return route.fulfill({
+        json: {
+          file_type: 'markdown',
+          extracted_preview: 'キャンセル確認用プレビュー',
+          estimated_chunks: 1,
+          chunk_titles: ['cancel-check'],
+          total_chars: 20,
+        },
+      });
+    });
+    await page.route('/api/admin/knowledge/upload', async (route) => {
+      uploadRequests += 1;
+      return route.fulfill({ json: { success: true } });
+    });
+
+    await page.goto('/admin/knowledge/upload');
+
+    await page.getByLabel('アップロードするファイル').setInputFiles({
+      name: 'cancel-check.md',
+      mimeType: 'text/markdown',
+      buffer: Buffer.from('# キャンセル確認'),
+    });
+    await expect(page.getByText('キャンセル確認用プレビュー')).toBeVisible();
 
     await page.getByRole('button', { name: /キャンセル|戻る/ }).click();
     await expect(page).toHaveURL(/\/admin\/knowledge$/);
+    expect(uploadRequests).toBe(0);
   });
 });

@@ -4,6 +4,21 @@ import { connpassClient } from '../lib/external-apis/connpass-client';
 import { supabaseAdmin } from '../lib/supabase';
 import { v4 as uuidv4 } from 'uuid';
 
+const CONNPASS_KNOWLEDGE_CATEGORY = 'event';
+const OPENROUTER_EMBEDDING_URL = 'https://openrouter.ai/api/v1/embeddings';
+const OPENROUTER_EMBEDDING_MODEL = 'openai/text-embedding-3-small';
+const OPENROUTER_EMBEDDING_DIMENSIONS = 1536;
+
+type ConnpassClient = typeof connpassClient;
+type SupabaseAdmin = typeof supabaseAdmin;
+
+interface KnowledgeBaseUpdaterDependencies {
+  connpassClient?: ConnpassClient;
+  supabaseAdmin?: SupabaseAdmin;
+  fetch?: typeof fetch;
+  getOpenRouterApiKey?: () => string | undefined;
+}
+
 /**
  * Automated knowledge base updater that syncs external data sources
  *
@@ -13,8 +28,17 @@ import { v4 as uuidv4 } from 'uuid';
 export class KnowledgeBaseUpdater {
   private job: CronJob;
   private isRunning = false;
+  private readonly connpassClient: ConnpassClient;
+  private readonly supabaseAdmin: SupabaseAdmin;
+  private readonly fetchImpl: typeof fetch;
+  private readonly getOpenRouterApiKey: () => string | undefined;
   
-  constructor() {
+  constructor(dependencies: KnowledgeBaseUpdaterDependencies = {}) {
+    this.connpassClient = dependencies.connpassClient ?? connpassClient;
+    this.supabaseAdmin = dependencies.supabaseAdmin ?? supabaseAdmin;
+    this.fetchImpl = dependencies.fetch ?? fetch;
+    this.getOpenRouterApiKey = dependencies.getOpenRouterApiKey ?? (() => process.env.OPENROUTER_API_KEY);
+
     // Run every 6 hours: "0 */6 * * *"
     // For testing, can use every 5 minutes: "*/5 * * * *"
     this.job = new CronJob('0 */6 * * *', async () => {
@@ -92,20 +116,47 @@ export class KnowledgeBaseUpdater {
   private async updateFromConnpass(): Promise<string> {
     try {
       // Search for Engineer Cafe events
-      const events = await connpassClient.searchEngineerCafeEvents({
+      const events = await this.connpassClient.searchEngineerCafeEvents({
         includeEnded: false,
         count: 50,
       });
       
       let added = 0;
       let updated = 0;
+      let skipped = 0;
+      let failed = 0;
+
+      const openRouterApiKey = this.getOpenRouterApiKey()?.trim();
+      if (!openRouterApiKey) {
+        skipped = events.length;
+        console.error(
+          `[updateFromConnpass] OPENROUTER_API_KEY is not set; skipped ${skipped} Connpass event(s) without writing RAG-invisible rows.`
+        );
+        return this.formatConnpassUpdateResult({ added, updated, skipped, failed });
+      }
       
       for (const event of events) {
+        const content = this.formatConnpassEvent(event);
+        let contentEmbedding: number[];
+
+        try {
+          contentEmbedding = await this.generateEmbedding(content, openRouterApiKey);
+        } catch (error) {
+          skipped++;
+          console.error(
+            `[updateFromConnpass] Skipping event ${event.event_id}; embedding generation failed:`,
+            error
+          );
+          continue;
+        }
+
         const knowledgeEntry = {
           title: event.title,
-          content: this.formatConnpassEvent(event),
-          category: 'events',
+          content,
+          content_embedding: contentEmbedding,
+          category: CONNPASS_KNOWLEDGE_CATEGORY,
           subcategory: 'connpass',
+          source: 'connpass',
           language: this.detectLanguage(event.title + ' ' + event.description),
           metadata: {
             source: 'connpass',
@@ -115,11 +166,14 @@ export class KnowledgeBaseUpdater {
             end_date: event.ended_at,
             place: event.place,
             updated_at: event.updated_at,
+            embedding_model: OPENROUTER_EMBEDDING_MODEL,
+            embedding_dimensions: OPENROUTER_EMBEDDING_DIMENSIONS,
+            embedding_generated_at: new Date().toISOString(),
           },
         };
         
         // Check if event already exists
-        const { data: existing } = await supabaseAdmin
+        const { data: existing } = await this.supabaseAdmin
           .from('knowledge_base')
           .select('id')
           .eq('metadata->>event_id', event.event_id.toString())
@@ -127,7 +181,7 @@ export class KnowledgeBaseUpdater {
         
         if (existing) {
           // Update existing entry
-          const { error } = await supabaseAdmin
+          const { error } = await this.supabaseAdmin
             .from('knowledge_base')
             .update({
               ...knowledgeEntry,
@@ -135,10 +189,15 @@ export class KnowledgeBaseUpdater {
             })
             .eq('id', existing.id);
           
-          if (!error) updated++;
+          if (error) {
+            failed++;
+            console.error(`[updateFromConnpass] Failed to update event ${event.event_id}:`, error);
+          } else {
+            updated++;
+          }
         } else {
           // Add new entry
-          const { error } = await supabaseAdmin
+          const { error } = await this.supabaseAdmin
             .from('knowledge_base')
             .insert({
               id: uuidv4(),
@@ -147,11 +206,16 @@ export class KnowledgeBaseUpdater {
               updated_at: new Date().toISOString(),
             });
           
-          if (!error) added++;
+          if (error) {
+            failed++;
+            console.error(`[updateFromConnpass] Failed to insert event ${event.event_id}:`, error);
+          } else {
+            added++;
+          }
         }
       }
       
-      return `Added ${added}, updated ${updated} events`;
+      return this.formatConnpassUpdateResult({ added, updated, skipped, failed });
     } catch (error) {
       console.error('[updateFromConnpass] Error:', error);
       throw error;
@@ -216,6 +280,51 @@ export class KnowledgeBaseUpdater {
       minute: '2-digit',
     });
   }
+
+  private async generateEmbedding(text: string, apiKey: string): Promise<number[]> {
+    const response = await this.fetchImpl(OPENROUTER_EMBEDDING_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: OPENROUTER_EMBEDDING_MODEL,
+        input: text,
+        dimensions: OPENROUTER_EMBEDDING_DIMENSIONS,
+      }),
+    });
+
+    if (!response.ok) {
+      const details = await response.text().catch(() => '');
+      throw new Error(`OpenRouter embedding API error: ${response.status}${details ? ` ${details}` : ''}`);
+    }
+
+    const data = await response.json() as { data?: Array<{ embedding?: unknown }> };
+    const embedding = data.data?.[0]?.embedding;
+
+    if (
+      !Array.isArray(embedding) ||
+      embedding.length !== OPENROUTER_EMBEDDING_DIMENSIONS ||
+      !embedding.every((value) => typeof value === 'number')
+    ) {
+      throw new Error(`Invalid embedding shape; expected ${OPENROUTER_EMBEDDING_DIMENSIONS} numeric dimensions`);
+    }
+
+    return embedding;
+  }
+
+  private formatConnpassUpdateResult(result: {
+    added: number;
+    updated: number;
+    skipped: number;
+    failed: number;
+  }): string {
+    return [
+      `Added ${result.added}, updated ${result.updated}, skipped ${result.skipped}, failed ${result.failed} events`,
+      "Existing Connpass rows with category 'events' still need a one-time migration to category 'event'.",
+    ].join('. ');
+  }
   
   /**
    * Simple language detection
@@ -234,10 +343,10 @@ export class KnowledgeBaseUpdater {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     
-    await supabaseAdmin
+    await this.supabaseAdmin
       .from('knowledge_base')
       .delete()
-      .eq('category', 'events')
+      .in('category', [CONNPASS_KNOWLEDGE_CATEGORY, 'events'])
       .lt('metadata->>end_date', thirtyDaysAgo.toISOString());
   }
   

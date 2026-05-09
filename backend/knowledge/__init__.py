@@ -17,6 +17,11 @@ from backend.knowledge.loader import (
     seed_from_yaml,
 )
 from backend.knowledge.schema import KnowledgeEntry, KnowledgeSection
+from backend.knowledge.upload_ingestion import (
+    UploadChunkPlan,
+    build_upload_chunk_records,
+    plan_upload_chunks,
+)
 
 __all__ = [
     "ChunkingStrategy",
@@ -26,11 +31,14 @@ __all__ = [
     "KnowledgeEntry",
     "KnowledgeSection",
     "SeedResult",
+    "UploadChunkPlan",
+    "build_upload_chunk_records",
     "chunk_entry",
     "classify_entry",
     "count_tokens",
     "detect_duplicates",
     "generate_chunks_with_embeddings",
     "load_all_yaml_files",
+    "plan_upload_chunks",
     "seed_from_yaml",
 ]
