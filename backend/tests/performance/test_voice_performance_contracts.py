@@ -166,4 +166,4 @@ def test_static_filler_lookup_stays_under_local_budget_for_issue_611():
     elapsed_ms = (time.perf_counter() - started_at) * 1000
 
     assert set(results) >= {"wifi", "event", "slide", "business_info", "facility"}
-    assert elapsed_ms < 100
+    assert elapsed_ms / len(results) < 0.5
