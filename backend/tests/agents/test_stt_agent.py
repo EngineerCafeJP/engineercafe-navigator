@@ -1122,10 +1122,15 @@ class OnnxAsrPipeline:
             )
         )
 
-        result = runtime.transcribe(np.zeros(1600, dtype=np.float32), 16000, language="Japanese")
+        fake_soundfile = MagicMock()
+        with patch("backend.agents.stt_onnx.importlib.import_module", return_value=fake_soundfile):
+            result = runtime.transcribe(
+                np.zeros(1600, dtype=np.float32), 16000, language="Japanese"
+            )
 
         assert result.text == "オンエヌエックス"
         assert result.language == "Japanese"
+        fake_soundfile.write.assert_called_once()
 
     def test_qwen_onnx_runtime_model_dir_reports_missing_files(self, tmp_path):
         """Incomplete Daumee artifacts fail with the missing file list."""
