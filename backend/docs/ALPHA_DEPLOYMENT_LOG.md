@@ -4,6 +4,16 @@ This file records backend redeploys that are intentionally created to align the
 Cloud Run image tag with the current `develop` commit before alpha live
 verification.
 
+## 2026-05-09
+
+- Purpose: redeploy the backend after post-alpha RAG ingestion/mutation
+  hardening and Node.js 24 workflow cleanup so production verification runs
+  against the current `develop` commit.
+- Expected validation: `backend-deploy-staging` builds and deploys an image
+  tagged with the merge commit SHA, Cloud Run serves 100% traffic from that
+  revision, `/health` is OK, and live Knowledge CRUD/RAG plus voice smoke
+  checks pass before the related issues are updated.
+
 ## 2026-05-02
 
 - Purpose: redeploy the backend after frontend-only alpha gate fixes so
