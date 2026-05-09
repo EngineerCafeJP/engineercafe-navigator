@@ -427,7 +427,8 @@ class EnhancedRAGSearch:
                 and not self._query_mentions_engineer_cafe(query)
                 and not any(r.get("entity") == "saino" for r in scored_results)
             )
-            if not scored_results or needs_entity_fallback:
+            needs_membership_fallback = self._needs_membership_fallback(query, scored_results)
+            if not scored_results or needs_entity_fallback or needs_membership_fallback:
                 local_results = self._local_knowledge_fallback_search(
                     query, category, language, max_results
                 )
@@ -785,7 +786,8 @@ class EnhancedRAGSearch:
             and not self._query_mentions_engineer_cafe(query)
             and not any(r.get("entity") == "saino" for r in scored_results)
         )
-        if not scored_results or needs_entity_fallback:
+        needs_membership_fallback = self._needs_membership_fallback(query, scored_results)
+        if not scored_results or needs_entity_fallback or needs_membership_fallback:
             local_results = self._local_knowledge_fallback_search(
                 query, category, language, max_results
             )
@@ -1095,6 +1097,65 @@ class EnhancedRAGSearch:
     def _is_membership_query(query: str) -> bool:
         query_lower = query.lower()
         return any(term.lower() in query_lower for term in MEMBERSHIP_QUERY_TERMS)
+
+    def _needs_membership_fallback(self, query: str, scored_results: List[Dict]) -> bool:
+        """Force official local knowledge for membership queries with no membership hit."""
+        return (
+            self._is_strong_membership_query(query)
+            and not self._query_mentions_saino(query)
+            and not any(self._result_has_membership_content(result) for result in scored_results)
+        )
+
+    @staticmethod
+    def _is_strong_membership_query(query: str) -> bool:
+        query_lower = query.lower()
+        if re.search(r"\bmembership\b|\bmembers?\b", query_lower):
+            return True
+        return any(
+            term in query_lower
+            for term in (
+                "会員",
+                "会員制度",
+                "会員登録",
+                "利用登録",
+                "會員",
+                "会员",
+                "회원",
+                "멤버십",
+            )
+        )
+
+    @staticmethod
+    def _result_has_membership_content(result: Dict) -> bool:
+        metadata = result.get("metadata", {})
+        tags = metadata.get("tags", []) if isinstance(metadata, dict) else []
+        combined = " ".join(
+            str(part)
+            for part in (
+                result.get("id", ""),
+                result.get("title", ""),
+                result.get("content", ""),
+                " ".join(str(tag) for tag in tags if tag is not None),
+            )
+            if part is not None
+        ).lower()
+
+        if re.search(r"\bmembership\b|\bmembers?\b|\bmember\s+number\b", combined):
+            return True
+
+        return any(
+            term in combined
+            for term in (
+                "会員",
+                "会員制度",
+                "会員番号",
+                "利用登録",
+                "會員",
+                "会员",
+                "회원",
+                "멤버십",
+            )
+        )
 
     @staticmethod
     def _infer_entity_from_yaml_entry(entry: Dict) -> str:

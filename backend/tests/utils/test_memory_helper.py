@@ -341,6 +341,54 @@ class TestSimplifiedMemoryHelper:
 
         call_args = mock_table.insert.call_args[0][0]
         assert call_args["value"]["content"] == "エンジニアカフェの営業時間は？"
+        assert call_args["value"]["canonicalContentKey"] == "engineer_cafeの営業時間は？"
+
+    @pytest.mark.asyncio
+    @patch("backend.utils.memory_helper.create_client")
+    async def test_store_message_adds_multilingual_canonical_content_key(self, mock_create_client):
+        """#516: Engineer Cafe と エンジニアカフェの保存キーを同じ施設名へ寄せる"""
+        mock_client = Mock()
+        mock_table = Mock()
+        mock_insert = Mock()
+        mock_insert.execute = Mock(return_value=Mock(data=[{"id": 1}]))
+        mock_table.insert = Mock(return_value=mock_insert)
+        mock_client.table = Mock(return_value=mock_table)
+        mock_create_client.return_value = mock_client
+
+        helper = SimplifiedMemoryHelper()
+
+        await helper.store_message(
+            role="user",
+            content="Engineer Cafeの営業時間は？",
+            session_id="test-session",
+        )
+
+        call_args = mock_table.insert.call_args[0][0]
+        assert call_args["value"]["content"] == "Engineer Cafeの営業時間は？"
+        assert call_args["value"]["canonicalContentKey"] == "engineer_cafeの営業時間は？"
+
+    @patch("backend.utils.memory_helper.create_client")
+    def test_rank_messages_dedupes_multilingual_facility_aliases(self, mock_create_client):
+        """#516: 同一施設aliasの履歴はcontext投入前に重複排除する"""
+        mock_create_client.return_value = Mock()
+        helper = SimplifiedMemoryHelper()
+        messages = [
+            {
+                "role": "user",
+                "content": "Engineer Cafeの営業時間は？",
+                "metadata": {"timestamp": 1000},
+            },
+            {
+                "role": "user",
+                "content": "エンジニアカフェの営業時間は？",
+                "metadata": {"timestamp": 2000},
+            },
+        ]
+
+        ranked = helper._rank_messages(messages, "エンジニアカフェの営業時間")
+
+        assert len(ranked) == 1
+        assert ranked[0]["content"] == "エンジニアカフェの営業時間は？"
 
     @pytest.mark.asyncio
     async def test_is_session_active_no_supabase(self):

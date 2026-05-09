@@ -17,7 +17,10 @@ import logging
 from supabase import create_client, Client
 
 from backend.config.routing_constants import extract_request_type
-from backend.utils.cafe_entity import canonicalize_facility_aliases
+from backend.utils.cafe_entity import (
+    canonicalize_facility_aliases,
+    canonicalize_facility_memory_key_text,
+)
 from backend.utils.postgres_sanitizer import sanitize_for_postgres
 
 logger = logging.getLogger(__name__)
@@ -279,15 +282,18 @@ class SimplifiedMemoryHelper:
             for item in response.data:
                 value = item.get("value", {})
                 if value.get("sessionId") == session_id:
+                    content = value.get("content")
                     messages.append(
                         {
                             "role": value.get("role"),
-                            "content": value.get("content"),
+                            "content": content,
                             "metadata": {
                                 "emotion": value.get("emotion"),
                                 "confidence": value.get("confidence"),
                                 "timestamp": value.get("timestamp"),
                                 "request_type": value.get("request_type"),
+                                "canonical_content_key": value.get("canonicalContentKey")
+                                or canonicalize_facility_memory_key_text(str(content or "")),
                             },
                         }
                     )
@@ -338,7 +344,25 @@ class SimplifiedMemoryHelper:
             scored.append({**msg, "_rank_score": composite})
 
         scored.sort(key=lambda x: x["_rank_score"], reverse=True)
-        return scored
+        return self._dedupe_ranked_messages(scored)
+
+    @staticmethod
+    def _dedupe_ranked_messages(messages: List[Dict]) -> List[Dict]:
+        """Keep the highest-ranked message for the same canonical facility content."""
+        deduped: List[Dict] = []
+        seen: set[str] = set()
+        for msg in messages:
+            metadata = msg.get("metadata", {})
+            key = metadata.get("canonical_content_key") if isinstance(metadata, dict) else None
+            if not key:
+                key = canonicalize_facility_memory_key_text(str(msg.get("content") or ""))
+            normalized_key = " ".join(str(key).strip().lower().split())
+            if normalized_key and normalized_key in seen:
+                continue
+            if normalized_key:
+                seen.add(normalized_key)
+            deduped.append(msg)
+        return deduped
 
     def _topic_overlap(self, msg_a: Dict, msg_b: Dict) -> float:
         """2メッセージのトピック類似度（bigramマッチ率）
@@ -480,6 +504,9 @@ class SimplifiedMemoryHelper:
         metadata = sanitize_for_postgres(metadata or {})
         role = sanitize_for_postgres(role)
         content = sanitize_for_postgres(canonicalize_facility_aliases(content))
+        canonical_content_key = sanitize_for_postgres(
+            canonicalize_facility_memory_key_text(content)
+        )
         session_id = sanitize_for_postgres(session_id)
 
         # リクエストタイプの自動抽出（user messageの場合）
@@ -503,6 +530,7 @@ class SimplifiedMemoryHelper:
                 "emotion": metadata.get("emotion"),
                 "confidence": metadata.get("confidence"),
                 "request_type": metadata.get("request_type"),
+                "canonicalContentKey": canonical_content_key,
             }
 
             # ユニークなキーを生成（タイムスタンプ + UUID）

@@ -291,3 +291,25 @@ def canonicalize_facility_aliases(text: str) -> str:
     canonical = canonical.replace("才能", "saino")
     canonical = canonical.replace("閉接のカフェ", "併設のカフェ")
     return canonical
+
+
+def canonicalize_facility_memory_key_text(text: str) -> str:
+    """Return display-safe text with multilingual facility names collapsed for dedup keys."""
+
+    canonical = canonicalize_facility_aliases(text)
+    if not canonical:
+        return canonical
+
+    canonical = re.sub(
+        r"engineer\s*cafe|engineercafe|エンジニアカフェ|工程师咖啡|工程師咖啡|엔지니어\s*카페",
+        "engineer_cafe",
+        canonical,
+        flags=re.IGNORECASE,
+    )
+    canonical = re.sub(
+        r"cafe\s*&\s*bar\s*saino|saino\s*cafe|saino|サイノカフェ|사이노\s*카페",
+        "saino_cafe",
+        canonical,
+        flags=re.IGNORECASE,
+    )
+    return canonical

@@ -97,6 +97,25 @@ class TestBusinessInfoAgent:
         assert "staff" in response["answer"].lower()
         assert "5 to 10 minutes" in response["answer"]
 
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "How do I become a member?",
+            "Tell me about membership",
+            "What is the membership like?",
+        ],
+    )
+    def test_abstract_english_membership_canonical_response(self, query):
+        """#567: abstract English membership queries must not fall back."""
+        response = self.agent._get_canonical_response(query, "reception", "en")
+
+        assert response is not None
+        assert response["metadata"]["sources"] == ["enhanced_rag"]
+        answer = response["answer"].lower()
+        assert "membership registration is free" in answer
+        assert "member number" in answer
+        assert "online pre-registration is not available" in answer
+
     def test_returning_visitor_canonical_response_japanese(self):
         """gt-082/gt-085: 再来館発話は退館・会話履歴ではなく歓迎にする"""
         response = self.agent._get_canonical_response("前にも来たことがあります", "reception", "ja")

@@ -162,6 +162,39 @@ class TestNFKCNormalization:
         key2 = MemoryPromoter._aggregate_key("facility_interest", "エンジニアカフェの営業時間")
         assert key1 == key2
 
+    def test_multilingual_facility_aliases_in_aggregate_key(self):
+        """#516: Engineer Cafe と エンジニアカフェを同じ施設記憶として集約する"""
+        key1 = MemoryPromoter._aggregate_key("facility_interest", "Engineer Cafeの営業時間")
+        key2 = MemoryPromoter._aggregate_key("facility_interest", "エンジニアカフェの営業時間")
+        assert key1 == key2
+
+    def test_aggregate_candidates_merges_multilingual_facility_aliases(self):
+        """#516: 多言語facility aliasの候補を1件に集約する"""
+        items = [
+            _item(
+                "k1",
+                {
+                    "candidate_type": "facility_interest",
+                    "content": "Engineer Cafeの営業時間",
+                    "confidence": 0.9,
+                },
+            ),
+            _item(
+                "k2",
+                {
+                    "candidate_type": "facility_interest",
+                    "content": "エンジニアカフェの営業時間",
+                    "confidence": 0.8,
+                },
+            ),
+        ]
+
+        grouped = MemoryPromoter.aggregate_candidates(items)
+
+        assert len(grouped) == 1
+        aggregate = next(iter(grouped.values()))
+        assert aggregate["candidate_count"] == 2
+
 
 class TestNewTypePromotionRules:
     """新メモリタイプ昇格ルールのテスト"""

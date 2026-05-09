@@ -778,6 +778,7 @@ class TestTextFallbackSearch:
     @pytest.mark.parametrize(
         "query",
         [
+            "How do I become a member?",
             "Tell me about membership",
             "What is the membership like?",
         ],
@@ -800,6 +801,54 @@ class TestTextFallbackSearch:
         assert result["data"]["results"][0]["id"] == "general-membership-overview"
         assert "membership" in result["data"]["context"].lower()
         assert result["data"]["topEntity"] == "engineer-cafe"
+
+    @pytest.mark.asyncio
+    async def test_search_replaces_irrelevant_vector_results_for_english_membership(
+        self, rag_search, mock_supabase
+    ):
+        """membership内容を含まないvector候補は公式会員KBへ置き換える"""
+        rag_search._generate_embedding = AsyncMock(return_value=[0.1] * 1536)
+        mock_execute = MagicMock()
+        mock_execute.execute.return_value = MagicMock(
+            data=[
+                {
+                    "id": "unrelated-history",
+                    "title": "Building History",
+                    "content": "The red brick building was completed in 1909.",
+                    "category": "general",
+                    "language": "en",
+                    "source": "official",
+                    "metadata": {"entity": "engineer-cafe"},
+                    "similarity": 0.95,
+                },
+                {
+                    "id": "unrelated-access",
+                    "title": "Access",
+                    "content": "Engineer Cafe is located in Tenjin near the station.",
+                    "category": "location",
+                    "language": "en",
+                    "source": "official",
+                    "metadata": {"entity": "engineer-cafe"},
+                    "similarity": 0.93,
+                },
+            ]
+        )
+        mock_supabase.rpc.return_value = mock_execute
+        rag_search._text_fallback_search = AsyncMock(return_value=[])
+
+        result = await rag_search.search(
+            query="How do I become a member?",
+            category="general",
+            language="en",
+            include_advice=False,
+        )
+
+        result_ids = {row["id"] for row in result["data"]["results"]}
+        assert result["success"] is True
+        assert result["data"]["results"][0]["id"] == "general-membership-overview"
+        assert "membership" in result["data"]["context"].lower()
+        assert "unrelated-history" not in result_ids
+        assert "unrelated-access" not in result_ids
 
     @pytest.mark.parametrize(
         ("query", "language"),

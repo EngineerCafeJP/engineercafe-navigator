@@ -178,6 +178,25 @@ class TestOrchestratorFastRouting:
         assert filler_intent_for_query("WiFiのパスワードは？") == "wifi"
         assert filler_intent_for_query("明日のイベントは？") == "event"
         assert filler_intent_for_query("スライドを見せて") == "slide"
+        assert filler_intent_for_query("Tell me about membership") == "business_info"
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "How do I become a member?",
+            "Tell me about membership",
+            "What is the membership like?",
+            "Do I need to register to use Engineer Cafe?",
+        ],
+    )
+    def test_abstract_english_membership_routes_to_business_info(self, orchestrator, query):
+        """#567: abstract EN membership queries should not fall through to general fallback."""
+        result = orchestrator._try_fast_routing(query)
+
+        assert result is not None
+        assert result["agent"] == "business_info"
+        assert result["category"] == "reception"
+        assert result["request_type"] == "reception"
 
     # --- Phase 1A: 新規キーワードパターンテスト ---
 
