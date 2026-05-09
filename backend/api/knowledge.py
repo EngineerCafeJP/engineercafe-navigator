@@ -22,6 +22,11 @@ from pydantic import BaseModel, Field
 from supabase import create_client
 
 from backend.knowledge.loader import count_tokens
+from backend.knowledge.metadata import (
+    MetadataReservedPolicy,
+    MetadataValidationError,
+    normalize_user_metadata,
+)
 from backend.knowledge.upload_ingestion import plan_upload_chunks, upload_chunk_record_title
 from backend.utils.embedding_service import generate_embedding
 from backend.utils.file_parser import detect_file_type, parse_markdown, parse_pdf
@@ -287,6 +292,17 @@ def _build_knowledge_categories_response(supabase: Any) -> KnowledgeCategoriesRe
     )
 
 
+def _normalize_api_metadata(
+    metadata: Dict[str, Any] | None,
+    *,
+    reserved_policy: MetadataReservedPolicy = "reject",
+) -> Dict[str, Any]:
+    try:
+        return normalize_user_metadata(metadata, reserved_policy=reserved_policy)
+    except MetadataValidationError as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid metadata: {exc}") from exc
+
+
 # =============================================================================
 # Endpoints
 # =============================================================================
@@ -393,6 +409,7 @@ async def get_knowledge(request: Request, knowledge_id: str):
 async def create_knowledge(request: Request, body: KnowledgeCreateRequest):
     """テキスト入力でナレッジ新規登録（embedding自動生成）"""
     try:
+        metadata = _normalize_api_metadata(body.metadata)
         supabase = _get_supabase()
 
         # 重複titleチェック
@@ -418,7 +435,7 @@ async def create_knowledge(request: Request, body: KnowledgeCreateRequest):
             "language": body.language,
             "subcategory": body.subcategory,
             "source": body.source,
-            "metadata": body.metadata or {},
+            "metadata": metadata,
             "content_embedding": embedding,
         }
 
@@ -487,7 +504,7 @@ async def upload_knowledge(
             if not isinstance(parsed_metadata, dict):
                 raise HTTPException(status_code=400, detail="metadata must be a JSON object")
 
-            metadata_payload = parsed_metadata
+            metadata_payload = _normalize_api_metadata(parsed_metadata, reserved_policy="drop")
 
         file_type = detect_file_type(file.filename)
         if file_type not in ("markdown", "pdf"):
@@ -860,6 +877,9 @@ async def preview_knowledge(
 async def update_knowledge(request: Request, knowledge_id: str, body: KnowledgeUpdateRequest):
     """ナレッジ更新（content変更時はembedding再生成）"""
     try:
+        body_metadata = (
+            _normalize_api_metadata(body.metadata) if body.metadata is not None else None
+        )
         supabase = _get_supabase()
 
         # 存在確認
@@ -899,8 +919,8 @@ async def update_knowledge(request: Request, knowledge_id: str, body: KnowledgeU
             update_data["subcategory"] = body.subcategory
         if body.source is not None:
             update_data["source"] = body.source
-        if body.metadata is not None:
-            update_data["metadata"] = body.metadata
+        if body_metadata is not None:
+            update_data["metadata"] = body_metadata
 
         if not update_data:
             return KnowledgeResponse(success=True, data=_row_to_item(current))
@@ -919,7 +939,7 @@ async def update_knowledge(request: Request, knowledge_id: str, body: KnowledgeU
                 raise HTTPException(status_code=503, detail="Embedding service unavailable")
             update_data["content_embedding"] = embedding
             if is_uploaded_document:
-                update_data["metadata"] = _collapse_upload_metadata(current, body.metadata)
+                update_data["metadata"] = _collapse_upload_metadata(current, body_metadata)
                 update_data["chunk_level"] = "document"
                 update_data["chunk_index"] = 0
                 update_data["token_count"] = count_tokens(str(new_content))
