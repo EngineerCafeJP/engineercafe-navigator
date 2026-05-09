@@ -69,6 +69,33 @@ def test_plan_upload_chunks_adds_language_file_and_accounting_metadata():
     assert chunk.metadata["total_chunks"] == 1
 
 
+def test_plan_upload_chunks_drops_user_metadata_reserved_for_generated_identity():
+    plan = plan_upload_chunks(
+        "Parsed PDF content",
+        filename="Visitor Guide.pdf",
+        category="general",
+        language="en",
+        metadata={
+            "entry_id": "user-entry",
+            "document_id": "user-document",
+            "chunk_level": "chunk",
+            "chunk_index": 99,
+            "total_chunks": 99,
+            "language": "ja",
+            "owner": "operations",
+        },
+    )
+
+    chunk = plan.chunks[0]
+    assert chunk.entry_id.startswith("upload-visitor-guide-")
+    assert chunk.metadata["owner"] == "operations"
+    assert chunk.metadata["language"] == "en"
+    assert chunk.metadata["chunk_level"] == "document"
+    assert chunk.metadata["chunk_index"] == 0
+    assert chunk.metadata["total_chunks"] == 1
+    assert "document_id" not in chunk.metadata
+
+
 def test_plan_upload_chunks_preserves_section_chunk_levels_and_titles():
     content = (
         "## Access\n"

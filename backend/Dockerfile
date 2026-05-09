@@ -83,7 +83,7 @@ RUN pip install --no-cache-dir torch transformers \
     && pip cache purge
 
 # Fail Docker build before deploy if the production image loses Qwen runtime deps.
-RUN python -c "import torch; from qwen_asr import Qwen3ASRModel; print('qwen runtime import ok')"
+RUN python -c "import torch; import onnxruntime; from qwen_asr import Qwen3ASRModel; print('qwen runtime import ok')"
 
 # Pre-warm numba JIT cache for librosa resample used by qwen-asr audio preprocessing.
 RUN python -c "import librosa; import numpy as np; librosa.resample(np.zeros(16000, dtype=np.float32), orig_sr=16000, target_sr=8000); print('numba warm complete')" || echo 'numba warm failed (non-fatal)'

@@ -30,6 +30,7 @@ vosk>=0.3.45
 soundfile>=0.12.1
 pydub>=0.25.1
 qwen-asr>=0.0.6
+onnxruntime>=1.18.0,<2.0
 cachetools>=5.3.0
 
 # Translation (CTranslate2 + Helsinki-NLP/opus-mt)

@@ -17,6 +17,7 @@ from backend.agents.stt_agent import (
     LocalSTTClient,
     GoogleSTTClient,
     Qwen06BCpuSTTClient,
+    QwenOnnxSTTClient,
     QwenSTTClient,
     STTAgent,
     TranscriptionResult,
@@ -27,6 +28,12 @@ from backend.agents.stt_agent import (
     _qwen_primary_transcript_suspicious,
     _vosk_fallback_transcript_suspicious,
     _vosk_transcript_trusted_for_early_return,
+)
+from backend.agents.stt_onnx import (
+    QwenOnnxModelArtifactsMissing,
+    QwenOnnxRuntime,
+    QwenOnnxRuntimeConfig,
+    QwenOnnxRuntimeUnavailable,
 )
 
 # ==============================================================================
@@ -1011,6 +1018,93 @@ class TestSTTAgent:
 
         assert agent.stt_provider == "qwen0.6b-cpu"
         mock_qwen_client.assert_called_once_with(default_language="ja")
+
+    def test_init_qwen_06b_cpu_uses_onnx_when_env_flag_set(self, monkeypatch):
+        """STT_QWEN_RUNTIME=onnx swaps the 0.6B provider to the ONNX client."""
+        monkeypatch.setenv("STT_QWEN_RUNTIME", "onnx")
+        monkeypatch.setenv("QWEN_STT_LANGUAGE", "ja")
+
+        with patch("backend.agents.stt_agent.QwenOnnxSTTClient") as mock_onnx_client:
+            agent = STTAgent(stt_provider="qwen0.6b-cpu")
+
+        assert agent.stt_provider == "qwen0.6b-cpu"
+        assert agent.stt_client is mock_onnx_client.return_value
+        mock_onnx_client.assert_called_once_with(default_language="ja", model_variant="0.6b")
+
+    def test_init_qwen_06b_cpu_uses_torch_when_runtime_unset(self, monkeypatch):
+        """Unsetting STT_QWEN_RUNTIME preserves the current PyTorch CPU client."""
+        monkeypatch.delenv("STT_QWEN_RUNTIME", raising=False)
+
+        with (
+            patch("backend.agents.stt_agent.Qwen06BCpuSTTClient") as mock_torch_client,
+            patch("backend.agents.stt_agent.QwenOnnxSTTClient") as mock_onnx_client,
+        ):
+            agent = STTAgent(stt_provider="qwen0.6b-cpu")
+
+        assert agent.stt_provider == "qwen0.6b-cpu"
+        assert agent.stt_client is mock_torch_client.return_value
+        mock_torch_client.assert_called_once_with(default_language="ja")
+        mock_onnx_client.assert_not_called()
+
+    def test_init_qwen_primary_uses_onnx_when_env_flag_set(self, monkeypatch):
+        """qwen-primary keeps Vosk fallback but swaps Qwen primary to ONNX."""
+        monkeypatch.setenv("STT_QWEN_RUNTIME", "onnx")
+
+        with (
+            patch("backend.agents.stt_agent.QwenOnnxSTTClient") as mock_onnx_client,
+            patch("backend.agents.stt_agent.LocalSTTClient"),
+        ):
+            agent = STTAgent(stt_provider="qwen-primary")
+
+        assert agent.stt_provider == "qwen-primary"
+        assert agent.stt_client is mock_onnx_client.return_value
+        mock_onnx_client.assert_called_once_with(default_language="ja", model_variant="0.6b")
+
+    def test_qwen_onnx_runtime_missing_dependency_is_actionable(self):
+        """ONNX opt-in fails closed when onnxruntime is unavailable."""
+        runtime = QwenOnnxRuntime(QwenOnnxRuntimeConfig(model_path="/tmp/qwen.onnx"))
+
+        with patch(
+            "backend.agents.stt_onnx.importlib.import_module",
+            side_effect=ImportError("missing onnxruntime"),
+        ):
+            with pytest.raises(QwenOnnxRuntimeUnavailable, match="requires onnxruntime"):
+                runtime.ensure_ready()
+
+    def test_qwen_onnx_runtime_missing_artifact_is_actionable(self):
+        """ONNX opt-in fails closed when the configured model artifact is absent."""
+        runtime = QwenOnnxRuntime(QwenOnnxRuntimeConfig(model_path="/tmp/missing-qwen.onnx"))
+
+        with patch("backend.agents.stt_onnx.importlib.import_module") as mock_import:
+            mock_import.return_value.InferenceSession = MagicMock()
+
+            with pytest.raises(QwenOnnxModelArtifactsMissing, match="ONNX model not found"):
+                runtime.ensure_ready()
+
+    def test_qwen_onnx_client_can_use_injected_runtime_without_artifacts(self, test_wav_16khz):
+        """The STT adapter is unit-testable without downloading Qwen ONNX artifacts."""
+        mock_runtime = MagicMock()
+        mock_runtime.transcribe.return_value.text = "onnx transcript"
+        mock_runtime.transcribe.return_value.language = "ja"
+        mock_runtime.transcribe.return_value.confidence = None
+        client = QwenOnnxSTTClient(default_language="ja", runtime=mock_runtime)
+
+        with patch("backend.agents.stt_agent.log_stt_event") as mock_log:
+            result = client._sync_transcribe(test_wav_16khz, language="ja")
+
+        assert result == TranscriptionResult(
+            text="onnx transcript",
+            confidence=None,
+            language="ja",
+            word_confidences=[],
+        )
+        mock_runtime.transcribe.assert_called_once()
+        runtime_event = next(
+            call
+            for call in mock_log.call_args_list
+            if call.kwargs.get("event") == "stt_qwen_runtime_complete"
+        )
+        assert runtime_event.kwargs["device"] == "onnxruntime"
 
     def test_init_qwen_primary_timeout_env_guard(self, monkeypatch):
         """qwen-primary keeps a separate 24s hard timeout."""

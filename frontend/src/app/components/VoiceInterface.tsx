@@ -17,6 +17,7 @@ import { audioStateManager } from '@/lib/audio-state-manager';
 import { cn } from '@/lib/cn';
 import { EmotionTagParser } from '@/lib/emotion-tag-parser';
 import { formatError } from '@/lib/error-messages';
+import { submitQaQuestion } from '@/lib/api/qa-client';
 import { LipSyncAnalyzer, type LipSyncFrame } from '@/lib/lip-sync-analyzer';
 import { createVoiceFillerPlaybackGate } from '@/lib/voice-filler-playback';
 import { resolveVoiceResponseLanguage } from '@/lib/voice/response-language';
@@ -842,23 +843,20 @@ export default function VoiceInterface({
           : Promise.resolve();
 
       try {
-        const qaResponse = await fetch('/api/qa', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            action: 'ask',
+        const qaResponse = await submitQaQuestion(
+          {
             question: trimmed,
             text: trimmed,
             sessionId: sessionIdRef.current,
             language: currentLanguage,
             visitorId,
-          }),
-          signal,
-        });
+          },
+          {
+            signal,
+          },
+        );
 
-        const qaResult = await qaResponse.json();
+        const qaResult = qaResponse.data;
         if (!qaResponse.ok || !qaResult.success) {
           const qaError: Error & { status?: number } = new Error(
             qaResult.error || '質問の送信に失敗しました',
@@ -1063,23 +1061,20 @@ export default function VoiceInterface({
       const visitorId = ensureVisitorId();
 
       try {
-        const qaResponse = await fetch('/api/qa', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            action: 'ask',
+        const qaResponse = await submitQaQuestion(
+          {
             question: trimmed,
             text: trimmed,
             sessionId: sessionIdRef.current,
             language: currentLanguage,
             visitorId,
-          }),
-          signal: abortController.signal,
-        });
+          },
+          {
+            signal: abortController.signal,
+          },
+        );
 
-        const qaResult = await qaResponse.json();
+        const qaResult = qaResponse.data;
         if (!qaResponse.ok || !qaResult.success) {
           const qaError: Error & { status?: number } = new Error(
             qaResult.error || '質問の送信に失敗しました',

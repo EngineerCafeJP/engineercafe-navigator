@@ -13,12 +13,17 @@ set -euo pipefail
 #   STT_PROFILE_PROJECT         Defaults to aipartner-426616
 #   STT_PROFILE_SERVICE         Defaults to engineer-cafe-backend
 #   STT_PROFILE_REGION          Defaults to asia-northeast1
+#   STT_PROFILE_ENV_LABEL       Optional report label, e.g. prod or local
+#   STT_PROFILE_RUNTIME_LABEL   Optional report label, e.g. pytorch-qwen-cpu
 
 DEFAULT_URL="https://engineer-cafe-backend-639959525777.asia-northeast1.run.app"
 BASE_URL="${STT_PROFILE_BASE_URL:-$DEFAULT_URL}"
 PROJECT="${STT_PROFILE_PROJECT:-aipartner-426616}"
 SERVICE="${STT_PROFILE_SERVICE:-engineer-cafe-backend}"
 REGION="${STT_PROFILE_REGION:-asia-northeast1}"
+ENV_LABEL="${STT_PROFILE_ENV_LABEL:-prod}"
+RUNTIME_LABEL="${STT_PROFILE_RUNTIME_LABEL:-qwen-cpu}"
+REVISION=""
 ITERATIONS=20
 SLEEP_SECONDS=4
 LANGUAGE="ja"
@@ -26,6 +31,7 @@ PROFILE_TEXT="テストです"
 API_KEY="${API_SECRET_KEY:-}"
 AUDIO_FILE=""
 OUT_DIR="backend/tests/reports"
+DRY_RUN=0
 
 usage() {
   sed -n '3,16p' "$0"
@@ -38,6 +44,9 @@ while [[ $# -gt 0 ]]; do
     --project) PROJECT="$2"; shift 2 ;;
     --service) SERVICE="$2"; shift 2 ;;
     --region) REGION="$2"; shift 2 ;;
+    --env-label) ENV_LABEL="$2"; shift 2 ;;
+    --runtime-label) RUNTIME_LABEL="$2"; shift 2 ;;
+    --revision) REVISION="$2"; shift 2 ;;
     --iterations) ITERATIONS="$2"; shift 2 ;;
     --sleep) SLEEP_SECONDS="$2"; shift 2 ;;
     --language) LANGUAGE="$2"; shift 2 ;;
@@ -45,10 +54,54 @@ while [[ $# -gt 0 ]]; do
     --key) API_KEY="$2"; shift 2 ;;
     --audio-file) AUDIO_FILE="$2"; shift 2 ;;
     --out-dir) OUT_DIR="$2"; shift 2 ;;
+    --dry-run) DRY_RUN=1; shift ;;
     -h|--help) usage 0 ;;
     *) echo "Unknown arg: $1" >&2; usage 1 ;;
   esac
 done
+
+validate_log_label() {
+  local label_name="$1"
+  local label_value="$2"
+  if [[ "$label_value" == *'"'* || "$label_value" == *$'\n'* || "$label_value" == *$'\r'* ]]; then
+    echo "Error: $label_name must not contain quotes or newlines" >&2
+    exit 2
+  fi
+}
+
+validate_log_label "--revision" "$REVISION"
+
+if [[ "$DRY_RUN" = "1" ]]; then
+  STAMP="dry-run"
+  REQUEST_CSV="$OUT_DIR/stt-profile-$STAMP-requests.csv"
+  EVENT_CSV="$OUT_DIR/stt-profile-$STAMP-events.csv"
+  LOG_JSON="$OUT_DIR/stt-profile-$STAMP-logs.json"
+  REPORT_MD="$OUT_DIR/stt-profile-$STAMP.md"
+  FILTER="resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"$SERVICE\" AND resource.labels.location=\"$REGION\""
+  if [[ -n "$REVISION" ]]; then
+    FILTER="$FILTER AND resource.labels.revision_name=\"$REVISION\""
+  fi
+  FILTER="$FILTER AND jsonPayload.event=~\"stt_.*\" AND timestamp>=\"<run-start>\" AND timestamp<=\"<run-end>\""
+
+  echo "Dry run: no API requests or gcloud logging reads will be executed."
+  echo "Target: $BASE_URL"
+  echo "Project: $PROJECT"
+  echo "Service: $SERVICE"
+  echo "Region: $REGION"
+  echo "Revision: ${REVISION:-all revisions}"
+  echo "Environment label: $ENV_LABEL"
+  echo "Runtime label: $RUNTIME_LABEL"
+  echo "Iterations: $ITERATIONS"
+  echo "Sleep seconds: $SLEEP_SECONDS"
+  echo "Language: $LANGUAGE"
+  echo "Audio source: ${AUDIO_FILE:-generated via /api/voice}"
+  echo "Request CSV: $REQUEST_CSV"
+  echo "Event CSV: $EVENT_CSV"
+  echo "Log JSON: $LOG_JSON"
+  echo "Report: $REPORT_MD"
+  echo "Filter: $FILTER"
+  exit 0
+fi
 
 fetch_api_key_from_gcloud() {
   if command -v gcloud >/dev/null 2>&1; then
@@ -119,7 +172,7 @@ print(json.dumps({
 fi
 
 LOG_START="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-echo "request_index,http_status,total_ms,transcript_chars,success" > "$REQUEST_CSV"
+echo "request_index,http_status,total_ms,transcript_chars,success,env_label,runtime_label,revision" > "$REQUEST_CSV"
 
 for i in $(seq 1 "$ITERATIONS"); do
   SESSION_ID="stt-profile-$STAMP-$i"
@@ -167,7 +220,7 @@ except Exception:
 PY
 )"
   TOTAL_MS="$(TOTAL_SECONDS="$TOTAL_SECONDS" python3 -c 'import os; print(int(float(os.environ["TOTAL_SECONDS"]) * 1000))')"
-  echo "$i,$HTTP_STATUS,$TOTAL_MS,$TRANSCRIPT_CHARS,$SUCCESS" >> "$REQUEST_CSV"
+  echo "$i,$HTTP_STATUS,$TOTAL_MS,$TRANSCRIPT_CHARS,$SUCCESS,$ENV_LABEL,$RUNTIME_LABEL,$REVISION" >> "$REQUEST_CSV"
   rm -f "$TMP_BODY"
   echo "[$i/$ITERATIONS] total=${TOTAL_MS}ms success=$SUCCESS"
   if [[ "$i" != "$ITERATIONS" ]]; then
@@ -176,7 +229,11 @@ PY
 done
 
 LOG_END="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-FILTER="resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"$SERVICE\" AND resource.labels.location=\"$REGION\" AND jsonPayload.event=~\"stt_.*\" AND timestamp>=\"$LOG_START\" AND timestamp<=\"$LOG_END\""
+FILTER="resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"$SERVICE\" AND resource.labels.location=\"$REGION\""
+if [[ -n "$REVISION" ]]; then
+  FILTER="$FILTER AND resource.labels.revision_name=\"$REVISION\""
+fi
+FILTER="$FILTER AND jsonPayload.event=~\"stt_.*\" AND timestamp>=\"$LOG_START\" AND timestamp<=\"$LOG_END\""
 
 gcloud logging read "$FILTER" \
   --project="$PROJECT" \
@@ -184,7 +241,7 @@ gcloud logging read "$FILTER" \
   --limit=1000 \
   > "$LOG_JSON"
 
-python3 - "$REQUEST_CSV" "$LOG_JSON" "$EVENT_CSV" "$REPORT_MD" "$BASE_URL" "$SERVICE" "$REGION" "$LOG_START" "$LOG_END" <<'PY'
+python3 - "$REQUEST_CSV" "$LOG_JSON" "$EVENT_CSV" "$REPORT_MD" "$BASE_URL" "$SERVICE" "$REGION" "$LOG_START" "$LOG_END" "$ENV_LABEL" "$RUNTIME_LABEL" "$REVISION" <<'PY'
 import csv
 import json
 import math
@@ -193,7 +250,20 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
-request_csv, log_json, event_csv, report_md, base_url, service, region, start, end = sys.argv[1:]
+(
+    request_csv,
+    log_json,
+    event_csv,
+    report_md,
+    base_url,
+    service,
+    region,
+    start,
+    end,
+    env_label,
+    runtime_label,
+    comparison_revision,
+) = sys.argv[1:]
 
 requests = []
 with open(request_csv, newline="", encoding="utf-8") as fh:
@@ -204,6 +274,11 @@ events = []
 for entry in logs:
     payload = entry.get("jsonPayload") or {}
     payload["timestamp"] = entry.get("timestamp")
+    labels = (entry.get("resource") or {}).get("labels") or {}
+    payload["revision_name"] = labels.get("revision_name")
+    payload["env_label"] = env_label
+    payload["runtime_label"] = runtime_label
+    payload["comparison_revision"] = comparison_revision or labels.get("revision_name")
     if payload.get("event", "").startswith("stt_"):
         events.append(payload)
 
@@ -211,8 +286,15 @@ fieldnames = [
     "timestamp",
     "stt_trace_id",
     "request_id",
+    "env_label",
+    "runtime_label",
+    "revision_name",
+    "comparison_revision",
     "event",
     "provider",
+    "model_name",
+    "model_variant",
+    "device",
     "stt_winner",
     "success",
     "stt_request_duration_ms",
@@ -330,11 +412,25 @@ lines = [
     "",
     f"- Target: `{base_url}`",
     f"- Cloud Run service: `{service}` / `{region}`",
+    f"- Environment label: `{env_label}`",
+    f"- Runtime label: `{runtime_label}`",
+    f"- Revision filter: `{comparison_revision or 'all revisions'}`",
     f"- Window UTC: `{start}` to `{end}`",
     f"- Requests: `{len(requests)}`",
     f"- Structured STT events: `{len(events)}`",
     f"- Event CSV: `{Path(event_csv).name}`",
     f"- Request CSV: `{Path(request_csv).name}`",
+    "",
+    "## Comparison Fields",
+    "",
+    f"- `env_label`: `{env_label}`",
+    f"- `runtime_label`: `{runtime_label}`",
+    f"- `revision`: `{comparison_revision or 'all revisions'}`",
+    "- `request_total`: curl `time_total` from request CSV.",
+    "- `qwen_runtime`: `stt_qwen_runtime_duration_ms` from `stt_qwen_runtime_complete`.",
+    "- `qwen_model_inference`: `stt_qwen_model_inference_duration_ms` from `stt_qwen_runtime_complete`.",
+    "- `winner`: `stt_winner` from `stt_winner` events.",
+    "- `hedge_wait` / `qwen_grace_wait`: hedge/grace timing fields from structured STT events.",
     "",
     "## Summary",
     "",
