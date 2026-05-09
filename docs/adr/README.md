@@ -13,6 +13,7 @@
 | [008 — Operational verification & deployment guardrails](008-operational-verification-and-deployment-guardrails.md) | 監査・デプロイ・検証のガードレール                             |
 | [019 — Alpha live RAGAS case accounting](019-alpha-live-ragas-case-accounting.md)                                   | C-127 ケース数・収集の会計                              |
 | [020 — Knowledge ingestion mutation contract](020-knowledge-ingestion-mutation-contract.md)                         | RAG 投入・変更・preview の契約                           |
+| [021 — Frontend/backend separation before React/Vite migration](021-frontend-backend-separation-before-react-vite.md) | Next API proxy 廃止を React/Vite 移行より先に行う判断           |
 
 
 ## ワークフロー・音声・観測
@@ -47,5 +48,5 @@
 
 ## メモ
 
-- ADR 番号は 005 以降を運用しており、**015 は欠番**です（採番のみ存在し、文書化に至らなかったため）。新しい ADR を起票する際は 021 から付番してください。
+- ADR 番号は 005 以降を運用しており、**015 は欠番**です（採番のみ存在し、文書化に至らなかったため）。新しい ADR を起票する際は 022 から付番してください。
 - 001–004 についても、本リポジトリでは初期から ADR 005 以降のみを保守しています。

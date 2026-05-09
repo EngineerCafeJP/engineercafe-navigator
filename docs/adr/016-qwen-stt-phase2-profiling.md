@@ -1,11 +1,11 @@
 # ADR 016: Qwen STT Phase 2 Profiling
 
 作成日: 2026-04-24
-更新日: 2026-04-25 (Phase B-1 production 実測結果追記)
+更新日: 2026-05-09 (Post-alpha STT latency rebaseline 方針追記)
 
 ## ステータス
 
-**完了**: Phase A profiling (PR #558) + Phase B-1 Qwen-only fast-path (PR #560) 両方実装・
+**Accepted / rebaseline required**: Phase A profiling (PR #558) + Phase B-1 Qwen-only fast-path (PR #560) 両方実装・
 deploy・live 実測済み。目標 p50 3.1s を上回る 2827ms (34% 短縮) を達成。
 Epic #474 Exit Criterion `/api/voice p95 < 10s` 達成 (p95 = 7035ms)。
 
@@ -15,6 +15,27 @@ Alpha Live Verification では NO-GO。PR #592 の live run
 `vosk-fallback` が多数発生した。Alpha GO には、STT 単体 p95 だけでなく
 Welcome 起点の live round-trip で `sttProvider=qwen-primary` を維持できることが必要。
 最新の blocker は `docs/testing/alpha-live-verification-status-2026-04-25.md` を参照。
+
+**2026-05-09 post-alpha 追記**: Phase B-1 の改善は履歴として有効だが、現在の
+production voice path では STT が再び user-facing latency の主因になっている。
+Cloud Run revision `engineer-cafe-backend-00192-bzt` の post-deploy window では
+`stt_winner` 9 rows、winner 分布 `qwen=4` / `vosk=5`、p50 `6877ms`、p90 `9000ms`、
+max `10006ms`、`stt-live-preflight` は p95/over-10s ratio で FAIL だった。
+
+このため #529 は「観測性」ではなく「精度を維持した STT first-hop latency」の
+P1-A として再優先化する。ユーザー指摘どおり、回答生成は概ね 3-5 秒で返るため、
+音声入力から transcript 確定までの 6-7 秒台が体感速度の主ボトルネックである。
+
+判断:
+
+- 速度だけを理由に Vosk winner を早期採用する方針へ戻さない。過去の live voice
+  pipeline では Vosk の低品質 transcript が route 誤判定と不適切な回答を引き起こした。
+- 現行の Qwen-first / Vosk fallback / hedge は精度保全のため維持する。ただし
+  hedge delay、grace、CPU contention、audio conversion、model runtime の内訳を再計測し、
+  Qwen の品質を保ったまま transcript latency を戻す。
+- `<1.5s` target は #529 の最終 acceptance として残す。次の実装セッションでは、
+  まず p50/p95 の分解計測と候補 runtime の spike を行い、CPU path だけで不足する場合は
+  GPU/remote STT/streaming partial transcript を明示的な比較対象にする。
 
 ## 背景
 
