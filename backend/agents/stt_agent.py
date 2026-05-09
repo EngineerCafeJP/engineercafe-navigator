@@ -242,10 +242,40 @@ AUDIO_CONVERSION_ERROR_PREFIX = "Failed to convert WebM audio to WAV for STT tra
 PYDUB_IMPORT_ERROR = (
     "WebM audio conversion requires pydub. Install backend dependencies with pydub included."
 )
+_MEDIA_CONTAINER_SIGNATURES = (
+    b"\x1a\x45\xdf\xa3",  # WebM / Matroska EBML
+    b"OggS",
+    b"fLaC",
+    b"ID3",
+)
 
 
 def _duration_ms(started_at: float) -> int:
     return int((time.perf_counter() - started_at) * 1000)
+
+
+def _looks_like_non_wav_media(audio_data: bytes) -> bool:
+    return any(audio_data.startswith(signature) for signature in _MEDIA_CONTAINER_SIGNATURES)
+
+
+def _wav_metadata(audio_data: bytes) -> dict[str, Any]:
+    if not audio_data.startswith(WAV_RIFF_HEADER) or len(audio_data) < MIN_WAV_HEADER_BYTES:
+        return {}
+
+    try:
+        with wave.open(io.BytesIO(audio_data), "rb") as wav_file:
+            frame_count = wav_file.getnframes()
+            sample_rate = wav_file.getframerate()
+            duration_ms = int((frame_count / sample_rate) * 1000) if sample_rate else None
+            return {
+                "audio_sample_rate_hz": sample_rate,
+                "audio_channels": wav_file.getnchannels(),
+                "audio_sample_width_bytes": wav_file.getsampwidth(),
+                "audio_frame_count": frame_count,
+                "audio_duration_ms": duration_ms,
+            }
+    except Exception as exc:
+        return {"audio_probe_error_type": type(exc).__name__}
 
 
 def _parse_qwen_stt_timeout(raw_value: Optional[str], default: float = 24.0) -> float:
@@ -998,14 +1028,14 @@ class LocalSTTClient:
         logger.info("Converted non-WAV audio payload to 16kHz/16-bit/mono WAV for Vosk")
         return wav_bytes
 
-    def _load_model(self, lang: str):
+    def _load_model(self, lang: str, *, stt_trace_id: Optional[str] = None):
         if lang not in self.model_paths:
             raise ValueError(
                 f"Unsupported language: {lang}. Supported: {list(self.model_paths.keys())}"
             )
 
         if lang in self._models:
-            return self._models[lang]
+            return self._models[lang], 0
 
         try:
             from vosk import Model
@@ -1021,9 +1051,19 @@ class LocalSTTClient:
                 f"Download from https://alphacephei.com/vosk/models"
             )
 
+        load_started_at = time.perf_counter()
         self._models[lang] = Model(model_path)
+        load_duration_ms = _duration_ms(load_started_at)
         logger.info("Loaded Vosk %s model from %s", lang, model_path)
-        return self._models[lang]
+        log_stt_event(
+            event="stt_model_load_complete",
+            stt_trace_id=stt_trace_id,
+            provider="vosk",
+            language=lang,
+            model_path=model_path,
+            stt_model_load_duration_ms=load_duration_ms,
+        )
+        return self._models[lang], load_duration_ms
 
     @staticmethod
     def _resample_to_16khz(frames: bytes, orig_rate: int) -> tuple[bytes, int]:
@@ -1064,107 +1104,192 @@ class LocalSTTClient:
         audio_data: bytes,
         language: str = "ja",
         grammar: Optional[List[str]] = None,
+        *,
+        stt_trace_id: Optional[str] = None,
     ) -> TranscriptionResult:
         """Synchronous Vosk transcription (called via thread pool).
 
         注意: 入力は WAV (PCM) で、可能であれば 16kHz, 16bit, mono を推奨します。
         非16kHz音声は自動的に16kHzにリサンプルされます。
         """
-        import wave
-
-        if audio_data[:4] == WAV_RIFF_HEADER:
-            if len(audio_data) < MIN_WAV_HEADER_BYTES:
-                raise ValueError(TRUNCATED_WAV_AUDIO_ERROR)
-        else:
-            audio_data = self._convert_audio_to_wav(audio_data)
-
-        from vosk import KaldiRecognizer
-
-        bio = io.BytesIO(audio_data)
-        with wave.open(bio, "rb") as wf:
-            sample_rate = wf.getframerate()
-            nchannels = wf.getnchannels()
-            sampwidth = wf.getsampwidth()
-            frames = wf.readframes(wf.getnframes())
-
-        if sampwidth != 2:
-            raise ValueError(
-                f"Unsupported sample width: {sampwidth} bytes (only 16-bit PCM supported)"
-            )
-
-        if nchannels > 1:
-            audio_np = np.frombuffer(frames, dtype=np.int16).reshape(-1, nchannels)
-            frames = audio_np.mean(axis=1).astype(np.int16).tobytes()
-            logger.info("Downmixed %d-channel audio to mono", nchannels)
-
-        if sample_rate != 16000:
-            logger.info(
-                "Received sample rate %dHz — resampling to 16000Hz for Vosk.",
-                sample_rate,
-            )
-            frames, sample_rate = self._resample_to_16khz(frames, sample_rate)
-
-        model = self._load_model(language)
-
-        if grammar:
-            grammar_json = json.dumps(grammar)
-            rec = KaldiRecognizer(model, sample_rate, grammar_json)
-        else:
-            rec = KaldiRecognizer(model, sample_rate)
-
-        rec.SetWords(True)
-        rec.AcceptWaveform(frames)
-        result_json = rec.FinalResult()
+        runtime_started_at = time.perf_counter()
+        audio_conversion_duration_ms = 0
+        wav_decode_duration_ms = 0
+        downmix_duration_ms = 0
+        resample_duration_ms = 0
+        model_load_duration_ms = 0
+        recognition_duration_ms = 0
+        audio_metadata: dict[str, Any] = {}
+        conversion_required = not audio_data.startswith(WAV_RIFF_HEADER)
 
         try:
-            result = json.loads(result_json)
-        except Exception:
-            logger.error("Failed to parse Vosk result: %s", result_json)
-            raise RuntimeError("Failed to parse Vosk recognition result")
+            if audio_data[:4] == WAV_RIFF_HEADER:
+                if len(audio_data) < MIN_WAV_HEADER_BYTES:
+                    raise ValueError(TRUNCATED_WAV_AUDIO_ERROR)
+            else:
+                conversion_started_at = time.perf_counter()
+                audio_data = self._convert_audio_to_wav(audio_data)
+                audio_conversion_duration_ms = _duration_ms(conversion_started_at)
 
-        text = result.get("text", "")
+            from vosk import KaldiRecognizer
 
-        # Extract word-level confidences
-        word_results = result.get("result", [])
-        word_confidences = [
-            {"word": w.get("word", ""), "conf": w.get("conf", 0.0)} for w in word_results
-        ]
+            wav_decode_started_at = time.perf_counter()
+            bio = io.BytesIO(audio_data)
+            with wave.open(bio, "rb") as wf:
+                sample_rate = wf.getframerate()
+                nchannels = wf.getnchannels()
+                sampwidth = wf.getsampwidth()
+                frame_count = wf.getnframes()
+                frames = wf.readframes(frame_count)
+            wav_decode_duration_ms = _duration_ms(wav_decode_started_at)
+            audio_metadata = {
+                "audio_sample_rate_hz": sample_rate,
+                "audio_channels": nchannels,
+                "audio_sample_width_bytes": sampwidth,
+                "audio_frame_count": frame_count,
+                "audio_duration_ms": (
+                    int((frame_count / sample_rate) * 1000) if sample_rate else None
+                ),
+            }
 
-        # Compute average confidence
-        if word_confidences:
-            avg_confidence = sum(w["conf"] for w in word_confidences) / len(word_confidences)
-        else:
-            avg_confidence = None
+            if sampwidth != 2:
+                raise ValueError(
+                    f"Unsupported sample width: {sampwidth} bytes (only 16-bit PCM supported)"
+                )
 
-        # Fallback: assemble text from word results
-        if not text and word_results:
-            text = " ".join(w.get("word", "") for w in word_results).strip()
+            if nchannels > 1:
+                downmix_started_at = time.perf_counter()
+                audio_np = np.frombuffer(frames, dtype=np.int16).reshape(-1, nchannels)
+                frames = audio_np.mean(axis=1).astype(np.int16).tobytes()
+                downmix_duration_ms = _duration_ms(downmix_started_at)
+                logger.info("Downmixed %d-channel audio to mono", nchannels)
 
-        text = (text or "").strip()
-        if not text:
-            logger.warning("Vosk returned empty transcript")
-            raise RuntimeError("Vosk returned empty recognition result")
+            if sample_rate != 16000:
+                logger.info(
+                    "Received sample rate %dHz — resampling to 16000Hz for Vosk.",
+                    sample_rate,
+                )
+                resample_started_at = time.perf_counter()
+                frames, sample_rate = self._resample_to_16khz(frames, sample_rate)
+                resample_duration_ms = _duration_ms(resample_started_at)
 
-        logger.info("Vosk transcription success: %s", text[:100])
-        return TranscriptionResult(
-            text=text,
-            confidence=avg_confidence,
-            language=language,
-            word_confidences=word_confidences,
-        )
+            load_result = self._load_model(
+                language,
+                stt_trace_id=stt_trace_id,
+            )
+            if isinstance(load_result, tuple) and len(load_result) == 2:
+                model, model_load_duration_ms = load_result
+            else:
+                model = load_result
+                model_load_duration_ms = 0
+
+            if grammar:
+                grammar_json = json.dumps(grammar)
+                rec = KaldiRecognizer(model, sample_rate, grammar_json)
+            else:
+                rec = KaldiRecognizer(model, sample_rate)
+
+            recognition_started_at = time.perf_counter()
+            rec.SetWords(True)
+            rec.AcceptWaveform(frames)
+            result_json = rec.FinalResult()
+            recognition_duration_ms = _duration_ms(recognition_started_at)
+
+            try:
+                result = json.loads(result_json)
+            except Exception:
+                logger.error("Failed to parse Vosk result: %s", result_json)
+                raise RuntimeError("Failed to parse Vosk recognition result")
+
+            text = result.get("text", "")
+
+            # Extract word-level confidences
+            word_results = result.get("result", [])
+            word_confidences = [
+                {"word": w.get("word", ""), "conf": w.get("conf", 0.0)} for w in word_results
+            ]
+
+            # Compute average confidence
+            if word_confidences:
+                avg_confidence = sum(w["conf"] for w in word_confidences) / len(word_confidences)
+            else:
+                avg_confidence = None
+
+            # Fallback: assemble text from word results
+            if not text and word_results:
+                text = " ".join(w.get("word", "") for w in word_results).strip()
+
+            text = (text or "").strip()
+            if not text:
+                logger.warning("Vosk returned empty transcript")
+                raise RuntimeError("Vosk returned empty recognition result")
+
+            logger.info("Vosk transcription success: %s", text[:100])
+            log_stt_event(
+                event="stt_vosk_runtime_complete",
+                stt_trace_id=stt_trace_id,
+                provider="vosk-fallback",
+                language=language,
+                success=True,
+                conversion_required=conversion_required,
+                stt_vosk_runtime_duration_ms=_duration_ms(runtime_started_at),
+                stt_vosk_audio_conversion_duration_ms=audio_conversion_duration_ms,
+                stt_vosk_wav_decode_duration_ms=wav_decode_duration_ms,
+                stt_vosk_downmix_duration_ms=downmix_duration_ms,
+                stt_vosk_resample_duration_ms=resample_duration_ms,
+                stt_vosk_model_load_duration_ms=model_load_duration_ms,
+                stt_vosk_recognition_duration_ms=recognition_duration_ms,
+                transcript_chars=len(text),
+                confidence=avg_confidence,
+                grammar_enabled=bool(grammar),
+                **audio_metadata,
+            )
+            return TranscriptionResult(
+                text=text,
+                confidence=avg_confidence,
+                language=language,
+                word_confidences=word_confidences,
+            )
+        except Exception as exc:
+            log_stt_event(
+                event="stt_vosk_runtime_complete",
+                stt_trace_id=stt_trace_id,
+                provider="vosk-fallback",
+                language=language,
+                success=False,
+                error_type=type(exc).__name__,
+                conversion_required=conversion_required,
+                stt_vosk_runtime_duration_ms=_duration_ms(runtime_started_at),
+                stt_vosk_audio_conversion_duration_ms=audio_conversion_duration_ms,
+                stt_vosk_wav_decode_duration_ms=wav_decode_duration_ms,
+                stt_vosk_downmix_duration_ms=downmix_duration_ms,
+                stt_vosk_resample_duration_ms=resample_duration_ms,
+                stt_vosk_model_load_duration_ms=model_load_duration_ms,
+                stt_vosk_recognition_duration_ms=recognition_duration_ms,
+                grammar_enabled=bool(grammar),
+                **audio_metadata,
+            )
+            raise
 
     async def transcribe(
         self,
         audio_data: bytes,
         language: str = "ja",
         grammar: Optional[List[str]] = None,
+        *,
+        stt_trace_id: Optional[str] = None,
     ) -> TranscriptionResult:
         """WAVバイト列を受け取り、TranscriptionResult を返します (thread pool経由)。"""
         try:
             loop = asyncio.get_running_loop()
             return await loop.run_in_executor(
                 _get_vosk_stt_executor(),
-                lambda: self._sync_transcribe(audio_data, language, grammar),
+                lambda: self._sync_transcribe(
+                    audio_data,
+                    language,
+                    grammar,
+                    stt_trace_id=stt_trace_id,
+                ),
             )
         except ValueError as e:
             message = f"Invalid audio data for STT transcription: {e}"
@@ -1178,6 +1303,8 @@ class LocalSTTClient:
         self,
         audio_data: bytes,
         grammar: Optional[Dict[str, List[str]]] = None,
+        *,
+        stt_trace_id: Optional[str] = None,
     ) -> TranscriptionResult:
         """日英両モデルで並列認識し、confidence が高い方の結果を返す。
 
@@ -1192,7 +1319,12 @@ class LocalSTTClient:
         async def _run_model(lang: str) -> Optional[TranscriptionResult]:
             lang_grammar = (grammar or {}).get(lang)
             try:
-                return await self.transcribe(audio_data, lang, grammar=lang_grammar)
+                return await self.transcribe(
+                    audio_data,
+                    lang,
+                    grammar=lang_grammar,
+                    stt_trace_id=stt_trace_id,
+                )
             except (RuntimeError, ValueError) as e:
                 logger.debug("Auto-detect: %s model returned error: %s", lang, e)
                 return None
@@ -1347,9 +1479,9 @@ class QwenSTTClient:
             default_language,
         )
 
-    def _load_model(self) -> None:
+    def _load_model(self, *, stt_trace_id: Optional[str] = None) -> int:
         if self._model is not None:
-            return
+            return 0
 
         try:
             import torch
@@ -1376,54 +1508,167 @@ class QwenSTTClient:
             low_cpu_mem_usage=True,
             max_new_tokens=256,
         )
+        load_duration_ms = _duration_ms(load_started_at)
         log_stt_event(
             event="stt_model_load_complete",
-            stt_model_load_duration_ms=_duration_ms(load_started_at),
+            stt_trace_id=stt_trace_id,
+            stt_model_load_duration_ms=load_duration_ms,
             provider="qwen",
             model_name=self.model_name,
             model_variant=self.model_variant,
             device=self.device,
         )
+        return load_duration_ms
 
     def _sync_transcribe(
         self,
         audio_data: bytes,
         language: Optional[str] = None,
+        *,
+        stt_trace_id: Optional[str] = None,
     ) -> TranscriptionResult:
-        self._load_model()
-
-        if audio_data[:4] == WAV_RIFF_HEADER:
-            if len(audio_data) < MIN_WAV_HEADER_BYTES:
-                raise ValueError(TRUNCATED_WAV_AUDIO_ERROR)
-        else:
-            audio_data = convert_audio_to_wav_bytes(audio_data)
-
-        lang_code = language  # preserve None for auto-detect
-        qwen_language = self.LANGUAGE_NAMES.get(lang_code, lang_code) if lang_code else None
+        runtime_started_at = time.perf_counter()
+        model_load_duration_ms = 0
+        audio_conversion_duration_ms = 0
+        wav_decode_duration_ms = 0
+        pcm_prepare_duration_ms = 0
+        inference_duration_ms = 0
+        audio_metadata: dict[str, Any] = {}
+        conversion_required = not audio_data.startswith(WAV_RIFF_HEADER)
 
         try:
+            load_duration = self._load_model(stt_trace_id=stt_trace_id)
+            model_load_duration_ms = load_duration if isinstance(load_duration, int) else 0
+
+            if audio_data[:4] == WAV_RIFF_HEADER:
+                if len(audio_data) < MIN_WAV_HEADER_BYTES:
+                    raise ValueError(TRUNCATED_WAV_AUDIO_ERROR)
+            else:
+                conversion_started_at = time.perf_counter()
+                audio_data = convert_audio_to_wav_bytes(audio_data)
+                audio_conversion_duration_ms = _duration_ms(conversion_started_at)
+
+            lang_code = language  # preserve None for auto-detect
+            qwen_language = self.LANGUAGE_NAMES.get(lang_code, lang_code) if lang_code else None
+
+            wav_decode_started_at = time.perf_counter()
             with wave.open(io.BytesIO(audio_data), "rb") as wav_file:
                 sample_rate = wav_file.getframerate()
-                frames = wav_file.readframes(wav_file.getnframes())
+                frame_count = wav_file.getnframes()
+                channels = wav_file.getnchannels()
+                sample_width = wav_file.getsampwidth()
+                frames = wav_file.readframes(frame_count)
+            wav_decode_duration_ms = _duration_ms(wav_decode_started_at)
+            audio_metadata = {
+                "audio_sample_rate_hz": sample_rate,
+                "audio_channels": channels,
+                "audio_sample_width_bytes": sample_width,
+                "audio_frame_count": frame_count,
+                "audio_duration_ms": (
+                    int((frame_count / sample_rate) * 1000) if sample_rate else None
+                ),
+            }
 
+            pcm_prepare_started_at = time.perf_counter()
             pcm = np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
+            pcm_prepare_duration_ms = _duration_ms(pcm_prepare_started_at)
 
             kwargs: Dict[str, Any] = {"audio": (pcm, sample_rate)}
             if qwen_language:
                 kwargs["language"] = qwen_language
 
+            inference_started_at = time.perf_counter()
             results = self._model.transcribe(**kwargs)
+            inference_duration_ms = _duration_ms(inference_started_at)
             result = results[0] if results else None
             text = (getattr(result, "text", "") or "").strip() if result else ""
             detected_language = getattr(result, "language", None) if result else None
         except wave.Error as exc:
+            log_stt_event(
+                event="stt_qwen_runtime_complete",
+                stt_trace_id=stt_trace_id,
+                provider="qwen-primary",
+                model_name=self.model_name,
+                model_variant=self.model_variant,
+                device=self.device,
+                language=language,
+                success=False,
+                error_type="WaveError",
+                conversion_required=conversion_required,
+                stt_qwen_runtime_duration_ms=_duration_ms(runtime_started_at),
+                stt_qwen_model_load_duration_ms=model_load_duration_ms,
+                stt_qwen_audio_conversion_duration_ms=audio_conversion_duration_ms,
+                stt_qwen_wav_decode_duration_ms=wav_decode_duration_ms,
+                stt_qwen_pcm_prepare_duration_ms=pcm_prepare_duration_ms,
+                stt_qwen_model_inference_duration_ms=inference_duration_ms,
+                **audio_metadata,
+            )
             raise ValueError(f"Invalid WAV audio for Qwen STT transcription: {exc}") from exc
+        except Exception as exc:
+            log_stt_event(
+                event="stt_qwen_runtime_complete",
+                stt_trace_id=stt_trace_id,
+                provider="qwen-primary",
+                model_name=self.model_name,
+                model_variant=self.model_variant,
+                device=self.device,
+                language=language,
+                success=False,
+                error_type=type(exc).__name__,
+                conversion_required=conversion_required,
+                stt_qwen_runtime_duration_ms=_duration_ms(runtime_started_at),
+                stt_qwen_model_load_duration_ms=model_load_duration_ms,
+                stt_qwen_audio_conversion_duration_ms=audio_conversion_duration_ms,
+                stt_qwen_wav_decode_duration_ms=wav_decode_duration_ms,
+                stt_qwen_pcm_prepare_duration_ms=pcm_prepare_duration_ms,
+                stt_qwen_model_inference_duration_ms=inference_duration_ms,
+                **audio_metadata,
+            )
+            raise
 
         if not text:
+            log_stt_event(
+                event="stt_qwen_runtime_complete",
+                stt_trace_id=stt_trace_id,
+                provider="qwen-primary",
+                model_name=self.model_name,
+                model_variant=self.model_variant,
+                device=self.device,
+                language=language,
+                success=False,
+                error_type="EmptyRecognitionResult",
+                conversion_required=conversion_required,
+                stt_qwen_runtime_duration_ms=_duration_ms(runtime_started_at),
+                stt_qwen_model_load_duration_ms=model_load_duration_ms,
+                stt_qwen_audio_conversion_duration_ms=audio_conversion_duration_ms,
+                stt_qwen_wav_decode_duration_ms=wav_decode_duration_ms,
+                stt_qwen_pcm_prepare_duration_ms=pcm_prepare_duration_ms,
+                stt_qwen_model_inference_duration_ms=inference_duration_ms,
+                **audio_metadata,
+            )
             raise RuntimeError("Qwen3-ASR returned empty recognition result")
 
         normalized_lang = self._normalize_language_code(detected_language)
         logger.info("Qwen transcription success (%s): %s", self.model_variant, text[:100])
+        log_stt_event(
+            event="stt_qwen_runtime_complete",
+            stt_trace_id=stt_trace_id,
+            provider="qwen-primary",
+            model_name=self.model_name,
+            model_variant=self.model_variant,
+            device=self.device,
+            language=normalized_lang or lang_code or self.default_language,
+            success=True,
+            transcript_chars=len(text),
+            conversion_required=conversion_required,
+            stt_qwen_runtime_duration_ms=_duration_ms(runtime_started_at),
+            stt_qwen_model_load_duration_ms=model_load_duration_ms,
+            stt_qwen_audio_conversion_duration_ms=audio_conversion_duration_ms,
+            stt_qwen_wav_decode_duration_ms=wav_decode_duration_ms,
+            stt_qwen_pcm_prepare_duration_ms=pcm_prepare_duration_ms,
+            stt_qwen_model_inference_duration_ms=inference_duration_ms,
+            **audio_metadata,
+        )
         return TranscriptionResult(
             text=text,
             confidence=None,
@@ -1435,11 +1680,13 @@ class QwenSTTClient:
         self,
         audio_data: bytes,
         language: Optional[str] = None,
+        *,
+        stt_trace_id: Optional[str] = None,
     ) -> TranscriptionResult:
         loop = asyncio.get_running_loop()
         result = await loop.run_in_executor(
             _get_qwen_stt_executor(),
-            lambda: self._sync_transcribe(audio_data, language),
+            lambda: self._sync_transcribe(audio_data, language, stt_trace_id=stt_trace_id),
         )
 
         # Apply LLM post-processing for Japanese transcripts to correct
@@ -1447,8 +1694,21 @@ class QwenSTTClient:
         # Env-toggled (STT_QWEN_POSTPROCESS_ENABLED), falls back to raw on
         # any failure, guarded by edit-distance threshold.
         if result.language == "ja" and result.text.strip():
+            postprocess_started_at = time.perf_counter()
             try:
                 corrected_text = await _qwen_llm_post_process(result.text, result.language)
+                log_stt_event(
+                    event="stt_qwen_postprocess_complete",
+                    stt_trace_id=stt_trace_id,
+                    provider="qwen-primary",
+                    language=result.language,
+                    success=True,
+                    changed=corrected_text != result.text,
+                    enabled=_qwen_postprocess_enabled(),
+                    transcript_chars=len(result.text),
+                    corrected_chars=len(corrected_text),
+                    stt_qwen_postprocess_duration_ms=_duration_ms(postprocess_started_at),
+                )
                 if corrected_text != result.text:
                     result = TranscriptionResult(
                         text=corrected_text,
@@ -1458,6 +1718,17 @@ class QwenSTTClient:
                     )
             except Exception as exc:
                 logger.warning("Qwen post-process wrapper failed: %s", exc)
+                log_stt_event(
+                    event="stt_qwen_postprocess_complete",
+                    stt_trace_id=stt_trace_id,
+                    provider="qwen-primary",
+                    language=result.language,
+                    success=False,
+                    error_type=type(exc).__name__,
+                    enabled=_qwen_postprocess_enabled(),
+                    transcript_chars=len(result.text),
+                    stt_qwen_postprocess_duration_ms=_duration_ms(postprocess_started_at),
+                )
 
         return result
 
@@ -1788,6 +2059,55 @@ class STTAgent:
 
         return transcript
 
+    async def _prepare_qwen_primary_audio(
+        self,
+        audio_data: bytes,
+        *,
+        stt_trace_id: str,
+        language: Optional[str],
+    ) -> bytes:
+        """Prepare shared audio once before the Qwen/Vosk hedge race."""
+
+        prepare_started_at = time.perf_counter()
+        conversion_duration_ms = 0
+        conversion_attempted = False
+        conversion_required = not audio_data.startswith(WAV_RIFF_HEADER)
+        output_audio = audio_data
+        success = True
+        error_type: str | None = None
+
+        try:
+            if audio_data.startswith(WAV_RIFF_HEADER):
+                if len(audio_data) < MIN_WAV_HEADER_BYTES:
+                    raise ValueError(TRUNCATED_WAV_AUDIO_ERROR)
+            elif _looks_like_non_wav_media(audio_data):
+                conversion_attempted = True
+                conversion_started_at = time.perf_counter()
+                output_audio = await asyncio.to_thread(convert_audio_to_wav_bytes, audio_data)
+                conversion_duration_ms = _duration_ms(conversion_started_at)
+        except Exception as exc:
+            success = False
+            error_type = type(exc).__name__
+            output_audio = audio_data
+            logger.warning("qwen-primary shared audio preparation failed: %s", exc)
+
+        log_stt_event(
+            event="stt_audio_prepare_complete",
+            stt_trace_id=stt_trace_id,
+            provider="qwen-primary",
+            language=language,
+            success=success,
+            error_type=error_type,
+            conversion_required=conversion_required,
+            conversion_attempted=conversion_attempted,
+            input_audio_bytes=len(audio_data),
+            prepared_audio_bytes=len(output_audio),
+            stt_audio_prepare_duration_ms=_duration_ms(prepare_started_at),
+            stt_audio_conversion_duration_ms=conversion_duration_ms,
+            **_wav_metadata(output_audio),
+        )
+        return output_audio
+
     async def _transcribe_qwen_primary(
         self,
         audio_data: bytes,
@@ -1803,6 +2123,12 @@ class STTAgent:
         stt_trace_id = f"stt-{uuid.uuid4().hex[:12]}"
         overall_started_at = time.perf_counter()
         qwen_postprocess_enabled = _qwen_postprocess_enabled()
+
+        audio_data = await self._prepare_qwen_primary_audio(
+            audio_data,
+            stt_trace_id=stt_trace_id,
+            language=language,
+        )
 
         async def _run_qwen():
             qwen_started_at = time.perf_counter()
@@ -1820,7 +2146,11 @@ class STTAgent:
             )
             try:
                 result = await asyncio.wait_for(
-                    self.stt_client.transcribe(audio_data, language=language),
+                    self.stt_client.transcribe(
+                        audio_data,
+                        language=language,
+                        stt_trace_id=stt_trace_id,
+                    ),
                     timeout=self._qwen_timeout,
                 )
             except asyncio.CancelledError:
@@ -1873,9 +2203,16 @@ class STTAgent:
             )
             try:
                 if language is None:
-                    result = await self._vosk_fallback_client.transcribe_auto_detect(audio_data)
+                    result = await self._vosk_fallback_client.transcribe_auto_detect(
+                        audio_data,
+                        stt_trace_id=stt_trace_id,
+                    )
                 else:
-                    result = await self._vosk_fallback_client.transcribe(audio_data, language)
+                    result = await self._vosk_fallback_client.transcribe(
+                        audio_data,
+                        language,
+                        stt_trace_id=stt_trace_id,
+                    )
             except asyncio.CancelledError:
                 log_stt_event(
                     event="stt_vosk_complete",
@@ -2009,6 +2346,9 @@ class STTAgent:
             qwen_result: TranscriptionResult | Exception | None = None
             vosk_result: TranscriptionResult | Exception | None = None
             qwen_error_for_log: Exception | None = None
+            hedge_started = False
+            hedge_wait_duration_ms: int | None = None
+            grace_wait_duration_ms: int | None = None
 
             if self._qwen_hedge_delay is None:
                 try:
@@ -2023,6 +2363,8 @@ class STTAgent:
                         timeout=self._qwen_hedge_delay,
                     )
                 except asyncio.TimeoutError:
+                    hedge_started = True
+                    hedge_wait_duration_ms = _duration_ms(overall_started_at)
                     qwen_error_for_log = HedgedFallback(
                         f"Qwen exceeded hedge delay {self._qwen_hedge_delay:.2f}s"
                     )
@@ -2033,6 +2375,7 @@ class STTAgent:
                         language=language,
                         success=False,
                         stt_qwen_duration_ms=_duration_ms(overall_started_at),
+                        stt_hedge_wait_duration_ms=hedge_wait_duration_ms,
                         hedge_delay_s=self._qwen_hedge_delay,
                         hedge_grace_s=self._qwen_hedge_grace,
                         latency_budget_s=self._qwen_latency_budget,
@@ -2094,6 +2437,7 @@ class STTAgent:
                                 )
                                 remaining_budget = 0.0
                             if remaining_budget > 0:
+                                grace_started_at = time.perf_counter()
                                 log_stt_event(
                                     event="stt_qwen_hedge_grace_start",
                                     stt_trace_id=stt_trace_id,
@@ -2110,7 +2454,9 @@ class STTAgent:
                                         asyncio.shield(qwen_task),
                                         timeout=remaining_budget,
                                     )
+                                    grace_wait_duration_ms = _duration_ms(grace_started_at)
                                 except asyncio.TimeoutError:
+                                    grace_wait_duration_ms = _duration_ms(grace_started_at)
                                     log_stt_event(
                                         event="stt_qwen_hedge_grace_complete",
                                         stt_trace_id=stt_trace_id,
@@ -2121,6 +2467,7 @@ class STTAgent:
                                         hedge_grace_s=self._qwen_hedge_grace,
                                         latency_budget_s=self._qwen_latency_budget,
                                         effective_hedge_grace_s=remaining_budget,
+                                        stt_qwen_grace_wait_duration_ms=grace_wait_duration_ms,
                                         stt_qwen_duration_ms=_duration_ms(overall_started_at),
                                     )
                                 except Exception as exc:
@@ -2147,6 +2494,9 @@ class STTAgent:
                         language=qwen_result.language,
                         success=True,
                         stt_overall_duration_ms=_duration_ms(overall_started_at),
+                        stt_hedge_started=hedge_started,
+                        stt_hedge_wait_duration_ms=hedge_wait_duration_ms,
+                        stt_qwen_grace_wait_duration_ms=grace_wait_duration_ms,
                         hedge_grace_s=self._qwen_hedge_grace,
                         qwen_postprocess_enabled=qwen_postprocess_enabled,
                     )
@@ -2223,6 +2573,9 @@ class STTAgent:
                             language=qwen_result.language,
                             success=True,
                             stt_overall_duration_ms=_duration_ms(overall_started_at),
+                            stt_hedge_started=hedge_started,
+                            stt_hedge_wait_duration_ms=hedge_wait_duration_ms,
+                            stt_qwen_grace_wait_duration_ms=grace_wait_duration_ms,
                             hedge_grace_s=self._qwen_hedge_grace,
                             qwen_postprocess_enabled=qwen_postprocess_enabled,
                             vosk_error_type=type(vosk_result).__name__,
@@ -2251,6 +2604,9 @@ class STTAgent:
                     language=vosk_result.language,
                     success=True,
                     stt_overall_duration_ms=_duration_ms(overall_started_at),
+                    stt_hedge_started=hedge_started,
+                    stt_hedge_wait_duration_ms=hedge_wait_duration_ms,
+                    stt_qwen_grace_wait_duration_ms=grace_wait_duration_ms,
                     hedge_grace_s=self._qwen_hedge_grace,
                     vosk_postprocessed=postprocessed,
                     qwen_error_type=type(qwen_error_for_log).__name__,
@@ -2271,6 +2627,9 @@ class STTAgent:
                 stt_winner="none",
                 success=False,
                 stt_overall_duration_ms=_duration_ms(overall_started_at),
+                stt_hedge_started=hedge_started,
+                stt_hedge_wait_duration_ms=hedge_wait_duration_ms,
+                stt_qwen_grace_wait_duration_ms=grace_wait_duration_ms,
                 qwen_error_type=type(qwen_error_for_log).__name__,
                 vosk_error_type=type(vosk_result).__name__,
             )

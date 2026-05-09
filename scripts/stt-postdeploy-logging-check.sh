@@ -34,6 +34,7 @@ Options:
 Reports:
   - stt_winner counts
   - stt_overall_duration_ms p50/p90/max
+  - qwen/vosk runtime breakdown where available
   - stt_qwen_rejected count
 EOF
   exit "${1:-0}"
@@ -122,7 +123,15 @@ FILTER="$FILTER AND timestamp >= \"$SINCE_UTC\""
 if [ -n "$UNTIL_UTC" ]; then
   FILTER="$FILTER AND timestamp <= \"$UNTIL_UTC\""
 fi
-FILTER="$FILTER AND (jsonPayload.event=\"stt_winner\" OR jsonPayload.event=\"stt_qwen_rejected\")"
+FILTER="$FILTER AND (jsonPayload.event=\"stt_winner\""
+FILTER="$FILTER OR jsonPayload.event=\"stt_request_complete\""
+FILTER="$FILTER OR jsonPayload.event=\"stt_audio_prepare_complete\""
+FILTER="$FILTER OR jsonPayload.event=\"stt_qwen_runtime_complete\""
+FILTER="$FILTER OR jsonPayload.event=\"stt_qwen_postprocess_complete\""
+FILTER="$FILTER OR jsonPayload.event=\"stt_vosk_runtime_complete\""
+FILTER="$FILTER OR jsonPayload.event=\"stt_qwen_hedge_start\""
+FILTER="$FILTER OR jsonPayload.event=\"stt_qwen_hedge_grace_complete\""
+FILTER="$FILTER OR jsonPayload.event=\"stt_qwen_rejected\")"
 
 if [ "$DRY_RUN" = "1" ]; then
   echo "Dry run: no gcloud logging read calls will be executed."
@@ -184,8 +193,24 @@ def fmt_ms(value: float | None) -> str:
 
 winner_counts: Counter[str] = Counter()
 latencies: list[float] = []
+request_latencies: list[float] = []
+audio_prepare_latencies: list[float] = []
+audio_conversion_latencies: list[float] = []
+qwen_runtime_latencies: list[float] = []
+qwen_model_inference_latencies: list[float] = []
+qwen_postprocess_latencies: list[float] = []
+vosk_runtime_latencies: list[float] = []
+vosk_recognition_latencies: list[float] = []
+hedge_wait_latencies: list[float] = []
+qwen_grace_wait_latencies: list[float] = []
 qwen_rejected_count = 0
 event_counts: Counter[str] = Counter()
+
+def append_float(values: list[float], value: Any) -> None:
+    try:
+        values.append(float(value))
+    except (TypeError, ValueError):
+        pass
 
 for entry in entries:
     payload = entry.get("jsonPayload")
@@ -198,16 +223,39 @@ for entry in entries:
     if event == "stt_qwen_rejected":
         qwen_rejected_count += 1
         continue
+    if event == "stt_request_complete":
+        append_float(request_latencies, payload.get("stt_request_duration_ms"))
+        continue
+    if event == "stt_audio_prepare_complete":
+        append_float(audio_prepare_latencies, payload.get("stt_audio_prepare_duration_ms"))
+        append_float(audio_conversion_latencies, payload.get("stt_audio_conversion_duration_ms"))
+        continue
+    if event == "stt_qwen_runtime_complete":
+        append_float(qwen_runtime_latencies, payload.get("stt_qwen_runtime_duration_ms"))
+        append_float(
+            qwen_model_inference_latencies,
+            payload.get("stt_qwen_model_inference_duration_ms"),
+        )
+        continue
+    if event == "stt_qwen_postprocess_complete":
+        append_float(qwen_postprocess_latencies, payload.get("stt_qwen_postprocess_duration_ms"))
+        continue
+    if event == "stt_vosk_runtime_complete":
+        append_float(vosk_runtime_latencies, payload.get("stt_vosk_runtime_duration_ms"))
+        append_float(vosk_recognition_latencies, payload.get("stt_vosk_recognition_duration_ms"))
+        continue
+    if event == "stt_qwen_hedge_start":
+        append_float(hedge_wait_latencies, payload.get("stt_hedge_wait_duration_ms"))
+        continue
+    if event == "stt_qwen_hedge_grace_complete":
+        continue
     if event != "stt_winner":
         continue
 
     winner = payload.get("stt_winner") or payload.get("provider") or "unknown"
     winner_counts[str(winner)] += 1
-    duration = payload.get("stt_overall_duration_ms")
-    try:
-        latencies.append(float(duration))
-    except (TypeError, ValueError):
-        pass
+    append_float(latencies, payload.get("stt_overall_duration_ms"))
+    append_float(qwen_grace_wait_latencies, payload.get("stt_qwen_grace_wait_duration_ms"))
 
 print("# STT Post-Deploy Logging Check")
 print()
@@ -223,7 +271,17 @@ print("## Events")
 print()
 print("| Event | Count |")
 print("| --- | ---: |")
-for event in ("stt_winner", "stt_qwen_rejected"):
+for event in (
+    "stt_winner",
+    "stt_request_complete",
+    "stt_audio_prepare_complete",
+    "stt_qwen_runtime_complete",
+    "stt_qwen_postprocess_complete",
+    "stt_vosk_runtime_complete",
+    "stt_qwen_hedge_start",
+    "stt_qwen_hedge_grace_complete",
+    "stt_qwen_rejected",
+):
     print(f"| {event} | {event_counts.get(event, 0)} |")
 print()
 print("## Winners")
@@ -240,9 +298,23 @@ print("## Latency")
 print()
 print("| Metric | Value ms |")
 print("| --- | ---: |")
-print(f"| p50 | {fmt_ms(percentile(latencies, 0.50))} |")
-print(f"| p90 | {fmt_ms(percentile(latencies, 0.90))} |")
-print(f"| max | {fmt_ms(max(latencies) if latencies else None)} |")
+latency_rows = {
+    "stt_overall p50": percentile(latencies, 0.50),
+    "stt_overall p90": percentile(latencies, 0.90),
+    "stt_overall max": max(latencies) if latencies else None,
+    "backend_stt_request p50": percentile(request_latencies, 0.50),
+    "audio_prepare p50": percentile(audio_prepare_latencies, 0.50),
+    "audio_conversion p50": percentile(audio_conversion_latencies, 0.50),
+    "qwen_runtime p50": percentile(qwen_runtime_latencies, 0.50),
+    "qwen_model_inference p50": percentile(qwen_model_inference_latencies, 0.50),
+    "qwen_postprocess p50": percentile(qwen_postprocess_latencies, 0.50),
+    "vosk_runtime p50": percentile(vosk_runtime_latencies, 0.50),
+    "vosk_recognition p50": percentile(vosk_recognition_latencies, 0.50),
+    "hedge_wait p50": percentile(hedge_wait_latencies, 0.50),
+    "qwen_grace_wait p50": percentile(qwen_grace_wait_latencies, 0.50),
+}
+for metric, value in latency_rows.items():
+    print(f"| {metric} | {fmt_ms(value)} |")
 print()
 print(f"stt_qwen_rejected count: `{qwen_rejected_count}`")
 PY

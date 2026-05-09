@@ -210,13 +210,34 @@ for entry in logs:
 fieldnames = [
     "timestamp",
     "stt_trace_id",
+    "request_id",
     "event",
     "provider",
     "stt_winner",
     "success",
+    "stt_request_duration_ms",
+    "stt_base64_decode_duration_ms",
+    "stt_audio_prepare_duration_ms",
+    "stt_audio_conversion_duration_ms",
     "stt_qwen_duration_ms",
+    "stt_qwen_runtime_duration_ms",
+    "stt_qwen_model_load_duration_ms",
+    "stt_qwen_audio_conversion_duration_ms",
+    "stt_qwen_wav_decode_duration_ms",
+    "stt_qwen_pcm_prepare_duration_ms",
+    "stt_qwen_model_inference_duration_ms",
+    "stt_qwen_postprocess_duration_ms",
     "stt_vosk_duration_ms",
+    "stt_vosk_runtime_duration_ms",
+    "stt_vosk_audio_conversion_duration_ms",
+    "stt_vosk_wav_decode_duration_ms",
+    "stt_vosk_downmix_duration_ms",
+    "stt_vosk_resample_duration_ms",
+    "stt_vosk_model_load_duration_ms",
+    "stt_vosk_recognition_duration_ms",
     "stt_overall_duration_ms",
+    "stt_hedge_wait_duration_ms",
+    "stt_qwen_grace_wait_duration_ms",
     "stt_model_load_duration_ms",
     "language",
     "error_type",
@@ -252,16 +273,50 @@ def stats(values):
     }
 
 winner_events = [event for event in events if event.get("event") == "stt_winner"]
+request_events = [event for event in events if event.get("event") == "stt_request_complete"]
+audio_prepare_events = [
+    event for event in events if event.get("event") == "stt_audio_prepare_complete"
+]
 qwen_events = [event for event in events if event.get("event") == "stt_qwen_complete"]
+qwen_runtime_events = [
+    event for event in events if event.get("event") == "stt_qwen_runtime_complete"
+]
+qwen_postprocess_events = [
+    event for event in events if event.get("event") == "stt_qwen_postprocess_complete"
+]
 vosk_events = [event for event in events if event.get("event") == "stt_vosk_complete"]
+vosk_runtime_events = [
+    event for event in events if event.get("event") == "stt_vosk_runtime_complete"
+]
 model_events = [event for event in events if event.get("event") == "stt_model_load_complete"]
+hedge_events = [event for event in events if event.get("event") == "stt_qwen_hedge_start"]
+grace_events = winner_events
 
 request_totals = [row["total_ms"] for row in requests]
 overall = stats(event.get("stt_overall_duration_ms") for event in winner_events)
+backend_request = stats(event.get("stt_request_duration_ms") for event in request_events)
+base64_decode = stats(event.get("stt_base64_decode_duration_ms") for event in request_events)
+audio_prepare = stats(event.get("stt_audio_prepare_duration_ms") for event in audio_prepare_events)
+audio_conversion = stats(
+    event.get("stt_audio_conversion_duration_ms") for event in audio_prepare_events
+)
 qwen = stats(event.get("stt_qwen_duration_ms") for event in qwen_events)
+qwen_runtime = stats(event.get("stt_qwen_runtime_duration_ms") for event in qwen_runtime_events)
+qwen_model_inference = stats(
+    event.get("stt_qwen_model_inference_duration_ms") for event in qwen_runtime_events
+)
+qwen_postprocess = stats(
+    event.get("stt_qwen_postprocess_duration_ms") for event in qwen_postprocess_events
+)
 vosk = stats(event.get("stt_vosk_duration_ms") for event in vosk_events)
+vosk_runtime = stats(event.get("stt_vosk_runtime_duration_ms") for event in vosk_runtime_events)
+vosk_recognition = stats(
+    event.get("stt_vosk_recognition_duration_ms") for event in vosk_runtime_events
+)
 network = stats(request_totals)
 model = stats(event.get("stt_model_load_duration_ms") for event in model_events)
+hedge_wait = stats(event.get("stt_hedge_wait_duration_ms") for event in hedge_events)
+grace_wait = stats(event.get("stt_qwen_grace_wait_duration_ms") for event in grace_events)
 
 winners = defaultdict(int)
 for event in winner_events:
@@ -286,9 +341,20 @@ lines = [
     "| Metric | count | p50 ms | p90 ms | p95 ms | max ms |",
     "| --- | ---: | ---: | ---: | ---: | ---: |",
     f"| request_total | {network['count']} | {fmt(network['p50'])} | {fmt(network['p90'])} | {fmt(network['p95'])} | {fmt(network['max'])} |",
+    f"| backend_stt_request | {backend_request['count']} | {fmt(backend_request['p50'])} | {fmt(backend_request['p90'])} | {fmt(backend_request['p95'])} | {fmt(backend_request['max'])} |",
+    f"| base64_decode | {base64_decode['count']} | {fmt(base64_decode['p50'])} | {fmt(base64_decode['p90'])} | {fmt(base64_decode['p95'])} | {fmt(base64_decode['max'])} |",
+    f"| audio_prepare | {audio_prepare['count']} | {fmt(audio_prepare['p50'])} | {fmt(audio_prepare['p90'])} | {fmt(audio_prepare['p95'])} | {fmt(audio_prepare['max'])} |",
+    f"| audio_conversion | {audio_conversion['count']} | {fmt(audio_conversion['p50'])} | {fmt(audio_conversion['p90'])} | {fmt(audio_conversion['p95'])} | {fmt(audio_conversion['max'])} |",
     f"| stt_overall | {overall['count']} | {fmt(overall['p50'])} | {fmt(overall['p90'])} | {fmt(overall['p95'])} | {fmt(overall['max'])} |",
     f"| qwen_inference | {qwen['count']} | {fmt(qwen['p50'])} | {fmt(qwen['p90'])} | {fmt(qwen['p95'])} | {fmt(qwen['max'])} |",
+    f"| qwen_runtime | {qwen_runtime['count']} | {fmt(qwen_runtime['p50'])} | {fmt(qwen_runtime['p90'])} | {fmt(qwen_runtime['p95'])} | {fmt(qwen_runtime['max'])} |",
+    f"| qwen_model_inference | {qwen_model_inference['count']} | {fmt(qwen_model_inference['p50'])} | {fmt(qwen_model_inference['p90'])} | {fmt(qwen_model_inference['p95'])} | {fmt(qwen_model_inference['max'])} |",
+    f"| qwen_postprocess | {qwen_postprocess['count']} | {fmt(qwen_postprocess['p50'])} | {fmt(qwen_postprocess['p90'])} | {fmt(qwen_postprocess['p95'])} | {fmt(qwen_postprocess['max'])} |",
     f"| vosk_inference | {vosk['count']} | {fmt(vosk['p50'])} | {fmt(vosk['p90'])} | {fmt(vosk['p95'])} | {fmt(vosk['max'])} |",
+    f"| vosk_runtime | {vosk_runtime['count']} | {fmt(vosk_runtime['p50'])} | {fmt(vosk_runtime['p90'])} | {fmt(vosk_runtime['p95'])} | {fmt(vosk_runtime['max'])} |",
+    f"| vosk_recognition | {vosk_recognition['count']} | {fmt(vosk_recognition['p50'])} | {fmt(vosk_recognition['p90'])} | {fmt(vosk_recognition['p95'])} | {fmt(vosk_recognition['max'])} |",
+    f"| hedge_wait | {hedge_wait['count']} | {fmt(hedge_wait['p50'])} | {fmt(hedge_wait['p90'])} | {fmt(hedge_wait['p95'])} | {fmt(hedge_wait['max'])} |",
+    f"| qwen_grace_wait | {grace_wait['count']} | {fmt(grace_wait['p50'])} | {fmt(grace_wait['p90'])} | {fmt(grace_wait['p95'])} | {fmt(grace_wait['max'])} |",
     f"| model_load | {model['count']} | {fmt(model['p50'])} | {fmt(model['p90'])} | {fmt(model['p95'])} | {fmt(model['max'])} |",
     "",
     "## Winners",

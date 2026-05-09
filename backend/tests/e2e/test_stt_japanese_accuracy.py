@@ -30,6 +30,8 @@ Run locally with:
 
 The aggregate accuracy assertion (>= 0.8) runs as a separate test that
 summarises per-sample pass/fail.
+Per-sample and aggregate tests share a session cache so the suite sends
+each sample through /api/voice only once.
 
 Future work
 -----------
@@ -157,6 +159,39 @@ async def _round_trip(client: httpx.AsyncClient, config: dict, text: str) -> str
     return await _transcribe_japanese(client, config, audio_b64)
 
 
+@pytest.fixture(scope="session")
+def stt_accuracy_result_cache() -> dict[str, tuple[bool, str]]:
+    """Share live round-trip results across per-sample and aggregate tests.
+
+    The backend /api/voice endpoint is intentionally rate-limited at 20/min.
+    Reusing the first-pass result avoids a false 429 failure while preserving
+    individual pytest visibility for each sample.
+    """
+
+    return {}
+
+
+async def _round_trip_cached(
+    client: httpx.AsyncClient,
+    config: dict,
+    sample_id: str,
+    text: str,
+    cache: dict[str, tuple[bool, str]],
+) -> str:
+    cached = cache.get(sample_id)
+    if cached is None:
+        try:
+            cached = (True, await _round_trip(client, config, text))
+        except Exception as exc:  # noqa: BLE001 - cache once to avoid duplicate live calls
+            cached = (False, f"{type(exc).__name__}: {exc}")
+        cache[sample_id] = cached
+
+    success, value = cached
+    if not success:
+        raise RuntimeError(value)
+    return value
+
+
 @pytest.mark.parametrize(
     "sample_id, ground_truth, required_substrings",
     JAPANESE_STT_SAMPLES,
@@ -167,6 +202,7 @@ async def test_japanese_stt_per_sample(
     ground_truth: str,
     required_substrings: List[str],
     live_backend_config: dict,
+    stt_accuracy_result_cache: dict[str, tuple[bool, str]],
 ) -> None:
     """Each sample's transcript must contain required substrings.
 
@@ -177,7 +213,13 @@ async def test_japanese_stt_per_sample(
     Fails surface as individual pytest failures so CI reports per-sample.
     """
     async with httpx.AsyncClient() as client:
-        transcript = await _round_trip(client, live_backend_config, ground_truth)
+        transcript = await _round_trip_cached(
+            client,
+            live_backend_config,
+            sample_id,
+            ground_truth,
+            stt_accuracy_result_cache,
+        )
 
     assert transcript, f"[{sample_id}] transcript was empty"
 
@@ -200,6 +242,7 @@ async def test_japanese_stt_per_sample(
 
 async def test_japanese_stt_aggregate_accuracy(
     live_backend_config: dict,
+    stt_accuracy_result_cache: dict[str, tuple[bool, str]],
 ) -> None:
     """Aggregate pass rate across all 10 samples must meet floor.
 
@@ -213,7 +256,13 @@ async def test_japanese_stt_aggregate_accuracy(
     async with httpx.AsyncClient() as client:
         for sample_id, ground_truth, required in JAPANESE_STT_SAMPLES:
             try:
-                transcript = await _round_trip(client, live_backend_config, ground_truth)
+                transcript = await _round_trip_cached(
+                    client,
+                    live_backend_config,
+                    sample_id,
+                    ground_truth,
+                    stt_accuracy_result_cache,
+                )
             except Exception as exc:  # noqa: BLE001 - capture for aggregate report
                 failed.append((sample_id, ground_truth, f"<error: {exc}>", 0.0))
                 continue

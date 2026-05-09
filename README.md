@@ -27,6 +27,9 @@
 
 設計議論: [docs/architecture/HIERARCHICAL-RAG-ARCHITECTURE.md](docs/architecture/HIERARCHICAL-RAG-ARCHITECTURE.md)
 
+音声・スライド音源の現行判断:
+[docs/architecture/stt-tts-stack-and-slide-audio-2026-05-09.md](docs/architecture/stt-tts-stack-and-slide-audio-2026-05-09.md)
+
 ---
 
 ## アーキテクチャ（概要）
@@ -83,13 +86,13 @@ make dev
 | 1 | [docs/STATUS.md](docs/STATUS.md) |
 | 2 | [docs/README.md](docs/README.md) |
 | 3 | [docs/architecture/SYSTEM-ARCHITECTURE.md](docs/architecture/SYSTEM-ARCHITECTURE.md) |
-| 4 | [docs/DEVELOPER-GUIDE.md](docs/DEVELOPER-GUIDE.md) |
-| 5 | [CLAUDE.md](CLAUDE.md) |
-| 6 | [frontend/README.md](frontend/README.md) / [backend/README.md](backend/README.md) |
+| 4 | [docs/architecture/stt-tts-stack-and-slide-audio-2026-05-09.md](docs/architecture/stt-tts-stack-and-slide-audio-2026-05-09.md) |
+| 5 | [docs/DEVELOPER-GUIDE.md](docs/DEVELOPER-GUIDE.md) |
+| 6 | [CLAUDE.md](CLAUDE.md) |
+| 7 | [frontend/README.md](frontend/README.md) / [backend/README.md](backend/README.md) |
 
 計画のみ: [docs/plans/comprehensive-refactoring-plan-2026-05-05.md](docs/plans/comprehensive-refactoring-plan-2026-05-05.md)
 
 ---
 
 古い Mastra 前提の長文は [docs/archive/](docs/archive/) にあります。現行は **STATUS.md** とコードを優先してください。
-

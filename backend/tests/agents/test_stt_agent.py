@@ -10,7 +10,7 @@ import time
 import wave
 import numpy as np
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 from backend.agents.stt_agent import (
     MAX_AUDIO_UPLOAD_BYTES,
@@ -3079,8 +3079,12 @@ class TestQwenPrimaryFallback:
         assert result["success"] is True
         assert result["provider"] == "vosk-fallback"
         assert result["transcript"] == "fallback ok"
-        mock_qwen.transcribe.assert_called_once_with(b"audio", language="en")
-        mock_vosk.transcribe.assert_called_once_with(b"audio", "en")
+        mock_qwen.transcribe.assert_called_once_with(
+            b"audio",
+            language="en",
+            stt_trace_id=ANY,
+        )
+        mock_vosk.transcribe.assert_called_once_with(b"audio", "en", stt_trace_id=ANY)
 
         stt_records = [
             record for record in caplog.records if record.name == "backend.observability.stt"
@@ -3119,8 +3123,12 @@ class TestQwenPrimaryFallback:
         assert result["success"] is True
         assert result["provider"] == "vosk-fallback"
         assert result["transcript"] == "fallback ok"
-        mock_qwen.transcribe.assert_called_once_with(b"audio", language="en")
-        mock_vosk.transcribe.assert_called_once_with(b"audio", "en")
+        mock_qwen.transcribe.assert_called_once_with(
+            b"audio",
+            language="en",
+            stt_trace_id=ANY,
+        )
+        mock_vosk.transcribe.assert_called_once_with(b"audio", "en", stt_trace_id=ANY)
 
         stt_records = [
             record for record in caplog.records if record.name == "backend.observability.stt"
@@ -3195,7 +3203,11 @@ class TestQwenPrimaryFallback:
 
         assert result["provider"] == "qwen-primary"
         assert result["language"] == "en"
-        mock_qwen.transcribe.assert_called_once_with(b"audio", language=None)
+        mock_qwen.transcribe.assert_called_once_with(
+            b"audio",
+            language=None,
+            stt_trace_id=ANY,
+        )
         mock_vosk.transcribe_auto_detect.assert_not_called()
 
     @pytest.mark.asyncio
