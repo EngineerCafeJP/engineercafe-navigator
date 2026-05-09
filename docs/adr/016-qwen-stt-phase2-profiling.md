@@ -37,6 +37,30 @@ P1-A として再優先化する。ユーザー指摘どおり、回答生成は
   まず p50/p95 の分解計測と候補 runtime の spike を行い、CPU path だけで不足する場合は
   GPU/remote STT/streaming partial transcript を明示的な比較対象にする。
 
+2026-05-09 implementation note:
+
+- `stt_request_complete`, `stt_audio_prepare_complete`, `stt_qwen_runtime_complete`,
+  `stt_qwen_postprocess_complete`, `stt_vosk_runtime_complete` を追加し、HTTP request、
+  base64 decode、shared audio preparation/conversion、Qwen model runtime、Qwen model inference、
+  postprocess、Vosk resample/recognition、hedge/grace wait を同じ `stt_trace_id` で追えるようにする。
+- WebM/Opus など明確な media container payload は `qwen-primary` の hedge race 前に一度だけ
+  WAV へ変換し、Qwen と Vosk が同じ prepared audio を使う。これにより二重変換の可能性を減らし、
+  変換コストを独立 metric として見る。
+- `scripts/profile_stt.sh` と `scripts/stt-postdeploy-logging-check.sh` は上記の詳細 timing を
+  summary に出す。次の live proof は、`stt_overall` だけでなく `qwen_model_inference`、
+  `audio_conversion`、`hedge_wait`、`qwen_grace_wait` のどれが支配的かを issue #529 に残す。
+
+外部 STT runtime 提案の扱い:
+
+- Qwen3-ASR の公式 repo / technical report は 0.6B/1.7B、52 言語・方言対応、0.6B の
+  accuracy-efficiency trade-off を明記しており、Qwen-first を維持する根拠はある。
+- `Daumee/Qwen3-ASR-0.6B-ONNX-CPU` と `andrewleech/qwen3-asr-onnx` により、ADR 010 時点で
+  blocked だった ONNX CPU path は「自前 export」ではなく「既存 artifact spike」として再評価可能。
+- ただし model card の RTF は Cloud Run CPU / Engineer Cafe fixtures / short Japanese voice
+  round-trip の証明ではない。#529 ではまず現行 path の内訳を計測し、`qwen_model_inference`
+  または model load が支配的な場合にだけ ONNX artifact / Google Cloud Speech-to-Text / GPU
+  を比較する。Vosk early winner への単純復帰は引き続き採用しない。
+
 ## 背景
 
 ADR 010 では Qwen3-ASR の ONNX/INT4 化を No-Go とした。理由は、Qwen3-ASR が

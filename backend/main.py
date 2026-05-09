@@ -28,7 +28,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 
 from backend.tools.calendar_service import CalendarService, TimeRange
-from backend.observability.structured_logger import log_chat_response
+from backend.observability.structured_logger import log_chat_response, log_stt_event
 from backend.services.stt_warmup_service import get_stt_warmup_service
 from backend.utils.structured_logging import (
     get_request_id,
@@ -1229,10 +1229,13 @@ async def _handle_stt(body: VoiceRequest, request_id: str) -> VoiceResponse:
     if not body.audioData:
         raise HTTPException(status_code=400, detail="Missing audioData")
 
+    stt_request_started_at = time.perf_counter()
+    decode_started_at = time.perf_counter()
     try:
         audio_bytes = base64.b64decode(body.audioData, validate=True)
     except (binascii.Error, ValueError):
         raise HTTPException(status_code=400, detail="Invalid audioData")
+    base64_decode_duration_ms = int((time.perf_counter() - decode_started_at) * 1000)
 
     if len(audio_bytes) < MIN_STT_AUDIO_BYTES:
         logger.info(
@@ -1240,6 +1243,17 @@ async def _handle_stt(body: VoiceRequest, request_id: str) -> VoiceResponse:
             request_id,
             len(audio_bytes),
             MIN_STT_AUDIO_BYTES,
+        )
+        log_stt_event(
+            event="stt_request_complete",
+            request_id=request_id,
+            provider=os.getenv("STT_PROVIDER"),
+            language=body.language,
+            success=False,
+            error_type="AudioTooShort",
+            audio_bytes=len(audio_bytes),
+            stt_request_duration_ms=int((time.perf_counter() - stt_request_started_at) * 1000),
+            stt_base64_decode_duration_ms=base64_decode_duration_ms,
         )
         return _stt_failure_response(
             body=body,
@@ -1265,6 +1279,18 @@ async def _handle_stt(body: VoiceRequest, request_id: str) -> VoiceResponse:
             request_id,
             _voice_stt_request_timeout_seconds(),
         )
+        log_stt_event(
+            event="stt_request_complete",
+            request_id=request_id,
+            provider=os.getenv("STT_PROVIDER"),
+            language=body.language,
+            success=False,
+            error_type="TimeoutError",
+            audio_bytes=len(audio_bytes),
+            timeout_s=_voice_stt_request_timeout_seconds(),
+            stt_request_duration_ms=int((time.perf_counter() - stt_request_started_at) * 1000),
+            stt_base64_decode_duration_ms=base64_decode_duration_ms,
+        )
         return _stt_failure_response(
             body=body,
             request_id=request_id,
@@ -1274,6 +1300,17 @@ async def _handle_stt(body: VoiceRequest, request_id: str) -> VoiceResponse:
         )
     except RuntimeError as exc:
         logger.warning("STT runtime failure: %s", exc)
+        log_stt_event(
+            event="stt_request_complete",
+            request_id=request_id,
+            provider=os.getenv("STT_PROVIDER"),
+            language=body.language,
+            success=False,
+            error_type=type(exc).__name__,
+            audio_bytes=len(audio_bytes),
+            stt_request_duration_ms=int((time.perf_counter() - stt_request_started_at) * 1000),
+            stt_base64_decode_duration_ms=base64_decode_duration_ms,
+        )
         return _stt_failure_response(
             body=body,
             request_id=request_id,
@@ -1282,6 +1319,17 @@ async def _handle_stt(body: VoiceRequest, request_id: str) -> VoiceResponse:
         )
 
     if not stt_result["success"]:
+        log_stt_event(
+            event="stt_request_complete",
+            request_id=request_id,
+            provider=stt_result.get("provider"),
+            language=body.language,
+            success=False,
+            error_type=stt_result.get("error"),
+            audio_bytes=len(audio_bytes),
+            stt_request_duration_ms=int((time.perf_counter() - stt_request_started_at) * 1000),
+            stt_base64_decode_duration_ms=base64_decode_duration_ms,
+        )
         return _stt_failure_response(
             body=body,
             request_id=request_id,
@@ -1289,6 +1337,17 @@ async def _handle_stt(body: VoiceRequest, request_id: str) -> VoiceResponse:
             provider=stt_result.get("provider"),
         )
 
+    log_stt_event(
+        event="stt_request_complete",
+        request_id=request_id,
+        provider=stt_result.get("provider"),
+        language=stt_result.get("language") or body.language,
+        success=True,
+        audio_bytes=len(audio_bytes),
+        transcript_chars=len(stt_result.get("transcript") or ""),
+        stt_request_duration_ms=int((time.perf_counter() - stt_request_started_at) * 1000),
+        stt_base64_decode_duration_ms=base64_decode_duration_ms,
+    )
     return VoiceResponse(
         success=True,
         transcript=stt_result["transcript"],

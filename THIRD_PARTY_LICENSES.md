@@ -5,7 +5,7 @@
 
 プロジェクト自体のライセンスは [LICENSE](./LICENSE) を参照してください（OSS リリース時）。
 
-最終更新: 2026-04-24
+最終更新: 2026-05-09
 
 ---
 
@@ -180,7 +180,7 @@
 
 | Engine / Voice | License | Source | Notes |
 |---|---|---|---|
-| Piper-plus TTS | MIT | https://github.com/OHF-voice/piper1-gpl | `docker/piper-plus/README.md` 参照、ja+en bilingual |
+| Piper-plus TTS | MIT | https://github.com/OHF-voice/piper1-gpl | `docker/piper-plus/README.md` 参照、ja+en bilingual。現行 production TTS primary |
 | VoiceVox Engine | LGPL-3.0 | https://github.com/VOICEVOX/voicevox_engine | `docker-compose.yml: image: voicevox/voicevox_engine:latest` |
 | Tsukuyomi-chan (VoiceVox 話者) | 独自 (VoiceVox 利用規約) | https://tyc.rei-yumesaki.net/ | つくよみちゃん利用規約準拠、クレジット表記必要 |
 | Google Cloud Text-to-Speech | Google Cloud 利用規約 | https://cloud.google.com/text-to-speech | ランタイム依存、ローカル再配布なし |
@@ -211,15 +211,21 @@
 
 ## 5. 独立系の Static Assets / 音声アセット
 
-本 repo に含まれる音声ファイル (`frontend/public/audio/` など) は以下のソースに由来します:
+本 repo に含まれる音声ファイル (`frontend/public/reception/audio/`、`backend/static/fillers/` など)
+は以下のソースに由来します:
 
-- ナレーション音源: プロジェクト内生成 (Piper-plus / VoiceVox / Google TTS のいずれか)
-- 効果音・BGM: 該当なし (2026-04-24 時点)
+- 受付 PDF ナレーション音源: プロジェクト内生成 (現行方針は Piper-plus)
+- filler 音源: プロジェクト内生成 (Piper-plus、fallback WAV を含む)
+- 効果音・BGM: 該当なし (2026-05-09 時点)
 
 > プロジェクト内で生成された TTS 出力については、元エンジン (VoiceVox/Piper-plus/GCP TTS) の
 > ライセンス・利用規約が派生物にも適用されます。特に **つくよみちゃん** を使った TTS 出力は
 > つくよみちゃん利用規約 (https://tyc.rei-yumesaki.net/about/terms/) の記載に従い、
 > 商用利用・公開時にクレジット表記が必要です。
+
+現行の音声・スライドアセット判断は
+[`docs/architecture/stt-tts-stack-and-slide-audio-2026-05-09.md`](docs/architecture/stt-tts-stack-and-slide-audio-2026-05-09.md)
+を参照してください。
 
 ---
 

@@ -6,6 +6,22 @@
 
 提案: **現時点のスコープでは Phase 2 の ONNX/INT4 実装へ進まない（No-Go）**
 
+2026-05-09 追記: この No-Go は「Optimum 標準 export を自前で進めない」という判断として
+維持する。一方で、Qwen3-ASR 公開後にコミュニティの ONNX CPU artifact / export tool が出て
+きたため、#529 の P1-A では「既存 PyTorch path の分解計測で model inference が支配的と
+確認できた場合に限り、コミュニティ ONNX artifact を候補 runtime として spike する」に更新する。
+production 採用前には license、supply-chain、model-card 再現性、Engineer Cafe 日本語/英語
+fixture 精度、Cloud Run メモリ/起動時間を別途 gate する。
+
+確認済みの外部候補:
+
+- Qwen 公式: `Qwen3-ASR-1.7B` / `Qwen3-ASR-0.6B` は 52 言語・方言の ASR/言語識別を
+  サポートすると説明されている。
+- `Daumee/Qwen3-ASR-0.6B-ONNX-CPU`: PyTorch 不要の ONNX Runtime CPU pipeline を公開。
+  model card では Intel N100 上の RTF と VAD chunking が示されている。
+- `andrewleech/qwen3-asr-onnx`: 0.6B/1.7B の ONNX export tool と INT4 artifact を公開。
+  README では CPU RTF / WER の参考値が示されている。
+
 ## 背景
 
 Issue #491 では、現在 PyTorch CPU で動かしている `Qwen/Qwen3-ASR-0.6B` を ONNX Runtime + INT4 量子化に変換し、STT レイテンシを現状の p50 約 4.0 秒から p50 1.5 秒へ下げることを狙っていた。
