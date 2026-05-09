@@ -463,6 +463,35 @@ class TestBusinessInfoAgent:
         assert "Night Time 18:00〜20:00" in response["answer"]
         assert "月曜と水曜" in response["answer"]
         assert "朝9時から夜22時" not in response["answer"]
+        assert response["metadata"]["category"] == "saino-cafe"
+        assert response["metadata"]["cafe_entity_resolution"]["entity"] == "saino_cafe"
+
+    def test_heisetsu_cafe_hours_resolves_to_saino(self):
+        """併設のカフェ営業時間はsainoとして固定回答する"""
+        response = self.agent._get_canonical_response(
+            "併設のカフェの営業時間は？",
+            "hours",
+            "ja",
+        )
+
+        assert response is not None
+        assert "Day Time 12:00〜17:00" in response["answer"]
+        assert "朝9時から夜22時" not in response["answer"]
+        assert response["metadata"]["cafe_entity_resolution"]["entity"] == "saino_cafe"
+
+    def test_ambiguous_cafe_hours_returns_both_options(self):
+        """Bare カフェ営業時間はEngineer Cafeだけに倒さない"""
+        response = self.agent._get_canonical_response(
+            "カフェの営業時間は？",
+            "hours",
+            "ja",
+        )
+
+        assert response is not None
+        assert "エンジニアカフェなら9:00〜22:00" in response["answer"]
+        assert "cafe&bar saino" in response["answer"]
+        assert response["metadata"]["category"] == "cafe-clarification-needed"
+        assert response["metadata"]["cafe_entity_resolution"]["entity"] == "ambiguous"
 
     def test_saino_coffee_price_precedes_engineer_cafe_pricing(self):
         """gt-017: 価格fast-path後もsainoのコーヒー価格を返す"""

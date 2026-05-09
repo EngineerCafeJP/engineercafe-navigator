@@ -284,6 +284,10 @@ def append_float(values: list[float], value: Any) -> None:
         pass
 
 
+def truthy(value: Any) -> bool:
+    return value is True or str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
 def fmt_ms(value: float | None) -> str:
     return "n/a" if value is None else f"{value:.0f}"
 
@@ -330,6 +334,7 @@ def summarize(path: str, label: str, revision_hint: str) -> dict[str, Any]:
     hedge_wait: list[float] = []
     qwen_grace_wait_from_winner: list[float] = []
     qwen_grace_wait_from_complete: list[float] = []
+    qwen_postprocess_signals: Counter[str] = Counter()
 
     for payload in events:
         event = payload.get("event")
@@ -345,6 +350,14 @@ def summarize(path: str, label: str, revision_hint: str) -> dict[str, Any]:
                 qwen_model_variants[str(payload.get("model_variant"))] += 1
             if payload.get("device"):
                 qwen_devices[str(payload.get("device"))] += 1
+        elif event == "stt_qwen_postprocess_complete":
+            qwen_postprocess_signals["complete"] += 1
+            if truthy(payload.get("changed")):
+                qwen_postprocess_signals["changed"] += 1
+            if truthy(payload.get("deterministic_changed")):
+                qwen_postprocess_signals["deterministic_changed"] += 1
+            if truthy(payload.get("llm_changed")):
+                qwen_postprocess_signals["llm_changed"] += 1
         elif event == "stt_qwen_hedge_start":
             append_float(hedge_wait, payload.get("stt_hedge_wait_duration_ms"))
         elif event == "stt_qwen_hedge_grace_complete":
@@ -377,6 +390,7 @@ def summarize(path: str, label: str, revision_hint: str) -> dict[str, Any]:
         "qwen_model_names": qwen_model_names,
         "qwen_model_variants": qwen_model_variants,
         "qwen_devices": qwen_devices,
+        "qwen_postprocess_signals": qwen_postprocess_signals,
         "request_total": metric(request_total),
         "stt_overall": metric(stt_overall),
         "qwen_runtime": metric(qwen_runtime),
@@ -437,6 +451,7 @@ print("| --- | --- |")
 print("| request_total | `stt_request_duration_ms` on `stt_request_complete` |")
 print("| qwen_runtime | `stt_qwen_runtime_duration_ms` on `stt_qwen_runtime_complete` |")
 print("| qwen_model_inference | `stt_qwen_model_inference_duration_ms` on `stt_qwen_runtime_complete` |")
+print("| qwen_postprocess_changed | `changed` / `deterministic_changed` on `stt_qwen_postprocess_complete` |")
 print("| winner | `stt_winner` on `stt_winner` |")
 print("| hedge_wait | `stt_hedge_wait_duration_ms` on `stt_qwen_hedge_start` |")
 print("| qwen_grace_wait | `stt_qwen_grace_wait_duration_ms` on winner/grace events |")
@@ -465,6 +480,17 @@ print("| winner | Baseline count | Candidate count |")
 print("| --- | ---: | ---: |")
 for winner in sorted(set(baseline["winners"]) | set(candidate["winners"]) | {"qwen", "vosk", "none"}):
     print(f"| {winner} | {baseline['winners'].get(winner, 0)} | {candidate['winners'].get(winner, 0)} |")
+print()
+print("## Transcript Quality Signals")
+print()
+print("| Signal | Baseline count | Candidate count |")
+print("| --- | ---: | ---: |")
+for signal in ("complete", "changed", "deterministic_changed", "llm_changed"):
+    print(
+        f"| qwen_postprocess_{signal} | "
+        f"{baseline['qwen_postprocess_signals'].get(signal, 0)} | "
+        f"{candidate['qwen_postprocess_signals'].get(signal, 0)} |"
+    )
 print()
 print("## Hedge And Grace Counts")
 print()

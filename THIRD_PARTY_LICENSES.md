@@ -3,7 +3,13 @@
 本ドキュメントは Engineer Cafe Navigator (engineercafe-navigator) プロジェクトが依存する
 サードパーティソフトウェア・モデル・サービスとその License を一覧化したものです。
 
-プロジェクト自体のライセンスは [LICENSE](./LICENSE) を参照してください（OSS リリース時）。
+プロジェクト自体のライセンスは [LICENSE](./LICENSE) (ISC) を参照してください。
+OSS / model / audio / asset の運用上の確認事項は
+[docs/OSS-LICENSE-POSTURE.md](docs/OSS-LICENSE-POSTURE.md) を参照してください。
+
+本表は人手の summary であり、manifest から自動生成された完全な SBOM ではありません。
+法的助言ではありません。配布・公開前は lockfile / deployed artifact /
+upstream repository の LICENSE を再確認してください。
 
 最終更新: 2026-05-09
 
@@ -62,7 +68,19 @@
 |---|---|---|---|
 | vosk | ^0.3.45 | Apache-2.0 | https://github.com/alphacep/vosk-api |
 | soundfile | ^0.12.1 | BSD-3-Clause | https://github.com/bastibe/python-soundfile |
+| pydub | ^0.25.1 | MIT | https://github.com/jiaaro/pydub |
+| qwen-asr | >=0.0.6 | Apache-2.0 | https://pypi.org/project/qwen-asr/ |
+| onnxruntime | >=1.18.0,<2.0 | MIT | https://github.com/microsoft/onnxruntime |
+| tokenizers | >=0.20.0 | Apache-2.0 | https://github.com/huggingface/tokenizers |
+| cachetools | >=5.3.0 | MIT | https://github.com/tkem/cachetools |
 | pykakasi | ^1.2.0 | GPL-3.0 | https://github.com/miurahr/pykakasi |
+
+### Translation Runtime
+
+| Package | Version | License | Project |
+|---|---|---|---|
+| ctranslate2 | >=4.0.0 | MIT | https://github.com/OpenNMT/CTranslate2 |
+| sentencepiece | >=0.2.0 | 要 upstream 確認 | https://github.com/google/sentencepiece |
 
 ### Document Processing
 
@@ -70,7 +88,9 @@
 |---|---|---|---|
 | pymupdf | ^1.24.0 | AGPL-3.0 | https://github.com/pymupdf/PyMuPDF |
 
-> **Note**: pymupdf (AGPL-3.0) は商用利用時にライセンス交換 (Artifex 経由の商用ライセンス) を検討してください。
+> **Note**: `pymupdf` (AGPL-3.0), `pykakasi` (GPL-3.0), `psycopg` /
+> `psycopg-pool` (LGPL-3.0) は、配布形態・hosted service・商用利用時の姿勢を
+> release 前に確認してください。
 
 ---
 
@@ -168,6 +188,9 @@
 
 ## 3. STT / TTS / Voice Models
 
+モデル license は model ID だけでなく、実際に deploy された revision / artifact に依存します。
+operator は release ごとに model revision, checksum, source URL, license / terms を記録してください。
+
 ### STT Models
 
 | Model | License | Source | Notes |
@@ -180,7 +203,7 @@
 
 | Engine / Voice | License | Source | Notes |
 |---|---|---|---|
-| Piper-plus TTS | MIT | https://github.com/OHF-voice/piper1-gpl | `docker/piper-plus/README.md` 参照、ja+en bilingual。現行 production TTS primary |
+| Piper-plus TTS | 要 artifact 確認 | project docs describe PiperPlus as current production TTS primary | engine/fork, container image, voice model, generated-output terms を deploy artifact ごとに確認 |
 | VoiceVox Engine | LGPL-3.0 | https://github.com/VOICEVOX/voicevox_engine | `docker-compose.yml: image: voicevox/voicevox_engine:latest` |
 | Tsukuyomi-chan (VoiceVox 話者) | 独自 (VoiceVox 利用規約) | https://tyc.rei-yumesaki.net/ | つくよみちゃん利用規約準拠、クレジット表記必要 |
 | Google Cloud Text-to-Speech | Google Cloud 利用規約 | https://cloud.google.com/text-to-speech | ランタイム依存、ローカル再配布なし |
@@ -190,6 +213,13 @@
 | Model | License | Source | Notes |
 |---|---|---|---|
 | Silero VAD v5 / Legacy | MIT | https://github.com/snakers4/silero-vad | `@ricky0123/vad-web` 経由でバンドル |
+
+### Translation Models
+
+| Model | License | Source | Notes |
+|---|---|---|---|
+| Helsinki-NLP `opus-mt-en-jap` | 要 upstream 確認 | https://huggingface.co/Helsinki-NLP/opus-mt-en-jap | `backend/scripts/download_translation_models.sh` converts to CTranslate2 int8 |
+| Helsinki-NLP `opus-mt-ja-en` | 要 upstream 確認 | https://huggingface.co/Helsinki-NLP/opus-mt-ja-en | `backend/scripts/download_translation_models.sh` converts to CTranslate2 int8 |
 
 ---
 
@@ -227,9 +257,24 @@
 [`docs/architecture/stt-tts-stack-and-slide-audio-2026-05-09.md`](docs/architecture/stt-tts-stack-and-slide-audio-2026-05-09.md)
 を参照してください。
 
+現時点の repository evidence では、checked-in MP3/WAV/PDF/image/VRMA asset の
+per-file provenance manifest は見つかっていません。公開・再配布・商用運用前に
+source, owner, license / terms, generated-by, generated-at, attribution requirement を確認してください。
+
+## 6. Engineer Cafe / cafe&bar saino knowledge
+
+`docs/reference/engineer-cafe-reference.md` と `backend/knowledge/data/*.yaml` には、
+Engineer Cafe / cafe&bar saino の施設・店舗情報が含まれます。YAML entry は
+`source: "official"` と `verified: true` を持ちますが、この repository には公式サイト本文、
+menu copy、ロゴ、写真、店舗 brand asset を ISC として再 license する個別許諾は含まれていません。
+
+- 施設・店舗情報は factual reference data として短く要約し、source URL と last-verified date を残してください。
+- Saino の営業時間・menu・価格は変更されやすいため、deploy 前に店舗または公式ページで確認してください。
+- 公式 PDF / menu scan / photo / logo / 長い本文引用を取り込む場合は、permission / license / attribution を同じ PR で記録してください。
+
 ---
 
-## 6. ライセンス全文
+## 7. ライセンス全文
 
 各 License の全文は [Choose a License](https://choosealicense.com/) および各プロジェクトの
 リポジトリを参照してください。本文書は summary であり、法的拘束力ある license 本文は
@@ -237,7 +282,7 @@
 
 ---
 
-## 7. 更新方針
+## 8. 更新方針
 
 - 新規依存追加時は本ファイルも同一 PR で更新すること (`hooks/enforce-doc-update-scope.sh` 参照)
 - `pnpm add <pkg>` / `pip install <pkg>` / `uv add <pkg>` 実行後、本表に 1 行追記

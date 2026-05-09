@@ -301,7 +301,7 @@ class TestSimplifiedMemoryHelper:
     @pytest.mark.asyncio
     @patch("backend.utils.memory_helper.create_client")
     async def test_is_session_active_not_found(self, mock_create_client):
-        """存在しないセッションの確認"""
+        """conversation_sessions未登録のUUIDはfrontend session memoryとして許容する"""
         mock_client = Mock()
         mock_table = Mock()
         mock_select = Mock()
@@ -317,7 +317,30 @@ class TestSimplifiedMemoryHelper:
         helper = SimplifiedMemoryHelper()
         result = await helper._is_session_active(MISSING_SESSION_ID)
 
-        assert result is False
+        assert result is True
+
+    @pytest.mark.asyncio
+    @patch("backend.utils.memory_helper.create_client")
+    async def test_store_message_canonicalizes_facility_aliases(self, mock_create_client):
+        """ASR揺れを保存前に正規化し、同一施設として参照できるようにする"""
+        mock_client = Mock()
+        mock_table = Mock()
+        mock_insert = Mock()
+        mock_insert.execute = Mock(return_value=Mock(data=[{"id": 1}]))
+        mock_table.insert = Mock(return_value=mock_insert)
+        mock_client.table = Mock(return_value=mock_table)
+        mock_create_client.return_value = mock_client
+
+        helper = SimplifiedMemoryHelper()
+
+        await helper.store_message(
+            role="user",
+            content="エンジンやカベの営業時間は？",
+            session_id="test-session",
+        )
+
+        call_args = mock_table.insert.call_args[0][0]
+        assert call_args["value"]["content"] == "エンジニアカフェの営業時間は？"
 
     @pytest.mark.asyncio
     async def test_is_session_active_no_supabase(self):

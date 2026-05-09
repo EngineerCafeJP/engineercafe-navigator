@@ -27,6 +27,8 @@
 | 文書 | 内容 |
 | --- | --- |
 | [STATUS.md](STATUS.md) | 現在状態・証跡付きサマリ（**ここだけがスナップショットの正本**） |
+| [OSS-LICENSE-POSTURE.md](OSS-LICENSE-POSTURE.md) | OSS license・第三者依存・model / audio / asset provenance の確認メモ |
+| [../THIRD_PARTY_LICENSES.md](../THIRD_PARTY_LICENSES.md) | third-party dependency / model / service license inventory |
 | [SECURITY.md](SECURITY.md) | 認証連鎖と論点 |
 | [DEPLOYMENT.md](DEPLOYMENT.md) | Vercel + Cloud Run |
 | [CHANGELOG.md](CHANGELOG.md) | リポジトリレベルの変更ログ |
@@ -80,4 +82,3 @@
 
 - [testing/alpha-live-verification-status-2026-05-03.md](testing/alpha-live-verification-status-2026-05-03.md)
 - [testing/alpha-final-scenarios.md](testing/alpha-final-scenarios.md)
-

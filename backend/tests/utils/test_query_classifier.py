@@ -52,6 +52,15 @@ class TestQueryClassifier:
 
         assert result.category == "saino-cafe"
         assert result.confidence == 0.9
+        assert result.debug_info["cafe_entity_resolution"]["entity"] == "saino_cafe"
+
+    @pytest.mark.asyncio
+    async def test_heisetsu_cafe_query_resolves_to_saino(self):
+        """併設のカフェはSainoとして分類する"""
+        result = await self.classifier.classify_with_details("併設のカフェの営業時間は?")
+
+        assert result.category == "saino-cafe"
+        assert result.debug_info["cafe_entity_resolution"]["entity"] == "saino_cafe"
 
     @pytest.mark.asyncio
     async def test_cafe_ambiguity_needs_clarification(self):
@@ -60,6 +69,7 @@ class TestQueryClassifier:
 
         assert result.category == "cafe-clarification-needed"
         assert result.confidence == 0.7
+        assert result.debug_info["cafe_entity_resolution"]["entity"] == "ambiguous"
 
     @pytest.mark.asyncio
     async def test_closed_days_query(self):

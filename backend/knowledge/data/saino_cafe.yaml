@@ -17,8 +17,22 @@ entries:
       懇親会やイベント後のネットワーキングにも活用できます。
       ※cafe&bar sainoでの飲食は必須ではありません。
       エンジニアカフェのコワーキングスペースはsainoを利用しなくても無料で使えます。
-    category: "facility-info"
-    tags: ["saino", "cafe", "bar", "food"]
+    content_en: >
+      cafe&bar saino is the cafe and bar attached to the 1F of Engineer Cafe.
+      It operates as a cafe during the day and as a bar in the evening.
+      Opening hours: weekdays Day Time 12:00-17:00 and Night Time 18:00-20:00.
+      Weekends and holidays are 11:00-20:00.
+      Open days: Tuesday, Thursday, Friday, Saturday, and Sunday.
+      Closed on Mondays and Wednesdays.
+      There are 15 seats, power outlets at counter seats, and Wi-Fi is available.
+      Eat-in and takeout are supported, and all seats are non-smoking.
+      Payment methods include credit cards (Visa/Master/JCB/Amex), transit IC,
+      iD, QUICPay, and QR payments such as PayPay, d払い, au PAY, LINE Pay,
+      Alipay, and WeChat Pay.
+      Food or drink at cafe&bar saino is optional. Engineer Cafe coworking space
+      remains free even if you do not use saino.
+    category: "hours"
+    tags: ["saino", "cafe", "bar", "food", "hours", "business-hours"]
     priority: 90
     source: "official"
     verified: true

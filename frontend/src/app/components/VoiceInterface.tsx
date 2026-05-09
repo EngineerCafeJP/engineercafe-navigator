@@ -1319,6 +1319,7 @@ export default function VoiceInterface({
             action: 'speech_to_text',
             audioData: await toBase64(audioBlob),
             language: currentLanguage,
+            sessionId: sessionIdRef.current,
           }),
           signal: abortController.signal,
         });

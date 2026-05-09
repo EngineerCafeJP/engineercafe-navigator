@@ -35,6 +35,14 @@ class TestDetectEntity:
         result = {"content": "saino cafe has great food", "title": "", "metadata": {}}
         assert rag._detect_entity(result) == "saino"
 
+    def test_saino_preferred_when_content_mentions_engineer_cafe_location(self, rag):
+        result = {
+            "content": "cafe&bar saino（サイノカフェ）はエンジニアカフェ1階に併設されています。",
+            "title": "cafe&bar saino 営業情報",
+            "metadata": {},
+        }
+        assert rag._detect_entity(result) == "saino"
+
     def test_meeting_room_from_content(self, rag):
         result = {"content": "会議室は3階にあります", "title": "", "metadata": {}}
         assert rag._detect_entity(result) == "meeting-room"
@@ -79,6 +87,10 @@ class TestCalculateEntityBonus:
     def test_no_entity_bonus(self, rag):
         bonus = rag._calculate_entity_bonus("general", "天気はどう", "general")
         assert bonus == 0.0
+
+    def test_saino_entity_bonus_uses_explicit_saino_terms(self, rag):
+        bonus = rag._calculate_entity_bonus("saino", "What are Saino cafe hours?", "hours")
+        assert bonus == 0.35
 
 
 class TestScoreResults:

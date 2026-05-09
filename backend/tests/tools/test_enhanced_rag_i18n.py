@@ -96,6 +96,26 @@ class TestBuildMetadata:
         assert meta["priority"] == 50
         assert meta["verified"] is True
 
+    def test_metadata_infers_saino_entity_before_engineer_cafe(self):
+        entry = KnowledgeEntry(
+            id="saino-business-info",
+            title="cafe&bar saino（サイノカフェ）営業情報",
+            title_en="cafe&bar saino Business Information",
+            content="cafe&bar sainoはエンジニアカフェ1階に併設されたカフェ＆バーです。",
+            category="hours",
+            tags=["saino", "cafe", "engineer-cafe"],
+            priority=90,
+        )
+
+        meta = _build_metadata(entry)
+
+        assert meta["entity"] == "saino"
+
+    def test_metadata_infers_engineer_cafe_entity(self, bilingual_entry):
+        meta = _build_metadata(bilingual_entry)
+
+        assert meta["entity"] == "engineer-cafe"
+
 
 class TestChunkEnglishContent:
     def test_no_english_chunks_without_content_en(self, ja_only_entry):

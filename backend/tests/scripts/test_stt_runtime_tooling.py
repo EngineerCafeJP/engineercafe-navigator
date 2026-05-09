@@ -95,6 +95,13 @@ def test_stt_runtime_compare_summarizes_saved_json_without_credentials(tmp_path:
                     stt_qwen_model_inference_duration_ms=80,
                 ),
                 _entry(
+                    "stt_qwen_postprocess_complete",
+                    "engineer-cafe-backend-00100-pytorch",
+                    changed=True,
+                    deterministic_changed=True,
+                    llm_changed=False,
+                ),
+                _entry(
                     "stt_qwen_hedge_start",
                     "engineer-cafe-backend-00100-pytorch",
                     stt_hedge_wait_duration_ms=25,
@@ -131,6 +138,13 @@ def test_stt_runtime_compare_summarizes_saved_json_without_credentials(tmp_path:
                     device="cpu",
                     stt_qwen_runtime_duration_ms=70,
                     stt_qwen_model_inference_duration_ms=40,
+                ),
+                _entry(
+                    "stt_qwen_postprocess_complete",
+                    "engineer-cafe-backend-00101-onnx",
+                    changed=False,
+                    deterministic_changed=False,
+                    llm_changed=False,
                 ),
                 _entry(
                     "stt_qwen_hedge_start",
@@ -180,6 +194,8 @@ def test_stt_runtime_compare_summarizes_saved_json_without_credentials(tmp_path:
     assert "| qwen_runtime p50 | 100 | 70 | -30 | onnx-qwen-cpu |" in result.stdout
     assert "| qwen_model_inference p50 | 80 | 40 | -40 | onnx-qwen-cpu |" in result.stdout
     assert "| qwen | 1 | 1 |" in result.stdout
+    assert "| qwen_postprocess_complete | 1 | 1 |" in result.stdout
+    assert "| qwen_postprocess_deterministic_changed | 1 | 0 |" in result.stdout
     assert "| stt_qwen_hedge_grace_complete | 1 | 1 |" in result.stdout
     assert "0.6b-pytorch" in result.stdout
     assert "0.6b-onnx" in result.stdout

@@ -36,8 +36,21 @@ from backend.agents.orchestrator_agent import (
     RoutingTarget,
 )
 from backend.agents.orchestrator_agent import OrchestratorAgent as RoutingLogicAgent
-from backend.config.routing_constants import GREETING_KEYWORDS, match_keywords, normalize_agent_node
+from backend.config.routing_constants import (
+    GREETING_KEYWORDS,
+    extract_request_type,
+    match_keywords,
+    normalize_agent_node,
+)
 from backend.services.memory_promoter import MemoryPromoter
+from backend.utils.cafe_entity import (
+    cafe_entity_metadata,
+    context_mentions_engineer_cafe_hours,
+    inherited_request_type,
+    is_ambiguous_cafe_hours_query,
+    is_colocated_or_adjacent_saino_reference,
+    is_saino_reference,
+)
 from backend.utils.postgres_sanitizer import sanitize_for_postgres
 from backend.utils.store import store_with_retry
 
@@ -425,6 +438,51 @@ class MainWorkflow:
             return True
 
         return RoutingLogicAgent._is_memory_related_question(self, stripped_query)
+
+    def _resolve_cafe_entity_for_turn(
+        self,
+        query: str,
+        memory_context: Optional[dict[str, Any]],
+    ) -> dict[str, Any] | None:
+        current_request_type = extract_request_type(query)
+        if current_request_type == "nearby" and is_saino_reference(query):
+            current_request_type = None
+
+        if is_ambiguous_cafe_hours_query(query):
+            return cafe_entity_metadata(
+                entity="ambiguous",
+                status="needs_clarification",
+                source="workflow_turn",
+                request_type=current_request_type,
+            )
+
+        if not is_saino_reference(query):
+            return None
+
+        resolved_request_type = current_request_type or inherited_request_type(memory_context)
+        context_used = False
+        source = "workflow_explicit_saino"
+
+        if not current_request_type and resolved_request_type:
+            context_used = True
+            source = "workflow_short_term_request_type"
+
+        if (
+            not resolved_request_type
+            and is_colocated_or_adjacent_saino_reference(query)
+            and context_mentions_engineer_cafe_hours(memory_context)
+        ):
+            resolved_request_type = "hours"
+            context_used = True
+            source = "workflow_short_term_engineer_cafe_hours"
+
+        return cafe_entity_metadata(
+            entity="saino_cafe",
+            status="resolved",
+            source=source,
+            request_type=resolved_request_type,
+            context_used=context_used,
+        )
 
     @staticmethod
     def _looks_like_information_query(query: str) -> bool:
@@ -1017,6 +1075,21 @@ class MainWorkflow:
             category=decision.category,
             language=decision.language,
         )
+        metadata = {
+            **state.get("metadata", {}),
+            "clarification": {
+                **result["metadata"],
+                "clarification_type": decision.category,
+            },
+            "requires_followup": True,
+        }
+        if decision.category == "cafe-clarification-needed":
+            metadata["cafe_entity_resolution"] = cafe_entity_metadata(
+                entity="ambiguous",
+                status="needs_clarification",
+                source="workflow_clarification",
+                request_type=decision.request_type,
+            )
         return Command(
             goto="format_response",
             update={
@@ -1027,14 +1100,7 @@ class MainWorkflow:
                 ),
                 "answer": result["response"],
                 "emotion": result["emotion"],
-                "metadata": {
-                    **state.get("metadata", {}),
-                    "clarification": {
-                        **result["metadata"],
-                        "clarification_type": decision.category,
-                    },
-                    "requires_followup": True,
-                },
+                "metadata": metadata,
             },
         )
 
@@ -1167,6 +1233,35 @@ class MainWorkflow:
 
         # --- Normal orchestrator LLM routing ---
         memory_context = state.get("context", {}).get("memory")
+        cafe_resolution = self._resolve_cafe_entity_for_turn(query, memory_context)
+        if cafe_resolution and cafe_resolution.get("entity") == "saino_cafe":
+            request_type = cafe_resolution.get("request_type") or extract_request_type(query)
+            if request_type == "nearby":
+                request_type = None
+            return Command(
+                goto="business_info",
+                update={
+                    "language": self._get_response_language(
+                        query,
+                        state.get("language", "ja"),
+                    ),
+                    "routing": {
+                        "agent": "business_info",
+                        "category": "saino-cafe",
+                        "request_type": request_type,
+                        "confidence": cafe_resolution.get("confidence", 0.95),
+                        "reasoning": "Cafe entity resolved to cafe&bar saino",
+                        "debug_info": {
+                            "fast_path": True,
+                            "cafe_entity_resolution": cafe_resolution,
+                        },
+                    },
+                    "metadata": {
+                        **state.get("metadata", {}),
+                        "cafe_entity_resolution": cafe_resolution,
+                    },
+                },
+            )
 
         decision = await self.orchestrator.decide_next_agent(
             query=query,

@@ -681,6 +681,33 @@ class TestTextFallbackSearch:
         assert results
         assert "SSID" in results[0]["content"] or "engnecf" in results[0]["content"]
 
+    def test_local_yaml_fallback_returns_saino_hours_with_saino_entity(self, rag_search):
+        """Saino営業時間質問ではEngineer Cafe営業時間ではなくSaino KBを返す"""
+        results = rag_search._local_knowledge_fallback_search(
+            query="cafe&bar sainoの営業時間を教えて",
+            category="hours",
+            language="ja",
+            max_results=3,
+        )
+
+        assert results
+        assert results[0]["id"] == "saino-business-info"
+        assert results[0]["metadata"]["entity"] == "saino"
+        assert "12:00" in results[0]["content"]
+
+    def test_local_yaml_fallback_supports_saino_cafe_category(self, rag_search):
+        """saino-cafeカテゴリでも公式Saino YAMLを検索できる"""
+        results = rag_search._local_knowledge_fallback_search(
+            query="Tell me about Saino cafe",
+            category="saino-cafe",
+            language="en",
+            max_results=3,
+        )
+
+        assert results
+        assert results[0]["metadata"]["entity"] == "saino"
+        assert "cafe&bar saino" in results[0]["content"]
+
     def test_local_yaml_fallback_returns_consultation_for_gt_019(self, rag_search):
         """gt-019の相談サービス質問が公式相談KBに当たる"""
         results = rag_search._local_knowledge_fallback_search(
@@ -747,6 +774,63 @@ class TestTextFallbackSearch:
         assert results[0]["category"] == "pricing"
         assert "予約不要" in results[0]["content"]
         assert "受付" in results[0]["content"]
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "Tell me about membership",
+            "What is the membership like?",
+        ],
+    )
+    @pytest.mark.asyncio
+    async def test_search_uses_local_yaml_for_abstract_english_membership(self, rag_search, query):
+        """抽象的な英語membership質問でも公式会員KBがgradingを通過する"""
+        rag_search._generate_embedding = AsyncMock(side_effect=Exception("embedding down"))
+        rag_search._text_fallback_search = AsyncMock(return_value=[])
+
+        result = await rag_search.search(
+            query=query,
+            category="general",
+            language="en",
+            include_advice=False,
+        )
+
+        assert result["success"] is True
+        assert result["data"]["results"]
+        assert result["data"]["results"][0]["id"] == "general-membership-overview"
+        assert "membership" in result["data"]["context"].lower()
+        assert result["data"]["topEntity"] == "engineer-cafe"
+
+    @pytest.mark.parametrize(
+        ("query", "language"),
+        [
+            ("会员怎么登记", "zh"),
+            ("회원 등록은 어떻게 하나요?", "ko"),
+        ],
+    )
+    @pytest.mark.asyncio
+    async def test_search_uses_local_yaml_for_multilingual_membership(
+        self, rag_search, query, language
+    ):
+        """中韓の登録・会員質問もSNS等ではなく会員/初回登録KBに当たる"""
+        rag_search._generate_embedding = AsyncMock(side_effect=Exception("embedding down"))
+        rag_search._text_fallback_search = AsyncMock(return_value=[])
+
+        result = await rag_search.search(
+            query=query,
+            category="general",
+            language=language,
+            include_advice=False,
+        )
+
+        result_ids = {row["id"] for row in result["data"]["results"]}
+        assert result["success"] is True
+        assert result_ids & {
+            "general-membership-overview",
+            "general-first-time-welcome",
+            "general-pricing",
+        }
+        assert "general-sns-channels" not in result_ids
 
     @pytest.mark.asyncio
     async def test_search_uses_local_yaml_when_embedding_fails(self, rag_search):

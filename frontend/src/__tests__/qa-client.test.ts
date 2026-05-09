@@ -175,3 +175,108 @@ test('QA client proxy mode is an explicit rollback even when backend URL exists'
   assert.equal(result.mode, 'proxy');
   assert.equal(result.usedProxyFallback, false);
 });
+
+test('QA client keeps one proxy sessionId for sequential cafe follow-up questions', {
+  concurrency: false,
+}, async () => {
+  process.env.NEXT_PUBLIC_BACKEND_API_URL = 'https://backend.example.com';
+  process.env.NEXT_PUBLIC_QA_API_MODE = 'proxy';
+
+  const questions = ['エンジニアカフェの営業時間', '隣のカフェは？'];
+  const bodies: Record<string, unknown>[] = [];
+  global.fetch = (async (_input, init) => {
+    if (typeof init?.body === 'string') {
+      bodies.push(JSON.parse(init.body) as Record<string, unknown>);
+    }
+
+    return new Response(JSON.stringify({ success: true, answer: 'Proxy answer' }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }) as typeof fetch;
+
+  for (const question of questions) {
+    const result = await submitQaQuestion({
+      ...qaRequest(),
+      question,
+      text: question,
+      sessionId: 'session-801',
+    });
+    assert.equal(result.mode, 'proxy');
+    assert.equal(result.data.success, true);
+  }
+
+  assert.equal(bodies.length, 2);
+  assert.deepEqual(
+    bodies.map((body) => body.question),
+    questions,
+  );
+  assert.deepEqual(
+    bodies.map((body) => body.text),
+    questions,
+  );
+  assert.deepEqual(
+    bodies.map((body) => body.sessionId),
+    ['session-801', 'session-801'],
+  );
+  assert.deepEqual(
+    bodies.map((body) => body.language),
+    ['ja', 'ja'],
+  );
+  assert.equal(bodies.some((body) => 'session_id' in body), false);
+  assert.equal(bodies.some((body) => 'history' in body || 'messages' in body), false);
+});
+
+test('QA client keeps one direct session_id for sequential cafe follow-up questions', {
+  concurrency: false,
+}, async () => {
+  process.env.NEXT_PUBLIC_BACKEND_API_URL = 'https://backend.example.com';
+  process.env.NEXT_PUBLIC_QA_API_MODE = 'direct';
+
+  const questions = ['エンジニアカフェの営業時間', '隣のカフェは？'];
+  const calls: Array<{ url: string | URL | Request; body: Record<string, unknown> }> = [];
+  global.fetch = (async (input, init) => {
+    if (typeof init?.body === 'string') {
+      calls.push({
+        url: input,
+        body: JSON.parse(init.body) as Record<string, unknown>,
+      });
+    }
+
+    return new Response(JSON.stringify({ answer: 'Direct answer', metadata: {} }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }) as typeof fetch;
+
+  for (const question of questions) {
+    const result = await submitQaQuestion({
+      ...qaRequest(),
+      question,
+      text: question,
+      sessionId: 'session-801',
+    });
+    assert.equal(result.mode, 'direct');
+    assert.equal(result.data.success, true);
+  }
+
+  assert.equal(calls.length, 2);
+  assert.deepEqual(
+    calls.map((call) => call.url),
+    ['https://backend.example.com/api/chat', 'https://backend.example.com/api/chat'],
+  );
+  assert.deepEqual(
+    calls.map((call) => call.body.query),
+    questions,
+  );
+  assert.deepEqual(
+    calls.map((call) => call.body.session_id),
+    ['session-801', 'session-801'],
+  );
+  assert.deepEqual(
+    calls.map((call) => call.body.language),
+    ['ja', 'ja'],
+  );
+  assert.equal(calls.some((call) => 'sessionId' in call.body), false);
+  assert.equal(calls.some((call) => 'history' in call.body || 'messages' in call.body), false);
+});

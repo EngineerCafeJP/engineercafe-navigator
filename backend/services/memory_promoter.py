@@ -13,6 +13,8 @@ import uuid
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable
 
+from backend.utils.cafe_entity import canonicalize_facility_aliases
+
 
 @dataclass
 class PromotionDecision:
@@ -224,7 +226,8 @@ class MemoryPromoter:
 
     @staticmethod
     def _aggregate_key(memory_type: str, content: str) -> str:
-        normalized = unicodedata.normalize("NFKC", content)
+        normalized = canonicalize_facility_aliases(content)
+        normalized = unicodedata.normalize("NFKC", normalized)
         normalized = " ".join(normalized.strip().lower().split())
         return f"{memory_type}:{normalized}"
 

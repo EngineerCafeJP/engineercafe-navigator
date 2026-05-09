@@ -10,6 +10,8 @@
 
 **Documentation index**: [docs/README.md](docs/README.md) · **Tooling constraints**: [CLAUDE.md](CLAUDE.md)
 
+**OSS / license**: [LICENSE](LICENSE) (ISC) · [docs/OSS-LICENSE-POSTURE.md](docs/OSS-LICENSE-POSTURE.md) · [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md)
+
 ---
 
 ## How this differs from typical avatar / single-agent stacks
@@ -69,4 +71,3 @@ make dev   # Docker full stack
 Roadmap (docs-only): [docs/plans/comprehensive-refactoring-plan-2026-05-05.md](docs/plans/comprehensive-refactoring-plan-2026-05-05.md)
 
 Legacy: `docs/archive/`. Prefer **STATUS.md** and code.
-

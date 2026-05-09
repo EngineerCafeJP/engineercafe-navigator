@@ -10,6 +10,14 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 
+from backend.utils.cafe_entity import (
+    cafe_entity_metadata,
+    has_cafe_or_bar_token,
+    is_explicit_engineer_cafe_query,
+    is_saino_reference,
+    normalize_cafe_query,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -81,20 +89,34 @@ class QueryClassifier:
                 debug_info={"reason": "Calendar/event keywords detected"},
             )
 
-        # エンジニアカフェ特定のクエリ（カフェ曖昧性チェックより前に移動）
-        if self._is_engineer_cafe_specific(normalized_question):
-            return QueryClassificationResult(
-                category="facility-info",
-                confidence=1.0,
-                debug_info={"reason": "Engineer Cafe specific"},
-            )
-
         # Sainoカフェの明示的なクエリ（カフェ曖昧性チェックより前に）
         if self._is_saino_cafe_query(normalized_question):
             return QueryClassificationResult(
                 category="saino-cafe",
                 confidence=0.9,
-                debug_info={"reason": "Saino cafe detected"},
+                debug_info={
+                    "reason": "Saino cafe detected",
+                    "cafe_entity_resolution": cafe_entity_metadata(
+                        entity="saino_cafe",
+                        status="resolved",
+                        source="query_classifier",
+                    ),
+                },
+            )
+
+        # エンジニアカフェ特定のクエリ（Saino併設表現の後に評価）
+        if self._is_engineer_cafe_specific(normalized_question):
+            return QueryClassificationResult(
+                category="facility-info",
+                confidence=1.0,
+                debug_info={
+                    "reason": "Engineer Cafe specific",
+                    "cafe_entity_resolution": cafe_entity_metadata(
+                        entity="engineer_cafe",
+                        status="resolved",
+                        source="query_classifier",
+                    ),
+                },
             )
 
         # カフェの曖昧性チェック（既存ロジックを保持）
@@ -155,16 +177,7 @@ class QueryClassifier:
 
     def _normalize_query(self, query: str) -> str:
         """クエリを正規化する"""
-        normalized = query.lower()
-
-        # Saino関連の正規化
-        normalized = re.sub(r"coffee say no", "saino cafe", normalized)
-        normalized = re.sub(r"才能", "saino", normalized)
-        normalized = re.sub(r"say no", "saino", normalized)
-        normalized = re.sub(r"才能カフェ", "saino cafe", normalized)
-        normalized = re.sub(r"才能 カフェ", "saino cafe", normalized)
-        normalized = re.sub(r"セイノ", "saino", normalized)
-        normalized = re.sub(r"サイノ", "saino", normalized)
+        normalized = normalize_cafe_query(query)
 
         # 接続詞の除去
         normalized = re.sub(
@@ -204,9 +217,9 @@ class QueryClassifier:
         """カフェの曖昧性をチェック"""
 
         # "カフェ" が含まれているかチェック
-        if "カフェ" in normalized_question or "cafe" in normalized_question:
+        if has_cafe_or_bar_token(normalized_question):
             # 既にエンジニアカフェと明示されている場合
-            if "エンジニアカフェ" in normalized_question or "engineercafe" in normalized_question:
+            if is_explicit_engineer_cafe_query(normalized_question):
                 if self.debug_mode:
                     logger.debug("Explicit Engineer Cafe query, treating as facility")
                 return {
@@ -216,7 +229,7 @@ class QueryClassifier:
                 }
 
             # Sainoカフェと明示されている場合
-            if "saino" in normalized_question or "サイノ" in normalized_question:
+            if is_saino_reference(normalized_question):
                 if self.debug_mode:
                     logger.debug("Explicit Saino Cafe query, treating as saino-cafe")
                 return {
@@ -255,7 +268,14 @@ class QueryClassifier:
                     "needs_clarification": True,
                     "category": "cafe-clarification-needed",
                     "confidence": 0.7,
-                    "debug_info": {"reason": "Ambiguous cafe query"},
+                    "debug_info": {
+                        "reason": "Ambiguous cafe query",
+                        "cafe_entity_resolution": cafe_entity_metadata(
+                            entity="ambiguous",
+                            status="needs_clarification",
+                            source="query_classifier",
+                        ),
+                    },
                 }
 
         return {"needs_clarification": False, "category": None, "confidence": 0}
@@ -389,17 +409,7 @@ class QueryClassifier:
 
     def _is_saino_cafe_query(self, normalized_question: str) -> bool:
         """Sainoカフェクエリかどうかをチェック"""
-        saino_keywords = ["サイノ", "saino"]
-        has_saino = any(keyword in normalized_question for keyword in saino_keywords)
-
-        heisetsu_keywords = ["併設", "併設されてる"]
-        cafe_keywords = ["カフェ", "cafe", "bar"]
-
-        has_heisetsu_cafe = any(kw in normalized_question for kw in heisetsu_keywords) and any(
-            cafe in normalized_question for cafe in cafe_keywords
-        )
-
-        return has_saino or has_heisetsu_cafe
+        return is_saino_reference(normalized_question)
 
     def _is_closed_days_query(self, normalized_question: str) -> bool:
         """休館日/休業日クエリかどうかをチェック"""
@@ -418,14 +428,7 @@ class QueryClassifier:
 
     def _is_engineer_cafe_specific(self, normalized_question: str) -> bool:
         """エンジニアカフェ特定のクエリかどうかをチェック"""
-        keywords = [
-            "エンジニアカフェ",
-            "エンジニア カフェ",
-            "engineer cafe",
-            "engineer カフェ",
-            "engineercafe",
-        ]
-        return any(keyword in normalized_question for keyword in keywords)
+        return is_explicit_engineer_cafe_query(normalized_question)
 
     def _is_history_query(self, normalized_question: str) -> bool:
         """歴史関連のクエリかどうかをチェック"""
