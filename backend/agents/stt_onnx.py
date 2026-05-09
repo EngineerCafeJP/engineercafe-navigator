@@ -16,7 +16,6 @@ from pathlib import Path
 from typing import Any, Optional
 
 import numpy as np
-import soundfile as sf
 
 
 class QwenOnnxRuntimeError(RuntimeError):
@@ -231,6 +230,15 @@ class QwenOnnxRuntime:
         audio = np.asarray(pcm, dtype=np.float32)
         if audio.ndim > 1:
             audio = audio.mean(axis=1)
+
+        try:
+            sf = importlib.import_module("soundfile")
+        except ImportError as exc:
+            raise QwenOnnxRuntimeUnavailable(
+                "Daumee-style Qwen3-ASR ONNX inference requires soundfile to "
+                "materialize temporary WAV input. Install backend audio "
+                "dependencies or use the generic STT_QWEN_ONNX_MODEL_PATH adapter."
+            ) from exc
 
         with tempfile.NamedTemporaryFile(suffix=".wav") as wav_file:
             sf.write(wav_file.name, audio, sample_rate, subtype="PCM_16")
