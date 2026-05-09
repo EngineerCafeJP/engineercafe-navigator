@@ -21,8 +21,10 @@ from starlette.requests import Request
 from pydantic import BaseModel, Field
 from supabase import create_client
 
+from backend.knowledge.loader import count_tokens
+from backend.knowledge.upload_ingestion import plan_upload_chunks, upload_chunk_record_title
 from backend.utils.embedding_service import generate_embedding
-from backend.utils.file_parser import chunk_text, detect_file_type, parse_markdown, parse_pdf
+from backend.utils.file_parser import detect_file_type, parse_markdown, parse_pdf
 from backend.utils.rate_limit import rate_limit
 
 logger = logging.getLogger(__name__)
@@ -32,6 +34,7 @@ router = APIRouter(tags=["knowledge"])
 # 10MB upload size limit
 MAX_UPLOAD_SIZE = 10 * 1024 * 1024
 MAX_CHUNKS = 50
+PREVIEW_TIMEOUT_SECONDS = 30
 
 
 # =============================================================================
@@ -150,13 +153,6 @@ def _is_unique_violation(error: Exception) -> bool:
     return "unique" in error_str or "duplicate" in error_str or "23505" in error_str
 
 
-def _chunk_title(base_title: str, index: int, total_chunks: int) -> str:
-    """チャンク数に応じた保存タイトルを返す"""
-    if total_chunks <= 1:
-        return base_title
-    return f"{base_title} (part {index + 1})"
-
-
 def _rollback_uploaded_chunks(supabase: Any, inserted_ids: List[str]) -> None:
     """アップロード途中で失敗したチャンクを削除する"""
     for row_id in inserted_ids:
@@ -164,6 +160,66 @@ def _rollback_uploaded_chunks(supabase: Any, inserted_ids: List[str]) -> None:
             supabase.table("knowledge_base").delete().eq("id", row_id).execute()
         except Exception:
             logger.error("Failed to rollback chunk %s", row_id)
+
+
+def _metadata_document_id(row: Dict[str, Any]) -> Optional[str]:
+    metadata = row.get("metadata")
+    if not isinstance(metadata, dict):
+        return None
+    document_id = metadata.get("document_id")
+    return str(document_id) if document_id else None
+
+
+def _select_document_rows(supabase: Any, current: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Return all upload rows that share the current row's document identity."""
+
+    document_id = _metadata_document_id(current)
+    source = current.get("source")
+    if not document_id or not source:
+        return [current]
+
+    try:
+        result = supabase.table("knowledge_base").select("*").eq("source", source).execute()
+    except Exception:
+        logger.exception("Failed to load uploaded document rows for document_id=%s", document_id)
+        raise HTTPException(status_code=503, detail="Knowledge storage unavailable")
+
+    rows = [
+        row
+        for row in (result.data or [])
+        if isinstance(row, dict) and _metadata_document_id(row) == document_id
+    ]
+    return rows or [current]
+
+
+def _delete_rows_by_ids(supabase: Any, row_ids: List[str]) -> None:
+    if not row_ids:
+        return
+    query = supabase.table("knowledge_base").delete()
+    if len(row_ids) == 1:
+        query.eq("id", row_ids[0]).execute()
+    else:
+        query.in_("id", row_ids).execute()
+
+
+def _collapse_upload_metadata(
+    current: Dict[str, Any],
+    body_metadata: Optional[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Build metadata for an uploaded document collapsed back to one CRUD row."""
+
+    metadata = dict(current.get("metadata") or {})
+    if body_metadata is not None:
+        metadata.update(body_metadata)
+    document_id = metadata.get("document_id") or metadata.get("entry_id")
+    if document_id:
+        metadata["document_id"] = document_id
+        metadata["entry_id"] = metadata.get("entry_id") or document_id
+    metadata["chunk_level"] = "document"
+    metadata["chunk_index"] = 0
+    metadata["total_chunks"] = 1
+    metadata["failed_chunks"] = []
+    return metadata
 
 
 def _build_duplicate_conflict(title: str, chunk_index: Optional[int] = None) -> Dict[str, Any]:
@@ -350,6 +406,9 @@ async def create_knowledge(request: Request, body: KnowledgeCreateRequest):
         # Embedding生成
         embedding_text = f"{body.title}\n{body.content}"
         embedding = await generate_embedding(embedding_text)
+        if not embedding:
+            logger.warning("Embedding unavailable for knowledge create: title=%s", body.title)
+            raise HTTPException(status_code=503, detail="Embedding service unavailable")
 
         # DB挿入
         insert_data: Dict[str, Any] = {
@@ -360,9 +419,8 @@ async def create_knowledge(request: Request, body: KnowledgeCreateRequest):
             "subcategory": body.subcategory,
             "source": body.source,
             "metadata": body.metadata or {},
+            "content_embedding": embedding,
         }
-        if embedding:
-            insert_data["content_embedding"] = embedding
 
         result = supabase.table("knowledge_base").insert(insert_data).execute()
 
@@ -452,7 +510,7 @@ async def upload_knowledge(
         # パース（ValueErrorは400として処理）
         try:
             if file_type == "markdown":
-                parsed_content = parse_markdown(content_bytes)
+                parsed_content = parse_markdown(content_bytes, preserve_headings=True)
             else:
                 parsed_content = parse_pdf(content_bytes)
         except ValueError as ve:
@@ -465,7 +523,15 @@ async def upload_knowledge(
         effective_title = title or file.filename.rsplit(".", 1)[0]
 
         supabase = _get_supabase()
-        chunks = chunk_text(parsed_content)
+        chunk_plan = plan_upload_chunks(
+            parsed_content,
+            filename=file.filename,
+            category=category,
+            language=language,
+            title=effective_title,
+            metadata=metadata_payload,
+        )
+        chunks = list(chunk_plan.chunks)
         if not chunks:
             raise HTTPException(status_code=400, detail="No text content extracted from file")
         if len(chunks) > MAX_CHUNKS:
@@ -474,9 +540,7 @@ async def upload_knowledge(
                 detail=f"Document too large: {len(chunks)} chunks exceeds limit of {MAX_CHUNKS}",
             )
 
-        chunk_titles = [
-            _chunk_title(effective_title, index, len(chunks)) for index in range(len(chunks))
-        ]
+        chunk_titles = [upload_chunk_record_title(chunk) for chunk in chunks]
         if any(len(chunk_title) > 200 for chunk_title in chunk_titles):
             raise HTTPException(
                 status_code=400,
@@ -504,7 +568,8 @@ async def upload_knowledge(
         failed_chunk_indices: List[int] = []
 
         try:
-            for index, chunk_content in enumerate(chunks):
+            for index, chunk in enumerate(chunks):
+                chunk_content = chunk.content
                 chunk_title = chunk_titles[index]
                 embedding: List[float] = []
                 embedding_input = (
@@ -569,12 +634,13 @@ async def upload_knowledge(
                     "language": language,
                     "source": f"file:{file.filename}",
                     "content_embedding": embedding,
+                    "chunk_level": chunk.chunk_level,
+                    "chunk_index": chunk.chunk_index,
+                    "token_count": chunk.token_count,
                     "metadata": {
-                        "original_filename": file.filename,
-                        "file_type": file_type,
-                        "chunk_index": index,
-                        "total_chunks": total_chunks,
-                        **metadata_payload,
+                        **chunk.metadata,
+                        "entry_id": chunk.entry_id,
+                        "document_id": chunk.entry_id,
                     },
                 }
 
@@ -589,7 +655,7 @@ async def upload_knowledge(
             if _is_unique_violation(exc):
                 exc_str = str(exc)
                 conflict_title = next(
-                    (ct for ct in chunk_titles if ct in exc_str),
+                    (ct for ct in sorted(chunk_titles, key=len, reverse=True) if ct in exc_str),
                     effective_title,
                 )
                 conflict_index = next(
@@ -680,6 +746,54 @@ async def upload_knowledge(
         raise HTTPException(status_code=500, detail="Failed to upload knowledge entry")
 
 
+def _build_knowledge_preview(
+    *,
+    file_type: str,
+    filename: str,
+    content_bytes: bytes,
+    category: str,
+    language: str,
+    title: Optional[str] = None,
+) -> Dict[str, Any]:
+    """ファイルを解析して登録予定情報を返す（DBへは書き込まない）"""
+    try:
+        if file_type == "markdown":
+            parsed_content = parse_markdown(content_bytes, preserve_headings=True)
+        else:
+            parsed_content = parse_pdf(content_bytes)
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+
+    if not parsed_content.strip():
+        raise HTTPException(status_code=400, detail="No text content extracted from file")
+
+    chunk_plan = plan_upload_chunks(
+        parsed_content,
+        filename=filename,
+        category=category or "general",
+        language=language,
+        title=title,
+    )
+    chunks = list(chunk_plan.chunks)
+    if not chunks:
+        raise HTTPException(status_code=400, detail="No text content extracted from file")
+    if len(chunks) > MAX_CHUNKS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Document too large: {len(chunks)} chunks exceeds limit of {MAX_CHUNKS}",
+        )
+
+    chunk_titles = [upload_chunk_record_title(chunk) for chunk in chunks]
+
+    return {
+        "file_type": file_type,
+        "extracted_preview": parsed_content[:1500],
+        "estimated_chunks": chunk_plan.total_chunks,
+        "chunk_titles": chunk_titles,
+        "total_chars": len(parsed_content),
+    }
+
+
 @router.post("/knowledge/preview", status_code=200)
 @rate_limit("10/minute")
 async def preview_knowledge(
@@ -687,6 +801,7 @@ async def preview_knowledge(
     file: UploadFile = File(...),
     language: str = Form(default="ja"),
     category: str = Form(default=""),
+    title: Optional[str] = Form(default=None),
 ):
     """ファイルプレビュー（parse + chunk の dry run）"""
     if not file.filename:
@@ -714,30 +829,30 @@ async def preview_knowledge(
         )
 
     try:
-        if file_type == "markdown":
-            parsed_content = parse_markdown(content_bytes)
-        else:
-            parsed_content = parse_pdf(content_bytes)
-    except ValueError as ve:
-        raise HTTPException(status_code=400, detail=str(ve))
-
-    if not parsed_content.strip():
-        raise HTTPException(status_code=400, detail="No text content extracted from file")
-
-    chunks = chunk_text(parsed_content)
-    if not chunks:
-        raise HTTPException(status_code=400, detail="No text content extracted from file")
-
-    base_title = file.filename.rsplit(".", 1)[0]
-    chunk_titles = [_chunk_title(base_title, index, len(chunks)) for index in range(len(chunks))]
-
-    return {
-        "file_type": file_type,
-        "extracted_preview": parsed_content[:1500],
-        "estimated_chunks": len(chunks),
-        "chunk_titles": chunk_titles,
-        "total_chars": len(parsed_content),
-    }
+        return await asyncio.wait_for(
+            asyncio.to_thread(
+                _build_knowledge_preview,
+                file_type=file_type,
+                filename=file.filename,
+                content_bytes=content_bytes,
+                category=category,
+                language=language,
+                title=title,
+            ),
+            timeout=PREVIEW_TIMEOUT_SECONDS,
+        )
+    except HTTPException:
+        raise
+    except asyncio.TimeoutError:
+        logger.error(
+            "Knowledge preview timed out after %s seconds: filename=%s "
+            "file_type=%s content_size=%s",
+            PREVIEW_TIMEOUT_SECONDS,
+            file.filename,
+            file_type,
+            len(content_bytes),
+        )
+        raise HTTPException(status_code=504, detail="Knowledge preview timed out")
 
 
 @router.put("/knowledge/{knowledge_id}", response_model=KnowledgeResponse)
@@ -753,6 +868,9 @@ async def update_knowledge(request: Request, knowledge_id: str, body: KnowledgeU
             raise HTTPException(status_code=404, detail="Knowledge entry not found")
 
         current = existing.data[0]
+        document_rows = _select_document_rows(supabase, current)
+        document_row_ids = [str(row["id"]) for row in document_rows if row.get("id")]
+        is_uploaded_document = _metadata_document_id(current) is not None
 
         # 重複titleチェック（titleが変更される場合）
         if body.title and body.title != current.get("title"):
@@ -792,15 +910,45 @@ async def update_knowledge(request: Request, knowledge_id: str, body: KnowledgeU
         new_content = update_data.get("content", current.get("content", ""))
         if "content" in update_data or "title" in update_data:
             embedding = await generate_embedding(f"{new_title}\n{new_content}")
-            if embedding:
-                update_data["content_embedding"] = embedding
+            if not embedding:
+                logger.warning(
+                    "Embedding unavailable for knowledge update: id=%s title=%s",
+                    knowledge_id,
+                    new_title,
+                )
+                raise HTTPException(status_code=503, detail="Embedding service unavailable")
+            update_data["content_embedding"] = embedding
+            if is_uploaded_document:
+                update_data["metadata"] = _collapse_upload_metadata(current, body.metadata)
+                update_data["chunk_level"] = "document"
+                update_data["chunk_index"] = 0
+                update_data["token_count"] = count_tokens(str(new_content))
 
-        result = (
-            supabase.table("knowledge_base").update(update_data).eq("id", knowledge_id).execute()
-        )
+        if (
+            is_uploaded_document
+            and document_row_ids
+            and not ("content" in update_data or "title" in update_data)
+        ):
+            result = (
+                supabase.table("knowledge_base")
+                .update(update_data)
+                .in_("id", document_row_ids)
+                .execute()
+            )
+        else:
+            result = (
+                supabase.table("knowledge_base")
+                .update(update_data)
+                .eq("id", knowledge_id)
+                .execute()
+            )
 
         if not result.data:
             raise HTTPException(status_code=500, detail="Failed to update knowledge entry")
+
+        if is_uploaded_document and ("content" in update_data or "title" in update_data):
+            sibling_ids = [row_id for row_id in document_row_ids if row_id != knowledge_id]
+            _delete_rows_by_ids(supabase, sibling_ids)
 
         return KnowledgeResponse(
             success=True,
@@ -831,11 +979,17 @@ async def delete_knowledge(request: Request, knowledge_id: str):
         if not existing.data:
             raise HTTPException(status_code=404, detail="Knowledge entry not found")
 
-        supabase.table("knowledge_base").delete().eq("id", knowledge_id).execute()
+        current = existing.data[0]
+        document_rows = _select_document_rows(supabase, current)
+        document_row_ids = [str(row["id"]) for row in document_rows if row.get("id")]
+        if document_row_ids:
+            _delete_rows_by_ids(supabase, document_row_ids)
+        else:
+            supabase.table("knowledge_base").delete().eq("id", knowledge_id).execute()
 
         return KnowledgeResponse(
             success=True,
-            data=_row_to_item(existing.data[0]),
+            data=_row_to_item(current),
         )
 
     except HTTPException:

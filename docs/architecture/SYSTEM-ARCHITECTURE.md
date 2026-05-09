@@ -138,7 +138,7 @@ Alpha Phase 4 の会話 UX・fast path・identity まわりは [ADR 018](../adr/
 
 ## デプロイ要件（概要）
 
-- Frontend: Node.js 20 系・Next.js 15（Vercel 想定）
+- Frontend: Node.js 24 系・Next.js 15（Vercel 想定）
 - Backend: Python 3.11+・Cloud Run 想定
 - DB: PostgreSQL + pgvector
 - HTTPS は音声・ブラウザ制約のため必須

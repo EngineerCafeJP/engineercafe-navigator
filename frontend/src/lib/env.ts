@@ -44,6 +44,7 @@ const optionalServerEnvSchema = z.object({
   SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
   ADMIN_API_SECRET: z.string().optional(),
   CRON_SECRET: z.string().optional(),
+  OPENROUTER_API_KEY: z.string().optional(),
 
   // Alerting
   ALERT_WEBHOOK_SECRET: z.string().optional(),
@@ -109,6 +110,12 @@ export function validateServerEnv(): EnvValidationResult {
         `[RECOMMENDED] ${key} is not set — some features may be unavailable`
       );
     }
+  }
+
+  if (!process.env.OPENROUTER_API_KEY) {
+    warnings.push(
+      "[REQUIRED_CRON] OPENROUTER_API_KEY is not set — /api/cron/update-knowledge-base Connpass sync will fail"
+    );
   }
 
   // Full parse for the combined schema (optional fields default to undefined)

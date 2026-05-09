@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Toaster, toast } from 'react-hot-toast';
@@ -26,6 +26,32 @@ interface Preview {
   charCount: number | null;
 }
 
+const PREVIEW_REFRESH_DEBOUNCE_MS = 300;
+
+function deriveTitleFromFilename(filename: string): string {
+  return filename.replace(/\.[^.]+$/, '');
+}
+
+function remapPreviewChunkTitles(
+  chunkTitles: readonly string[],
+  previousTitle: string,
+  nextTitle: string,
+): string[] {
+  if (!previousTitle || !nextTitle || previousTitle === nextTitle) {
+    return [...chunkTitles];
+  }
+
+  return chunkTitles.map((chunkTitle) => {
+    if (chunkTitle === previousTitle) {
+      return nextTitle;
+    }
+    if (chunkTitle.startsWith(`${previousTitle} `)) {
+      return `${nextTitle}${chunkTitle.slice(previousTitle.length)}`;
+    }
+    return chunkTitle;
+  });
+}
+
 export default function UploadKnowledgePage() {
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
@@ -40,6 +66,15 @@ export default function UploadKnowledgePage() {
   const [isDragOver, setIsDragOver] = useState(false);
   const [previewResult, setPreviewResult] = useState<KnowledgePreviewResult | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const previewRequestId = useRef(0);
+
+  const clearSelectedFile = () => {
+    previewRequestId.current += 1;
+    setFile(null);
+    setPreview(null);
+    setPreviewResult(null);
+    setPreviewLoading(false);
+  };
 
   useEffect(() => {
     const loadConfig = async () => {
@@ -63,11 +98,13 @@ export default function UploadKnowledgePage() {
   const handleFileSelect = async (selectedFile: File) => {
     const ext = selectedFile.name.split('.').pop()?.toLowerCase();
     if (!ext || !['pdf', 'md', 'markdown'].includes(ext)) {
+      clearSelectedFile();
       toast.error('PDF または Markdown ファイルのみ対応しています');
       return;
     }
 
     if (selectedFile.size > 10 * 1024 * 1024) {
+      clearSelectedFile();
       toast.error('ファイルサイズは 10MB 以内にしてください');
       return;
     }
@@ -82,6 +119,7 @@ export default function UploadKnowledgePage() {
         textPreview = fullText.slice(0, 500);
       } catch (error) {
         console.error('Failed to read file:', error);
+        clearSelectedFile();
         toast.error('ファイルの読み込みに失敗しました');
         return;
       }
@@ -96,25 +134,66 @@ export default function UploadKnowledgePage() {
     });
 
     if (!title) {
-      setTitle(selectedFile.name.replace(/\.[^.]+$/, ''));
-    }
-
-    setPreviewLoading(true);
-    setPreviewResult(null);
-    try {
-      const result = await previewKnowledgeFile({
-        file: selectedFile,
-        language,
-        category: category || undefined,
-      });
-      setPreviewResult(result);
-    } catch (err) {
-      console.error('Preview failed:', err);
-      setPreviewResult(null);
-    } finally {
-      setPreviewLoading(false);
+      setTitle(deriveTitleFromFilename(selectedFile.name));
     }
   };
+
+  useEffect(() => {
+    if (!file) {
+      previewRequestId.current += 1;
+      setPreviewLoading(false);
+      setPreviewResult(null);
+      return;
+    }
+
+    const requestId = previewRequestId.current + 1;
+    previewRequestId.current = requestId;
+    setPreviewLoading(true);
+    setPreviewResult(null);
+
+    const refreshPreview = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const result = await previewKnowledgeFile({
+            file,
+            language,
+            category: category || undefined,
+            title: title.trim() || undefined,
+          });
+
+          if (previewRequestId.current === requestId) {
+            setPreviewResult(result);
+          }
+        } catch (err) {
+          console.error('Preview failed:', err);
+          if (previewRequestId.current === requestId) {
+            setPreviewResult(null);
+          }
+        } finally {
+          if (previewRequestId.current === requestId) {
+            setPreviewLoading(false);
+          }
+        }
+      })();
+    }, PREVIEW_REFRESH_DEBOUNCE_MS);
+
+    return () => {
+      window.clearTimeout(refreshPreview);
+    };
+  }, [category, file, language, title]);
+
+  const displayPreviewResult = useMemo<KnowledgePreviewResult | null>(() => {
+    if (!previewResult || !file) {
+      return previewResult;
+    }
+
+    const fileTitle = deriveTitleFromFilename(file.name);
+    const effectiveTitle = title.trim() || fileTitle;
+    return {
+      ...previewResult,
+      chunk_titles: remapPreviewChunkTitles(previewResult.chunk_titles, fileTitle, effectiveTitle),
+    };
+  }, [file, previewResult, title]);
 
   const handleUpload = async () => {
     const validationErrors = validateKnowledgeUploadForm({
@@ -219,7 +298,7 @@ export default function UploadKnowledgePage() {
               editorConfig={editorConfig}
               configLoading={configLoading}
               uploading={uploading}
-              previewResult={previewResult}
+              previewResult={displayPreviewResult}
               previewLoading={previewLoading}
               onFileSelect={handleFileSelect}
               onDragOver={() => setIsDragOver(true)}

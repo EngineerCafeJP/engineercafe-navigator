@@ -208,7 +208,7 @@ coverage, not provider configuration.
 - #670: C/RAGAS runtime improved after direct OpenAI, and telemetry is now present, but full-run
   operational proof is still needed.
 - #655: memory WARNs remain; TTS long Japanese case passed in the latest run.
-- #668: GitHub Actions Node.js 20 deprecation warnings need post-alpha cleanup.
+- #668: GitHub Actions Node.js runtime deprecation cleanup tracks the move to Node.js 24.
 
 ## RAGAS Provider Decision
 

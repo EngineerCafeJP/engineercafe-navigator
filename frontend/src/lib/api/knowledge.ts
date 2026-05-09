@@ -258,12 +258,16 @@ export async function previewKnowledgeFile(params: {
   file: File;
   language: 'ja' | 'en';
   category?: string;
+  title?: string;
 }): Promise<KnowledgePreviewResult> {
   const formData = new FormData();
   formData.append('file', params.file);
   formData.append('language', params.language);
   if (params.category) {
     formData.append('category', params.category);
+  }
+  if (params.title) {
+    formData.append('title', params.title);
   }
 
   const response = await fetch('/api/admin/knowledge/preview', {

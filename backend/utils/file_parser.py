@@ -37,7 +37,7 @@ def detect_file_type(filename: str) -> Literal["text", "markdown", "pdf", "unkno
     return "unknown"
 
 
-def parse_markdown(content: bytes) -> str:
+def parse_markdown(content: bytes, *, preserve_headings: bool = False) -> str:
     """Markdownからプレーンテキストを抽出
 
     ヘッダー記号(#)、リンク記法、画像記法、強調記法を除去し、
@@ -51,8 +51,9 @@ def parse_markdown(content: bytes) -> str:
     """
     text = content.decode("utf-8", errors="replace")
 
-    # ヘッダー記号を除去 (# ## ### etc.)
-    text = re.sub(r"^#{1,6}\s+", "", text, flags=re.MULTILINE)
+    if not preserve_headings:
+        # ヘッダー記号を除去 (# ## ### etc.)
+        text = re.sub(r"^#{1,6}\s+", "", text, flags=re.MULTILINE)
 
     # 画像記法を除去 ![alt](url)
     text = re.sub(r"!\[([^\]]*)\]\([^)]+\)", r"\1", text)
