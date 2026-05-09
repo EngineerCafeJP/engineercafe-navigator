@@ -709,6 +709,38 @@ Information: {context}
             }
             return self._canonical_result(answers.get(language, answers["ja"]), request_type)
 
+        if self._asks_membership_overview(normalized, request_type):
+            answers = {
+                "ja": (
+                    "[relaxed]エンジニアカフェの会員登録・利用登録は無料です。"
+                    "初めて利用する場合は1階受付でWebフォームに入力し、約5〜10分で"
+                    "登録できます。登録後に会員番号が発行され、2回目以降は会員番号を"
+                    "伝えてチェックインしてください。オンライン事前登録はできません。"
+                ),
+                "en": (
+                    "[relaxed]Engineer Cafe membership registration is free. "
+                    "First-time visitors register at the 1F reception by filling out a "
+                    "web form; it usually takes about 5 to 10 minutes and no ID is required. "
+                    "After registration, you receive a member number. On later visits, "
+                    "give your member number at reception to check in. Online pre-registration "
+                    "is not available."
+                ),
+                "zh": (
+                    "[relaxed]工程师咖啡的会员登记和设施使用是免费的。首次来访时，"
+                    "请在一楼前台填写网页表单，通常约5到10分钟完成，不需要身份证件。"
+                    "登记后会取得会员编号，之后来访时在前台告知会员编号即可。"
+                    "不支持线上预先登记。"
+                ),
+                "ko": (
+                    "[relaxed]엔지니어 카페의 회원 등록과 시설 이용은 무료입니다. "
+                    "처음 방문하실 때는 1층 접수에서 웹 양식을 작성하며 보통 5-10분 정도 "
+                    "걸리고 신분증은 필요하지 않습니다. 등록 후 회원 번호를 받으며, "
+                    "다음 방문부터는 접수에서 회원 번호를 말씀해 주세요. 온라인 사전 등록은 "
+                    "지원하지 않습니다."
+                ),
+            }
+            return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
         if self._asks_first_visit_registration(normalized, request_type):
             if (
                 language == "ja"
@@ -1127,6 +1159,43 @@ Information: {context}
             "등록",
         )
         return any(keyword in query for keyword in keywords)
+
+    @staticmethod
+    def _asks_membership_overview(query: str, request_type: Optional[str]) -> bool:
+        if request_type == "community" and BusinessInfoAgent._asks_engineer_cafe_lab(query):
+            return False
+
+        membership_terms = (
+            "membership",
+            "member",
+            "become a member",
+            "member benefits",
+            "会員制度",
+            "会員登録",
+            "会員にな",
+            "会员制度",
+            "加入会员",
+            "會員制度",
+            "加入會員",
+            "멤버십",
+            "회원 등록",
+            "회원가입",
+        )
+        if any(term in query for term in membership_terms):
+            return True
+
+        return request_type == "reception" and any(
+            term in query
+            for term in (
+                "sign up",
+                "registration",
+                "利用登録",
+                "登録",
+                "登记",
+                "登記",
+                "등록",
+            )
+        )
 
     @staticmethod
     def _asks_opening_hours(query: str, request_type: Optional[str]) -> bool:

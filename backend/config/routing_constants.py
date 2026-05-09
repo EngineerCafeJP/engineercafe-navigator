@@ -267,6 +267,12 @@ COMMUNITY_KEYWORDS = [
 ]
 
 RECEPTION_KEYWORDS = [
+    "membership",
+    "member",
+    "member benefits",
+    "become a member",
+    "register",
+    "sign up",
     "registration",
     "reception",
     "初回利用",

@@ -38,7 +38,10 @@ class TestMultilingualReceptionKeywords:
 
     def test_reception_keywords_include_english(self):
         assert "registration" in RECEPTION_KEYWORDS
+        assert "register" in RECEPTION_KEYWORDS
         assert "check-in" in RECEPTION_KEYWORDS
+        assert "membership" in RECEPTION_KEYWORDS
+        assert "become a member" in RECEPTION_KEYWORDS
 
     def test_reception_keywords_exclude_generic_english(self):
         """Generic English terms that cause mis-routing should be excluded."""
