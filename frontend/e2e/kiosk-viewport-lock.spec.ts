@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { MOCK_VOICE_RESPONSE, setupWebAudioMock } from './helpers/mocks';
 
 async function dismissInitialModal(page: import('@playwright/test').Page) {
   const closeButton = page.getByTestId('initial-settings-close');
@@ -55,6 +56,7 @@ async function collectViewportMetrics(page: import('@playwright/test').Page) {
 
 test.describe('Kiosk viewport lock', () => {
   test.beforeEach(async ({ page }) => {
+    await setupWebAudioMock(page);
     await page.goto('/');
     await dismissInitialModal(page);
   });
@@ -121,7 +123,11 @@ test.describe('Kiosk viewport lock', () => {
       });
     });
     await page.route('**/api/voice', async (route) => {
-      await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(MOCK_VOICE_RESPONSE),
+      });
     });
 
     await page.setViewportSize({ width: 390, height: 844 });
