@@ -1104,7 +1104,9 @@ class OnnxAsrPipeline:
         )
         for relative_path in (
             "encoder_conv.onnx",
+            "encoder_conv.onnx.data",
             "encoder_transformer.onnx",
+            "encoder_transformer.onnx.data",
             "decoder_init.int8.onnx",
             "decoder_step.int8.onnx",
             "embed_tokens.bin",

@@ -11,7 +11,8 @@ BASE_URL="https://huggingface.co/${REPO}/resolve/${REVISION}"
 
 download_file() {
   local relative_path="$1"
-  local output_path="${TARGET_DIR}/${relative_path}"
+  local output_relative_path="${2:-$relative_path}"
+  local output_path="${TARGET_DIR}/${output_relative_path}"
   local output_dir
   output_dir="$(dirname "$output_path")"
   mkdir -p "$output_dir"
@@ -30,9 +31,11 @@ download_file() {
 mkdir -p "$TARGET_DIR"
 
 download_file "onnx_inference.py"
-download_file "onnx_models/tokenizer.json"
+download_file "tokenizer.json" "onnx_models/tokenizer.json"
 download_file "onnx_models/encoder_conv.onnx"
+download_file "onnx_models/encoder_conv.onnx.data"
 download_file "onnx_models/encoder_transformer.onnx"
+download_file "onnx_models/encoder_transformer.onnx.data"
 download_file "onnx_models/decoder_init.int8.onnx"
 download_file "onnx_models/decoder_step.int8.onnx"
 download_file "onnx_models/embed_tokens.bin"
