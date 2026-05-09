@@ -131,4 +131,95 @@ test.describe('Parallel voice filler (#610 FE)', () => {
     await expect.poll(() => fillerHits, { timeout: 20_000 }).toBeGreaterThan(0);
     await expect.poll(() => ttsHits, { timeout: 25_000 }).toBeGreaterThan(0);
   });
+
+  test('slow STT wait changes from generic spinner to still-working copy', async ({ page }) => {
+    await installDeterministicVoiceRecorder(page);
+
+    await page.route('**/api/reception/start', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          reception_session_id: 'mock-slow-stt',
+          greeting: 'ようこそ。',
+          stage: 'greeting',
+        }),
+      });
+    });
+
+    await page.route('**/api/voice/filler', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true }),
+      });
+    });
+
+    await page.route('**/api/qa', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          answer: 'テスト応答です。',
+          emotion: 'neutral',
+          metadata: {},
+        }),
+      });
+    });
+
+    const wavB64 = fs.readFileSync(path.resolve(__dirname, 'fixtures/voice/sample.wav')).toString('base64');
+
+    await page.route('**/api/voice', async (route) => {
+      const req = route.request();
+      if (req.method() !== 'POST') {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+        return;
+      }
+      let body: Record<string, unknown> = {};
+      try {
+        body = req.postDataJSON() as Record<string, unknown>;
+      } catch {
+        body = {};
+      }
+      if (body.action === 'speech_to_text') {
+        await new Promise((r) => setTimeout(r, 3_200));
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true, transcript: '営業時間は？' }),
+        });
+        return;
+      }
+      if (body.action === 'text_to_speech') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true, audioResponse: wavB64 }),
+        });
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true }),
+      });
+    });
+
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await dismissInitialModal(page);
+
+    const voiceBtn = page.getByTestId('kiosk-voice-button');
+    const voiceStatus = page.getByTestId('kiosk-voice-status');
+    await expect(voiceBtn).toBeVisible({ timeout: 15_000 });
+
+    await voiceBtn.click();
+    await expect(voiceStatus).toHaveAttribute('data-session-state', 'listening', {
+      timeout: 8_000,
+    });
+    await voiceBtn.click();
+
+    await expect(voiceStatus).toContainText('音声読み取り中', { timeout: 5_000 });
+    await expect(voiceStatus).toContainText('音声を確認中です', { timeout: 6_000 });
+  });
 });

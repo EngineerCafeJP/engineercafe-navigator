@@ -46,6 +46,9 @@ const optionalServerEnvSchema = z.object({
   CRON_SECRET: z.string().optional(),
   OPENROUTER_API_KEY: z.string().optional(),
 
+  // Browser-visible backend URL for direct-call feature flags.
+  NEXT_PUBLIC_BACKEND_API_URL: z.string().url().optional(),
+
   // Alerting
   ALERT_WEBHOOK_SECRET: z.string().optional(),
   SLACK_WEBHOOK_URL: z.string().optional(),
@@ -58,6 +61,7 @@ const optionalServerEnvSchema = z.object({
   NEXT_PUBLIC_ENABLE_FACIAL_EXPRESSION: z.string().optional(),
   NEXT_PUBLIC_USE_WEB_SPEECH_API: z.string().optional(),
   NEXT_PUBLIC_SKIP_BACKEND: z.string().optional(),
+  NEXT_PUBLIC_QA_API_MODE: z.enum(['proxy', 'direct']).optional(),
 });
 
 // ---------------------------------------------------------------------------

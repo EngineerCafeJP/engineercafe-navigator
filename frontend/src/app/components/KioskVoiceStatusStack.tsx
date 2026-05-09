@@ -14,6 +14,8 @@ import { useEffect, useRef, useState } from 'react';
 import { getKioskResponseDisplayState } from '@/lib/kiosk-response-display';
 import type { VoiceLoadingPhase, VoiceSessionState } from './VoiceInterface';
 
+const LONG_WAIT_NOTICE_MS = 2500;
+
 export function KioskVoiceStatusStack({
   enabled,
   phase,
@@ -45,9 +47,25 @@ export function KioskVoiceStatusStack({
   const [responseVisibleUntil, setResponseVisibleUntil] = useState<number>(0);
   const [defaultPromptVisibleUntil, setDefaultPromptVisibleUntil] = useState<number>(0);
   const [errorVisibleUntil, setErrorVisibleUntil] = useState<number>(0);
+  const [showLongWaitNotice, setShowLongWaitNotice] = useState(false);
   const [now, setNow] = useState<number>(Date.now());
   const previousSessionStateRef = useRef<VoiceSessionState>(sessionState);
   const previousPhaseRef = useRef<KioskPhase>(phase);
+
+  useEffect(() => {
+    setShowLongWaitNotice(false);
+    if (!enabled || !isLoading || !loadingPhase) {
+      return;
+    }
+
+    const timerId = window.setTimeout(() => {
+      setShowLongWaitNotice(true);
+    }, LONG_WAIT_NOTICE_MS);
+
+    return () => {
+      window.clearTimeout(timerId);
+    };
+  }, [enabled, isLoading, loadingPhase]);
 
   useEffect(() => {
     if (!enabled) {
@@ -211,7 +229,7 @@ export function KioskVoiceStatusStack({
       {isSttLoading ? (
         <div className="flex w-full items-center gap-2 rounded-xl border border-white/30 bg-black/35 px-4 py-2 text-sm font-medium text-white/95 shadow-sm backdrop-blur-sm">
           <Loader2 className="size-4 shrink-0 animate-spin" />
-          <span>{labels.sttReading}</span>
+          <span>{showLongWaitNotice ? labels.sttStillReading : labels.sttReading}</span>
         </div>
       ) : null}
       {isListeningVisible ? (
@@ -223,7 +241,7 @@ export function KioskVoiceStatusStack({
       {isAnswerLoading ? (
         <div className="flex w-full items-center gap-2 rounded-xl border border-white/30 bg-black/35 px-4 py-2 text-sm font-medium text-white/95 shadow-sm backdrop-blur-sm">
           <Loader2 className="size-4 shrink-0 animate-spin" />
-          <span>{labels.preparingAnswer}</span>
+          <span>{showLongWaitNotice ? labels.answerStillPreparing : labels.preparingAnswer}</span>
         </div>
       ) : null}
       {isTranscriptVisible ? (
@@ -243,7 +261,7 @@ export function KioskVoiceStatusStack({
       {isTtsSynthesizing ? (
         <div className="flex w-full items-center gap-2 rounded-xl border border-white/30 bg-black/35 px-4 py-2 text-sm font-medium text-white/95 shadow-sm backdrop-blur-sm">
           <Loader2 className="size-4 shrink-0 animate-spin" />
-          <span>{labels.ttsSynthesizing}</span>
+          <span>{showLongWaitNotice ? labels.ttsStillSynthesizing : labels.ttsSynthesizing}</span>
         </div>
       ) : null}
       {isResponseVisible ? (
