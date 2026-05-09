@@ -645,6 +645,13 @@ export default function CharacterAvatar({
     };
 
     window.addEventListener('resize', handleResize);
+    window.addEventListener('orientationchange', handleResize);
+    window.visualViewport?.addEventListener('resize', handleResize);
+    const resizeObserver =
+      typeof ResizeObserver !== 'undefined' && containerRef.current
+        ? new ResizeObserver(handleResize)
+        : null;
+    resizeObserver?.observe(containerRef.current);
 
     animate();
 
@@ -652,6 +659,9 @@ export default function CharacterAvatar({
       ok: true,
       disposeResize: () => {
         window.removeEventListener('resize', handleResize);
+        window.removeEventListener('orientationchange', handleResize);
+        window.visualViewport?.removeEventListener('resize', handleResize);
+        resizeObserver?.disconnect();
       },
     };
   };
