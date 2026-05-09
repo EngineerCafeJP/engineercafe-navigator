@@ -78,7 +78,15 @@ minutes = int(sys.argv[1])
 print((datetime.now(timezone.utc) - timedelta(minutes=minutes)).isoformat().replace("+00:00", "Z"))
 PY
 )"
-BASE_FILTER="resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"$SERVICE_NAME\" AND resource.labels.location=\"$REGION\" AND jsonPayload.event=\"stt_winner\" AND timestamp >= \"$SINCE\""
+EVENT_FILTER='(jsonPayload.event="stt_winner"'
+EVENT_FILTER="$EVENT_FILTER OR jsonPayload.event=\"stt_request_complete\""
+EVENT_FILTER="$EVENT_FILTER OR jsonPayload.event=\"stt_audio_prepare_complete\""
+EVENT_FILTER="$EVENT_FILTER OR jsonPayload.event=\"stt_qwen_runtime_complete\""
+EVENT_FILTER="$EVENT_FILTER OR jsonPayload.event=\"stt_vosk_runtime_complete\""
+EVENT_FILTER="$EVENT_FILTER OR jsonPayload.event=\"stt_qwen_hedge_start\""
+EVENT_FILTER="$EVENT_FILTER OR jsonPayload.event=\"stt_qwen_hedge_grace_complete\""
+EVENT_FILTER="$EVENT_FILTER OR jsonPayload.event=\"stt_qwen_rejected\")"
+BASE_FILTER="resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"$SERVICE_NAME\" AND resource.labels.location=\"$REGION\" AND $EVENT_FILTER AND timestamp >= \"$SINCE\""
 GATE_FILTER="$BASE_FILTER"
 if [ -n "$GATE_REVISION" ]; then
   GATE_FILTER="$GATE_FILTER AND resource.labels.revision_name=\"$GATE_REVISION\""
@@ -132,23 +140,28 @@ def load_rows(raw_path: str) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for entry in entries if isinstance(entries, list) else []:
         payload = entry.get("jsonPayload") or {}
-        if payload.get("event") != "stt_winner":
+        event = payload.get("event")
+        if not isinstance(event, str) or not event.startswith("stt_"):
             continue
-        duration = payload.get("stt_overall_duration_ms")
-        try:
-            duration_ms = int(duration)
-        except Exception:
-            continue
+        duration_ms = None
+        if event == "stt_winner":
+            duration = payload.get("stt_overall_duration_ms")
+            try:
+                duration_ms = int(duration)
+            except Exception:
+                continue
         rows.append(
             {
                 "timestamp": entry.get("timestamp"),
                 "revision": (entry.get("resource") or {}).get("labels", {}).get("revision_name"),
+                "event": event,
                 "trace_id": payload.get("stt_trace_id") or "",
                 "winner": payload.get("stt_winner") or payload.get("provider") or "unknown",
                 "provider": payload.get("provider") or "unknown",
                 "duration_ms": duration_ms,
                 "success": payload.get("success"),
                 "qwen_error_type": payload.get("qwen_error_type") or "",
+                "payload": payload,
             }
         )
     return rows
@@ -163,32 +176,89 @@ def percentile(values: list[int], pct: float) -> int | None:
 
 
 def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
-    durations = [row["duration_ms"] for row in rows]
+    winner_rows = [row for row in rows if row["event"] == "stt_winner"]
+    durations = [row["duration_ms"] for row in winner_rows if row["duration_ms"] is not None]
     timeout_rows = [row for row in rows if row["qwen_error_type"] == "TimeoutError"]
-    over_10s = [row for row in rows if row["duration_ms"] > 10_000]
+    over_10s = [
+        row
+        for row in winner_rows
+        if row["duration_ms"] is not None and row["duration_ms"] > 10_000
+    ]
     p95 = percentile(durations, 0.95) or 0
-    over_10s_ratio = (len(over_10s) / len(rows)) if rows else 1.0
-    passed = bool(rows) and not timeout_rows and (
+    over_10s_ratio = (len(over_10s) / len(winner_rows)) if winner_rows else 1.0
+    passed = bool(winner_rows) and not timeout_rows and (
         p95 <= 10_000 or (p95 <= 12_000 and over_10s_ratio <= 0.10)
     )
     return {
+        "winner_rows": winner_rows,
         "durations": durations,
-        "winner_counts": Counter(str(row["winner"]) for row in rows),
-        "provider_counts": Counter(str(row["provider"]) for row in rows),
+        "event_counts": Counter(str(row["event"]) for row in rows),
+        "winner_counts": Counter(str(row["winner"]) for row in winner_rows),
+        "provider_counts": Counter(str(row["provider"]) for row in winner_rows),
         "revision_counts": Counter(str(row["revision"]) for row in rows),
         "timeout_rows": timeout_rows,
         "over_10s": over_10s,
-        "over_30s": [row for row in rows if row["duration_ms"] > 30_000],
+        "over_30s": [
+            row
+            for row in winner_rows
+            if row["duration_ms"] is not None and row["duration_ms"] > 30_000
+        ],
         "p95": p95,
         "over_10s_ratio": over_10s_ratio,
         "passed": passed,
     }
 
 
+def append_float(values: list[float], value: Any) -> None:
+    try:
+        values.append(float(value))
+    except (TypeError, ValueError):
+        pass
+
+
+def summarize_breakdown(rows: list[dict[str, Any]]) -> dict[str, list[float]]:
+    values: dict[str, list[float]] = {
+        "backend_stt_request": [],
+        "base64_decode": [],
+        "audio_prepare": [],
+        "audio_conversion": [],
+        "qwen_runtime": [],
+        "qwen_model_inference": [],
+        "vosk_runtime": [],
+        "vosk_recognition": [],
+        "hedge_wait": [],
+        "qwen_grace_wait": [],
+    }
+    for row in rows:
+        payload = row["payload"]
+        event = row["event"]
+        if event == "stt_request_complete":
+            append_float(values["backend_stt_request"], payload.get("stt_request_duration_ms"))
+            append_float(values["base64_decode"], payload.get("stt_base64_decode_duration_ms"))
+        elif event == "stt_audio_prepare_complete":
+            append_float(values["audio_prepare"], payload.get("stt_audio_prepare_duration_ms"))
+            append_float(values["audio_conversion"], payload.get("stt_audio_conversion_duration_ms"))
+        elif event == "stt_qwen_runtime_complete":
+            append_float(values["qwen_runtime"], payload.get("stt_qwen_runtime_duration_ms"))
+            append_float(
+                values["qwen_model_inference"],
+                payload.get("stt_qwen_model_inference_duration_ms"),
+            )
+        elif event == "stt_vosk_runtime_complete":
+            append_float(values["vosk_runtime"], payload.get("stt_vosk_runtime_duration_ms"))
+            append_float(values["vosk_recognition"], payload.get("stt_vosk_recognition_duration_ms"))
+        elif event == "stt_qwen_hedge_start":
+            append_float(values["hedge_wait"], payload.get("stt_hedge_wait_duration_ms"))
+        elif event == "stt_winner":
+            append_float(values["qwen_grace_wait"], payload.get("stt_qwen_grace_wait_duration_ms"))
+    return values
+
+
 gate_rows = load_rows(gate_path)
 history_rows = load_rows(history_path)
 gate = summarize(gate_rows)
 history = summarize(history_rows)
+breakdown = summarize_breakdown(gate_rows)
 durations = gate["durations"]
 passed = bool(gate["passed"])
 timeout_rows = gate["timeout_rows"]
@@ -206,8 +276,9 @@ lines = [
     f"- Gate revision: {gate_revision or 'all revisions'}",
     f"- Lookback minutes: {minutes}",
     f"- Log limit: {limit}",
-    f"- Gate samples: {len(gate_rows)}",
-    f"- Historical samples: {len(history_rows)}",
+    f"- Gate STT events: {len(gate_rows)}",
+    f"- Gate winner samples: {len(gate['winner_rows'])}",
+    f"- Historical STT events: {len(history_rows)}",
     f"- Overall passed: {'yes' if passed else 'no'}",
     "",
     "## Gate Latency",
@@ -233,6 +304,20 @@ lines.extend(["", "## Revision Distribution", "", "| Revision | Count |", "| ---
 for key, value in gate["revision_counts"].most_common():
     lines.append(f"| {key} | {value} |")
 
+lines.extend(["", "## Event Coverage", "", "| Event | Count |", "| --- | ---: |"])
+for key, value in gate["event_counts"].most_common():
+    lines.append(f"| {key} | {value} |")
+
+lines.extend(["", "## Runtime Breakdown", "", "| Metric | Count | p50 ms | p95 ms | max ms |", "| --- | ---: | ---: | ---: | ---: |"])
+for key, values in breakdown.items():
+    int_values = [int(value) for value in values]
+    lines.append(
+        f"| {key} | {len(values)} | "
+        f"{percentile(int_values, 0.50) if int_values else 'n/a'} | "
+        f"{percentile(int_values, 0.95) if int_values else 'n/a'} | "
+        f"{max(int_values) if int_values else 'n/a'} |"
+    )
+
 lines.extend(
     [
         "",
@@ -255,7 +340,8 @@ if gate_revision:
             "",
             "| Metric | Value |",
             "| --- | ---: |",
-            f"| samples | {len(history_rows)} |",
+            f"| STT events | {len(history_rows)} |",
+            f"| winner samples | {len(history['winner_rows'])} |",
             f"| p95 ms | {percentile(history['durations'], 0.95) if history['durations'] else 'n/a'} |",
             f"| max ms | {max(history['durations']) if history['durations'] else 'n/a'} |",
             f"| TimeoutError samples | {len(history['timeout_rows'])} |",
@@ -277,6 +363,9 @@ if timeout_rows or over_10s:
             "| --- | --- | --- | --- | --- | ---: | --- |",
         ]
     )
+    risk_candidates = [
+        row for row in timeout_rows + over_10s if row.get("duration_ms") is not None
+    ]
     risk_rows = {
         (
             row["timestamp"],
@@ -287,7 +376,7 @@ if timeout_rows or over_10s:
             row["duration_ms"],
             row["qwen_error_type"],
         ): row
-        for row in timeout_rows + over_10s
+        for row in risk_candidates
     }.values()
     for row in sorted(risk_rows, key=lambda x: x["duration_ms"], reverse=True)[:20]:
         lines.append(

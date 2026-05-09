@@ -10,6 +10,7 @@ set -euo pipefail
 PROJECT_ID="${STT_LOG_CHECK_PROJECT:-aipartner-426616}"
 SERVICE_NAME="${STT_LOG_CHECK_SERVICE:-engineer-cafe-backend}"
 REGION="${STT_LOG_CHECK_REGION:-asia-northeast1}"
+ENV_LABEL="${STT_LOG_CHECK_ENV_LABEL:-prod}"
 LIMIT=1000
 SINCE=""
 UNTIL=""
@@ -26,6 +27,7 @@ Options:
   --project ID         GCP project (default: aipartner-426616)
   --service NAME       Cloud Run service (default: engineer-cafe-backend)
   --region REGION      Cloud Run region (default: asia-northeast1)
+  --env-label LABEL    Environment/report label (default: prod)
   --revision NAME      Optional Cloud Run revision filter
   --limit N            Max log rows to read (default: 1000)
   --dry-run            Print the Cloud Logging filter without reading logs
@@ -33,8 +35,8 @@ Options:
 
 Reports:
   - stt_winner counts
-  - stt_overall_duration_ms p50/p90/max
-  - qwen/vosk runtime breakdown where available
+  - request_total, qwen_runtime, qwen_model_inference, winner, hedge/grace fields
+  - qwen/vosk runtime breakdown and model metadata where available
   - stt_qwen_rejected count
 EOF
   exit "${1:-0}"
@@ -91,6 +93,7 @@ while [ "$#" -gt 0 ]; do
     --project) [ "$#" -ge 2 ] || die "--project requires a value"; PROJECT_ID="$2"; shift 2 ;;
     --service) [ "$#" -ge 2 ] || die "--service requires a value"; SERVICE_NAME="$2"; shift 2 ;;
     --region) [ "$#" -ge 2 ] || die "--region requires a value"; REGION="$2"; shift 2 ;;
+    --env-label) [ "$#" -ge 2 ] || die "--env-label requires a value"; ENV_LABEL="$2"; shift 2 ;;
     --revision) [ "$#" -ge 2 ] || die "--revision requires a value"; REVISION="$2"; shift 2 ;;
     --limit) [ "$#" -ge 2 ] || die "--limit requires a value"; LIMIT="$2"; shift 2 ;;
     --dry-run) DRY_RUN=1; shift ;;
@@ -130,7 +133,9 @@ FILTER="$FILTER OR jsonPayload.event=\"stt_qwen_runtime_complete\""
 FILTER="$FILTER OR jsonPayload.event=\"stt_qwen_postprocess_complete\""
 FILTER="$FILTER OR jsonPayload.event=\"stt_vosk_runtime_complete\""
 FILTER="$FILTER OR jsonPayload.event=\"stt_qwen_hedge_start\""
+FILTER="$FILTER OR jsonPayload.event=\"stt_qwen_hedge_grace_start\""
 FILTER="$FILTER OR jsonPayload.event=\"stt_qwen_hedge_grace_complete\""
+FILTER="$FILTER OR jsonPayload.event=\"stt_qwen_hedge_grace_skipped\""
 FILTER="$FILTER OR jsonPayload.event=\"stt_qwen_rejected\")"
 
 if [ "$DRY_RUN" = "1" ]; then
@@ -138,6 +143,7 @@ if [ "$DRY_RUN" = "1" ]; then
   echo "Project: $PROJECT_ID"
   echo "Service: $SERVICE_NAME"
   echo "Region: $REGION"
+  echo "Environment label: $ENV_LABEL"
   echo "Revision: ${REVISION:-all revisions}"
   echo "Since UTC: $SINCE_UTC"
   echo "Until UTC: ${UNTIL_UTC:-none}"
@@ -155,7 +161,7 @@ gcloud logging read "$FILTER" \
   --limit "$LIMIT" \
   --format=json > "$LOG_JSON"
 
-python3 - "$LOG_JSON" "$PROJECT_ID" "$SERVICE_NAME" "$REGION" "$REVISION" "$SINCE_UTC" "${UNTIL_UTC:-}" "$LIMIT" <<'PY'
+python3 - "$LOG_JSON" "$PROJECT_ID" "$SERVICE_NAME" "$REGION" "$ENV_LABEL" "$REVISION" "$SINCE_UTC" "${UNTIL_UTC:-}" "$LIMIT" <<'PY'
 from __future__ import annotations
 
 from collections import Counter
@@ -164,7 +170,7 @@ import math
 import sys
 from typing import Any
 
-log_json, project, service, region, revision, since_utc, until_utc, limit_raw = sys.argv[1:9]
+log_json, project, service, region, env_label, revision, since_utc, until_utc, limit_raw = sys.argv[1:10]
 limit = int(limit_raw)
 
 with open(log_json, encoding="utf-8") as fh:
@@ -192,6 +198,9 @@ def fmt_ms(value: float | None) -> str:
 
 
 winner_counts: Counter[str] = Counter()
+qwen_model_names: Counter[str] = Counter()
+qwen_model_variants: Counter[str] = Counter()
+qwen_devices: Counter[str] = Counter()
 latencies: list[float] = []
 request_latencies: list[float] = []
 audio_prepare_latencies: list[float] = []
@@ -231,6 +240,12 @@ for entry in entries:
         append_float(audio_conversion_latencies, payload.get("stt_audio_conversion_duration_ms"))
         continue
     if event == "stt_qwen_runtime_complete":
+        if payload.get("model_name"):
+            qwen_model_names[str(payload.get("model_name"))] += 1
+        if payload.get("model_variant"):
+            qwen_model_variants[str(payload.get("model_variant"))] += 1
+        if payload.get("device"):
+            qwen_devices[str(payload.get("device"))] += 1
         append_float(qwen_runtime_latencies, payload.get("stt_qwen_runtime_duration_ms"))
         append_float(
             qwen_model_inference_latencies,
@@ -261,11 +276,24 @@ print("# STT Post-Deploy Logging Check")
 print()
 print(f"- Project: `{project}`")
 print(f"- Service: `{service}` / `{region}`")
+print(f"- Environment label: `{env_label}`")
 print(f"- Revision: `{revision or 'all revisions'}`")
 print(f"- Window UTC: `{since_utc}` to `{until_utc or 'now'}`")
 print(f"- Rows read: `{len(entries)}`")
 if len(entries) >= limit:
     print(f"- Limit warning: read hit the configured limit `{limit}`; rerun with a larger --limit if needed.")
+print()
+print("## Comparison Fields")
+print()
+print("| Field | Source |")
+print("| --- | --- |")
+print("| env_label | report option/env label |")
+print("| revision | Cloud Run `resource.labels.revision_name` filter |")
+print("| request_total | `stt_request_duration_ms` from `stt_request_complete` |")
+print("| qwen_runtime | `stt_qwen_runtime_duration_ms` from `stt_qwen_runtime_complete` |")
+print("| qwen_model_inference | `stt_qwen_model_inference_duration_ms` from `stt_qwen_runtime_complete` |")
+print("| winner | `stt_winner` from `stt_winner` |")
+print("| hedge/grace | `stt_hedge_wait_duration_ms` and `stt_qwen_grace_wait_duration_ms` |")
 print()
 print("## Events")
 print()
@@ -279,7 +307,9 @@ for event in (
     "stt_qwen_postprocess_complete",
     "stt_vosk_runtime_complete",
     "stt_qwen_hedge_start",
+    "stt_qwen_hedge_grace_start",
     "stt_qwen_hedge_grace_complete",
+    "stt_qwen_hedge_grace_skipped",
     "stt_qwen_rejected",
 ):
     print(f"| {event} | {event_counts.get(event, 0)} |")
@@ -294,6 +324,12 @@ if winner_counts:
 else:
     print("| n/a | 0 |")
 print()
+print("## Qwen Runtime Metadata")
+print()
+print(f"- model_name: `{dict(qwen_model_names) or 'n/a'}`")
+print(f"- model_variant: `{dict(qwen_model_variants) or 'n/a'}`")
+print(f"- device: `{dict(qwen_devices) or 'n/a'}`")
+print()
 print("## Latency")
 print()
 print("| Metric | Value ms |")
@@ -302,11 +338,20 @@ latency_rows = {
     "stt_overall p50": percentile(latencies, 0.50),
     "stt_overall p90": percentile(latencies, 0.90),
     "stt_overall max": max(latencies) if latencies else None,
+    "request_total p50": percentile(request_latencies, 0.50),
+    "request_total p90": percentile(request_latencies, 0.90),
+    "request_total max": max(request_latencies) if request_latencies else None,
     "backend_stt_request p50": percentile(request_latencies, 0.50),
     "audio_prepare p50": percentile(audio_prepare_latencies, 0.50),
     "audio_conversion p50": percentile(audio_conversion_latencies, 0.50),
     "qwen_runtime p50": percentile(qwen_runtime_latencies, 0.50),
+    "qwen_runtime p90": percentile(qwen_runtime_latencies, 0.90),
+    "qwen_runtime max": max(qwen_runtime_latencies) if qwen_runtime_latencies else None,
     "qwen_model_inference p50": percentile(qwen_model_inference_latencies, 0.50),
+    "qwen_model_inference p90": percentile(qwen_model_inference_latencies, 0.90),
+    "qwen_model_inference max": max(qwen_model_inference_latencies)
+    if qwen_model_inference_latencies
+    else None,
     "qwen_postprocess p50": percentile(qwen_postprocess_latencies, 0.50),
     "vosk_runtime p50": percentile(vosk_runtime_latencies, 0.50),
     "vosk_recognition p50": percentile(vosk_recognition_latencies, 0.50),
