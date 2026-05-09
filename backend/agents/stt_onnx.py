@@ -167,7 +167,9 @@ class QwenOnnxRuntime:
         required_files = (
             inference_path,
             onnx_dir / "encoder_conv.onnx",
+            onnx_dir / "encoder_conv.onnx.data",
             onnx_dir / "encoder_transformer.onnx",
+            onnx_dir / "encoder_transformer.onnx.data",
             onnx_dir / "decoder_init.int8.onnx",
             onnx_dir / "decoder_step.int8.onnx",
             onnx_dir / "embed_tokens.bin",
