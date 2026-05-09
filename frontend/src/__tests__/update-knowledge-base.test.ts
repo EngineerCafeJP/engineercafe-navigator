@@ -37,8 +37,11 @@ after(() => {
 });
 
 async function loadKnowledgeBaseUpdater() {
-  const module = await import('../jobs/update-knowledge-base');
-  return (module as any).KnowledgeBaseUpdater ?? (module as any).default.KnowledgeBaseUpdater;
+  const importedModule = await import('../jobs/update-knowledge-base');
+  return (
+    (importedModule as any).KnowledgeBaseUpdater ??
+    (importedModule as any).default.KnowledgeBaseUpdater
+  );
 }
 
 function createConnpassEvent(overrides: Record<string, unknown> = {}) {
