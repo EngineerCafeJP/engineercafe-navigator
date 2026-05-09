@@ -3,6 +3,54 @@
 Issue #513 Phase 1b monitors Cloud Run logs through Terraform-managed log metrics,
 dashboard panels, and alert policies. Terraform changes are applied manually after merge.
 
+## On-site Ops Gate
+
+Use `scripts/onsite-voice-live-proof.sh` for #774/#483/#489/#140 operational proof. It runs the
+real live path:
+
+```text
+/api/voice speech_to_text -> /api/chat -> /api/voice text_to_speech
+```
+
+Default pass/fail windows are based on the 2026-05-09 post-alpha baseline: STT was still the
+primary bottleneck (`p50=6877ms`, `p95/max=10006ms`), quick chat p50 was about `2486ms`, and
+PiperPlus TTS was usable but still required provider-fault proof.
+
+| Segment | PASS | WARN | FAIL |
+| --- | ---: | ---: | ---: |
+| STT | `<=5000ms` | `<=10000ms` | `>10000ms` |
+| Chat | `<=5000ms` | `<=10000ms` | `>10000ms` |
+| TTS | `<=5000ms` | `<=10000ms` | `>10000ms` |
+| Full turn (`STT+chat+TTS`) | `<=12000ms` | `<=15000ms` | `>15000ms` |
+
+Run from the repo root with a manifest built from actual kiosk/M5Stack microphone WAV files:
+
+```bash
+scripts/onsite-voice-live-proof.sh \
+  --manifest backend/evaluation/datasets/onsite_voice_live_manifest.example.json \
+  --timestamp onsite-YYYYMMDD-HHMM
+```
+
+Outputs:
+
+- `backend/tests/reports/onsite-voice-live-proof-<timestamp>.md`
+- `backend/tests/reports/onsite-voice-live-proof-<timestamp>.csv`
+- `backend/tests/reports/onsite-voice-ops-gate-<timestamp>.md`
+
+The shell gate fails on any runner failure, hop latency failure, missing STT/chat/TTS step, or
+full-turn latency failure. Thresholds are intentionally overridable for controlled experiments:
+`--stt-pass-ms`, `--stt-fail-ms`, `--chat-pass-ms`, `--chat-fail-ms`, `--tts-pass-ms`,
+`--tts-fail-ms`, `--full-turn-pass-ms`, and `--full-turn-fail-ms`.
+
+On-site checklist:
+
+1. Record WAV files on the target kiosk/M5Stack microphone path; do not use laptop fixtures.
+2. Note device, network, room/noise state, Cloud Run revision, and backend SHA beside the report.
+3. Run the matching Cloud Logging queries for the proof window.
+4. Treat TTS fallback, empty audio, `/api/chat` 5xx, memory helper errors, UUID hygiene hits, and
+   reception persistence errors as blockers until triaged.
+5. Do not apply Terraform from the on-site proof. Terraform remains review/plan/apply only.
+
 ## Alpha Live Verification Permission Note
 
 2026-04-25 の Alpha Live Verification run では、GitHub Actions の GCP service account
@@ -82,6 +130,58 @@ Triage:
 2. Check `sources` and `rag_fallback` for RAG degradation.
 3. Check Cloud Run request latency and 5xx logs for platform-level issues.
 4. Compare the current revision against the previous healthy revision.
+
+## TTS Response
+
+Primary signal: `jsonPayload.event="tts_complete"` with `tts_overall_duration_ms`, `provider`,
+`language`, `success`, `tts_cache_hit`, `fallback_used`, and `fallback_provider`.
+
+Useful Cloud Logging query:
+
+```text
+resource.type="cloud_run_revision"
+resource.labels.service_name="engineer-cafe-backend"
+jsonPayload.event="tts_complete"
+```
+
+High-latency query:
+
+```text
+resource.type="cloud_run_revision"
+resource.labels.service_name="engineer-cafe-backend"
+jsonPayload.event="tts_complete"
+jsonPayload.tts_overall_duration_ms>=5000
+```
+
+Failure or fallback query:
+
+```text
+resource.type="cloud_run_revision"
+resource.labels.service_name="engineer-cafe-backend"
+jsonPayload.event="tts_complete"
+(jsonPayload.success=false OR jsonPayload.fallback_used=true)
+```
+
+Triage:
+
+1. Split by `provider`, `language`, `tts_cache_hit`, and `fallback_used`.
+2. Check whether failures are empty audio, upstream provider failure, timeout, or fallback failure.
+3. Confirm whether on-site cases used long answers that should be shortened before TTS.
+4. Compare the TTS provider config against the last known healthy revision.
+
+## Full-Turn Latency
+
+There is no single production log event today that represents full user turn latency across
+STT, chat, and TTS. The operational gate derives full-turn latency from
+`onsite-voice-live-proof` CSV rows by summing:
+
+```text
+onsite_qwen_stt + live_langgraph_answer + live_answer_tts
+```
+
+Use the full-turn result in `onsite-voice-ops-gate-<timestamp>.md` as the on-site pass/fail signal.
+If it fails, inspect the hop table first; do not tune Cloud Monitoring thresholds until the slow hop
+is identified.
 
 ## Alpha Log Hygiene
 
