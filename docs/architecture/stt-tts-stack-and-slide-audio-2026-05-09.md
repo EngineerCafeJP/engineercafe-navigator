@@ -30,10 +30,10 @@ flowchart LR
   Browser --> Slides
 ```
 
-Production deploy sets `STT_PROVIDER=qwen-primary` and `TTS_PROVIDER=piper`.
-The STT path keeps Qwen-first accuracy and uses Vosk only as a fallback /
-hedged path. The STT latency work continues in #529; this document does not
-claim the `<1.5s` target is met.
+Production deploy sets `STT_PROVIDER=qwen-primary`, `TTS_PROVIDER=piper`, and
+`TTS_REQUIRE_PRIMARY_PROVIDER=true`. The STT path keeps Qwen-first accuracy and
+uses Vosk only as a fallback / hedged path. The STT latency work continues in
+#529; this document does not claim the `<1.5s` target is met.
 
 ## Slide Narration
 
@@ -61,7 +61,9 @@ PDF/Markdown narration update and keep the page count tests green.
 ## TTS Decision
 
 PiperPlus is the current production TTS stack. It is used for normal answer
-speech and for generated static narration/filler assets.
+speech, generated slide narration, and filler assets. Browser Web Speech
+fallback is not part of the production audio path; if PiperPlus cannot produce
+audio, the turn should fail visibly rather than switching to a different voice.
 
 Kokoro-82M remains a valid future research candidate, but it is not part of the
 alpha production stack. The Kokoro A/B issue is therefore closed as

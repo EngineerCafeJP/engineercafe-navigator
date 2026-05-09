@@ -394,7 +394,14 @@ def classify_fast_intent(query: str) -> Optional[FastIntent]:
         return FastIntent(
             "facility",
             "facility-info",
-            "food_drink" if match_keywords(lower_query, FOOD_DRINK_KEYWORDS) else "facility",
+            (
+                "food_drink"
+                if (
+                    match_keywords(lower_query, FOOD_DRINK_KEYWORDS)
+                    or match_keywords(lower_query, FOOD_DRINK_VERBS)
+                )
+                else "facility"
+            ),
             "Saino cafe facility reference detected",
         )
 

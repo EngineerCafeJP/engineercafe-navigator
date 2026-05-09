@@ -586,6 +586,34 @@ class TestVoiceEndpoint:
                 assert resp.upstreamStatus["provider"] == "piper"
 
     @pytest.mark.asyncio
+    async def test_voice_tts_provider_override_rejected_when_primary_required(self, monkeypatch):
+        from fastapi import HTTPException
+        from backend.main import VoiceRequest, voice_api
+
+        monkeypatch.setenv("TTS_PROVIDER", "piper")
+        monkeypatch.setenv("TTS_REQUIRE_PRIMARY_PROVIDER", "true")
+
+        body = VoiceRequest(action="text_to_speech", text="hello", ttsProvider="google")
+        with pytest.raises(HTTPException) as exc_info:
+            await voice_api(_mock_request(), body)
+
+        assert exc_info.value.status_code == 400
+        assert "ttsProvider overrides are disabled" in exc_info.value.detail
+
+    @pytest.mark.asyncio
+    async def test_voice_get_api_reports_piper_only_when_primary_required(self, monkeypatch):
+        from backend.main import voice_get_api
+
+        monkeypatch.setenv("TTS_PROVIDER", "piper")
+        monkeypatch.setenv("TTS_REQUIRE_PRIMARY_PROVIDER", "true")
+
+        resp = await voice_get_api()
+
+        assert resp["defaultTtsProvider"] == "piper"
+        assert resp["ttsProviderOverrideEnabled"] is False
+        assert resp["ttsProviders"] == [{"id": "piper", "label": "Piper-plus"}]
+
+    @pytest.mark.asyncio
     async def test_voice_tts_fallback_is_reported_in_upstream_status(self):
         mock_agent = AsyncMock()
         mock_agent.text_to_speech = AsyncMock(

@@ -76,6 +76,7 @@ Vercel project の Environment Variables に設定する。
 - non-secret env 例:
   - `ENVIRONMENT=production`
   - `TTS_PROVIDER=piper`
+  - `TTS_REQUIRE_PRIMARY_PROVIDER=true`
   - `STT_PROVIDER=qwen-primary`
   - `QWEN_STT_TIMEOUT=45`
   - `QWEN_STT_HEDGE_DELAY_SECONDS=2`
@@ -100,6 +101,7 @@ Vercel project の Environment Variables に設定する。
 | `SUPABASE_URL` / `SUPABASE_KEY` / `SUPABASE_DB_URI` | Yes | Supabase / Postgres 接続 |
 | `ALLOWED_ORIGINS` | Yes | CORS origin |
 | `TTS_PROVIDER` / `STT_PROVIDER` | Per deploy | 音声経路設定 |
+| `TTS_REQUIRE_PRIMARY_PROVIDER` | Production Piper deploy | `true` の場合、primary TTS 失敗時に別 provider へ黙って fallback しない |
 | `VOICEVOX_API_URL` | If using VoiceVox | `voicevox-proto` URL |
 
 注意:

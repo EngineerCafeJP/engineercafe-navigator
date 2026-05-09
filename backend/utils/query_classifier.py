@@ -16,6 +16,7 @@ from backend.utils.cafe_entity import (
     is_explicit_engineer_cafe_query,
     is_saino_reference,
     normalize_cafe_query,
+    resolve_cafe_entity,
 )
 
 logger = logging.getLogger(__name__)
@@ -214,28 +215,47 @@ class QueryClassifier:
     def _check_cafe_ambiguity(
         self, normalized_question: str, conversation_context: Optional[Dict] = None
     ) -> Dict[str, Any]:
-        """カフェの曖昧性をチェック"""
+        """Resolve cafe references under the Saino-first post-alpha policy."""
 
         # "カフェ" が含まれているかチェック
         if has_cafe_or_bar_token(normalized_question):
+            resolved_entity = resolve_cafe_entity(normalized_question)
             # 既にエンジニアカフェと明示されている場合
-            if is_explicit_engineer_cafe_query(normalized_question):
+            if resolved_entity == "engineer-cafe" or is_explicit_engineer_cafe_query(
+                normalized_question
+            ):
                 if self.debug_mode:
-                    logger.debug("Explicit Engineer Cafe query, treating as facility")
+                    logger.debug("Engineer Cafe query/context detected, treating as facility")
                 return {
                     "needs_clarification": False,
                     "category": "facility-info",
                     "confidence": 1.0,
+                    "debug_info": {
+                        "reason": "Engineer Cafe facility-use context detected",
+                        "cafe_entity_resolution": cafe_entity_metadata(
+                            entity="engineer_cafe",
+                            status="resolved",
+                            source="query_classifier",
+                        ),
+                    },
                 }
 
             # Sainoカフェと明示されている場合
-            if is_saino_reference(normalized_question):
+            if resolved_entity == "saino" or is_saino_reference(normalized_question):
                 if self.debug_mode:
-                    logger.debug("Explicit Saino Cafe query, treating as saino-cafe")
+                    logger.debug("Saino Cafe query/context detected, treating as saino-cafe")
                 return {
                     "needs_clarification": False,
                     "category": "saino-cafe",
-                    "confidence": 1.0,
+                    "confidence": 0.9,
+                    "debug_info": {
+                        "reason": "Saino-first cafe policy",
+                        "cafe_entity_resolution": cafe_entity_metadata(
+                            entity="saino_cafe",
+                            status="resolved",
+                            source="query_classifier_saino_first",
+                        ),
+                    },
                 }
 
             # enhanced featuresが有効で、clarificationが不要な場合
@@ -259,9 +279,10 @@ class QueryClassifier:
                     "confidence": 0.9,
                 }
 
-            # 曖昧な場合は確認が必要
+            # 明示的に「どちらのカフェか」を問う場合のみ確認へ回す。
             if (
-                "エンジニアカフェ" not in normalized_question
+                any(marker in normalized_question for marker in ("どっち", "どちら", "which"))
+                and "エンジニアカフェ" not in normalized_question
                 and "engineercafe" not in normalized_question
             ):
                 return {

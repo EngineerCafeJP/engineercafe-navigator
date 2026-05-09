@@ -222,14 +222,31 @@ class TestOrchestratorFastRouting:
                 result["request_type"] == expected_type
             ), f"Query '{query}' should be {expected_type} type"
 
-    def test_ambiguous_cafe_hours_needs_clarification(self, orchestrator):
-        """Bare カフェ hours must not fast-route to Engineer Cafe hours."""
+    def test_bare_cafe_hours_routes_to_saino(self, orchestrator):
+        """Bare カフェ hours should use the Saino-first policy."""
         result = orchestrator._try_fast_routing("カフェの営業時間は？")
 
         assert result is not None
-        assert result["agent"] == "general_knowledge"
-        assert result["category"] == "cafe-clarification-needed"
-        assert result["request_type"] == "clarification"
+        assert result["agent"] == "business_info"
+        assert result["category"] == "saino-cafe"
+        assert result["request_type"] == "hours"
+
+    @pytest.mark.parametrize(
+        "query,agent,request_type",
+        [
+            ("カフェでイベントはできますか？", "event", "event"),
+            ("コワーキングスペースの営業時間は？", "business_info", "hours"),
+            ("カフェで施設利用の営業時間を教えて", "business_info", "hours"),
+        ],
+    )
+    def test_cafe_facility_context_prefers_engineer_cafe(
+        self, orchestrator, query, agent, request_type
+    ):
+        result = orchestrator._try_fast_routing(query)
+
+        assert result is not None
+        assert result["agent"] == agent
+        assert result["request_type"] == request_type
 
     @pytest.mark.parametrize(
         "query",
@@ -269,14 +286,14 @@ class TestOrchestratorFastRouting:
                 result["agent"] == "business_info"
             ), f"Query '{query}' should route to business_info"
 
-    def test_ambiguous_english_cafe_hours_needs_clarification(self, orchestrator):
-        """Bare English cafe hours must not collapse to Engineer Cafe hours."""
+    def test_bare_english_cafe_hours_routes_to_saino(self, orchestrator):
+        """Bare English cafe hours should use the Saino-first policy."""
         result = orchestrator._try_fast_routing("Is the cafe closed on weekends?")
 
         assert result is not None
-        assert result["agent"] == "general_knowledge"
-        assert result["category"] == "cafe-clarification-needed"
-        assert result["request_type"] == "clarification"
+        assert result["agent"] == "business_info"
+        assert result["category"] == "saino-cafe"
+        assert result["request_type"] == "hours"
 
     def test_pricing_extended_keywords(self, orchestrator):
         """新規料金キーワード: free, フリー, タダ, 利用料"""

@@ -164,15 +164,8 @@ const LOADING_LABELS = {
   },
 } as const;
 
-const FAST_FILLER_ENABLED =
-  process.env.NEXT_PUBLIC_FAST_FILLER_ENABLED !== 'false';
 const PARALLEL_VOICE_FILLER_ENABLED =
   process.env.NEXT_PUBLIC_PARALLEL_VOICE_FILLER !== 'false';
-const FAST_FILLER_DELAY_MS = 350;
-const FAST_FILLER_TEXT = {
-  ja: '確認しています。',
-  en: 'Let me check.',
-} as const;
 const AUTO_VRM_PLAYBACK_WAIT_MS = 180;
 
 /** UUID v4 を生成する。crypto.randomUUID が無い環境（HTTP や古いブラウザ）用のフォールバック付き。 */
@@ -319,7 +312,6 @@ export default function VoiceInterface({
   const voiceTurnInProgressRef = useRef(false);
   const forceSkipAutoResumeRef = useRef(false);
   const fastFillerTimerRef = useRef<number | null>(null);
-  const fastFillerUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const pendingIOSPlaybackRef = useRef<{
     audioBase64: string;
     metadata: VoiceInterfaceMetadata | null;
@@ -401,46 +393,11 @@ export default function VoiceInterface({
       window.clearTimeout(fastFillerTimerRef.current);
       fastFillerTimerRef.current = null;
     }
-    fastFillerUtteranceRef.current = null;
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-    }
   }, []);
 
   const scheduleFastFiller = useCallback(() => {
-    if (
-      !FAST_FILLER_ENABLED ||
-      isMuted ||
-      typeof window === 'undefined' ||
-      !('speechSynthesis' in window) ||
-      typeof SpeechSynthesisUtterance === 'undefined'
-    ) {
-      return;
-    }
-
-    if (fastFillerTimerRef.current !== null) {
-      window.clearTimeout(fastFillerTimerRef.current);
-    }
-
-    fastFillerTimerRef.current = window.setTimeout(() => {
-      fastFillerTimerRef.current = null;
-      const utterance = new SpeechSynthesisUtterance(
-        FAST_FILLER_TEXT[currentLanguage],
-      );
-      utterance.lang = toLocale(currentLanguage);
-      utterance.volume = Math.max(0, Math.min(1, volume));
-      utterance.rate = currentLanguage === 'ja' ? 1.08 : 1.0;
-      utterance.pitch = 1.0;
-      utterance.onend = () => {
-        if (fastFillerUtteranceRef.current === utterance) {
-          fastFillerUtteranceRef.current = null;
-        }
-      };
-      utterance.onerror = utterance.onend;
-      fastFillerUtteranceRef.current = utterance;
-      window.speechSynthesis.speak(utterance);
-    }, FAST_FILLER_DELAY_MS);
-  }, [currentLanguage, isMuted, volume]);
+    cancelFastFiller();
+  }, [cancelFastFiller]);
 
   const ensureAudioService = useCallback(() => {
     if (!mobileAudioServiceRef.current) {
@@ -886,6 +843,7 @@ export default function VoiceInterface({
 
         const ttsBody: Record<string, unknown> = {
           action: 'text_to_speech',
+          ttsProvider: 'piper',
           text: preprocessTTS(cleanAnswer, responseLanguage),
           language: responseLanguage,
           sessionId: sessionIdRef.current,
@@ -1102,6 +1060,7 @@ export default function VoiceInterface({
 
         const ttsBody: Record<string, unknown> = {
           action: 'text_to_speech',
+          ttsProvider: 'piper',
           text: preprocessTTS(cleanAnswer, responseLanguage),
           language: responseLanguage,
           sessionId: sessionIdRef.current,
@@ -1214,6 +1173,7 @@ export default function VoiceInterface({
         const responseLanguage = resolveVoiceResponseLanguage(metadataForPlayback, currentLanguage);
         const ttsBody: Record<string, unknown> = {
           action: 'text_to_speech',
+          ttsProvider: 'piper',
           text: preprocessTTS(cleanAnswer, responseLanguage),
           language: responseLanguage,
           sessionId: sessionIdRef.current,

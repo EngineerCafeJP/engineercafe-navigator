@@ -15,6 +15,7 @@ from backend.utils.cafe_entity import (
     is_ambiguous_cafe_hours_query,
     is_saino_reference,
     normalize_cafe_query,
+    resolve_cafe_entity,
 )
 from backend.utils.language_types import DEFAULT_NOT_FOUND_RESPONSE, LANGUAGE_INSTRUCTION
 
@@ -446,6 +447,22 @@ Information: {context}
     ) -> Optional[Dict]:
         """Return complete answers for common visitor-critical business questions."""
         normalized = normalize_cafe_query(query)
+        cafe_entity = resolve_cafe_entity(normalized)
+        if cafe_entity == "saino":
+            answer = self._saino_cafe_answer(normalized, language, request_type)
+            if answer:
+                return self._canonical_result(
+                    answer,
+                    request_type,
+                    category="saino-cafe",
+                    cafe_entity_resolution=cafe_entity_metadata(
+                        entity="saino_cafe",
+                        status="resolved",
+                        source="business_info_canonical_saino_first",
+                        request_type=request_type,
+                    ),
+                )
+
         if is_ambiguous_cafe_hours_query(normalized):
             return self._canonical_result(
                 self._ambiguous_cafe_hours_answer(language),

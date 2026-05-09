@@ -3,7 +3,7 @@
 /**
  * Kiosk: reception PDF from public/reception/engineer-cafe-{ja,en}.pdf.
  * Optional per-page audio: public/reception/audio/{lang}/01.mp3 …
- * Falls back to Web Speech API using narration Markdown (no LLM).
+ * Generated narration uses the backend Piper Plus voice path.
  */
 import { useKeyboardControls } from '@/app/hooks/useKeyboardControls';
 import { audioStateManager } from '@/lib/audio-state-manager';
@@ -87,37 +87,6 @@ function useLandscapeReady(): boolean {
   return landscape;
 }
 
-async function speakNarrationText(
-  text: string,
-  language: 'ja' | 'en',
-  signal: AbortSignal,
-): Promise<void> {
-  if (typeof window === 'undefined' || !window.speechSynthesis) {
-    await new Promise((r) => setTimeout(r, Math.min(15000, 600 + text.length * 45)));
-    return;
-  }
-  return new Promise((resolve) => {
-    window.speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = language === 'ja' ? 'ja-JP' : 'en-US';
-    u.rate = 1;
-    const onAbort = () => {
-      window.speechSynthesis.cancel();
-      resolve();
-    };
-    signal.addEventListener('abort', onAbort);
-    u.onend = () => {
-      signal.removeEventListener('abort', onAbort);
-      resolve();
-    };
-    u.onerror = () => {
-      signal.removeEventListener('abort', onAbort);
-      resolve();
-    };
-    window.speechSynthesis.speak(u);
-  });
-}
-
 /** flex 子で contentRect.height が 0 のとき client から内側の描画域を拾う */
 function measurePdfWrapContent(
   el: HTMLDivElement,
@@ -154,7 +123,7 @@ interface ReceptionPdfGuideProps {
   rotateLandscapeHint: string;
   autoStartKey?: number;
   className?: string;
-  /** Passed to PiperPlus `/api/voice` narration (optional Web Speech fallback). */
+  /** Passed to PiperPlus `/api/voice` narration. */
   sessionId?: string;
   onVisemeControl?: ((viseme: string, intensity: number) => void) | null;
   onExpressionControl?: ((expression: string, weight: number) => void) | null;
@@ -363,11 +332,6 @@ export default function ReceptionPdfGuide({
     const preloadedAudio = preloadedAudioRef.current;
     const preloadedAudioState = preloadedAudioStateRef.current;
     return () => {
-      try {
-        window.speechSynthesis?.cancel();
-      } catch {
-        /* ignore */
-      }
       for (const audio of Array.from(preloadedAudio.values())) {
         audio.pause();
         audio.removeAttribute('src');
@@ -487,11 +451,6 @@ export default function ReceptionPdfGuide({
       isNarrationInProgressRef.current = false;
       setIsNarrating(false);
       setIsNarrationInProgress(false);
-      try {
-        window.speechSynthesis?.cancel();
-      } catch {
-        /* ignore */
-      }
       audioStateManager.stopAll();
       onVisemeControl?.('Closed', 0);
       onExpressionControl?.('neutral', 1.0);
@@ -732,11 +691,6 @@ export default function ReceptionPdfGuide({
 
   const clearPlaybackWork = useCallback(() => {
     stopActiveNarration();
-    try {
-      window.speechSynthesis?.cancel();
-    } catch {
-      /* ignore */
-    }
     if (autoPlayTimerRef.current) {
       clearTimeout(autoPlayTimerRef.current);
       autoPlayTimerRef.current = null;
@@ -919,47 +873,46 @@ export default function ReceptionPdfGuide({
         return;
       }
       let playedPiper = false;
-      const sidTrim = sessionId.trim();
-      if (sidTrim.length > 0) {
-        try {
-          const res = await fetch('/api/voice', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              action: 'text_to_speech',
-              text: preprocessTTS(text, language),
-              language,
-              sessionId: sidTrim,
-              includeVrmControl: false,
-            }),
-            signal,
-          });
-          const data = (await res.json()) as Record<string, unknown>;
-          if (
-            res.ok &&
-            data.success &&
-            typeof data.audioResponse === 'string' &&
-            data.audioResponse.length > 0
-          ) {
-            const raw = Uint8Array.from(atob(data.audioResponse), (c) => c.charCodeAt(0));
-            const buf = raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength);
-            if (!isActiveNarrationRun(run)) {
-              return;
-            }
-            const result = await playNarrationAudio(buf, run);
-            playedPiper = result.success;
-          }
-        } catch {
+      const sidTrim = sessionId.trim() || `reception-guide-${sid}`;
+      try {
+        const res = await fetch('/api/voice', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            action: 'text_to_speech',
+            ttsProvider: 'piper',
+            text: preprocessTTS(text, language),
+            language,
+            sessionId: sidTrim,
+            includeVrmControl: false,
+          }),
+          signal,
+        });
+        const data = (await res.json()) as Record<string, unknown>;
+        if (
+          res.ok &&
+          data.success &&
+          typeof data.audioResponse === 'string' &&
+          data.audioResponse.length > 0
+        ) {
+          const raw = Uint8Array.from(atob(data.audioResponse), (c) => c.charCodeAt(0));
+          const buf = raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength);
           if (!isActiveNarrationRun(run)) {
             return;
           }
-          playedPiper = false;
+          const result = await playNarrationAudio(buf, run);
+          playedPiper = result.success;
         }
+      } catch {
+        if (!isActiveNarrationRun(run)) {
+          return;
+        }
+        playedPiper = false;
       }
       if (!playedPiper) {
-        await speakNarrationText(text, language, signal);
+        throw new Error('Piper Plus narration audio is not available');
       }
       if (!isActiveNarrationRun(run)) {
         return;
@@ -972,6 +925,11 @@ export default function ReceptionPdfGuide({
         return;
       }
       if (isActiveNarrationRun(run)) {
+        setError(
+          language === 'ja'
+            ? 'Piper Plus の音声を準備できませんでした。'
+            : 'Piper Plus narration audio was not available.',
+        );
         invalidatePlaybackSession();
         setIsPlaying(false);
         onPresentationComplete?.('stopped');
