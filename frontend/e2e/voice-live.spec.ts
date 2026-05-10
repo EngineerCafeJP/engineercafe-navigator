@@ -1,7 +1,10 @@
-import fs from 'node:fs';
-import path from 'node:path';
+import { expect, test, type Page } from '@playwright/test';
 
-import { expect, test, type Page, type Request } from '@playwright/test';
+import {
+  dismissInitialModal,
+  installDeterministicVoiceRecorder,
+  parseVoiceAction,
+} from './helpers/voice';
 
 const voiceLive = process.env.PLAYWRIGHT_VOICE_LIVE === '1';
 
@@ -24,27 +27,6 @@ function normalizeText(value: string | null | undefined): string {
     .replace(/^(応答|Response)\s*:\s*/i, '')
     .replace(/\s+/g, ' ')
     .trim();
-}
-
-async function installDeterministicVoiceRecorder(page: Page): Promise<void> {
-  const sampleAudioBase64 = fs
-    .readFileSync(path.resolve(__dirname, 'fixtures/voice/sample.wav'))
-    .toString('base64');
-
-  await page.addInitScript(({ audioBase64 }) => {
-    (window as Window & { __PLAYWRIGHT_VOICE_AUDIO_BASE64__?: string }).__PLAYWRIGHT_VOICE_AUDIO_BASE64__ =
-      audioBase64;
-  }, { audioBase64: sampleAudioBase64 });
-}
-
-async function selectEnglishAndClose(page: Page, timeout = 15_000): Promise<void> {
-  const dialog = page.getByRole('dialog', { name: /初期設定|Initial Settings/i });
-  await expect(dialog).toBeVisible({ timeout });
-  await page.waitForTimeout(500);
-  const closeButton = dialog.getByTestId('initial-settings-close');
-  await expect(closeButton).toBeVisible({ timeout });
-  await closeButton.click();
-  await expect(dialog).toBeHidden({ timeout });
 }
 
 function parsePositiveInteger(value: string | undefined, fallback: number): number {
@@ -102,17 +84,6 @@ async function warmupSttForLiveVoice(
   );
 }
 
-function parseAction(request: Request): string | undefined {
-  const raw = request.postData();
-  if (!raw) return undefined;
-  try {
-    const parsed = JSON.parse(raw) as { action?: unknown };
-    return typeof parsed.action === 'string' ? parsed.action : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 async function readResponseText(page: Page): Promise<string> {
   const responseText = page.getByTestId('response-text');
   if ((await responseText.count()) === 0) {
@@ -149,11 +120,16 @@ test.describe('Voice live (browser voice round-trip against live backend)', () =
       const method = request.method();
       if (method !== 'POST') return;
       if (!(url.includes('/api/voice') || url.includes('/api/qa'))) return;
-      apiCalls.push({ url, method, action: parseAction(request) });
+      apiCalls.push({ url, method, action: parseVoiceAction(request) });
     });
 
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await selectEnglishAndClose(page);
+    await dismissInitialModal(page, {
+      closeButtonTimeoutMs: 15_000,
+      closeDelayMs: 500,
+      hiddenTimeoutMs: 15_000,
+      welcomeTimeoutMs: 15_000,
+    });
 
     const voiceButton = page.getByTestId('kiosk-voice-button');
     await expect(voiceButton).toBeVisible({ timeout: 15_000 });
@@ -169,7 +145,7 @@ test.describe('Voice live (browser voice round-trip against live backend)', () =
       (response) =>
         response.url().includes('/api/voice') &&
         response.request().method() === 'POST' &&
-        parseAction(response.request()) === 'speech_to_text',
+        parseVoiceAction(response.request()) === 'speech_to_text',
       { timeout: 120_000 },
     );
     const qaResponsePromise = page.waitForResponse(
@@ -181,7 +157,7 @@ test.describe('Voice live (browser voice round-trip against live backend)', () =
       (response) =>
         response.url().includes('/api/voice') &&
         response.request().method() === 'POST' &&
-        parseAction(response.request()) === 'text_to_speech',
+        parseVoiceAction(response.request()) === 'text_to_speech',
       { timeout: 120_000 },
     );
 

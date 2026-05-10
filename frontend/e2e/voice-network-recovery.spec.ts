@@ -1,53 +1,11 @@
-import fs from 'node:fs';
-import path from 'node:path';
+import { expect, test } from '@playwright/test';
 
-import { expect, test, type Page, type Route } from '@playwright/test';
-
-async function dismissInitialModal(page: Page) {
-  const modal = page.getByRole('dialog');
-  const closeButton = page.getByTestId('initial-settings-close');
-  if (await closeButton.isVisible({ timeout: 3_000 }).catch(() => false)) {
-    await page.waitForTimeout(1_500);
-    const deadline = Date.now() + 30_000;
-    while (Date.now() < deadline && !(await modal.isHidden().catch(() => false))) {
-      await closeButton.click({ timeout: 1_000, force: true }).catch(() => {});
-      if (!(await modal.isHidden().catch(() => false))) {
-        await closeButton
-          .evaluate((button) => {
-            if (button instanceof HTMLButtonElement) {
-              button.click();
-            }
-          })
-          .catch(() => {});
-      }
-      await page.waitForTimeout(250);
-    }
-    await expect(modal).toBeHidden({ timeout: 10_000 });
-  }
-  await expect(page.getByRole('button', { name: 'Welcome' })).toBeVisible({ timeout: 5_000 });
-}
-
-async function installDeterministicVoiceRecorder(page: Page) {
-  const sampleAudioBase64 = fs
-    .readFileSync(path.resolve(__dirname, 'fixtures/voice/sample.wav'))
-    .toString('base64');
-
-  await page.addInitScript(({ audioBase64 }) => {
-    (window as Window & { __PLAYWRIGHT_VOICE_AUDIO_BASE64__?: string }).__PLAYWRIGHT_VOICE_AUDIO_BASE64__ =
-      audioBase64;
-  }, { audioBase64: sampleAudioBase64 });
-}
-
-function requestAction(route: Route): string {
-  const raw = route.request().postData();
-  if (!raw) return '';
-  try {
-    const parsed = JSON.parse(raw) as { action?: unknown };
-    return typeof parsed.action === 'string' ? parsed.action : '';
-  } catch {
-    return '';
-  }
-}
+import {
+  dismissInitialModal,
+  failUnexpectedVoiceAction,
+  installDeterministicVoiceRecorder,
+  parseVoiceAction,
+} from './helpers/voice';
 
 test.describe('Voice network recovery (#584 F-1)', () => {
   test('STT network failure returns to idle and a second voice turn can succeed', async ({ page }) => {
@@ -68,7 +26,7 @@ test.describe('Voice network recovery (#584 F-1)', () => {
     });
 
     await page.route('**/api/voice', async (route) => {
-      const action = requestAction(route);
+      const action = parseVoiceAction(route.request());
       if (action === 'speech_to_text') {
         sttAttempts += 1;
         if (sttAttempts === 1) {
@@ -95,11 +53,21 @@ test.describe('Voice network recovery (#584 F-1)', () => {
         return;
       }
 
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ success: true }),
-      });
+      if (action === 'text_to_speech' || action === 'interrupt') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true }),
+        });
+        return;
+      }
+
+      await failUnexpectedVoiceAction(route, action, [
+        'speech_to_text',
+        'warmup',
+        'text_to_speech',
+        'interrupt',
+      ]);
     });
 
     await page.route('**/api/voice/filler', async (route) => {

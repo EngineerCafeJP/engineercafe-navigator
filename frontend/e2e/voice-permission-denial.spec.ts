@@ -1,53 +1,17 @@
-import fs from 'node:fs';
-import path from 'node:path';
+import { expect, test, type Page } from '@playwright/test';
 
-import { expect, test } from '@playwright/test';
+import {
+  dismissInitialModal,
+  failUnexpectedVoiceAction,
+  installDeterministicVoiceRecorder,
+  installIOSUserAgent,
+  installMicDenial,
+  parseVoiceAction,
+} from './helpers/voice';
 
 /**
  * Alpha #638 — getUserMedia rejection UX (WebKit project in playwright.config).
  */
-
-async function dismissInitialModal(page: import('@playwright/test').Page) {
-  const modal = page.getByRole('dialog');
-  const closeButton = page.getByTestId('initial-settings-close');
-  if (await closeButton.isVisible({ timeout: 3_000 }).catch(() => false)) {
-    await closeButton.click({ force: true }).catch(() => {});
-    await expect(modal).toBeHidden({ timeout: 10_000 });
-  }
-  await expect(page.getByRole('button', { name: 'Welcome' })).toBeVisible({ timeout: 5_000 });
-}
-
-async function installMicDenial(page: import('@playwright/test').Page, errorName: string) {
-  await page.addInitScript((name: string) => {
-    (window as Window & { __PLAYWRIGHT_VOICE_RECORDER_ERROR_NAME__?: string }).__PLAYWRIGHT_VOICE_RECORDER_ERROR_NAME__ =
-      name;
-  }, errorName);
-}
-
-async function installDeterministicVoiceRecorder(page: import('@playwright/test').Page) {
-  const sampleAudioBase64 = fs
-    .readFileSync(path.resolve(__dirname, 'fixtures/voice/sample.wav'))
-    .toString('base64');
-
-  await page.addInitScript(({ audioBase64 }) => {
-    (window as Window & { __PLAYWRIGHT_VOICE_AUDIO_BASE64__?: string }).__PLAYWRIGHT_VOICE_AUDIO_BASE64__ =
-      audioBase64;
-  }, { audioBase64: sampleAudioBase64 });
-}
-
-async function installIOSUserAgent(page: import('@playwright/test').Page) {
-  await page.addInitScript(() => {
-    Object.defineProperty(navigator, 'userAgent', {
-      configurable: true,
-      value:
-        'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
-    });
-    Object.defineProperty(navigator, 'maxTouchPoints', {
-      configurable: true,
-      value: 5,
-    });
-  });
-}
 
 test.describe('Microphone permission denial (#638)', () => {
   test.beforeEach(async ({ page }) => {
@@ -63,15 +27,32 @@ test.describe('Microphone permission denial (#638)', () => {
       });
     });
     await page.route('**/api/voice', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ success: true }),
-      });
+      const action = parseVoiceAction(route.request());
+
+      if (
+        action === 'warmup' ||
+        action === 'speech_to_text' ||
+        action === 'text_to_speech' ||
+        action === 'interrupt'
+      ) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true }),
+        });
+        return;
+      }
+
+      await failUnexpectedVoiceAction(route, action, [
+        'warmup',
+        'speech_to_text',
+        'text_to_speech',
+        'interrupt',
+      ]);
     });
   });
 
-  async function assertMicDeniedRecovery(page: import('@playwright/test').Page) {
+  async function assertMicDeniedRecovery(page: Page) {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await dismissInitialModal(page);
 
@@ -105,8 +86,7 @@ test.describe('Microphone permission denial (#638)', () => {
     });
 
     await page.route('**/api/voice', async (route) => {
-      const raw = route.request().postData();
-      const action = raw ? (JSON.parse(raw) as { action?: string }).action : '';
+      const action = parseVoiceAction(route.request());
       if (action === 'speech_to_text') {
         await route.fulfill({
           status: 200,
@@ -118,11 +98,22 @@ test.describe('Microphone permission denial (#638)', () => {
         });
         return;
       }
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ success: true, sttWarmupStatus: 'ready' }),
-      });
+
+      if (action === 'warmup' || action === 'text_to_speech' || action === 'interrupt') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true, sttWarmupStatus: 'ready' }),
+        });
+        return;
+      }
+
+      await failUnexpectedVoiceAction(route, action, [
+        'speech_to_text',
+        'warmup',
+        'text_to_speech',
+        'interrupt',
+      ]);
     });
 
     await page.route('**/api/qa', async (route) => {
