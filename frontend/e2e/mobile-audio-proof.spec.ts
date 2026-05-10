@@ -5,6 +5,9 @@ import { expect, test, type Page, type Request } from '@playwright/test';
 
 import { MOCK_VOICE_RESPONSE, setupWebAudioMock } from './helpers/mocks';
 
+const sampleVoiceFixturePath = path.resolve(__dirname, 'fixtures/voice/sample.wav');
+const hasSampleVoiceFixture = fs.existsSync(sampleVoiceFixturePath);
+
 interface ObservedCalls {
   stt: number;
   qa: number;
@@ -12,9 +15,7 @@ interface ObservedCalls {
 }
 
 async function installDeterministicVoiceRecorder(page: Page): Promise<void> {
-  const sampleAudioBase64 = fs
-    .readFileSync(path.resolve(__dirname, 'fixtures/voice/sample.wav'))
-    .toString('base64');
+  const sampleAudioBase64 = fs.readFileSync(sampleVoiceFixturePath).toString('base64');
 
   await page.addInitScript(({ audioBase64 }) => {
     (window as Window & { __PLAYWRIGHT_VOICE_AUDIO_BASE64__?: string }).__PLAYWRIGHT_VOICE_AUDIO_BASE64__ =
@@ -69,6 +70,11 @@ async function getInteractionRequiredCount(page: Page): Promise<number> {
 }
 
 test.describe('Mobile audio proof', () => {
+  test.skip(
+    !hasSampleVoiceFixture,
+    `Missing voice fixture: ${sampleVoiceFixturePath}. Run frontend/e2e/fixtures/voice/generate.sh before this proof test.`,
+  );
+
   test('iPhone WebKit completes 10 voice turns without silent audio interaction failures', async ({
     page,
   }) => {
