@@ -143,20 +143,31 @@ export class AudioQueue {
    */
   private async playAudio(item: AudioQueueItem): Promise<void> {
     return new Promise((resolve, reject) => {
-      const audioService = new MobileAudioService({
+      let settled = false;
+
+      let audioService: MobileAudioService | null = null;
+      const settle = (complete: () => void): void => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        if (audioService && this.currentAudioService === audioService) {
+          this.currentAudioService = null;
+        }
+        item.onPlaybackEnd?.();
+        complete();
+      };
+
+      audioService = new MobileAudioService({
         volume: this.volume,
         onPlay: () => {
           item.onPlaybackStart?.();
         },
         onEnded: () => {
-          this.currentAudioService = null;
-          item.onPlaybackEnd?.();
-          resolve();
+          settle(() => resolve());
         },
         onError: (error) => {
-          this.currentAudioService = null;
-          item.onPlaybackEnd?.();
-          reject(error);
+          settle(() => reject(error));
         },
       });
 
@@ -165,15 +176,13 @@ export class AudioQueue {
       audioService.playAudio(item.audioData)
         .then((result) => {
           if (!result.success) {
-            this.currentAudioService = null;
-            item.onPlaybackEnd?.();
-            reject(result.error || new AudioError(AudioErrorType.PLAYBACK_FAILED, 'Audio playback failed'));
+            settle(() => {
+              reject(result.error || new AudioError(AudioErrorType.PLAYBACK_FAILED, 'Audio playback failed'));
+            });
           }
         })
         .catch((error) => {
-          this.currentAudioService = null;
-          item.onPlaybackEnd?.();
-          reject(error);
+          settle(() => reject(error));
         });
     });
   }
