@@ -53,6 +53,10 @@ ISC license は、このリポジトリで project-authored source / docs を配
 
 現時点では、これらの binary/media asset について per-file license manifest は見つかっていません。公開・再配布・商用運用前に、少なくとも source, owner, license/terms, generated-by, generated-at, and attribution requirement を記録してください。
 
+受付スライド PDF / QR 更新の個別記録:
+
+- [`assets/reception-slide-assets-2026-05-10.md`](assets/reception-slide-assets-2026-05-10.md)
+
 ## Deployed model artifact verification
 
 operator は deploy ごとに次を確認してください。
