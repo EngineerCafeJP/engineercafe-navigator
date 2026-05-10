@@ -231,6 +231,7 @@ export default function CharacterAvatar({
   const clockRef = useRef<THREE.Clock | null>(null);
   const mixerRef = useRef<THREE.AnimationMixer | null>(null);
   const currentActionRef = useRef<THREE.AnimationAction | null>(null);
+  const currentRebasedClipRef = useRef<THREE.AnimationClip | null>(null);
   const isPlayingSequence = useRef(false);
   const blendShapeControllerRef = useRef<VRMBlendShapeController | null>(null);
   const lipSyncAnalyzerRef = useRef<LipSyncAnalyzer | null>(null);
@@ -686,12 +687,16 @@ export default function CharacterAvatar({
       } else {
         let baseline = idleHipsBaselineRef.current;
         if (!baseline) {
-          const idlePack = await loadVRMAAnimationClipFromUrl(DEFAULT_IDLE_VRMA_URL, vrm);
-          if (idlePack.clip) {
-            baseline = VRMUtils.sampleHipsPositionXZAtTime(idlePack.clip, vrm, 0);
-            if (baseline) {
-              idleHipsBaselineRef.current = baseline;
+          try {
+            const idlePack = await loadVRMAAnimationClipFromUrl(DEFAULT_IDLE_VRMA_URL, vrm);
+            if (idlePack.clip) {
+              baseline = VRMUtils.sampleHipsPositionXZAtTime(idlePack.clip, vrm, 0);
+              if (baseline) {
+                idleHipsBaselineRef.current = baseline;
+              }
             }
+          } catch {
+            baseline = null;
           }
         }
         const other = VRMUtils.sampleHipsPositionXZAtTime(clip, vrm, 0);
@@ -707,6 +712,10 @@ export default function CharacterAvatar({
       if (currentActionRef.current) {
         currentActionRef.current.stop();
       }
+      if (currentRebasedClipRef.current && currentRebasedClipRef.current !== clip) {
+        mixerRef.current.uncacheClip(currentRebasedClipRef.current);
+        currentRebasedClipRef.current = null;
+      }
 
       const action = mixerRef.current.clipAction(clip);
       if (loop) {
@@ -717,6 +726,7 @@ export default function CharacterAvatar({
       }
       action.play();
       currentActionRef.current = action;
+      currentRebasedClipRef.current = clip !== initialClip ? clip : null;
 
       applyRootScenePosition(vrm);
 
@@ -1348,6 +1358,10 @@ export default function CharacterAvatar({
     
     if (mixerRef.current) {
       mixerRef.current.stopAllAction();
+      if (currentRebasedClipRef.current) {
+        mixerRef.current.uncacheClip(currentRebasedClipRef.current);
+        currentRebasedClipRef.current = null;
+      }
       mixerRef.current = null;
     }
 
