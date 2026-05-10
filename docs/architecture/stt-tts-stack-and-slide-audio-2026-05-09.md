@@ -58,6 +58,23 @@ alpha, the simpler accepted architecture is checked-in PDF/MP3 assets under
 assets. If the slide deck changes, regenerate the MP3 set in the same PR as the
 PDF/Markdown narration update and keep the page count tests green.
 
+### 2026-05-10 PDF / QR refresh
+
+#810 updates the checked-in JA/EN reception PDFs. Local inspection found the
+same 5-page structure and identical extracted text versus `HEAD`; the material
+change is the QR/image payload on page 5. Because narration text did not change,
+the existing PiperPlus MP3 set remains valid for this refresh.
+
+This refresh keeps the runtime path as frontend static assets. The PDFs are not
+served from Google Cloud Storage, so production acceptance must verify the
+frontend deployment URLs:
+
+- `/reception/engineer-cafe-ja.pdf`
+- `/reception/engineer-cafe-en.pdf`
+
+Asset checksums and provenance gaps are recorded in
+`docs/assets/reception-slide-assets-2026-05-10.md`.
+
 ## TTS Decision
 
 PiperPlus is the current production TTS stack. It is used for normal answer

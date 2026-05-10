@@ -1,6 +1,6 @@
 # OSS / License Posture
 
-最終更新: 2026-05-09
+最終更新: 2026-05-10
 
 この文書は、リポジトリ内で確認できる license / provenance 証跡を整理する運用メモです。法的助言ではありません。第三者コード、モデル、音声、画像、サービスの条件は、それぞれの配布元 license / terms を優先してください。
 
@@ -52,6 +52,10 @@ ISC license は、このリポジトリで project-authored source / docs を配
 - `frontend/public/animations/**`
 
 現時点では、これらの binary/media asset について per-file license manifest は見つかっていません。公開・再配布・商用運用前に、少なくとも source, owner, license/terms, generated-by, generated-at, and attribution requirement を記録してください。
+
+受付スライド PDF / QR 更新の個別記録:
+
+- [`assets/reception-slide-assets-2026-05-10.md`](assets/reception-slide-assets-2026-05-10.md)
 
 ## Deployed model artifact verification
 
