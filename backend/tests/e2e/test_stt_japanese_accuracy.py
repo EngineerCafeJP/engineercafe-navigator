@@ -26,7 +26,7 @@ Run locally with:
     export LIVE_BACKEND_URL=https://engineer-cafe-backend-639959525777.asia-northeast1.run.app
     export LIVE_BACKEND_API_KEY=$(gcloud secrets versions access latest \\
         --secret=API_SECRET_KEY --project=aipartner-426616)
-    pytest backend/tests/e2e/test_stt_japanese_accuracy.py -v
+    pytest --run-e2e backend/tests/e2e/test_stt_japanese_accuracy.py -v
 
 The aggregate accuracy assertion (>= 0.8) runs as a separate test that
 summarises per-sample pass/fail.
@@ -56,11 +56,15 @@ pytestmark = [
 ]
 
 
+RequiredSubstring = str | list[str]
+
+
 # Each tuple is (sample_id, ground_truth_text, required_substrings).
 # required_substrings is what we expect in the transcript for the sample
-# to be counted as "correct"; entries are matched case-sensitively because
-# Japanese text has no case.
-JAPANESE_STT_SAMPLES: List[Tuple[str, str, List[str]]] = [
+# to be counted as "correct"; plain string entries are matched
+# case-sensitively because Japanese text has no case. List entries are
+# OR alternatives for one required term.
+JAPANESE_STT_SAMPLES: List[Tuple[str, str, List[RequiredSubstring]]] = [
     ("proper_noun_cafe", "エンジニアカフェ", ["エンジニアカフェ"]),
     ("coworking_katakana", "コワーキングスペース", ["コワーキング"]),
     (
@@ -69,7 +73,11 @@ JAPANESE_STT_SAMPLES: List[Tuple[str, str, List[str]]] = [
         ["エンジニアカフェ", "営業時間"],
     ),
     ("event_info", "イベント情報を教えてください", ["イベント"]),
-    ("wifi_alphanumeric", "WiFiのパスワードはありますか", ["WiFi"]),
+    (
+        "wifi_alphanumeric",
+        "WiFiのパスワードはありますか",
+        [["WiFi", "Wi-Fi", "ワイファイ"]],
+    ),
     ("reception_procedure", "受付で手続きしてください", ["受付", "手続き"]),
     (
         "community_manager",
@@ -97,9 +105,41 @@ def _similarity(a: str, b: str) -> float:
     return SequenceMatcher(None, a, b).ratio()
 
 
-def _required_substrings_match(transcript: str, required: List[str]) -> bool:
+def _required_substrings_match(transcript: str, required: List[RequiredSubstring]) -> bool:
     """True if every required substring is present in the transcript."""
-    return all(sub in transcript for sub in required)
+    for item in required:
+        if isinstance(item, str):
+            if item not in transcript:
+                return False
+            continue
+
+        if not any(alternative in transcript for alternative in item):
+            return False
+
+    return True
+
+
+@pytest.mark.parametrize(
+    "transcript",
+    ["WiFiのパスワード", "はい、Wi-Fiもあります。", "ワイファイもあります。"],
+)
+async def test_required_substrings_match_accepts_wifi_alternatives(transcript: str) -> None:
+    assert _required_substrings_match(
+        transcript,
+        [["WiFi", "Wi-Fi", "ワイファイ"]],
+    )
+
+
+async def test_required_substrings_match_keeps_non_wifi_terms_exact() -> None:
+    assert _required_substrings_match(
+        "エンジニアカフェの営業時間を教えてください",
+        ["エンジニアカフェ", "営業時間"],
+    )
+    assert not _required_substrings_match("現地にカフェの営業時間", ["エンジニアカフェ"])
+    assert not _required_substrings_match(
+        "Wi-Fiもあります。",
+        [["WiFi", "Wi-Fi", "ワイファイ"], "パスワード"],
+    )
 
 
 @pytest.fixture(scope="session")
@@ -200,7 +240,7 @@ async def _round_trip_cached(
 async def test_japanese_stt_per_sample(
     sample_id: str,
     ground_truth: str,
-    required_substrings: List[str],
+    required_substrings: List[RequiredSubstring],
     live_backend_config: dict,
     stt_accuracy_result_cache: dict[str, tuple[bool, str]],
 ) -> None:
