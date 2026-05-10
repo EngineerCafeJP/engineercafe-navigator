@@ -90,8 +90,14 @@ export class VRMUtils {
     if (!track) {
       return null;
     }
+    if (track.times.length === 0 || track.values.length < 3) {
+      return null;
+    }
     const interpolant = new THREE.LinearInterpolant(track.times, track.values, 3);
     const out = interpolant.evaluate(time) as Float32Array | number[];
+    if (out.length < 3 || !Number.isFinite(out[0]) || !Number.isFinite(out[2])) {
+      return null;
+    }
     return { x: out[0], z: out[2] };
   }
 
@@ -109,8 +115,14 @@ export class VRMUtils {
     if (!target) {
       return clip;
     }
+    if (target.values.length < 3) {
+      return clip;
+    }
     const dx = refIdleXZ.x - refOtherXZ.x;
     const dz = refIdleXZ.z - refOtherXZ.z;
+    if (!Number.isFinite(dx) || !Number.isFinite(dz)) {
+      return clip;
+    }
     if (Math.abs(dx) < 1e-9 && Math.abs(dz) < 1e-9) {
       return clip;
     }
@@ -121,7 +133,7 @@ export class VRMUtils {
       }
       const cloned = tr.clone();
       const { values } = cloned;
-      for (let i = 0; i < values.length; i += 3) {
+      for (let i = 0; i + 2 < values.length; i += 3) {
         values[i] += dx;
         values[i + 2] += dz;
       }
