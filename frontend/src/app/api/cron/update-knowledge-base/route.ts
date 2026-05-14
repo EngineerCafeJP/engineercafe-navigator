@@ -4,6 +4,44 @@ import { dispatchCronAlert } from '@/lib/monitoring/cron-alerts';
 import { ragMetrics } from '@/lib/monitoring/rag-metrics';
 
 const CRON_NAME = '/api/cron/update-knowledge-base';
+const CRON_ROUTE_TIMEOUT_MS = 290_000;
+
+function createTimeoutError(timeoutMs: number): Error {
+  return new Error(`Knowledge base update timed out after ${timeoutMs}ms`);
+}
+
+async function runKnowledgeBaseUpdateWithTimeout({
+  timeoutMs,
+}: {
+  timeoutMs: number;
+}): Promise<void> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  let timedOut = false;
+  const updatePromise = knowledgeBaseUpdater.runUpdate();
+
+  updatePromise.catch((error) => {
+    if (timedOut) {
+      console.error('[CRON] Knowledge base update failed after route timeout:', error);
+    }
+  });
+
+  try {
+    await Promise.race([
+      updatePromise,
+      new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => {
+          timedOut = true;
+          reject(createTimeoutError(timeoutMs));
+        }, timeoutMs);
+        timeoutId.unref?.();
+      }),
+    ]);
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
+}
 
 /**
  * CRON endpoint for automated knowledge base updates
@@ -28,7 +66,7 @@ export async function GET(request: NextRequest) {
   
   try {
     // Run the update
-    await knowledgeBaseUpdater.runUpdate();
+    await runKnowledgeBaseUpdateWithTimeout({ timeoutMs: CRON_ROUTE_TIMEOUT_MS });
     
     const duration = Date.now() - startTime;
     

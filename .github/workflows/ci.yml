@@ -372,13 +372,14 @@ jobs:
           path: backend/coverage.xml
           retention-days: 30
 
-  # Backend: RAGAS tests (optional, informational only)
-  # Only runs on push to main/develop when OPENAI_API_KEY secret is available
+  # Backend: RAGAS contract tests (optional, informational only)
+  # Live/provider RAGAS evaluation runs in the dedicated scheduled workflow.
   backend-test-ragas:
     needs: [changes, backend-test]
     if: needs.changes.outputs.backend == 'true' && github.event_name == 'push'
     runs-on: ubuntu-latest
     continue-on-error: true
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6.0.2
 
@@ -393,9 +394,17 @@ jobs:
           pip install -e ".[dev,evaluation]"
         working-directory: backend
 
-      - name: Run RAGAS tests
-        if: env.OPENAI_API_KEY != ''
-        run: pytest -m "ragas" --tb=short -q
+      - name: Run RAGAS contract tests
+        run: |
+          pytest \
+            tests/evaluation/test_ragas_pipeline.py \
+            tests/evaluation/test_ragas_pipeline_timeout_guard.py \
+            tests/evaluation/test_ragas_ci_integration.py \
+            tests/evaluation/test_multilingual_ragas.py \
+            --ignore=tests/evaluation/test_ragas_live.py \
+            --ignore=tests/evaluation/test_ragas_phase_b.py \
+            -m "not ragas" \
+            --tb=short -q
         working-directory: backend
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}

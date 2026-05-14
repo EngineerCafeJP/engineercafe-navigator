@@ -4,7 +4,7 @@
 #include <WiFiClientSecure.h>
 #include <Wire.h>
 #include <Adafruit_VL53L0X.h>
-#include "secrets.h"  // SSID, PASSWORD, WEBHOOK_URL_BACKEND, API_SECRET_KEY, DEVICE_ID
+#include "secrets.h"  // SSID, PASSWORD, WEBHOOK_URL_BACKEND, API_SECRET_KEY, DEVICE_ID, BACKEND_ROOT_CA
 
 const char* SENSOR_TYPE    = "pir_tof";  // ← 変更
 
@@ -63,7 +63,7 @@ bool sendToBackend(int tofMM) {
   );
 
   WiFiClientSecure client;
-  client.setInsecure();
+  client.setCACert(BACKEND_ROOT_CA);
 
   HTTPClient http;
   http.begin(client, WEBHOOK_URL_BACKEND);
@@ -143,6 +143,10 @@ void showWebhookFailure() {
 }
 
 void showDebug(bool pirOn, int tofMM, bool measuring) {
+  if (currentState == GREETING) {
+    return;
+  }
+
   M5.Lcd.fillScreen(TFT_BLACK);
   M5.Lcd.setTextSize(2);
 

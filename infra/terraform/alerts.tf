@@ -323,3 +323,73 @@ resource "google_monitoring_alert_policy" "memory_helper_errors" {
     }
   }
 }
+
+resource "google_monitoring_alert_policy" "critical_api_errors" {
+  display_name = "Engineer Cafe critical API errors"
+  combiner     = "OR"
+  enabled      = var.alert_enabled
+
+  notification_channels = var.notification_channel_ids
+
+  documentation {
+    content   = "/api/voice, /api/chat, /api/slides, or /api/error emitted ERROR/5xx logs. See docs/observability-runbook.md."
+    mime_type = "text/markdown"
+  }
+
+  conditions {
+    display_name = "critical API ERROR/5xx count > 0"
+
+    condition_threshold {
+      filter                  = "metric.type=\"logging.googleapis.com/user/${google_logging_metric.api_error_count.name}\" ${local.cloud_run_metric_scope}"
+      comparison              = "COMPARISON_GT"
+      threshold_value         = 0
+      duration                = "0s"
+      evaluation_missing_data = "EVALUATION_MISSING_DATA_INACTIVE"
+
+      aggregations {
+        alignment_period     = "900s"
+        per_series_aligner   = "ALIGN_DELTA"
+        cross_series_reducer = "REDUCE_SUM"
+      }
+
+      trigger {
+        count = 1
+      }
+    }
+  }
+}
+
+resource "google_monitoring_alert_policy" "ltm_connection_errors" {
+  display_name = "Engineer Cafe LTM connection errors"
+  combiner     = "OR"
+  enabled      = var.alert_enabled
+
+  notification_channels = var.notification_channel_ids
+
+  documentation {
+    content   = "Long-term memory connection or timeout errors were logged. See docs/observability-runbook.md."
+    mime_type = "text/markdown"
+  }
+
+  conditions {
+    display_name = "LTM connection/timeout count > 0"
+
+    condition_threshold {
+      filter                  = "metric.type=\"logging.googleapis.com/user/${google_logging_metric.ltm_connection_error_count.name}\" ${local.cloud_run_metric_scope}"
+      comparison              = "COMPARISON_GT"
+      threshold_value         = 0
+      duration                = "0s"
+      evaluation_missing_data = "EVALUATION_MISSING_DATA_INACTIVE"
+
+      aggregations {
+        alignment_period     = "900s"
+        per_series_aligner   = "ALIGN_DELTA"
+        cross_series_reducer = "REDUCE_SUM"
+      }
+
+      trigger {
+        count = 1
+      }
+    }
+  }
+}

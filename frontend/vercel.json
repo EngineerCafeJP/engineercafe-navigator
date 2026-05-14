@@ -5,10 +5,31 @@
   "crons": [
     {
       "path": "/api/cron/update-knowledge-base",
-      "schedule": "0 2 * * *"
+      "schedule": "30 19 * * *"
     }
   ],
   "functions": {
+    "src/app/api/cron/update-knowledge-base/route.ts": {
+      "maxDuration": 300
+    },
+    "src/app/api/ocr/route.ts": {
+      "maxDuration": 120
+    },
+    "src/app/api/reception/start/route.ts": {
+      "maxDuration": 120
+    },
+    "src/app/api/reception/respond/route.ts": {
+      "maxDuration": 120
+    },
+    "src/app/api/reception/complete/route.ts": {
+      "maxDuration": 120
+    },
+    "src/app/api/reception/status/[receptionSessionId]/route.ts": {
+      "maxDuration": 120
+    },
+    "src/app/api/reception/sensor-status/route.ts": {
+      "maxDuration": 120
+    },
     "src/app/api/voice/route.ts": {
       "maxDuration": 120
     },

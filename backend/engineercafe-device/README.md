@@ -28,13 +28,27 @@ PIR と VL53L0X（ToF）で来訪を検知し、バックエンドの reception 
    ```
 
 2. `secrets.h` を編集し、`SSID` / `PASSWORD` / `WEBHOOK_URL_BACKEND` / `API_SECRET_KEY` / `DEVICE_ID` を実環境の値に置き換える。
-3. **`secrets.h` はコミットしない。** `.gitignore` で無視されていることを確認する。
+3. `BACKEND_ROOT_CA` を `WEBHOOK_URL_BACKEND` のサーバ証明書チェーンを署名している **ルート CA** の PEM に置き換える。
+   - `-----BEGIN CERTIFICATE-----` / `-----END CERTIFICATE-----` を含め、各行末に `\n` を入れる。
+   - leaf 証明書ではなく、信頼アンカーになるルート CA を設定する。
+   - デプロイ先の証明書チェーンを変更した場合は、`BACKEND_ROOT_CA` も再確認する。
+
+   例:
+
+   ```c
+   #define BACKEND_ROOT_CA \
+   "-----BEGIN CERTIFICATE-----\n" \
+   "...root CA PEM body...\n" \
+   "-----END CERTIFICATE-----\n"
+   ```
+
+4. **`secrets.h` はコミットしない。** `.gitignore` で無視されていることを確認する。
 
    ```bash
    git check-ignore -v backend/engineercafe-device/secrets.h
    ```
 
-4. `git ls-files backend/engineercafe-device | rg secrets` で **`secrets.h` が一覧に含まれない**ことをマージ前に確認する。
+5. `git ls-files backend/engineercafe-device | rg secrets` で **`secrets.h` が一覧に含まれない**ことをマージ前に確認する。
 
 ## API（バックエンド契約）
 
@@ -71,7 +85,7 @@ PIR と VL53L0X（ToF）で来訪を検知し、バックエンドの reception 
 
 ## セキュリティ（TLS）
 
-現状スケッチでは **`WiFiClientSecure::setInsecure()`** を使用しており、サーバ証明書の検証を行っていません。半公開 Wi-Fi 環境では MITM のリスクがあります。**ルート CA をバンドルして `setCACert()` に渡す**対応は別 Issue / PR（HIGH-2 follow-up）として扱う想定です。
+スケッチは **`WiFiClientSecure::setCACert(BACKEND_ROOT_CA)`** を使用し、`WEBHOOK_URL_BACKEND` の TLS 証明書を検証します。`BACKEND_ROOT_CA` が未設定、期限切れ、またはデプロイ先の証明書チェーンと不一致の場合、Webhook は TLS 接続に失敗します。
 
 ## トラブルシュート
 

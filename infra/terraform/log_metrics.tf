@@ -335,3 +335,136 @@ resource "google_logging_metric" "memory_helper_error_count" {
     unit        = "1"
   }
 }
+
+resource "google_logging_metric" "api_error_count" {
+  name        = "engineer_cafe_api_error_count"
+  description = "Count of Cloud Run ERROR/5xx logs for critical API routes."
+  filter      = <<-EOT
+    ${local.cloud_run_filter}
+    (
+      (
+        (
+          httpRequest.requestUrl:"/api/voice"
+          OR httpRequest.requestUrl:"/api/chat"
+          OR httpRequest.requestUrl:"/api/slides"
+          OR httpRequest.requestUrl:"/api/error"
+        )
+        AND httpRequest.status>=500
+      )
+      OR (
+        (
+          jsonPayload.path="/api/voice"
+          OR jsonPayload.path="/api/chat"
+          OR jsonPayload.path="/api/slides"
+          OR jsonPayload.path="/api/error"
+          OR jsonPayload.extra.path="/api/voice"
+          OR jsonPayload.extra.path="/api/chat"
+          OR jsonPayload.extra.path="/api/slides"
+          OR jsonPayload.extra.path="/api/error"
+        )
+        AND (
+          jsonPayload.status_code>=500
+          OR jsonPayload.extra.status_code>=500
+          OR severity>=ERROR
+        )
+      )
+      OR (
+        (
+          textPayload:"/api/voice"
+          OR textPayload:"/api/chat"
+          OR textPayload:"/api/slides"
+          OR textPayload:"/api/error"
+        )
+        AND severity>=ERROR
+      )
+    )
+  EOT
+
+  label_extractors = {
+    event       = "EXTRACT(jsonPayload.event)"
+    path        = "EXTRACT(jsonPayload.path)"
+    status_code = "EXTRACT(jsonPayload.status_code)"
+  }
+
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "INT64"
+    unit        = "1"
+
+    labels {
+      key         = "event"
+      value_type  = "STRING"
+      description = "Structured event name when present."
+    }
+    labels {
+      key         = "path"
+      value_type  = "STRING"
+      description = "Structured request path when present."
+    }
+    labels {
+      key         = "status_code"
+      value_type  = "STRING"
+      description = "Structured HTTP status code when present."
+    }
+  }
+}
+
+resource "google_logging_metric" "ltm_connection_error_count" {
+  name        = "engineer_cafe_ltm_connection_error_count"
+  description = "Count of long-term memory connection/timeout errors."
+  filter      = <<-EOT
+    ${local.cloud_run_filter}
+    (
+      jsonPayload.event="ltm_connection_error"
+      OR jsonPayload.event="memory_helper_connection_error"
+      OR (
+        (
+          jsonPayload.logger="backend.utils.memory_helper"
+          OR jsonPayload.logger:"memory_helper"
+          OR jsonPayload.message:"LTM"
+          OR jsonPayload.message:"long-term memory"
+          OR textPayload:"memory_helper"
+          OR textPayload:"LTM"
+          OR textPayload:"long-term memory"
+        )
+        AND (
+          jsonPayload.message:"connection"
+          OR jsonPayload.message:"ConnectionError"
+          OR jsonPayload.message:"connection refused"
+          OR jsonPayload.message:"timeout"
+          OR jsonPayload.exception.message:"connection"
+          OR jsonPayload.exception.message:"ConnectionError"
+          OR jsonPayload.exception.message:"connection refused"
+          OR jsonPayload.exception.message:"timeout"
+          OR textPayload:"connection"
+          OR textPayload:"ConnectionError"
+          OR textPayload:"connection refused"
+          OR textPayload:"timeout"
+        )
+        AND severity>=ERROR
+      )
+    )
+  EOT
+
+  label_extractors = {
+    event  = "EXTRACT(jsonPayload.event)"
+    logger = "EXTRACT(jsonPayload.logger)"
+  }
+
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "INT64"
+    unit        = "1"
+
+    labels {
+      key         = "event"
+      value_type  = "STRING"
+      description = "Structured event name when present."
+    }
+    labels {
+      key         = "logger"
+      value_type  = "STRING"
+      description = "Logger name when present."
+    }
+  }
+}
