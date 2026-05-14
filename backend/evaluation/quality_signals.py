@@ -53,6 +53,8 @@ class QualitySignalCaseResult:
     toxicity: float
     passed: bool
     failures: list[str] = field(default_factory=list)
+    cross_lingual_context: bool = False
+    reference_grounding_context: bool = False
 
 
 def script_counts(text: str) -> Counter[str]:
@@ -124,6 +126,47 @@ def evidence_units(text: str) -> set[str]:
     return units
 
 
+def _dominant_language_hint(text: str) -> str | None:
+    counts = script_counts(text)
+    latin_words = _LATIN_WORD_RE.findall(text)
+    non_latin = counts["kana"] + counts["cjk"] + counts["hangul"]
+    if counts["hangul"] > 0 and counts["hangul"] >= counts["kana"] + counts["cjk"]:
+        return "ko"
+    if counts["kana"] > 0:
+        return "ja"
+    if len(latin_words) >= 3 and non_latin == 0:
+        return "en"
+    if counts["cjk"] > 0 and counts["hangul"] == 0 and counts["kana"] == 0:
+        return "zh"
+    return None
+
+
+def _is_cross_lingual_context(expected_language: str, contexts: Iterable[str]) -> bool:
+    context_text = "\n".join(str(context) for context in contexts if str(context).strip())
+    if not context_text.strip() or expected_language not in SUPPORTED_LANGUAGES:
+        return False
+
+    context_language = _dominant_language_hint(context_text)
+    if context_language is None:
+        return False
+    if expected_language == context_language:
+        return False
+
+    # Kanji-only context is ambiguous between Japanese and Chinese; do not
+    # exempt Japanese answers from grounding on that weak signal alone.
+    if expected_language == "ja" and context_language == "zh":
+        return False
+    return True
+
+
+def _reference_grounding_text(case: dict[str, Any]) -> str:
+    for key in ("reference_answer", "ground_truth"):
+        text = str(case.get(key) or "").strip()
+        if text:
+            return text
+    return ""
+
+
 def _char_ngrams(text: str, *, size: int) -> set[str]:
     compact = "".join(char for char in text if not char.isspace())
     if not compact:
@@ -157,18 +200,27 @@ def score_case(
     case: dict[str, Any],
     *,
     thresholds: dict[str, float] | None = None,
+    include_ground_truth_context: bool = True,
 ) -> QualitySignalCaseResult:
     """Score one evaluation case and apply offline gate thresholds."""
     gate = {**DEFAULT_THRESHOLDS, **(thresholds or {})}
     answer = str(case.get("answer") or "")
-    contexts = [str(context) for context in case.get("contexts") or []]
-    if case.get("ground_truth"):
-        contexts.append(str(case["ground_truth"]))
     language = str(case.get("language") or "unknown")
     case_id = str(case.get("query_id") or case.get("id") or case.get("ground_truth_id") or "")
+    contexts = [str(context) for context in case.get("contexts") or []]
+    cross_lingual_context = _is_cross_lingual_context(language, contexts)
+    reference_text = _reference_grounding_text(case)
+    reference_grounding_context = False
+    grounding_contexts = list(contexts)
+    if include_ground_truth_context and reference_text:
+        grounding_contexts.append(reference_text)
+        reference_grounding_context = True
+    elif cross_lingual_context and reference_text:
+        grounding_contexts.append(reference_text)
+        reference_grounding_context = True
 
     language_match = language_match_score(answer, language)
-    groundedness = groundedness_score(answer, contexts)
+    groundedness = groundedness_score(answer, grounding_contexts)
     hallucination_risk = 1.0 - groundedness if answer.strip() else 1.0
     toxicity = toxicity_score(answer)
 
@@ -191,6 +243,8 @@ def score_case(
         toxicity=round(toxicity, 4),
         passed=not failures,
         failures=failures,
+        cross_lingual_context=cross_lingual_context,
+        reference_grounding_context=reference_grounding_context,
     )
 
 
@@ -198,9 +252,17 @@ def summarize_quality_signals(
     cases: Iterable[dict[str, Any]],
     *,
     thresholds: dict[str, float] | None = None,
+    include_ground_truth_context: bool = True,
 ) -> dict[str, Any]:
     """Aggregate offline signal scores across multilingual RAG cases."""
-    results = [score_case(case, thresholds=thresholds) for case in cases]
+    results = [
+        score_case(
+            case,
+            thresholds=thresholds,
+            include_ground_truth_context=include_ground_truth_context,
+        )
+        for case in cases
+    ]
     by_language: dict[str, list[QualitySignalCaseResult]] = defaultdict(list)
     for result in results:
         by_language[result.language].append(result)
@@ -238,6 +300,8 @@ def _summarize_results(results: list[QualitySignalCaseResult]) -> dict[str, Any]
             "groundedness": 0.0,
             "hallucination_risk": 0.0,
             "toxicity": 0.0,
+            "cross_lingual_context_case_count": 0,
+            "reference_grounding_context_case_count": 0,
         }
 
     return {
@@ -248,6 +312,12 @@ def _summarize_results(results: list[QualitySignalCaseResult]) -> dict[str, Any]
         "groundedness": _average(result.groundedness for result in results),
         "hallucination_risk": _average(result.hallucination_risk for result in results),
         "toxicity": _average(result.toxicity for result in results),
+        "cross_lingual_context_case_count": sum(
+            1 for result in results if result.cross_lingual_context
+        ),
+        "reference_grounding_context_case_count": sum(
+            1 for result in results if result.reference_grounding_context
+        ),
     }
 
 
@@ -268,4 +338,6 @@ def _result_to_dict(result: QualitySignalCaseResult) -> dict[str, Any]:
         "toxicity": result.toxicity,
         "passed": result.passed,
         "failures": result.failures,
+        "cross_lingual_context": result.cross_lingual_context,
+        "reference_grounding_context": result.reference_grounding_context,
     }

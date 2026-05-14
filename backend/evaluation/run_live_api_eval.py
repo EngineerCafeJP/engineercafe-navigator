@@ -50,6 +50,9 @@ LOCAL_KNOWLEDGE_SOURCE_REQUIREMENT = "enhanced_rag|knowledge_base|knowledge_base
 EVENT_SOURCE_REQUIREMENT = f"google_calendar|connpass|{LOCAL_KNOWLEDGE_SOURCE_REQUIREMENT}"
 NO_SOURCE_REQUIRED_CATEGORIES = {"emergency", "farewell", "reception"}
 EVENT_LIKE_CATEGORIES = {"event", "community", "clarification"}
+LIVE_CONTEXT_REQUIRED_SOURCE_LABEL = "live_api_metadata"
+MISSING_LIVE_CONTEXT_SOURCE_LABEL = "missing_live_contexts"
+GOLDEN_NO_SOURCE_CONTEXT_LABEL = "golden_dataset_no_live_source_required"
 EMERGENCY_TERMS = (
     "緊急",
     "避難",
@@ -111,6 +114,205 @@ def _source_requirement_ok(
         if not any(alt in actual_sources for alt in alternatives):
             missing.append(requirement)
     return not missing, missing, actual_sources
+
+
+def _dedupe_contexts(contexts: Sequence[str]) -> List[str]:
+    seen: set[str] = set()
+    deduped: List[str] = []
+    for context in contexts:
+        text = str(context or "").strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        deduped.append(text)
+    return deduped
+
+
+def _contexts_from_result_items(value: Any) -> List[str]:
+    contexts: List[str] = []
+    if not isinstance(value, list):
+        return contexts
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        for key in ("content", "text", "snippet", "summary"):
+            text = str(item.get(key) or "").strip()
+            if text:
+                contexts.append(text)
+                break
+    return contexts
+
+
+def _contexts_from_container(value: Any) -> List[str]:
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, list):
+        contexts: List[str] = []
+        for item in value:
+            if isinstance(item, str):
+                contexts.append(item)
+            elif isinstance(item, dict):
+                contexts.extend(_contexts_from_container(item))
+        return contexts
+    if not isinstance(value, dict):
+        return []
+
+    contexts: List[str] = []
+    for key in ("contexts", "retrieved_contexts", "rag_contexts"):
+        contexts.extend(_contexts_from_container(value.get(key)))
+    for key in ("context", "context_string", "text", "content"):
+        text = str(value.get(key) or "").strip()
+        if text:
+            contexts.append(text)
+    contexts.extend(_contexts_from_result_items(value.get("results")))
+    contexts.extend(_contexts_from_result_items(value.get("chunks")))
+    return contexts
+
+
+def _extract_live_contexts(metadata: Dict[str, Any]) -> Dict[str, Any]:
+    """Extract retrieved context evidence exposed by live /api/chat metadata."""
+    candidates: list[tuple[str, Any]] = [
+        ("rag_evidence", metadata.get("rag_evidence")),
+        ("retrieved_contexts", metadata.get("retrieved_contexts")),
+        ("evidence", metadata.get("evidence")),
+        ("retrieval_evidence", metadata.get("retrieval_evidence")),
+        ("evaluation_context", metadata.get("evaluation_context")),
+        ("knowledge_results", metadata.get("knowledge_results")),
+        ("metadata", metadata),
+    ]
+    for source, value in candidates:
+        contexts = _dedupe_contexts(_contexts_from_container(value))
+        if contexts:
+            return {
+                "source": source,
+                "contexts": contexts,
+                "context_count": len(contexts),
+                "context_char_count": sum(len(context) for context in contexts),
+            }
+    return {
+        "source": None,
+        "contexts": [],
+        "context_count": 0,
+        "context_char_count": 0,
+    }
+
+
+def _live_context_check(
+    *,
+    required_sources: Sequence[str],
+    live_contexts: Dict[str, Any],
+    enabled: bool,
+) -> Dict[str, Any]:
+    gate_enabled = enabled and bool(required_sources)
+    context_count = int(live_contexts.get("context_count", 0) or 0)
+    return {
+        "enabled": gate_enabled,
+        "passed": (not gate_enabled) or context_count > 0,
+        "required_sources": list(required_sources),
+        "context_source": live_contexts.get("source"),
+        "context_count": context_count,
+        "context_char_count": int(live_contexts.get("context_char_count", 0) or 0),
+    }
+
+
+def _evaluation_contexts_for_case(
+    *,
+    live_contexts: Dict[str, Any],
+    golden_contexts: Sequence[str],
+    required_sources: Sequence[str],
+) -> tuple[List[str], str]:
+    contexts = [str(context) for context in live_contexts.get("contexts", []) if context]
+    if contexts:
+        return contexts, LIVE_CONTEXT_REQUIRED_SOURCE_LABEL
+    if required_sources:
+        return [], MISSING_LIVE_CONTEXT_SOURCE_LABEL
+    return [str(context) for context in golden_contexts], GOLDEN_NO_SOURCE_CONTEXT_LABEL
+
+
+def _summarize_live_quality_signals(cases: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
+    quality_cases = [case for case in cases if case.get("quality_signal_enabled")]
+    scorable_cases = [
+        case for case in quality_cases if (case.get("live_context_check") or {}).get("passed", True)
+    ]
+    missing_context_failures = [
+        {
+            "case_id": str(case.get("query_id") or case.get("id") or case.get("ground_truth_id")),
+            "language": str(case.get("language") or "unknown"),
+            "failures": [MISSING_LIVE_CONTEXT_SOURCE_LABEL],
+        }
+        for case in quality_cases
+        if (case.get("live_context_check") or {}).get("enabled")
+        and not (case.get("live_context_check") or {}).get("passed")
+    ]
+    try:
+        from backend.evaluation.quality_signals import summarize_quality_signals
+    except ImportError:
+        from evaluation.quality_signals import summarize_quality_signals
+
+    summary = summarize_quality_signals(
+        scorable_cases,
+        include_ground_truth_context=False,
+    )
+    if missing_context_failures:
+        _inject_missing_context_quality_failures(summary, missing_context_failures)
+    summary["enabled"] = True
+    summary["source"] = "live_retrieved_context"
+    return summary
+
+
+def _inject_missing_context_quality_failures(
+    summary: Dict[str, Any],
+    missing_context_failures: Sequence[Dict[str, Any]],
+) -> None:
+    """Add live context gate failures to deterministic quality-signal output."""
+    summary["failed_cases"] = list(summary.get("failed_cases", [])) + list(missing_context_failures)
+    summary_cases = list(summary.get("cases", []))
+    for failure in missing_context_failures:
+        summary_cases.append(
+            {
+                "case_id": failure["case_id"],
+                "language": failure["language"],
+                "language_match": 0.0,
+                "groundedness": 0.0,
+                "hallucination_risk": 1.0,
+                "toxicity": 0.0,
+                "passed": False,
+                "failures": [MISSING_LIVE_CONTEXT_SOURCE_LABEL],
+            }
+        )
+    summary["cases"] = summary_cases
+
+    by_language: Dict[str, int] = {}
+    for failure in missing_context_failures:
+        language = str(failure["language"])
+        by_language[language] = by_language.get(language, 0) + 1
+
+    overall = summary.setdefault("overall", {})
+    overall["case_count"] = int(overall.get("case_count", 0) or 0) + len(missing_context_failures)
+    overall["failed_case_count"] = int(overall.get("failed_case_count", 0) or 0) + len(
+        missing_context_failures
+    )
+    overall["passed"] = False
+
+    per_language = summary.setdefault("per_language", {})
+    for language, count in by_language.items():
+        language_summary = per_language.setdefault(
+            language,
+            {
+                "case_count": 0,
+                "passed": True,
+                "failed_case_count": 0,
+                "language_match": 0.0,
+                "groundedness": 0.0,
+                "hallucination_risk": 0.0,
+                "toxicity": 0.0,
+            },
+        )
+        language_summary["case_count"] = int(language_summary.get("case_count", 0) or 0) + count
+        language_summary["failed_case_count"] = (
+            int(language_summary.get("failed_case_count", 0) or 0) + count
+        )
+        language_summary["passed"] = False
 
 
 def _load_multilingual_config() -> Dict[str, Any]:
@@ -422,6 +624,9 @@ async def _call_chat_api(
     payload = {
         "query": question,
         "language": language,
+        "context": {
+            "include_rag_evidence": True,
+        },
     }
 
     url = f"{base_url.rstrip('/')}/api/chat"
@@ -621,6 +826,17 @@ async def run_live_api_evaluation(
                     sources_ok, missing_sources, actual_sources = _source_requirement_ok(
                         metadata_dict, required_sources
                     )
+                    live_contexts = _extract_live_contexts(metadata_dict)
+                    evaluation_contexts, evaluation_context_source = _evaluation_contexts_for_case(
+                        live_contexts=live_contexts,
+                        golden_contexts=gt_case.get("contexts", []),
+                        required_sources=required_sources,
+                    )
+                    live_context_check = _live_context_check(
+                        required_sources=required_sources,
+                        live_contexts=live_contexts,
+                        enabled=check_live_sources,
+                    )
 
                     lang_cases.append(
                         {
@@ -628,12 +844,15 @@ async def run_live_api_evaluation(
                             "ground_truth_id": gt_id,
                             "question": query["question"],
                             "answer": answer,
-                            "contexts": gt_case.get("contexts", []),
+                            "contexts": evaluation_contexts,
                             "ground_truth": gt_case.get("ground_truth", ""),
+                            "reference_answer": gt_case.get("answer", ""),
                             "language": lang,
                             "category": query["category"],
                             "metadata": query["metadata"],
-                            "evaluation_context_source": "golden_dataset",
+                            "evaluation_context_source": evaluation_context_source,
+                            "quality_signal_enabled": check_live_sources and bool(required_sources),
+                            "live_context_check": live_context_check,
                             "live_source_check": {
                                 "enabled": check_live_sources,
                                 "passed": sources_ok,
@@ -647,6 +866,8 @@ async def run_live_api_evaluation(
                                 "route": metadata_dict.get("route"),
                                 "sources": metadata_dict.get("sources"),
                                 "elapsed_seconds": round(elapsed, 2),
+                                "live_context_source": live_contexts.get("source"),
+                                "live_context_count": live_contexts.get("context_count", 0),
                             },
                         }
                     )
@@ -814,6 +1035,7 @@ async def run_live_api_evaluation(
                         "answer": c["answer"][:200],
                         "api_metadata": c["api_metadata"],
                         "evaluation_context_source": c["evaluation_context_source"],
+                        "live_context_check": c["live_context_check"],
                         "live_source_check": c["live_source_check"],
                     }
                     for c in cases
@@ -869,6 +1091,7 @@ async def run_live_api_evaluation(
                     "error": result.error,
                     "api_metadata": case["api_metadata"],
                     "evaluation_context_source": case["evaluation_context_source"],
+                    "live_context_check": case["live_context_check"],
                     "live_source_check": case["live_source_check"],
                 }
             )
@@ -925,11 +1148,18 @@ async def run_live_api_evaluation(
         requested_total=requested_total,
     )
     evaluation_summary = _evaluation_summary(per_language_results, selected_languages)
+    quality_signals = _summarize_live_quality_signals(
+        [case for cases in all_eval_cases.values() for case in cases]
+    )
     comparison = _compare_targets(
-        per_language_results, selected_languages, check_live_sources=check_live_sources
+        per_language_results,
+        selected_languages,
+        check_live_sources=check_live_sources,
+        quality_signals=quality_signals,
     )
     comparison["suite_coverage"] = suite_coverage
     comparison["evaluation_summary"] = evaluation_summary
+    comparison["quality_signals"] = quality_signals
     comparison["ragas_judge"] = ragas_judge_metadata
     comparison["alpha_release_gate_met"] = (
         comparison["all_targets_met"]
@@ -954,7 +1184,8 @@ async def run_live_api_evaluation(
         "base_url": base_url,
         "languages": selected_languages,
         "metrics": list(selected_metrics),
-        "ragas_context_source": "golden_dataset",
+        "ragas_context_source": LIVE_CONTEXT_REQUIRED_SOURCE_LABEL,
+        "quality_signals": quality_signals,
         "ragas_judge": ragas_judge_metadata,
         "live_source_gate_enabled": check_live_sources,
         "artifact_metadata": {
@@ -1002,11 +1233,13 @@ def _compare_targets(
     languages: Sequence[str],
     *,
     check_live_sources: bool,
+    quality_signals: Dict[str, Any],
 ) -> Dict[str, Any]:
     """Compare per-language answer_correctness against targets."""
     failed: List[Dict[str, Any]] = []
     failed_source_cases: List[Dict[str, Any]] = []
     per_language: Dict[str, Any] = {}
+    quality_by_language = quality_signals.get("per_language", {})
 
     for lang in languages:
         result = lang_results.get(lang, {})
@@ -1042,7 +1275,18 @@ def _compare_targets(
             and collection_error_count == 0
             and ragas_error_count == 0
         )
-        passed = answer_target_passed and not source_failures and evaluation_complete
+        language_quality_signals = quality_by_language.get(
+            lang,
+            {
+                "case_count": 0,
+                "passed": True,
+                "failed_case_count": 0,
+            },
+        )
+        quality_passed = bool(language_quality_signals.get("passed", True))
+        passed = (
+            answer_target_passed and not source_failures and evaluation_complete and quality_passed
+        )
         per_language[lang] = {
             "answer_correctness": {
                 "actual": (round(actual, 4) if isinstance(actual, (int, float)) else None),
@@ -1062,6 +1306,7 @@ def _compare_targets(
                 "failed_case_count": len(source_failures),
                 "passed": not source_failures,
             },
+            "quality_signals": language_quality_signals,
             "passed": passed,
         }
 
@@ -1083,6 +1328,9 @@ def _compare_targets(
                     "collection_errors": collection_error_count,
                     "ragas_errors": ragas_error_count,
                     "source_failures": len(source_failures),
+                    "quality_signal_failures": int(
+                        language_quality_signals.get("failed_case_count", 0) or 0
+                    ),
                 }
             )
         failed_source_cases.extend(source_failures)
@@ -1115,7 +1363,8 @@ def _format_report(
         "",
         f"Case suite: {case_suite}",
         f"Targets: {target_summary}",
-        "RAGAS contexts: golden_dataset references, not live retrieved chunks",
+        "RAGAS contexts: live /api/chat retrieved metadata when required; "
+        "golden contexts only for no-source-required diagnostic cases",
         f"Live source metadata gate: {'enabled' if check_live_sources else 'disabled'}",
         "",
     ]
@@ -1162,6 +1411,33 @@ def _format_report(
                 "",
             ]
         )
+
+    quality_signals = comparison.get("quality_signals", {})
+    if quality_signals:
+        overall_quality = quality_signals.get("overall", {})
+        status = "PASS" if overall_quality.get("passed") else "FAIL"
+        lines.extend(
+            [
+                "Quality signals:",
+                "  overall: "
+                f"cases={overall_quality.get('case_count', 0)} "
+                f"failed={overall_quality.get('failed_case_count', 0)} "
+                f"groundedness={overall_quality.get('groundedness', 0.0):.3f} "
+                f"hallucination_risk={overall_quality.get('hallucination_risk', 0.0):.3f} "
+                f"toxicity={overall_quality.get('toxicity', 0.0):.3f} "
+                f"[{status}]",
+            ]
+        )
+        failed_quality_cases = quality_signals.get("failed_cases", [])
+        if failed_quality_cases:
+            lines.append("  failed_cases:")
+            for item in failed_quality_cases[:40]:
+                lines.append(
+                    "    "
+                    f"{item.get('case_id')} ({item.get('language')}): "
+                    f"{','.join(item.get('failures', []))}"
+                )
+        lines.append("")
 
     ragas_judge = comparison.get("ragas_judge", {})
     if ragas_judge:
@@ -1237,6 +1513,17 @@ def _format_report(
                 "  live_source_gate: "
                 f"failed_cases={source_gate.get('failed_case_count', 0)} [{sg_status}]"
             )
+        quality_gate = comp.get("quality_signals", {})
+        if quality_gate:
+            q_status = "PASS" if quality_gate.get("passed") else "FAIL"
+            lines.append(
+                "  quality_signals: "
+                f"failed_cases={quality_gate.get('failed_case_count', 0)} "
+                f"groundedness={quality_gate.get('groundedness', 0.0):.3f} "
+                f"hallucination_risk={quality_gate.get('hallucination_risk', 0.0):.3f} "
+                f"toxicity={quality_gate.get('toxicity', 0.0):.3f} "
+                f"[{q_status}]"
+            )
 
         overall = "PASS" if comp.get("passed", False) else "FAIL"
         lines.append(f"  overall: {overall}")
@@ -1289,7 +1576,8 @@ def _format_report(
                 f"evaluation_complete={f.get('evaluation_complete')} "
                 f"collection_errors={f.get('collection_errors', 0)} "
                 f"ragas_errors={f.get('ragas_errors', 0)} "
-                f"source_failures={f.get('source_failures', 0)}"
+                f"source_failures={f.get('source_failures', 0)} "
+                f"quality_signal_failures={f.get('quality_signal_failures', 0)}"
             )
 
     failed_source_cases = comparison.get("failed_source_cases", [])

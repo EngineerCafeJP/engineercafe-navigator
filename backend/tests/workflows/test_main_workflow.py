@@ -43,6 +43,67 @@ class _StubOrchestrator:
         return OrchestratorAgent._is_memory_related_question(self, query)
 
 
+def test_rag_evidence_metadata_is_opt_in_and_bounded():
+    from backend.workflows.main_workflow import _build_rag_evidence_metadata
+
+    context = {
+        "include_rag_evidence": True,
+        "knowledge_results": {
+            "success": True,
+            "category": "hours",
+            "query": "営業時間は？",
+            "context_string": "営業時間は9:00から22:00です。",
+            "results": [
+                {
+                    "id": "kb-1",
+                    "category": "hours",
+                    "language": "ja",
+                    "source": "official",
+                    "score": 0.91,
+                    "content": "営業時間は9:00から22:00です。",
+                }
+            ],
+        },
+    }
+
+    evidence = _build_rag_evidence_metadata(context)
+
+    assert evidence == {
+        "source": "workflow_knowledge_results",
+        "query": "営業時間は？",
+        "translated_query": None,
+        "category": "hours",
+        "context_char_count": len("営業時間は9:00から22:00です。"),
+        "contexts": ["営業時間は9:00から22:00です。"],
+        "results": [
+            {
+                "id": "kb-1",
+                "category": "hours",
+                "language": "ja",
+                "source": "official",
+                "score": 0.91,
+                "content": "営業時間は9:00から22:00です。",
+            }
+        ],
+    }
+
+
+def test_rag_evidence_metadata_is_not_exposed_without_eval_flag():
+    from backend.workflows.main_workflow import _build_rag_evidence_metadata
+
+    assert (
+        _build_rag_evidence_metadata(
+            {
+                "knowledge_results": {
+                    "context_string": "営業時間は9:00から22:00です。",
+                    "results": [{"content": "営業時間は9:00から22:00です。"}],
+                }
+            }
+        )
+        is None
+    )
+
+
 class TestMainWorkflowMemoryIntegration:
     """MainWorkflow のメモリ統合テスト"""
 
