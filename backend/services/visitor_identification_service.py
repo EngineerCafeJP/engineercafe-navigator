@@ -9,6 +9,8 @@ from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
+_USER_LOOKUP_SOURCE = "public.users"
+
 
 class VisitorIdentificationService:
     """Identifies visitors using multiple signals.
@@ -77,7 +79,17 @@ class VisitorIdentificationService:
         Returns:
             A dict with visitor identity fields, or None when not found.
         """
-        return await self._get_user_profile(member_number)
+        result = await self.identify_by_member_number_with_lookup(member_number)
+        return result["identity"]
+
+    async def identify_by_member_number_with_lookup(self, member_number: int) -> Dict[str, Any]:
+        """Look up a visitor by member number and include lookup metadata.
+
+        ``public.users`` is not created by the current backend migrations, so
+        callers that need to distinguish "not found" from "lookup unavailable"
+        should use this method instead of relying on logs.
+        """
+        return await self._get_user_profile_lookup(member_number)
 
     async def identify_by_visitor_id(self, visitor_id: str) -> Optional[Dict[str, Any]]:
         """Look up a visitor by frontend-generated persistent visitor_id.
@@ -158,32 +170,93 @@ class VisitorIdentificationService:
 
     async def _get_user_profile(self, user_id: int) -> Optional[Dict[str, Any]]:
         """Fetch an enriched user profile and visit count from the ``users`` table."""
+        result = await self._get_user_profile_lookup(user_id)
+        return result["identity"]
+
+    async def _get_user_profile_lookup(self, user_id: int) -> Dict[str, Any]:
+        """Fetch an enriched user profile and explicit lookup metadata."""
         client = await self._get_supabase()
         if not client:
-            return None
-        try:
-            result = (
-                client.table("users")
-                .select("id, name, email, phone, prefecture, job, belong")
-                .eq("id", user_id)
-                .execute()
+            return self._build_lookup_result(
+                user_id,
+                None,
+                status="skipped",
+                reason="supabase_unavailable",
             )
+        try:
+            result = client.table("users").select("*").eq("id", user_id).execute()
             if result.data:
                 user = result.data[0]
                 visit_count = await self._count_visits_by_user(user_id)
                 profile = {
                     "visitor_type": "returning",
-                    "user_id": user["id"],
+                    "user_id": user.get("id", user_id),
                     "name": user.get("name"),
                     "visit_count": visit_count,
                 }
                 for field in ("email", "prefecture", "job", "belong"):
                     if user.get(field) is not None:
                         profile[field] = user.get(field)
-                return profile
+                return self._build_lookup_result(user_id, profile, status="found")
         except Exception as e:
-            logger.warning("User profile lookup failed: %s", e)
-        return None
+            reason = self._classify_user_lookup_error(e)
+            if reason == "users_table_unavailable":
+                logger.info("User profile lookup unavailable: %s", e)
+            else:
+                logger.warning("User profile lookup failed: %s", e)
+            return self._build_lookup_result(
+                user_id,
+                None,
+                status="lookup_failed",
+                reason=reason,
+            )
+        return self._build_lookup_result(
+            user_id,
+            None,
+            status="not_found",
+            reason="member_number_not_found",
+        )
+
+    @staticmethod
+    def _build_lookup_result(
+        user_id: int,
+        identity: Optional[Dict[str, Any]],
+        *,
+        status: str,
+        reason: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        lookup: Dict[str, Any] = {
+            "attempted": True,
+            "source": _USER_LOOKUP_SOURCE,
+            "member_number": user_id,
+            "status": status,
+            "resolved": identity is not None,
+        }
+        if reason:
+            lookup["reason"] = reason
+        return {"identity": identity, "lookup": lookup}
+
+    @staticmethod
+    def _classify_user_lookup_error(exc: Exception) -> str:
+        text_parts = [str(exc)]
+        for attr in ("code", "message", "details", "hint"):
+            value = getattr(exc, attr, None)
+            if value:
+                text_parts.append(str(value))
+        error_text = " ".join(text_parts).lower()
+
+        missing_table_markers = (
+            "pgrst205",
+            "42p01",
+            "could not find the table",
+            "schema cache",
+            'relation "public.users" does not exist',
+            'relation "users" does not exist',
+        )
+        if any(marker in error_text for marker in missing_table_markers):
+            return "users_table_unavailable"
+
+        return "query_failed"
 
     async def _count_visits(self, visitor_id: str) -> int:
         """Count total visits for a given ``visitor_id``."""

@@ -15,9 +15,11 @@ export const clientEnvSchema = z.object({
   // Supabase (required for client-side DB access)
   NEXT_PUBLIC_SUPABASE_URL: z
     .string()
+    .trim()
     .url("NEXT_PUBLIC_SUPABASE_URL must be a valid URL (e.g. https://xxx.supabase.co)"),
   NEXT_PUBLIC_SUPABASE_ANON_KEY: z
     .string()
+    .trim()
     .min(1, "NEXT_PUBLIC_SUPABASE_ANON_KEY is required"),
 
   // Backend URL visible to the browser. Used only by direct-call feature flags.

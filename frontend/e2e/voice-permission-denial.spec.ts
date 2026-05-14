@@ -33,7 +33,8 @@ test.describe('Microphone permission denial (#638)', () => {
         action === 'warmup' ||
         action === 'speech_to_text' ||
         action === 'text_to_speech' ||
-        action === 'interrupt'
+        action === 'interrupt' ||
+        action === 'client_telemetry'
       ) {
         await route.fulfill({
           status: 200,
@@ -48,6 +49,7 @@ test.describe('Microphone permission denial (#638)', () => {
         'speech_to_text',
         'text_to_speech',
         'interrupt',
+        'client_telemetry',
       ]);
     });
   });
@@ -99,7 +101,12 @@ test.describe('Microphone permission denial (#638)', () => {
         return;
       }
 
-      if (action === 'warmup' || action === 'text_to_speech' || action === 'interrupt') {
+      if (
+        action === 'warmup' ||
+        action === 'text_to_speech' ||
+        action === 'interrupt' ||
+        action === 'client_telemetry'
+      ) {
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
@@ -113,6 +120,7 @@ test.describe('Microphone permission denial (#638)', () => {
         'warmup',
         'text_to_speech',
         'interrupt',
+        'client_telemetry',
       ]);
     });
 

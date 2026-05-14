@@ -51,6 +51,7 @@ export const overlayLabels = {
     voiceModeSpeaking: 'モード: 再生中',
     ocrMemberResult: '会員証読み取り結果',
     ocrHandwritingResult: '筆談読み取り結果',
+    ocrMemberReadSuccess: '会員番号 {memberNumber} を読み取りました。受付を開始します。',
     ocrReadFailed: '読み取りに失敗しました。再度お試しください。',
   },
   en: {
@@ -104,6 +105,7 @@ export const overlayLabels = {
     voiceModeSpeaking: 'Mode: Speaking',
     ocrMemberResult: 'Member card result',
     ocrHandwritingResult: 'Handwriting result',
+    ocrMemberReadSuccess: 'Read member number {memberNumber}. Starting reception.',
     ocrReadFailed: 'OCR failed. Please try again.',
   },
 } as const;

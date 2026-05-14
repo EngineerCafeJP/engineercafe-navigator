@@ -92,7 +92,7 @@ async def test_identify_by_nfc_found(service: VisitorIdentificationService, mock
 
     result = await service.identify_by_nfc("nfc-abc-123")
 
-    user_builder.select.assert_called_once_with("id, name, email, phone, prefecture, job, belong")
+    user_builder.select.assert_called_once_with("*")
     assert result is not None
     assert result["visitor_type"] == "returning"
     assert result["user_id"] == 42
@@ -252,7 +252,7 @@ async def test_identify_by_member_number_found(
 
     result = await service.identify_by_member_number(7)
 
-    user_builder.select.assert_called_once_with("id, name, email, phone, prefecture, job, belong")
+    user_builder.select.assert_called_once_with("*")
     assert result is not None
     assert result["visitor_type"] == "returning"
     assert result["user_id"] == 7
@@ -309,6 +309,66 @@ async def test_identify_by_member_number_not_found(
 
 
 @pytest.mark.asyncio
+async def test_identify_by_member_number_with_lookup_not_found(
+    service: VisitorIdentificationService, mock_client: MagicMock
+):
+    """Should expose metadata when lookup succeeds but identity is null."""
+    builder = MagicMock()
+    builder.select.return_value = builder
+    builder.eq.return_value = builder
+    builder.execute.return_value = _make_query_result(data=[])
+
+    mock_client.table = MagicMock(return_value=builder)
+
+    result = await service.identify_by_member_number_with_lookup(9999)
+
+    assert result["identity"] is None
+    assert result["lookup"] == {
+        "attempted": True,
+        "source": "public.users",
+        "member_number": 9999,
+        "status": "not_found",
+        "resolved": False,
+        "reason": "member_number_not_found",
+    }
+
+
+@pytest.mark.asyncio
+async def test_identify_by_member_number_with_lookup_found(
+    service: VisitorIdentificationService, mock_client: MagicMock
+):
+    """Should expose success metadata when member number resolves to a user."""
+    user_builder = MagicMock()
+    user_builder.select.return_value = user_builder
+    user_builder.eq.return_value = user_builder
+    user_builder.execute.return_value = _make_query_result(data=[{"id": 7, "name": "Hanako"}])
+
+    count_builder = MagicMock()
+    count_builder.select.return_value = count_builder
+    count_builder.eq.return_value = count_builder
+    count_builder.execute.return_value = _make_query_result(count=12)
+
+    tables = {"users": user_builder, "visits": count_builder}
+    mock_client.table = MagicMock(side_effect=lambda n: tables[n])
+
+    result = await service.identify_by_member_number_with_lookup(7)
+
+    assert result["identity"] == {
+        "visitor_type": "returning",
+        "user_id": 7,
+        "name": "Hanako",
+        "visit_count": 12,
+    }
+    assert result["lookup"] == {
+        "attempted": True,
+        "source": "public.users",
+        "member_number": 7,
+        "status": "found",
+        "resolved": True,
+    }
+
+
+@pytest.mark.asyncio
 async def test_identify_by_member_number_supabase_failure(
     service: VisitorIdentificationService, mock_client: MagicMock
 ):
@@ -317,6 +377,35 @@ async def test_identify_by_member_number_supabase_failure(
 
     result = await service.identify_by_member_number(1)
     assert result is None
+
+
+@pytest.mark.asyncio
+async def test_identify_by_member_number_with_lookup_users_table_failure(
+    service: VisitorIdentificationService, mock_client: MagicMock
+):
+    """Should classify a missing public.users table without raising."""
+
+    class MissingUsersTableError(Exception):
+        code = "PGRST205"
+        message = "Could not find the table 'public.users' in the schema cache"
+
+    builder = MagicMock()
+    builder.select.return_value = builder
+    builder.eq.return_value = builder
+    builder.execute.side_effect = MissingUsersTableError("public.users missing")
+    mock_client.table = MagicMock(return_value=builder)
+
+    result = await service.identify_by_member_number_with_lookup(123)
+
+    assert result["identity"] is None
+    assert result["lookup"] == {
+        "attempted": True,
+        "source": "public.users",
+        "member_number": 123,
+        "status": "lookup_failed",
+        "resolved": False,
+        "reason": "users_table_unavailable",
+    }
 
 
 # ---------------------------------------------------------------------------

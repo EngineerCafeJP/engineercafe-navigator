@@ -44,6 +44,7 @@ import VoiceInterface, {
   type VoiceInterfaceRenderProps,
 } from './components/VoiceInterface';
 import type { OcrResponse } from '@/lib/api/ocr-api';
+import { createVisitorIdentityFromOcr } from '@/lib/reception-identity';
 import { startReception } from '@/lib/reception-api';
 import { cancelSttWarmup, sendSttWarmup } from '@/lib/stt-warmup';
 
@@ -73,6 +74,13 @@ function kioskVoiceModeBadgeLabel(
     return labels.voiceModeStt;
   }
   return labels.voiceModeIdle;
+}
+
+function formatMemberNumberSuccess(
+  labels: (typeof overlayLabels)['ja'] | (typeof overlayLabels)['en'],
+  memberNumber: number,
+): string {
+  return labels.ocrMemberReadSuccess.replace('{memberNumber}', String(memberNumber));
 }
 
 
@@ -451,14 +459,50 @@ export default function Home() {
             });
           };
 
+          const startMemberCardReceptionFromOcr = async (result: OcrResponse) => {
+            clearReturnToIdleTimer();
+            setWelcomeMemberOcrOpen(false);
+
+            const memberNumber = result.member_number;
+            if (memberNumber === null) {
+              returnToIdle();
+              setOcrStatusMessage('error', labels.ocrReadFailed);
+              return;
+            }
+
+            setOcrStatusMessage(
+              'member_card',
+              formatMemberNumberSuccess(labels, memberNumber),
+            );
+            setKioskPhaseSynced('voice');
+            setKioskVoiceLocked(micInputMode !== 'push_to_talk');
+            sendSttWarmup({ language: voice.currentLanguage, sessionId: voice.sessionId });
+
+            try {
+              const visitorIdentity = createVisitorIdentityFromOcr(result);
+              const reception = await startReception({
+                session_id: voice.sessionId,
+                language: voice.currentLanguage,
+                trigger_type: receptionTriggerType,
+                ...(visitorIdentity ? { visitor_identity: visitorIdentity } : {}),
+              });
+              await voice.speakPreparedText(reception.greeting, null);
+            } catch {
+              const fallback =
+                voice.currentLanguage === 'ja'
+                  ? `会員番号 ${memberNumber} を読み取りました。ご用件をお聞かせください。`
+                  : `Read member number ${memberNumber}. How can I help you today?`;
+              await voice.speakPreparedText(fallback, null);
+            } finally {
+              scheduleReturnToIdle();
+            }
+          };
+
           const handleOcrSuccess = (result: OcrResponse) => {
             clearReturnToIdleTimer();
 
             if (result.mode === 'member_card') {
-              returnToIdle();
-              if (result.member_number === null) {
-                setOcrStatusMessage('error', labels.ocrReadFailed);
-              }
+              void startMemberCardReceptionFromOcr(result);
               return;
             }
 
@@ -476,11 +520,7 @@ export default function Home() {
           };
 
           const handleWelcomeMemberOcrSuccess = (result: OcrResponse) => {
-            clearReturnToIdleTimer();
-            returnToIdle();
-            if (result.member_number === null) {
-              setOcrStatusMessage('error', labels.ocrReadFailed);
-            }
+            void startMemberCardReceptionFromOcr(result);
           };
 
           const handleWelcomeMemberOcrEndSilent = () => {

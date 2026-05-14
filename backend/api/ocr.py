@@ -96,6 +96,7 @@ class OcrResponse(BaseModel):
     expression: Optional[str] = None
     processing_time_ms: int = 0
     visitor_identity: Optional[dict] = None
+    identity_lookup: Optional[dict] = None
     error: Optional[str] = None
 
 
@@ -268,6 +269,7 @@ async def recognize_image(request: Request, body: OcrRequest) -> OcrResponse:
     # --- Mode-specific post-processing --------------------------------------
     member_number: Optional[int] = None
     visitor_identity: Optional[dict[str, Any]] = None
+    identity_lookup: Optional[dict[str, Any]] = None
     detected_language: Optional[str] = None
 
     if body.mode == "member_card":
@@ -279,13 +281,23 @@ async def recognize_image(request: Request, body: OcrRequest) -> OcrResponse:
                 member_number = int(match.group(1))
                 try:
                     svc = _get_visitor_id_service()
-                    visitor_identity = await svc.identify_by_member_number(member_number)
+                    lookup_result = await svc.identify_by_member_number_with_lookup(member_number)
+                    visitor_identity = lookup_result.get("identity")
+                    identity_lookup = lookup_result.get("lookup")
                 except Exception as exc:
                     logger.warning(
                         "Visitor identification failed for member %s: %s",
                         member_number,
                         exc,
                     )
+                    identity_lookup = {
+                        "attempted": True,
+                        "source": "public.users",
+                        "member_number": member_number,
+                        "status": "lookup_failed",
+                        "resolved": False,
+                        "reason": "service_exception",
+                    }
 
     elif body.mode == "handwriting":
         if recognized_text:
@@ -319,4 +331,5 @@ async def recognize_image(request: Request, body: OcrRequest) -> OcrResponse:
         expression=expression_str,
         processing_time_ms=elapsed_ms,
         visitor_identity=visitor_identity,
+        identity_lookup=identity_lookup,
     )

@@ -180,7 +180,7 @@ export function OcrCameraView({
             compact ? 'max-w-[200px] p-2' : 'max-w-md p-4',
           )}
         >
-          {mode === 'member_card' && lastResult.member_number && (
+          {mode === 'member_card' && lastResult.member_number !== null && (
             <p
               className={cn(
                 'text-center font-bold text-green-800',

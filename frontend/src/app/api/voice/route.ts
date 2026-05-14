@@ -8,6 +8,21 @@ import { backendFetch } from '@/lib/api/backend-proxy';
 
 const VOICE_PROXY_TIMEOUT_MS = 110_000;
 
+function sanitizeTelemetryValue(value: unknown): unknown {
+  if (typeof value === 'string') {
+    return value.slice(0, 500);
+  }
+  if (
+    typeof value === 'number' ||
+    typeof value === 'boolean' ||
+    value === null ||
+    value === undefined
+  ) {
+    return value;
+  }
+  return String(value).slice(0, 500);
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -29,6 +44,26 @@ export async function POST(request: NextRequest) {
       ttsProvider,
       includeVrmControl,
     } = body as Record<string, unknown>;
+
+    if (action === 'client_telemetry') {
+      const telemetry = {
+        event: sanitizeTelemetryValue(body.event),
+        phase: sanitizeTelemetryValue(body.phase),
+        sessionId: sanitizeTelemetryValue(body.sessionId),
+        userAgent: sanitizeTelemetryValue(body.userAgent),
+        errorName: sanitizeTelemetryValue(body.errorName),
+        errorMessage: sanitizeTelemetryValue(body.errorMessage),
+        deviceIdMode: sanitizeTelemetryValue(body.deviceIdMode),
+        recorderState: sanitizeTelemetryValue(body.recorderState),
+        retryWithDefaultDevice: sanitizeTelemetryValue(body.retryWithDefaultDevice),
+        retryOutcome: sanitizeTelemetryValue(body.retryOutcome),
+        retryErrorName: sanitizeTelemetryValue(body.retryErrorName),
+        retryErrorMessage: sanitizeTelemetryValue(body.retryErrorMessage),
+        timestamp: sanitizeTelemetryValue(body.timestamp),
+      };
+      console.warn('[VoiceClientTelemetry]', telemetry);
+      return NextResponse.json({ success: true });
+    }
 
     const response = await backendFetch('/api/voice', {
       body: {
