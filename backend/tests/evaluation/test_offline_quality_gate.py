@@ -121,6 +121,57 @@ def test_cross_lingual_reference_grounding_still_fails_unsupported_answer() -> N
     assert "hallucination_risk" in result.failures
 
 
+def test_cross_lingual_reference_grounding_uses_fact_anchors_for_translated_paraphrase() -> None:
+    result = score_case(
+        {
+            "query_id": "zh-cross-lingual-hours",
+            "language": "zh",
+            "answer": (
+                "工程师咖啡的开放时间是早上9点到晚上10点（9:00到22:00）。"
+                "社区经理咨询时间是13:00到21:00。"
+            ),
+            "contexts": [
+                "開館時間は9:00〜22:00です。" "コミュニティマネージャー対応時間は13:00〜21:00です。"
+            ],
+            "ground_truth": "营业时间为早上9点到晚上10点。社区经理咨询时间为13:00到21:00。",
+            "reference_answer": (
+                "工程师咖啡的开放时间是9:00到22:00。" "社区经理咨询时间是13:00到21:00。"
+            ),
+        },
+        include_ground_truth_context=False,
+    )
+
+    assert result.cross_lingual_context is True
+    assert result.reference_grounding_context is True
+    assert result.anchor_support == 1.0
+    assert result.groundedness >= 0.55
+    assert result.passed is True
+
+
+def test_cross_lingual_anchor_grounding_does_not_pass_unsupported_fact() -> None:
+    result = score_case(
+        {
+            "query_id": "zh-cross-lingual-unsupported",
+            "language": "zh",
+            "answer": "工程师咖啡的开放时间是早上7点到晚上10点（7:00到22:00），并且有私人桑拿。",
+            "contexts": [
+                "開館時間は9:00〜22:00です。" "コミュニティマネージャー対応時間は13:00〜21:00です。"
+            ],
+            "ground_truth": "营业时间为早上9点到晚上10点。社区经理咨询时间为13:00到21:00。",
+            "reference_answer": (
+                "工程师咖啡的开放时间是9:00到22:00。" "社区经理咨询时间是13:00到21:00。"
+            ),
+        },
+        include_ground_truth_context=False,
+    )
+
+    assert result.cross_lingual_context is True
+    assert result.reference_grounding_context is True
+    assert result.anchor_support < 0.55
+    assert result.passed is False
+    assert {"groundedness", "hallucination_risk"}.issubset(set(result.failures))
+
+
 def test_cross_lingual_context_still_fails_wrong_language_answer() -> None:
     result = score_case(
         {

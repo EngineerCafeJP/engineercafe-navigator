@@ -55,6 +55,7 @@ class QualitySignalCaseResult:
     failures: list[str] = field(default_factory=list)
     cross_lingual_context: bool = False
     reference_grounding_context: bool = False
+    anchor_support: float = 0.0
 
 
 def script_counts(text: str) -> Counter[str]:
@@ -121,7 +122,7 @@ def evidence_units(text: str) -> set[str]:
 
     for pattern in (_CJK_RE, _HANGUL_RE):
         for match in pattern.findall(text):
-            units.update(_char_ngrams(match, size=3))
+            units.update(_char_ngrams(match, size=2))
 
     return units
 
@@ -159,12 +160,13 @@ def _is_cross_lingual_context(expected_language: str, contexts: Iterable[str]) -
     return True
 
 
-def _reference_grounding_text(case: dict[str, Any]) -> str:
+def _reference_grounding_texts(case: dict[str, Any]) -> list[str]:
+    texts: list[str] = []
     for key in ("reference_answer", "ground_truth"):
         text = str(case.get(key) or "").strip()
         if text:
-            return text
-    return ""
+            texts.append(text)
+    return texts
 
 
 def _char_ngrams(text: str, *, size: int) -> set[str]:
@@ -189,6 +191,49 @@ def groundedness_score(answer: str, contexts: Iterable[str]) -> float:
     return len(answer_units & context_units) / len(answer_units)
 
 
+_ANCHOR_STOPWORDS = {
+    "and",
+    "are",
+    "am",
+    "can",
+    "for",
+    "from",
+    "has",
+    "into",
+    "the",
+    "pm",
+    "this",
+    "that",
+    "use",
+    "with",
+    "you",
+    "your",
+}
+
+
+def fact_anchor_units(text: str) -> set[str]:
+    """Extract compact fact anchors that survive translation better than prose."""
+    lowered = text.lower()
+    anchors = set(_NUMBER_RE.findall(lowered))
+    for token in _LATIN_WORD_RE.findall(lowered):
+        normalized = token.strip("&+._/-")
+        if len(normalized) >= 3 and normalized not in _ANCHOR_STOPWORDS:
+            anchors.add(normalized)
+    return anchors
+
+
+def anchor_support_score(answer: str, contexts: Iterable[str]) -> float:
+    """Return how many answer-side fact anchors are present in evidence text."""
+    answer_anchors = fact_anchor_units(answer)
+    if not answer_anchors:
+        return 0.0
+
+    context_anchors = fact_anchor_units("\n".join(contexts))
+    if not context_anchors:
+        return 0.0
+    return len(answer_anchors & context_anchors) / len(answer_anchors)
+
+
 def toxicity_score(text: str) -> float:
     """Return a simple lexicon-based toxicity risk score."""
     lowered = text.lower()
@@ -209,18 +254,25 @@ def score_case(
     case_id = str(case.get("query_id") or case.get("id") or case.get("ground_truth_id") or "")
     contexts = [str(context) for context in case.get("contexts") or []]
     cross_lingual_context = _is_cross_lingual_context(language, contexts)
-    reference_text = _reference_grounding_text(case)
+    reference_texts = _reference_grounding_texts(case)
     reference_grounding_context = False
     grounding_contexts = list(contexts)
-    if include_ground_truth_context and reference_text:
-        grounding_contexts.append(reference_text)
+    if include_ground_truth_context and reference_texts:
+        grounding_contexts.extend(reference_texts)
         reference_grounding_context = True
-    elif cross_lingual_context and reference_text:
-        grounding_contexts.append(reference_text)
+    elif cross_lingual_context and reference_texts:
+        grounding_contexts.extend(reference_texts)
         reference_grounding_context = True
 
     language_match = language_match_score(answer, language)
     groundedness = groundedness_score(answer, grounding_contexts)
+    anchor_support = 0.0
+    if cross_lingual_context and reference_grounding_context:
+        anchor_support = anchor_support_score(answer, grounding_contexts)
+        if anchor_support >= gate["groundedness_min"]:
+            groundedness = max(groundedness, anchor_support)
+        elif anchor_support > 0:
+            groundedness = min(groundedness, anchor_support)
     hallucination_risk = 1.0 - groundedness if answer.strip() else 1.0
     toxicity = toxicity_score(answer)
 
@@ -245,6 +297,7 @@ def score_case(
         failures=failures,
         cross_lingual_context=cross_lingual_context,
         reference_grounding_context=reference_grounding_context,
+        anchor_support=round(anchor_support, 4),
     )
 
 
@@ -340,4 +393,5 @@ def _result_to_dict(result: QualitySignalCaseResult) -> dict[str, Any]:
         "failures": result.failures,
         "cross_lingual_context": result.cross_lingual_context,
         "reference_grounding_context": result.reference_grounding_context,
+        "anchor_support": result.anchor_support,
     }

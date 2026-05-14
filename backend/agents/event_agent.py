@@ -131,7 +131,7 @@ class EventAgent:
             return self._get_event_hosting_response(language)
 
         if self._asks_connpass(query):
-            return self._get_connpass_response(language)
+            return self._get_connpass_response(language, include_evidence=include_evidence)
 
         if self._asks_event_clarification(query):
             return self._get_event_clarification_response(language)
@@ -403,7 +403,7 @@ class EventAgent:
         return "connpass" in normalized or "コンパス" in normalized or "콘파스" in normalized
 
     @staticmethod
-    def _get_connpass_response(language: str) -> Dict:
+    def _get_connpass_response(language: str, *, include_evidence: bool = False) -> Dict:
         answers = {
             "ja": (
                 "[relaxed]はい、エンジニアカフェのイベント情報や参加申込は"
@@ -421,23 +421,42 @@ class EventAgent:
             ),
             "zh": (
                 "[relaxed]可以在Connpass上查看工程师咖啡的活动信息。"
-                "活动详情和报名信息也可以在各活动页面确认。"
+                "活动列表和报名信息可以在 https://engineercafe.connpass.com/ 确认。"
+                "大多数活动免费，很多活动为先到先得。"
             ),
             "ko": (
                 "[relaxed]네, Connpass에서 엔지니어 카페의 이벤트 정보를 확인할 수 "
-                "있습니다. 각 이벤트 페이지에서 참가 신청 정보도 확인할 수 있습니다."
+                "있습니다. 이벤트 목록과 참가 신청 정보는 "
+                "https://engineercafe.connpass.com/ 에서 확인할 수 있습니다. "
+                "대부분 무료이며 선착순인 경우가 많습니다."
             ),
         }
         answer = answers.get(language, answers["ja"])
+        context = answer.split("]", 1)[1] if answer.startswith("[") and "]" in answer else answer
+        metadata = {
+            "agent": "EventAgent",
+            "time_range": "thisWeek",
+            "event_count": 0,
+            "sources": ["connpass"],
+        }
+        if include_evidence:
+            metadata["rag_evidence"] = {
+                "source": "event_agent_static_connpass",
+                "category": "event",
+                "context_char_count": len(context),
+                "contexts": [context],
+                "results": [
+                    {
+                        "source": "connpass",
+                        "title": "Engineer Cafe Connpass event listings",
+                        "content": context,
+                    }
+                ],
+            }
         return {
             "answer": answer,
             "emotion": "relaxed",
-            "metadata": {
-                "agent": "EventAgent",
-                "time_range": "thisWeek",
-                "event_count": 0,
-                "sources": ["connpass"],
-            },
+            "metadata": metadata,
         }
 
     @staticmethod

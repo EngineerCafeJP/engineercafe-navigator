@@ -111,6 +111,23 @@ class TestEventAgent:
         assert "参加費無料" in response["answer"]
         assert "早めの申込" in response["answer"]
 
+    def test_connpass_canonical_response_multilingual_includes_url(self):
+        for language in ("zh", "ko"):
+            response = self.agent._get_connpass_response(language)
+
+            assert "Connpass" in response["answer"]
+            assert "https://engineercafe.connpass.com/" in response["answer"]
+            assert response["metadata"]["sources"] == ["connpass"]
+
+    def test_connpass_canonical_response_can_include_eval_evidence(self):
+        response = self.agent._get_connpass_response("zh", include_evidence=True)
+        evidence = response["metadata"]["rag_evidence"]
+
+        assert evidence["source"] == "event_agent_static_connpass"
+        assert evidence["category"] == "event"
+        assert "https://engineercafe.connpass.com/" in evidence["contexts"][0]
+        assert evidence["results"][0]["source"] == "connpass"
+
     @pytest.mark.asyncio
     async def test_event_hosting_canonical_skips_live_calendar(self):
         """gt-030: イベント開催相談は予定イベント一覧に倒さない"""

@@ -1045,7 +1045,7 @@
       "contexts": [
         "First-time visitors register at reception when they arrive. The process takes about 5 to 10 minutes and is completed with a web form. Online pre-registration is not supported."
       ],
-      "ground_truth": "Register at reception on arrival. Ask staff for assistance.",
+      "ground_truth": "Register at reception when you arrive. The process takes about 5 to 10 minutes, is completed with a web form, and online pre-registration is not available. Ask staff for assistance if needed.",
       "language": "en",
       "category": "pricing"
     },
@@ -1067,7 +1067,7 @@
       "contexts": [
         "Engineer Cafe event listings and registration are available on Connpass: https://engineercafe.connpass.com/. Most events are free, and many are first-come, first-served."
       ],
-      "ground_truth": "Yes, you can check events on Connpass.",
+      "ground_truth": "Yes. Engineer Cafe event listings and sign-up information are available on Connpass at https://engineercafe.connpass.com/. Most events are free, and many are first-come, first-served.",
       "language": "en",
       "category": "event"
     },
@@ -1078,7 +1078,7 @@
       "contexts": [
         "Outside food is generally prohibited. Only items purchased at cafe&bar saino may be consumed in the designated eating areas such as the saino seating area, lounge, and terrace."
       ],
-      "ground_truth": "You can bring drinks in lidded containers. Food from cafe&bar saino can be eaten in the terrace and lounge areas.",
+      "ground_truth": "Outside food is generally not allowed. Only food and drinks purchased at cafe&bar saino can be consumed in designated eating areas such as the saino seating area, lounge, and terrace. Drinks in lidded containers are allowed.",
       "language": "en",
       "category": "food_drink"
     },
@@ -1133,7 +1133,7 @@
       "contexts": [
         "工程师咖啡的开放时间是9:00到22:00。社区经理咨询时间是13:00到21:00。"
       ],
-      "ground_truth": "营业时间为早上9点到晚上10点（9:00-22:00）。社区经理咨询接待时间为下午1点到晚上9点（13:00-21:00）。",
+      "ground_truth": "营业时间为早上9点到晚上10点（9:00-22:00）。社区经理咨询接待时间为下午1点到晚上9点（13:00-21:00）。每月最后一个星期一和年底年初闭馆休息。",
       "language": "zh",
       "category": "hours"
     },
@@ -1144,7 +1144,7 @@
       "contexts": [
         "工程师咖啡的设施和设备可以免费使用。收费项目只有cafe&bar saino的餐饮以及3D打印机的耗材。"
       ],
-      "ground_truth": "设施和设备使用费以及注册费免费。cafe&bar saino的餐饮和3D打印机耗材需要付费。",
+      "ground_truth": "设施和设备使用费、共享办公空间以及注册费免费。cafe&bar saino的餐饮、3D打印机耗材以及二楼会议室等部分空间需要另外付费。",
       "language": "zh",
       "category": "pricing"
     },
@@ -1155,7 +1155,7 @@
       "contexts": [
         "第一次使用时需要在到馆后于前台登记。手续约5到10分钟，通过网页表单填写姓名和联系方式等信息完成，暂不支持在线提前登记。"
       ],
-      "ground_truth": "到馆后在前台登记。详情请咨询工作人员。",
+      "ground_truth": "首次来访时请到一楼前台登记。登记免费，手续大约需要5到10分钟，需要在前台填写网页表单。不能在线预先登记，有不清楚的地方可以咨询工作人员。",
       "language": "zh",
       "category": "pricing"
     },
@@ -1166,7 +1166,7 @@
       "contexts": [
         "工程师咖啡位于福冈市中央区天神1-15-30的赤砖文化馆内。距离地铁天神站步行约5分钟，西铁巴士天神四丁目站下车后也很近。"
       ],
-      "ground_truth": "位于福冈市中央区天神的赤炼瓦文化馆一楼，进门后左手边可找到接待处。",
+      "ground_truth": "工程师咖啡位于福冈市中央区天神1丁目15番30号的福冈市赤炼瓦文化馆内，在一楼，进门后左手边可以找到接待处。从天神站步行约5分钟。",
       "language": "zh",
       "category": "access"
     },
@@ -1177,7 +1177,7 @@
       "contexts": [
         "工程师咖啡的活动信息和报名入口发布在Connpass：https://engineercafe.connpass.com/。大多数活动免费，很多活动为先到先得。"
       ],
-      "ground_truth": "可以在Connpass上查看活动信息。",
+      "ground_truth": "可以。工程师咖啡的活动列表、活动详情和报名信息可以在Connpass上查看：https://engineercafe.connpass.com/。大多数活动免费，很多活动为先到先得。",
       "language": "zh",
       "category": "event"
     },
@@ -1265,7 +1265,7 @@
       "contexts": [
         "처음 이용하는 방문자는 도착 후 안내 데스크에서 등록합니다. 절차는 약 5분에서 10분 정도 걸리며 웹 폼으로 정보를 입력합니다. 온라인 사전 등록은 불가능합니다."
       ],
-      "ground_truth": "안내 데스크에서 등록. 직원 문의 가능.",
+      "ground_truth": "처음 방문하면 1층 안내 데스크에서 무료로 등록합니다. 약 5분에서 10분 정도 걸리며 웹 폼을 작성하면 됩니다. 온라인 사전 등록은 지원하지 않습니다. 필요한 경우 직원에게 문의할 수 있습니다.",
       "language": "ko",
       "category": "pricing"
     },
@@ -1287,7 +1287,7 @@
       "contexts": [
         "엔지니어 카페의 이벤트 정보와 신청 페이지는 Connpass에 게시됩니다: https://engineercafe.connpass.com/. 대부분 무료이며 선착순인 경우가 많습니다."
       ],
-      "ground_truth": "네, Connpass에서 이벤트 확인 가능.",
+      "ground_truth": "네. 엔지니어 카페의 이벤트 목록과 참가 신청 정보는 Connpass에서 확인할 수 있습니다: https://engineercafe.connpass.com/. 대부분 무료이며 선착순인 경우가 많습니다.",
       "language": "ko",
       "category": "event"
     },

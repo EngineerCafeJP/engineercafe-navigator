@@ -104,6 +104,95 @@ def test_rag_evidence_metadata_is_not_exposed_without_eval_flag():
     )
 
 
+def test_agent_response_evidence_metadata_is_opt_in_and_source_backed():
+    from backend.workflows.main_workflow import _build_agent_response_evidence_metadata
+
+    metadata = {
+        "agent": "FacilityAgent",
+        "confidence": 0.95,
+        "category": "facility-info",
+        "request_type": "wifi",
+        "sources": ["enhanced_rag"],
+    }
+    answer = "Wi-Fi SSID is engnecf-guest-5GHz. The password is akarenga-112years."
+
+    assert _build_agent_response_evidence_metadata({}, metadata, answer) is None
+
+    evidence = _build_agent_response_evidence_metadata(
+        {"include_rag_evidence": True},
+        metadata,
+        answer,
+    )
+
+    assert evidence == {
+        "source": "agent_response",
+        "agent": "FacilityAgent",
+        "category": "facility-info",
+        "request_type": "wifi",
+        "sources": ["enhanced_rag"],
+        "context_char_count": len(answer),
+        "contexts": [answer],
+        "results": [
+            {
+                "source": "agent_response",
+                "sources": ["enhanced_rag"],
+                "content": answer,
+                "agent": "FacilityAgent",
+                "category": "facility-info",
+                "request_type": "wifi",
+            }
+        ],
+    }
+
+
+def test_agent_response_evidence_metadata_skips_dynamic_low_confidence_sources():
+    from backend.workflows.main_workflow import _build_agent_response_evidence_metadata
+
+    assert (
+        _build_agent_response_evidence_metadata(
+            {"include_rag_evidence": True},
+            {
+                "agent": "BusinessInfoAgent",
+                "confidence": 0.85,
+                "sources": ["enhanced_rag"],
+            },
+            "Generated answer from retrieved context should rely on retrieved evidence.",
+        )
+        is None
+    )
+
+
+def test_agent_response_evidence_metadata_allows_static_connpass_guidance():
+    from backend.workflows.main_workflow import _build_agent_response_evidence_metadata
+
+    evidence = _build_agent_response_evidence_metadata(
+        {"include_rag_evidence": True},
+        {
+            "agent": "EventAgent",
+            "event_count": 0,
+            "sources": ["connpass"],
+        },
+        "Event listings are available on Connpass.",
+    )
+
+    assert evidence is not None
+    assert evidence["source"] == "agent_response"
+    assert evidence["sources"] == ["connpass"]
+
+
+def test_agent_response_evidence_metadata_skips_fallback_sources():
+    from backend.workflows.main_workflow import _build_agent_response_evidence_metadata
+
+    assert (
+        _build_agent_response_evidence_metadata(
+            {"include_rag_evidence": True},
+            {"agent": "FacilityAgent", "sources": ["fallback"]},
+            "I could not find the requested facility information.",
+        )
+        is None
+    )
+
+
 class TestMainWorkflowMemoryIntegration:
     """MainWorkflow のメモリ統合テスト"""
 

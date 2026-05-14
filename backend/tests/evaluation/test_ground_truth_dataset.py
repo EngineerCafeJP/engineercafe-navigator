@@ -136,6 +136,24 @@ class TestGroundTruthDatasetCoverage:
         assert expected_zh <= ids
         assert expected_ko <= ids
 
+    def test_diagnostic_references_keep_registration_and_connpass_details(self, raw_data):
+        """Live diagnostic references should not be terser than the canonical answer."""
+        cases = {case["id"]: case for case in raw_data["test_cases"]}
+
+        expected_terms = {
+            "gt-090": ["5 to 10 minutes", "web form", "online pre-registration"],
+            "gt-092": ["https://engineercafe.connpass.com/", "sign-up"],
+            "gt-100": ["5到10分钟", "网页表单", "不能在线预先登记"],
+            "gt-102": ["https://engineercafe.connpass.com/", "报名"],
+            "gt-110": ["5분에서 10분", "웹 폼", "온라인 사전 등록"],
+            "gt-112": ["https://engineercafe.connpass.com/", "참가 신청"],
+        }
+
+        for case_id, terms in expected_terms.items():
+            ground_truth = cases[case_id]["ground_truth"]
+            for term in terms:
+                assert term in ground_truth, f"{case_id} ground_truth missing {term!r}"
+
 
 class TestDatasetLoaderGroundTruth:
     """DatasetLoader.load_ground_truth_cases()のテスト"""

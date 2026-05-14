@@ -168,6 +168,73 @@ def _build_rag_evidence_metadata(context: dict[str, Any]) -> Optional[dict[str, 
     }
 
 
+def _metadata_sources(metadata: dict[str, Any]) -> list[str]:
+    sources = metadata.get("sources")
+    if isinstance(sources, str):
+        return [sources] if sources.strip() else []
+    if isinstance(sources, list):
+        return [str(source) for source in sources if str(source).strip()]
+    return []
+
+
+def _is_static_source_backed_response(metadata: dict[str, Any], sources: list[str]) -> bool:
+    confidence = metadata.get("confidence")
+    if isinstance(confidence, (int, float)) and float(confidence) >= 0.95:
+        return True
+
+    agent = metadata.get("agent")
+    event_count = metadata.get("event_count")
+    try:
+        parsed_event_count = int(event_count)
+    except (TypeError, ValueError):
+        parsed_event_count = None
+    return agent == "EventAgent" and parsed_event_count == 0 and "connpass" in sources
+
+
+def _build_agent_response_evidence_metadata(
+    context: dict[str, Any],
+    metadata: dict[str, Any],
+    answer: str,
+) -> Optional[dict[str, Any]]:
+    """Expose bounded evidence for opt-in live eval canonical/static agent answers."""
+    if not _truthy_context_flag(context.get("include_rag_evidence")):
+        return None
+
+    sources = _metadata_sources(metadata)
+    if not sources or all(source == "fallback" for source in sources):
+        return None
+    if not _is_static_source_backed_response(metadata, sources):
+        return None
+
+    content = _clip_evidence_text(answer, max_chars=RAG_EVIDENCE_MAX_CONTEXT_STRING_CHARS)
+    if not content:
+        return None
+
+    agent = metadata.get("agent")
+    result: dict[str, Any] = {
+        "source": "agent_response",
+        "sources": sources,
+        "content": content,
+    }
+    if agent:
+        result["agent"] = agent
+    if metadata.get("category"):
+        result["category"] = metadata.get("category")
+    if metadata.get("request_type"):
+        result["request_type"] = metadata.get("request_type")
+
+    return {
+        "source": "agent_response",
+        "agent": agent,
+        "category": metadata.get("category"),
+        "request_type": metadata.get("request_type"),
+        "sources": sources,
+        "context_char_count": len(content),
+        "contexts": [content],
+        "results": [result],
+    }
+
+
 async def _translate_llm_with_retry(
     query: str,
     language: str,
@@ -1629,6 +1696,15 @@ class MainWorkflow:
                 answer = masked
         except Exception:
             pass  # Non-critical — API層でもスキャンするため
+
+        if "rag_evidence" not in metadata:
+            rag_evidence = _build_agent_response_evidence_metadata(
+                state_context,
+                metadata,
+                answer,
+            )
+            if rag_evidence is not None:
+                metadata["rag_evidence"] = rag_evidence
 
         # Response translation: translate JA response to EN for English users
         # zh/ko: rely on LLM's native multilingual output (LANGUAGE_INSTRUCTION)
