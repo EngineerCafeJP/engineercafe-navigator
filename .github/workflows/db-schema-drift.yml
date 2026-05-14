@@ -7,6 +7,8 @@ on:
   pull_request:
     paths:
       - 'backend/supabase/migrations/**'
+      - 'scripts/check-db-schema-drift.sh'
+      - '.github/workflows/db-schema-drift.yml'
 
 permissions:
   contents: read
@@ -30,8 +32,14 @@ jobs:
         with:
           version: latest
 
+      - name: Skip drift for forked pull requests
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
+        run: echo "Skipping live drift check because repository secrets are not available to forked pull requests."
+
       - name: Check drift
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
         env:
+          SUPABASE_DB_URI: ${{ secrets.SUPABASE_DB_URI }}
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
