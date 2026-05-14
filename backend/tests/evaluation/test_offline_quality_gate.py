@@ -82,6 +82,61 @@ def test_summarize_quality_signals_groups_by_language() -> None:
     assert summary["failed_cases"] == []
 
 
+def test_cross_lingual_live_context_uses_reference_grounding_context() -> None:
+    result = score_case(
+        {
+            "query_id": "en-cross-lingual",
+            "language": "en",
+            "answer": "Engineer Cafe is open from 9:00 to 22:00.",
+            "contexts": ["エンジニアカフェの開館時間は9:00から22:00です。"],
+            "ground_truth": "Engineer Cafe is open from 9:00 to 22:00.",
+        },
+        include_ground_truth_context=False,
+    )
+
+    assert result.language_match == 1.0
+    assert result.groundedness >= 0.55
+    assert result.cross_lingual_context is True
+    assert result.reference_grounding_context is True
+    assert result.passed is True
+    assert result.failures == []
+
+
+def test_cross_lingual_reference_grounding_still_fails_unsupported_answer() -> None:
+    result = score_case(
+        {
+            "query_id": "en-cross-lingual-unsupported",
+            "language": "en",
+            "answer": "Engineer Cafe is open from 7:00 and has a private sauna.",
+            "contexts": ["エンジニアカフェの開館時間は9:00から22:00です。"],
+            "ground_truth": "Engineer Cafe is open from 9:00 to 22:00.",
+        },
+        include_ground_truth_context=False,
+    )
+
+    assert result.cross_lingual_context is True
+    assert result.reference_grounding_context is True
+    assert result.passed is False
+    assert "groundedness" in result.failures
+    assert "hallucination_risk" in result.failures
+
+
+def test_cross_lingual_context_still_fails_wrong_language_answer() -> None:
+    result = score_case(
+        {
+            "query_id": "wrong-language-cross-lingual",
+            "language": "en",
+            "answer": "エンジニアカフェの開館時間は9:00から22:00です。",
+            "contexts": ["エンジニアカフェの開館時間は9:00から22:00です。"],
+        },
+        include_ground_truth_context=False,
+    )
+
+    assert result.reference_grounding_context is False
+    assert result.passed is False
+    assert "language_match" in result.failures
+
+
 def test_run_offline_quality_gate_writes_reports_without_ragas_or_live_secrets(tmp_path) -> None:
     result = run_offline_quality_gate(
         languages=["ja", "en"],

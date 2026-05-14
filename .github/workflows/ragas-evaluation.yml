@@ -2,20 +2,46 @@ name: RAGAS Evaluation
 
 on:
   schedule:
-    - cron: '0 9 * * 1'  # 毎週月曜 9:00 UTC
+    - cron: '0 9 * * 1'  # Weekly Monday 09:00 UTC
   workflow_dispatch:
     inputs:
-      max_cases:
-        description: 'Max evaluation cases'
-        default: '20'
+      mode:
+        description: 'Evaluation mode'
+        default: 'live-api'
+        type: choice
+        options:
+          - offline
+          - live-api
+      case_suite:
+        description: 'Live API case suite'
+        default: 'diagnostic-29'
+        type: choice
+        options:
+          - diagnostic-29
+          - alpha-127
+      base_url:
+        description: 'Live backend base URL. Empty uses the production Cloud Run URL.'
+        default: ''
         type: string
+      languages:
+        description: 'Live API languages as comma or space separated values'
+        default: 'ja,en,zh,ko'
+        type: string
+      check_targets:
+        description: 'Fail live API runs when configured targets are missed'
+        default: true
+        type: boolean
   pull_request:
-    branches: [main]
+    branches: [develop, main]
     paths:
-      - 'backend/tools/enhanced_rag.py'
-      - 'backend/knowledge/**'
+      - '.github/workflows/**'
+      - 'backend/agents/**'
       - 'backend/evaluation/**'
-      - 'backend/tests/fixtures/golden_datasets/**'
+      - 'backend/knowledge/**'
+      - 'backend/tests/evaluation/**'
+      - 'backend/tests/fixtures/**'
+      - 'backend/tools/**'
+      - 'backend/workflows/**'
 
 concurrency:
   group: ragas-${{ github.event.pull_request.number || github.ref }}
@@ -27,13 +53,14 @@ permissions:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+  DEFAULT_BACKEND_URL: https://engineer-cafe-backend-639959525777.asia-northeast1.run.app
+  DEFAULT_LANGUAGES: ja,en,zh,ko
 
 jobs:
   ragas-eval:
     name: RAGAS Quality Evaluation
     runs-on: ubuntu-latest
-    continue-on-error: true
-    timeout-minutes: 30
+    timeout-minutes: 180
 
     steps:
       - name: Checkout
@@ -48,22 +75,121 @@ jobs:
         uses: astral-sh/setup-uv@v3
 
       - name: Install dependencies
-        working-directory: backend
         run: |
-          uv pip install -e ".[evaluation]" --system
+          uv pip install -e "./backend[evaluation]" --system
 
-      - name: Run RAGAS evaluation
-        id: ragas
-        working-directory: backend
+      - name: Resolve evaluation inputs
+        id: inputs
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_MODE: ${{ github.event.inputs.mode }}
+          INPUT_CASE_SUITE: ${{ github.event.inputs.case_suite }}
+          INPUT_BASE_URL: ${{ github.event.inputs.base_url }}
+          INPUT_LANGUAGES: ${{ github.event.inputs.languages }}
+          INPUT_CHECK_TARGETS: ${{ github.event.inputs.check_targets }}
+        run: |
+          set -euo pipefail
+
+          mode="${INPUT_MODE:-live-api}"
+          case_suite="${INPUT_CASE_SUITE:-diagnostic-29}"
+          base_url="${INPUT_BASE_URL:-$DEFAULT_BACKEND_URL}"
+          languages="${INPUT_LANGUAGES:-$DEFAULT_LANGUAGES}"
+          check_targets="${INPUT_CHECK_TARGETS:-true}"
+
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            mode="offline"
+            check_targets="false"
+          fi
+
+          if [[ "$EVENT_NAME" == "schedule" ]]; then
+            mode="live-api"
+            case_suite="alpha-127"
+            base_url="$DEFAULT_BACKEND_URL"
+            languages="$DEFAULT_LANGUAGES"
+            check_targets="true"
+          fi
+
+          if [[ "$mode" != "offline" && "$mode" != "live-api" ]]; then
+            echo "mode must be offline or live-api, got: $mode" >&2
+            exit 2
+          fi
+
+          if [[ "$case_suite" != "diagnostic-29" && "$case_suite" != "alpha-127" ]]; then
+            echo "case_suite must be diagnostic-29 or alpha-127, got: $case_suite" >&2
+            exit 2
+          fi
+
+          case "$check_targets" in
+            true|false) ;;
+            *) echo "check_targets must be true or false, got: $check_targets" >&2; exit 2 ;;
+          esac
+
+          normalized_languages="$(printf '%s' "$languages" | tr ',' ' ' | xargs)"
+          if [[ -z "$normalized_languages" ]]; then
+            echo "languages must not be empty" >&2
+            exit 2
+          fi
+          for language in $normalized_languages; do
+            case "$language" in
+              ja|en|zh|ko) ;;
+              *) echo "Unsupported language: $language" >&2; exit 2 ;;
+            esac
+          done
+
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+          echo "case_suite=$case_suite" >> "$GITHUB_OUTPUT"
+          echo "base_url=$base_url" >> "$GITHUB_OUTPUT"
+          echo "languages=$normalized_languages" >> "$GITHUB_OUTPUT"
+          echo "check_targets=$check_targets" >> "$GITHUB_OUTPUT"
+
+      - name: Run live API RAGAS evaluation
+        id: ragas-live
+        if: steps.inputs.outputs.mode == 'live-api'
+        env:
+          API_SECRET_KEY: ${{ secrets.BACKEND_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmd=(
+            python -m backend.evaluation.run_live_api_eval
+            --base-url "${{ steps.inputs.outputs.base_url }}"
+            --case-suite "${{ steps.inputs.outputs.case_suite }}"
+            --languages ${{ steps.inputs.outputs.languages }}
+            --output-dir ./backend/reports
+            --report-timestamp "run-${{ github.run_id }}-${{ github.run_attempt }}"
+          )
+          if [[ "${{ steps.inputs.outputs.check_targets }}" == "true" ]]; then
+            cmd+=(--check-targets)
+          fi
+          "${cmd[@]}"
+
+      - name: Run PR offline quality gate
+        id: ragas-pr-offline
+        if: steps.inputs.outputs.mode == 'offline' && github.event_name == 'pull_request'
+        run: |
+          python -m backend.evaluation.run_offline_quality_gate \
+            --languages ${{ steps.inputs.outputs.languages }} \
+            --max-cases 2 \
+            --output-dir ./backend/reports \
+            --enforce
+
+      - name: Run manual offline RAGAS evaluation
+        id: ragas-offline
+        if: steps.inputs.outputs.mode == 'offline' && github.event_name != 'pull_request'
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         run: |
-          python -m tests.evaluation.run_ragas_evaluation \
-            --max-cases ${{ github.event.inputs.max_cases || '20' }} \
-            --output-dir ./reports \
+          python -m backend.tests.evaluation.run_ragas_evaluation \
+            --max-cases 20 \
+            --output-dir ./backend/reports \
             --ci-mode
 
       - name: Upload reports
@@ -75,21 +201,47 @@ jobs:
           retention-days: 30
 
       - name: Comment PR with results
-        if: github.event_name == 'pull_request'
+        if: always() && github.event_name == 'pull_request'
         uses: actions/github-script@v9.0.0
         with:
           script: |
             const fs = require('fs');
             const path = require('path');
 
-            // Read the latest report
             const reportsDir = 'backend/reports';
             let summaryContent = '## RAGAS Evaluation Results\n\n';
+            summaryContent += `**Mode**: ${{ steps.inputs.outputs.mode }}\n`;
+            summaryContent += `**Case suite**: ${{ steps.inputs.outputs.case_suite }}\n`;
+            summaryContent += `**Languages**: ${{ steps.inputs.outputs.languages }}\n`;
+            summaryContent += `**Check targets**: ${{ steps.inputs.outputs.check_targets }}\n\n`;
 
             try {
-              const files = fs.readdirSync(reportsDir).filter(f => f.startsWith('ragas_report_'));
-              if (files.length > 0) {
-                const latestReport = files.sort().pop();
+              const files = fs.readdirSync(reportsDir);
+              const liveReports = files.filter(f => f.startsWith('live_api_eval_') && f.endsWith('.json'));
+              const offlineReports = files.filter(f => f.startsWith('ragas_report_') && f.endsWith('.json'));
+              const offlineQualityReports = files.filter(f => f.startsWith('offline_quality_gate_') && f.endsWith('.json'));
+
+              if (liveReports.length > 0) {
+                const latestReport = liveReports.sort().pop();
+                const report = JSON.parse(fs.readFileSync(path.join(reportsDir, latestReport), 'utf8'));
+                const comparison = report.comparison || {};
+                const evalSummary = report.evaluation_summary || comparison.evaluation_summary || {};
+
+                summaryContent += `**All targets met**: ${comparison.all_targets_met ? 'YES' : 'NO'}\n`;
+                summaryContent += `**Alpha release gate met**: ${comparison.alpha_release_gate_met ? 'YES' : 'NO'}\n`;
+                summaryContent += `**Cases**: requested ${evalSummary.requested_total_cases || 0}, collected ${evalSummary.collected_total_cases || 0}, evaluated ${evalSummary.evaluated_total_cases || 0}\n\n`;
+
+                const perLanguage = report.per_language || {};
+                summaryContent += '| Language | Answer Correctness | Target | Status |\n';
+                summaryContent += '|----------|--------------------|--------|--------|\n';
+                for (const [language, result] of Object.entries(perLanguage)) {
+                  const actual = result.metrics?.answer_correctness;
+                  const target = comparison.per_language?.[language]?.answer_correctness?.target;
+                  const passed = comparison.per_language?.[language]?.passed;
+                  summaryContent += `| ${language} | ${typeof actual === 'number' ? actual.toFixed(3) : 'n/a'} | ${typeof target === 'number' ? target.toFixed(2) : 'n/a'} | ${passed ? 'PASS' : 'FAIL'} |\n`;
+                }
+              } else if (offlineReports.length > 0) {
+                const latestReport = offlineReports.sort().pop();
                 const report = JSON.parse(fs.readFileSync(path.join(reportsDir, latestReport), 'utf8'));
 
                 if (report.metrics) {
@@ -100,6 +252,20 @@ jobs:
                   summaryContent += `\n**Cases**: ${report.evaluated_cases || 0} evaluated, ${report.skipped_cases || 0} skipped\n`;
                 } else {
                   summaryContent += '_No metrics available. Check the evaluation logs._\n';
+                }
+              } else if (offlineQualityReports.length > 0) {
+                const latestReport = offlineQualityReports.sort().pop();
+                const report = JSON.parse(fs.readFileSync(path.join(reportsDir, latestReport), 'utf8'));
+                const signals = report.quality_signals || {};
+                const overall = signals.overall || {};
+
+                summaryContent += `**Deterministic PR quality gate**: ${overall.passed ? 'PASS' : 'FAIL'}\n`;
+                summaryContent += `**Cases**: ${overall.case_count || 0} scored, ${overall.failed_case_count || 0} failed\n\n`;
+                summaryContent += '| Scope | Cases | Failed | Language | Grounded | Hallucination Risk | Toxicity | Status |\n';
+                summaryContent += '|-------|------:|-------:|---------:|---------:|-------------------:|---------:|--------|\n';
+                const rows = [['overall', overall], ...Object.entries(signals.per_language || {})];
+                for (const [scope, row] of rows) {
+                  summaryContent += `| ${scope} | ${row.case_count || 0} | ${row.failed_case_count || 0} | ${typeof row.language_match === 'number' ? row.language_match.toFixed(3) : 'n/a'} | ${typeof row.groundedness === 'number' ? row.groundedness.toFixed(3) : 'n/a'} | ${typeof row.hallucination_risk === 'number' ? row.hallucination_risk.toFixed(3) : 'n/a'} | ${typeof row.toxicity === 'number' ? row.toxicity.toFixed(3) : 'n/a'} | ${row.passed ? 'PASS' : 'FAIL'} |\n`;
                 }
               } else {
                 summaryContent += '_No report files found._\n';

@@ -36,6 +36,81 @@ NO_RAGAS_JUDGE_METADATA = {
 }
 
 
+def _install_small_live_eval_fixture(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    queries,
+    ground_truth_cases,
+    chat_responses_by_question,
+    captured_ragas_cases,
+):
+    def fake_load_case_suite_config(case_suite):
+        return {
+            "case_suite": case_suite,
+            "expected_total_cases": len(queries),
+            "queries": queries,
+        }
+
+    def fake_load_ground_truth_lookup():
+        return {case["id"]: case for case in ground_truth_cases}
+
+    async def fake_call_chat_api(client, *, base_url, question, language, api_key=None, **kwargs):
+        return chat_responses_by_question[question]
+
+    class FakeRagasEvaluator:
+        is_available = True
+
+        def __init__(self, *, metrics, max_cases):
+            self.metrics = metrics
+            self.max_cases = max_cases
+
+        async def evaluate_batch(self, cases):
+            captured_ragas_cases.extend(cases)
+            return SimpleNamespace(
+                evaluated_cases=len(cases),
+                skipped_cases=0,
+                metrics={
+                    "context_precision": 1.0,
+                    "answer_correctness": 1.0,
+                    "answer_relevancy": 1.0,
+                    "faithfulness": 1.0,
+                },
+                errors=[],
+                results=[
+                    SimpleNamespace(
+                        question=case["question"],
+                        answer_correctness=1.0,
+                        answer_relevancy=1.0,
+                        faithfulness=1.0,
+                        context_precision=1.0,
+                        error=None,
+                    )
+                    for case in cases
+                ],
+            )
+
+    monkeypatch.setattr(
+        "backend.evaluation.run_live_api_eval._load_case_suite_config",
+        fake_load_case_suite_config,
+    )
+    monkeypatch.setattr(
+        "backend.evaluation.run_live_api_eval._load_ground_truth_lookup",
+        fake_load_ground_truth_lookup,
+    )
+    monkeypatch.setattr(
+        "backend.evaluation.run_live_api_eval._call_chat_api",
+        fake_call_chat_api,
+    )
+    monkeypatch.setitem(
+        __import__("sys").modules,
+        "evaluation.ragas_pipeline",
+        SimpleNamespace(
+            RagasEvaluator=FakeRagasEvaluator,
+            resolve_ragas_judge_metadata=lambda: NO_RAGAS_JUDGE_METADATA,
+        ),
+    )
+
+
 def test_diagnostic_case_suite_preserves_29_case_manifest():
     config = _load_case_suite_config(CASE_SUITE_DIAGNOSTIC_29)
     queries = config["queries"]
@@ -164,6 +239,280 @@ def test_source_requirement_accepts_knowledge_and_event_alternatives():
         [LOCAL_KNOWLEDGE_SOURCE_REQUIREMENT],
         ["fallback"],
     )
+
+
+@pytest.mark.asyncio()
+async def test_live_eval_uses_api_metadata_contexts_for_ragas_and_quality_signals(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+):
+    queries = [
+        {
+            "id": "live-context-case",
+            "language": "ja",
+            "question": "エンジニアカフェの開館時間は？",
+            "category": "hours",
+            "ground_truth_id": "gt-live-context",
+            "metadata": {"intent": "hours"},
+        },
+        {
+            "id": "live-evidence-case",
+            "language": "ja",
+            "question": "メインホールは何席ありますか？",
+            "category": "facility-info",
+            "ground_truth_id": "gt-live-evidence",
+            "metadata": {"intent": "facility-info"},
+        },
+    ]
+    ground_truth_cases = [
+        {
+            "id": "gt-live-context",
+            "question": queries[0]["question"],
+            "contexts": ["GOLDEN_CONTEXT_SHOULD_NOT_BE_USED: 開館時間は10:00から18:00です。"],
+            "ground_truth": "開館時間は9:00から22:00です。",
+        },
+        {
+            "id": "gt-live-evidence",
+            "question": queries[1]["question"],
+            "contexts": ["GOLDEN_CONTEXT_SHOULD_NOT_BE_USED: メインホールは10席です。"],
+            "ground_truth": "メインホールは30席です。",
+        },
+    ]
+    live_context = "LIVE_RETRIEVED_CONTEXT: エンジニアカフェの開館時間は9:00から22:00です。"
+    live_evidence = "LIVE_EVIDENCE: 1階メインホールは30席のコワーキングスペースです。"
+    captured_ragas_cases = []
+    _install_small_live_eval_fixture(
+        monkeypatch,
+        queries=queries,
+        ground_truth_cases=ground_truth_cases,
+        chat_responses_by_question={
+            queries[0]["question"]: {
+                "answer": "エンジニアカフェの開館時間は9:00から22:00です。",
+                "metadata": {
+                    "agent": "BusinessInfoAgent",
+                    "route": "business_info",
+                    "sources": ["enhanced_rag"],
+                    "retrieved_contexts": [live_context],
+                },
+            },
+            queries[1]["question"]: {
+                "answer": "メインホールは30席です。",
+                "metadata": {
+                    "agent": "FacilityAgent",
+                    "route": "facility",
+                    "sources": ["enhanced_rag"],
+                    "evidence": [{"content": live_evidence}],
+                },
+            },
+        },
+        captured_ragas_cases=captured_ragas_cases,
+    )
+
+    result = await run_live_api_evaluation(
+        base_url="http://example.test",
+        languages=("ja",),
+        output_dir=tmp_path,
+        case_suite=CASE_SUITE_DIAGNOSTIC_29,
+        metrics=("answer_correctness",),
+        report_timestamp="live-context-quality",
+    )
+
+    ragas_cases_by_id = {case["query_id"]: case for case in captured_ragas_cases}
+    assert ragas_cases_by_id["live-context-case"]["contexts"] == [live_context]
+    assert ragas_cases_by_id["live-evidence-case"]["contexts"] == [live_evidence]
+    assert {case["evaluation_context_source"] for case in captured_ragas_cases} == {
+        "live_api_metadata"
+    }
+    assert result["ragas_context_source"] == "live_api_metadata"
+    assert result["quality_signals"]["overall"]["case_count"] == 2
+    assert result["quality_signals"]["overall"]["passed"] is True
+    assert result["comparison"]["quality_signals"]["overall"]["passed"] is True
+    assert result["comparison"]["per_language"]["ja"]["quality_signals"]["passed"] is True
+    assert "Quality signals:" in result["report"]
+
+
+@pytest.mark.asyncio()
+async def test_live_eval_uses_reference_grounding_for_cross_lingual_contexts(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+):
+    query = {
+        "id": "en-cross-lingual-context",
+        "language": "en",
+        "question": "What are Engineer Cafe's opening hours?",
+        "category": "hours",
+        "ground_truth_id": "gt-en-cross-lingual-context",
+        "metadata": {"intent": "hours"},
+    }
+    live_context = "エンジニアカフェの開館時間は9:00から22:00です。"
+    captured_ragas_cases = []
+    _install_small_live_eval_fixture(
+        monkeypatch,
+        queries=[query],
+        ground_truth_cases=[
+            {
+                "id": "gt-en-cross-lingual-context",
+                "question": query["question"],
+                "contexts": ["GOLDEN_CONTEXT_SHOULD_NOT_BE_USED: open from 10:00 to 18:00."],
+                "answer": "Engineer Cafe is open from 9:00 to 22:00.",
+                "ground_truth": "Use the official opening-hours answer from the reference dataset.",
+            }
+        ],
+        chat_responses_by_question={
+            query["question"]: {
+                "answer": "Engineer Cafe is open from 9:00 to 22:00.",
+                "metadata": {
+                    "agent": "BusinessInfoAgent",
+                    "route": "business_info",
+                    "sources": ["enhanced_rag"],
+                    "retrieved_contexts": [live_context],
+                },
+            }
+        },
+        captured_ragas_cases=captured_ragas_cases,
+    )
+
+    result = await run_live_api_evaluation(
+        base_url="http://example.test",
+        languages=("en",),
+        output_dir=tmp_path,
+        case_suite=CASE_SUITE_DIAGNOSTIC_29,
+        metrics=("answer_correctness",),
+        report_timestamp="cross-lingual-context-quality",
+    )
+
+    quality_case = result["quality_signals"]["cases"][0]
+    assert captured_ragas_cases[0]["contexts"] == [live_context]
+    assert captured_ragas_cases[0]["reference_answer"] == (
+        "Engineer Cafe is open from 9:00 to 22:00."
+    )
+    assert quality_case["groundedness"] >= 0.55
+    assert quality_case["cross_lingual_context"] is True
+    assert quality_case["reference_grounding_context"] is True
+    assert result["quality_signals"]["overall"]["passed"] is True
+    assert result["comparison"]["per_language"]["en"]["quality_signals"]["passed"] is True
+
+
+@pytest.mark.asyncio()
+async def test_live_eval_cross_lingual_context_still_fails_unsupported_answer(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+):
+    query = {
+        "id": "en-cross-lingual-unsupported",
+        "language": "en",
+        "question": "What are Engineer Cafe's opening hours?",
+        "category": "hours",
+        "ground_truth_id": "gt-en-cross-lingual-unsupported",
+        "metadata": {"intent": "hours"},
+    }
+    captured_ragas_cases = []
+    _install_small_live_eval_fixture(
+        monkeypatch,
+        queries=[query],
+        ground_truth_cases=[
+            {
+                "id": "gt-en-cross-lingual-unsupported",
+                "question": query["question"],
+                "contexts": ["GOLDEN_CONTEXT_SHOULD_NOT_BE_USED: open from 10:00 to 18:00."],
+                "answer": "Engineer Cafe is open from 9:00 to 22:00.",
+                "ground_truth": "Use the official opening-hours answer from the reference dataset.",
+            }
+        ],
+        chat_responses_by_question={
+            query["question"]: {
+                "answer": "Engineer Cafe is open from 7:00 and has a private sauna.",
+                "metadata": {
+                    "agent": "BusinessInfoAgent",
+                    "route": "business_info",
+                    "sources": ["enhanced_rag"],
+                    "retrieved_contexts": ["エンジニアカフェの開館時間は9:00から22:00です。"],
+                },
+            }
+        },
+        captured_ragas_cases=captured_ragas_cases,
+    )
+
+    result = await run_live_api_evaluation(
+        base_url="http://example.test",
+        languages=("en",),
+        output_dir=tmp_path,
+        case_suite=CASE_SUITE_DIAGNOSTIC_29,
+        metrics=("answer_correctness",),
+        report_timestamp="cross-lingual-context-unsupported",
+    )
+
+    quality_case = result["quality_signals"]["cases"][0]
+    assert quality_case["cross_lingual_context"] is True
+    assert quality_case["reference_grounding_context"] is True
+    assert result["quality_signals"]["overall"]["passed"] is False
+    assert {"groundedness", "hallucination_risk"}.issubset(set(quality_case["failures"]))
+    assert result["comparison"]["per_language"]["en"]["quality_signals"]["passed"] is False
+
+
+@pytest.mark.asyncio()
+async def test_live_eval_quality_gate_fails_required_rag_case_without_live_contexts(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+):
+    query = {
+        "id": "missing-live-context-case",
+        "language": "ja",
+        "question": "雨の日にエンジニアカフェへ行く最短ルートは？",
+        "category": "access",
+        "ground_truth_id": "gt-missing-live-context",
+        "metadata": {"intent": "access"},
+    }
+    captured_ragas_cases = []
+    _install_small_live_eval_fixture(
+        monkeypatch,
+        queries=[query],
+        ground_truth_cases=[
+            {
+                "id": "gt-missing-live-context",
+                "question": query["question"],
+                "contexts": ["天神駅16番出口から天神地下街を経由します。"],
+                "ground_truth": "天神駅16番出口から天神地下街、アクロス福岡通路を経由します。",
+            }
+        ],
+        chat_responses_by_question={
+            query["question"]: {
+                "answer": "天神駅16番出口から天神地下街、アクロス福岡通路を経由します。",
+                "metadata": {
+                    "agent": "BusinessInfoAgent",
+                    "route": "business_info",
+                    "sources": ["enhanced_rag"],
+                },
+            }
+        },
+        captured_ragas_cases=captured_ragas_cases,
+    )
+
+    result = await run_live_api_evaluation(
+        base_url="http://example.test",
+        languages=("ja",),
+        output_dir=tmp_path,
+        case_suite=CASE_SUITE_DIAGNOSTIC_29,
+        metrics=("answer_correctness",),
+        report_timestamp="missing-live-context-quality",
+    )
+
+    assert captured_ragas_cases[0]["contexts"] == []
+    assert captured_ragas_cases[0]["evaluation_context_source"] == "missing_live_contexts"
+    assert result["quality_signals"]["overall"]["passed"] is False
+    assert result["quality_signals"]["failed_cases"] == [
+        {
+            "case_id": "missing-live-context-case",
+            "language": "ja",
+            "failures": ["missing_live_contexts"],
+        }
+    ]
+    assert result["comparison"]["quality_signals"]["overall"]["passed"] is False
+    assert result["comparison"]["per_language"]["ja"]["quality_signals"]["passed"] is False
+    assert result["comparison"]["per_language"]["ja"]["passed"] is False
+    assert result["comparison"]["all_targets_met"] is False
+    assert "Quality signals:" in result["report"]
+    assert "missing_live_contexts" in result["report"]
 
 
 @pytest.mark.asyncio()
@@ -320,13 +669,21 @@ async def test_alpha_127_release_gate_requires_direct_openai_provider(
     tmp_path,
 ):
     async def fake_call_chat_api(client, *, base_url, question, language, api_key=None, **kwargs):
+        answer_by_language = {
+            "ja": "エンジニアカフェは9:00から22:00まで開館しています。",
+            "en": "Engineer Cafe is open from 9:00 to 22:00.",
+            "zh": "工程师咖啡营业时间是9:00到22:00。",
+            "ko": "엔지니어 카페는 9:00부터 22:00까지 운영합니다.",
+        }
+        answer = answer_by_language.get(language, answer_by_language["ja"])
         return {
-            "answer": "grounded answer",
+            "answer": answer,
             "metadata": {
                 "agent": "FakeAgent",
                 "category": "test",
                 "route": "fake",
                 "sources": ["knowledge_base_cached", "google_calendar"],
+                "retrieved_contexts": [answer],
             },
         }
 

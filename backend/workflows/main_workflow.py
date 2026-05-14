@@ -78,6 +78,10 @@ _TRAG_PREAMBLE_RE = re.compile(
     re.IGNORECASE,
 )
 
+RAG_EVIDENCE_MAX_CONTEXTS = 5
+RAG_EVIDENCE_MAX_CONTEXT_CHARS = 900
+RAG_EVIDENCE_MAX_CONTEXT_STRING_CHARS = 4000
+
 
 def _get_trag_client() -> "_httpx.AsyncClient":
     """Return a shared httpx client for tRAG translation."""
@@ -87,6 +91,81 @@ def _get_trag_client() -> "_httpx.AsyncClient":
             timeout=_httpx.Timeout(connect=5.0, read=15.0, write=5.0, pool=5.0),
         )
     return _trag_http_client
+
+
+def _truthy_context_flag(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return False
+
+
+def _clip_evidence_text(value: Any, *, max_chars: int) -> str:
+    text = str(value or "").strip()
+    if len(text) <= max_chars:
+        return text
+    return text[: max_chars - 1].rstrip() + "…"
+
+
+def _rag_evidence_result(result: dict[str, Any]) -> dict[str, Any]:
+    evidence: dict[str, Any] = {}
+    for key in ("id", "category", "subcategory", "language", "source", "entity"):
+        if result.get(key) is not None:
+            evidence[key] = result.get(key)
+    for key in ("similarity", "score", "final_score"):
+        value = result.get(key)
+        if isinstance(value, (int, float)):
+            evidence[key] = round(float(value), 4)
+    content = _clip_evidence_text(
+        result.get("content", ""),
+        max_chars=RAG_EVIDENCE_MAX_CONTEXT_CHARS,
+    )
+    if content:
+        evidence["content"] = content
+    return evidence
+
+
+def _build_rag_evidence_metadata(context: dict[str, Any]) -> Optional[dict[str, Any]]:
+    """Build bounded, opt-in retrieval evidence for live quality evaluation."""
+    if not _truthy_context_flag(context.get("include_rag_evidence")):
+        return None
+
+    knowledge_results = context.get("knowledge_results")
+    if not isinstance(knowledge_results, dict):
+        return None
+
+    context_string = str(knowledge_results.get("context_string") or "")
+    raw_results = knowledge_results.get("results") or []
+    results = [item for item in raw_results if isinstance(item, dict)]
+    evidence_results = [
+        evidence
+        for evidence in (
+            _rag_evidence_result(result) for result in results[:RAG_EVIDENCE_MAX_CONTEXTS]
+        )
+        if evidence.get("content")
+    ]
+    contexts = [str(item["content"]) for item in evidence_results if item.get("content")]
+    if not contexts and context_string.strip():
+        contexts = [
+            _clip_evidence_text(
+                context_string,
+                max_chars=RAG_EVIDENCE_MAX_CONTEXT_STRING_CHARS,
+            )
+        ]
+
+    if not contexts:
+        return None
+
+    return {
+        "source": "workflow_knowledge_results",
+        "query": knowledge_results.get("query"),
+        "translated_query": knowledge_results.get("translated_query"),
+        "category": knowledge_results.get("category"),
+        "context_char_count": len(context_string),
+        "contexts": contexts,
+        "results": evidence_results,
+    }
 
 
 async def _translate_llm_with_retry(
@@ -1398,7 +1477,15 @@ class MainWorkflow:
         query = state.get("query", "")
         language = state.get("language", "ja")
         session_id = state.get("session_id", "")
-        result = await self._event_agent.answer_event_query(query, language, session_id)
+        include_evidence = _truthy_context_flag(
+            state.get("context", {}).get("include_rag_evidence")
+        )
+        result = await self._event_agent.answer_event_query(
+            query,
+            language,
+            session_id,
+            include_evidence=include_evidence,
+        )
 
         return {
             "answer": result.get("answer", ""),
@@ -1526,6 +1613,11 @@ class MainWorkflow:
             "vrm_control": vrm_control,
             "lipsync_data": lipsync_data,
         }
+        if "rag_evidence" not in metadata:
+            rag_evidence = _build_rag_evidence_metadata(state_context)
+            if rag_evidence is not None:
+                metadata["rag_evidence"] = rag_evidence
+
         # PII Defense-in-Depth: ワークフロー層でもスキャン（API層に加えて二重防御）
         try:
             masked, pii_items = scan_and_mask(answer)

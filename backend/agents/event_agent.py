@@ -54,7 +54,12 @@ class EventAgent:
         self.llm_provider = get_llm_provider()
 
     async def answer_event_query(
-        self, query: str, language: str = "ja", session_id: Optional[str] = None
+        self,
+        query: str,
+        language: str = "ja",
+        session_id: Optional[str] = None,
+        *,
+        include_evidence: bool = False,
     ) -> Dict:
         """イベントクエリに回答
 
@@ -197,16 +202,33 @@ class EventAgent:
                 )
                 if count > 0
             ] or ["google_calendar", "connpass"]
+            metadata = {
+                "agent": "EventAgent",
+                "time_range": time_range,
+                "event_count": event_count,
+                "sources": sources,
+            }
+            if include_evidence:
+                metadata["rag_evidence"] = {
+                    "source": "event_agent",
+                    "category": "event",
+                    "context_char_count": len(events_text),
+                    "contexts": [events_text],
+                    "results": [
+                        {
+                            "source": event.get("source", "unknown"),
+                            "title": event.get("title"),
+                            "start": event.get("start"),
+                            "content": self._format_event_evidence_line(event, language),
+                        }
+                        for event in events[:10]
+                    ],
+                }
 
             return {
                 "answer": response_text,
                 "emotion": emotion,
-                "metadata": {
-                    "agent": "EventAgent",
-                    "time_range": time_range,
-                    "event_count": event_count,
-                    "sources": sources,
-                },
+                "metadata": metadata,
             }
 
         except Exception as e:
@@ -234,6 +256,15 @@ class EventAgent:
             rest = stripped[len("[happy]") :]
             return f"{leading_ws}[sad]{rest}"
         return response_text
+
+    @staticmethod
+    def _format_event_evidence_line(event: Dict, language: str) -> str:
+        title = event.get("title") or event.get("event_title") or "Untitled event"
+        start = event.get("start") or event.get("started_at") or ""
+        source = event.get("source") or "unknown"
+        if language == "ja":
+            return f"{title} / 開始: {start} / source: {source}"
+        return f"{title} / starts: {start} / source: {source}"
 
     def _format_calendar_events(self, events: list, language: str) -> str:
         """イベントを整形（Google Calendar + Connpass両対応）
