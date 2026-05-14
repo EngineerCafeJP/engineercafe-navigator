@@ -5,6 +5,13 @@ declare global {
   }
 }
 
+interface VoiceRecorderOptions {
+  getSessionId?: () => string;
+  telemetryEndpoint?: string;
+}
+
+type DeviceIdMode = 'unset' | 'default' | 'custom';
+
 export class VoiceRecorder {
   private mediaRecorder: MediaRecorder | null = null;
   private audioChunks: Blob[] = [];
@@ -16,6 +23,7 @@ export class VoiceRecorder {
     private onDataAvailable: (audioBlob: Blob) => void,
     private onError: (error: Error) => void,
     private onHardwareReleased?: () => void,
+    private options: VoiceRecorderOptions = {},
   ) {}
 
   private createRecorderError(message: string, source?: unknown): Error & { originalName?: string } {
@@ -35,6 +43,112 @@ export class VoiceRecorder {
       error.originalName = originalName;
     }
     return error;
+  }
+
+  private resolveSessionId(): string | undefined {
+    try {
+      const sessionId = this.options.getSessionId?.();
+      return typeof sessionId === 'string' && sessionId.length > 0 ? sessionId : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  private getDeviceIdMode(selectedDeviceId: string | null | undefined): DeviceIdMode {
+    if (!selectedDeviceId) {
+      return 'unset';
+    }
+    return selectedDeviceId === 'default' ? 'default' : 'custom';
+  }
+
+  private getErrorName(source: unknown): string | undefined {
+    if (source && typeof source === 'object' && 'name' in source) {
+      const name = String((source as { name?: unknown }).name ?? '');
+      return name || undefined;
+    }
+    return undefined;
+  }
+
+  private getErrorMessage(source: unknown): string | undefined {
+    if (source && typeof source === 'object' && 'message' in source) {
+      const message = String((source as { message?: unknown }).message ?? '');
+      return message ? message.slice(0, 500) : undefined;
+    }
+    if (typeof source === 'string') {
+      return source.slice(0, 500);
+    }
+    return undefined;
+  }
+
+  private reportClientTelemetry(
+    phase: string,
+    source?: unknown,
+    extra: Record<string, unknown> = {},
+  ): void {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const payload = {
+      action: 'client_telemetry',
+      event: 'voice_recorder_error',
+      phase,
+      sessionId: this.resolveSessionId(),
+      userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : undefined,
+      errorName: this.getErrorName(source),
+      errorMessage: this.getErrorMessage(source),
+      timestamp: new Date().toISOString(),
+      ...extra,
+    };
+
+    window.dispatchEvent(new CustomEvent('voice-recorder-telemetry', { detail: payload }));
+
+    const endpoint = this.options.telemetryEndpoint ?? '/api/voice';
+    window
+      .fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+        keepalive: true,
+      })
+      .catch(() => {
+        /* best-effort client telemetry */
+      });
+  }
+
+  private isSelectedDeviceFailure(error: unknown): boolean {
+    const name = this.getErrorName(error);
+    return name === 'NotFoundError' || name === 'OverconstrainedError';
+  }
+
+  private handleGetUserMediaError(error: unknown): void {
+    const errorName = this.getErrorName(error);
+
+    if (errorName === 'NotAllowedError') {
+      this.onError(
+        this.createRecorderError(
+          'Microphone permission denied. Please allow microphone access and try again.',
+          error,
+        ),
+      );
+    } else if (errorName === 'NotFoundError') {
+      this.onError(this.createRecorderError('No microphone found. Please connect a microphone and try again.', error));
+    } else if (errorName === 'NotReadableError') {
+      this.onError(
+        this.createRecorderError(
+          'Microphone is in use by another application. Please close other apps using the microphone.',
+          error,
+        ),
+      );
+    } else if (errorName === 'OverconstrainedError') {
+      this.onError(this.createRecorderError('Selected microphone is unavailable. Please choose another microphone.', error));
+    } else if (errorName === 'InvalidStateError') {
+      this.onError(this.createRecorderError('Microphone is in an invalid state. Try reloading the page.', error));
+    } else {
+      this.onError(this.createRecorderError('Failed to access microphone', error));
+    }
   }
 
   private createDeterministicMediaRecorder(audioBase64: string): MediaRecorder {
@@ -86,11 +200,11 @@ export class VoiceRecorder {
 
       if (typeof playwrightRecorderErrorName === 'string' && playwrightRecorderErrorName.length > 0) {
         delete window.__PLAYWRIGHT_VOICE_RECORDER_ERROR_NAME__;
-        this.onError(
-          this.createRecorderError('Playwright injected recorder failure', {
-            name: playwrightRecorderErrorName,
-          }),
-        );
+        const recorderError = this.createRecorderError('Playwright injected recorder failure', {
+          name: playwrightRecorderErrorName,
+        });
+        this.reportClientTelemetry('playwright-injected-recorder-failure', recorderError);
+        this.onError(recorderError);
         return;
       }
 
@@ -99,7 +213,9 @@ export class VoiceRecorder {
         this.mediaRecorder = this.createDeterministicMediaRecorder(playwrightAudioBase64);
       } else {
         if (typeof navigator === 'undefined') {
-          this.onError(new Error('navigator is undefined'));
+          const recorderError = new Error('navigator is undefined');
+          this.reportClientTelemetry('navigator-unavailable', recorderError);
+          this.onError(recorderError);
           return;
         }
 
@@ -112,22 +228,22 @@ export class VoiceRecorder {
 
         // Check if we're on HTTPS (required for getUserMedia outside local development).
         if (window.location.protocol !== 'https:' && !isLocalDevHost) {
-          this.onError(
-            this.createRecorderError(
-              'Microphone access requires HTTPS connection. Please use HTTPS or localhost.',
-              { name: 'SecurityError' },
-            ),
+          const recorderError = this.createRecorderError(
+            'Microphone access requires HTTPS connection. Please use HTTPS or localhost.',
+            { name: 'SecurityError' },
           );
+          this.reportClientTelemetry('secure-context-check', recorderError);
+          this.onError(recorderError);
           return;
         }
 
         // Check if mediaDevices is available
         if (!navigator.mediaDevices) {
-          this.onError(
-            new Error(
-              'navigator.mediaDevices is not available. Please ensure you are using a modern browser.',
-            ),
+          const recorderError = new Error(
+            'navigator.mediaDevices is not available. Please ensure you are using a modern browser.',
           );
+          this.reportClientTelemetry('media-devices-unavailable', recorderError);
+          this.onError(recorderError);
           return;
         }
 
@@ -148,9 +264,11 @@ export class VoiceRecorder {
         }
 
         if (!getUserMediaFunc) {
-          this.onError(
-            new Error('getUserMedia API is not available. Please check browser permissions.'),
+          const recorderError = new Error(
+            'getUserMedia API is not available. Please check browser permissions.',
           );
+          this.reportClientTelemetry('get-user-media-unavailable', recorderError);
+          this.onError(recorderError);
           return;
         }
 
@@ -171,51 +289,62 @@ export class VoiceRecorder {
               autoGainControl: true,
             };
 
+        const selectedDeviceId =
+          typeof window !== 'undefined'
+            ? window.localStorage.getItem(VoiceRecorder.SELECTED_MIC_DEVICE_ID_STORAGE_KEY)
+            : null;
+        const deviceIdMode = this.getDeviceIdMode(selectedDeviceId);
+        const selectedAudioConstraints =
+          selectedDeviceId && selectedDeviceId !== 'default'
+            ? { ...audioConstraints, deviceId: { exact: selectedDeviceId } }
+            : audioConstraints;
+
         try {
-          const selectedDeviceId =
-            typeof window !== 'undefined'
-              ? window.localStorage.getItem(VoiceRecorder.SELECTED_MIC_DEVICE_ID_STORAGE_KEY)
-              : null;
-          const audio =
-            selectedDeviceId && selectedDeviceId !== 'default'
-              ? { ...audioConstraints, deviceId: { exact: selectedDeviceId } }
-              : audioConstraints;
-          this.stream = await getUserMediaFunc({ audio });
-        } catch (error: any) {
-          // Handle specific error cases
-          if (error.name === 'NotAllowedError') {
-            this.onError(
-              this.createRecorderError(
-                'Microphone permission denied. Please allow microphone access and try again.',
-                error,
-              ),
-            );
-          } else if (error.name === 'NotFoundError') {
-            this.onError(this.createRecorderError('No microphone found. Please connect a microphone and try again.', error));
-          } else if (error.name === 'NotReadableError') {
-            this.onError(
-              this.createRecorderError(
-                'Microphone is in use by another application. Please close other apps using the microphone.',
-                error,
-              ),
-            );
-          } else if (error.name === 'OverconstrainedError') {
-            this.onError(this.createRecorderError('Selected microphone is unavailable. Please choose another microphone.', error));
-          } else if (error.name === 'InvalidStateError') {
-            this.onError(this.createRecorderError('Microphone is in an invalid state. Try reloading the page.', error));
+          this.stream = await getUserMediaFunc({ audio: selectedAudioConstraints });
+        } catch (error) {
+          if (selectedDeviceId && selectedDeviceId !== 'default' && this.isSelectedDeviceFailure(error)) {
+            try {
+              this.stream = await getUserMediaFunc({ audio: audioConstraints });
+              window.localStorage.removeItem(VoiceRecorder.SELECTED_MIC_DEVICE_ID_STORAGE_KEY);
+              this.reportClientTelemetry('get-user-media-selected-device', error, {
+                deviceIdMode,
+                retryWithDefaultDevice: true,
+                retryOutcome: 'success',
+              });
+            } catch (retryError) {
+              this.reportClientTelemetry('get-user-media-selected-device', error, {
+                deviceIdMode,
+                retryWithDefaultDevice: true,
+                retryOutcome: 'failed',
+                retryErrorName: this.getErrorName(retryError),
+                retryErrorMessage: this.getErrorMessage(retryError),
+              });
+              this.reportClientTelemetry('get-user-media-default-retry', retryError, {
+                deviceIdMode: 'default',
+                retryWithDefaultDevice: false,
+              });
+              this.handleGetUserMediaError(retryError);
+              return;
+            }
           } else {
-            this.onError(this.createRecorderError('Failed to access microphone', error));
+            this.reportClientTelemetry('get-user-media', error, {
+              deviceIdMode,
+              retryWithDefaultDevice: false,
+            });
+            this.handleGetUserMediaError(error);
+            return;
           }
-          return;
         }
 
         // Check if MediaRecorder is available
         if (typeof MediaRecorder === 'undefined') {
-          this.onError(
-            new Error(
-              'MediaRecorder API is not available. Please use a browser that supports audio recording.',
-            ),
+          const recorderError = new Error(
+            'MediaRecorder API is not available. Please use a browser that supports audio recording.',
           );
+          this.reportClientTelemetry('media-recorder-unavailable', recorderError, {
+            deviceIdMode,
+          });
+          this.onError(recorderError);
           this.stream.getTracks().forEach((track) => track.stop());
           this.stream = null;
           return;
@@ -224,7 +353,11 @@ export class VoiceRecorder {
         const recorderResult = this.createMediaRecorder(this.stream);
         if (!recorderResult.recorder) {
           console.error('MediaRecorder creation failed:', recorderResult.error);
-          this.onError(this.createRecorderError(recorderResult.error, { name: 'NotSupportedError' }));
+          const recorderError = this.createRecorderError(recorderResult.error, { name: 'NotSupportedError' });
+          this.reportClientTelemetry('media-recorder-create', recorderError, {
+            deviceIdMode,
+          });
+          this.onError(recorderError);
           this.stream.getTracks().forEach((track) => track.stop());
           this.stream = null;
           return;
@@ -255,10 +388,16 @@ export class VoiceRecorder {
 
       this.mediaRecorder.onerror = (event) => {
         const errorEvent = event as Event & { error?: unknown };
-        this.onError(this.createRecorderError('MediaRecorder error', errorEvent.error ?? event));
+        const recorderError = this.createRecorderError('MediaRecorder error', errorEvent.error ?? event);
+        this.reportClientTelemetry('media-recorder-runtime', recorderError, {
+          recorderState: this.mediaRecorder?.state,
+        });
+        this.onError(recorderError);
       };
     } catch (error) {
-      this.onError(this.createRecorderError('Failed to initialize recorder', error));
+      const recorderError = this.createRecorderError('Failed to initialize recorder', error);
+      this.reportClientTelemetry('recorder-initialize', recorderError);
+      this.onError(recorderError);
     }
   }
 
@@ -282,10 +421,25 @@ export class VoiceRecorder {
     try {
       this.audioChunks = [];
       this.mediaRecorder.start();
-      this.isRecording = true;
+      const recorderState = this.mediaRecorder.state as RecordingState;
+      this.isRecording = recorderState === 'recording';
+      if (!this.isRecording) {
+        const recorderError = this.createRecorderError('MediaRecorder did not enter recording state', {
+          name: 'InvalidStateError',
+          message: `state=${recorderState}`,
+        });
+        this.reportClientTelemetry('media-recorder-start-state', recorderError, {
+          recorderState,
+        });
+        this.onError(recorderError);
+      }
     } catch (error) {
       this.isRecording = false;
-      this.onError(this.createRecorderError('Failed to start recording', error));
+      const recorderError = this.createRecorderError('Failed to start recording', error);
+      this.reportClientTelemetry('media-recorder-start', recorderError, {
+        recorderState: this.mediaRecorder.state,
+      });
+      this.onError(recorderError);
     }
   }
 
@@ -298,7 +452,11 @@ export class VoiceRecorder {
       this.mediaRecorder.stop();
       this.isRecording = false;
     } catch (error) {
-      this.onError(this.createRecorderError('Failed to stop recording', error));
+      const recorderError = this.createRecorderError('Failed to stop recording', error);
+      this.reportClientTelemetry('media-recorder-stop', recorderError, {
+        recorderState: this.mediaRecorder.state,
+      });
+      this.onError(recorderError);
     }
   }
 
@@ -319,7 +477,11 @@ export class VoiceRecorder {
     try {
       this.mediaRecorder.pause();
     } catch (error) {
-      this.onError(this.createRecorderError('Failed to pause recording', error));
+      const recorderError = this.createRecorderError('Failed to pause recording', error);
+      this.reportClientTelemetry('media-recorder-pause', recorderError, {
+        recorderState: this.mediaRecorder.state,
+      });
+      this.onError(recorderError);
     }
   }
 
@@ -331,7 +493,11 @@ export class VoiceRecorder {
     try {
       this.mediaRecorder.resume();
     } catch (error) {
-      this.onError(this.createRecorderError('Failed to resume recording', error));
+      const recorderError = this.createRecorderError('Failed to resume recording', error);
+      this.reportClientTelemetry('media-recorder-resume', recorderError, {
+        recorderState: this.mediaRecorder.state,
+      });
+      this.onError(recorderError);
     }
   }
 
@@ -360,7 +526,7 @@ export class VoiceRecorder {
   }
 
   isCurrentlyRecording(): boolean {
-    return this.isRecording;
+    return this.isRecording && this.mediaRecorder?.state === 'recording';
   }
 
   isInitialized(): boolean {

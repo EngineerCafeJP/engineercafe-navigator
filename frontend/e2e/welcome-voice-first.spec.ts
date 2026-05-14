@@ -1,4 +1,12 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
+
+import { MOCK_VOICE_RESPONSE } from './helpers/mocks';
+import {
+  failUnexpectedVoiceAction,
+  installDeterministicVoiceRecorder,
+  installIOSUserAgent,
+  parseVoiceAction,
+} from './helpers/voice';
 
 const RECEPTION_START_URL = '/api/reception/start';
 
@@ -64,6 +72,98 @@ async function installMediaRequestProbe(page: import('@playwright/test').Page) {
           return new MediaStream();
         },
       },
+    });
+  });
+}
+
+async function installSuspendedAudioContext(page: Page) {
+  await page.addInitScript(() => {
+    class MockAudioBuffer {
+      duration = 0.01;
+      length = 441;
+      numberOfChannels = 1;
+      sampleRate = 44100;
+
+      getChannelData() {
+        return new Float32Array(441);
+      }
+    }
+
+    class MockBufferSource {
+      buffer: unknown = null;
+      onended: (() => void) | null = null;
+
+      connect() {
+        return this;
+      }
+
+      start() {
+        setTimeout(() => {
+          this.onended?.();
+        }, 25);
+      }
+
+      stop() {}
+      disconnect() {}
+
+      addEventListener(event: string, cb: () => void) {
+        if (event === 'ended') {
+          this.onended = cb;
+        }
+      }
+
+      removeEventListener() {}
+    }
+
+    class MockGainNode {
+      gain = { value: 1, setValueAtTime() {}, linearRampToValueAtTime() {} };
+
+      connect() {
+        return this;
+      }
+
+      disconnect() {}
+    }
+
+    class MockAudioContext {
+      state: AudioContextState = 'suspended';
+      sampleRate = 44100;
+      currentTime = 0;
+      destination = { connect() {} };
+
+      createBuffer() {
+        return new MockAudioBuffer();
+      }
+
+      createBufferSource() {
+        return new MockBufferSource();
+      }
+
+      createGain() {
+        return new MockGainNode();
+      }
+
+      decodeAudioData() {
+        return Promise.resolve(new MockAudioBuffer());
+      }
+
+      async resume() {}
+
+      async close() {
+        this.state = 'closed';
+      }
+
+      addEventListener() {}
+      removeEventListener() {}
+    }
+
+    Object.defineProperty(window, 'AudioContext', {
+      configurable: true,
+      value: MockAudioContext,
+    });
+    Object.defineProperty(window, 'webkitAudioContext', {
+      configurable: true,
+      value: MockAudioContext,
     });
   });
 }
@@ -144,5 +244,122 @@ test.describe('Welcome voice-first (#616)', () => {
     await expect
       .poll(async () => (await getMediaRequestCounts(page)).video, { timeout: 5_000 })
       .toBeGreaterThanOrEqual(1);
+  });
+});
+
+test.describe('Welcome voice button recovery (#817)', () => {
+  test('voice button starts recording instead of replaying pending Welcome TTS', async ({ page }) => {
+    let sttCount = 0;
+
+    await installIOSUserAgent(page);
+    await installSuspendedAudioContext(page);
+    await installDeterministicVoiceRecorder(page);
+
+    await page.route(`**${RECEPTION_START_URL}`, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          reception_session_id: 'mock-welcome-pending-audio',
+          greeting: 'エンジニアカフェへようこそ！ご用件をお聞かせください。',
+          stage: 'greeting',
+        }),
+      });
+    });
+
+    await page.route('**/api/voice/filler', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true }),
+      });
+    });
+
+    await page.route('**/api/character**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true, vrm_control: null }),
+      });
+    });
+
+    await page.route('**/api/voice', async (route) => {
+      const action = parseVoiceAction(route.request());
+
+      if (action === 'text_to_speech') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(MOCK_VOICE_RESPONSE),
+        });
+        return;
+      }
+
+      if (action === 'speech_to_text') {
+        sttCount += 1;
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            transcript: 'エンジニアカフェの営業時間を教えてください。',
+          }),
+        });
+        return;
+      }
+
+      if (action === 'warmup' || action === 'interrupt' || action === 'client_telemetry') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true, sttWarmupStatus: 'ready' }),
+        });
+        return;
+      }
+
+      await failUnexpectedVoiceAction(route, action, [
+        'text_to_speech',
+        'speech_to_text',
+        'warmup',
+        'interrupt',
+        'client_telemetry',
+      ]);
+    });
+
+    await page.route('**/api/qa', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          answer: 'エンジニアカフェの営業時間は10時から22時です。',
+          emotion: 'neutral',
+          metadata: {},
+        }),
+      });
+    });
+
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await dismissInitialModal(page);
+
+    await page.getByRole('button', { name: 'Welcome' }).click();
+    await expect(page.getByTestId('response-text')).toContainText('エンジニアカフェへようこそ', {
+      timeout: 8_000,
+    });
+    await expect(page.getByTestId('kiosk-voice-status')).toContainText(
+      /音声を有効|enable audio/i,
+      { timeout: 8_000 },
+    );
+
+    const voiceButton = page.getByTestId('kiosk-voice-button');
+    const voiceStatus = page.getByTestId('kiosk-voice-status');
+
+    await voiceButton.click();
+    await expect(voiceStatus).toHaveAttribute('data-session-state', 'listening', {
+      timeout: 8_000,
+    });
+
+    await voiceButton.dispatchEvent('click');
+    await expect.poll(() => sttCount, { timeout: 15_000 }).toBe(1);
   });
 });

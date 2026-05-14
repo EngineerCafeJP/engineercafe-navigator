@@ -13,6 +13,18 @@
 
 import { z } from "zod";
 
+export const productionRequiredVercelEnvKeys = [
+  "NEXT_PUBLIC_SUPABASE_URL",
+  "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+  "BACKEND_API_URL",
+  "BACKEND_API_KEY",
+] as const;
+
+export type ProductionRequiredVercelEnvKey =
+  (typeof productionRequiredVercelEnvKeys)[number];
+
+const requiredString = (message: string) => z.string().trim().min(1, message);
+
 // ---------------------------------------------------------------------------
 // Schema: required server-side env vars (core functionality)
 // ---------------------------------------------------------------------------
@@ -21,18 +33,19 @@ const requiredServerEnvSchema = z.object({
   // Supabase
   NEXT_PUBLIC_SUPABASE_URL: z
     .string()
+    .trim()
     .url("NEXT_PUBLIC_SUPABASE_URL must be a valid URL (e.g. https://xxx.supabase.co)"),
   NEXT_PUBLIC_SUPABASE_ANON_KEY: z
     .string()
+    .trim()
     .min(1, "NEXT_PUBLIC_SUPABASE_ANON_KEY is required"),
 
   // Backend proxy
   BACKEND_API_URL: z
     .string()
+    .trim()
     .url("BACKEND_API_URL must be a valid URL"),
-  BACKEND_API_KEY: z
-    .string()
-    .min(1, "BACKEND_API_KEY is required"),
+  BACKEND_API_KEY: requiredString("BACKEND_API_KEY is required"),
 });
 
 // ---------------------------------------------------------------------------
@@ -81,6 +94,12 @@ export interface EnvValidationResult {
   data?: ServerEnv;
   errors: string[];
   warnings: string[];
+}
+
+export function getMissingProductionRequiredVercelEnvKeys(
+  env: NodeJS.ProcessEnv = process.env
+): ProductionRequiredVercelEnvKey[] {
+  return productionRequiredVercelEnvKeys.filter((key) => !env[key]?.trim());
 }
 
 /**

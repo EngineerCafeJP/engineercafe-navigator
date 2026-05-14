@@ -78,10 +78,6 @@ export function KioskBottomBar({
     if (Date.now() < voiceRestartSuppressedUntilRef.current) {
       return;
     }
-    if (voice.unlockAudioPlayback()) {
-      return;
-    }
-
     if (controlsInterruptible) {
       voice.cancelSession();
     }

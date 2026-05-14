@@ -125,7 +125,10 @@ production deploy に関わる主要変数:
 | 変数名 | サービス | 起動ブロック | 目的 |
 |---|---|---|---|
 | `ADMIN_API_SECRET` | Frontend (Vercel) | Yes, middleware behavior | `/api/admin/*`, `/api/cron/*`, `/api/monitoring/*` を保護 |
-| `BACKEND_API_KEY` | Frontend (Vercel server runtime) | No | protected backend route に `X-API-Key` を付ける |
+| `NEXT_PUBLIC_SUPABASE_URL` | Frontend (Vercel build/runtime) | Yes, production build/startup check | browser/client Supabase project URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Frontend (Vercel build/runtime) | Yes, production build/startup check | browser/client Supabase anon key |
+| `BACKEND_API_URL` | Frontend (Vercel server runtime) | Yes, production build/startup check | server-side proxy の転送先 |
+| `BACKEND_API_KEY` | Frontend (Vercel server runtime) | Yes, production build/startup check | protected backend route に `X-API-Key` を付ける |
 | `API_SECRET_KEY` | Backend (Cloud Run) | Yes (`sys.exit(1)`) | frontend -> backend request を検証 |
 | `ALERT_WEBHOOK_SECRET` | Frontend (Vercel) | No | `/api/alerts/webhook` POST を保護 |
 | `SUPABASE_SERVICE_ROLE_KEY` | Frontend + Backend | No, but functionally required | server-side Supabase access |
@@ -133,6 +136,8 @@ production deploy に関わる主要変数:
 
 運用ルール:
 
+- Frontend の production build/startup check 対象は `frontend/src/lib/env.ts` の `productionRequiredVercelEnvKeys` と一致させる
+- `pnpm env:check:production` は不足した env 名だけを表示し、secret 値は表示しない
 - `BACKEND_API_KEY` と `API_SECRET_KEY` は 1 つの coupled contract として扱う
 - 片方だけを更新して smoke check を省略するのは release risk
 

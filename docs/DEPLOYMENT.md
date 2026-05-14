@@ -56,15 +56,20 @@ Vercel project の Environment Variables に設定する。
 
 | Variable | Required | Description |
 | --- | --- | --- |
-| `NEXT_PUBLIC_BACKEND_API_URL` | Yes | browser から見える backend URL |
-| `BACKEND_API_URL` | Yes (server) | server-side proxy の転送先 |
-| `BACKEND_API_KEY` | Yes (server) | protected backend route へ送る `X-API-Key` |
-| `ADMIN_API_SECRET` | Yes | `/api/admin/*`, `/api/cron/*`, `/api/monitoring/*` を保護 |
+| `NEXT_PUBLIC_SUPABASE_URL` | Yes (production build/startup) | Supabase project URL. `frontend/src/lib/env.ts` と `pnpm env:check:production` の production required 対象 |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Yes (production build/startup) | Supabase anon key. 値は公開前提だが smoke / logs には出力しない |
+| `BACKEND_API_URL` | Yes (production build/startup) | server-side proxy の転送先 |
+| `BACKEND_API_KEY` | Yes (production build/startup) | protected backend route へ送る `X-API-Key` |
+| `ADMIN_API_SECRET` | Yes (protected routes) | `/api/admin/*`, `/api/cron/*`, `/api/monitoring/*` を保護。middleware は production で未設定時 fail closed |
+| `NEXT_PUBLIC_BACKEND_API_URL` | If direct-call flags are used | browser から見える backend URL |
+| `SUPABASE_SERVICE_ROLE_KEY` | Functionally required for server-side Supabase admin features | server-only の service role。build/startup block 対象ではない |
 | `ALERT_WEBHOOK_SECRET` | If used | `/api/alerts/webhook` POST を保護 |
-| `NEXT_PUBLIC_SUPABASE_URL` | Yes | Supabase project URL |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Yes | Supabase anon key |
-| `SUPABASE_SERVICE_ROLE_KEY` | Yes | server-only の service role |
 | Other AI / optional keys | As needed | frontend README と CI 設定に合わせる |
+
+production build/startup required の正本は `frontend/src/lib/env.ts` の
+`productionRequiredVercelEnvKeys`。Vercel production build では
+`frontend/package.json` の `build` が `pnpm env:check:production` を先に実行し、
+不足・空白・不正 URL を値なしで明示失敗させる。
 
 ### バックエンド（Cloud Run）
 
@@ -197,6 +202,12 @@ gcloud run services describe engineer-cafe-backend \
 - Vercel dashboard の Deployments / Domains を確認
 - CLI を使う場合は `vercel list --yes`
 - `FRONTEND_PRODUCTION_ORIGIN` が production domain と一致していることを確認
+- production env の明示チェック:
+
+```bash
+cd frontend
+VERCEL_ENV=production pnpm env:check:production
+```
 
 ### 最近のログ確認
 
@@ -215,6 +226,7 @@ curl -sf "$(gcloud run services describe engineer-cafe-backend --region asia-nor
 ### リリース前（毎回）
 
 - CI が green
+- Vercel target 環境に `NEXT_PUBLIC_SUPABASE_URL` と `NEXT_PUBLIC_SUPABASE_ANON_KEY` がある
 - Vercel target 環境に `BACKEND_API_KEY` がある
 - Cloud Run target 環境に `API_SECRET_KEY` がある
 - Vercel に `ADMIN_API_SECRET` がある

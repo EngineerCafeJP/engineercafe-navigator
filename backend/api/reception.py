@@ -459,7 +459,10 @@ async def start_reception(request: ReceptionStartRequest) -> ReceptionStartRespo
     )
 
     # If visitor_identity provided (from OCR), identify immediately
-    if request.visitor_identity and request.visitor_identity.user_id:
+    has_resolved_visitor_identity = bool(
+        request.visitor_identity and request.visitor_identity.user_id
+    )
+    if has_resolved_visitor_identity:
         from backend.utils.reception_templates import get_personalized_greeting
 
         identity = VisitorIdentity(
@@ -485,7 +488,7 @@ async def start_reception(request: ReceptionStartRequest) -> ReceptionStartRespo
         "Reception session started: id=%s session_id=%s visitor=%s",
         session.id,
         request.session_id,
-        "identified" if request.visitor_identity else "new",
+        "identified" if has_resolved_visitor_identity else "new",
     )
 
     return ReceptionStartResponse(

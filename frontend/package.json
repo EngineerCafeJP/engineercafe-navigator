@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "next dev",
     "dev:network": "next dev -H 0.0.0.0",
-    "build": "next build",
+    "build": "pnpm env:check:production && next build",
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
@@ -16,6 +16,7 @@
     "migrate:embeddings": "tsx -r dotenv/config scripts/migrate-embeddings.ts",
     "import:markdown": "tsx -r dotenv/config scripts/import-markdown-knowledge.ts",
     "setup:admin": "tsx -r dotenv/config scripts/setup-admin-knowledge.ts",
+    "env:check:production": "tsx scripts/check-vercel-production-env.ts",
     "test": "cd scripts/tests && tsx run-tests.ts",
     "test:node": "tsx scripts/tests/run-tests.ts node",
     "test:e2e": "playwright test --config=playwright.config.ts",

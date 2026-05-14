@@ -231,6 +231,7 @@ class TestRecognizeImageEndpoint:
         assert data["expression"] == "happy"
         assert data["confidence"] == pytest.approx(0.8)
         assert data["member_number"] is None
+        assert data["identity_lookup"] is None
 
         run_payload = mock_agent.run.await_args.args[0]
         assert run_payload["image"] is decoded_image
@@ -262,8 +263,17 @@ class TestRecognizeImageEndpoint:
             }
         )
         mock_service = MagicMock()
-        mock_service.identify_by_member_number = AsyncMock(
-            return_value={"visitor_id": "visitor-123", "member_number": 123}
+        mock_service.identify_by_member_number_with_lookup = AsyncMock(
+            return_value={
+                "identity": {"visitor_id": "visitor-123", "member_number": 123},
+                "lookup": {
+                    "attempted": True,
+                    "source": "public.users",
+                    "member_number": 123,
+                    "status": "found",
+                    "resolved": True,
+                },
+            }
         )
 
         with (
@@ -276,9 +286,97 @@ class TestRecognizeImageEndpoint:
         assert data["success"] is True
         assert data["member_number"] == 123
         assert data["visitor_identity"] == {"visitor_id": "visitor-123", "member_number": 123}
+        assert data["identity_lookup"] == {
+            "attempted": True,
+            "source": "public.users",
+            "member_number": 123,
+            "status": "found",
+            "resolved": True,
+        }
         assert data["expression"] == "neutral"
         assert data["confidence"] == 1.0
-        mock_service.identify_by_member_number.assert_awaited_once_with(123)
+        mock_service.identify_by_member_number_with_lookup.assert_awaited_once_with(123)
+
+    def test_member_card_mode_keeps_ocr_success_when_identity_is_null(self):
+        """visitor lookup が未発見でも OCR 成功と会員番号は返す。"""
+        mock_agent = MagicMock()
+        mock_agent.run = AsyncMock(
+            return_value={
+                "text": {"success": True, "text": "会員番号9999"},
+                "face": {"detected": False, "expression": None},
+            }
+        )
+        mock_service = MagicMock()
+        mock_service.identify_by_member_number_with_lookup = AsyncMock(
+            return_value={
+                "identity": None,
+                "lookup": {
+                    "attempted": True,
+                    "source": "public.users",
+                    "member_number": 9999,
+                    "status": "not_found",
+                    "resolved": False,
+                    "reason": "member_number_not_found",
+                },
+            }
+        )
+
+        with (
+            patch.object(ocr_module, "_decode_image", return_value=np.zeros((2, 2, 3))),
+            patch.object(ocr_module, "_get_vision_agent", return_value=mock_agent),
+            patch.object(ocr_module, "_get_visitor_id_service", return_value=mock_service),
+        ):
+            data = self._post_ocr(mode="member_card")
+
+        assert data["success"] is True
+        assert data["member_number"] == 9999
+        assert data["visitor_identity"] is None
+        assert data["identity_lookup"]["status"] == "not_found"
+        assert data["identity_lookup"]["reason"] == "member_number_not_found"
+
+    def test_member_card_mode_reports_users_table_lookup_failure(self):
+        """public.users 不在時は lookup 失敗を metadata として返す。"""
+        mock_agent = MagicMock()
+        mock_agent.run = AsyncMock(
+            return_value={
+                "text": {"success": True, "text": "会員番号123"},
+                "face": {"detected": False, "expression": None},
+            }
+        )
+        mock_service = MagicMock()
+        mock_service.identify_by_member_number_with_lookup = AsyncMock(
+            return_value={
+                "identity": None,
+                "lookup": {
+                    "attempted": True,
+                    "source": "public.users",
+                    "member_number": 123,
+                    "status": "lookup_failed",
+                    "resolved": False,
+                    "reason": "users_table_unavailable",
+                },
+            }
+        )
+
+        with (
+            patch.object(ocr_module, "_decode_image", return_value=np.zeros((2, 2, 3))),
+            patch.object(ocr_module, "_get_vision_agent", return_value=mock_agent),
+            patch.object(ocr_module, "_get_visitor_id_service", return_value=mock_service),
+        ):
+            data = self._post_ocr(mode="member_card")
+
+        assert data["success"] is True
+        assert data["error"] is None
+        assert data["member_number"] == 123
+        assert data["visitor_identity"] is None
+        assert data["identity_lookup"] == {
+            "attempted": True,
+            "source": "public.users",
+            "member_number": 123,
+            "status": "lookup_failed",
+            "resolved": False,
+            "reason": "users_table_unavailable",
+        }
 
     def test_handwriting_mode_detects_language(self):
         """handwriting モードでは言語推定結果を返す。"""

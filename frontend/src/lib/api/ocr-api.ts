@@ -21,6 +21,7 @@ export interface OcrResponse {
   expression: string | null;
   processing_time_ms: number;
   visitor_identity: Record<string, unknown> | null;
+  identity_lookup?: Record<string, unknown> | null;
   error: string | null;
 }
 

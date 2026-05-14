@@ -11,6 +11,7 @@ import {
   type VisitorIdentity,
 } from '@/lib/reception-api';
 import type { OcrResponse } from '@/lib/api/ocr-api';
+import { createVisitorIdentityFromOcr } from '@/lib/reception-identity';
 
 export interface ReceptionMessage {
   id: string;
@@ -120,12 +121,7 @@ export function useReception({
 
   const handleOcrSuccess = useCallback(
     (result: OcrResponse) => {
-      const identity: VisitorIdentity = {
-        user_id: result.member_number ?? undefined,
-        name: result.recognized_text ?? undefined,
-        ...(result.visitor_identity as Partial<VisitorIdentity> | undefined),
-      };
-      void startReception(identity);
+      void startReception(createVisitorIdentityFromOcr(result));
     },
     [startReception],
   );

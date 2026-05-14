@@ -88,6 +88,74 @@ async function keepOcrCameraPending(page: import('@playwright/test').Page) {
   });
 }
 
+async function provideReadableOcrCamera(page: import('@playwright/test').Page) {
+  await page.addInitScript(() => {
+    const existingMediaDevices = navigator.mediaDevices ?? {};
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: {
+        ...existingMediaDevices,
+        getUserMedia: async () => new MediaStream(),
+      },
+    });
+
+    const originalPlay = HTMLMediaElement.prototype.play;
+    HTMLMediaElement.prototype.play = function (this: HTMLMediaElement) {
+      if (this instanceof HTMLVideoElement && this.srcObject instanceof MediaStream) {
+        return Promise.resolve();
+      }
+      return originalPlay.call(this);
+    };
+
+    Object.defineProperty(HTMLVideoElement.prototype, 'videoWidth', {
+      configurable: true,
+      get() {
+        return this.srcObject instanceof MediaStream ? 640 : 0;
+      },
+    });
+    Object.defineProperty(HTMLVideoElement.prototype, 'videoHeight', {
+      configurable: true,
+      get() {
+        return this.srcObject instanceof MediaStream ? 480 : 0;
+      },
+    });
+
+    const contextPrototype = CanvasRenderingContext2D.prototype as unknown as {
+      drawImage: (...args: unknown[]) => void;
+      getImageData: (sx: number, sy: number, sw: number, sh: number) => ImageData;
+    };
+    const originalDrawImage = contextPrototype.drawImage;
+    contextPrototype.drawImage = function (
+      this: CanvasRenderingContext2D,
+      ...args: unknown[]
+    ) {
+      if (args[0] instanceof HTMLVideoElement) {
+        return;
+      }
+      return originalDrawImage.apply(this, args);
+    };
+    contextPrototype.getImageData = (_sx, _sy, sw, sh) => {
+      const width = Math.max(1, Math.floor(sw));
+      const height = Math.max(1, Math.floor(sh));
+      const data = new Uint8ClampedArray(width * height * 4);
+      for (let y = 0; y < height; y += 1) {
+        for (let x = 0; x < width; x += 1) {
+          const index = (y * width + x) * 4;
+          const value = (x + y) % 2 === 0 ? 32 : 224;
+          data[index] = value;
+          data[index + 1] = value;
+          data[index + 2] = value;
+          data[index + 3] = 255;
+        }
+      }
+      return new ImageData(data, width, height);
+    };
+
+    HTMLCanvasElement.prototype.toDataURL = () =>
+      'data:image/jpeg;base64,bW9jay1vY3ItZnJhbWU=';
+  });
+}
+
 async function installDeterministicVoiceRecorder(page: import('@playwright/test').Page) {
   const sampleAudioBase64 = fs
     .readFileSync(path.resolve(__dirname, 'fixtures/voice/sample.wav'))
@@ -313,6 +381,149 @@ test.describe('Reception flow — member card OCR', () => {
     );
 
     expect(visitorIdAfterReturn).toBeNull();
+  });
+});
+
+test.describe('Reception flow — member card OCR success', () => {
+  test.beforeEach(async ({ page }) => {
+    await provideReadableOcrCamera(page);
+    await page.route('**/api/voice', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true }),
+      });
+    });
+    await page.route(`**${QA_CHAT_URL}`, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ answer: 'テスト応答', emotion: 'neutral', metadata: {} }),
+      });
+    });
+  });
+
+  test('member_number success starts reception and displays the read number without visitor_identity', async ({
+    page,
+  }) => {
+    const receptionStartRequests: Array<Record<string, unknown>> = [];
+
+    await page.route('**/api/ocr', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          mode: 'member_card',
+          member_number: 12345,
+          recognized_text: null,
+          confidence: 0.96,
+          language: null,
+          expression: null,
+          processing_time_ms: 120,
+          visitor_identity: null,
+          error: null,
+        }),
+      });
+    });
+
+    await page.route(`**${RECEPTION_START_URL}`, async (route) => {
+      receptionStartRequests.push(route.request().postDataJSON() as Record<string, unknown>);
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          reception_session_id: 'mock-member-reception-001',
+          greeting: '会員証を確認しました。ご用件をお聞かせください。',
+          stage: 'greeting',
+        }),
+      });
+    });
+
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await dismissInitialModal(page);
+
+    await page.getByRole('button', { name: /会員証|Member card/ }).click();
+
+    await expect
+      .poll(() => receptionStartRequests.length, { timeout: 10_000 })
+      .toBe(1);
+    expect(receptionStartRequests[0]).not.toHaveProperty('visitor_identity');
+
+    await expect(page.getByTestId('kiosk-ocr-overlay')).toBeHidden({ timeout: 5_000 });
+    await expect(
+      page.getByText('会員番号 12345 を読み取りました。受付を開始します。'),
+    ).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByTestId('response-text')).toContainText(
+      '会員証を確認しました',
+      { timeout: 8_000 },
+    );
+  });
+});
+
+test.describe('Reception flow — handwriting OCR success', () => {
+  test.beforeEach(async ({ page }) => {
+    await provideReadableOcrCamera(page);
+    await page.route('**/api/voice', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true }),
+      });
+    });
+  });
+
+  test('handwriting OCR sends recognized text to the voice conversation', async ({ page }) => {
+    const qaRequests: Array<Record<string, unknown>> = [];
+    const recognizedText = 'イベントの場所を教えてください';
+
+    await page.route('**/api/ocr', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          mode: 'handwriting',
+          member_number: null,
+          recognized_text: recognizedText,
+          confidence: 0.94,
+          language: 'ja',
+          expression: null,
+          processing_time_ms: 118,
+          visitor_identity: null,
+          error: null,
+        }),
+      });
+    });
+
+    await page.route(`**${QA_CHAT_URL}`, async (route) => {
+      qaRequests.push(route.request().postDataJSON() as Record<string, unknown>);
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          answer: 'イベントは1階のメインスペースで開催されます。',
+          emotion: 'neutral',
+          metadata: {},
+        }),
+      });
+    });
+
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await dismissInitialModal(page);
+
+    await page.getByRole('button', { name: /筆談|Handwriting/ }).click();
+
+    await expect.poll(() => qaRequests.length, { timeout: 10_000 }).toBe(1);
+    expect(qaRequests[0]).toMatchObject({
+      question: recognizedText,
+      text: recognizedText,
+    });
+    await expect(page.getByTestId('response-text')).toContainText(
+      'イベントは1階のメインスペースで開催されます。',
+      { timeout: 8_000 },
+    );
   });
 });
 
