@@ -6,8 +6,8 @@ import { expect, test } from '@playwright/test';
 import { m5stackPayloads } from './fixtures/m5stack-payloads';
 
 test.skip(
-  !process.env.BACKEND_API_URL && !process.env.PLAYWRIGHT_BASE_URL,
-  'M5Stack E2E requires a reachable backend (BACKEND_API_URL or PLAYWRIGHT_BASE_URL must be set)',
+  !process.env.BACKEND_API_URL,
+  'M5Stack E2E requires a reachable backend (BACKEND_API_URL must be set)',
 );
 
 /**
@@ -31,9 +31,9 @@ function backendRequestHeaders(): Record<string, string> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
-  const key = process.env.BACKEND_API_KEY;
+  const key = process.env.API_SECRET_KEY ?? process.env.BACKEND_API_KEY;
   if (key) {
-    headers['X-API-Key'] = key;
+    headers.Authorization = `Bearer ${key}`;
   }
   return headers;
 }
@@ -107,9 +107,12 @@ test.describe('M5Stack reception sensor webhook (API + kiosk polling)', () => {
     page,
     request,
   }) => {
-    await page.addInitScript(() => {
+    const payload = m5stackPayloads.firmwareClose(`m5stack-e2e-pir-tof-${Date.now()}`);
+
+    await page.addInitScript(({ deviceId }) => {
       window.localStorage.setItem('engineer_cafe_kiosk_trigger_mode', 'device');
-    });
+      window.localStorage.setItem('engineer_cafe_kiosk_device_id', deviceId);
+    }, { deviceId: payload.device_id });
     await installDeterministicVoiceRecorder(page);
     await keepOcrCameraPending(page);
     await mockReceptionStart(page);
@@ -133,7 +136,7 @@ test.describe('M5Stack reception sensor webhook (API + kiosk polling)', () => {
 
     const triggerUrl = backendTriggerUrl();
     const res = await request.post(triggerUrl, {
-      data: m5stackPayloads.tofClose,
+      data: payload,
       headers: backendRequestHeaders(),
     });
     expect(res.status(), await res.text()).toBe(200);
@@ -154,7 +157,7 @@ test.describe('M5Stack reception sensor webhook (API + kiosk polling)', () => {
     const url = backendTriggerUrl();
 
     const missingType = await request.post(url, {
-      data: { distance_mm: 350, device_id: 'm5stack-schema-missing-type' },
+      data: { distance_mm: 280, device_id: 'm5stack-schema-missing-type' },
       headers,
     });
     expect(missingType.status()).toBe(422);

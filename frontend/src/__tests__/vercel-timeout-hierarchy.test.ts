@@ -4,10 +4,20 @@ import path from 'node:path';
 import { test } from 'node:test';
 
 type VercelConfig = {
+  crons?: Array<{ path?: string; schedule?: string }>;
   functions?: Record<string, { maxDuration?: number }>;
 };
 
 const frontendRoot = path.resolve(__dirname, '..', '..');
+const REQUIRED_FUNCTION_MAX_DURATIONS: Record<string, number> = {
+  'src/app/api/cron/update-knowledge-base/route.ts': 300,
+  'src/app/api/ocr/route.ts': 120,
+  'src/app/api/reception/start/route.ts': 120,
+  'src/app/api/reception/respond/route.ts': 120,
+  'src/app/api/reception/complete/route.ts': 120,
+  'src/app/api/reception/status/[receptionSessionId]/route.ts': 120,
+  'src/app/api/reception/sensor-status/route.ts': 120,
+};
 
 async function readText(relativePath: string): Promise<string> {
   return readFile(path.join(frontendRoot, relativePath), 'utf-8');
@@ -40,6 +50,14 @@ function explicitTimeouts(source: string): number[] {
 test('frontend API proxy timeouts stay below their Vercel maxDuration', async () => {
   const config = JSON.parse(await readText('vercel.json')) as VercelConfig;
   const functions = config.functions ?? {};
+
+  for (const [routePath, maxDuration] of Object.entries(REQUIRED_FUNCTION_MAX_DURATIONS)) {
+    assert.equal(
+      functions[routePath]?.maxDuration,
+      maxDuration,
+      `${routePath} must explicitly declare maxDuration ${maxDuration}`
+    );
+  }
 
   for (const [routePath, settings] of Object.entries(functions)) {
     const maxDurationMs = (settings.maxDuration ?? 0) * 1000;
@@ -81,4 +99,11 @@ test('voice proxy timeout covers observed Cloud Run cold starts without exceedin
   assert.ok(proxyTimeoutMs < voiceMaxDurationMs);
   assert.ok(proxyTimeoutMs < fillerMaxDurationMs);
   assert.ok(voiceMaxDurationMs < cloudRunTimeoutMs);
+});
+
+test('knowledge base cron runs outside JST business hours', async () => {
+  const config = JSON.parse(await readText('vercel.json')) as VercelConfig;
+  const cron = config.crons?.find((entry) => entry.path === '/api/cron/update-knowledge-base');
+
+  assert.equal(cron?.schedule, '30 19 * * *');
 });

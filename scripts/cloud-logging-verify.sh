@@ -38,7 +38,7 @@ Options:
   --timestamp VALUE      Stable timestamp for output names
   --since RFC3339        Override lookback start timestamp
   --until RFC3339        Optional inclusive end timestamp
-  --error-gate-only      Only fail on /api/chat 5xx or persistence error rows
+  --error-gate-only      Only fail on critical API, LTM, or persistence error rows
   --input-dir DIR        Read pre-fetched JSON logs from DIR instead of gcloud (tests)
   --dry-run              Validate local checks and print gcloud filters only
   -h, --help             Show this usage
@@ -129,7 +129,9 @@ event_filter() {
 
 chat_filter="$BASE_FILTER AND (jsonPayload.event=\"chat_response\" OR labels.event=\"chat_response\" OR textPayload:\"chat_response\")"
 chat_5xx_filter="$BASE_FILTER AND ((httpRequest.requestMethod=\"POST\" AND httpRequest.requestUrl:\"/api/chat\" AND httpRequest.status>=500) OR (jsonPayload.path=\"/api/chat\" AND jsonPayload.status_code>=500) OR (jsonPayload.extra.path=\"/api/chat\" AND jsonPayload.extra.status_code>=500) OR (jsonPayload.event=\"request_failed\" AND jsonPayload.path=\"/api/chat\") OR (jsonPayload.event=\"request_completed_slow\" AND jsonPayload.path=\"/api/chat\" AND jsonPayload.status_code>=500) OR (textPayload:\"/api/chat\" AND severity>=ERROR))"
+api_error_filter="$BASE_FILTER AND (((httpRequest.requestUrl:\"/api/voice\" OR httpRequest.requestUrl:\"/api/chat\" OR httpRequest.requestUrl:\"/api/slides\" OR httpRequest.requestUrl:\"/api/error\") AND httpRequest.status>=500) OR ((jsonPayload.path=\"/api/voice\" OR jsonPayload.path=\"/api/chat\" OR jsonPayload.path=\"/api/slides\" OR jsonPayload.path=\"/api/error\" OR jsonPayload.extra.path=\"/api/voice\" OR jsonPayload.extra.path=\"/api/chat\" OR jsonPayload.extra.path=\"/api/slides\" OR jsonPayload.extra.path=\"/api/error\") AND (jsonPayload.status_code>=500 OR jsonPayload.extra.status_code>=500 OR severity>=ERROR)) OR ((textPayload:\"/api/voice\" OR textPayload:\"/api/chat\" OR textPayload:\"/api/slides\" OR textPayload:\"/api/error\") AND severity>=ERROR))"
 memory_filter="$BASE_FILTER AND ((jsonPayload.logger=\"backend.utils.memory_helper\" AND jsonPayload.level=\"ERROR\") OR jsonPayload.event=\"memory_helper_error\" OR (jsonPayload.logger:\"memory_helper\" AND severity>=ERROR) OR (textPayload:\"memory_helper\" AND severity>=ERROR))"
+ltm_connection_filter="$BASE_FILTER AND (jsonPayload.event=\"ltm_connection_error\" OR jsonPayload.event=\"memory_helper_connection_error\" OR ((jsonPayload.logger=\"backend.utils.memory_helper\" OR jsonPayload.logger:\"memory_helper\" OR jsonPayload.message:\"LTM\" OR jsonPayload.message:\"long-term memory\" OR textPayload:\"memory_helper\" OR textPayload:\"LTM\" OR textPayload:\"long-term memory\") AND (jsonPayload.message:\"connection\" OR jsonPayload.message:\"ConnectionError\" OR jsonPayload.message:\"connection refused\" OR jsonPayload.message:\"timeout\" OR jsonPayload.exception.message:\"connection\" OR jsonPayload.exception.message:\"ConnectionError\" OR jsonPayload.exception.message:\"connection refused\" OR jsonPayload.exception.message:\"timeout\" OR textPayload:\"connection\" OR textPayload:\"ConnectionError\" OR textPayload:\"connection refused\" OR textPayload:\"timeout\") AND severity>=ERROR))"
 uuid_hygiene_filter="$BASE_FILTER AND (textPayload:\"invalid input syntax for type uuid\" OR jsonPayload.message:\"invalid input syntax for type uuid\" OR jsonPayload.exception.message:\"invalid input syntax for type uuid\")"
 reception_hygiene_filter="$BASE_FILTER AND (textPayload:\"Reception session persistence failed\" OR jsonPayload.message:\"Reception session persistence failed\")"
 
@@ -147,7 +149,9 @@ if [ "$DRY_RUN" = "1" ]; then
   fi
   echo "Filter[chat_response]: $chat_filter"
   echo "Filter[chat_api_5xx]: $chat_5xx_filter"
+  echo "Filter[critical_api_errors]: $api_error_filter"
   echo "Filter[memory_helper_error]: $memory_filter"
+  echo "Filter[ltm_connection_error]: $ltm_connection_filter"
   echo "Filter[uuid_hygiene]: $uuid_hygiene_filter"
   echo "Filter[reception_hygiene]: $reception_hygiene_filter"
   exit 0
@@ -179,7 +183,9 @@ if [ -z "$INPUT_DIR" ]; then
   fi
   read_logs "$chat_filter" "$TMP_DIR/chat_response.json"
   read_logs "$chat_5xx_filter" "$TMP_DIR/chat_api_5xx.json"
+  read_logs "$api_error_filter" "$TMP_DIR/critical_api_errors.json"
   read_logs "$memory_filter" "$TMP_DIR/memory_helper_errors.json"
+  read_logs "$ltm_connection_filter" "$TMP_DIR/ltm_connection_errors.json"
   read_logs "$uuid_hygiene_filter" "$TMP_DIR/uuid_hygiene.json"
   read_logs "$reception_hygiene_filter" "$TMP_DIR/reception_hygiene.json"
 fi
@@ -329,6 +335,7 @@ for index, data in enumerate(chat_entries):
         chat_missing.append({"index": index, "missing": missing, "data": data})
 
 chat_api_5xx_entries = load("chat_api_5xx")
+critical_api_error_entries = load("critical_api_errors")
 ltm_store_failed = [
     data for data in chat_entries if str(field_value(data, "ltm_store_write")).lower() == "failed"
 ]
@@ -342,6 +349,11 @@ for entry in load("memory_helper_errors"):
         or "memory_helper" in str(entry.get("textPayload", ""))
     ):
         memory_errors.append({**data, "_timestamp": entry.get("timestamp"), "_severity": entry.get("severity")})
+
+ltm_connection_errors = []
+for entry in load("ltm_connection_errors"):
+    data = payload(entry)
+    ltm_connection_errors.append({**data, "_timestamp": entry.get("timestamp"), "_severity": entry.get("severity")})
 
 uuid_hygiene_entries = load("uuid_hygiene")
 reception_hygiene_entries = load("reception_hygiene")
@@ -361,10 +373,14 @@ if not error_gate_only:
         failures.append(f"{len(chat_missing)} chat_response log(s) are missing required fields.")
 if chat_api_5xx_entries:
     failures.append(f"{len(chat_api_5xx_entries)} /api/chat 5xx log row(s) found.")
+if critical_api_error_entries:
+    failures.append(f"{len(critical_api_error_entries)} critical API ERROR/5xx log row(s) found.")
 if ltm_store_failed:
     failures.append(f"{len(ltm_store_failed)} chat_response log(s) reported ltm_store_write=failed.")
 if memory_errors:
     failures.append(f"{len(memory_errors)} memory_helper error log(s) found.")
+if ltm_connection_errors:
+    failures.append(f"{len(ltm_connection_errors)} LTM connection/timeout error log row(s) found.")
 if uuid_hygiene_entries:
     failures.append(
         f"{len(uuid_hygiene_entries)} invalid UUID syntax log(s) found; synthetic alpha IDs are still leaking into UUID queries."
@@ -411,12 +427,20 @@ lines.append(
     f"{len(chat_api_5xx_entries)} matching log row(s) |"
 )
 lines.append(
+    f"| critical API ERROR/5xx rows | {'FAIL' if critical_api_error_entries else 'PASS'} | "
+    f"{len(critical_api_error_entries)} matching /api/voice, /api/chat, /api/slides, or /api/error log row(s) |"
+)
+lines.append(
     f"| `ltm_store_write=failed` rows | {'FAIL' if ltm_store_failed else 'PASS'} | "
     f"{len(ltm_store_failed)} matching chat_response log row(s) |"
 )
 lines.append(
     f"| `memory_helper` ERROR samples | {'FAIL' if memory_errors else 'PASS'} | "
     f"{len(memory_errors)} error log(s) found; samples listed below if present |"
+)
+lines.append(
+    f"| LTM connection/timeout errors | {'FAIL' if ltm_connection_errors else 'PASS'} | "
+    f"{len(ltm_connection_errors)} matching log row(s) |"
 )
 lines.append(
     f"| `invalid input syntax for type uuid` hygiene | {'FAIL' if uuid_hygiene_entries else 'PASS'} | "
@@ -464,11 +488,19 @@ lines.extend([
     "## Cloud Run Error Rows",
     "",
     f"- `/api/chat` 5xx rows: {len(chat_api_5xx_entries)}",
+    f"- Critical API ERROR/5xx rows: {len(critical_api_error_entries)}",
     f"- `ltm_store_write=failed` rows: {len(ltm_store_failed)}",
 ])
 if chat_api_5xx_entries:
     lines.extend(["", "| Timestamp | Severity | Status | Path | Message |", "| --- | --- | ---: | --- | --- |"])
     for entry in chat_api_5xx_entries[:10]:
+        lines.append(
+            f"| {md(entry.get('timestamp'))} | {md(entry.get('severity'))} | "
+            f"{md(entry_http_status(entry))} | {md(entry_path(entry))[:160]} | {md(entry_message(entry))[:500]} |"
+        )
+if critical_api_error_entries:
+    lines.extend(["", "| Timestamp | Severity | Status | Path | Message |", "| --- | --- | ---: | --- | --- |"])
+    for entry in critical_api_error_entries[:10]:
         lines.append(
             f"| {md(entry.get('timestamp'))} | {md(entry.get('severity'))} | "
             f"{md(entry_http_status(entry))} | {md(entry_path(entry))[:160]} | {md(entry_message(entry))[:500]} |"
@@ -494,6 +526,23 @@ if memory_errors:
         lines.append(f"| {md(item.get('_timestamp'))} | {md(item.get('_severity') or item.get('level'))} | {md(message)[:500]} |")
 else:
     lines.append("- No memory_helper error samples in the lookback window.")
+
+lines.extend([
+    "",
+    "## LTM Connection Error Samples",
+    "",
+    f"- Error rows found: {len(ltm_connection_errors)}",
+])
+if ltm_connection_errors:
+    lines.extend(["", "| Timestamp | Severity | Event | Logger | Message |", "| --- | --- | --- | --- | --- |"])
+    for item in ltm_connection_errors[:5]:
+        message = item.get("message") or item.get("msg") or item.get("error") or item.get("event") or ""
+        lines.append(
+            f"| {md(item.get('_timestamp'))} | {md(item.get('_severity') or item.get('level'))} | "
+            f"{md(item.get('event'))} | {md(item.get('logger'))} | {md(message)[:500]} |"
+        )
+else:
+    lines.append("- No LTM connection error samples in the lookback window.")
 
 lines.extend([
     "",

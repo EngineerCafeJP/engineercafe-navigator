@@ -8,9 +8,23 @@ const CONNPASS_KNOWLEDGE_CATEGORY = 'event';
 const OPENROUTER_EMBEDDING_URL = 'https://openrouter.ai/api/v1/embeddings';
 const OPENROUTER_EMBEDDING_MODEL = 'openai/text-embedding-3-small';
 const OPENROUTER_EMBEDDING_DIMENSIONS = 1536;
+const OPENROUTER_EMBEDDING_TIMEOUT_MS = 15_000;
+const KNOWLEDGE_BASE_UPDATE_CRON_JST = '30 4 * * *';
+const KNOWLEDGE_BASE_UPDATE_LOCK_METRIC_TYPE = 'knowledge_base_update_lock';
+const KNOWLEDGE_BASE_UPDATE_LOCK_TTL_MS = 20 * 60 * 1000;
 
 type ConnpassClient = typeof connpassClient;
 type SupabaseAdmin = typeof supabaseAdmin;
+type UpdateLease = {
+  acquired: boolean;
+  distributed: boolean;
+  ownerId: string;
+  expiresAt: string;
+};
+type MetricRow = {
+  created_at?: string;
+  metadata?: unknown;
+};
 
 interface KnowledgeBaseUpdaterDependencies {
   connpassClient?: ConnpassClient;
@@ -39,15 +53,14 @@ export class KnowledgeBaseUpdater {
     this.fetchImpl = dependencies.fetch ?? fetch;
     this.getOpenRouterApiKey = dependencies.getOpenRouterApiKey ?? (() => process.env.OPENROUTER_API_KEY);
 
-    // Run every 6 hours: "0 */6 * * *"
-    // For testing, can use every 5 minutes: "*/5 * * * *"
-    this.job = new CronJob('0 */6 * * *', async () => {
+    // Mirrors Vercel's 19:30 UTC cron, which is 04:30 JST and outside kiosk business hours.
+    this.job = new CronJob(KNOWLEDGE_BASE_UPDATE_CRON_JST, async () => {
       try {
         await this.runUpdate();
       } catch (error) {
         console.error('[KnowledgeBaseUpdater] Scheduled update failed:', error);
       }
-    });
+    }, null, false, 'Asia/Tokyo');
   }
   
   /**
@@ -74,8 +87,14 @@ export class KnowledgeBaseUpdater {
     
     this.isRunning = true;
     const startTime = Date.now();
+    let lease: UpdateLease | undefined;
     
     try {
+      lease = await this.acquireUpdateLease();
+      if (!lease.acquired) {
+        console.warn('[KnowledgeBaseUpdater] Update skipped because another instance holds the lease');
+        return;
+      }
       
       // Run all updates in parallel
       const results = await Promise.allSettled([
@@ -117,6 +136,9 @@ export class KnowledgeBaseUpdater {
       console.error('[KnowledgeBaseUpdater] Update failed:', error);
       throw error;
     } finally {
+      if (lease?.acquired) {
+        await this.releaseUpdateLease(lease);
+      }
       this.isRunning = false;
     }
   }
@@ -294,18 +316,33 @@ export class KnowledgeBaseUpdater {
   }
 
   private async generateEmbedding(text: string, apiKey: string): Promise<number[]> {
-    const response = await this.fetchImpl(OPENROUTER_EMBEDDING_URL, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: OPENROUTER_EMBEDDING_MODEL,
-        input: text,
-        dimensions: OPENROUTER_EMBEDDING_DIMENSIONS,
-      }),
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), OPENROUTER_EMBEDDING_TIMEOUT_MS);
+    timeoutId.unref?.();
+
+    let response: Response;
+    try {
+      response = await this.fetchImpl(OPENROUTER_EMBEDDING_URL, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        signal: controller.signal,
+        body: JSON.stringify({
+          model: OPENROUTER_EMBEDDING_MODEL,
+          input: text,
+          dimensions: OPENROUTER_EMBEDDING_DIMENSIONS,
+        }),
+      });
+    } catch (error) {
+      if (this.isAbortLikeError(error)) {
+        throw new Error(`OpenRouter embedding request timed out after ${OPENROUTER_EMBEDDING_TIMEOUT_MS}ms`);
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeoutId);
+    }
 
     if (!response.ok) {
       const details = await response.text().catch(() => '');
@@ -324,6 +361,180 @@ export class KnowledgeBaseUpdater {
     }
 
     return embedding;
+  }
+
+  private async acquireUpdateLease(): Promise<UpdateLease> {
+    const ownerId = uuidv4();
+    const now = Date.now();
+    const expiresAt = new Date(now + KNOWLEDGE_BASE_UPDATE_LOCK_TTL_MS).toISOString();
+
+    if (process.env.NODE_ENV !== 'production') {
+      return { acquired: true, distributed: false, ownerId, expiresAt };
+    }
+
+    try {
+      const activeSince = new Date(now - KNOWLEDGE_BASE_UPDATE_LOCK_TTL_MS).toISOString();
+      const activeRows = await this.readRecentUpdateLeaseRows(activeSince);
+      const activeLease = this.findActiveUpdateLease(activeRows, now);
+
+      if (activeLease) {
+        return { acquired: false, distributed: true, ownerId, expiresAt };
+      }
+
+      await this.insertUpdateLeaseMetric({
+        ownerId,
+        status: 'running',
+        value: 1,
+        expiresAt,
+      });
+
+      const contenderRows = await this.readRecentUpdateLeaseRows(activeSince);
+      const contenders = this.activeUpdateLeaseContenders(contenderRows, now);
+      const winner = contenders[0];
+      if (winner && winner.ownerId !== ownerId) {
+        await this.insertUpdateLeaseMetric({
+          ownerId,
+          status: 'skipped',
+          value: 0,
+          expiresAt,
+        });
+        return { acquired: false, distributed: true, ownerId, expiresAt };
+      }
+
+      return { acquired: true, distributed: true, ownerId, expiresAt };
+    } catch (error) {
+      console.warn(
+        '[KnowledgeBaseUpdater] Distributed update lease unavailable; falling back to process-local guard:',
+        error
+      );
+      return { acquired: true, distributed: false, ownerId, expiresAt };
+    }
+  }
+
+  private async releaseUpdateLease(lease: UpdateLease): Promise<void> {
+    if (!lease.distributed) {
+      return;
+    }
+
+    try {
+      await this.insertUpdateLeaseMetric({
+        ownerId: lease.ownerId,
+        status: 'completed',
+        value: 0,
+        expiresAt: lease.expiresAt,
+      });
+    } catch (error) {
+      console.warn('[KnowledgeBaseUpdater] Failed to release distributed update lease:', error);
+    }
+  }
+
+  private async readRecentUpdateLeaseRows(activeSince: string): Promise<MetricRow[]> {
+    const query = (this.supabaseAdmin as any)
+      .from('system_metrics')
+      .select('created_at, metadata')
+      .eq('metric_type', KNOWLEDGE_BASE_UPDATE_LOCK_METRIC_TYPE)
+      .gte('created_at', activeSince)
+      .order('created_at', { ascending: true })
+      .limit(50);
+    const { data, error } = await query;
+
+    if (error) {
+      throw error;
+    }
+
+    return Array.isArray(data) ? data : [];
+  }
+
+  private async insertUpdateLeaseMetric(input: {
+    ownerId: string;
+    status: 'running' | 'completed' | 'skipped';
+    value: number;
+    expiresAt: string;
+  }): Promise<void> {
+    const { error } = await (this.supabaseAdmin as any)
+      .from('system_metrics')
+      .insert({
+        metric_type: KNOWLEDGE_BASE_UPDATE_LOCK_METRIC_TYPE,
+        value: input.value,
+        metadata: {
+          owner_id: input.ownerId,
+          status: input.status,
+          expires_at: input.expiresAt,
+          lock_ttl_ms: KNOWLEDGE_BASE_UPDATE_LOCK_TTL_MS,
+        },
+        created_at: new Date().toISOString(),
+      });
+
+    if (error) {
+      throw error;
+    }
+  }
+
+  private findActiveUpdateLease(rows: MetricRow[], now: number): { ownerId: string } | null {
+    return this.activeUpdateLeaseContenders(rows, now)[0] ?? null;
+  }
+
+  private activeUpdateLeaseContenders(rows: MetricRow[], now: number): Array<{
+    acquiredAt: string;
+    ownerId: string;
+  }> {
+    const releasedOwners = new Set<string>();
+
+    for (const row of rows) {
+      const metadata = this.metricMetadata(row.metadata);
+      if (
+        metadata?.owner_id &&
+        (metadata.status === 'completed' || metadata.status === 'skipped')
+      ) {
+        releasedOwners.add(metadata.owner_id);
+      }
+    }
+
+    return rows
+      .map((row) => {
+        const metadata = this.metricMetadata(row.metadata);
+        return {
+          acquiredAt: row.created_at ?? '',
+          ownerId: metadata?.owner_id ?? '',
+          status: metadata?.status,
+          expiresAt: metadata?.expires_at,
+        };
+      })
+      .filter((row) => {
+        if (!row.ownerId || row.status !== 'running' || releasedOwners.has(row.ownerId)) {
+          return false;
+        }
+        return row.expiresAt ? Date.parse(row.expiresAt) > now : false;
+      })
+      .sort((a, b) => {
+        const timeDiff = Date.parse(a.acquiredAt) - Date.parse(b.acquiredAt);
+        return timeDiff === 0 ? a.ownerId.localeCompare(b.ownerId) : timeDiff;
+      })
+      .map((row) => ({ acquiredAt: row.acquiredAt, ownerId: row.ownerId }));
+  }
+
+  private metricMetadata(metadata: unknown): {
+    owner_id?: string;
+    status?: string;
+    expires_at?: string;
+  } | null {
+    if (!metadata || typeof metadata !== 'object') {
+      return null;
+    }
+
+    return metadata as {
+      owner_id?: string;
+      status?: string;
+      expires_at?: string;
+    };
+  }
+
+  private isAbortLikeError(error: unknown): boolean {
+    if (!(error instanceof Error || error instanceof DOMException)) {
+      return false;
+    }
+
+    return error.name === 'AbortError' || error.name === 'TimeoutError';
   }
 
   private formatConnpassUpdateResult(result: {

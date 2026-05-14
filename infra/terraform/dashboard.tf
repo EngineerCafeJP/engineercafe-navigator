@@ -203,6 +203,70 @@ resource "google_monitoring_dashboard" "observability_phase1b" {
               }
             }
           }
+        },
+        {
+          xPos   = 0
+          yPos   = 12
+          width  = 6
+          height = 4
+          widget = {
+            title = "Critical API errors"
+            xyChart = {
+              dataSets = [
+                {
+                  plotType   = "STACKED_BAR"
+                  targetAxis = "Y1"
+                  timeSeriesQuery = {
+                    timeSeriesFilter = {
+                      filter = "metric.type=\"logging.googleapis.com/user/${google_logging_metric.api_error_count.name}\" ${local.cloud_run_metric_scope}"
+                      aggregation = {
+                        alignmentPeriod    = "900s"
+                        perSeriesAligner   = "ALIGN_DELTA"
+                        crossSeriesReducer = "REDUCE_SUM"
+                        groupByFields      = ["metric.label.path", "metric.label.event"]
+                      }
+                    }
+                  }
+                }
+              ]
+              yAxis = {
+                label = "errors / 15m"
+                scale = "LINEAR"
+              }
+            }
+          }
+        },
+        {
+          xPos   = 6
+          yPos   = 12
+          width  = 6
+          height = 4
+          widget = {
+            title = "LTM connection errors"
+            xyChart = {
+              dataSets = [
+                {
+                  plotType   = "STACKED_BAR"
+                  targetAxis = "Y1"
+                  timeSeriesQuery = {
+                    timeSeriesFilter = {
+                      filter = "metric.type=\"logging.googleapis.com/user/${google_logging_metric.ltm_connection_error_count.name}\" ${local.cloud_run_metric_scope}"
+                      aggregation = {
+                        alignmentPeriod    = "900s"
+                        perSeriesAligner   = "ALIGN_DELTA"
+                        crossSeriesReducer = "REDUCE_SUM"
+                        groupByFields      = ["metric.label.logger", "metric.label.event"]
+                      }
+                    }
+                  }
+                }
+              ]
+              yAxis = {
+                label = "errors / 15m"
+                scale = "LINEAR"
+              }
+            }
+          }
         }
       ]
     }

@@ -7,7 +7,8 @@ export interface DeviceDetectionEvent {
   data?: Record<string, unknown>;
 }
 
-const DEFAULT_DEVICE_ID = 'm5stack-001';
+export const DEFAULT_KIOSK_DEVICE_ID = 'm5stack-001';
+export const KIOSK_DEVICE_ID_STORAGE_KEY = 'engineer_cafe_kiosk_device_id';
 const DEFAULT_SENSOR_POLL_INTERVAL_MS = 1000;
 
 let sensorPollingIntervalId: number | null = null;
@@ -71,24 +72,54 @@ async function pollSensorStatus(deviceId: string, sessionToken: number): Promise
   }
 }
 
+function readConfiguredKioskDeviceId(): string | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  try {
+    const stored = window.localStorage.getItem(KIOSK_DEVICE_ID_STORAGE_KEY)?.trim();
+    return stored ? stored : null;
+  } catch {
+    return null;
+  }
+}
+
+export function resolveKioskDeviceId(deviceId?: string): string {
+  const explicitDeviceId = deviceId?.trim();
+  if (explicitDeviceId) {
+    return explicitDeviceId;
+  }
+
+  const storedDeviceId = readConfiguredKioskDeviceId();
+  if (storedDeviceId) {
+    return storedDeviceId;
+  }
+
+  const envDeviceId = process.env.NEXT_PUBLIC_KIOSK_DEVICE_ID?.trim();
+  return envDeviceId || DEFAULT_KIOSK_DEVICE_ID;
+}
+
 export function startSensorPolling(
-  deviceId = DEFAULT_DEVICE_ID,
+  deviceId?: string,
   intervalMs = DEFAULT_SENSOR_POLL_INTERVAL_MS
 ): void {
   if (typeof window === 'undefined') {
     return;
   }
 
+  const resolvedDeviceId = resolveKioskDeviceId(deviceId);
+
   stopSensorPolling();
   activePollingSessionToken += 1;
   const sessionToken = activePollingSessionToken;
   // Initialize since to now so pre-existing (stale) events are ignored
-  if (!lastSeenSensorTimestampByDevice.has(deviceId)) {
-    lastSeenSensorTimestampByDevice.set(deviceId, Date.now() / 1000);
+  if (!lastSeenSensorTimestampByDevice.has(resolvedDeviceId)) {
+    lastSeenSensorTimestampByDevice.set(resolvedDeviceId, Date.now() / 1000);
   }
-  void pollSensorStatus(deviceId, sessionToken);
+  void pollSensorStatus(resolvedDeviceId, sessionToken);
   sensorPollingIntervalId = window.setInterval(() => {
-    void pollSensorStatus(deviceId, sessionToken);
+    void pollSensorStatus(resolvedDeviceId, sessionToken);
   }, intervalMs);
 }
 

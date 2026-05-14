@@ -8,6 +8,59 @@ const vercelConfigPath = resolve(repoRoot, 'frontend/vercel.json');
 const proxyConfigPath = resolve(repoRoot, 'frontend/src/lib/api/backend-proxy.ts');
 const workflowPath = resolve(repoRoot, '.github/workflows/ci.yml');
 
+function usage() {
+  console.log(`Usage: node scripts/validate-p0-cloudrun-vercel-timeouts.mjs [options]
+
+Options:
+  --live                         Describe live Cloud Run services with gcloud.
+  --skip-live                    Skip live Cloud Run checks.
+  --project ID                   GCP project for live checks.
+  --service NAME                 Backend Cloud Run service.
+  --region REGION                Backend Cloud Run region.
+  --piper-plus-service NAME      Piper Plus Cloud Run service.
+  --piper-plus-region REGION     Piper Plus Cloud Run region.
+  -h, --help                     Show this help.
+
+Environment:
+  CHECK_LIVE_CLOUD_RUN=1         Enables live checks when --live is not passed.
+  CLOUD_RUN_PROJECT              Default project for live checks.
+`);
+}
+
+const args = process.argv.slice(2);
+const cli = {
+  live: process.env.CHECK_LIVE_CLOUD_RUN === '1',
+  project: process.env.CLOUD_RUN_PROJECT || process.env.GCP_PROJECT || process.env.GOOGLE_CLOUD_PROJECT || '',
+};
+
+for (let index = 0; index < args.length; index += 1) {
+  const arg = args[index];
+  const next = () => {
+    index += 1;
+    if (index >= args.length || args[index].startsWith('-')) {
+      console.error(`Missing value for ${arg}`);
+      process.exit(2);
+    }
+    return args[index];
+  };
+
+  if (arg === '--live') cli.live = true;
+  else if (arg === '--skip-live') cli.live = false;
+  else if (arg === '--project') cli.project = next();
+  else if (arg === '--service') process.env.CLOUD_RUN_SERVICE = next();
+  else if (arg === '--region') process.env.CLOUD_RUN_REGION = next();
+  else if (arg === '--piper-plus-service') process.env.PIPER_PLUS_SERVICE = next();
+  else if (arg === '--piper-plus-region') process.env.PIPER_PLUS_REGION = next();
+  else if (arg === '-h' || arg === '--help') {
+    usage();
+    process.exit(0);
+  } else {
+    console.error(`Unknown option: ${arg}`);
+    usage();
+    process.exit(2);
+  }
+}
+
 const expected = {
   service: process.env.CLOUD_RUN_SERVICE || 'engineer-cafe-backend',
   region: process.env.CLOUD_RUN_REGION || 'asia-northeast1',
@@ -75,17 +128,22 @@ if (expected.vercelMaxDurationSeconds >= expected.timeoutSeconds) {
 }
 
 function describeCloudRunService(serviceName, region) {
+  const commandArgs = [
+    'run',
+    'services',
+    'describe',
+    serviceName,
+    '--region',
+    region,
+    '--format=json',
+  ];
+  if (cli.project) {
+    commandArgs.push('--project', cli.project);
+  }
+
   const output = execFileSync(
     'gcloud',
-    [
-      'run',
-      'services',
-      'describe',
-      serviceName,
-      '--region',
-      region,
-      '--format=json',
-    ],
+    commandArgs,
     { encoding: 'utf8' },
   );
   return JSON.parse(output);
@@ -114,7 +172,7 @@ function validateLiveService(service, config) {
   if (cpuThrottling !== config.cpuThrottling) fail(`${config.service} CPU throttling must be disabled`);
 }
 
-if (process.env.CHECK_LIVE_CLOUD_RUN === '1') {
+if (cli.live) {
   try {
     validateLiveService(describeCloudRunService(expected.service, expected.region), expected);
     validateLiveService(describeCloudRunService(expectedPiperPlus.service, expectedPiperPlus.region), expectedPiperPlus);
@@ -122,7 +180,7 @@ if (process.env.CHECK_LIVE_CLOUD_RUN === '1') {
     fail(`could not describe live Cloud Run services: ${error instanceof Error ? error.message : String(error)}`);
   }
 } else {
-  console.log('Skipping live Cloud Run describe; set CHECK_LIVE_CLOUD_RUN=1 to verify deployed service settings.');
+  console.log('Skipping live Cloud Run describe; pass --live or set CHECK_LIVE_CLOUD_RUN=1 to verify deployed service settings.');
 }
 
 if (process.exitCode) {
