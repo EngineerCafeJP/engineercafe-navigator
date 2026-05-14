@@ -455,7 +455,7 @@ jobs:
 
   # Backend: Deploy to Cloud Run
   # Only runs on push to develop after backend tests pass
-  # NOTE: This is an optional deploy job - not included in ci-success gate
+  # NOTE: ci-success requires this job to pass for develop pushes with backend changes.
   #
   # Deployment strategy:
   #   - develop branch -> Cloud Run (asia-northeast1) with ENVIRONMENT=production
@@ -587,6 +587,7 @@ jobs:
   # Final status check for branch protection
   ci-success:
     needs:
+      - changes
       - frontend-lint
       - frontend-typecheck
       - frontend-timeout-guard
@@ -595,6 +596,7 @@ jobs:
       - frontend-playwright-voice-live
       - backend-lint
       - backend-test
+      - backend-deploy-staging
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -613,13 +615,21 @@ jobs:
             "${{ needs.frontend-playwright-e2e.result }}" \
             "${{ needs.frontend-playwright-voice-live.result }}" \
             "${{ needs.backend-lint.result }}" \
-            "${{ needs.backend-test.result }}"; do
+            "${{ needs.backend-test.result }}" \
+            "${{ needs.backend-deploy-staging.result }}"; do
             if [[ "$job_result" == "failure" ]] || [[ "$job_result" == "cancelled" ]]; then
               FAILED=true
             fi
           done
           if [[ "$FAILED" == "true" ]]; then
             echo "One or more jobs failed or were cancelled"
+            exit 1
+          fi
+          if [[ "${{ needs.changes.outputs.backend }}" == "true" \
+            && "${{ github.event_name }}" == "push" \
+            && "${{ github.ref }}" == "refs/heads/develop" \
+            && "${{ needs.backend-deploy-staging.result }}" != "success" ]]; then
+            echo "backend-deploy-staging must complete successfully for develop pushes with backend changes"
             exit 1
           fi
           echo "All CI checks passed (skipped jobs are OK — no changes in that area)"
