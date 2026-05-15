@@ -183,6 +183,11 @@ def _is_static_source_backed_response(metadata: dict[str, Any], sources: list[st
         return True
 
     agent = metadata.get("agent")
+    category = metadata.get("category")
+    request_type = metadata.get("request_type")
+    if agent == "FacilityAgent" and (category == "smoking" or request_type == "smoking"):
+        return True
+
     event_count = metadata.get("event_count")
     try:
         parsed_event_count = int(event_count)
@@ -233,6 +238,42 @@ def _build_agent_response_evidence_metadata(
         "contexts": [content],
         "results": [result],
     }
+
+
+def _merge_rag_evidence_metadata(
+    existing: Any,
+    supplemental: Optional[dict[str, Any]],
+) -> Optional[dict[str, Any]]:
+    """Append supplemental evidence without discarding retrieved contexts."""
+    if supplemental is None:
+        return existing if isinstance(existing, dict) else None
+    if not isinstance(existing, dict):
+        return supplemental
+
+    merged = dict(existing)
+    contexts = [str(context) for context in existing.get("contexts", []) if str(context).strip()]
+    for context in supplemental.get("contexts", []):
+        text = str(context).strip()
+        if text and text not in contexts:
+            contexts.append(text)
+    merged["contexts"] = contexts
+    merged["context_char_count"] = sum(len(context) for context in contexts)
+
+    results = list(existing.get("results", []) or [])
+    results.extend(supplemental.get("results", []) or [])
+    if results:
+        merged["results"] = results
+
+    source_labels = [
+        str(source)
+        for source in (existing.get("source"), supplemental.get("source"))
+        if str(source or "").strip()
+    ]
+    deduped_sources = list(dict.fromkeys(source_labels))
+    if deduped_sources:
+        merged["source"] = "+".join(deduped_sources)
+
+    return merged
 
 
 async def _translate_llm_with_retry(
@@ -1697,14 +1738,17 @@ class MainWorkflow:
         except Exception:
             pass  # Non-critical — API層でもスキャンするため
 
-        if "rag_evidence" not in metadata:
-            rag_evidence = _build_agent_response_evidence_metadata(
-                state_context,
-                metadata,
-                answer,
-            )
-            if rag_evidence is not None:
-                metadata["rag_evidence"] = rag_evidence
+        agent_response_evidence = _build_agent_response_evidence_metadata(
+            state_context,
+            metadata,
+            answer,
+        )
+        merged_rag_evidence = _merge_rag_evidence_metadata(
+            metadata.get("rag_evidence"),
+            agent_response_evidence,
+        )
+        if merged_rag_evidence is not None:
+            metadata["rag_evidence"] = merged_rag_evidence
 
         # Response translation: translate JA response to EN for English users
         # zh/ko: rely on LLM's native multilingual output (LANGUAGE_INSTRUCTION)
