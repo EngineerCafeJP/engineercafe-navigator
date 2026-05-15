@@ -180,6 +180,69 @@ def test_agent_response_evidence_metadata_allows_static_connpass_guidance():
     assert evidence["sources"] == ["connpass"]
 
 
+def test_agent_response_evidence_metadata_allows_smoking_policy_response():
+    from backend.workflows.main_workflow import _build_agent_response_evidence_metadata
+
+    answer = "Smoking is not allowed at Engineer Cafe; the entire facility is smoke-free."
+    evidence = _build_agent_response_evidence_metadata(
+        {"include_rag_evidence": True},
+        {
+            "agent": "FacilityAgent",
+            "confidence": 0.85,
+            "category": "smoking",
+            "request_type": "smoking",
+            "sources": ["enhanced_rag"],
+        },
+        answer,
+    )
+
+    assert evidence is not None
+    assert evidence["source"] == "agent_response"
+    assert evidence["category"] == "smoking"
+    assert evidence["contexts"] == [answer]
+
+
+def test_merge_rag_evidence_metadata_appends_agent_response_context():
+    from backend.workflows.main_workflow import _merge_rag_evidence_metadata
+
+    existing = {
+        "source": "workflow_knowledge_results",
+        "contexts": ["Retrieved context about events."],
+        "context_char_count": len("Retrieved context about events."),
+        "results": [{"source": "official", "content": "Retrieved context about events."}],
+    }
+    supplemental = {
+        "source": "agent_response",
+        "contexts": ["Engineer Cafe is a free coworking and community space."],
+        "context_char_count": len("Engineer Cafe is a free coworking and community space."),
+        "results": [
+            {
+                "source": "agent_response",
+                "content": "Engineer Cafe is a free coworking and community space.",
+            }
+        ],
+    }
+
+    merged = _merge_rag_evidence_metadata(existing, supplemental)
+
+    assert merged == {
+        "source": "workflow_knowledge_results+agent_response",
+        "contexts": [
+            "Retrieved context about events.",
+            "Engineer Cafe is a free coworking and community space.",
+        ],
+        "context_char_count": len("Retrieved context about events.")
+        + len("Engineer Cafe is a free coworking and community space."),
+        "results": [
+            {"source": "official", "content": "Retrieved context about events."},
+            {
+                "source": "agent_response",
+                "content": "Engineer Cafe is a free coworking and community space.",
+            },
+        ],
+    }
+
+
 def test_agent_response_evidence_metadata_skips_fallback_sources():
     from backend.workflows.main_workflow import _build_agent_response_evidence_metadata
 
