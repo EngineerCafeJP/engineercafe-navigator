@@ -59,7 +59,21 @@ AgentName = Literal[
 # キーワード定数
 # =============================================================================
 
-WIFI_KEYWORDS = ["wi-fi", "wifi", "ワイファイ", "インターネット", "internet", "ネット"]
+WIFI_KEYWORDS = [
+    "wi-fi",
+    "wifi",
+    "ワイファイ",
+    "インターネット",
+    "internet",
+    "ネット",
+    "无线网",
+    "無線網",
+    "wifi密码",
+    "wifi密碼",
+    "와이파이",
+    "무선인터넷",
+    "비밀번호",
+]
 
 BUSINESS_HOURS_KEYWORDS = [
     "営業時間",
@@ -89,6 +103,18 @@ BUSINESS_HOURS_KEYWORDS = [
     "holiday",
     "what time",
     "when do you",
+    "营业时间",
+    "營業時間",
+    "几点",
+    "幾點",
+    "开放时间",
+    "운영 시간",
+    "운영시간",
+    "이용 시간",
+    "이용시간",
+    "영업시간",
+    "몇 시",
+    "몇시",
 ]
 
 PRICING_KEYWORDS = [
@@ -104,6 +130,13 @@ PRICING_KEYWORDS = [
     "free",
     "フリー",
     "タダ",
+    "收费",
+    "费用",
+    "多少錢",
+    "多少钱",
+    "요금",
+    "비용",
+    "얼마",
 ]
 
 BASEMENT_KEYWORDS = [
@@ -117,7 +150,10 @@ BASEMENT_KEYWORDS = [
     "チカ",
     "underground",
     "アンダースペース",
+    "maker'sスペース",
     "makersスペース",
+    "メーカースペース",
+    "maker's space",
     "focus space",
     "meeting space",
     "makers space",
@@ -158,8 +194,25 @@ FOOD_DRINK_VERBS = [
     "食べられますか",
     "飲める",
     "食べられる",
+    "飲みたい",
+    "食べたい",
+    "休憩したい",
+    "休みたい",
+    "一息つきたい",
     "注文",
+    "注文したい",
     "オーダー",
+    "飲みは可能",
+    "飲んでいい",
+    "飲めます",
+    "飲み物を飲む",
+    "休憩できますか",
+    "休めますか",
+    "want to drink",
+    "want to eat",
+    "want coffee",
+    "grab a coffee",
+    "take a break",
 ]
 
 EVENT_KEYWORDS = [
@@ -173,6 +226,11 @@ EVENT_KEYWORDS = [
     "交流会",
     "ブロックチェーン",
     "Web3",
+    "connpass",
+    "活动",
+    "活動",
+    "이벤트",
+    "행사",
     "event",
     "workshop",
     "meetup",
@@ -217,6 +275,11 @@ ACCESS_DIRECTION_KEYWORDS = [
     "directions",
     "how to get",
     "how do i get",
+    "在哪里",
+    "在哪裡",
+    "位置",
+    "어디",
+    "위치",
     # FROM cafe TO station (bidirectional - agent is at reception)
     "駅まで",
     "駅への",
@@ -268,8 +331,10 @@ COMMUNITY_KEYWORDS = [
 
 RECEPTION_KEYWORDS = [
     "membership",
-    "member",
     "member benefits",
+    "member number",
+    "member card",
+    "member registration",
     "become a member",
     "register",
     "sign up",
@@ -277,6 +342,15 @@ RECEPTION_KEYWORDS = [
     "reception",
     "初回利用",
     "利用方法",
+    "受付手続き",
+    "受付で何を",
+    "受け付けで何を",
+    "受け付け",
+    "入館できますか",
+    "入館",
+    "手続きは完了",
+    "これで完了",
+    "社会利用",
     "再受付",
     "会員番号",
     "会員カード",
@@ -297,6 +371,11 @@ RECEPTION_KEYWORDS = [
     "registered before",
     "without a reservation",
     "no reservation",
+    "第一次",
+    "会员登记",
+    "會員登記",
+    "처음 방문",
+    "회원 등록",
 ]
 
 EMERGENCY_KEYWORDS = [
@@ -508,7 +587,6 @@ NEARBY_FACILITY_KEYWORDS = [
     "lunch",
     "restaurant",
     "食事",
-    "カフェ",
     "喫茶店",
 ]
 
@@ -545,6 +623,14 @@ FOOD_DRINK_KEYWORDS = [
     "ドリンク",
     "メニュー",
     "サイノ",
+    "コーヒー",
+    "珈琲",
+    "カフェラテ",
+    "カフェモカ",
+    "エスプレッソ",
+    "ランチ",
+    "軽食",
+    "ワッフル",
     "food",
     "drink",
     "beverage",
@@ -552,6 +638,11 @@ FOOD_DRINK_KEYWORDS = [
     "bring food",
     "menu",
     "saino",
+    "coffee",
+    "latte",
+    "espresso",
+    "lunch",
+    "snack",
     "食物",
     "自带食物",
     "带食物",
@@ -585,7 +676,18 @@ FACILITY_EQUIPMENT_KEYWORDS = [
     "プリンター",
     "コンセント",
     "モニター",
+    "maker'sスペース",
+    "makersスペース",
+    "メーカースペース",
+    "maker's space",
+    "makers space",
     "3Dプリンター",
+    "印刷",
+    "コピー",
+    "vrゴーグル",
+    "VRゴーグル",
+    "テラス席",
+    "メインホール使いたい",
     "レーザーカッター",
     "レーザー加工機",
     "プロジェクター",
@@ -763,6 +865,7 @@ POLICY_KEYWORDS = [
 
 # 挨拶キーワード（ルーターで挨拶意図を検出するために使用）
 GREETING_KEYWORDS: list[str] = [
+    "おはようございます",
     "おはよう",
     "こんにちは",
     "こんばんは",
@@ -1107,7 +1210,9 @@ def extract_request_type(query: str) -> Optional[str]:
         return "parking"
     if match_keywords(lower_query, SMOKING_KEYWORDS):
         return "smoking"
-    if match_keywords(lower_query, FOOD_DRINK_KEYWORDS):
+    if match_keywords(lower_query, FOOD_DRINK_KEYWORDS) or match_keywords(
+        lower_query, FOOD_DRINK_VERBS
+    ):
         return "food_drink"
     if match_keywords(lower_query, TOILET_KEYWORDS):
         return "toilet"

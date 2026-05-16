@@ -70,6 +70,8 @@ class TestNewRoutingKeywords:
             ("Can I bring food?", "food_drink"),
             ("飲み物は持ってきていいですか？", "food_drink"),
             ("ペットボトルの飲み物は持ち込めますか？", "food_drink"),
+            ("エンジニアカフェで飲みは可能ですか？", "food_drink"),
+            ("飲んでいい場所はありますか？", "food_drink"),
             ("외부 음식을 가져와도 되나요?", "food_drink"),
         ],
     )
@@ -175,6 +177,10 @@ class TestReceptionRouting:
             ("利用方法を教えてください", "reception"),
             ("チェックインしたいです", "reception"),
             ("How do I check-in?", "reception"),
+            ("受付手続きはこれで完了ですか。", "reception"),
+            ("受け付けで何を伝えれば入館できますか？", "reception"),
+            ("会员登记怎么做？", "reception"),
+            ("회원 등록은 어떻게 하나요?", "reception"),
         ],
     )
     def test_reception_keywords(self, query, expected):
@@ -199,6 +205,10 @@ class TestReceptionRouting:
     def test_reception_maps_to_business_info(self):
         """receptionカテゴリがbusiness_infoにマッピングされることを確認"""
         assert CATEGORY_TO_AGENT_MAP["reception"] == "business_info"
+
+    def test_engineer_cafe_overview_is_not_nearby(self):
+        """エンジニアカフェ自体の概要質問は周辺カフェ検索へ誤爆させない。"""
+        assert extract_request_type("エンジニアカフェって何ですか？") != "nearby"
 
 
 class TestFarewellRouting:

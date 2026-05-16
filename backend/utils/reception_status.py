@@ -63,6 +63,9 @@ async def check_reception_status(session_id: str) -> dict[str, Any]:
             "reception_session_id": record.get("id"),
             "visitor_identity": session_data.get("visitor_identity"),
             "purpose": session_data.get("purpose"),
+            "metadata": session_data.get("metadata") or {},
+            "trigger_type": session_data.get("trigger_type", "voice"),
+            "greeting": session_data.get("greeting"),
         }
     except Exception as exc:
         logger.warning("Reception status check failed: %s", exc)

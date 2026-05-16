@@ -726,6 +726,32 @@ Information: {context}
             }
             return self._canonical_result(answers.get(language, answers["ja"]), request_type)
 
+        if self._asks_member_record_phase2_limitation(normalized):
+            answers = {
+                "ja": (
+                    "[relaxed]現在このキオスクでは、会員番号は確認まで対応しています。"
+                    "会員情報に基づく座席の提案や個別案内、DB連携による来館者情報の案内は"
+                    "フェーズ2以降で対応予定です。詳しくは受付スタッフに確認してください。"
+                ),
+                "en": (
+                    "[relaxed]For now, this kiosk can confirm the member number only. "
+                    "Seat suggestions, personalized guidance based on member records, "
+                    "and database-linked visitor information are planned for Phase 2 "
+                    "or later. Please ask reception staff for details."
+                ),
+                "zh": (
+                    "[relaxed]目前这台终端只支持确认会员编号。"
+                    "基于会员信息的座位建议、个别引导以及数据库联动的访客信息说明，"
+                    "计划在第2阶段以后对应。详情请向前台工作人员确认。"
+                ),
+                "ko": (
+                    "[relaxed]현재 이 키오스크에서는 회원 번호 확인까지만 지원합니다. "
+                    "회원 정보에 기반한 좌석 제안, 개별 안내, DB 연동을 통한 방문자 정보 안내는 "
+                    "페이즈 2 이후에 대응할 예정입니다. 자세한 내용은 접수 직원에게 확인해 주세요."
+                ),
+            }
+            return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
         if self._asks_membership_overview(normalized, request_type):
             answers = {
                 "ja": (
@@ -791,6 +817,7 @@ Information: {context}
                 "ko": (
                     "[relaxed]처음 방문하실 때는 1층 안내 데스크에서 등록하시면 "
                     "됩니다. 등록은 무료이고 약 5분에서 10분 정도 걸리며, "
+                    "웹 폼을 작성하면 됩니다. 온라인 사전 등록은 지원하지 않습니다. "
                     "직원에게 문의하시면 안내받을 수 있습니다."
                 ),
             }
@@ -1212,6 +1239,64 @@ Information: {context}
                 "登記",
                 "등록",
             )
+        )
+
+    @staticmethod
+    def _asks_member_record_phase2_limitation(query: str) -> bool:
+        member_terms = (
+            "member number",
+            "membership number",
+            "member card",
+            "member record",
+            "member records",
+            "会員番号",
+            "会員証",
+            "会員情報",
+            "会员编号",
+            "会员号码",
+            "会员信息",
+            "會員編號",
+            "會員資訊",
+            "회원 번호",
+            "회원증",
+            "회원 정보",
+            "회원정보",
+        )
+        capability_terms = (
+            "seat",
+            "seating",
+            "recommend",
+            "recommendation",
+            "personalized",
+            "personalised",
+            "profile",
+            "lookup",
+            "database",
+            "db",
+            "席",
+            "座席",
+            "個別",
+            "提案",
+            "案内",
+            "履歴",
+            "連携",
+            "座位",
+            "个别",
+            "個別",
+            "推荐",
+            "資料庫",
+            "数据库",
+            "좌석",
+            "자리",
+            "개별",
+            "추천",
+            "안내",
+            "이력",
+            "연동",
+            "데이터베이스",
+        )
+        return any(term in query for term in member_terms) and any(
+            term in query for term in capability_terms
         )
 
     @staticmethod

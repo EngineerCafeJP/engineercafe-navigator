@@ -4,6 +4,7 @@ import { unlockAudioForUserGesture } from '@/lib/audio/audio-interaction-manager
 import { startSensorPolling, stopSensorPolling } from '@/lib/api/device-webhook';
 import { getStageBackgroundStyle } from '@/lib/get-stage-background-style';
 import { overlayLabels } from '@/lib/kiosk-labels';
+import { getMemberCardPhase2ReceptionMessage } from '@/lib/member-card-reception';
 import {
   applyVrmAssistantSpeakingPose,
   applyVrmThinkingPose,
@@ -44,7 +45,6 @@ import VoiceInterface, {
   type VoiceInterfaceRenderProps,
 } from './components/VoiceInterface';
 import type { OcrResponse } from '@/lib/api/ocr-api';
-import { createVisitorIdentityFromOcr } from '@/lib/reception-identity';
 import { startReception } from '@/lib/reception-api';
 import { cancelSttWarmup, sendSttWarmup } from '@/lib/stt-warmup';
 
@@ -477,22 +477,20 @@ export default function Home() {
             setKioskPhaseSynced('voice');
             setKioskVoiceLocked(micInputMode !== 'push_to_talk');
             sendSttWarmup({ language: voice.currentLanguage, sessionId: voice.sessionId });
+            const phase2Notice = getMemberCardPhase2ReceptionMessage(
+              memberNumber,
+              voice.currentLanguage,
+            );
 
             try {
-              const visitorIdentity = createVisitorIdentityFromOcr(result);
-              const reception = await startReception({
+              await startReception({
                 session_id: voice.sessionId,
                 language: voice.currentLanguage,
                 trigger_type: receptionTriggerType,
-                ...(visitorIdentity ? { visitor_identity: visitorIdentity } : {}),
               });
-              await voice.speakPreparedText(reception.greeting, null);
+              await voice.speakPreparedText(phase2Notice, null);
             } catch {
-              const fallback =
-                voice.currentLanguage === 'ja'
-                  ? `会員番号 ${memberNumber} を読み取りました。ご用件をお聞かせください。`
-                  : `Read member number ${memberNumber}. How can I help you today?`;
-              await voice.speakPreparedText(fallback, null);
+              await voice.speakPreparedText(phase2Notice, null);
             } finally {
               scheduleReturnToIdle();
             }

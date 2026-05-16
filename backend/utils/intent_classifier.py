@@ -49,6 +49,14 @@ from backend.utils.cafe_entity import (
 
 _MATA_KIMASU_FAREWELL_RE = re.compile(r"また\s*来(ます|る|るね|ますね)\s*[。!！?？\.]?\s*$")
 _SERVICE_INTENT_RE = re.compile(r"(受付|予約|会員|問合せ|問い合わせ)")
+_RECEPTION_SOCIAL_NICETY_MARKERS = (
+    "お元気ですか",
+    "元気ですか",
+    "調子はいかが",
+    "調子はどう",
+    "how are you",
+)
+_RECEPTION_CONTINUATION_STRIP_CHARS = "!！?？。、., \t\n\r"
 
 FILLER_INTENTS = frozenset(
     {
@@ -257,10 +265,16 @@ def is_daily_conversation_request(lower_query: str) -> bool:
         "話し相手",
         "元気",
         "疲れた",
+        "お疲れ様",
         "ひま",
         "暇",
+        "退屈",
+        "さみしい",
         "ありがとう",
         "サンキュー",
+        "軽く話",
+        "ちょっと話して",
+        "相手して",
         "small talk",
         "chat with me",
         "talk with me",
@@ -272,6 +286,33 @@ def is_daily_conversation_request(lower_query: str) -> bool:
         "thank you",
     )
     return any(marker in lower_query for marker in markers)
+
+
+def is_reception_continuation_utterance(query: str) -> bool:
+    """Detect greetings/social niceties that should keep active reception open.
+
+    This is intentionally narrower than daily_conversation. Explicit requests
+    like "少し雑談して" should still route to the normal daily conversation path,
+    while "こんにちは" and "こんにちは、お元気ですか" should behave like a
+    receptionist acknowledging the visitor and asking for their purpose.
+    """
+    lower_query = query.lower().strip()
+    if not lower_query:
+        return False
+
+    has_greeting = match_keywords(lower_query, GREETING_KEYWORDS)
+    has_social_nicety = any(marker in lower_query for marker in _RECEPTION_SOCIAL_NICETY_MARKERS)
+    if not has_greeting and not has_social_nicety:
+        return False
+
+    remaining = lower_query
+    for keyword in sorted(GREETING_KEYWORDS, key=len, reverse=True):
+        remaining = remaining.replace(keyword.lower(), " ")
+    for marker in _RECEPTION_SOCIAL_NICETY_MARKERS:
+        remaining = remaining.replace(marker, " ")
+    remaining = remaining.strip(_RECEPTION_CONTINUATION_STRIP_CHARS)
+
+    return not remaining
 
 
 def is_current_info_request(lower_query: str) -> bool:
@@ -426,6 +467,14 @@ def classify_fast_intent(query: str) -> Optional[FastIntent]:
             "Ambiguous cafe entity for hours query",
         )
 
+    if _is_engineer_cafe_overview_query(lower_query):
+        return FastIntent(
+            "business_info",
+            "general",
+            "general",
+            "Engineer Cafe overview query detected",
+        )
+
     if is_saino_reference(lower_query) and match_keywords(lower_query, BUSINESS_HOURS_KEYWORDS):
         return FastIntent(
             "business_info",
@@ -460,6 +509,13 @@ def classify_fast_intent(query: str) -> Optional[FastIntent]:
         )
     if match_keywords(lower_query, PRICING_KEYWORDS):
         return FastIntent("business_info", "pricing", "price", "Pricing keyword detected")
+    if _is_maker_space_equipment_query(lower_query):
+        return FastIntent(
+            "facility",
+            "facility-info",
+            "facility",
+            "Maker space equipment query detected",
+        )
     if match_keywords(lower_query, BASEMENT_KEYWORDS):
         return FastIntent(
             "facility", "basement-facility", "basement", "Basement facility keyword detected"
@@ -646,6 +702,77 @@ def _is_rain_route_query(lower_query: str) -> bool:
     route_markers = ("ルート", "行き方", "行く", "最短", "route", "access")
     return any(marker in lower_query for marker in rain_markers) and any(
         marker in lower_query for marker in route_markers
+    )
+
+
+def _is_engineer_cafe_overview_query(lower_query: str) -> bool:
+    if any(
+        match_keywords(lower_query, keywords)
+        for keywords in (
+            BUSINESS_HOURS_KEYWORDS,
+            PRICING_KEYWORDS,
+            ACCESS_DIRECTION_KEYWORDS,
+            CONTACT_KEYWORDS,
+            WIFI_KEYWORDS,
+            EVENT_KEYWORDS,
+            FACILITY_EQUIPMENT_KEYWORDS,
+        )
+    ):
+        return False
+
+    cafe_markers = (
+        "エンジニアカフェ",
+        "engineer cafe",
+        "工程师咖啡",
+        "工程師咖啡",
+        "엔지니어 카페",
+        "엔지니어카페",
+    )
+    overview_markers = (
+        "って何",
+        "とは",
+        "何ですか",
+        "なにですか",
+        "どんなところ",
+        "どんな場所",
+        "紹介",
+        "tell me about",
+        "what is",
+        "what's",
+        "about engineer cafe",
+        "是什么",
+        "是什麼",
+        "뭐",
+        "무엇",
+        "어떤 곳",
+        "소개",
+    )
+    return any(marker in lower_query for marker in cafe_markers) and any(
+        marker in lower_query for marker in overview_markers
+    )
+
+
+def _is_maker_space_equipment_query(lower_query: str) -> bool:
+    maker_markers = (
+        "maker'sスペース",
+        "makersスペース",
+        "メーカースペース",
+        "maker's space",
+        "makers space",
+    )
+    equipment_markers = (
+        "機材",
+        "設備",
+        "使え",
+        "利用",
+        "何が",
+        "どんな",
+        "equipment",
+        "facilities",
+        "available",
+    )
+    return any(marker in lower_query for marker in maker_markers) and any(
+        marker in lower_query for marker in equipment_markers
     )
 
 

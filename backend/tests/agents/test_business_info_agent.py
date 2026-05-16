@@ -84,6 +84,19 @@ class TestBusinessInfoAgent:
         assert "staff" in response["answer"].lower()
         assert "online pre-registration is not available" in response["answer"].lower()
 
+    def test_first_visit_registration_canonical_response_korean_matches_policy(self):
+        """韓国語の初回登録もWebフォームとオンライン事前登録不可を固定する"""
+        response = self.agent._get_canonical_response(
+            "처음 방문할 때는 어떻게 등록하나요?", None, "ko"
+        )
+
+        assert response is not None
+        assert "1층 안내 데스크" in response["answer"]
+        assert "5분에서 10분" in response["answer"]
+        assert "웹 폼" in response["answer"]
+        assert "온라인 사전 등록은 지원하지 않습니다" in response["answer"]
+        assert "직원" in response["answer"]
+
     def test_first_time_visitor_canonical_response(self):
         """Hyphenated first-time visitor phrasing must not fall back."""
         response = self.agent._get_canonical_response(
@@ -115,6 +128,36 @@ class TestBusinessInfoAgent:
         assert "membership registration is free" in answer
         assert "member number" in answer
         assert "online pre-registration is not available" in answer
+
+    @pytest.mark.parametrize(
+        ("query", "language", "expected"),
+        [
+            (
+                "会員番号から個別席提案や会員情報ベースの案内はできますか？",
+                "ja",
+                ("会員番号は確認まで", "フェーズ2以降", "DB連携"),
+            ),
+            (
+                "Can you recommend a seat from my member number or member records?",
+                "en",
+                ("confirm the member number only", "Phase 2 or later", "database-linked"),
+            ),
+            (
+                "회원 번호로 좌석 추천이나 개별 안내를 받을 수 있나요?",
+                "ko",
+                ("회원 번호 확인까지만", "페이즈 2 이후", "DB 연동"),
+            ),
+        ],
+    )
+    def test_member_record_personalized_guidance_is_phase2_later(self, query, language, expected):
+        """会員情報ベースの席提案・個別案内はBusinessInfoでもPhase 2以降に寄せる"""
+        response = self.agent._get_canonical_response(query, "reception", language)
+
+        assert response is not None
+        for phrase in expected:
+            assert phrase in response["answer"]
+        assert "membership registration is free" not in response["answer"].lower()
+        assert response["metadata"]["sources"] == ["enhanced_rag"]
 
     def test_returning_visitor_canonical_response_japanese(self):
         """gt-082/gt-085: 再来館発話は退館・会話履歴ではなく歓迎にする"""

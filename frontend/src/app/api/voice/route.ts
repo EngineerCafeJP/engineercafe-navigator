@@ -59,6 +59,15 @@ export async function POST(request: NextRequest) {
         retryOutcome: sanitizeTelemetryValue(body.retryOutcome),
         retryErrorName: sanitizeTelemetryValue(body.retryErrorName),
         retryErrorMessage: sanitizeTelemetryValue(body.retryErrorMessage),
+        durationMs: sanitizeTelemetryValue(body.durationMs),
+        sttMs: sanitizeTelemetryValue(body.sttMs),
+        qaMs: sanitizeTelemetryValue(body.qaMs),
+        ttsMs: sanitizeTelemetryValue(body.ttsMs),
+        playbackStartMs: sanitizeTelemetryValue(body.playbackStartMs),
+        turnTotalMs: sanitizeTelemetryValue(body.turnTotalMs),
+        requestMode: sanitizeTelemetryValue(body.requestMode),
+        usedProxyFallback: sanitizeTelemetryValue(body.usedProxyFallback),
+        status: sanitizeTelemetryValue(body.status),
         timestamp: sanitizeTelemetryValue(body.timestamp),
       };
       console.warn('[VoiceClientTelemetry]', telemetry);

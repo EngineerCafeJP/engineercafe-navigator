@@ -18,6 +18,15 @@ import { cn } from '@/lib/cn';
 import { EmotionTagParser } from '@/lib/emotion-tag-parser';
 import { formatError } from '@/lib/error-messages';
 import { submitQaQuestion } from '@/lib/api/qa-client';
+import { requestAutoCharacterControl } from '@/lib/api/character-client';
+import {
+  interruptVoiceSession,
+  requestVoiceFiller,
+  sendVoiceClientTelemetry,
+  speechToText,
+  textToSpeech,
+  type TextToSpeechPayload,
+} from '@/lib/api/voice-client';
 import { LipSyncAnalyzer, type LipSyncFrame } from '@/lib/lip-sync-analyzer';
 import { createVoiceFillerPlaybackGate } from '@/lib/voice-filler-playback';
 import { resolveVoiceResponseLanguage } from '@/lib/voice/response-language';
@@ -219,6 +228,20 @@ const toBase64 = async (blob: Blob): Promise<string> => {
   return VoiceRecorder.arrayBufferToBase64(arrayBuffer);
 };
 
+type VoiceTimingTelemetry = {
+  durationMs?: number;
+  sttMs?: number;
+  qaMs?: number;
+  ttsMs?: number;
+  playbackStartMs?: number;
+  turnTotalMs?: number;
+  requestMode?: string;
+  usedProxyFallback?: boolean;
+  status?: number;
+};
+
+const elapsedMs = (startedAt: number): number => Math.max(0, Math.round(performance.now() - startedAt));
+
 const isAudioGestureRequiredError = (error: unknown): boolean => {
   if (
     typeof error === 'object' &&
@@ -367,24 +390,39 @@ export default function VoiceInterface({
     requestAbortRef.current = null;
   }, []);
 
+  const emitVoiceTelemetry = useCallback(
+    (event: string, phase: string, metrics: VoiceTimingTelemetry = {}) => {
+      const sessionId = sessionIdRef.current;
+      void sendVoiceClientTelemetry(
+        {
+          event,
+          phase,
+          sessionId,
+          userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : undefined,
+          timestamp: new Date().toISOString(),
+          ...metrics,
+        },
+        { keepalive: true },
+      ).catch(() => {
+        /* telemetry must not affect the voice turn */
+      });
+    },
+    [],
+  );
+
   const requestBackendInterrupt = useCallback(() => {
     const sessionId = sessionIdRef.current;
     if (!sessionId) {
       return;
     }
 
-    void fetch('/api/voice', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        action: 'interrupt',
+    void interruptVoiceSession(
+      {
         sessionId,
         language: currentLanguage,
-      }),
-      keepalive: true,
-    }).catch(() => {
+      },
+      { keepalive: true },
+    ).catch(() => {
       /* best-effort interrupt */
     });
   }, [currentLanguage]);
@@ -676,25 +714,57 @@ export default function VoiceInterface({
       signal: AbortSignal,
     ): Promise<Record<string, unknown> | null> => {
       try {
-        const response = await fetch('/api/character', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            action: 'auto',
+        const response = await requestAutoCharacterControl(
+          {
             cleanText,
             emotion: emotion?.trim() || 'neutral',
-          }),
-          signal,
-        });
-        if (!response.ok) {
+          },
+          {
+            signal,
+          },
+        );
+        if (!response.ok || !response.data.success) {
           return null;
         }
-        return (await response.json()) as Record<string, unknown>;
+        return response.data as unknown as Record<string, unknown>;
       } catch {
         return null;
       }
+    },
+    [],
+  );
+
+  const synthesizeAssistantSpeech = useCallback(
+    async (
+      request: {
+        text: string;
+        language: 'ja' | 'en';
+        sessionId: string;
+        emotion?: string | null;
+        ttsProvider?: string;
+      },
+      signal: AbortSignal,
+    ): Promise<TextToSpeechPayload & Record<string, unknown>> => {
+      const response = await textToSpeech(
+        {
+          text: request.text,
+          language: request.language,
+          sessionId: request.sessionId,
+          ttsProvider: request.ttsProvider ?? 'piper',
+          ...(typeof request.emotion === 'string' && request.emotion.trim()
+            ? { emotion: request.emotion.trim() }
+            : {}),
+        },
+        { signal },
+      );
+      if (!response.ok || !response.data.success) {
+        const ttsError: Error & { status?: number } = new Error(
+          response.data.error || '音声の生成に失敗しました',
+        );
+        ttsError.status = response.status;
+        throw ttsError;
+      }
+      return response.data as TextToSpeechPayload & Record<string, unknown>;
     },
     [],
   );
@@ -784,22 +854,20 @@ export default function VoiceInterface({
         PARALLEL_VOICE_FILLER_ENABLED && trimmed.length > 0
           ? (async () => {
               try {
-                const res = await fetch('/api/voice/filler', {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                  },
-                  body: JSON.stringify({
+                const result = await requestVoiceFiller(
+                  {
                     query: trimmed,
                     language: currentLanguage,
                     sessionId: sessionIdRef.current,
-                  }),
-                  signal,
-                });
-                if (!res.ok) {
+                  },
+                  {
+                    signal,
+                  },
+                );
+                if (!result.ok || !result.data.success) {
                   return;
                 }
-                const data = (await res.json()) as Record<string, unknown>;
+                const data = result.data;
                 if (!fillerGate.canEnqueue(data.audioResponse)) {
                   return;
                 }
@@ -821,6 +889,7 @@ export default function VoiceInterface({
           : Promise.resolve();
 
       try {
+        const qaStartedAt = performance.now();
         const qaResponse = await submitQaQuestion(
           {
             question: trimmed,
@@ -833,6 +902,12 @@ export default function VoiceInterface({
             signal,
           },
         );
+        emitVoiceTelemetry('voice_turn_timing', 'qa', {
+          qaMs: elapsedMs(qaStartedAt),
+          requestMode: qaResponse.mode,
+          usedProxyFallback: qaResponse.usedProxyFallback,
+          status: qaResponse.status,
+        });
 
         const qaResult = qaResponse.data;
         if (!qaResponse.ok || !qaResult.success) {
@@ -862,40 +937,25 @@ export default function VoiceInterface({
           return;
         }
 
-        const ttsBody: Record<string, unknown> = {
-          action: 'text_to_speech',
-          ttsProvider: 'piper',
-          text: preprocessTTS(cleanAnswer, responseLanguage),
-          language: responseLanguage,
-          sessionId: sessionIdRef.current,
-        };
-        if (typeof qaResult.emotion === 'string' && qaResult.emotion.trim()) {
-          ttsBody.emotion = qaResult.emotion.trim();
-        }
         const vrmTask = fetchAutoVrmControl(
           cleanAnswer,
           typeof qaResult.emotion === 'string' ? qaResult.emotion : null,
           signal,
         );
-
-        const ttsResponse = await fetch('/api/voice', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
+        const ttsStartedAt = performance.now();
+        const ttsResult = await synthesizeAssistantSpeech(
+          {
+            text: preprocessTTS(cleanAnswer, responseLanguage),
+            language: responseLanguage,
+            sessionId: sessionIdRef.current,
+            emotion: typeof qaResult.emotion === 'string' ? qaResult.emotion : null,
           },
-          body: JSON.stringify(ttsBody),
           signal,
+        );
+        emitVoiceTelemetry('voice_turn_timing', 'tts', {
+          ttsMs: elapsedMs(ttsStartedAt),
+          status: 200,
         });
-
-        const ttsResult = (await ttsResponse.json()) as Record<string, unknown>;
-        if (!ttsResponse.ok || !ttsResult.success) {
-          const ttsError: Error & { status?: number } = new Error(
-            (typeof ttsResult.error === 'string' ? ttsResult.error : null) ||
-              '音声の生成に失敗しました',
-          );
-          ttsError.status = ttsResponse.status;
-          throw ttsError;
-        }
 
         fillerGate.close();
         // Filler runs in parallel; do not await — slow filler must not delay main TTS enqueue.
@@ -1040,6 +1100,7 @@ export default function VoiceInterface({
       const visitorId = ensureVisitorId();
 
       try {
+        const qaStartedAt = performance.now();
         const qaResponse = await submitQaQuestion(
           {
             question: trimmed,
@@ -1052,6 +1113,12 @@ export default function VoiceInterface({
             signal: abortController.signal,
           },
         );
+        emitVoiceTelemetry('voice_turn_timing', 'qa', {
+          qaMs: elapsedMs(qaStartedAt),
+          requestMode: qaResponse.mode,
+          usedProxyFallback: qaResponse.usedProxyFallback,
+          status: qaResponse.status,
+        });
 
         const qaResult = qaResponse.data;
         if (!qaResponse.ok || !qaResult.success) {
@@ -1079,40 +1146,25 @@ export default function VoiceInterface({
           return;
         }
 
-        const ttsBody: Record<string, unknown> = {
-          action: 'text_to_speech',
-          ttsProvider: 'piper',
-          text: preprocessTTS(cleanAnswer, responseLanguage),
-          language: responseLanguage,
-          sessionId: sessionIdRef.current,
-        };
-        if (typeof qaResult.emotion === 'string' && qaResult.emotion.trim()) {
-          ttsBody.emotion = qaResult.emotion.trim();
-        }
         const vrmTask = fetchAutoVrmControl(
           cleanAnswer,
           typeof qaResult.emotion === 'string' ? qaResult.emotion : null,
           abortController.signal,
         );
-
-        const ttsResponse = await fetch('/api/voice', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
+        const ttsStartedAt = performance.now();
+        const ttsResult = await synthesizeAssistantSpeech(
+          {
+            text: preprocessTTS(cleanAnswer, responseLanguage),
+            language: responseLanguage,
+            sessionId: sessionIdRef.current,
+            emotion: typeof qaResult.emotion === 'string' ? qaResult.emotion : null,
           },
-          body: JSON.stringify(ttsBody),
-          signal: abortController.signal,
+          abortController.signal,
+        );
+        emitVoiceTelemetry('voice_turn_timing', 'tts', {
+          ttsMs: elapsedMs(ttsStartedAt),
+          status: 200,
         });
-
-        const ttsResult = (await ttsResponse.json()) as Record<string, unknown>;
-        if (!ttsResponse.ok || !ttsResult.success) {
-          const ttsError: Error & { status?: number } = new Error(
-            (typeof ttsResult.error === 'string' ? ttsResult.error : null) ||
-              '音声の生成に失敗しました',
-          );
-          ttsError.status = ttsResponse.status;
-          throw ttsError;
-        }
 
         const vrmResult = await resolveAutoVrmControlForPlayback(vrmTask);
         const playbackMetadata = mergePlaybackMetadataWithTtsVrmControl(
@@ -1192,38 +1244,25 @@ export default function VoiceInterface({
 
       try {
         const responseLanguage = resolveVoiceResponseLanguage(metadataForPlayback, currentLanguage);
-        const ttsBody: Record<string, unknown> = {
-          action: 'text_to_speech',
-          ttsProvider: 'piper',
-          text: preprocessTTS(cleanAnswer, responseLanguage),
-          language: responseLanguage,
-          sessionId: sessionIdRef.current,
-        };
-        if (parsedAnswer.primaryEmotion) {
-          ttsBody.emotion = parsedAnswer.primaryEmotion;
-        }
         const vrmTask = fetchAutoVrmControl(
           cleanAnswer,
           parsedAnswer.primaryEmotion,
           abortController.signal,
         );
-
-        const ttsResponse = await fetch('/api/voice', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
+        const ttsStartedAt = performance.now();
+        const ttsResult = await synthesizeAssistantSpeech(
+          {
+            text: preprocessTTS(cleanAnswer, responseLanguage),
+            language: responseLanguage,
+            sessionId: sessionIdRef.current,
+            emotion: parsedAnswer.primaryEmotion,
           },
-          body: JSON.stringify(ttsBody),
-          signal: abortController.signal,
+          abortController.signal,
+        );
+        emitVoiceTelemetry('voice_turn_timing', 'tts', {
+          ttsMs: elapsedMs(ttsStartedAt),
+          status: 200,
         });
-
-        const ttsResult = (await ttsResponse.json()) as Record<string, unknown>;
-        if (!ttsResponse.ok || !ttsResult.success) {
-          throw new Error(
-            (typeof ttsResult.error === 'string' ? ttsResult.error : null) ||
-              '音声の生成に失敗しました',
-          );
-        }
 
         const vrmResult = await resolveAutoVrmControlForPlayback(vrmTask);
         const playbackMetadata = mergePlaybackMetadataWithTtsVrmControl(
@@ -1291,21 +1330,23 @@ export default function VoiceInterface({
       requestAbortRef.current = abortController;
 
       try {
-        const sttResponse = await fetch('/api/voice', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            action: 'speech_to_text',
+        const sttStartedAt = performance.now();
+        const sttResponse = await speechToText(
+          {
             audioData: await toBase64(audioBlob),
             language: currentLanguage,
             sessionId: sessionIdRef.current,
-          }),
-          signal: abortController.signal,
+          },
+          {
+            signal: abortController.signal,
+          },
+        );
+        emitVoiceTelemetry('voice_turn_timing', 'stt', {
+          sttMs: elapsedMs(sttStartedAt),
+          status: sttResponse.status,
         });
 
-        const sttResult = await sttResponse.json();
+        const sttResult = sttResponse.data;
         if (!sttResponse.ok || !sttResult.success || typeof sttResult.transcript !== 'string') {
           const sttError: Error & { status?: number } = new Error(
             sttResult.error || '音声認識に失敗しました',

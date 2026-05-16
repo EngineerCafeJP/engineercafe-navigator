@@ -51,6 +51,7 @@ from backend.utils.cafe_entity import (
     is_colocated_or_adjacent_saino_reference,
     is_saino_reference,
 )
+from backend.utils.intent_classifier import is_reception_continuation_utterance
 from backend.utils.postgres_sanitizer import sanitize_for_postgres
 from backend.utils.store import store_with_retry
 
@@ -77,6 +78,7 @@ _TRAG_PREAMBLE_RE = re.compile(
     r"^(Translation:\s*|翻訳[：:]\s*|Here is[^:]*:\s*|以下[はがの]翻訳[：:]?\s*)",
     re.IGNORECASE,
 )
+_TRAG_REPEAT_PUNCT_RE = re.compile(r"[\s、。,.!?！？・…:：;；'\"`]+")
 
 RAG_EVIDENCE_MAX_CONTEXTS = 5
 RAG_EVIDENCE_MAX_CONTEXT_CHARS = 900
@@ -91,6 +93,39 @@ def _get_trag_client() -> "_httpx.AsyncClient":
             timeout=_httpx.Timeout(connect=5.0, read=15.0, write=5.0, pool=5.0),
         )
     return _trag_http_client
+
+
+def _is_pathological_translation(text: str) -> bool:
+    """Reject low-information repeated outputs from translation models."""
+    compact = _TRAG_REPEAT_PUNCT_RE.sub("", text or "")
+    if len(compact) < 4:
+        return False
+
+    if len(set(compact)) == 1:
+        return True
+
+    for unit_len in (1, 2, 3):
+        if len(compact) < unit_len * 3 or len(compact) % unit_len:
+            continue
+        unit = compact[:unit_len]
+        if unit * (len(compact) // unit_len) == compact:
+            return True
+
+    if len(compact) >= 8 and len(set(compact)) / len(compact) < 0.25:
+        return True
+
+    return False
+
+
+def _clean_trag_translation(text: str) -> str:
+    translated = _TRAG_PREAMBLE_RE.sub("", text or "").strip()
+    if re.search(r"^[A-Za-z]{5,}", translated):
+        logger.warning("tRAG preamble: '%s'", translated[:60])
+        return ""
+    if _is_pathological_translation(translated):
+        logger.warning("tRAG low-information translation rejected: '%s'", translated[:60])
+        return ""
+    return translated
 
 
 def _truthy_context_flag(value: Any) -> bool:
@@ -325,11 +360,7 @@ async def _translate_llm_with_retry(
                 translated = (
                     data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
                 )
-                translated = _TRAG_PREAMBLE_RE.sub("", translated).strip()
-                if re.search(r"^[A-Za-z]{5,}", translated):
-                    logger.warning("tRAG preamble: '%s'", translated[:60])
-                    translated = ""
-                return translated
+                return _clean_trag_translation(translated)
             logger.warning(
                 "OpenRouter %d (attempt %d/%d): %s",
                 resp.status_code,
@@ -690,21 +721,78 @@ class MainWorkflow:
             "いくら",
             "ありますか",
             "できますか",
+            "していますか",
+            "対応",
+            "英語対応",
             "違い",
             "営業時間",
             "予約",
+            "受付手続き",
+            "受付で何を",
+            "受け付けで何を",
+            "入館",
+            "完了",
+            "社会利用",
             "料金",
+            "飲みたい",
+            "食べたい",
+            "飲みは可能",
+            "飲んでいい",
+            "飲めます",
+            "飲み物を飲む",
+            "注文したい",
+            "休憩",
+            "休憩できますか",
+            "休みたい",
+            "休めますか",
+            "一息",
+            "座りたい",
+            "使いたい",
+            "見たい",
+            "maker'sスペース",
+            "makersスペース",
+            "メーカースペース",
+            "maker's space",
+            "makers space",
+            "コーヒー",
+            "珈琲",
+            "カフェラテ",
+            "ドリンク",
+            "ランチ",
+            "サイノ",
+            "雑談",
+            "おしゃべり",
+            "話し相手",
+            "元気",
+            "疲れた",
+            "ありがとう",
             "how",
             "what",
             "where",
             "when",
             "which",
             "tell me",
+            "small talk",
+            "chat with me",
+            "talk with me",
+            "how are you",
+            "i am tired",
+            "i'm tired",
+            "thanks",
+            "thank you",
+            "want to drink",
+            "want coffee",
+            "grab a coffee",
+            "want to eat",
+            "take a break",
         )
         return any(marker in normalized for marker in question_markers)
 
     def _should_bypass_active_reception(self, query: str, reception_status: dict[str, Any]) -> bool:
         """Do not let stale reception state hijack ordinary information questions."""
+        if is_reception_continuation_utterance(query):
+            return False
+
         if not self._looks_like_information_query(query):
             return False
 
@@ -714,10 +802,7 @@ class MainWorkflow:
 
         lower_query = query.strip().lower()
         fast_route = RoutingLogicAgent._try_fast_routing(self, lower_query)
-        if fast_route is not None and fast_route.get("request_type") not in {
-            "reception",
-            "greeting",
-        }:
+        if fast_route is not None and fast_route.get("request_type") != "greeting":
             return True
 
         return False
@@ -727,6 +812,9 @@ class MainWorkflow:
         query: str,
         reception_status: dict[str, Any],
     ) -> bool:
+        if is_reception_continuation_utterance(query):
+            return False
+
         if self._should_bypass_active_reception(query, reception_status):
             return True
         if not self._looks_like_information_query(query):
@@ -984,12 +1072,19 @@ class MainWorkflow:
                         )
 
                         ts = get_translation_service()
-                        rag_query = await ts.translate(query, "en_to_ja")
-                        logger.info(
-                            "tRAG en->ja: '%s' -> '%s'",
-                            query[:40],
-                            rag_query[:40],
-                        )
+                        translated = await ts.translate(query, "en_to_ja")
+                        if translated and not _is_pathological_translation(translated):
+                            rag_query = translated
+                            logger.info(
+                                "tRAG en->ja: '%s' -> '%s'",
+                                query[:40],
+                                rag_query[:40],
+                            )
+                        elif translated:
+                            logger.warning(
+                                "tRAG en->ja rejected low-information translation: '%s'",
+                                translated[:60],
+                            )
                     except Exception as trans_err:
                         logger.warning(
                             "Query translation failed, using original: %s",

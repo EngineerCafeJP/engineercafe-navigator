@@ -100,6 +100,9 @@ class TestOrchestratorFastRouting:
             "コーヒーは飲めますか",
             "ランチは食べられますか",
             "注文できますか",
+            "コーヒーを飲みたい",
+            "ちょっと休憩したい",
+            "I want coffee",
         ]
 
         for query in test_queries:
@@ -419,6 +422,13 @@ class TestOrchestratorFastRouting:
         assert result["category"] == "greeting"
         assert result["request_type"] == "greeting"
 
+    def test_greeting_ohayou_gozaimasu(self, orchestrator):
+        """おはようございます が greeting にルーティングされること"""
+        result = orchestrator._try_fast_routing("おはようございます")
+        assert result is not None
+        assert result["category"] == "greeting"
+        assert result["request_type"] == "greeting"
+
     def test_greeting_konbanwa(self, orchestrator):
         """こんばんは が greeting にルーティングされること"""
         result = orchestrator._try_fast_routing("こんばんは")
@@ -476,6 +486,22 @@ class TestOrchestratorFastRouting:
         assert result is not None
         assert result["agent"] == "general_knowledge"
         assert result["category"] == "daily_conversation"
+        assert result["request_type"] == "daily_conversation"
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "軽く話して",
+            "ちょっと話して",
+            "退屈なので相手して",
+            "お疲れ様です",
+        ],
+    )
+    def test_log_observed_small_talk_markers_route_to_daily_conversation(self, orchestrator, query):
+        result = orchestrator._try_fast_routing(query)
+
+        assert result is not None
+        assert result["agent"] == "general_knowledge"
         assert result["request_type"] == "daily_conversation"
 
     @pytest.mark.parametrize(
@@ -570,6 +596,20 @@ class TestOrchestratorFastRouting:
         assert result["request_type"] == "reception"
         assert result["category"] == "reception"
 
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "受付手続きはこれで完了ですか。",
+            "受け付けで何を伝えれば入館できますか？",
+        ],
+    )
+    def test_log_observed_reception_questions_route_to_business_info(self, orchestrator, query):
+        result = orchestrator._try_fast_routing(query)
+
+        assert result is not None
+        assert result["agent"] == "business_info"
+        assert result["request_type"] == "reception"
+
     def test_quality_gate_q_farewell_ja_001_farewell_not_daily(self, orchestrator):
         """Q-FAREWELL-JA-001: 感謝 + また来ます は daily ではなく farewell へ。"""
         result = orchestrator._try_fast_routing("今日はありがとうございました。また来ます。")
@@ -656,6 +696,38 @@ class TestOrchestratorFastRouting:
         assert result["agent"] == "facility"
         assert result["request_type"] == "nearby"
 
+    def test_log_observed_engineer_cafe_overview_does_not_route_to_nearby(self, orchestrator):
+        result = orchestrator._try_fast_routing("エンジニアカフェって何ですか？")
+
+        assert result is not None
+        assert result["agent"] == "business_info"
+        assert result["category"] == "general"
+        assert result["request_type"] == "general"
+
+    def test_log_observed_english_memory_preference_is_not_member_reception(self, orchestrator):
+        result = orchestrator._try_fast_routing("Please remember that I prefer English answers.")
+
+        assert result is None or result["request_type"] != "reception"
+
+    @pytest.mark.parametrize(
+        ("query", "agent", "request_type"),
+        [
+            ("エンジニアカフェで飲みは可能ですか？", "facility", "food_drink"),
+            ("MAKER'sスペースではどんな機材が使えますか？", "facility", "facility"),
+            ("와이파이 비밀번호가 뭐예요?", "facility", "wifi"),
+            ("工程师咖啡的营业时间是什么？", "business_info", "hours"),
+            ("엔지니어 카페의 운영 시간은 어떻게 되나요?", "business_info", "hours"),
+        ],
+    )
+    def test_log_observed_multilingual_and_facility_queries_fast_route(
+        self, orchestrator, query, agent, request_type
+    ):
+        result = orchestrator._try_fast_routing(query)
+
+        assert result is not None
+        assert result["agent"] == agent
+        assert result["request_type"] == request_type
+
     @pytest.mark.parametrize(
         ("query", "agent", "request_type"),
         [
@@ -668,6 +740,7 @@ class TestOrchestratorFastRouting:
             ("営利目的の勧誘はできますか？", "facility", "children_noise"),
             ("エンジニアカフェの公式SNSアカウントは？", "business_info", "contact"),
             ("英語対応はしていますか？", "business_info", "contact"),
+            ("英語対応はしていますか", "business_info", "contact"),
             ("コミュニティマネージャーに相談できることは？", "business_info", "consultation"),
             ("エンジニアフレンドリーシティ福岡とは？", "business_info", "community"),
         ],
