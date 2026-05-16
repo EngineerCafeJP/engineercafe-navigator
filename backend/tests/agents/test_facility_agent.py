@@ -528,6 +528,22 @@ class TestFacilityAgent:
         assert "カフェラテ570円" in response["answer"]
         assert "カフェモカ700円" in response["answer"]
 
+    def test_coffee_desire_canonical_precedes_food_policy(self):
+        """「コーヒーを飲みたい」は禁止ルール中心ではなく購入案内を返す。"""
+        agent = FacilityAgent()
+        response = agent._get_canonical_response(
+            "コーヒーを飲みたいんですけれども。",
+            "food_drink",
+            "ja",
+        )
+
+        assert response is not None
+        assert "cafe&bar saino" in response["answer"]
+        assert "ブレンドコーヒー380円" in response["answer"]
+        assert "カフェラテ570円" in response["answer"]
+        assert "持ち込み" not in response["answer"]
+        assert "原則禁止" not in response["answer"]
+
     def test_access_canonical_response_english(self):
         """アクセス案内は施設名と最寄り駅を含める"""
         agent = FacilityAgent()

@@ -13,7 +13,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from backend.workflows.main_workflow import (
     _JA_RE,
     _TRAG_PREAMBLE_RE,
+    _clean_trag_translation,
     _get_trag_client,
+    _is_pathological_translation,
 )
 
 
@@ -51,6 +53,24 @@ class TestTragPreambleSanitization:
         assert re.search(r"^[A-Za-z]{5,}", "Hello world")
         assert not re.search(r"^[A-Za-z]{5,}", "日本語テキスト")
         assert not re.search(r"^[A-Za-z]{5,}", "WiFi パスワード")
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "ル ル ル ル",
+            "このこのこのこの",
+            "ああああああ",
+            "テストテストテスト",
+        ],
+    )
+    def test_rejects_low_information_repeated_translation(self, text):
+        assert _is_pathological_translation(text) is True
+        assert _clean_trag_translation(text) == ""
+
+    def test_allows_normal_japanese_translation(self):
+        text = "エンジニアカフェの営業時間を教えてください"
+        assert _is_pathological_translation(text) is False
+        assert _clean_trag_translation(f"Translation: {text}") == text
 
 
 class TestJaRegex:

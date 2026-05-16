@@ -355,6 +355,38 @@ class FacilityAgent:
             if answer:
                 return self._canonical_result(answer, request_type)
 
+        if self._asks_cafe_drink_request(normalized):
+            answers = {
+                "ja": (
+                    "[relaxed]コーヒーでしたら、1階のcafe&bar sainoで注文できます。"
+                    "ブレンドコーヒー380円、カフェラテ570円、カフェモカ700円があります。"
+                    "購入した飲み物は、saino店内、談話室、テラスなど指定エリアでお楽しみください。"
+                ),
+                "en": (
+                    "[relaxed]For coffee, please order at cafe&bar saino on the 1st floor. "
+                    "Blend coffee is 380 yen, cafe latte is 570 yen, and cafe mocha is "
+                    "700 yen. Drinks bought at saino can be enjoyed in designated areas "
+                    "such as saino, the lounge, and the terrace."
+                ),
+            }
+            return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
+        if self._asks_break_request(normalized):
+            answers = {
+                "ja": (
+                    "[relaxed]少し休憩するなら、1階のcafe&bar saino、談話室、"
+                    "テラスが使いやすいです。sainoで購入した飲み物や軽食は、"
+                    "saino店内、談話室、テラスなど指定エリアで楽しめます。"
+                ),
+                "en": (
+                    "[relaxed]For a short break, cafe&bar saino, the lounge, and the "
+                    "terrace on the 1st floor are good options. Food and drinks bought "
+                    "at saino can be enjoyed in designated areas such as saino, the "
+                    "lounge, and the terrace."
+                ),
+            }
+            return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
         if self._asks_main_hall(normalized):
             answers = {
                 "ja": (
@@ -1364,6 +1396,52 @@ class FacilityAgent:
             "음료",
         )
         return any(keyword in query for keyword in keywords)
+
+    @staticmethod
+    def _asks_cafe_drink_request(query: str) -> bool:
+        drink_markers = (
+            "コーヒー",
+            "珈琲",
+            "カフェラテ",
+            "カフェモカ",
+            "エスプレッソ",
+            "ドリンク",
+            "coffee",
+            "latte",
+            "espresso",
+            "beverage",
+        )
+        desire_markers = (
+            "飲みたい",
+            "注文",
+            "オーダー",
+            "買いたい",
+            "ください",
+            "want",
+            "order",
+            "buy",
+            "grab",
+        )
+        return any(marker in query for marker in drink_markers) and (
+            any(marker in query for marker in desire_markers)
+            or any(marker in query for marker in ("コーヒー", "珈琲", "coffee"))
+        )
+
+    @staticmethod
+    def _asks_break_request(query: str) -> bool:
+        return any(
+            marker in query
+            for marker in (
+                "休憩",
+                "休みたい",
+                "一息",
+                "ゆっくり",
+                "ちょっと休",
+                "take a break",
+                "rest",
+                "relax",
+            )
+        )
 
     @staticmethod
     def _asks_temporary_exit_policy(query: str) -> bool:

@@ -345,6 +345,227 @@ class TestClassifyPurposeNode:
         assert result["purpose"]["request_type"] == "hours"
 
     @pytest.mark.asyncio
+    async def test_coffee_desire_bypasses_purpose_classification(self):
+        """「コーヒーを飲みたい」は受付聞き返しではなく飲食案内へ渡す。"""
+        from backend.workflows.reception_workflow import classify_purpose
+
+        state = _make_initial_state(language="ja")
+        state["stage"] = "purpose_hearing"
+        state["messages"] = [HumanMessage(content="コーヒーを飲みたいんですけれども。")]
+
+        with patch(
+            "backend.utils.purpose_classifier.classify_purpose",
+            new_callable=AsyncMock,
+            side_effect=AssertionError("purpose classifier must not be called"),
+        ):
+            result = await classify_purpose(state)
+
+        assert result["stage"] == "completed"
+        assert result["target_agent"] == "facility"
+        assert result["reception_action"] == "bypass_for_information_query"
+        assert result["purpose"]["request_type"] == "food_drink"
+
+    @pytest.mark.asyncio
+    async def test_log_observed_drink_permission_bypasses_purpose_classification(self):
+        """飲食可否の要望表現は受付目的確認に戻さず施設案内へ渡す。"""
+        from backend.workflows.reception_workflow import classify_purpose
+
+        state = _make_initial_state(language="ja")
+        state["stage"] = "purpose_hearing"
+        state["messages"] = [HumanMessage(content="エンジニアカフェで飲みは可能ですか？")]
+
+        with patch(
+            "backend.utils.purpose_classifier.classify_purpose",
+            new_callable=AsyncMock,
+            side_effect=AssertionError("purpose classifier must not be called"),
+        ):
+            result = await classify_purpose(state)
+
+        assert result["stage"] == "completed"
+        assert result["target_agent"] == "facility"
+        assert result["reception_action"] == "bypass_for_information_query"
+        assert result["purpose"]["request_type"] == "food_drink"
+
+    @pytest.mark.asyncio
+    async def test_reception_completion_question_bypasses_purpose_classification(self):
+        """受付手続きの完了確認は通常QAとしてBusinessInfoへ渡す。"""
+        from backend.workflows.reception_workflow import classify_purpose
+
+        state = _make_initial_state(language="ja")
+        state["stage"] = "purpose_hearing"
+        state["messages"] = [HumanMessage(content="受付手続きはこれで完了ですか。")]
+
+        with patch(
+            "backend.utils.purpose_classifier.classify_purpose",
+            new_callable=AsyncMock,
+            side_effect=AssertionError("purpose classifier must not be called"),
+        ):
+            result = await classify_purpose(state)
+
+        assert result["stage"] == "completed"
+        assert result["target_agent"] == "business_info"
+        assert result["reception_action"] == "bypass_for_information_query"
+        assert result["purpose"]["request_type"] == "reception"
+
+    @pytest.mark.asyncio
+    async def test_daily_conversation_bypasses_purpose_classification(self):
+        """受付中の雑談は目的確認テンプレートではなく雑談応答へ渡す。"""
+        from backend.workflows.reception_workflow import classify_purpose
+
+        state = _make_initial_state(language="ja")
+        state["stage"] = "purpose_hearing"
+        state["messages"] = [HumanMessage(content="少し雑談して")]
+
+        with patch(
+            "backend.utils.purpose_classifier.classify_purpose",
+            new_callable=AsyncMock,
+            side_effect=AssertionError("purpose classifier must not be called"),
+        ):
+            result = await classify_purpose(state)
+
+        assert result["stage"] == "completed"
+        assert result["target_agent"] == "general_knowledge"
+        assert result["reception_action"] == "bypass_for_information_query"
+        assert result["purpose"]["request_type"] == "daily_conversation"
+
+    @pytest.mark.asyncio
+    async def test_greeting_social_nicety_continues_reception(self):
+        """受付中の挨拶・軽い雑談は返答したうえで受付を継続する。"""
+        from backend.workflows.reception_workflow import classify_purpose
+
+        state = _make_initial_state(language="ja")
+        state["stage"] = "purpose_hearing"
+        state["messages"] = [HumanMessage(content="こんにちは、お元気ですか。")]
+
+        with patch(
+            "backend.utils.purpose_classifier.classify_purpose",
+            new_callable=AsyncMock,
+            side_effect=AssertionError("purpose classifier must not be called"),
+        ):
+            result = await classify_purpose(state)
+
+        assert result["stage"] == "purpose_hearing"
+        assert result["reception_action"] == "reception_social_continuation"
+        assert "元気です" in result["response"]
+        assert "ご用件をお聞かせください" in result["response"]
+
+    @pytest.mark.asyncio
+    async def test_polite_morning_greeting_continues_reception(self):
+        """おはようございます は目的分類せず、受付挨拶として受ける。"""
+        from backend.workflows.reception_workflow import classify_purpose
+
+        state = _make_initial_state(language="ja")
+        state["stage"] = "purpose_hearing"
+        state["messages"] = [HumanMessage(content="おはようございます")]
+
+        with patch(
+            "backend.utils.purpose_classifier.classify_purpose",
+            new_callable=AsyncMock,
+            side_effect=AssertionError("purpose classifier must not be called"),
+        ):
+            result = await classify_purpose(state)
+
+        assert result["stage"] == "purpose_hearing"
+        assert result["reception_action"] == "reception_social_continuation"
+        assert "ご用件をお聞かせください" in result["response"]
+
+    @pytest.mark.asyncio
+    async def test_english_support_without_question_mark_bypasses_to_contact(self):
+        """英語対応はしていますか は句点なしでも受付聞き返しにせず営業情報へ渡す。"""
+        from backend.workflows.reception_workflow import classify_purpose
+
+        state = _make_initial_state(language="ja")
+        state["stage"] = "purpose_hearing"
+        state["messages"] = [HumanMessage(content="英語対応はしていますか")]
+
+        with patch(
+            "backend.utils.purpose_classifier.classify_purpose",
+            new_callable=AsyncMock,
+            side_effect=AssertionError("purpose classifier must not be called"),
+        ):
+            result = await classify_purpose(state)
+
+        assert result["stage"] == "completed"
+        assert result["target_agent"] == "business_info"
+        assert result["reception_action"] == "bypass_for_information_query"
+        assert result["purpose"]["request_type"] == "contact"
+
+    @pytest.mark.asyncio
+    async def test_stt_adjective_fragment_clarifies_without_routing(self):
+        """大きい のような1語断片は施設案内へ飛ばさず聞き返す。"""
+        from backend.workflows.reception_workflow import classify_purpose
+
+        state = _make_initial_state(language="ja")
+        state["stage"] = "purpose_hearing"
+        state["messages"] = [HumanMessage(content="大きい")]
+
+        with patch(
+            "backend.utils.purpose_classifier.classify_purpose",
+            new_callable=AsyncMock,
+            side_effect=AssertionError("purpose classifier must not be called"),
+        ):
+            result = await classify_purpose(state)
+
+        assert result["stage"] == "purpose_hearing"
+        assert result["reception_action"] == "clarify_stt_fragment"
+        assert result["purpose"]["category"] == "other"
+
+    @pytest.mark.asyncio
+    async def test_stt_numeric_fragment_clarifies_without_routing(self):
+        """数字だけのSTT断片は文脈なしに誤案内しない。"""
+        from backend.workflows.reception_workflow import classify_purpose
+
+        state = _make_initial_state(language="ja")
+        state["stage"] = "purpose_hearing"
+        state["messages"] = [HumanMessage(content="3")]
+
+        with patch(
+            "backend.utils.purpose_classifier.classify_purpose",
+            new_callable=AsyncMock,
+            side_effect=AssertionError("purpose classifier must not be called"),
+        ):
+            result = await classify_purpose(state)
+
+        assert result["stage"] == "purpose_hearing"
+        assert result["reception_action"] == "clarify_stt_fragment"
+        assert result["purpose"]["category"] == "other"
+
+    @pytest.mark.asyncio
+    async def test_repeated_clarify_purpose_emits_quality_signal(self):
+        """同じ目的確認テンプレートが連続する場合は品質シグナルを残す。"""
+        from backend.workflows.reception_workflow import invoke_reception_subgraph
+
+        persisted: dict[str, object] = {}
+
+        async def persist_session(**kwargs):
+            persisted.update(kwargs)
+
+        state = {
+            "session_id": "repeated-clarify-session",
+            "query": "なんとなく来ました",
+            "language": "ja",
+            "messages": [],
+            "metadata": {},
+        }
+        reception_status = {
+            "completed": False,
+            "stage": "purpose_hearing",
+            "reception_session_id": "repeated-clarify-session",
+            "metadata": {"reception_action": "clarify_purpose"},
+            "trigger_type": "voice",
+        }
+
+        with patch(
+            "backend.utils.purpose_classifier.classify_purpose",
+            new=AsyncMock(return_value=("other", None, 0.3)),
+        ):
+            result = await invoke_reception_subgraph(state, reception_status, persist_session)
+
+        quality_signal = persisted["metadata"]["quality_signal"]
+        assert quality_signal["type"] == "repeated_reception_clarification"
+        assert result["metadata"]["quality_signal"] == quality_signal
+
+    @pytest.mark.asyncio
     async def test_classify_purpose_no_human_message_defaults_other(self):
         """When no human message is present, stay in purpose_hearing and re-prompt."""
         from backend.workflows.reception_workflow import classify_purpose

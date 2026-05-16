@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import uuid
 from typing import TYPE_CHECKING, Annotated, Any, Awaitable, Callable, Optional
 
@@ -22,6 +23,7 @@ from backend.domain.reception.models import VisitPurpose
 from backend.domain.reception.service import ReceptionDomainService
 from backend.services.visitor_identification_service import VisitorIdentificationService
 from backend.utils.intent_classifier import is_assistant_profile_question
+from backend.utils.intent_classifier import is_reception_continuation_utterance
 from backend.utils.intent_classifier import classify_fast_intent
 from backend.utils import purpose_classifier as purpose_classifier_module
 from backend.utils.reception_templates import (
@@ -51,10 +53,8 @@ _PURPOSE_REQUEST_TYPE_MAP: dict[str, str] = {
 _RECEPTION_NON_QA_REQUEST_TYPES = {
     "assistant_profile",
     "clarification",
-    "daily_conversation",
     "farewell",
     "greeting",
-    "reception",
 }
 
 
@@ -67,6 +67,9 @@ _INFORMATION_QUERY_MARKERS = (
     "わかりますか",
     "ありますか",
     "できますか",
+    "していますか",
+    "対応",
+    "英語対応",
     "どこ",
     "どちら",
     "いつ",
@@ -76,19 +79,108 @@ _INFORMATION_QUERY_MARKERS = (
     "営業時間",
     "予約",
     "方法",
+    "受付手続き",
+    "受付で何を",
+    "受け付けで何を",
+    "入館",
+    "完了",
+    "社会利用",
     "違い",
+    "飲みたい",
+    "食べたい",
+    "飲みは可能",
+    "飲んでいい",
+    "飲めます",
+    "飲み物を飲む",
+    "注文したい",
+    "休憩",
+    "休憩できますか",
+    "休みたい",
+    "休めますか",
+    "一息",
+    "座りたい",
+    "使いたい",
+    "見たい",
+    "maker'sスペース",
+    "makersスペース",
+    "メーカースペース",
+    "maker's space",
+    "makers space",
+    "コーヒー",
+    "珈琲",
+    "カフェラテ",
+    "ドリンク",
+    "ランチ",
+    "サイノ",
+    "雑談",
+    "おしゃべり",
+    "話し相手",
+    "元気",
+    "疲れた",
+    "ありがとう",
     "how",
     "what",
     "where",
     "when",
     "which",
     "tell me",
+    "small talk",
+    "chat with me",
+    "talk with me",
+    "how are you",
+    "i am tired",
+    "i'm tired",
+    "thanks",
+    "thank you",
+    "want to drink",
+    "want coffee",
+    "grab a coffee",
+    "want to eat",
+    "take a break",
 )
+
+_NUMERIC_FRAGMENT_RE = re.compile(r"^[0-9０-９]+$")
+_AMBIGUOUS_ONE_WORD_FRAGMENTS = {
+    "大きい",
+    "大きな",
+    "大きめ",
+    "広い",
+    "狭い",
+    "近い",
+    "遠い",
+    "多い",
+    "少ない",
+    "big",
+    "large",
+    "small",
+}
+
+_FRAGMENT_CLARIFICATION_RESPONSES = {
+    "ja": (
+        "すみません、いまの内容だけでは判断が難しそうです。"
+        "ご用件をもう少し詳しくお聞かせください。"
+    ),
+    "en": "Sorry, I need a little more context. Could you tell me what you would like to do today?",
+    "zh": "抱歉，刚才的信息还不够判断。请再具体告诉我今天想办理什么事项。",
+    "ko": (
+        "죄송하지만 방금 말씀만으로는 판단하기 어렵습니다. "
+        "오늘 용무를 조금 더 자세히 알려주세요."
+    ),
+}
 
 
 def _looks_like_information_query(user_response: str) -> bool:
     normalized = user_response.strip().lower()
     return bool(normalized) and any(marker in normalized for marker in _INFORMATION_QUERY_MARKERS)
+
+
+def _looks_like_stt_fragment(user_response: str) -> bool:
+    normalized = user_response.strip().lower()
+    if not normalized:
+        return False
+    if _NUMERIC_FRAGMENT_RE.fullmatch(normalized):
+        return True
+    return normalized in _AMBIGUOUS_ONE_WORD_FRAGMENTS
 
 
 def _information_route_from_fast_intent(user_response: str) -> Optional[dict[str, Any]]:
@@ -296,6 +388,24 @@ async def classify_purpose(state: ReceptionState) -> dict:
             "messages": [AIMessage(content=prompt.text)],
         }
 
+    if is_reception_continuation_utterance(user_response):
+        purpose_dict = {"category": "other", "detail": user_response, "confidence": 0.5}
+        prompt = get_purpose_hearing_prompt(language=language)
+        social_prefixes = {
+            "ja": "こんにちは。元気です。受付としてご案内しますので、",
+            "en": "Hello. I'm doing well. ",
+            "zh": "您好。我很好。接下来我会为您接待，",
+            "ko": "안녕하세요. 저는 잘 지내고 있습니다. 접수를 도와드릴 테니 ",
+        }
+        response = f"{social_prefixes.get(language, social_prefixes['ja'])}{prompt.text}"
+        return {
+            "purpose": purpose_dict,
+            "stage": "purpose_hearing",
+            "response": response,
+            "reception_action": "reception_social_continuation",
+            "messages": [AIMessage(content=response)],
+        }
+
     assistant_profile_response = _assistant_profile_detour(user_response, language)
     if assistant_profile_response is not None:
         return {
@@ -321,6 +431,19 @@ async def classify_purpose(state: ReceptionState) -> dict:
             "stage": "completed",
             "target_agent": information_route["agent"],
             "reception_action": "bypass_for_information_query",
+        }
+
+    if _looks_like_stt_fragment(user_response):
+        fragment_response = _FRAGMENT_CLARIFICATION_RESPONSES.get(
+            language,
+            _FRAGMENT_CLARIFICATION_RESPONSES["ja"],
+        )
+        return {
+            "purpose": {"category": "other", "detail": user_response, "confidence": 0.2},
+            "stage": "purpose_hearing",
+            "response": fragment_response,
+            "reception_action": "clarify_stt_fragment",
+            "messages": [AIMessage(content=fragment_response)],
         }
 
     try:
@@ -583,6 +706,24 @@ async def invoke_reception_subgraph(
     graph = await get_reception_workflow()
     reception_state = workflow_state_to_reception_state(state, reception_status)
     updated_state = await graph.ainvoke(reception_state)
+    reception_action = updated_state.get("reception_action")
+    previous_metadata = reception_status.get("metadata") or {}
+    persistence_metadata: dict[str, Any] = {"reception_action": reception_action}
+    if (
+        reception_action == "clarify_purpose"
+        and previous_metadata.get("reception_action") == "clarify_purpose"
+    ):
+        quality_signal = {
+            "type": "repeated_reception_clarification",
+            "severity": "warning",
+            "previous_action": previous_metadata.get("reception_action"),
+            "current_action": reception_action,
+        }
+        logger.warning(
+            "Reception quality signal: repeated clarify_purpose session_id=%s",
+            state.get("session_id", ""),
+        )
+        persistence_metadata["quality_signal"] = quality_signal
 
     await persist_session(
         session_id=state.get("session_id", ""),
@@ -590,9 +731,12 @@ async def invoke_reception_subgraph(
         language=updated_state.get("language", state.get("language", "ja")),
         trigger_type=updated_state.get("trigger_type", "voice"),
         status="completed" if updated_state.get("stage") == "completed" else "active",
-        metadata={"reception_action": updated_state.get("reception_action")},
+        metadata=persistence_metadata,
         purpose=updated_state.get("purpose"),
         visitor_identity=updated_state.get("visitor_identity"),
     )
 
-    return reception_state_to_workflow_result(state, updated_state)
+    result = reception_state_to_workflow_result(state, updated_state)
+    if "quality_signal" in persistence_metadata:
+        result["metadata"]["quality_signal"] = persistence_metadata["quality_signal"]
+    return result

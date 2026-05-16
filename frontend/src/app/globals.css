@@ -18,6 +18,7 @@
     min-height: var(--kiosk-viewport-height, 100dvh);
     overflow: hidden;
     overscroll-behavior: none;
+    touch-action: none;
     scroll-behavior: auto;
     background: #020617;
     -webkit-text-size-adjust: 100%;
@@ -33,7 +34,7 @@
     margin: 0;
     overflow: hidden;
     overscroll-behavior: none;
-    touch-action: manipulation;
+    touch-action: none;
     background: #020617;
   }
 }

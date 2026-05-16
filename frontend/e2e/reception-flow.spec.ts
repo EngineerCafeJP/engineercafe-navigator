@@ -455,9 +455,10 @@ test.describe('Reception flow — member card OCR success', () => {
       page.getByText('会員番号 12345 を読み取りました。受付を開始します。'),
     ).toBeVisible({ timeout: 5_000 });
     await expect(page.getByTestId('response-text')).toContainText(
-      '会員証を確認しました',
+      '会員番号 12345 を読み取りました',
       { timeout: 8_000 },
     );
+    await expect(page.getByTestId('response-text')).toContainText('フェーズ2以降');
   });
 });
 
