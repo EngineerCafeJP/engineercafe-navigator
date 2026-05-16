@@ -1,7 +1,7 @@
 """OCR API endpoint.
 
-Orchestration layer that wraps the existing VisionAgent and integrates
-with VisitorIdentificationService for member-card recognition.
+Orchestration layer that wraps the existing VisionAgent for member-card
+number extraction and handwriting recognition.
 """
 
 from __future__ import annotations
@@ -21,7 +21,6 @@ from backend.utils.rate_limit import rate_limit
 
 if TYPE_CHECKING:
     from backend.agents.ocr_agent import VisionAgent
-    from backend.services.visitor_identification_service import VisitorIdentificationService
 
 logger = logging.getLogger(__name__)
 
@@ -40,21 +39,6 @@ def _get_vision_agent() -> "VisionAgent":  # noqa: F821
 
         _vision_agent = VisionAgent()
     return _vision_agent
-
-
-_visitor_id_service: Optional["VisitorIdentificationService"] = None  # noqa: F821
-
-
-def _get_visitor_id_service() -> "VisitorIdentificationService":  # noqa: F821
-    """Return a module-level VisitorIdentificationService singleton."""
-    global _visitor_id_service
-    if _visitor_id_service is None:
-        from backend.services.visitor_identification_service import (
-            VisitorIdentificationService,
-        )
-
-        _visitor_id_service = VisitorIdentificationService()
-    return _visitor_id_service
 
 
 # ---------------------------------------------------------------------------
@@ -230,8 +214,9 @@ async def recognize_image(request: Request, body: OcrRequest) -> OcrResponse:
 
     Supports two modes:
 
-    - **member_card** -- Extract a 1-6 digit member number and look up the
-      visitor profile via ``VisitorIdentificationService``.
+    - **member_card** -- Extract a 1-6 digit member number. Member numbers are
+      not used for identity lookup because returning visitor detection is
+      handled by the visits-based flow.
     - **handwriting** -- Return the recognised text with a language hint.
     """
     t0 = time.monotonic()
@@ -268,8 +253,6 @@ async def recognize_image(request: Request, body: OcrRequest) -> OcrResponse:
 
     # --- Mode-specific post-processing --------------------------------------
     member_number: Optional[int] = None
-    visitor_identity: Optional[dict[str, Any]] = None
-    identity_lookup: Optional[dict[str, Any]] = None
     detected_language: Optional[str] = None
 
     if body.mode == "member_card":
@@ -279,25 +262,6 @@ async def recognize_image(request: Request, body: OcrRequest) -> OcrResponse:
                 match = _MEMBER_STANDALONE_RE.search(recognized_text)
             if match:
                 member_number = int(match.group(1))
-                try:
-                    svc = _get_visitor_id_service()
-                    lookup_result = await svc.identify_by_member_number_with_lookup(member_number)
-                    visitor_identity = lookup_result.get("identity")
-                    identity_lookup = lookup_result.get("lookup")
-                except Exception as exc:
-                    logger.warning(
-                        "Visitor identification failed for member %s: %s",
-                        member_number,
-                        exc,
-                    )
-                    identity_lookup = {
-                        "attempted": True,
-                        "source": "public.users",
-                        "member_number": member_number,
-                        "status": "lookup_failed",
-                        "resolved": False,
-                        "reason": "service_exception",
-                    }
 
     elif body.mode == "handwriting":
         if recognized_text:
@@ -330,6 +294,6 @@ async def recognize_image(request: Request, body: OcrRequest) -> OcrResponse:
         language=detected_language,
         expression=expression_str,
         processing_time_ms=elapsed_ms,
-        visitor_identity=visitor_identity,
-        identity_lookup=identity_lookup,
+        visitor_identity=None,
+        identity_lookup=None,
     )

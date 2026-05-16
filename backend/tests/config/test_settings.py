@@ -89,6 +89,15 @@ class TestSettingsFromEnv:
         )
         assert s.openrouter_api_key == test_key
 
+    def test_langsmith_project_reads_from_env(self, monkeypatch):
+        """LANGSMITH_PROJECTを環境変数から読み込む"""
+        monkeypatch.setenv("LANGSMITH_PROJECT", "engineer-cafe-test")
+        s = Settings(
+            supabase_url="http://test",
+            supabase_key="test-key",
+        )
+        assert s.langsmith_project == "engineer-cafe-test"
+
 
 # ============================================
 # TestSettingsProperties

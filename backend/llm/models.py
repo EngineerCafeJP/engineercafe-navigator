@@ -58,6 +58,7 @@ class SupportedModel(str, Enum):
     DEVSTRAL = "mistralai/devstral-2512"
 
     # Vision (lightweight, tool-use capable)
+    GPT_4O = "openai/gpt-4o"
     GPT_4_1_NANO = "openai/gpt-4.1-nano"
 
 
@@ -75,6 +76,8 @@ class ModelConfig:
         timeout: Request timeout in seconds
         allow_cerebras_primary: Allow direct Cerebras before OpenRouter for lightweight answers
         cerebras_primary_use_case: Stable use-case name for env allowlist checks
+        primary_model_env: Optional env var that overrides the primary OpenRouter slug
+        fallback_model_env: Optional env var that overrides the fallback OpenRouter slug
     """
 
     model_id: SupportedModel
@@ -85,6 +88,8 @@ class ModelConfig:
     timeout: float = 30.0
     allow_cerebras_primary: bool = False
     cerebras_primary_use_case: Optional[str] = None
+    primary_model_env: Optional[str] = None
+    fallback_model_env: Optional[str] = None
 
     input_cost_per_1k: float = field(default=0.0, repr=False)
     output_cost_per_1k: float = field(default=0.0, repr=False)
@@ -174,8 +179,20 @@ MODEL_CONFIGS: dict[str, ModelConfig] = {
         temperature=0.0,
         max_tokens=512,
         fallback_model=SupportedModel.GPT_5_4_NANO,
+        primary_model_env="VISION_MODEL",
         input_cost_per_1k=0.0001,
         output_cost_per_1k=0.0004,
+    ),
+    "vision_handwriting": ModelConfig(
+        model_id=SupportedModel.GPT_4O,
+        temperature=0.0,
+        max_tokens=256,
+        fallback_model=SupportedModel.GPT_4_1_NANO,
+        timeout=20.0,
+        primary_model_env="VISION_HANDWRITING_MODEL",
+        fallback_model_env="VISION_HANDWRITING_FALLBACK_MODEL",
+        input_cost_per_1k=0.002,
+        output_cost_per_1k=0.012,
     ),
 }
 

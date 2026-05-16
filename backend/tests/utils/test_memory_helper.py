@@ -445,6 +445,7 @@ class TestSimplifiedMemoryHelper:
         mock_table.select = Mock(return_value=mock_select)
         mock_select.eq = Mock(return_value=mock_eq)
         mock_eq.like = Mock(return_value=mock_like)
+        mock_like.filter = Mock(return_value=mock_like)
         mock_like.order = Mock(return_value=mock_order)
         mock_order.limit = Mock(return_value=mock_limit)
 
@@ -468,6 +469,8 @@ class TestSimplifiedMemoryHelper:
         result = await helper.get_previous_request_type("test-session")
 
         assert result == "hours"
+        mock_like.filter.assert_any_call("value->>sessionId", "eq", "test-session")
+        mock_like.filter.assert_any_call("value->>role", "eq", "user")
         mock_order.limit.assert_called_once_with(100)
 
     @pytest.mark.asyncio
@@ -506,6 +509,7 @@ class TestSimplifiedMemoryHelper:
         mock_memory_table.select = Mock(return_value=mock_memory_select)
         mock_memory_select.eq = Mock(return_value=mock_memory_eq)
         mock_memory_eq.like = Mock(return_value=mock_memory_like)
+        mock_memory_like.filter = Mock(return_value=mock_memory_like)
         mock_memory_like.order = Mock(return_value=mock_memory_order)
         mock_memory_order.limit = Mock(return_value=mock_memory_limit)
         mock_memory_order.execute = Mock(
@@ -557,6 +561,7 @@ class TestSimplifiedMemoryHelper:
         assert "context_string" in result
         assert "inherited_request_type" in result
         assert len(result["recent_messages"]) == 1
+        mock_memory_like.filter.assert_any_call("value->>sessionId", "eq", "test-session")
 
     @pytest.mark.asyncio
     @patch("backend.utils.memory_helper.create_client")
@@ -564,36 +569,23 @@ class TestSimplifiedMemoryHelper:
         """セッション単位のクリーンアップテスト"""
         mock_client = Mock()
         mock_table = Mock()
-        mock_select = Mock()
-        mock_eq = Mock()
-        mock_like = Mock()
         mock_delete = Mock()
-        mock_delete_eq = Mock()
-        mock_delete_eq.execute = Mock(return_value=Mock(data=[]))
+        mock_delete.execute = Mock(return_value=Mock(data=[]))
 
         mock_client.table = Mock(return_value=mock_table)
-        mock_table.select = Mock(return_value=mock_select)
-        mock_select.eq = Mock(return_value=mock_eq)
-        mock_eq.like = Mock(return_value=mock_like)
-        mock_like.execute = Mock(
-            return_value=Mock(
-                data=[
-                    {"id": "msg-1", "value": {"sessionId": "test-session"}},
-                    {"id": "msg-2", "value": {"sessionId": "other-session"}},
-                    {"id": "msg-3", "value": {"sessionId": "test-session"}},
-                ]
-            )
-        )
         mock_table.delete = Mock(return_value=mock_delete)
-        mock_delete.eq = Mock(return_value=mock_delete_eq)
+        mock_delete.eq = Mock(return_value=mock_delete)
+        mock_delete.like = Mock(return_value=mock_delete)
+        mock_delete.filter = Mock(return_value=mock_delete)
 
         mock_create_client.return_value = mock_client
 
         helper = SimplifiedMemoryHelper()
         await helper.cleanup_session("test-session")
 
-        # msg-1とmsg-3が削除される（test-sessionに一致する2件）
-        assert mock_delete.eq.call_count == 2
+        mock_delete.eq.assert_called_once_with("agent_name", helper.agent_name)
+        mock_delete.like.assert_called_once_with("key", "message_%")
+        mock_delete.filter.assert_called_once_with("value->>sessionId", "eq", "test-session")
 
     @pytest.mark.asyncio
     @patch("backend.utils.memory_helper.create_client")
@@ -623,12 +615,12 @@ class TestSimplifiedMemoryHelper:
         mock_memory_table.select = Mock(return_value=mock_memory_select)
         mock_memory_select.eq = Mock(return_value=mock_memory_eq)
         mock_memory_eq.like = Mock(return_value=mock_memory_like)
+        mock_memory_like.in_ = Mock(return_value=mock_memory_like)
         mock_memory_like.execute = Mock(
             return_value=Mock(
                 data=[
-                    {"id": "msg-1", "value": {"sessionId": "ended-session-1"}},
-                    {"id": "msg-2", "value": {"sessionId": "active-session"}},
-                    {"id": "msg-3", "value": {"sessionId": "ended-session-2"}},
+                    {"id": "msg-1"},
+                    {"id": "msg-3"},
                 ]
             )
         )
@@ -648,6 +640,10 @@ class TestSimplifiedMemoryHelper:
 
         # msg-1とmsg-3が削除される（ended sessionに一致する2件）
         assert mock_memory_delete.eq.call_count == 2
+        mock_memory_like.in_.assert_called_once_with(
+            "value->>sessionId",
+            ["ended-session-1", "ended-session-2"],
+        )
 
     @pytest.mark.asyncio
     @patch("backend.utils.memory_helper.create_client")
@@ -699,12 +695,12 @@ class TestSimplifiedMemoryHelper:
         mock_table.select = Mock(return_value=mock_select)
         mock_select.eq = Mock(return_value=mock_eq)
         mock_eq.like = Mock(return_value=mock_like)
+        mock_like.filter = Mock(return_value=mock_like)
 
         mock_like.execute = Mock(
             return_value=Mock(
                 data=[
                     {"value": {"timestamp": 1000, "emotion": "happy", "sessionId": "s1"}},
-                    {"value": {"timestamp": 2000, "emotion": "neutral", "sessionId": "s2"}},
                     {"value": {"timestamp": 3000, "emotion": "sad", "sessionId": "s1"}},
                 ]
             )
@@ -719,6 +715,7 @@ class TestSimplifiedMemoryHelper:
         assert stats["active_turns"] == 2
         assert stats["oldest_turn"] == 1000
         assert stats["newest_turn"] == 3000
+        mock_like.filter.assert_called_once_with("value->>sessionId", "eq", "s1")
 
 
 class TestGetMemoryHelper:

@@ -117,9 +117,11 @@ class TestVisionAgentInit:
         mock_provider_cls.assert_called_once()
 
     def test_calls_get_model_config_with_vision(self, mock_vision_agent):
-        """get_model_config('vision') が呼ばれることを確認"""
+        """vision 用と handwriting 用のモデル設定が呼ばれることを確認"""
         _, _, mock_get_config, _ = mock_vision_agent
-        mock_get_config.assert_called_once_with("vision")
+        assert mock_get_config.call_count == 2
+        mock_get_config.assert_any_call("vision")
+        mock_get_config.assert_any_call("vision_handwriting")
 
     def test_binds_tools_to_llm(self, mock_vision_agent):
         """LLM に face_recognition と text_recognition がバインドされることを確認"""
@@ -377,6 +379,93 @@ class TestVisionAgentToolMessageParsing:
         assert result["face"]["detected"] is False
         assert result["face"]["expression"] is None
         assert result["face"]["error"] is None
+
+    async def test_member_card_prompt_echo_is_rejected(self, mock_vision_agent):
+        """会員証OCRで prompt echo が text として返った場合は採用しない。"""
+        agent, _, _, _ = mock_vision_agent
+
+        tool_msgs = [
+            ToolMessage(
+                content=(
+                    "会員証画像を解析してください。\n"
+                    "・会員番号を含む文字列を正確に抽出\n"
+                    "・検出不能なら None"
+                ),
+                name="text_recognition",
+                tool_call_id="tc1",
+            ),
+        ]
+        result = await self._run_with_tool_messages(agent, tool_msgs)
+
+        assert result["text"]["success"] is False
+        assert result["text"]["text"] is None
+        assert result["text"]["error"] == "prompt_echo"
+
+
+class TestVisionAgentHandwritingMode:
+    """handwriting mode の専用 direct vision OCR パスを検証する。"""
+
+    async def test_handwriting_uses_direct_llm_without_graph_tools(self, mock_vision_agent):
+        agent, _, _, _ = mock_vision_agent
+
+        image = np.zeros((100, 100, 3), dtype=np.uint8)
+        agent.handwriting_llm = MagicMock()
+        agent.handwriting_llm.ainvoke = AsyncMock(
+            return_value=AIMessage(content="受付で相談したい")
+        )
+        agent.app = MagicMock()
+        agent.app.ainvoke = AsyncMock()
+
+        with patch("backend.agents.ocr_agent.cv2.imencode") as mock_imencode:
+            mock_imencode.return_value = (True, np.array([1], dtype=np.uint8))
+            result = await agent.run({"image": image, "mode": "handwriting"})
+
+        assert result["text"]["success"] is True
+        assert result["text"]["text"] == "受付で相談したい"
+        assert result["text"]["error"] is None
+        assert result["confidence"] == pytest.approx(0.72)
+        agent.handwriting_llm.ainvoke.assert_awaited_once()
+        agent.app.ainvoke.assert_not_awaited()
+
+    async def test_handwriting_prompt_echo_is_rejected(self, mock_vision_agent):
+        agent, _, _, _ = mock_vision_agent
+
+        image = np.zeros((100, 100, 3), dtype=np.uint8)
+        agent.handwriting_llm = MagicMock()
+        agent.handwriting_llm.ainvoke = AsyncMock(
+            return_value=AIMessage(
+                content=(
+                    "あなたは手書き文字だけを読み取るOCRエンジンです。\n"
+                    "画像から読み取れる文字列だけを、そのまま1行で返してください。\n"
+                    "・JSONやMarkdownは禁止"
+                )
+            )
+        )
+
+        with patch("backend.agents.ocr_agent.cv2.imencode") as mock_imencode:
+            mock_imencode.return_value = (True, np.array([1], dtype=np.uint8))
+            result = await agent.run({"image": image, "mode": "handwriting"})
+
+        assert result["text"]["success"] is False
+        assert result["text"]["text"] is None
+        assert result["text"]["error"] == "prompt_echo"
+        assert result["confidence"] == 0.0
+
+    async def test_handwriting_json_wrapper_is_unwrapped(self, mock_vision_agent):
+        agent, _, _, _ = mock_vision_agent
+
+        image = np.zeros((100, 100, 3), dtype=np.uint8)
+        agent.handwriting_llm = MagicMock()
+        agent.handwriting_llm.ainvoke = AsyncMock(
+            return_value=AIMessage(content='{"text": "Engineer Cafeに行きたい"}')
+        )
+
+        with patch("backend.agents.ocr_agent.cv2.imencode") as mock_imencode:
+            mock_imencode.return_value = (True, np.array([1], dtype=np.uint8))
+            result = await agent.run({"image": image, "mode": "handwriting"})
+
+        assert result["text"]["success"] is True
+        assert result["text"]["text"] == "Engineer Cafeに行きたい"
 
     async def test_default_recognition_type_is_text(self, mock_vision_agent):
         """recognition_type 未指定の場合 'text' パスが使われることを確認"""

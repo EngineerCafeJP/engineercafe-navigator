@@ -32,8 +32,8 @@ class TestSupportedModel:
         assert issubclass(SupportedModel, Enum)
 
     def test_enum_member_count(self):
-        """SupportedModel は 25 個のメンバーを持つこと"""
-        assert len(SupportedModel) == 25
+        """SupportedModel は 26 個のメンバーを持つこと"""
+        assert len(SupportedModel) == 26
 
     def test_enum_member_is_str_instance(self):
         """各メンバーは str インスタンスであること"""
@@ -68,6 +68,7 @@ class TestSupportedModel:
             ("MISTRAL_LARGE", "mistralai/mistral-large-2512"),
             ("MISTRAL_SMALL", "mistralai/mistral-small-creative"),
             ("DEVSTRAL", "mistralai/devstral-2512"),
+            ("GPT_4O", "openai/gpt-4o"),
             ("GPT_4_1_NANO", "openai/gpt-4.1-nano"),
         ],
     )
@@ -234,6 +235,7 @@ EXPECTED_USE_CASES = [
     "event_info",
     "facility_info",
     "vision",
+    "vision_handwriting",
 ]
 
 
@@ -306,6 +308,17 @@ class TestModelConfigs:
         assert config.model_id == SupportedModel.GPT_4_1_NANO
         assert config.temperature == 0.0
         assert config.fallback_model == SupportedModel.GPT_5_4_NANO
+        assert config.primary_model_env == "VISION_MODEL"
+
+    def test_vision_handwriting_config_values(self):
+        """handwriting OCR は精度優先の vision 設定を使うこと"""
+        config = MODEL_CONFIGS["vision_handwriting"]
+        assert config.model_id == SupportedModel.GPT_4O
+        assert config.temperature == 0.0
+        assert config.max_tokens == 256
+        assert config.fallback_model == SupportedModel.GPT_4_1_NANO
+        assert config.primary_model_env == "VISION_HANDWRITING_MODEL"
+        assert config.fallback_model_env == "VISION_HANDWRITING_FALLBACK_MODEL"
 
     def test_general_knowledge_uses_flash_lite(self):
         """general_knowledge は低遅延モデルを使用すること"""
@@ -323,7 +336,10 @@ class TestModelConfigs:
         assert config.allow_cerebras_primary is True
         assert config.cerebras_primary_use_case == use_case
 
-    @pytest.mark.parametrize("use_case", ["router", "clarification", "deep_reasoning", "vision"])
+    @pytest.mark.parametrize(
+        "use_case",
+        ["router", "clarification", "deep_reasoning", "vision", "vision_handwriting"],
+    )
     def test_non_response_configs_do_not_allow_cerebras_primary(self, use_case: str):
         """routing/vision/deep reasoning は Cerebras primary に自動波及させないこと"""
         config = MODEL_CONFIGS[use_case]

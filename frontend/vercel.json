@@ -18,12 +18,6 @@
     "src/app/api/reception/start/route.ts": {
       "maxDuration": 120
     },
-    "src/app/api/reception/respond/route.ts": {
-      "maxDuration": 120
-    },
-    "src/app/api/reception/complete/route.ts": {
-      "maxDuration": 120
-    },
     "src/app/api/reception/status/[receptionSessionId]/route.ts": {
       "maxDuration": 120
     },

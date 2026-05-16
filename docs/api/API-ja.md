@@ -439,33 +439,6 @@ reception session を開始します。OCR などで事前に識別済みの場�
 
 `visitor_identity` は任意です。reception 開始前に身元が確定していない場合は省略してください。
 
-### POST /api/reception/respond
-
-reception 会話を継続します。
-
-リクエスト例:
-
-```json
-{
-  "session_id": "session-123",
-  "reception_session_id": "reception-123",
-  "message": "見学で来ました。"
-}
-```
-
-### POST /api/reception/complete
-
-reception を完了し、`ainvoke_from_reception()` 経由でメイン workflow を起動します。reception 中に収集した来訪者コンテキストを使ってエージェントが応答を生成します。
-
-リクエスト例:
-
-```json
-{
-  "session_id": "session-123",
-  "reception_session_id": "reception-123"
-}
-```
-
 ### GET /api/reception/status/[id]
 
 現在の reception 状態を返します。

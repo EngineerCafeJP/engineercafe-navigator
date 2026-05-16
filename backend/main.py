@@ -72,6 +72,76 @@ def _voice_stt_request_timeout_seconds() -> float:
     return _float_env("VOICE_STT_REQUEST_TIMEOUT_SECONDS", 12.0)
 
 
+def _stt_warmup_telemetry_fields() -> Dict[str, Any]:
+    try:
+        snapshot = get_stt_warmup_service().snapshot()
+    except Exception as exc:
+        logger.debug("STT warmup telemetry skipped: %s", exc)
+        return {}
+
+    fields: Dict[str, Any] = {
+        "stt_warmup_status": snapshot.status,
+        "stt_warmup_provider": snapshot.provider,
+    }
+    if snapshot.duration_ms is not None:
+        fields["stt_warmup_duration_ms"] = snapshot.duration_ms
+    if snapshot.error:
+        fields["stt_warmup_error_type"] = snapshot.error.split(":", 1)[0]
+    return fields
+
+
+def _configure_langsmith_tracing() -> bool:
+    """Enable LangSmith/LangChain tracing for production when configured."""
+
+    from backend.config.settings import get_settings
+
+    app_settings = get_settings()
+    if not app_settings.is_production:
+        return False
+
+    api_key = (
+        app_settings.langsmith_api_key
+        or os.getenv("LANGSMITH_API_KEY", "").strip()
+        or os.getenv("LANGCHAIN_API_KEY", "").strip()
+    )
+    if not api_key:
+        logger.warning("LANGSMITH_API_KEY not set; LangSmith tracing disabled")
+        return False
+
+    project = (
+        app_settings.langsmith_project
+        or os.getenv("LANGSMITH_PROJECT", "").strip()
+        or os.getenv("LANGCHAIN_PROJECT", "").strip()
+    )
+
+    os.environ.setdefault("LANGSMITH_API_KEY", api_key)
+    os.environ.setdefault("LANGCHAIN_API_KEY", api_key)
+    os.environ["LANGCHAIN_TRACING_V2"] = "true"
+    os.environ["LANGSMITH_TRACING"] = "true"
+    if project:
+        os.environ["LANGSMITH_PROJECT"] = project
+        os.environ["LANGCHAIN_PROJECT"] = project
+
+    logger.info("LangSmith tracing enabled for project=%s", project or "default")
+    return True
+
+
+def _attach_latest_llm_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
+    """Attach request-scoped LLM provider/model metadata when available."""
+
+    try:
+        from backend.utils.token_tracker import get_latest_llm_metadata
+
+        latest = get_latest_llm_metadata()
+    except Exception as exc:
+        logger.debug("LLM metadata attachment skipped: %s", exc)
+        return metadata
+
+    for key, value in latest.items():
+        metadata.setdefault(key, value)
+    return metadata
+
+
 class RequestIDMiddleware(BaseHTTPMiddleware):
     """X-Request-ID ヘッダーの生成/伝播"""
 
@@ -169,6 +239,7 @@ async def lifespan(app: FastAPI):
 
     if _ENVIRONMENT == "production":
         setup_structured_logging()
+    _configure_langsmith_tracing()
 
     try:
         from backend.utils.checkpoint_cleanup import CheckpointCleanup
@@ -797,6 +868,7 @@ async def chat(request: Request, body: ChatRequest):
         if isinstance(metadata, dict):
             metadata.setdefault("response_language", response_language)
             metadata.setdefault("language", response_language)
+            _attach_latest_llm_metadata(metadata)
         latency_ms = int((time.perf_counter() - started_at) * 1000)
         log_chat_response(
             request_id=request_id,
@@ -814,9 +886,7 @@ async def chat(request: Request, body: ChatRequest):
             phase="chat",
             upstreamStatus=_upstream_status(
                 "workflow",
-                route=metadata_dict.get("route")
-                or metadata_dict.get("category")
-                or metadata_dict.get("agent"),
+                route=metadata_dict.get("route") or metadata_dict.get("category"),
             ),
         )
     except Exception as e:
@@ -1271,8 +1341,10 @@ async def _handle_stt(body: VoiceRequest, request_id: str) -> VoiceResponse:
             success=False,
             error_type="AudioTooShort",
             audio_bytes=len(audio_bytes),
+            timeout_s=_voice_stt_request_timeout_seconds(),
             stt_request_duration_ms=int((time.perf_counter() - stt_request_started_at) * 1000),
             stt_base64_decode_duration_ms=base64_decode_duration_ms,
+            **_stt_warmup_telemetry_fields(),
         )
         return _stt_failure_response(
             body=body,
@@ -1309,6 +1381,7 @@ async def _handle_stt(body: VoiceRequest, request_id: str) -> VoiceResponse:
             timeout_s=_voice_stt_request_timeout_seconds(),
             stt_request_duration_ms=int((time.perf_counter() - stt_request_started_at) * 1000),
             stt_base64_decode_duration_ms=base64_decode_duration_ms,
+            **_stt_warmup_telemetry_fields(),
         )
         return _stt_failure_response(
             body=body,
@@ -1327,8 +1400,10 @@ async def _handle_stt(body: VoiceRequest, request_id: str) -> VoiceResponse:
             success=False,
             error_type=type(exc).__name__,
             audio_bytes=len(audio_bytes),
+            timeout_s=_voice_stt_request_timeout_seconds(),
             stt_request_duration_ms=int((time.perf_counter() - stt_request_started_at) * 1000),
             stt_base64_decode_duration_ms=base64_decode_duration_ms,
+            **_stt_warmup_telemetry_fields(),
         )
         return _stt_failure_response(
             body=body,
@@ -1346,8 +1421,10 @@ async def _handle_stt(body: VoiceRequest, request_id: str) -> VoiceResponse:
             success=False,
             error_type=stt_result.get("error"),
             audio_bytes=len(audio_bytes),
+            timeout_s=_voice_stt_request_timeout_seconds(),
             stt_request_duration_ms=int((time.perf_counter() - stt_request_started_at) * 1000),
             stt_base64_decode_duration_ms=base64_decode_duration_ms,
+            **_stt_warmup_telemetry_fields(),
         )
         return _stt_failure_response(
             body=body,
@@ -1364,8 +1441,10 @@ async def _handle_stt(body: VoiceRequest, request_id: str) -> VoiceResponse:
         success=True,
         audio_bytes=len(audio_bytes),
         transcript_chars=len(stt_result.get("transcript") or ""),
+        timeout_s=_voice_stt_request_timeout_seconds(),
         stt_request_duration_ms=int((time.perf_counter() - stt_request_started_at) * 1000),
         stt_base64_decode_duration_ms=base64_decode_duration_ms,
+        **_stt_warmup_telemetry_fields(),
     )
     return VoiceResponse(
         success=True,

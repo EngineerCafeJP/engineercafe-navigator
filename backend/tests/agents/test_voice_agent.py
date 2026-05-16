@@ -240,12 +240,16 @@ async def test_voicevox_client_reuses_async_client_and_closes(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_piper_client_preserves_timeout_error(monkeypatch):
+    monkeypatch.setenv("PIPER_PLUS_RETRY_BACKOFF_SECONDS", "0")
+
     class TimeoutAsyncClient:
         def __init__(self, timeout):
             self.timeout = timeout
             self.is_closed = False
+            self.calls = 0
 
         async def post(self, url, **kwargs):
+            self.calls += 1
             raise httpx.TimeoutException("request timed out")
 
         async def aclose(self):
@@ -256,6 +260,40 @@ async def test_piper_client_preserves_timeout_error(monkeypatch):
 
     with pytest.raises(RuntimeError, match="PiperPlus TTS connection timeout"):
         await client.synthesize_wav_base64("こんにちは", "ja")
+
+
+@pytest.mark.asyncio
+async def test_piper_client_retries_transient_5xx_then_succeeds(monkeypatch):
+    monkeypatch.setenv("PIPER_PLUS_RETRY_BACKOFF_SECONDS", "0")
+    instances = []
+
+    class RetryAsyncClient:
+        def __init__(self, timeout):
+            self.timeout = timeout
+            self.is_closed = False
+            self.posts = []
+            instances.append(self)
+
+        async def post(self, url, **kwargs):
+            self.posts.append((url, kwargs))
+            if len(self.posts) == 1:
+                return FakeTTSHTTPResponse(status_code=503, text="warming")
+            return FakeTTSHTTPResponse(status_code=200, content=b"piper-wav")
+
+        async def aclose(self):
+            self.is_closed = True
+
+    monkeypatch.setattr("backend.agents.voice_agent.httpx.AsyncClient", RetryAsyncClient)
+    client = PiperPlusTTSClient(api_url="http://piper")
+
+    result = await client.synthesize_wav_base64("こんにちは", "ja")
+
+    assert result == "cGlwZXItd2F2"
+    assert len(instances) == 1
+    assert [url for url, _kwargs in instances[0].posts] == [
+        "http://piper/synthesize",
+        "http://piper/synthesize",
+    ]
 
 
 @pytest.mark.asyncio
@@ -377,13 +415,17 @@ async def test_text_to_speech_piper_timeout_falls_back_quickly(monkeypatch):
 async def test_text_to_speech_piper_primary_required_disables_fallback(monkeypatch):
     monkeypatch.setenv("TTS_REQUIRE_PRIMARY_PROVIDER", "true")
     agent = VoiceAgent(tts_provider="piper")
+    calls = {"piper": 0}
 
     async def fake_piper_empty(text, lang):
+        del text, lang
+        calls["piper"] += 1
         return ""
 
     monkeypatch.setattr(agent.tts_client, "synthesize_wav_base64", fake_piper_empty)
 
     result = await agent.text_to_speech(text="こんにちは", language="ja")
+    second = await agent.text_to_speech(text="別の案内です", language="ja")
 
     assert agent.voicevox_fallback_client is None
     assert agent.google_fallback_client is None
@@ -392,6 +434,9 @@ async def test_text_to_speech_piper_primary_required_disables_fallback(monkeypat
     assert result["fallback_provider"] is None
     assert result["actual_provider"] is None
     assert "primary piper provider" in result["error"]
+    assert second["success"] is False
+    assert "failure cooldown" not in second["error"]
+    assert calls == {"piper": 2}
 
 
 def test_piper_primary_timeout_default_covers_live_answer_window(monkeypatch):
@@ -442,6 +487,39 @@ async def test_text_to_speech_caches_successful_fallback(monkeypatch):
     assert second["fallback_provider"] == "voicevox"
     assert second["audioResponse"] == fallback_audio
     assert calls == {"piper": 1, "voicevox": 1}
+
+
+@pytest.mark.asyncio
+async def test_text_to_speech_piper_failure_cooldown_skips_next_primary_attempt(monkeypatch):
+    monkeypatch.setenv("TTS_PIPER_FAILURE_COOLDOWN_SECONDS", "30")
+    agent = VoiceAgent(tts_provider="piper")
+    calls = {"piper": 0, "voicevox": 0}
+    fallback_audio = "V" * 128
+
+    async def broken_piper(text, lang):
+        del text, lang
+        calls["piper"] += 1
+        raise RuntimeError("piper transient failure")
+
+    async def fake_voicevox_synth(text, lang, speaker_id=None):
+        del text, lang, speaker_id
+        calls["voicevox"] += 1
+        return fallback_audio
+
+    monkeypatch.setattr(agent.tts_client, "synthesize_wav_base64", broken_piper)
+    monkeypatch.setattr(
+        agent.voicevox_fallback_client, "synthesize_wav_base64", fake_voicevox_synth
+    )
+
+    first = await agent.text_to_speech(text="こんにちは", language="ja")
+    second = await agent.text_to_speech(text="別の案内です", language="ja")
+
+    assert first["success"] is True
+    assert first["fallback_used"] is True
+    assert second["success"] is True
+    assert second["fallback_used"] is True
+    assert "failure cooldown" in second["error"]
+    assert calls == {"piper": 1, "voicevox": 2}
 
 
 @pytest.mark.asyncio

@@ -8,6 +8,7 @@ from backend.llm.model_resolve import (
     cerebras_primary_enabled,
     cerebras_primary_use_cases,
     openrouter_timeout_seconds,
+    resolved_openrouter_model_slug,
 )
 from backend.llm.models import MODEL_CONFIGS
 from backend.llm.models import ModelConfig, SupportedModel
@@ -32,7 +33,10 @@ def test_default_cerebras_primary_use_cases_include_lightweight_responses(
     assert cerebras_primary_enabled(MODEL_CONFIGS[use_case]) is True
 
 
-@pytest.mark.parametrize("use_case", ["router", "clarification", "deep_reasoning", "vision"])
+@pytest.mark.parametrize(
+    "use_case",
+    ["router", "clarification", "deep_reasoning", "vision", "vision_handwriting"],
+)
 def test_cerebras_primary_does_not_apply_to_non_response_configs(
     monkeypatch: pytest.MonkeyPatch, use_case: str
 ):
@@ -120,3 +124,15 @@ def test_openrouter_timeout_env_override(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("OPENROUTER_TIMEOUT_SECONDS", "2.25")
 
     assert openrouter_timeout_seconds(MODEL_CONFIGS["qa_response"]) == 2.25
+
+
+def test_openrouter_model_slug_honors_config_specific_env_overrides(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setenv("VISION_HANDWRITING_MODEL", "openai/gpt-4o")
+    monkeypatch.setenv("VISION_HANDWRITING_FALLBACK_MODEL", "openai/gpt-4.1-mini")
+
+    config = MODEL_CONFIGS["vision_handwriting"]
+
+    assert resolved_openrouter_model_slug(config) == "openai/gpt-4o"
+    assert resolved_openrouter_model_slug(config, branch="fallback") == "openai/gpt-4.1-mini"

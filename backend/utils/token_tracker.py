@@ -7,7 +7,7 @@
 import logging
 from contextvars import ContextVar
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Any, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -24,10 +24,27 @@ class TokenUsage:
 
 
 @dataclass
+class LLMCallMetadata:
+    """Successful LLM call metadata captured for request observability."""
+
+    provider: str
+    model: str
+    llm_latency_ms: int
+
+    def as_log_metadata(self) -> dict[str, Any]:
+        return {
+            "provider": self.provider,
+            "model": self.model,
+            "llm_latency_ms": self.llm_latency_ms,
+        }
+
+
+@dataclass
 class TokenTracker:
     """リクエストスコープのトークン使用量トラッカー"""
 
     _usages: List[TokenUsage] = field(default_factory=list)
+    _llm_calls: List[LLMCallMetadata] = field(default_factory=list)
 
     def record(
         self,
@@ -75,6 +92,29 @@ class TokenTracker:
 
         return usage
 
+    def record_llm_call(
+        self,
+        *,
+        provider: str,
+        model: str,
+        llm_latency_ms: int,
+    ) -> LLMCallMetadata:
+        """Record successful LLM provider/model metadata for this request."""
+
+        metadata = LLMCallMetadata(
+            provider=provider,
+            model=model,
+            llm_latency_ms=max(0, int(llm_latency_ms)),
+        )
+        self._llm_calls.append(metadata)
+        logger.debug(
+            "LLM call metadata recorded: provider=%s model=%s latency_ms=%d",
+            metadata.provider,
+            metadata.model,
+            metadata.llm_latency_ms,
+        )
+        return metadata
+
     def _estimate_cost(
         self,
         model: str,
@@ -99,6 +139,16 @@ class TokenTracker:
     def usages(self) -> List[TokenUsage]:
         """記録済み使用量一覧"""
         return list(self._usages)
+
+    @property
+    def llm_calls(self) -> List[LLMCallMetadata]:
+        """Recorded successful LLM calls for this request."""
+        return list(self._llm_calls)
+
+    @property
+    def latest_llm_call(self) -> Optional[LLMCallMetadata]:
+        """Most recent successful LLM call for response-level observability."""
+        return self._llm_calls[-1] if self._llm_calls else None
 
     @property
     def total_tokens(self) -> int:
@@ -146,6 +196,7 @@ class TokenTracker:
     def reset(self):
         """使用量をクリア"""
         self._usages.clear()
+        self._llm_calls.clear()
 
 
 # リクエストスコープのContextVar
@@ -159,6 +210,23 @@ def get_token_tracker() -> TokenTracker:
         tracker = TokenTracker()
         _token_tracker_var.set(tracker)
     return tracker
+
+
+def record_llm_call_metadata(*, provider: str, model: str, llm_latency_ms: int) -> LLMCallMetadata:
+    """Record successful LLM metadata in the current request context."""
+
+    return get_token_tracker().record_llm_call(
+        provider=provider,
+        model=model,
+        llm_latency_ms=llm_latency_ms,
+    )
+
+
+def get_latest_llm_metadata() -> dict[str, Any]:
+    """Return latest successful LLM metadata for the current request, if any."""
+
+    latest = get_token_tracker().latest_llm_call
+    return latest.as_log_metadata() if latest else {}
 
 
 def reset_token_tracker() -> None:

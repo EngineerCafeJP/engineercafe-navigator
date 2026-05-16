@@ -39,5 +39,6 @@ variable "runtime_secret_ids" {
   type        = set(string)
   default = [
     "CEREBRAS_API_KEY",
+    "LANGSMITH_API_KEY",
   ]
 }

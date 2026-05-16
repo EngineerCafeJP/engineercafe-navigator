@@ -87,9 +87,9 @@ Alpha Phase 4 の会話 UX・fast path・identity まわりは [ADR 018](../adr/
 センサー／ボタン → Welcome UI
     →（任意）POST /api/ocr で visitor_identity
     → POST /api/reception/start（visitor_identity は任意）
-    → 受付 LangGraph サブグラフ
-    → POST /api/reception/respond で対話継続
-    → POST /api/reception/complete → メインワークフローへコンテキスト付きハンドオフ
+    → POST /api/chat または /api/voice
+    → MainWorkflow が受付 LangGraph サブグラフを進行
+    → 受付完了後は同じ MainWorkflow 内で専門エージェントへルーティング
 ```
 
 ### LangGraph 処理パイプライン（概念）

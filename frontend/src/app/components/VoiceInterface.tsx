@@ -238,6 +238,7 @@ type VoiceTimingTelemetry = {
   requestMode?: string;
   usedProxyFallback?: boolean;
   status?: number;
+  upstreamStatus?: Record<string, unknown> | null;
 };
 
 const elapsedMs = (startedAt: number): number => Math.max(0, Math.round(performance.now() - startedAt));
@@ -949,12 +950,14 @@ export default function VoiceInterface({
             language: responseLanguage,
             sessionId: sessionIdRef.current,
             emotion: typeof qaResult.emotion === 'string' ? qaResult.emotion : null,
+            ttsProvider: 'piper',
           },
           signal,
         );
         emitVoiceTelemetry('voice_turn_timing', 'tts', {
           ttsMs: elapsedMs(ttsStartedAt),
           status: 200,
+          upstreamStatus: ttsResult.upstreamStatus ?? null,
         });
 
         fillerGate.close();
@@ -1158,12 +1161,14 @@ export default function VoiceInterface({
             language: responseLanguage,
             sessionId: sessionIdRef.current,
             emotion: typeof qaResult.emotion === 'string' ? qaResult.emotion : null,
+            ttsProvider: 'piper',
           },
           abortController.signal,
         );
         emitVoiceTelemetry('voice_turn_timing', 'tts', {
           ttsMs: elapsedMs(ttsStartedAt),
           status: 200,
+          upstreamStatus: ttsResult.upstreamStatus ?? null,
         });
 
         const vrmResult = await resolveAutoVrmControlForPlayback(vrmTask);
@@ -1256,12 +1261,14 @@ export default function VoiceInterface({
             language: responseLanguage,
             sessionId: sessionIdRef.current,
             emotion: parsedAnswer.primaryEmotion,
+            ttsProvider: 'piper',
           },
           abortController.signal,
         );
         emitVoiceTelemetry('voice_turn_timing', 'tts', {
           ttsMs: elapsedMs(ttsStartedAt),
           status: 200,
+          upstreamStatus: ttsResult.upstreamStatus ?? null,
         });
 
         const vrmResult = await resolveAutoVrmControlForPlayback(vrmTask);

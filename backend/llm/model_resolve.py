@@ -40,9 +40,20 @@ def resolved_openrouter_model_slug(config: "ModelConfig", *, branch: str = "prim
       - "fallback": config.fallback_model (OpenRouter slug only)
     """
     if branch == "fallback":
+        env_var = getattr(config, "fallback_model_env", None)
+        if env_var:
+            override = os.getenv(env_var, "").strip()
+            if override:
+                return override
         if not config.fallback_model:
             return _DEFAULT_FAST_PRIMARY
         return resolved_slug_for_supported(config.fallback_model)
+
+    env_var = getattr(config, "primary_model_env", None)
+    if env_var:
+        override = os.getenv(env_var, "").strip()
+        if override:
+            return override
 
     mid = config.model_id
     if mid == SupportedModel.GEMINI_3_1_FLASH_LITE:
