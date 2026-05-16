@@ -18,7 +18,11 @@ from datetime import datetime
 from unittest.mock import Mock, AsyncMock, patch, MagicMock
 
 import backend.utils.memory_helper as memory_helper_module
-from backend.utils.memory_helper import SimplifiedMemoryHelper, get_memory_helper
+from backend.utils.memory_helper import (
+    SimplifiedMemoryHelper,
+    get_memory_helper,
+    infer_previous_request_type_from_messages,
+)
 
 _ACTIVE_SESSION_ID = "11111111-1111-1111-1111-111111111111"
 _ENDED_SESSION_ID = "22222222-2222-2222-2222-222222222222"
@@ -85,6 +89,33 @@ def _build_chain_mock(execute_return):
     ):
         getattr(chain, method_name).return_value = chain
     return chain
+
+
+def test_infer_previous_request_type_from_messages_prefers_latest_user_intent():
+    messages = [
+        {
+            "role": "user",
+            "content": "エンジニアカフェの営業時間を教えて",
+            "metadata": {"request_type": "hours"},
+        },
+        {"role": "assistant", "content": "9時から22時です。", "metadata": {}},
+        {"role": "user", "content": "料金はいくら？", "metadata": {}},
+    ]
+
+    assert infer_previous_request_type_from_messages(messages) == "price"
+
+
+def test_infer_previous_request_type_from_messages_ignores_assistant_rows():
+    messages = [
+        {
+            "role": "assistant",
+            "content": "営業時間の話です。",
+            "metadata": {"request_type": "hours"},
+        },
+        {"role": "user", "content": "こんにちは", "metadata": {}},
+    ]
+
+    assert infer_previous_request_type_from_messages(messages) is None
 
 
 # =============================================================================

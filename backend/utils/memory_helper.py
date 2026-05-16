@@ -28,6 +28,25 @@ logger = logging.getLogger(__name__)
 _AGENT_MEMORY_SESSION_COLUMN = "value->>sessionId"
 
 
+def infer_previous_request_type_from_messages(messages: List[Dict[str, Any]]) -> Optional[str]:
+    """Infer the latest user request_type from memory-style message rows."""
+    for message in reversed(messages):
+        if not isinstance(message, dict) or message.get("role") != "user":
+            continue
+
+        metadata = message.get("metadata")
+        request_type = metadata.get("request_type") if isinstance(metadata, dict) else None
+        if isinstance(request_type, str) and request_type.strip():
+            return request_type.strip()
+
+        content = str(message.get("content") or "")
+        request_type = extract_request_type(content)
+        if request_type:
+            return request_type
+
+    return None
+
+
 def _log_memory_event_safely(event: str, **fields: Any) -> None:
     try:
         from backend.observability.structured_logger import log_memory_event

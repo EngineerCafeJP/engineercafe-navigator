@@ -27,6 +27,11 @@ function mockBackendJsonResponse(body: unknown, status: number) {
     })) as typeof fetch;
 }
 
+function setBackendProxyEnv() {
+  process.env.BACKEND_API_URL = 'https://backend.example.com';
+  process.env.BACKEND_API_KEY = 'test-backend-key';
+}
+
 test(
   'createBackendErrorResponse maps backend detail to the standard error payload',
   { concurrency: false },
@@ -60,7 +65,7 @@ test(
   'qa POST preserves backend status codes and error payloads',
   { concurrency: false },
   async () => {
-    process.env.BACKEND_API_URL = 'https://backend.example.com';
+    setBackendProxyEnv();
     (process.env as Record<string, string | undefined>).NODE_ENV = 'test';
     mockBackendJsonResponse({ detail: 'validation failed' }, 422);
 
@@ -82,7 +87,7 @@ test(
   'voice GET preserves backend 4xx responses',
   { concurrency: false },
   async () => {
-    process.env.BACKEND_API_URL = 'https://backend.example.com';
+    setBackendProxyEnv();
     (process.env as Record<string, string | undefined>).NODE_ENV = 'test';
     mockBackendJsonResponse({ error: 'Unsupported action' }, 400);
 
@@ -100,7 +105,7 @@ test(
   'reception sensor-status GET forwards query params and backend payloads',
   { concurrency: false },
   async () => {
-    process.env.BACKEND_API_URL = 'https://backend.example.com';
+    setBackendProxyEnv();
     (process.env as Record<string, string | undefined>).NODE_ENV = 'test';
     mockBackendJsonResponse({ triggered: true, device_id: 'm5stack-001' }, 200);
 
@@ -120,6 +125,31 @@ test(
 );
 
 test(
+  'backend proxy refuses to send requests without BACKEND_API_KEY',
+  { concurrency: false },
+  async () => {
+    process.env.BACKEND_API_URL = 'https://backend.example.com';
+    delete process.env.BACKEND_API_KEY;
+    (process.env as Record<string, string | undefined>).NODE_ENV = 'test';
+    let fetchCalled = false;
+    global.fetch = (async () => {
+      fetchCalled = true;
+      throw new Error('fetch must not be called without BACKEND_API_KEY');
+    }) as typeof fetch;
+
+    const { backendFetch } = await import('../lib/api/backend-proxy');
+
+    await assert.rejects(
+      backendFetch('/api/chat', {
+        body: { query: 'hello' },
+      }),
+      /BACKEND_API_KEY environment variable is not set/,
+    );
+    assert.equal(fetchCalled, false);
+  }
+);
+
+test(
   'slides route no longer exports a GET handler',
   { concurrency: false },
   async () => {
@@ -133,7 +163,7 @@ test(
   'voice POST forwards warmup action to backend',
   { concurrency: false },
   async () => {
-    process.env.BACKEND_API_URL = 'https://backend.example.com';
+    setBackendProxyEnv();
     (process.env as Record<string, string | undefined>).NODE_ENV = 'test';
     let capturedBody: Record<string, unknown> | null = null;
     global.fetch = (async (_input, init) => {
@@ -177,7 +207,7 @@ test(
   'voice POST maps backend proxy timeout to a controlled 504 payload',
   { concurrency: false },
   async () => {
-    process.env.BACKEND_API_URL = 'https://backend.example.com';
+    setBackendProxyEnv();
     (process.env as Record<string, string | undefined>).NODE_ENV = 'test';
     global.fetch = (async () => {
       throw new DOMException('The operation was aborted due to timeout', 'TimeoutError');
@@ -201,7 +231,7 @@ test(
   'voice filler POST maps backend proxy timeout to a controlled 504 payload',
   { concurrency: false },
   async () => {
-    process.env.BACKEND_API_URL = 'https://backend.example.com';
+    setBackendProxyEnv();
     (process.env as Record<string, string | undefined>).NODE_ENV = 'test';
     global.fetch = (async () => {
       throw new DOMException('The operation was aborted due to timeout', 'TimeoutError');

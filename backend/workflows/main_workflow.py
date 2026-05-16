@@ -64,13 +64,59 @@ _workflow_lock = asyncio.Lock()
 # tRAG: Reusable httpx client for KO/ZH translation
 _trag_http_client: Optional["_httpx.AsyncClient"] = None
 
-# tRAG: Japanese kana detection for translation validation
-# NOTE: Intentionally kana-only (no CJK U+4E00-9FFF). Kanji-only
-# translations like "営業時間" are false-negatives, but including
-# CJK would also accept untranslated Chinese input. This trade-off
-# is documented in commit 72e42c974. Most natural Japanese sentences
-# contain at least one kana character.
+# tRAG: Japanese kana detection for translation validation.
+# Keep this regex kana-only. Kanji acceptance is handled by the narrower
+# _is_acceptable_trag_japanese helper so untranslated Chinese is not broadly
+# accepted just because it contains CJK characters.
 _JA_RE = re.compile(r"[\u3040-\u309f\u30a0-\u30ff]")
+_TRAG_CJK_RE = re.compile(r"[\u3400-\u9fff]")
+_TRAG_DISALLOWED_SCRIPT_RE = re.compile(r"[\uac00-\ud7af\u1100-\u11ff\u3130-\u318fA-Za-z]")
+_TRAG_JA_KANJI_TERMS = frozenset(
+    {
+        "営業時間",
+        "営業",
+        "開館",
+        "閉館",
+        "休館",
+        "会員登録",
+        "会員",
+        "登録",
+        "駐車場",
+        "駐車",
+        "駐輪場",
+        "駐輪",
+        "会議室",
+        "貸切",
+        "利用",
+        "予約",
+        "料金",
+        "無料",
+        "有料",
+        "設備",
+        "施設",
+        "電源",
+        "住所",
+        "受付",
+        "場所",
+        "写真",
+        "飲食",
+        "持込",
+        "喫煙",
+        "禁煙",
+        "建物",
+        "歴史",
+        "最寄",
+        "相談",
+        "転職",
+        "勉強会",
+        "交流会",
+        "参加",
+        "車椅子",
+        "子供",
+        "可能",
+        "必要",
+    }
+)
 
 # tRAG: Preamble pattern to strip from LLM translation output
 # Require delimiter (colon/space) after keyword to avoid stripping
@@ -126,7 +172,7 @@ def _is_pathological_translation(text: str) -> bool:
     if len(set(compact)) == 1:
         return True
 
-    for unit_len in (1, 2, 3):
+    for unit_len in range(1, min(8, len(compact) // 3) + 1):
         if len(compact) < unit_len * 3 or len(compact) % unit_len:
             continue
         unit = compact[:unit_len]
@@ -148,6 +194,22 @@ def _clean_trag_translation(text: str) -> str:
         logger.warning("tRAG low-information translation rejected: '%s'", translated[:60])
         return ""
     return translated
+
+
+def _is_acceptable_trag_japanese(text: str) -> bool:
+    """Return True when a tRAG translation looks usable as Japanese."""
+    if _JA_RE.search(text or ""):
+        return True
+
+    compact = _TRAG_REPEAT_PUNCT_RE.sub("", text or "")
+    if not compact or not _TRAG_CJK_RE.search(compact):
+        return False
+    if _TRAG_DISALLOWED_SCRIPT_RE.search(compact):
+        return False
+    if _is_pathological_translation(compact):
+        return False
+
+    return any(term in compact for term in _TRAG_JA_KANJI_TERMS)
 
 
 def _truthy_context_flag(value: Any) -> bool:
@@ -985,13 +1047,16 @@ class MainWorkflow:
             content = str(content or "").strip()
             if not content:
                 continue
+            metadata = {"canonical_content_key": canonicalize_facility_memory_key_text(content)}
+            if role == "user":
+                request_type = extract_request_type(content)
+                if request_type:
+                    metadata["request_type"] = request_type
             recent.append(
                 {
                     "role": role,
                     "content": content,
-                    "metadata": {
-                        "canonical_content_key": canonicalize_facility_memory_key_text(content)
-                    },
+                    "metadata": metadata,
                 }
             )
         return recent[-20:]
@@ -1128,7 +1193,10 @@ class MainWorkflow:
         全クエリの前処理として、SimplifiedMemoryHelperから会話履歴を取得し、
         stateのcontextに追加する。
         """
-        from backend.utils.memory_helper import get_memory_helper
+        from backend.utils.memory_helper import (
+            get_memory_helper,
+            infer_previous_request_type_from_messages,
+        )
 
         memory_helper = get_memory_helper()
         session_id = state.get("session_id", "")
@@ -1153,13 +1221,17 @@ class MainWorkflow:
                     checkpoint_messages = self._checkpoint_messages_to_recent_memory(
                         state.get("messages", [])
                     )
+                    checkpoint_inherited_request_type = None
                     if checkpoint_messages:
                         checkpoint_messages = memory_helper._rank_messages(
                             checkpoint_messages,
                             query,
                         )
-                    memory_context = {
-                        **memory_context,
+                        if not extract_request_type(query):
+                            checkpoint_inherited_request_type = (
+                                infer_previous_request_type_from_messages(checkpoint_messages)
+                            )
+                    checkpoint_overlay = {
                         "recent_messages": checkpoint_messages,
                         "context_string": memory_helper._build_comprehensive_context(
                             checkpoint_messages,
@@ -1167,6 +1239,16 @@ class MainWorkflow:
                             language,
                         ),
                         "stm_source": "langgraph_checkpointer",
+                    }
+                    if checkpoint_inherited_request_type and not memory_context.get(
+                        "inherited_request_type"
+                    ):
+                        checkpoint_overlay["inherited_request_type"] = (
+                            checkpoint_inherited_request_type
+                        )
+                    memory_context = {
+                        **memory_context,
+                        **checkpoint_overlay,
                     }
             except Exception as checkpoint_context_error:
                 logger.debug(
@@ -1198,7 +1280,7 @@ class MainWorkflow:
                 if language in ("en", "ko", "zh"):
                     try:
                         translated = await _translate_llm_with_retry(query, language)
-                        if translated and _JA_RE.search(translated):
+                        if translated and _is_acceptable_trag_japanese(translated):
                             rag_query = translated
                             logger.info(
                                 "tRAG %s->ja: '%s' -> '%s'",

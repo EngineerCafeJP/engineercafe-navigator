@@ -44,6 +44,13 @@ export const MOCK_EDITOR_CONFIG = {
   },
 };
 
+export const MOCK_METADATA_TEMPLATES = {
+  templates: MOCK_EDITOR_CONFIG.templates,
+  availableCategories: Object.keys(MOCK_EDITOR_CONFIG.templates).filter(
+    (category) => category !== 'default',
+  ),
+};
+
 /**
  * 音声レスポンスのモックデータ
  * 最小の有効な MP3: ID3 ヘッダ + 1フレーム（無音）
@@ -61,6 +68,10 @@ export async function setupKnowledgeMocks(page: Page) {
   // editor-config エンドポイント
   await page.route('/api/admin/knowledge/editor-config', (route) =>
     route.fulfill({ json: MOCK_EDITOR_CONFIG }),
+  );
+
+  await page.route('/api/admin/knowledge/metadata-templates', (route) =>
+    route.fulfill({ json: MOCK_METADATA_TEMPLATES }),
   );
 
   // 個別エントリ取得・更新・削除

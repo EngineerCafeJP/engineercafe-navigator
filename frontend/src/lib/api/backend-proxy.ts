@@ -5,13 +5,12 @@
  * and attaches the X-API-Key header to every outgoing request.
  */
 
-const BACKEND_API_URL = process.env.BACKEND_API_URL;
 export const BACKEND_PROXY_TIMEOUT_MS = 110_000;
 export const VERCEL_VOICE_MAX_DURATION_MS = 120_000;
 export const CLOUD_RUN_TIMEOUT_MS = 300_000;
 export const ISSUE_696_WORST_OBSERVED_LATENCY_MS = 97_630;
 
-if (!BACKEND_API_URL) {
+if (!process.env.BACKEND_API_URL) {
   console.warn(
     "BACKEND_API_URL is not set. Backend proxy requests will fail.",
   );
@@ -61,7 +60,13 @@ export async function backendFetch<T = unknown>(
   opts: BackendProxyOptions = {},
 ): Promise<BackendProxyResult<T>> {
   const { method = "POST", body, headers = {}, params, signal, timeoutMs } = opts;
-  const apiKey = process.env.BACKEND_API_KEY || "";
+  const apiKey = process.env.BACKEND_API_KEY?.trim();
+
+  if (!apiKey) {
+    throw new Error(
+      "BACKEND_API_KEY environment variable is not set. Refusing to proxy to backend.",
+    );
+  }
 
   const url = buildUrl(path, params);
 
@@ -71,9 +76,7 @@ export async function backendFetch<T = unknown>(
     mergedHeaders["Content-Type"] ??= "application/json";
   }
 
-  if (apiKey) {
-    mergedHeaders["X-API-Key"] = apiKey;
-  }
+  mergedHeaders["X-API-Key"] = apiKey;
 
   // Keep the default proxy timeout below Vercel's 120s route maxDuration and
   // above the Issue #696 observed 60-97s cold-start range. This lets the client
@@ -123,12 +126,14 @@ function buildUrl(
   path: string,
   params?: Readonly<Record<string, string>>,
 ): string {
-  if (!BACKEND_API_URL) {
+  const backendApiUrl = process.env.BACKEND_API_URL?.trim();
+
+  if (!backendApiUrl) {
     throw new Error(
       "BACKEND_API_URL environment variable is not set. Cannot proxy to backend.",
     );
   }
-  const base = BACKEND_API_URL.replace(/\/+$/, "");
+  const base = backendApiUrl.replace(/\/+$/, "");
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   const url = new URL(`${base}${normalizedPath}`);
 

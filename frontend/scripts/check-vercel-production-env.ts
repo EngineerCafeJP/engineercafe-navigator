@@ -8,19 +8,21 @@ import {
 
 const args = new Set(process.argv.slice(2));
 const shouldForce = args.has("--force") || args.has("--production");
-const shouldCheck = shouldForce || process.env.VERCEL_ENV === "production";
+const requiredVercelEnvironments = new Set(["production", "preview"]);
+const shouldCheck =
+  shouldForce || requiredVercelEnvironments.has(process.env.VERCEL_ENV ?? "");
 
 if (args.has("--help") || args.has("-h")) {
   console.log(`Usage: pnpm env:check:production [--force]
 
-Checks Vercel production-required frontend env vars without printing values.
-By default this runs only when VERCEL_ENV=production. Use --force in CI or local smoke checks.`);
+Checks Vercel production/preview-required frontend env vars without printing values.
+By default this runs only when VERCEL_ENV=production or VERCEL_ENV=preview. Use --force in CI or local smoke checks.`);
   process.exit(0);
 }
 
 if (!shouldCheck) {
   console.log(
-    `[env-check] skipped: VERCEL_ENV=${process.env.VERCEL_ENV ?? "(unset)"} is not production.`
+    `[env-check] skipped: VERCEL_ENV=${process.env.VERCEL_ENV ?? "(unset)"} is not production or preview.`
   );
   process.exit(0);
 }
