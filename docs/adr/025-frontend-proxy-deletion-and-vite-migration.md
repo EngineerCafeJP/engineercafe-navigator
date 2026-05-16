@@ -25,6 +25,7 @@ Accepted (2026-05-17) — 実装は次セッション以降。ADR-021 を Phase 
 ```
 frontend/src/app/api/
 ├── admin/knowledge/*        (8 routes)  ← admin auth migration が前提
+├── admin/stt                 (1)        ← admin auth migration と同時整理
 ├── alerts/webhook            (1)
 ├── animations                (1)
 ├── backgrounds               (1)
@@ -35,10 +36,14 @@ frontend/src/app/api/
 ├── monitoring/*              (2)
 ├── ocr                       (1)
 ├── qa                        (1)        ← Issue #358 既存タスク
-├── reception/*               (5)        ← ADR-024 Phase A4 で 2 routes 削除予定
+├── reception/*               (5)        ← ADR-024 Phase A4 で respond/complete 2 routes 削除予定
 ├── slides                    (1)
 └── voice/*                   (2)
+                              ─────
+                              合計 28
 ```
+
+> Note: `frontend/src/app/api/reception/` 直下にあるのは `start`, `respond`, `complete`, `sensor-status`, `status/[receptionSessionId]` の 5 routes。**`sensor-trigger` は frontend proxy を持たず、デバイス (M5Stack) が backend `/api/reception/sensor-trigger` を直叩き**するため本 ADR の対象外。
 
 ### ADR-023 / ADR-024 との依存関係
 
@@ -73,8 +78,9 @@ ADR-021 の Accepted 方針を **4 Phase に分解** し、ADR-024 と並列実�
 - [`frontend/src/app/api/voice/route.ts`](../../frontend/src/app/api/voice/route.ts) + [`voice/filler/route.ts`](../../frontend/src/app/api/voice/filler/route.ts) 削除
 - reception proxy (ADR-024 Phase A4 で respond/complete は削除済み):
   - [`frontend/src/app/api/reception/start/route.ts`](../../frontend/src/app/api/reception/start/route.ts) 削除
-  - [`frontend/src/app/api/reception/sensor-status/[…]/route.ts`](../../frontend/src/app/api/reception/sensor-status/route.ts) 削除
-  - sensor-trigger / status も同様
+  - [`frontend/src/app/api/reception/sensor-status/route.ts`](../../frontend/src/app/api/reception/sensor-status/route.ts) 削除
+  - [`frontend/src/app/api/reception/status/[receptionSessionId]/route.ts`](../../frontend/src/app/api/reception/status/[receptionSessionId]/route.ts) 削除
+  - (`sensor-trigger` は frontend proxy を持たず M5Stack が backend を直叩きなので対象外)
 - STT / TTS のタイムアウト挙動 + CORS を BE 直叩きで再計測
 - BE Cloud Run の egress 帯域確認
 
@@ -181,6 +187,9 @@ ADR-021 の Accepted 方針を **4 Phase に分解** し、ADR-024 と並列実�
 - [`.github/workflows/voice-e2e-nightly.yml`](../../.github/workflows/voice-e2e-nightly.yml) — Phase B1 の検証 gate
 
 ### 外部 (2026/05 時点)
+
+> **Note:** 外部リンクは 2026-05-17 時点で domain-plausible だが、各 Phase 着手時に実装担当が再到達性を確認すること。
+
 - [Designrevision: Vite vs Next.js Complete Comparison (2026)](https://designrevision.com/blog/vite-vs-nextjs)
 - [TECHSY: Next.js vs React + Vite 2026 — Need a Framework?](https://techsy.io/en/blog/nextjs-vs-react-vite)
 - [Next.js: Migrating from Vite (official)](https://nextjs.org/docs/app/guides/migrating/from-vite)

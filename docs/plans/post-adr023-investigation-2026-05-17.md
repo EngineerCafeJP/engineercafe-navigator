@@ -76,7 +76,7 @@ grep -rn 'metadata\["ltm_store_write"\]\|"ltm_store_write":' backend/ --include=
 # → backend/observability/structured_logger.py:170 (consumer side) のみ
 ```
 
-**setter が production code に存在しない**。LTM write を行う [`backend/workflows/main_workflow.py:1893-1906`](../../backend/workflows/main_workflow.py:1893) (`_write_long_term_memory` / `extract_memories`) は呼ばれているはずだが、結果を `metadata["ltm_store_write"]` に reflect していない。
+**setter が production code に存在しない**。LTM write を行う `_write_long_term_memory` の **定義は** [`backend/workflows/main_workflow.py:1835`](../../backend/workflows/main_workflow.py:1835)、**呼び出しは** L1876 (`candidate_fast_path`) と L1901 (`legacy_direct`)、`extract_memories` 呼び出しは [`backend/workflows/main_workflow.py:1898`](../../backend/workflows/main_workflow.py:1898) にあり、これらは呼ばれているはずだが、結果を `metadata["ltm_store_write"]` に reflect していない。
 
 #### 影響
 - 「LTM が動いているか」を本番で観測する手段が **ゼロ**

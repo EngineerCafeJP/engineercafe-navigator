@@ -52,7 +52,7 @@ ADR-023 (Semantic Router + Critic node) はルーティング層の肥大化を�
 
 #### スコープ
 - [`backend/observability/structured_logger.py`](../../backend/observability/structured_logger.py) に `memory_*` / `reception_*` event family を追加
-- LTM write 結果を必ず `metadata["ltm_store_write"]` に inject ([`backend/workflows/main_workflow.py:1893-1906`](../../backend/workflows/main_workflow.py:1893) の `_write_long_term_memory` 周辺)
+- LTM write 結果を必ず `metadata["ltm_store_write"]` に inject — `_write_long_term_memory` の **定義** は [`backend/workflows/main_workflow.py:1835`](../../backend/workflows/main_workflow.py:1835)、**呼び出し** は L1876 (`candidate_fast_path`) と L1901 (`legacy_direct`)、`extract_memories` 呼び出しは [`backend/workflows/main_workflow.py:1898`](../../backend/workflows/main_workflow.py:1898)。3 箇所すべてで metadata に成功/失敗を反映
 - `chat_response.route` フィールドに class 名が漏れている問題（17日中 629件 `BusinessInfoAgent` 等）を [`backend/observability/structured_logger.py:148`](../../backend/observability/structured_logger.py:148) の優先順位修正で解消
   - `route = metadata["route"]` を呼び出し側で必ず set
   - 命名規約は ADR-023 の routes.yaml と一致させる
@@ -74,7 +74,7 @@ ADR-023 (Semantic Router + Critic node) はルーティング層の肥大化を�
 - [`backend/utils/memory_helper.py:55`](../../backend/utils/memory_helper.py:55) の `max_entries = 100` を sessionId index 前提に再設計
 
 #### 完了条件
-- memory loader p95 latency ≤ 100ms (現状未計測。Phase A0 で計測可能化)
+- memory loader p95 latency ≤ 100ms — 計測 probe は Phase A0 で `memory_loader_get_recent_messages_duration_ms` event family として emit（LangSmith dashboard の `event="memory_loader_get_recent_messages"` で p95 算出）
 - agent_memory total rows × 1000 件規模で線形時間に依存しないことを benchmark
 
 ### D3: Phase A2 — Hierarchical Store namespace 移行
@@ -129,7 +129,7 @@ ADR-023 (Semantic Router + Critic node) はルーティング層の肥大化を�
 - reception 関連 dead code 約 200+ 行削除
 - `public.users` への参照ゼロ
 - `users_table_unavailable` warning が起動毎に出ない
-- `/api/reception/start` → reception 完了率 24% → ≥ 60%（A0 観測性追加で計測可能になる）
+- `/api/reception/start` → reception 完了率 24% → ≥ 60% (**aspirational**: UX / sensor reliability / visitor engagement にも依存する外生要因あり。controllable な指標は「instrumentation 完全性 = reception_transition event が全 stage で emit」を別途確認する)
 - E2E test (Playwright) で reception flow がフル経路通る
 
 ## Consequences
@@ -211,6 +211,9 @@ ADR-023 (Semantic Router + Critic node) はルーティング層の肥大化を�
 - MEMORY.md Phase 3.6 (`B-1〜B-4`) — 本 ADR で並行解消候補
 
 ### 外部 (2026/05 時点)
+
+> **Note:** 外部リンクは 2026-05-17 時点で domain-plausible だが、各 Phase 着手時に実装担当が再到達性を確認すること。リンク切れの場合は WebSearch で同等資料を再取得する。
+
 - [Mem0: State of AI Agent Memory 2026](https://mem0.ai/blog/state-of-ai-agent-memory-2026)
 - [Letta: Benchmarking AI Agent Memory (LongMemEval)](https://www.letta.com/blog/benchmarking-ai-agent-memory)
 - [LangChain: Long-term memory docs](https://docs.langchain.com/oss/python/langchain/long-term-memory)
