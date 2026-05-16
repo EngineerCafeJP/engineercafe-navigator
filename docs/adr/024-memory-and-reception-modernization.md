@@ -56,11 +56,14 @@ ADR-023 (Semantic Router + Critic node) はルーティング層の肥大化を�
 - `chat_response.route` フィールドに class 名が漏れている問題（17日中 629件 `BusinessInfoAgent` 等）を [`backend/observability/structured_logger.py:148`](../../backend/observability/structured_logger.py:148) の優先順位修正で解消
   - `route = metadata["route"]` を呼び出し側で必ず set
   - 命名規約は ADR-023 の routes.yaml と一致させる
+- **Cerebras / LLM provider observability**: `chat_response` payload に `provider` (`cerebras` / `openrouter`), `model` (`gpt-oss-120b` / `gemini-3.1-flash-lite-preview` 等), `llm_latency_ms` を追加。2026-05-17 調査で 17日間 889回の Cerebras 試行は **100% 成功**だが、httpx INFO log が 2026-05-03 から抑制され、唯一の success signal が token_tracker の `WARNING: No cost data for model 'gpt-oss-120b'` という偶然の副作用になっていた。Phase A0 で構造化 event 化することで「Cerebras が本当に効いているか」を本番で直接観測可能にする。Cerebras setter は [`backend/llm/openrouter.py:163-197`](../../backend/llm/openrouter.py:163) `_cerebras_generate` の最後で metadata に inject、OpenRouter 側は L235-261 で同様に inject。
 
 #### 完了条件
 - LangSmith dashboard で `ltm_store_write="success"` が 0% → 名前明示ターンで ≥ 95%
 - `memory_*` event が 5 種類以上 emit される
 - `route="unknown"` 出現率 ≤ 0.5%
+- `chat_response` payload で **provider 別 latency 分布**が可視化可能（Cerebras vs OpenRouter primary vs OpenRouter fallback の 3 系統が区別できる）
+- Cerebras 成功率の真の signal が `token_tracker WARNING` ではなく `provider="cerebras"` event count で取れる
 
 ### D2: Phase A1 — agent_memory schema 最適化
 
@@ -157,12 +160,13 @@ ADR-023 (Semantic Router + Critic node) はルーティング層の肥大化を�
 | public.users 削除で OCR 統合 PR と競合 | A4 着手前に PM (terisuke) に「会員番号 OCR の今後扱い」を確認、未確定なら A4 を後ろ倒し |
 | STM 二重保存解消の機能リグレッション | Checkpointer 単独で `recent_messages` が引けることを A3 内で benchmark + A/B test |
 | Phase A0 を ADR-023 Phase 0 と同梱した PR が複雑化 | observability 配線のみに絞る (5 行 LangSmith + structured_logger fix)、Phase A1 以降を別 PR で展開 |
+| **Cerebras トラフィックが本番で壊れても気付けない** | 2026-05-17 調査で判明: 17日間 889回 Cerebras 試行が `token_tracker WARNING: No cost data` という偶然の副作用でしか観測できなかった。httpx INFO log が 2026-05-03 から抑制された際、ダッシュボードからは Cerebras 全失敗と誤判定された。Phase A0 で `chat_response.provider` / `model` / `llm_latency_ms` フィールドを追加し、構造化 event で provider 別成功率を直接観測可能にする |
 
 ## Rollout Plan
 
 | Phase | 内容 | 期間 | 担当候補 | 完了条件 |
 |---|---|---|---|---|
-| **A0** | observability bridging + ltm_store_write setter | 0.5–1日 | backend-developer (ADR-023 Phase 0 と同 PR) | `ltm_store_write="success"` が出る、`memory_*` event family ≥ 5 種類 |
+| **A0** | observability bridging + ltm_store_write setter + LLM provider 可視化 | 0.5–1日 | backend-developer (ADR-023 Phase 0 と同 PR) | `ltm_store_write="success"` が出る、`memory_*` event family ≥ 5 種類、`chat_response.provider` / `model` / `llm_latency_ms` フィールドで Cerebras vs OpenRouter の分布が dashboard で見える |
 | **A1** | agent_memory schema 最適化 (GIN index + SQL filter) | 2–3日 | backend-developer + tdd-guide + database-optimizer | memory loader p95 ≤ 100ms |
 | **A2** | hierarchical Store namespace 移行 | 1週間 (実装3日 + shadow 5日) | backend-developer + Codex CLI 経路C (migration script) | shadow 並走で discrepancy ≤ 1% |
 | **A3** | semantic extractor 統合 + STM 二重保存解消 | 1週間 | backend-developer + ADR-023 担当者と協調 | memory_extractor + purpose_classifier 合計 ≤ 200 行 |
