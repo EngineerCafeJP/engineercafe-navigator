@@ -59,53 +59,16 @@ def service(mock_client: MagicMock) -> VisitorIdentificationService:
 
 
 @pytest.mark.asyncio
-async def test_identify_by_nfc_found(service: VisitorIdentificationService, mock_client: MagicMock):
-    """NFC lookup should resolve to visit history without querying a user profile table."""
-    nfc_builder = MagicMock()
-    nfc_builder.select.return_value = nfc_builder
-    nfc_builder.eq.return_value = nfc_builder
-    nfc_builder.execute.return_value = _make_query_result(data=[{"user_id": 42}])
-
-    visit_builder = MagicMock()
-    visit_builder.select.return_value = visit_builder
-    visit_builder.eq.return_value = visit_builder
-    visit_builder.order.return_value = visit_builder
-    visit_builder.limit.return_value = visit_builder
-    visit_builder.execute.return_value = _make_query_result(
-        data=[
-            {
-                "started_at": "2026-03-01T10:00:00+09:00",
-                "purpose": "facility_use",
-                "purpose_detail": "Co-working",
-                "metadata": {"visitor_name": "Taro"},
-            }
-        ]
-    )
-
-    count_builder = MagicMock()
-    count_builder.select.return_value = count_builder
-    count_builder.eq.return_value = count_builder
-    count_builder.execute.return_value = _make_query_result(count=5)
-
-    call_count = {"visits": 0}
-
-    def table_side_effect(name: str):
-        if name == "nfcs":
-            return nfc_builder
-        assert name == "visits"
-        call_count["visits"] += 1
-        return visit_builder if call_count["visits"] == 1 else count_builder
-
-    mock_client.table = MagicMock(side_effect=table_side_effect)
+async def test_identify_by_nfc_is_stubbed_until_schema_exists(
+    service: VisitorIdentificationService,
+    mock_client: MagicMock,
+):
+    """NFC must not query a speculative nfcs table before a reviewed migration exists."""
 
     result = await service.identify_by_nfc("nfc-abc-123")
 
-    assert result is not None
-    assert result["visitor_type"] == "returning"
-    assert result["user_id"] == 42
-    assert result["name"] == "Taro"
-    assert result["last_purpose"] == "facility_use"
-    assert result["visit_count"] == 5
+    assert result is None
+    mock_client.table.assert_not_called()
 
 
 @pytest.mark.asyncio

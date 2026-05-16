@@ -59,3 +59,16 @@ class TestMemoryFeatureFlags:
         ):
             flags = get_memory_feature_flags()
             assert flags.enable_agent_memory_stm_writes is False
+
+    def test_production_cutover_env_disables_agent_memory_stm_writes(self):
+        with patch.dict(
+            os.environ,
+            {
+                "ENVIRONMENT": "production",
+                "ENABLE_AGENT_MEMORY_STM_WRITES": "false",
+                "ALLOW_AGENT_MEMORY_STM_WRITE_DISABLE": "true",
+            },
+            clear=True,
+        ):
+            flags = get_memory_feature_flags()
+            assert flags.enable_agent_memory_stm_writes is False

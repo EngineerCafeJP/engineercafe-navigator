@@ -47,10 +47,6 @@ except ImportError:
 from backend.utils.emotion_mapping import EmotionMapping  # noqa: E402
 from backend.utils.kanji_converter import KanjiConverter  # noqa: E402
 
-# TODO: 実装時に必要なインポート
-# from llm.openrouter import OpenRouterProvider
-# from llm.models import get_model_config
-
 
 class CharacterControlAgent:
     """
@@ -96,11 +92,7 @@ class CharacterControlAgent:
         # 漢字→読みカナ変換ユーティリティの初期化
         self._kanji_converter = KanjiConverter()
 
-        # リップシンク関連のプレースホルダー（将来の拡張用）
-        # TODO: リップシンク解析器の実装
-        # self.lip_sync_analyzer = None
-        # TODO: リップシンクキャッシュの実装
-        # self.lip_sync_cache = None
+        self._lip_sync_cache: dict[tuple[str, float], List[Dict[str, Any]]] = {}
 
         logger.info(
             "CharacterControlAgent初期化完了: "
@@ -151,11 +143,9 @@ class CharacterControlAgent:
             mapped_expression = expression_data["expression"]
             intensity = expression_data["intensity"]
 
-            # 将来の拡張用: intensityパラメータが追加された場合の処理
-            # Mastra版では、intensity < 0.3 の場合はneutralを返す
-            # TODO: メソッドシグネチャにintensityパラメータを追加する場合の処理
-            # if intensity is not None and intensity < 0.3:
-            #     mapped_expression = "neutral"
+            # Mastra版と同じく、低強度の感情は表情をneutralへ寄せる。
+            if intensity < 0.3:
+                mapped_expression = "neutral"
 
             # 2. durationの設定（デフォルト値を使用）
             duration = self.DEFAULT_EXPRESSION_DURATION
@@ -793,16 +783,31 @@ class CharacterControlAgent:
         Returns:
             統合された感情タグ
 
-        TODO:
-        - 感情の優先順位付け
-        - 複数感情のブレンド（例: happy + excited → very_happy）
-        - 矛盾する感情の解決（例: happy + sad → neutral）
         """
-        logger.info("感情統合（骨組み）: %s", emotions)
+        logger.info("感情統合: %s", emotions)
 
-        # TODO: 実装
-        # プレースホルダー: 最初の感情を返す
-        return emotions[0] if emotions else "neutral"
+        normalized = [str(emotion).strip().lower() for emotion in emotions if str(emotion).strip()]
+        if not normalized:
+            return "neutral"
+
+        positive = {"happy", "excited", "relaxed"}
+        negative = {"sad", "angry", "confused"}
+        if any(emotion in positive for emotion in normalized) and any(
+            emotion in negative for emotion in normalized
+        ):
+            return "neutral"
+
+        priority = {
+            "angry": 90,
+            "sad": 80,
+            "confused": 70,
+            "surprised": 65,
+            "excited": 60,
+            "happy": 50,
+            "relaxed": 40,
+            "neutral": 10,
+        }
+        return max(normalized, key=lambda emotion: priority.get(emotion, 0))
 
     def generate_vrm_command(
         self, expression: str, intensity: float = 1.0, animation: Optional[str] = None

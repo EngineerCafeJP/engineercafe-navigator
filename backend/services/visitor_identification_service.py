@@ -1,7 +1,7 @@
 """Visitor Identification Service - Infrastructure layer for visitor lookup.
 
-Identifies visitors using persisted visit history (NFC, visitor_id, etc.) and
-returns structured identity information to the reception flow.
+Identifies visitors using persisted visit history and returns structured
+identity information to the reception flow.
 """
 
 import logging
@@ -14,10 +14,9 @@ class VisitorIdentificationService:
     """Identifies visitors using multiple signals.
 
     Resolution priority (highest confidence first):
-        1. NFC scan -> nfcs table -> visits table by user_id
-        2. visitor_id -> visits table lookup
-        3. LangGraph Store long-term memories (existing behaviour)
-        4. None -> new visitor
+        1. visitor_id -> visits table lookup
+        2. LangGraph Store long-term memories (existing behaviour)
+        3. None -> new visitor
 
     Args:
         supabase_client: Optional pre-configured Supabase client.  When
@@ -44,25 +43,15 @@ class VisitorIdentificationService:
     # ------------------------------------------------------------------
 
     async def identify_by_nfc(self, nfc_id: str) -> Optional[Dict[str, Any]]:
-        """Look up a visitor by NFC card ID.
+        """Return no identity until the NFC schema is formally introduced.
 
-        Args:
-            nfc_id: The NFC identifier string read from the card.
-
-        Returns:
-            A dict with visitor identity fields, or ``None`` when not found
-            or when Supabase is unavailable.
+        Production migrations do not define an ``nfcs`` table. Querying a
+        speculative table makes the reception path look more capable than it
+        is, so NFC recognition intentionally degrades to a non-personalized
+        visitor until a reviewed NFC schema is added.
         """
-        client = await self._get_supabase()
-        if not client:
-            return None
-        try:
-            result = client.table("nfcs").select("user_id").eq("nfc_id", nfc_id).execute()
-            if result.data:
-                user_id = result.data[0]["user_id"]
-                return await self._get_visit_profile_by_user_id(user_id)
-        except Exception as e:
-            logger.warning("NFC lookup failed: %s", e)
+        if nfc_id:
+            logger.info("NFC lookup skipped until NFC schema is available")
         return None
 
     async def identify_by_visitor_id(self, visitor_id: str) -> Optional[Dict[str, Any]]:

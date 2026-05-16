@@ -404,9 +404,9 @@ class TestCharacterControlAgent:
         assert result == "happy"
 
     def test_combine_emotions_multiple(self):
-        """複数感情の統合（現時点では最初の感情を返す）"""
+        """矛盾する複数感情はneutralに寄せる"""
         result = self.agent.combine_emotions(["happy", "sad", "excited"])
-        assert result == "happy"  # 現時点では最初の感情を返す
+        assert result == "neutral"
 
     def test_combine_emotions_empty(self):
         """空の感情リストの統合"""

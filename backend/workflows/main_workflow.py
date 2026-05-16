@@ -45,6 +45,7 @@ from backend.config.routing_constants import (
 from backend.services.memory_promoter import MemoryPromoter
 from backend.utils.cafe_entity import (
     cafe_entity_metadata,
+    canonicalize_facility_memory_key_text,
     context_mentions_engineer_cafe_hours,
     inherited_request_type,
     is_ambiguous_cafe_hours_query,
@@ -967,6 +968,34 @@ class MainWorkflow:
         except Exception as exc:
             logger.warning("Failed to store fast-path user message: %s", exc)
 
+    @staticmethod
+    def _checkpoint_messages_to_recent_memory(messages: list[BaseMessage]) -> list[dict[str, Any]]:
+        """Convert persisted LangGraph messages into memory-context rows."""
+        recent: list[dict[str, Any]] = []
+        for message in messages:
+            if isinstance(message, HumanMessage):
+                role = "user"
+            elif isinstance(message, AIMessage):
+                role = "assistant"
+            else:
+                continue
+            content = message.content
+            if isinstance(content, list):
+                content = " ".join(str(part) for part in content)
+            content = str(content or "").strip()
+            if not content:
+                continue
+            recent.append(
+                {
+                    "role": role,
+                    "content": content,
+                    "metadata": {
+                        "canonical_content_key": canonicalize_facility_memory_key_text(content)
+                    },
+                }
+            )
+        return recent[-20:]
+
     async def _reception_check_node(self, state: WorkflowStateDict) -> dict[str, Any]:
         from backend.utils.reception_status import check_reception_status
 
@@ -1116,6 +1145,34 @@ class MainWorkflow:
                     "inherit_context": True,
                 },
             )
+            try:
+                from backend.utils.memory_feature_flags import get_memory_feature_flags
+
+                memory_flags = get_memory_feature_flags()
+                if not memory_flags.enable_agent_memory_stm_writes:
+                    checkpoint_messages = self._checkpoint_messages_to_recent_memory(
+                        state.get("messages", [])
+                    )
+                    if checkpoint_messages:
+                        checkpoint_messages = memory_helper._rank_messages(
+                            checkpoint_messages,
+                            query,
+                        )
+                    memory_context = {
+                        **memory_context,
+                        "recent_messages": checkpoint_messages,
+                        "context_string": memory_helper._build_comprehensive_context(
+                            checkpoint_messages,
+                            memory_context.get("knowledge_results", []),
+                            language,
+                        ),
+                        "stm_source": "langgraph_checkpointer",
+                    }
+            except Exception as checkpoint_context_error:
+                logger.debug(
+                    "Checkpointer STM context overlay skipped: %s",
+                    checkpoint_context_error,
+                )
 
             # ユーザーメッセージを保存
             if query:  # 空でないことを確認

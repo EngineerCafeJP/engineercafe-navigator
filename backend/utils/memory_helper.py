@@ -204,8 +204,27 @@ class SimplifiedMemoryHelper:
 
         logger.info("Getting context for query: '%s...', session: %s", query[:50], session_id)
 
-        # 最近のメッセージを取得
-        recent_messages = await self._get_recent_messages(session_id)
+        try:
+            from backend.utils.memory_feature_flags import get_memory_feature_flags
+
+            memory_flags = get_memory_feature_flags()
+        except Exception as flag_error:
+            logger.debug("Failed to read memory feature flags: %s", flag_error)
+            memory_flags = None
+
+        # 最近のメッセージを取得。STM cutover 後は LangGraph Checkpointer を
+        # short-term source とし、agent_memory からの read も止める。
+        if memory_flags and not memory_flags.enable_agent_memory_stm_writes:
+            recent_messages = []
+            _log_memory_event_safely(
+                "memory_recent_messages_load",
+                session_id=session_id,
+                success=True,
+                skipped=True,
+                reason="agent_memory_stm_writes_disabled",
+            )
+        else:
+            recent_messages = await self._get_recent_messages(session_id)
         logger.info("Found %d recent messages", len(recent_messages))
         _log_memory_event_safely(
             "memory_context_load",
@@ -224,7 +243,10 @@ class SimplifiedMemoryHelper:
         query_request_type = extract_request_type(query)
         query_intent_override = False
         if inherit_context:
-            inherited_request_type = await self.get_previous_request_type(session_id)
+            if memory_flags and not memory_flags.enable_agent_memory_stm_writes:
+                inherited_request_type = None
+            else:
+                inherited_request_type = await self.get_previous_request_type(session_id)
             if query_request_type:
                 query_intent_override = inherited_request_type is not None
                 inherited_request_type = query_request_type
