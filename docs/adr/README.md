@@ -29,6 +29,8 @@
 | [010 — Qwen ONNX quantization spike](010-qwen-onnx-quantization.md)     | ONNX / INT4 実験                  |
 | [016 — Qwen STT phase 2 profiling](016-qwen-stt-phase2-profiling.md)    | STT プロファイル                      |
 | [023 — Semantic Router + runtime self-evaluation](023-semantic-router-and-runtime-self-evaluation.md) | ルーティング再設計（三段カスケード）と LangGraph critic_node 自己評価 |
+| [024 — Memory & Reception modernization](024-memory-and-reception-modernization.md) | STM/LTM 観測性ゼロ・O(N)スキャン・受付 dead code を Phase A0–A4 で整理 |
+| [025 — Frontend proxy deletion → Vite migration](025-frontend-proxy-deletion-and-vite-migration.md) | ADR-021 を Phase B0–B3 に分解、ADR-024 と並列実行 |
 
 
 ## キャラ・長期記憶・インフラ観測
@@ -50,5 +52,5 @@
 
 ## メモ
 
-- ADR 番号は 005 以降を運用しており、**015 は欠番**です（採番のみ存在し、文書化に至らなかったため）。新しい ADR を起票する際は 024 から付番してください（023 は本リスト追加済）。
+- ADR 番号は 005 以降を運用しており、**015 は欠番**です（採番のみ存在し、文書化に至らなかったため）。新しい ADR を起票する際は 026 から付番してください（023–025 は本リスト追加済）。
 - 001–004 についても、本リポジトリでは初期から ADR 005 以降のみを保守しています。
