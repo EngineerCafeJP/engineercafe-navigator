@@ -414,6 +414,51 @@ class TestOpenRouterProvider:
             assert call_count == 2
 
     @pytest.mark.asyncio
+    async def test_http_fallback_uses_fallback_model_env_override(self):
+        """Fallback generation should honor fallback_model_env overrides."""
+        messages = [HumanMessage(content="Read this handwriting")]
+        config = ModelConfig(
+            model_id=SupportedModel.GEMINI_3_1_FLASH_LITE,
+            fallback_model=SupportedModel.GEMINI_2_5_FLASH_LITE,
+            fallback_model_env="VISION_HANDWRITING_FALLBACK_MODEL",
+        )
+
+        mock_response_error = MagicMock()
+        mock_response_error.status_code = 503
+        mock_response_error.text = "Service Unavailable"
+
+        mock_response_success = MagicMock()
+        mock_response_success.json.return_value = {
+            "choices": [{"message": {"content": "Fallback env response"}}]
+        }
+
+        posted_models: list[str] = []
+
+        async def mock_post(*args, **kwargs):
+            posted_models.append(kwargs["json"]["model"])
+            if len(posted_models) == 1:
+                raise httpx.HTTPStatusError(
+                    "503 Error", request=MagicMock(), response=mock_response_error
+                )
+            return mock_response_success
+
+        with (
+            patch.dict(
+                os.environ,
+                {"VISION_HANDWRITING_FALLBACK_MODEL": "openai/gpt-4.1-mini"},
+                clear=False,
+            ),
+            patch.object(self.provider._http_client, "post", side_effect=mock_post),
+        ):
+            response = await self.provider.generate(messages, config)
+
+        assert response == "Fallback env response"
+        assert posted_models == [
+            "google/gemini-3.1-flash-lite-preview",
+            "openai/gpt-4.1-mini",
+        ]
+
+    @pytest.mark.asyncio
     async def test_close_method(self):
         """closeメソッドのテスト"""
         # closeメソッドが正常に実行できることを確認

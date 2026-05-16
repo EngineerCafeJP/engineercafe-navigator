@@ -175,6 +175,21 @@ class OpenRouterProvider(LLMProvider):
         merge_gemini_openrouter_extra(payload)
         return payload
 
+    @staticmethod
+    def _build_fallback_config(config: ModelConfig) -> ModelConfig:
+        """Promote fallback model settings into a single-attempt primary config."""
+        if config.fallback_model is None:
+            raise OpenRouterError("Fallback model is not configured")
+        return ModelConfig(
+            model_id=config.fallback_model,
+            temperature=config.temperature,
+            max_tokens=config.max_tokens,
+            top_p=config.top_p,
+            fallback_model=None,
+            timeout=config.timeout,
+            primary_model_env=config.fallback_model_env,
+        )
+
     async def _cerebras_generate(self, messages: List[BaseMessage], config: ModelConfig) -> str:
         api_key = os.getenv("CEREBRAS_API_KEY", "").strip()
         if not api_key:
@@ -291,19 +306,12 @@ class OpenRouterProvider(LLMProvider):
 
         except httpx.HTTPStatusError as e:
             if config.fallback_model and _fallback_count < 1:
-                fb_slug = config.fallback_model.value
+                fallback_config = self._build_fallback_config(config)
+                fb_slug = resolved_openrouter_model_slug(fallback_config)
                 logger.warning(
                     "HTTP error (status %d), trying OpenRouter fallback: %s",
                     e.response.status_code,
                     fb_slug,
-                )
-                fallback_config = ModelConfig(
-                    model_id=config.fallback_model,
-                    temperature=config.temperature,
-                    max_tokens=config.max_tokens,
-                    top_p=config.top_p,
-                    fallback_model=None,
-                    timeout=config.timeout,
                 )
                 return await self.generate(
                     messages,
@@ -338,14 +346,10 @@ class OpenRouterProvider(LLMProvider):
 
         except httpx.RequestError as e:
             if config.fallback_model and _fallback_count < 1:
-                logger.warning("Network error, trying fallback: %s", config.fallback_model.value)
-                fallback_config = ModelConfig(
-                    model_id=config.fallback_model,
-                    temperature=config.temperature,
-                    max_tokens=config.max_tokens,
-                    top_p=config.top_p,
-                    fallback_model=None,
-                    timeout=config.timeout,
+                fallback_config = self._build_fallback_config(config)
+                logger.warning(
+                    "Network error, trying fallback: %s",
+                    resolved_openrouter_model_slug(fallback_config),
                 )
                 return await self.generate(
                     messages,
