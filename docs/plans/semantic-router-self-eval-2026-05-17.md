@@ -49,7 +49,7 @@ pytest -m "not ragas and not slow" --tb=short -q
 
 | ファイル | 行 | 変更内容 |
 |---|---|---|
-| `backend/main.py` | startup_event 内 | LangSmith 環境変数を 3 つ export、log 1 行追加 |
+| `backend/main.py` | `async def lifespan(app)` の startup ブロック内（yield より前、main.py:159 付近） | LangSmith 環境変数を 3 つ export、log 1 行追加 |
 | `backend/config/settings.py` | 既存 `langsmith_api_key` フィールド付近 | `langsmith_project: str = "engineer-cafe-prod"` を追加 |
 | `.github/workflows/ragas-evaluation.yml` | cron 行 | `'0 9 * * 1'` → `'0 17 * * *'` (毎日 02:00 JST) に降格 |
 | `MEMORY.md` | Session Status | Phase 0 完了を記録 |
@@ -58,7 +58,8 @@ pytest -m "not ragas and not slow" --tb=short -q
 ### 実装スニペット
 
 ```python
-# backend/main.py の startup_event 末尾に追加
+# backend/main.py の async def lifespan(app) startup ブロック内に追加
+# (main.py:159 の lifespan 関数、yield より前)
 if settings.langsmith_api_key:
     os.environ["LANGSMITH_TRACING"] = "true"
     os.environ["LANGSMITH_API_KEY"] = settings.langsmith_api_key
@@ -96,7 +97,7 @@ gcloud run services update engineer-cafe-backend \
 ADR-023 Phase 0: LangSmith tracing を本番 backend に配線。以降の semantic router / critic node 実装で必要な observability 基盤を立ち上げる。
 
 ## Changes
-- `backend/main.py`: startup_event で LangSmith 環境変数を export
+- `backend/main.py`: `lifespan(app)` startup ブロックで LangSmith 環境変数を export
 - `backend/config/settings.py`: `langsmith_project` フィールド追加
 - `.github/workflows/ragas-evaluation.yml`: cron 週1 → 日次に降格
 
@@ -401,7 +402,7 @@ backend-developer (+ tdd-guide / Codex CLI 経路 C を使う場合は明記)
 ```bash
 # Epic
 gh issue create \
-  --repo EngineerCafeJP/engineer-cafe-navigator2025 \
+  --repo EngineerCafeJP/engineercafe-navigator \
   --title "[Epic] Routing modernization & runtime self-evaluation (ADR-023)" \
   --body-file <(cat <<'EOF'
 ...Epic 本文...
@@ -411,7 +412,7 @@ EOF
 
 # Phase 0 sub-issue
 gh issue create \
-  --repo EngineerCafeJP/engineer-cafe-navigator2025 \
+  --repo EngineerCafeJP/engineercafe-navigator \
   --title "[Phase 0] LangSmith tracing 配線 (ADR-023)" \
   --body-file <(cat <<'EOF'
 ## Epic

@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed (2026-05-17) — 実装は次セッション以降の別エンジニア担当。本 ADR は設計合意の固定版。
+Accepted (2026-05-17) — 実装は次セッション以降の別エンジニア担当。本 ADR は設計合意の固定版。
 
 ## Context
 
@@ -17,7 +17,7 @@ Engineer Cafe Navigator のルーティング層は ADR-006 (LangGraph workflow 
 | ファイル | 行数 | 制限 | 内容 |
 |---|---|---|---|
 | [`backend/workflows/main_workflow.py`](../../backend/workflows/main_workflow.py) | **2,274** | 800 | 4段ファストパス + reception bypass + clarification handler が同居 |
-| [`backend/config/routing_constants.py`](../../backend/config/routing_constants.py) | **1,147** | 800 | キーワードリスト 30 種以上、`CATEGORY_TO_AGENT_MAP` 23 エントリ |
+| [`backend/config/routing_constants.py`](../../backend/config/routing_constants.py) | **1,147** | 800 | `*_KEYWORDS` 定数 41 個、`CATEGORY_TO_AGENT_MAP` 39 エントリ |
 | [`backend/utils/intent_classifier.py`](../../backend/utils/intent_classifier.py) | **734** | 800 | `classify_fast_intent()` 単一関数に `if match_keywords(...)` 35 連発 |
 | [`backend/utils/query_classifier.py`](../../backend/utils/query_classifier.py) | 508 | 800 | regex + キーワード手書き分類 |
 | [`backend/agents/orchestrator_agent.py`](../../backend/agents/orchestrator_agent.py) | 401 | 800 | LLM ルーティングは "高速パス全部スカった時の最後" |
@@ -220,12 +220,13 @@ async def critic_node(state: WorkflowStateDict) -> dict:
 #### D2c: LangSmith trace 配線（Phase 0 の 5 行）
 
 ```python
-# backend/main.py の startup_event
+# backend/main.py の lifespan(app) startup ブロック内（yield より前）
+# main.py:159 の async def lifespan(app: FastAPI) に追記
 if settings.langsmith_api_key:
     os.environ["LANGSMITH_TRACING"] = "true"
     os.environ["LANGSMITH_API_KEY"] = settings.langsmith_api_key
-    os.environ["LANGSMITH_PROJECT"] = "engineer-cafe-prod"
-    logger.info("LangSmith tracing enabled: project=engineer-cafe-prod")
+    os.environ["LANGSMITH_PROJECT"] = settings.langsmith_project
+    logger.info("LangSmith tracing enabled: project=%s", settings.langsmith_project)
 ```
 
 → これだけで既存 LangGraph ノード全部が **自動 trace される**。critic_node 追加後は `critic_score` カスタム metadata 付きで LangSmith ダッシュボードに並ぶ。
@@ -346,6 +347,6 @@ Latency tail を完全に避けたい場合の保守解。
 
 ## Approvals
 
-- Proposed: Claude Code session (2026-05-17, ツンデレ後輩女子モード) — 設計検討と stack 選定
-- Decided: Terada Kousuke (terisuke) — Router=semantic-router / Eval=LangSmith / Self-repair=1 retry/30s budget
+- Proposed: Claude Code (2026-05-17) — 設計検討と stack 選定
+- Accepted: Terada Kousuke (terisuke, 2026-05-17) — Router=semantic-router / Eval=LangSmith / Self-repair=1 retry/30s budget
 - Pending: 担当エンジニアによる Phase 0 PR 起票、Epic GitHub Issue 起票
