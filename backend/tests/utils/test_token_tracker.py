@@ -10,10 +10,13 @@ from unittest.mock import patch
 import pytest
 
 from backend.utils.token_tracker import (
+    LLMCallMetadata,
     TokenTracker,
     TokenUsage,
     _token_tracker_var,
     get_token_tracker,
+    get_latest_llm_metadata,
+    record_llm_call_metadata,
     reset_token_tracker,
 )
 
@@ -141,6 +144,41 @@ def test_reset():
     assert tracker.total_tokens == 0
 
 
+def test_record_llm_call_metadata_tracks_latest_successful_call():
+    """LLM provider/model metadata is request-scoped and returns the latest call."""
+    tracker = TokenTracker()
+
+    first = tracker.record_llm_call(
+        provider="openrouter",
+        model="google/gemini-3.1-flash-lite-preview",
+        llm_latency_ms=12,
+    )
+    latest = tracker.record_llm_call(
+        provider="cerebras",
+        model="gpt-oss-120b",
+        llm_latency_ms=7,
+    )
+
+    assert isinstance(first, LLMCallMetadata)
+    assert tracker.llm_calls == [first, latest]
+    assert tracker.latest_llm_call is latest
+    assert latest.as_log_metadata() == {
+        "provider": "cerebras",
+        "model": "gpt-oss-120b",
+        "llm_latency_ms": 7,
+    }
+
+
+def test_reset_clears_llm_call_metadata():
+    tracker = TokenTracker()
+    tracker.record_llm_call(provider="openrouter", model="m", llm_latency_ms=1)
+
+    tracker.reset()
+
+    assert tracker.llm_calls == []
+    assert tracker.latest_llm_call is None
+
+
 # ============================================
 # ContextVar helpers
 # ============================================
@@ -171,3 +209,16 @@ def test_reset_token_tracker():
     reset_token_tracker()
 
     assert _token_tracker_var.get() is None
+
+
+def test_request_scoped_llm_metadata_helpers():
+    reset_token_tracker()
+
+    record_llm_call_metadata(provider="openrouter", model="model-a", llm_latency_ms=3)
+
+    assert get_latest_llm_metadata() == {
+        "provider": "openrouter",
+        "model": "model-a",
+        "llm_latency_ms": 3,
+    }
+    reset_token_tracker()

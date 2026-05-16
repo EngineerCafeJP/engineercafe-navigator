@@ -15,6 +15,8 @@ Production Fixes E2E Tests
 import asyncio
 import base64
 import os
+import socket
+from urllib.parse import urlparse
 import uuid
 from unittest.mock import AsyncMock, patch
 
@@ -35,6 +37,18 @@ def _is_service_available(url: str, timeout: float = 2.0) -> bool:
     try:
         resp = httpx.get(url, timeout=timeout)
         return resp.status_code < 500
+    except Exception:
+        return False
+
+
+def _is_postgres_available(db_uri: str, timeout: float = 2.0) -> bool:
+    """PostgreSQL の TCP endpoint が到達可能かを確認する。"""
+    try:
+        parsed = urlparse(db_uri)
+        if parsed.scheme not in {"postgresql", "postgres"} or not parsed.hostname:
+            return False
+        with socket.create_connection((parsed.hostname, parsed.port or 5432), timeout=timeout):
+            return True
     except Exception:
         return False
 
@@ -111,6 +125,7 @@ class TestCheckpointerUnit:
 
 
 @pytest.mark.integration
+@pytest.mark.e2e
 class TestCheckpointerIntegration:
     """Checkpointer の実 DB 統合テスト (SUPABASE_DB_URI 必要)"""
 
@@ -124,6 +139,8 @@ class TestCheckpointerIntegration:
             or "localhost:0" in db_uri
         ):
             pytest.skip("SUPABASE_DB_URI not configured for integration test")
+        if not _is_postgres_available(db_uri):
+            pytest.skip("SUPABASE_DB_URI PostgreSQL endpoint is not reachable")
 
     async def test_create_checkpointer_connects(self):
         """実 DB に接続して checkpointer が作成できること"""

@@ -59,49 +59,16 @@ def service(mock_client: MagicMock) -> VisitorIdentificationService:
 
 
 @pytest.mark.asyncio
-async def test_identify_by_nfc_found(service: VisitorIdentificationService, mock_client: MagicMock):
-    """NFC lookup should resolve to a user profile when a matching record exists."""
-    nfc_builder = MagicMock()
-    nfc_builder.select.return_value = nfc_builder
-    nfc_builder.eq.return_value = nfc_builder
-    nfc_builder.execute.return_value = _make_query_result(data=[{"user_id": 42}])
-
-    user_builder = MagicMock()
-    user_builder.select.return_value = user_builder
-    user_builder.eq.return_value = user_builder
-    user_builder.execute.return_value = _make_query_result(
-        data=[
-            {
-                "id": 42,
-                "name": "Taro",
-                "email": "taro@example.com",
-                "prefecture": "Fukuoka",
-                "job": "Engineer",
-                "belong": "OpenAI",
-            }
-        ]
-    )
-
-    count_builder = MagicMock()
-    count_builder.select.return_value = count_builder
-    count_builder.eq.return_value = count_builder
-    count_builder.execute.return_value = _make_query_result(count=5)
-
-    tables = {"nfcs": nfc_builder, "users": user_builder, "visits": count_builder}
-    mock_client.table = MagicMock(side_effect=lambda n: tables[n])
+async def test_identify_by_nfc_is_stubbed_until_schema_exists(
+    service: VisitorIdentificationService,
+    mock_client: MagicMock,
+):
+    """NFC must not query a speculative nfcs table before a reviewed migration exists."""
 
     result = await service.identify_by_nfc("nfc-abc-123")
 
-    user_builder.select.assert_called_once_with("*")
-    assert result is not None
-    assert result["visitor_type"] == "returning"
-    assert result["user_id"] == 42
-    assert result["name"] == "Taro"
-    assert result["email"] == "taro@example.com"
-    assert result["prefecture"] == "Fukuoka"
-    assert result["job"] == "Engineer"
-    assert result["belong"] == "OpenAI"
-    assert result["visit_count"] == 5
+    assert result is None
+    mock_client.table.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -217,198 +184,6 @@ async def test_get_recent_visits(service: VisitorIdentificationService, mock_cli
 
 
 # ---------------------------------------------------------------------------
-# Member-number identification
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_identify_by_member_number_found(
-    service: VisitorIdentificationService, mock_client: MagicMock
-):
-    """Should return user profile when a valid member number matches a user."""
-    user_builder = MagicMock()
-    user_builder.select.return_value = user_builder
-    user_builder.eq.return_value = user_builder
-    user_builder.execute.return_value = _make_query_result(
-        data=[
-            {
-                "id": 7,
-                "name": "Hanako",
-                "email": "hanako@example.com",
-                "prefecture": "Tokyo",
-                "job": "Designer",
-                "belong": "Engineer Cafe",
-            }
-        ]
-    )
-
-    count_builder = MagicMock()
-    count_builder.select.return_value = count_builder
-    count_builder.eq.return_value = count_builder
-    count_builder.execute.return_value = _make_query_result(count=12)
-
-    tables = {"users": user_builder, "visits": count_builder}
-    mock_client.table = MagicMock(side_effect=lambda n: tables[n])
-
-    result = await service.identify_by_member_number(7)
-
-    user_builder.select.assert_called_once_with("*")
-    assert result is not None
-    assert result["visitor_type"] == "returning"
-    assert result["user_id"] == 7
-    assert result["name"] == "Hanako"
-    assert result["email"] == "hanako@example.com"
-    assert result["prefecture"] == "Tokyo"
-    assert result["job"] == "Designer"
-    assert result["belong"] == "Engineer Cafe"
-    assert result["visit_count"] == 12
-
-
-@pytest.mark.asyncio
-async def test_identify_by_member_number_omits_missing_profile_fields(
-    service: VisitorIdentificationService, mock_client: MagicMock
-):
-    """Should omit optional profile fields when they are not present on the user record."""
-    user_builder = MagicMock()
-    user_builder.select.return_value = user_builder
-    user_builder.eq.return_value = user_builder
-    user_builder.execute.return_value = _make_query_result(data=[{"id": 9, "name": "Ken"}])
-
-    count_builder = MagicMock()
-    count_builder.select.return_value = count_builder
-    count_builder.eq.return_value = count_builder
-    count_builder.execute.return_value = _make_query_result(count=1)
-
-    tables = {"users": user_builder, "visits": count_builder}
-    mock_client.table = MagicMock(side_effect=lambda n: tables[n])
-
-    result = await service.identify_by_member_number(9)
-
-    assert result is not None
-    assert result["name"] == "Ken"
-    assert "email" not in result
-    assert "prefecture" not in result
-    assert "job" not in result
-    assert "belong" not in result
-
-
-@pytest.mark.asyncio
-async def test_identify_by_member_number_not_found(
-    service: VisitorIdentificationService, mock_client: MagicMock
-):
-    """Should return None when no user matches the member number."""
-    builder = MagicMock()
-    builder.select.return_value = builder
-    builder.eq.return_value = builder
-    builder.execute.return_value = _make_query_result(data=[])
-
-    mock_client.table = MagicMock(return_value=builder)
-
-    result = await service.identify_by_member_number(9999)
-    assert result is None
-
-
-@pytest.mark.asyncio
-async def test_identify_by_member_number_with_lookup_not_found(
-    service: VisitorIdentificationService, mock_client: MagicMock
-):
-    """Should expose metadata when lookup succeeds but identity is null."""
-    builder = MagicMock()
-    builder.select.return_value = builder
-    builder.eq.return_value = builder
-    builder.execute.return_value = _make_query_result(data=[])
-
-    mock_client.table = MagicMock(return_value=builder)
-
-    result = await service.identify_by_member_number_with_lookup(9999)
-
-    assert result["identity"] is None
-    assert result["lookup"] == {
-        "attempted": True,
-        "source": "public.users",
-        "member_number": 9999,
-        "status": "not_found",
-        "resolved": False,
-        "reason": "member_number_not_found",
-    }
-
-
-@pytest.mark.asyncio
-async def test_identify_by_member_number_with_lookup_found(
-    service: VisitorIdentificationService, mock_client: MagicMock
-):
-    """Should expose success metadata when member number resolves to a user."""
-    user_builder = MagicMock()
-    user_builder.select.return_value = user_builder
-    user_builder.eq.return_value = user_builder
-    user_builder.execute.return_value = _make_query_result(data=[{"id": 7, "name": "Hanako"}])
-
-    count_builder = MagicMock()
-    count_builder.select.return_value = count_builder
-    count_builder.eq.return_value = count_builder
-    count_builder.execute.return_value = _make_query_result(count=12)
-
-    tables = {"users": user_builder, "visits": count_builder}
-    mock_client.table = MagicMock(side_effect=lambda n: tables[n])
-
-    result = await service.identify_by_member_number_with_lookup(7)
-
-    assert result["identity"] == {
-        "visitor_type": "returning",
-        "user_id": 7,
-        "name": "Hanako",
-        "visit_count": 12,
-    }
-    assert result["lookup"] == {
-        "attempted": True,
-        "source": "public.users",
-        "member_number": 7,
-        "status": "found",
-        "resolved": True,
-    }
-
-
-@pytest.mark.asyncio
-async def test_identify_by_member_number_supabase_failure(
-    service: VisitorIdentificationService, mock_client: MagicMock
-):
-    """Should return None gracefully when Supabase raises an exception."""
-    mock_client.table.side_effect = Exception("Connection refused")
-
-    result = await service.identify_by_member_number(1)
-    assert result is None
-
-
-@pytest.mark.asyncio
-async def test_identify_by_member_number_with_lookup_users_table_failure(
-    service: VisitorIdentificationService, mock_client: MagicMock
-):
-    """Should classify a missing public.users table without raising."""
-
-    class MissingUsersTableError(Exception):
-        code = "PGRST205"
-        message = "Could not find the table 'public.users' in the schema cache"
-
-    builder = MagicMock()
-    builder.select.return_value = builder
-    builder.eq.return_value = builder
-    builder.execute.side_effect = MissingUsersTableError("public.users missing")
-    mock_client.table = MagicMock(return_value=builder)
-
-    result = await service.identify_by_member_number_with_lookup(123)
-
-    assert result["identity"] is None
-    assert result["lookup"] == {
-        "attempted": True,
-        "source": "public.users",
-        "member_number": 123,
-        "status": "lookup_failed",
-        "resolved": False,
-        "reason": "users_table_unavailable",
-    }
-
-
-# ---------------------------------------------------------------------------
 # Graceful degradation
 # ---------------------------------------------------------------------------
 
@@ -425,6 +200,5 @@ async def test_supabase_unavailable_graceful_fallback():
         return_value=None,
     ):
         assert await service.identify_by_nfc("any") is None
-        assert await service.identify_by_member_number(1) is None
         assert await service.identify_by_visitor_id("any") is None
         assert await service.get_recent_visits(visitor_id="any") == []

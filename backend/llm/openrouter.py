@@ -13,6 +13,7 @@ See: https://openrouter.ai/docs
 import json
 import logging
 import os
+import time
 from typing import AsyncGenerator, Dict, List, Optional
 
 import httpx
@@ -36,7 +37,7 @@ from .model_resolve import (
     resolved_openrouter_model_slug,
 )
 from .provider import LLMProvider
-from backend.utils.token_tracker import get_token_tracker
+from backend.utils.token_tracker import get_token_tracker, record_llm_call_metadata
 
 logger = logging.getLogger(__name__)
 
@@ -125,6 +126,20 @@ class OpenRouterProvider(LLMProvider):
         """Close the HTTP client connection."""
         await self._http_client.aclose()
 
+    @staticmethod
+    def _record_successful_llm_call(*, provider: str, model: str, started_at: float) -> None:
+        """Record request-scoped provider/model metadata without shared instance state."""
+
+        latency_ms = int((time.perf_counter() - started_at) * 1000)
+        try:
+            record_llm_call_metadata(
+                provider=provider,
+                model=model,
+                llm_latency_ms=latency_ms,
+            )
+        except Exception as e:
+            logger.debug("LLM metadata tracking failed (non-critical): %s", e)
+
     def _convert_messages(self, messages: List[BaseMessage]) -> List[Dict[str, str]]:
         """
         Convert LangChain messages to OpenRouter API format.
@@ -159,6 +174,21 @@ class OpenRouterProvider(LLMProvider):
         }
         merge_gemini_openrouter_extra(payload)
         return payload
+
+    @staticmethod
+    def _build_fallback_config(config: ModelConfig) -> ModelConfig:
+        """Promote fallback model settings into a single-attempt primary config."""
+        if config.fallback_model is None:
+            raise OpenRouterError("Fallback model is not configured")
+        return ModelConfig(
+            model_id=config.fallback_model,
+            temperature=config.temperature,
+            max_tokens=config.max_tokens,
+            top_p=config.top_p,
+            fallback_model=None,
+            timeout=config.timeout,
+            primary_model_env=config.fallback_model_env,
+        )
 
     async def _cerebras_generate(self, messages: List[BaseMessage], config: ModelConfig) -> str:
         api_key = os.getenv("CEREBRAS_API_KEY", "").strip()
@@ -227,7 +257,14 @@ class OpenRouterProvider(LLMProvider):
         if cerebras_primary_enabled(root_cfg) and _fallback_count == 0 and not _cerebras_tried:
             logger.info("Trying Cerebras fast primary model=%s", cerebras_model_slug())
             try:
-                return await self._cerebras_generate(messages, root_cfg)
+                started_at = time.perf_counter()
+                response_text = await self._cerebras_generate(messages, root_cfg)
+                self._record_successful_llm_call(
+                    provider="cerebras",
+                    model=cerebras_model_slug(),
+                    started_at=started_at,
+                )
+                return response_text
             except Exception as ce:
                 _cerebras_tried = True
                 logger.warning("Cerebras primary failed; falling back to OpenRouter: %s", ce)
@@ -236,6 +273,7 @@ class OpenRouterProvider(LLMProvider):
         primary_slug = payload["model"]
 
         try:
+            started_at = time.perf_counter()
             response = await self._http_client.post(
                 "/chat/completions",
                 json=payload,
@@ -258,23 +296,22 @@ class OpenRouterProvider(LLMProvider):
                 except Exception as e:
                     logger.debug("Token tracking failed (non-critical): %s", e)
 
-            return data["choices"][0]["message"]["content"]
+            response_text = data["choices"][0]["message"]["content"]
+            self._record_successful_llm_call(
+                provider="openrouter",
+                model=primary_slug,
+                started_at=started_at,
+            )
+            return response_text
 
         except httpx.HTTPStatusError as e:
             if config.fallback_model and _fallback_count < 1:
-                fb_slug = config.fallback_model.value
+                fallback_config = self._build_fallback_config(config)
+                fb_slug = resolved_openrouter_model_slug(fallback_config)
                 logger.warning(
                     "HTTP error (status %d), trying OpenRouter fallback: %s",
                     e.response.status_code,
                     fb_slug,
-                )
-                fallback_config = ModelConfig(
-                    model_id=config.fallback_model,
-                    temperature=config.temperature,
-                    max_tokens=config.max_tokens,
-                    top_p=config.top_p,
-                    fallback_model=None,
-                    timeout=config.timeout,
                 )
                 return await self.generate(
                     messages,
@@ -291,7 +328,14 @@ class OpenRouterProvider(LLMProvider):
                     cerebras_model_slug(),
                 )
                 try:
-                    return await self._cerebras_generate(messages, root_cfg)
+                    started_at = time.perf_counter()
+                    response_text = await self._cerebras_generate(messages, root_cfg)
+                    self._record_successful_llm_call(
+                        provider="cerebras",
+                        model=cerebras_model_slug(),
+                        started_at=started_at,
+                    )
+                    return response_text
                 except Exception as ce:
                     logger.warning("Cerebras fallback failed: %s", ce, exc_info=True)
 
@@ -302,14 +346,10 @@ class OpenRouterProvider(LLMProvider):
 
         except httpx.RequestError as e:
             if config.fallback_model and _fallback_count < 1:
-                logger.warning("Network error, trying fallback: %s", config.fallback_model.value)
-                fallback_config = ModelConfig(
-                    model_id=config.fallback_model,
-                    temperature=config.temperature,
-                    max_tokens=config.max_tokens,
-                    top_p=config.top_p,
-                    fallback_model=None,
-                    timeout=config.timeout,
+                fallback_config = self._build_fallback_config(config)
+                logger.warning(
+                    "Network error, trying fallback: %s",
+                    resolved_openrouter_model_slug(fallback_config),
                 )
                 return await self.generate(
                     messages,
@@ -322,7 +362,14 @@ class OpenRouterProvider(LLMProvider):
             if cerebras_fallback_enabled(root_cfg) and not _cerebras_tried:
                 logger.warning("OpenRouter transport error; trying Cerebras: %s", e)
                 try:
-                    return await self._cerebras_generate(messages, root_cfg)
+                    started_at = time.perf_counter()
+                    response_text = await self._cerebras_generate(messages, root_cfg)
+                    self._record_successful_llm_call(
+                        provider="cerebras",
+                        model=cerebras_model_slug(),
+                        started_at=started_at,
+                    )
+                    return response_text
                 except Exception as ce:
                     logger.warning("Cerebras fallback failed: %s", ce, exc_info=True)
 

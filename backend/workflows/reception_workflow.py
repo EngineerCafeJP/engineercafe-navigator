@@ -21,6 +21,7 @@ from typing_extensions import TypedDict
 from backend.agents.general_knowledge_agent import GeneralKnowledgeAgent
 from backend.domain.reception.models import VisitPurpose
 from backend.domain.reception.service import ReceptionDomainService
+from backend.observability.structured_logger import log_reception_transition
 from backend.services.visitor_identification_service import VisitorIdentificationService
 from backend.utils.intent_classifier import is_assistant_profile_question
 from backend.utils.intent_classifier import is_reception_continuation_utterance
@@ -707,6 +708,21 @@ async def invoke_reception_subgraph(
     reception_state = workflow_state_to_reception_state(state, reception_status)
     updated_state = await graph.ainvoke(reception_state)
     reception_action = updated_state.get("reception_action")
+    from_stage = reception_state.get("stage", "initiated")
+    to_stage = updated_state.get("stage", from_stage)
+    transition_status = "completed" if to_stage == "completed" else "active"
+    try:
+        log_reception_transition(
+            session_id=state.get("session_id", ""),
+            reception_session_id=reception_state.get("reception_session_id"),
+            from_stage=from_stage,
+            to_stage=to_stage,
+            action=reception_action,
+            status=transition_status,
+            target_agent=updated_state.get("target_agent"),
+        )
+    except Exception as exc:
+        logger.debug("Reception transition observability skipped: %s", exc)
     previous_metadata = reception_status.get("metadata") or {}
     persistence_metadata: dict[str, Any] = {"reception_action": reception_action}
     if (

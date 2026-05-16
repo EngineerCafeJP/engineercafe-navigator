@@ -71,7 +71,18 @@ def _build_chain_mock(execute_return):
     chain = MagicMock()
     chain.execute.return_value = execute_return
     # 全チェーンメソッドが自身を返す
-    for method_name in ("select", "eq", "neq", "like", "order", "limit", "insert", "delete"):
+    for method_name in (
+        "select",
+        "eq",
+        "neq",
+        "like",
+        "filter",
+        "in_",
+        "order",
+        "limit",
+        "insert",
+        "delete",
+    ):
         getattr(chain, method_name).return_value = chain
     return chain
 
@@ -286,24 +297,13 @@ class TestGetPreviousRequestType:
     async def test_returns_none_when_no_matching_session(self, helper_with_client):
         """セッションIDが一致するメッセージがない場合 None を返す"""
         helper, client = helper_with_client
-        chain = _build_chain_mock(
-            Mock(
-                data=[
-                    {
-                        "value": {
-                            "role": "user",
-                            "sessionId": "other-session",
-                            "request_type": "hours",
-                        }
-                    }
-                ]
-            )
-        )
+        chain = _build_chain_mock(Mock(data=[]))
         client.table.return_value = chain
 
         result = await helper.get_previous_request_type("sess-1")
 
         assert result is None
+        chain.filter.assert_any_call("value->>sessionId", "eq", "sess-1")
 
     @pytest.mark.asyncio
     async def test_returns_none_on_exception(self, helper_with_client):
@@ -317,18 +317,11 @@ class TestGetPreviousRequestType:
 
     @pytest.mark.asyncio
     async def test_skips_assistant_messages(self, helper_with_client):
-        """assistant メッセージをスキップして user メッセージの request_type を返す"""
+        """assistant メッセージをSQL filterで除外する"""
         helper, client = helper_with_client
         chain = _build_chain_mock(
             Mock(
                 data=[
-                    {
-                        "value": {
-                            "role": "assistant",
-                            "sessionId": "sess-1",
-                            "request_type": "hours",
-                        }
-                    },
                     {
                         "value": {
                             "role": "user",
@@ -344,6 +337,7 @@ class TestGetPreviousRequestType:
         result = await helper.get_previous_request_type("sess-1")
 
         assert result == "price"
+        chain.filter.assert_any_call("value->>role", "eq", "user")
 
     @pytest.mark.asyncio
     async def test_skips_user_messages_without_request_type(self, helper_with_client):
@@ -391,7 +385,7 @@ class TestGetRecentMessages:
 
         # conversation_sessions (active)
         sessions_chain = _build_chain_mock(Mock(data=[{"id": "sess-1", "status": "active"}]))
-        # agent_memory (messages)
+        # agent_memory (messages): session_id は SQL filter 済み
         memory_chain = _build_chain_mock(
             Mock(
                 data=[
@@ -403,17 +397,6 @@ class TestGetRecentMessages:
                             "emotion": "neutral",
                             "confidence": 0.9,
                             "timestamp": 1000,
-                            "request_type": None,
-                        }
-                    },
-                    {
-                        "value": {
-                            "role": "user",
-                            "content": "Other session",
-                            "sessionId": "sess-2",
-                            "emotion": None,
-                            "confidence": None,
-                            "timestamp": 2000,
                             "request_type": None,
                         }
                     },
@@ -434,15 +417,18 @@ class TestGetRecentMessages:
         assert messages[0]["role"] == "user"
         assert messages[0]["content"] == "Hello"
         assert messages[0]["metadata"]["emotion"] == "neutral"
+        memory_chain.filter.assert_called_once_with("value->>sessionId", "eq", "sess-1")
 
     @pytest.mark.asyncio
     async def test_returns_empty_list_when_session_inactive(self, helper_with_client):
         """非アクティブセッションでは空リストを返す"""
         helper, client = helper_with_client
-        sessions_chain = _build_chain_mock(Mock(data=[{"id": "sess-1", "status": "ended"}]))
+        sessions_chain = _build_chain_mock(
+            Mock(data=[{"id": _ENDED_SESSION_ID, "status": "ended"}])
+        )
         client.table.return_value = sessions_chain
 
-        messages = await helper._get_recent_messages("sess-1")
+        messages = await helper._get_recent_messages(_ENDED_SESSION_ID)
 
         assert messages == []
 
@@ -484,13 +470,15 @@ class TestGetRecentMessages:
             call_count += 1
             if call_count == 1:
                 # conversation_sessions -> active
-                return _build_chain_mock(Mock(data=[{"id": "sess-1", "status": "active"}]))
+                return _build_chain_mock(
+                    Mock(data=[{"id": _ACTIVE_SESSION_ID, "status": "active"}])
+                )
             # agent_memory -> 例外
             raise Exception("DB error")
 
         client.table.side_effect = table_side_effect
 
-        messages = await helper._get_recent_messages("sess-1")
+        messages = await helper._get_recent_messages(_ACTIVE_SESSION_ID)
 
         assert messages == []
 
@@ -918,6 +906,22 @@ class TestStoreMessage:
         # エラーなく完了すれば OK
 
     @pytest.mark.asyncio
+    async def test_skips_agent_memory_write_when_stm_write_flag_disabled(
+        self,
+        helper_with_client,
+        monkeypatch,
+    ):
+        """本番 cutover では Checkpointer を STM の保存先にして agent_memory insert を止める。"""
+        helper, client = helper_with_client
+        chain = _build_chain_mock(Mock(data=[]))
+        client.table.return_value = chain
+        monkeypatch.setenv("ENABLE_AGENT_MEMORY_STM_WRITES", "false")
+
+        await helper.store_message(role="user", content="test", session_id="sess-1")
+
+        chain.insert.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_raises_on_supabase_error(self, helper_with_client):
         """supabase エラー時は例外が伝播する"""
         helper, client = helper_with_client
@@ -1046,8 +1050,9 @@ class TestCleanupSession:
 
         await helper.cleanup_session("sess-1")
 
-        # msg-1 と msg-3 の2件が削除される
-        assert delete_chain.eq.call_count == 2
+        delete_chain.eq.assert_called_once_with("agent_name", helper.agent_name)
+        delete_chain.like.assert_called_once_with("key", "message_%")
+        delete_chain.filter.assert_called_once_with("value->>sessionId", "eq", "sess-1")
 
     @pytest.mark.asyncio
     async def test_does_nothing_when_supabase_is_none(self, helper_without_client):
@@ -1084,8 +1089,7 @@ class TestCleanupSession:
 
         await helper.cleanup_session("sess-1")
 
-        # 削除は呼ばれない
-        delete_chain.eq.assert_not_called()
+        delete_chain.filter.assert_called_once_with("value->>sessionId", "eq", "sess-1")
 
 
 # =============================================================================
@@ -1105,9 +1109,8 @@ class TestCleanup:
         memory_chain = _build_chain_mock(
             Mock(
                 data=[
-                    {"id": "msg-1", "value": {"sessionId": "ended-1"}},
-                    {"id": "msg-2", "value": {"sessionId": "active-1"}},
-                    {"id": "msg-3", "value": {"sessionId": "ended-2"}},
+                    {"id": "msg-1"},
+                    {"id": "msg-3"},
                 ]
             )
         )
@@ -1129,6 +1132,7 @@ class TestCleanup:
 
         # msg-1 と msg-3 が削除される（ended セッション）
         assert delete_chain.eq.call_count == 2
+        memory_chain.in_.assert_called_once_with("value->>sessionId", ["ended-1", "ended-2"])
 
     @pytest.mark.asyncio
     async def test_does_nothing_when_supabase_is_none(self, helper_without_client):
@@ -1207,7 +1211,6 @@ class TestGetMemoryStats:
             Mock(
                 data=[
                     {"value": {"timestamp": 1000, "emotion": "happy", "sessionId": "s1"}},
-                    {"value": {"timestamp": 2000, "emotion": "neutral", "sessionId": "s2"}},
                     {"value": {"timestamp": 3000, "emotion": "sad", "sessionId": "s1"}},
                 ]
             )
@@ -1220,6 +1223,7 @@ class TestGetMemoryStats:
         assert stats["oldest_turn"] == 1000
         assert stats["newest_turn"] == 3000
         assert stats["time_span"] == (3000 - 1000) / (1000 * 60)
+        chain.filter.assert_called_once_with("value->>sessionId", "eq", "s1")
 
     @pytest.mark.asyncio
     async def test_returns_zeros_when_no_data(self, helper_with_client):
@@ -1240,18 +1244,13 @@ class TestGetMemoryStats:
     async def test_returns_zeros_when_session_filter_matches_nothing(self, helper_with_client):
         """session_id フィルタで該当なしの場合はゼロ値を返す"""
         helper, client = helper_with_client
-        chain = _build_chain_mock(
-            Mock(
-                data=[
-                    {"value": {"timestamp": 1000, "emotion": "happy", "sessionId": "s1"}},
-                ]
-            )
-        )
+        chain = _build_chain_mock(Mock(data=[]))
         client.table.return_value = chain
 
         stats = await helper.get_memory_stats(session_id="nonexistent")
 
         assert stats["active_turns"] == 0
+        chain.filter.assert_called_once_with("value->>sessionId", "eq", "nonexistent")
 
     @pytest.mark.asyncio
     async def test_handles_messages_without_timestamp(self, helper_with_client):

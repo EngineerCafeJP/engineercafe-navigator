@@ -1,7 +1,7 @@
 """Visitor Identification Service - Infrastructure layer for visitor lookup.
 
-Identifies visitors using multiple signals (NFC, visitor_id, etc.) and
-returns structured identity information to the reception flow.
+Identifies visitors using persisted visit history and returns structured
+identity information to the reception flow.
 """
 
 import logging
@@ -9,17 +9,14 @@ from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
-_USER_LOOKUP_SOURCE = "public.users"
-
 
 class VisitorIdentificationService:
     """Identifies visitors using multiple signals.
 
     Resolution priority (highest confidence first):
-        1. NFC scan -> nfcs table -> users table
-        2. visitor_id -> visits table lookup
-        3. LangGraph Store long-term memories (existing behaviour)
-        4. None -> new visitor
+        1. visitor_id -> visits table lookup
+        2. LangGraph Store long-term memories (existing behaviour)
+        3. None -> new visitor
 
     Args:
         supabase_client: Optional pre-configured Supabase client.  When
@@ -46,50 +43,16 @@ class VisitorIdentificationService:
     # ------------------------------------------------------------------
 
     async def identify_by_nfc(self, nfc_id: str) -> Optional[Dict[str, Any]]:
-        """Look up a visitor by NFC card ID.
+        """Return no identity until the NFC schema is formally introduced.
 
-        Args:
-            nfc_id: The NFC identifier string read from the card.
-
-        Returns:
-            A dict with visitor identity fields, or ``None`` when not found
-            or when Supabase is unavailable.
+        Production migrations do not define an ``nfcs`` table. Querying a
+        speculative table makes the reception path look more capable than it
+        is, so NFC recognition intentionally degrades to a non-personalized
+        visitor until a reviewed NFC schema is added.
         """
-        client = await self._get_supabase()
-        if not client:
-            return None
-        try:
-            result = client.table("nfcs").select("user_id").eq("nfc_id", nfc_id).execute()
-            if result.data:
-                user_id = result.data[0]["user_id"]
-                return await self._get_user_profile(user_id)
-        except Exception as e:
-            logger.warning("NFC lookup failed: %s", e)
+        if nfc_id:
+            logger.info("NFC lookup skipped until NFC schema is available")
         return None
-
-    async def identify_by_member_number(self, member_number: int) -> Optional[Dict[str, Any]]:
-        """Look up a visitor by their member number (users.id).
-
-        The member number is typically a 1-4 digit integer displayed on
-        the visitor's membership card, read via OCR.
-
-        Args:
-            member_number: The member number (equivalent to users.id).
-
-        Returns:
-            A dict with visitor identity fields, or None when not found.
-        """
-        result = await self.identify_by_member_number_with_lookup(member_number)
-        return result["identity"]
-
-    async def identify_by_member_number_with_lookup(self, member_number: int) -> Dict[str, Any]:
-        """Look up a visitor by member number and include lookup metadata.
-
-        ``public.users`` is not created by the current backend migrations, so
-        callers that need to distinguish "not found" from "lookup unavailable"
-        should use this method instead of relying on logs.
-        """
-        return await self._get_user_profile_lookup(member_number)
 
     async def identify_by_visitor_id(self, visitor_id: str) -> Optional[Dict[str, Any]]:
         """Look up a visitor by frontend-generated persistent visitor_id.
@@ -168,95 +131,39 @@ class VisitorIdentificationService:
     # Private helpers
     # ------------------------------------------------------------------
 
-    async def _get_user_profile(self, user_id: int) -> Optional[Dict[str, Any]]:
-        """Fetch an enriched user profile and visit count from the ``users`` table."""
-        result = await self._get_user_profile_lookup(user_id)
-        return result["identity"]
-
-    async def _get_user_profile_lookup(self, user_id: int) -> Dict[str, Any]:
-        """Fetch an enriched user profile and explicit lookup metadata."""
+    async def _get_visit_profile_by_user_id(self, user_id: int) -> Optional[Dict[str, Any]]:
+        """Fetch a returning-visitor summary from the ``visits`` table."""
         client = await self._get_supabase()
         if not client:
-            return self._build_lookup_result(
-                user_id,
-                None,
-                status="skipped",
-                reason="supabase_unavailable",
-            )
+            return None
         try:
-            result = client.table("users").select("*").eq("id", user_id).execute()
+            result = (
+                client.table("visits")
+                .select("*")
+                .eq("user_id", user_id)
+                .order("started_at", desc=True)
+                .limit(1)
+                .execute()
+            )
             if result.data:
-                user = result.data[0]
+                visit = result.data[0]
                 visit_count = await self._count_visits_by_user(user_id)
                 profile = {
                     "visitor_type": "returning",
-                    "user_id": user.get("id", user_id),
-                    "name": user.get("name"),
+                    "user_id": user_id,
+                    "last_visit_date": visit.get("started_at"),
+                    "last_purpose": visit.get("purpose"),
+                    "last_purpose_detail": visit.get("purpose_detail"),
                     "visit_count": visit_count,
                 }
-                for field in ("email", "prefecture", "job", "belong"):
-                    if user.get(field) is not None:
-                        profile[field] = user.get(field)
-                return self._build_lookup_result(user_id, profile, status="found")
+                metadata = visit.get("metadata") if isinstance(visit.get("metadata"), dict) else {}
+                name = metadata.get("visitor_name") or metadata.get("name")
+                if name:
+                    profile["name"] = name
+                return profile
         except Exception as e:
-            reason = self._classify_user_lookup_error(e)
-            if reason == "users_table_unavailable":
-                logger.info("User profile lookup unavailable: %s", e)
-            else:
-                logger.warning("User profile lookup failed: %s", e)
-            return self._build_lookup_result(
-                user_id,
-                None,
-                status="lookup_failed",
-                reason=reason,
-            )
-        return self._build_lookup_result(
-            user_id,
-            None,
-            status="not_found",
-            reason="member_number_not_found",
-        )
-
-    @staticmethod
-    def _build_lookup_result(
-        user_id: int,
-        identity: Optional[Dict[str, Any]],
-        *,
-        status: str,
-        reason: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        lookup: Dict[str, Any] = {
-            "attempted": True,
-            "source": _USER_LOOKUP_SOURCE,
-            "member_number": user_id,
-            "status": status,
-            "resolved": identity is not None,
-        }
-        if reason:
-            lookup["reason"] = reason
-        return {"identity": identity, "lookup": lookup}
-
-    @staticmethod
-    def _classify_user_lookup_error(exc: Exception) -> str:
-        text_parts = [str(exc)]
-        for attr in ("code", "message", "details", "hint"):
-            value = getattr(exc, attr, None)
-            if value:
-                text_parts.append(str(value))
-        error_text = " ".join(text_parts).lower()
-
-        missing_table_markers = (
-            "pgrst205",
-            "42p01",
-            "could not find the table",
-            "schema cache",
-            'relation "public.users" does not exist',
-            'relation "users" does not exist',
-        )
-        if any(marker in error_text for marker in missing_table_markers):
-            return "users_table_unavailable"
-
-        return "query_failed"
+            logger.warning("User visit lookup failed: %s", e)
+        return None
 
     async def _count_visits(self, visitor_id: str) -> int:
         """Count total visits for a given ``visitor_id``."""

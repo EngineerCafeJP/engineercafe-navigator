@@ -81,6 +81,78 @@ class TestProductionLogHygiene:
         assert record.duration_ms >= 0
 
 
+class TestLangSmithTracing:
+    def test_configure_langsmith_tracing_sets_langchain_env(self, monkeypatch):
+        import backend.main as main_mod
+
+        for key in (
+            "LANGSMITH_API_KEY",
+            "LANGCHAIN_API_KEY",
+            "LANGCHAIN_TRACING_V2",
+            "LANGSMITH_TRACING",
+            "LANGSMITH_PROJECT",
+            "LANGCHAIN_PROJECT",
+        ):
+            monkeypatch.delenv(key, raising=False)
+
+        settings = MagicMock()
+        settings.is_production = True
+        settings.langsmith_api_key = "ls-test-key"
+        settings.langsmith_project = "engineer-cafe-prod"
+
+        with patch("backend.config.settings.get_settings", return_value=settings):
+            enabled = main_mod._configure_langsmith_tracing()
+
+        assert enabled is True
+        assert main_mod.os.environ["LANGSMITH_API_KEY"] == "ls-test-key"
+        assert main_mod.os.environ["LANGCHAIN_API_KEY"] == "ls-test-key"
+        assert main_mod.os.environ["LANGCHAIN_TRACING_V2"] == "true"
+        assert main_mod.os.environ["LANGSMITH_TRACING"] == "true"
+        assert main_mod.os.environ["LANGSMITH_PROJECT"] == "engineer-cafe-prod"
+        assert main_mod.os.environ["LANGCHAIN_PROJECT"] == "engineer-cafe-prod"
+
+    def test_configure_langsmith_tracing_skips_without_key(self, monkeypatch):
+        import backend.main as main_mod
+
+        for key in (
+            "LANGSMITH_API_KEY",
+            "LANGCHAIN_API_KEY",
+            "LANGCHAIN_TRACING_V2",
+            "LANGSMITH_TRACING",
+        ):
+            monkeypatch.delenv(key, raising=False)
+
+        settings = MagicMock()
+        settings.is_production = True
+        settings.langsmith_api_key = ""
+        settings.langsmith_project = "engineer-cafe-prod"
+
+        with patch("backend.config.settings.get_settings", return_value=settings):
+            enabled = main_mod._configure_langsmith_tracing()
+
+        assert enabled is False
+        assert "LANGCHAIN_TRACING_V2" not in main_mod.os.environ
+
+    def test_attach_latest_llm_metadata_uses_request_scoped_tracker(self):
+        import backend.main as main_mod
+        from backend.utils.token_tracker import record_llm_call_metadata, reset_token_tracker
+
+        reset_token_tracker()
+        record_llm_call_metadata(
+            provider="openrouter",
+            model="google/gemini-3.1-flash-lite-preview",
+            llm_latency_ms=42,
+        )
+
+        metadata = main_mod._attach_latest_llm_metadata({"route": "business_info"})
+
+        assert metadata["route"] == "business_info"
+        assert metadata["provider"] == "openrouter"
+        assert metadata["model"] == "google/gemini-3.1-flash-lite-preview"
+        assert metadata["llm_latency_ms"] == 42
+        reset_token_tracker()
+
+
 class TestVoiceWarmupEndpoint:
     def test_voice_get_lists_warmup_action(self):
         from backend.main import app
@@ -483,6 +555,8 @@ class TestVoiceEndpoint:
 
     @pytest.mark.asyncio
     async def test_voice_stt_exposes_selected_provider(self):
+        from backend.services.stt_warmup_service import STTWarmupSnapshot
+
         mock_stt = AsyncMock()
         mock_stt.speech_to_text = AsyncMock(
             return_value={
@@ -494,8 +568,18 @@ class TestVoiceEndpoint:
                 "postprocessed": False,
             }
         )
+        fake_warmup_service = MagicMock()
+        fake_warmup_service.snapshot.return_value = STTWarmupSnapshot(
+            status="ready",
+            provider="qwen-primary",
+            duration_ms=123,
+        )
 
-        with patch("backend.main._get_stt_agent", return_value=mock_stt):
+        with (
+            patch("backend.main._get_stt_agent", return_value=mock_stt),
+            patch("backend.main.get_stt_warmup_service", return_value=fake_warmup_service),
+            patch("backend.main.log_stt_event") as mock_log_stt_event,
+        ):
             from backend.main import voice_api, VoiceRequest
 
             audio = base64.b64encode(b"\0" * 1024).decode("ascii")
@@ -509,6 +593,15 @@ class TestVoiceEndpoint:
         assert response.requestId
         assert response.phase == "speech_to_text"
         assert response.upstreamStatus["phase"] == "stt"
+        stt_request_log = next(
+            call
+            for call in mock_log_stt_event.call_args_list
+            if call.kwargs.get("event") == "stt_request_complete"
+        )
+        assert stt_request_log.kwargs["stt_warmup_status"] == "ready"
+        assert stt_request_log.kwargs["stt_warmup_provider"] == "qwen-primary"
+        assert stt_request_log.kwargs["stt_warmup_duration_ms"] == 123
+        assert stt_request_log.kwargs["timeout_s"] == 12.0
 
     @pytest.mark.asyncio
     async def test_voice_stt_short_audio_returns_controlled_failure(self):

@@ -45,6 +45,7 @@ from backend.config.routing_constants import (
 from backend.services.memory_promoter import MemoryPromoter
 from backend.utils.cafe_entity import (
     cafe_entity_metadata,
+    canonicalize_facility_memory_key_text,
     context_mentions_engineer_cafe_hours,
     inherited_request_type,
     is_ambiguous_cafe_hours_query,
@@ -83,6 +84,27 @@ _TRAG_REPEAT_PUNCT_RE = re.compile(r"[\s、。,.!?！？・…:：;；'\"`]+")
 RAG_EVIDENCE_MAX_CONTEXTS = 5
 RAG_EVIDENCE_MAX_CONTEXT_CHARS = 900
 RAG_EVIDENCE_MAX_CONTEXT_STRING_CHARS = 4000
+
+_BOOLEAN_TRUE_VALUES = {"1", "true", "yes", "on"}
+_BOOLEAN_FALSE_VALUES = {"0", "false", "no", "off"}
+_HALLUCINATION_CAUTION_RE = re.compile(
+    r"("
+    r"わかりません|分かりません|確認できません|見つかりません|"
+    r"情報がありません|回答できません|申し訳|すみません|"
+    r"i don't know|not sure|could not find|can't confirm|cannot confirm"
+    r")",
+    re.IGNORECASE,
+)
+_HALLUCINATION_CONCRETE_CLAIM_RE = re.compile(
+    r"("
+    r"https?://|"
+    r"\b[\w.+-]+@[\w-]+(?:\.[\w-]+)+\b|"
+    r"\d{1,4}\s*[:：]\s*\d{2}|"
+    r"\d+(?:\.\d+)?\s*"
+    r"(?:円|yen|minutes?|mins?|分|hours?|時|日|階|名|人|people|%|パーセント)"
+    r")",
+    re.IGNORECASE,
+)
 
 
 def _get_trag_client() -> "_httpx.AsyncClient":
@@ -134,6 +156,57 @@ def _truthy_context_flag(value: Any) -> bool:
     if isinstance(value, str):
         return value.strip().lower() in {"1", "true", "yes", "on"}
     return False
+
+
+def _coerce_optional_bool(value: Any) -> Optional[bool]:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in _BOOLEAN_TRUE_VALUES:
+            return True
+        if normalized in _BOOLEAN_FALSE_VALUES:
+            return False
+    return None
+
+
+def _detect_hallucination_flag(answer: str, metadata: dict[str, Any]) -> bool:
+    """Simple conservative unsupported-claim detector for structured logs."""
+    explicit_flag = _coerce_optional_bool(metadata.get("hallucination_flag"))
+    if explicit_flag is not None:
+        return explicit_flag
+
+    text = str(answer or "").strip()
+    if not text or _HALLUCINATION_CAUTION_RE.search(text):
+        return False
+
+    sources = {source.strip().lower() for source in _metadata_sources(metadata)}
+    sources.discard("")
+    fallback_sources = bool(sources) and sources <= {"fallback"}
+    explicit_fallback = (
+        _coerce_optional_bool(metadata.get("rag_fallback")) is True
+        or _coerce_optional_bool(metadata.get("fallback")) is True
+    )
+
+    confidence: float | None = None
+    try:
+        raw_confidence = metadata.get("confidence")
+        if raw_confidence is not None and raw_confidence != "":
+            confidence = float(raw_confidence)
+    except (TypeError, ValueError):
+        confidence = None
+
+    if confidence is not None and confidence >= 0.95 and not explicit_fallback:
+        return False
+
+    unsupported = not sources or fallback_sources or explicit_fallback
+    low_confidence = confidence is not None and confidence < 0.5
+    if not unsupported and not low_confidence:
+        return False
+
+    return bool(_HALLUCINATION_CONCRETE_CLAIM_RE.search(text))
 
 
 def _clip_evidence_text(value: Any, *, max_chars: int) -> str:
@@ -318,7 +391,7 @@ async def _translate_llm_with_retry(
     max_retries: int = 3,
     backoff_base: float = 0.5,
 ) -> str:
-    """Translate KO/ZH query to JA via OpenRouter with exponential backoff."""
+    """Translate non-Japanese tRAG query to JA via OpenRouter with exponential backoff."""
     _TRAG_MODEL = os.getenv("TRAG_TRANSLATION_MODEL", "google/gemini-3.1-flash-lite-preview")
     api_key = os.getenv("OPENROUTER_API_KEY", "")
     if not api_key:
@@ -895,6 +968,34 @@ class MainWorkflow:
         except Exception as exc:
             logger.warning("Failed to store fast-path user message: %s", exc)
 
+    @staticmethod
+    def _checkpoint_messages_to_recent_memory(messages: list[BaseMessage]) -> list[dict[str, Any]]:
+        """Convert persisted LangGraph messages into memory-context rows."""
+        recent: list[dict[str, Any]] = []
+        for message in messages:
+            if isinstance(message, HumanMessage):
+                role = "user"
+            elif isinstance(message, AIMessage):
+                role = "assistant"
+            else:
+                continue
+            content = message.content
+            if isinstance(content, list):
+                content = " ".join(str(part) for part in content)
+            content = str(content or "").strip()
+            if not content:
+                continue
+            recent.append(
+                {
+                    "role": role,
+                    "content": content,
+                    "metadata": {
+                        "canonical_content_key": canonicalize_facility_memory_key_text(content)
+                    },
+                }
+            )
+        return recent[-20:]
+
     async def _reception_check_node(self, state: WorkflowStateDict) -> dict[str, Any]:
         from backend.utils.reception_status import check_reception_status
 
@@ -1044,6 +1145,34 @@ class MainWorkflow:
                     "inherit_context": True,
                 },
             )
+            try:
+                from backend.utils.memory_feature_flags import get_memory_feature_flags
+
+                memory_flags = get_memory_feature_flags()
+                if not memory_flags.enable_agent_memory_stm_writes:
+                    checkpoint_messages = self._checkpoint_messages_to_recent_memory(
+                        state.get("messages", [])
+                    )
+                    if checkpoint_messages:
+                        checkpoint_messages = memory_helper._rank_messages(
+                            checkpoint_messages,
+                            query,
+                        )
+                    memory_context = {
+                        **memory_context,
+                        "recent_messages": checkpoint_messages,
+                        "context_string": memory_helper._build_comprehensive_context(
+                            checkpoint_messages,
+                            memory_context.get("knowledge_results", []),
+                            language,
+                        ),
+                        "stm_source": "langgraph_checkpointer",
+                    }
+            except Exception as checkpoint_context_error:
+                logger.debug(
+                    "Checkpointer STM context overlay skipped: %s",
+                    checkpoint_context_error,
+                )
 
             # ユーザーメッセージを保存
             if query:  # 空でないことを確認
@@ -1062,35 +1191,11 @@ class MainWorkflow:
                 from backend.utils.query_classifier import QueryClassifier
 
                 # tRAG: Translate non-Japanese queries to Japanese for
-                # knowledge base search. EN uses CTranslate2; KO/ZH use
-                # LLM-based translation via OpenRouter.
+                # knowledge base search. Use the LLM retry path for EN/KO/ZH;
+                # local opus-mt en->ja produced low-information garbage in
+                # production and must not be used for retrieval queries.
                 rag_query = query
-                if language == "en":
-                    try:
-                        from backend.services.translation_service import (
-                            get_translation_service,
-                        )
-
-                        ts = get_translation_service()
-                        translated = await ts.translate(query, "en_to_ja")
-                        if translated and not _is_pathological_translation(translated):
-                            rag_query = translated
-                            logger.info(
-                                "tRAG en->ja: '%s' -> '%s'",
-                                query[:40],
-                                rag_query[:40],
-                            )
-                        elif translated:
-                            logger.warning(
-                                "tRAG en->ja rejected low-information translation: '%s'",
-                                translated[:60],
-                            )
-                    except Exception as trans_err:
-                        logger.warning(
-                            "Query translation failed, using original: %s",
-                            trans_err,
-                        )
-                elif language in ("ko", "zh"):
+                if language in ("en", "ko", "zh"):
                     try:
                         translated = await _translate_llm_with_retry(query, language)
                         if translated and _JA_RE.search(translated):
@@ -1103,12 +1208,13 @@ class MainWorkflow:
                             )
                         elif translated:
                             logger.warning(
-                                "tRAG not Japanese: '%s'",
+                                "tRAG %s->ja rejected non-Japanese translation: '%s'",
+                                language,
                                 translated[:60],
                             )
                     except Exception as trans_err:
                         logger.warning(
-                            "LLM translation (%s->ja) failed: %s",
+                            "LLM translation (%s->ja) failed, using original: %s",
                             language,
                             trans_err,
                         )
@@ -1816,6 +1922,12 @@ class MainWorkflow:
             "vrm_control": vrm_control,
             "lipsync_data": lipsync_data,
         }
+        metadata.setdefault("ltm_store_write", "skipped")
+
+        def _mark_ltm_store_write(status: str) -> None:
+            if status == "success" or metadata.get("ltm_store_write") != "success":
+                metadata["ltm_store_write"] = status
+
         if "rag_evidence" not in metadata:
             rag_evidence = _build_rag_evidence_metadata(state_context)
             if rag_evidence is not None:
@@ -1870,6 +1982,8 @@ class MainWorkflow:
                     "Response translation failed, using original: %s",
                     trans_err,
                 )
+
+        metadata["hallucination_flag"] = _detect_hallucination_flag(answer, metadata)
 
         # アシスタント応答を保存
         try:
@@ -1937,11 +2051,16 @@ class MainWorkflow:
                         "source": source,
                     }
                     value = sanitize_for_postgres(value)
-                    await store_with_retry(
-                        lambda s, k=key, v=value: s.aput(long_term_namespace, k, v),
-                        store=runtime.store,
-                        operation_name="long-term memory store",
-                    )
+                    try:
+                        await store_with_retry(
+                            lambda s, k=key, v=value: s.aput(long_term_namespace, k, v),
+                            store=runtime.store,
+                            operation_name="long-term memory store",
+                        )
+                    except Exception:
+                        _mark_ltm_store_write("failed")
+                        raise
+                    _mark_ltm_store_write("success")
 
                 # Candidate system writes shadow candidates, while high-confidence
                 # explicit facts also enter LTM immediately for cross-session recall.
@@ -1985,6 +2104,7 @@ class MainWorkflow:
                                     user_id,
                                 )
                     except Exception as candidate_err:
+                        _mark_ltm_store_write("failed")
                         logger.warning(
                             "Memory candidate write failed: %s",
                             candidate_err,
@@ -2014,14 +2134,18 @@ class MainWorkflow:
                             delete_promoted_candidates=False,
                         )
                         if promotion_stats.get("promoted", 0) > 0:
+                            _mark_ltm_store_write("success")
+                        if promotion_stats.get("promoted", 0) > 0:
                             logger.info(
                                 "Promoted memories for user %s: %s",
                                 user_id,
                                 promotion_stats,
                             )
                     except Exception as promote_err:
+                        _mark_ltm_store_write("failed")
                         logger.warning("Memory promotion failed: %s", promote_err)
         except Exception as e:
+            _mark_ltm_store_write("failed")
             logger.warning("Long-term memory store failed: %s", e)
 
         # Message Windowing: 長セッションでのコンテキストオーバーフロー防止
@@ -2139,84 +2263,6 @@ class MainWorkflow:
             return
 
         await aget_tuple(config)
-
-    _AGENT_NODE_MAP: dict[str, str] = {
-        "facility": "_facility_node",
-        "event": "_event_node",
-        "slide": "_slide_node",
-        "general_knowledge": "_general_knowledge_node",
-        "business_info": "_business_info_node",
-        "farewell": "_farewell_node",
-    }
-
-    async def ainvoke_from_reception(self, handoff: Any) -> dict:
-        """Invoke an agent node directly, bypassing the orchestrator.
-
-        Used by the autonomous reception flow after ReceptionHandoffService
-        has already determined the target agent and built the workflow state.
-
-        Args:
-            handoff: A HandoffResult from ReceptionHandoffService.
-
-        Returns:
-            A dict with answer, emotion, metadata, and reception-specific fields.
-
-        Raises:
-            ValueError: If the target agent is not a known node.
-        """
-        routing = handoff.workflow_state.get("routing", {})
-        target, resolution_source = normalize_agent_node(handoff.target_agent)
-        node_attr = self._AGENT_NODE_MAP.get(target)
-        if node_attr is None or resolution_source == "fallback":
-            raise ValueError(
-                f"Unknown target agent '{handoff.target_agent}'. "
-                f"Valid agents: {sorted(self._AGENT_NODE_MAP)}"
-            )
-
-        state = {
-            **handoff.workflow_state,
-            "routing": {
-                **(routing if isinstance(routing, dict) else {}),
-                "agent": target,
-                "debug_info": {
-                    **(routing.get("debug_info", {}) if isinstance(routing, dict) else {}),
-                    "raw_target_agent": handoff.target_agent,
-                    "agent_resolution_source": resolution_source,
-                },
-            },
-        }
-        self._current_visitor_id = state.get("session_id", "anonymous")
-
-        agent_node = getattr(self, node_attr)
-        agent_result = await agent_node(state)
-
-        # Merge agent output into state for format_response
-        merged_state = cast(WorkflowStateDict, {**state, **agent_result})
-
-        # format_response expects Runtime context — call directly with a
-        # lightweight shim since we're outside the graph execution.
-        try:
-            context = WorkflowContext(user_id=self._current_visitor_id)
-
-            class _RuntimeShim:
-                def __init__(self, ctx: WorkflowContext) -> None:
-                    self.context = ctx
-                    self.store = None  # No store available outside graph execution
-
-            formatted = await self._format_response_node(merged_state, _RuntimeShim(context))
-        except Exception:
-            logger.warning("format_response failed in reception invoke, using raw agent result")
-            formatted = agent_result
-
-        result = {
-            "answer": formatted.get("answer", agent_result.get("answer", "")),
-            "emotion": formatted.get("emotion", agent_result.get("emotion", "neutral")),
-            "metadata": formatted.get("metadata", agent_result.get("metadata", {})),
-            "purpose_flow_response": handoff.purpose_flow.response_text,
-            "requires_staff": handoff.requires_staff,
-        }
-
-        return result
 
     async def ainvoke(self, input_data: dict) -> dict:
         """ワークフローを非同期実行"""

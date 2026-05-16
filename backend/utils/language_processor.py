@@ -7,21 +7,16 @@ LanguageProcessor - 言語検出ユーティリティ
 参考:
 - docs/migration/agents/language-classifier/SPEC.md
 
-TODO (専門エンジニア - Chie):
-1. LLMを使用した高精度言語検出
-2. エラーハンドリングの強化
+低信頼度の場合は、任意で LLM による言語判定へフォールバックできる。
 """
 
 import logging
+import os
 import re
 from dataclasses import dataclass
 from typing import Literal, Optional, TypedDict
 
 from backend.utils.language_types import SupportedLanguage
-
-# TODO: 実装時に必要なインポート
-# from llm.openrouter import OpenRouterProvider
-# from llm.models import get_model_config
 
 logger = logging.getLogger(__name__)
 
@@ -270,7 +265,6 @@ class LanguageProcessor:
         """
         self.default_language = default_language
         self.debug_mode = debug_mode
-        # TODO: OpenRouterProvider等の初期化
 
     def _analyze_text(self, text: str) -> _TextAnalysis:
         """テキストの文字種・キーワードを解析する（共通処理）"""
@@ -438,16 +432,52 @@ class LanguageProcessor:
             return self.default_language
 
     async def _detect_by_llm(self, query: str) -> Optional[LanguageCode]:
-        """
-        LLMを使用した高精度言語検出（内部メソッド）
+        """Use the router LLM for low-confidence language detection."""
+        api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
+        if not api_key or api_key.lower().startswith(("test-", "placeholder", "fake-", "sk-test-")):
+            logger.debug("LLM language detection skipped: OpenRouter key unavailable")
+            return None
 
-        TODO:
-        - OpenRouter APIを使用
-        - プロンプト: "Detect the language of the following text: {query}"
-        - レスポンスから言語コードを抽出
-        """
-        logger.debug("LLMベース検出（未実装）: %s...", query[:50])
-        # TODO: 実装
+        provider = None
+        try:
+            from langchain_core.messages import HumanMessage, SystemMessage
+
+            from backend.llm.models import MODEL_CONFIGS
+            from backend.llm.openrouter import OpenRouterProvider
+
+            provider = OpenRouterProvider(api_key=api_key)
+            result = await provider.generate(
+                [
+                    SystemMessage(
+                        content=(
+                            "Detect the language of the user text. "
+                            "Return exactly one code from: ja, en, zh, ko, unknown."
+                        )
+                    ),
+                    HumanMessage(content=query[:1000]),
+                ],
+                MODEL_CONFIGS["router"],
+            )
+            normalized = result.strip().lower()
+            aliases = {
+                "japanese": "ja",
+                "jp": "ja",
+                "english": "en",
+                "chinese": "zh",
+                "zh-cn": "zh",
+                "korean": "ko",
+            }
+            code = aliases.get(normalized, normalized[:2])
+            if code in {"ja", "en", "zh", "ko", "unknown"}:
+                return code  # type: ignore[return-value]
+        except Exception as exc:
+            logger.debug("LLM language detection failed: %s", exc)
+        finally:
+            if provider is not None:
+                try:
+                    await provider.close()
+                except Exception:
+                    pass
         return None
 
     def determine_response_language(

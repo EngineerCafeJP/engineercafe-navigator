@@ -25,6 +25,17 @@ from backend.utils.postgres_sanitizer import sanitize_for_postgres
 
 logger = logging.getLogger(__name__)
 
+_AGENT_MEMORY_SESSION_COLUMN = "value->>sessionId"
+
+
+def _log_memory_event_safely(event: str, **fields: Any) -> None:
+    try:
+        from backend.observability.structured_logger import log_memory_event
+
+        log_memory_event(event=event, **fields)
+    except Exception:
+        pass
+
 
 class SimplifiedMemoryHelper:
     """
@@ -120,9 +131,11 @@ class SimplifiedMemoryHelper:
             # セッションIDでスコープしたメッセージを取得
             response = (
                 self.supabase.table("agent_memory")
-                .select("*")
+                .select("value")
                 .eq("agent_name", self.agent_name)
                 .like("key", "message_%")
+                .filter(_AGENT_MEMORY_SESSION_COLUMN, "eq", sanitize_for_postgres(session_id))
+                .filter("value->>role", "eq", "user")
                 .order("created_at", desc=True)
                 .limit(self.max_entries)
                 .execute()
@@ -131,19 +144,36 @@ class SimplifiedMemoryHelper:
             if not response.data:
                 return None
 
-            # session_idでフィルタリングし、最新のuser messageを探す
+            # 最新のuser messageを探す。session_id/role は SQL 側で絞り込み済み。
             for item in response.data:
                 value = item.get("value", {})
-                if value.get("role") == "user" and value.get("sessionId") == session_id:
-                    request_type = value.get("request_type")
-                    if request_type:
-                        logger.info("Found previous request type: %s", request_type)
-                        return request_type
+                request_type = value.get("request_type")
+                if request_type:
+                    logger.info("Found previous request type: %s", request_type)
+                    _log_memory_event_safely(
+                        "memory_previous_request_type_load",
+                        session_id=session_id,
+                        success=True,
+                        request_type=request_type,
+                    )
+                    return request_type
 
+            _log_memory_event_safely(
+                "memory_previous_request_type_load",
+                session_id=session_id,
+                success=True,
+                request_type=None,
+            )
             return None
 
         except Exception as e:
             logger.error("Error getting previous request type: %s", e)
+            _log_memory_event_safely(
+                "memory_previous_request_type_load",
+                session_id=session_id,
+                success=False,
+                error_type=type(e).__name__,
+            )
             return None
 
     async def get_context(
@@ -174,9 +204,34 @@ class SimplifiedMemoryHelper:
 
         logger.info("Getting context for query: '%s...', session: %s", query[:50], session_id)
 
-        # 最近のメッセージを取得
-        recent_messages = await self._get_recent_messages(session_id)
+        try:
+            from backend.utils.memory_feature_flags import get_memory_feature_flags
+
+            memory_flags = get_memory_feature_flags()
+        except Exception as flag_error:
+            logger.debug("Failed to read memory feature flags: %s", flag_error)
+            memory_flags = None
+
+        # 最近のメッセージを取得。STM cutover 後は LangGraph Checkpointer を
+        # short-term source とし、agent_memory からの read も止める。
+        if memory_flags and not memory_flags.enable_agent_memory_stm_writes:
+            recent_messages = []
+            _log_memory_event_safely(
+                "memory_recent_messages_load",
+                session_id=session_id,
+                success=True,
+                skipped=True,
+                reason="agent_memory_stm_writes_disabled",
+            )
+        else:
+            recent_messages = await self._get_recent_messages(session_id)
         logger.info("Found %d recent messages", len(recent_messages))
+        _log_memory_event_safely(
+            "memory_context_load",
+            session_id=session_id,
+            success=True,
+            recent_messages=len(recent_messages),
+        )
 
         # メッセージをランキング
         if recent_messages:
@@ -188,7 +243,10 @@ class SimplifiedMemoryHelper:
         query_request_type = extract_request_type(query)
         query_intent_override = False
         if inherit_context:
-            inherited_request_type = await self.get_previous_request_type(session_id)
+            if memory_flags and not memory_flags.enable_agent_memory_stm_writes:
+                inherited_request_type = None
+            else:
+                inherited_request_type = await self.get_previous_request_type(session_id)
             if query_request_type:
                 query_intent_override = inherited_request_type is not None
                 inherited_request_type = query_request_type
@@ -266,9 +324,10 @@ class SimplifiedMemoryHelper:
 
             response = (
                 self.supabase.table("agent_memory")
-                .select("*")
+                .select("value")
                 .eq("agent_name", self.agent_name)
                 .like("key", "message_%")
+                .filter(_AGENT_MEMORY_SESSION_COLUMN, "eq", sanitize_for_postgres(session_id))
                 .order("created_at", desc=True)
                 .limit(self.max_entries * 3)
                 .execute()
@@ -277,33 +336,45 @@ class SimplifiedMemoryHelper:
             if not response.data:
                 return []
 
-            # session_idでフィルタリングしてメッセージを整形
+            # メッセージを整形。session_id は SQL 側で絞り込み済み。
             messages = []
             for item in response.data:
                 value = item.get("value", {})
-                if value.get("sessionId") == session_id:
-                    content = value.get("content")
-                    messages.append(
-                        {
-                            "role": value.get("role"),
-                            "content": content,
-                            "metadata": {
-                                "emotion": value.get("emotion"),
-                                "confidence": value.get("confidence"),
-                                "timestamp": value.get("timestamp"),
-                                "request_type": value.get("request_type"),
-                                "canonical_content_key": value.get("canonicalContentKey")
-                                or canonicalize_facility_memory_key_text(str(content or "")),
-                            },
-                        }
-                    )
+                content = value.get("content")
+                messages.append(
+                    {
+                        "role": value.get("role"),
+                        "content": content,
+                        "metadata": {
+                            "emotion": value.get("emotion"),
+                            "confidence": value.get("confidence"),
+                            "timestamp": value.get("timestamp"),
+                            "request_type": value.get("request_type"),
+                            "canonical_content_key": value.get("canonicalContentKey")
+                            or canonicalize_facility_memory_key_text(str(content or "")),
+                        },
+                    }
+                )
 
             # DESC順で取得しているので時系列順に戻し、max_entriesで制限
             messages = messages[::-1]
-            return messages[-self.max_entries :] if len(messages) > self.max_entries else messages
+            result = messages[-self.max_entries :] if len(messages) > self.max_entries else messages
+            _log_memory_event_safely(
+                "memory_recent_messages_load",
+                session_id=session_id,
+                success=True,
+                message_count=len(result),
+            )
+            return result
 
         except Exception as e:
             logger.error("Error getting recent messages: %s", e)
+            _log_memory_event_safely(
+                "memory_recent_messages_load",
+                session_id=session_id,
+                success=False,
+                error_type=type(e).__name__,
+            )
             return []
 
     def _rank_messages(self, messages: List[Dict], current_query: str) -> List[Dict]:
@@ -500,6 +571,26 @@ class SimplifiedMemoryHelper:
             logger.warning("Supabase not available, skipping message storage")
             return
 
+        try:
+            from backend.utils.memory_feature_flags import get_memory_feature_flags
+
+            if not get_memory_feature_flags().enable_agent_memory_stm_writes:
+                logger.info(
+                    "Skipping agent_memory STM write; "
+                    "LangGraph checkpointer is the short-term source"
+                )
+                _log_memory_event_safely(
+                    "memory_store_message",
+                    session_id=session_id,
+                    role=role,
+                    success=True,
+                    skipped=True,
+                    reason="agent_memory_stm_writes_disabled",
+                )
+                return
+        except Exception as flag_error:
+            logger.debug("Failed to read memory feature flags: %s", flag_error)
+
         timestamp = int(datetime.now().timestamp() * 1000)
         metadata = sanitize_for_postgres(metadata or {})
         role = sanitize_for_postgres(role)
@@ -547,9 +638,22 @@ class SimplifiedMemoryHelper:
             ).execute()
 
             logger.info("Stored message with key: %s, session: %s", message_key, session_id)
+            _log_memory_event_safely(
+                "memory_store_message",
+                session_id=session_id,
+                role=role,
+                success=True,
+            )
 
         except Exception as e:
             logger.error("Error storing message: %s", e)
+            _log_memory_event_safely(
+                "memory_store_message",
+                session_id=session_id,
+                role=role,
+                success=False,
+                error_type=type(e).__name__,
+            )
             raise
 
     def _extract_request_type(self, content: str) -> Optional[str]:
@@ -572,35 +676,32 @@ class SimplifiedMemoryHelper:
             return
 
         try:
-            # セッションに紐づくメッセージを取得して削除
             response = (
                 self.supabase.table("agent_memory")
-                .select("id, value")
+                .delete()
                 .eq("agent_name", self.agent_name)
                 .like("key", "message_%")
+                .filter(_AGENT_MEMORY_SESSION_COLUMN, "eq", sanitize_for_postgres(session_id))
                 .execute()
             )
 
-            if not response.data:
-                return
-
-            # session_idに一致するメッセージのIDを収集
-            ids_to_delete = [
-                item["id"]
-                for item in response.data
-                if item.get("value", {}).get("sessionId") == session_id
-            ]
-
-            if ids_to_delete:
-                for record_id in ids_to_delete:
-                    self.supabase.table("agent_memory").delete().eq("id", record_id).execute()
-
-                logger.info(
-                    "Cleaned up %d messages for session: %s", len(ids_to_delete), session_id
-                )
+            deleted_count = len(response.data or [])
+            logger.info("Cleaned up %d messages for session: %s", deleted_count, session_id)
+            _log_memory_event_safely(
+                "memory_cleanup_session",
+                session_id=session_id,
+                success=True,
+                deleted_count=deleted_count,
+            )
 
         except Exception as e:
             logger.error("Error during session cleanup: %s", e)
+            _log_memory_event_safely(
+                "memory_cleanup_session",
+                session_id=session_id,
+                success=False,
+                error_type=type(e).__name__,
+            )
 
     async def cleanup(self) -> None:
         """
@@ -629,23 +730,21 @@ class SimplifiedMemoryHelper:
 
             ended_session_ids = {s["id"] for s in sessions_response.data}
 
-            # 全メッセージを取得してフィルタリング
-            messages_response = (
+            messages_query = (
                 self.supabase.table("agent_memory")
-                .select("id, value")
+                .select("id")
                 .eq("agent_name", self.agent_name)
                 .like("key", "message_%")
-                .execute()
             )
+            messages_response = messages_query.in_(
+                _AGENT_MEMORY_SESSION_COLUMN,
+                sorted(sanitize_for_postgres(session_id) for session_id in ended_session_ids),
+            ).execute()
 
             if not messages_response.data:
                 return
 
-            ids_to_delete = [
-                item["id"]
-                for item in messages_response.data
-                if item.get("value", {}).get("sessionId") in ended_session_ids
-            ]
+            ids_to_delete = [item["id"] for item in messages_response.data]
 
             if ids_to_delete:
                 for record_id in ids_to_delete:
@@ -684,13 +783,19 @@ class SimplifiedMemoryHelper:
             }
 
         try:
-            response = (
+            query = (
                 self.supabase.table("agent_memory")
-                .select("*")
+                .select("value")
                 .eq("agent_name", self.agent_name)
                 .like("key", "message_%")
-                .execute()
             )
+            if session_id:
+                query = query.filter(
+                    _AGENT_MEMORY_SESSION_COLUMN,
+                    "eq",
+                    sanitize_for_postgres(session_id),
+                )
+            response = query.execute()
 
             if not response.data:
                 return {
@@ -701,12 +806,7 @@ class SimplifiedMemoryHelper:
                     "time_span": 0.0,
                 }
 
-            # セッションIDでフィルタリング（指定時）
             items = response.data
-            if session_id:
-                items = [
-                    item for item in items if item.get("value", {}).get("sessionId") == session_id
-                ]
 
             if not items:
                 return {

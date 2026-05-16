@@ -19,6 +19,10 @@ async def test_chat_emits_structured_observability_log(caplog, monkeypatch):
         "emotion": "neutral",
         "metadata": {
             "category": "business_info",
+            "agent": "BusinessInfoAgent",
+            "provider": "cerebras",
+            "model": "gpt-oss-120b",
+            "llm_latency_ms": 123,
             "sources": ["enhanced_rag"],
             "rag_fallback": False,
             "hallucination_flag": True,
@@ -45,6 +49,7 @@ async def test_chat_emits_structured_observability_log(caplog, monkeypatch):
     assert body["requestId"] == "req-obs-513"
     assert body["phase"] == "chat"
     assert body["upstreamStatus"]["phase"] == "workflow"
+    assert body["upstreamStatus"]["route"] == "business_info"
     records = [
         record
         for record in caplog.records
@@ -57,6 +62,10 @@ async def test_chat_emits_structured_observability_log(caplog, monkeypatch):
     assert record.request_id == "req-obs-513"
     assert record.language == "ja"
     assert record.route == "business_info"
+    assert record.agent_class == "BusinessInfoAgent"
+    assert record.provider == "cerebras"
+    assert record.model == "gpt-oss-120b"
+    assert record.llm_latency_ms == 123
     assert record.sources == ["enhanced_rag"]
     assert record.rag_fallback is False
     assert record.hallucination_flag is True

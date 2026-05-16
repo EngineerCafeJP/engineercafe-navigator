@@ -258,6 +258,9 @@ DEFAULT_TTS_MAX_BYTES = 900
 MIN_CACHEABLE_TTS_AUDIO_BASE64_CHARS = 100
 DEFAULT_TTS_CACHE_MAX_ENTRIES = 200
 DEFAULT_TTS_CACHE_MAX_AUDIO_BYTES = 5 * 1024 * 1024
+DEFAULT_PIPER_PLUS_MAX_ATTEMPTS = 2
+DEFAULT_PIPER_PLUS_RETRY_BACKOFF_SECONDS = 0.15
+DEFAULT_PIPER_FAILURE_COOLDOWN_SECONDS = 10.0
 _DEFAULT_TTS_TIMEOUTS: Dict[str, float] = {
     "piper": 4.0,
     "kokoro": 3.0,
@@ -296,6 +299,65 @@ def get_tts_cache_max_audio_bytes() -> int:
         logger.warning("TTS_CACHE_MAX_AUDIO_BYTES must be positive; using default")
         return DEFAULT_TTS_CACHE_MAX_AUDIO_BYTES
     return value
+
+
+def get_piper_plus_max_attempts() -> int:
+    raw = os.getenv("PIPER_PLUS_MAX_ATTEMPTS", "").strip()
+    if not raw:
+        return DEFAULT_PIPER_PLUS_MAX_ATTEMPTS
+    try:
+        value = int(raw)
+    except ValueError:
+        logger.warning(
+            "Invalid PIPER_PLUS_MAX_ATTEMPTS=%r; using %d",
+            raw,
+            DEFAULT_PIPER_PLUS_MAX_ATTEMPTS,
+        )
+        return DEFAULT_PIPER_PLUS_MAX_ATTEMPTS
+    return max(1, min(value, 3))
+
+
+def get_piper_plus_retry_backoff_seconds() -> float:
+    raw = os.getenv("PIPER_PLUS_RETRY_BACKOFF_SECONDS", "").strip()
+    if not raw:
+        return DEFAULT_PIPER_PLUS_RETRY_BACKOFF_SECONDS
+    try:
+        value = float(raw)
+    except ValueError:
+        logger.warning(
+            "Invalid PIPER_PLUS_RETRY_BACKOFF_SECONDS=%r; using %.2fs",
+            raw,
+            DEFAULT_PIPER_PLUS_RETRY_BACKOFF_SECONDS,
+        )
+        return DEFAULT_PIPER_PLUS_RETRY_BACKOFF_SECONDS
+    return max(0.0, min(value, 1.0))
+
+
+def get_tts_provider_failure_cooldown_seconds(provider: str) -> float:
+    provider_key = (provider or "").strip().upper()
+    env_names = [
+        f"TTS_{provider_key}_FAILURE_COOLDOWN_SECONDS",
+        "TTS_PROVIDER_FAILURE_COOLDOWN_SECONDS",
+    ]
+    for name in env_names:
+        raw = os.getenv(name)
+        if raw is None or raw.strip() == "":
+            continue
+        try:
+            value = float(raw)
+        except (TypeError, ValueError):
+            logger.warning(
+                "Invalid %s=%r; using %.1fs",
+                name,
+                raw,
+                DEFAULT_PIPER_FAILURE_COOLDOWN_SECONDS,
+            )
+            return DEFAULT_PIPER_FAILURE_COOLDOWN_SECONDS
+        return max(0.0, min(value, 60.0))
+
+    if provider_key == "PIPER":
+        return DEFAULT_PIPER_FAILURE_COOLDOWN_SECONDS
+    return 0.0
 
 
 def get_tts_timeout_seconds(provider: str, role: str = "primary") -> float:
@@ -700,6 +762,43 @@ class PiperPlusTTSClient:
             self._client = httpx.AsyncClient(timeout=30)
         return self._client
 
+    @staticmethod
+    def _is_retryable_status(status_code: int) -> bool:
+        return status_code in {408, 409, 425, 429, 500, 502, 503, 504}
+
+    async def _sleep_before_retry(self, attempt: int) -> None:
+        delay = get_piper_plus_retry_backoff_seconds() * attempt
+        if delay > 0:
+            await asyncio.sleep(delay)
+
+    def _log_retry(
+        self,
+        *,
+        attempt: int,
+        max_attempts: int,
+        reason: str,
+        status_code: Optional[int] = None,
+        error_type: Optional[str] = None,
+    ) -> None:
+        delay_ms = int(get_piper_plus_retry_backoff_seconds() * attempt * 1000)
+        logger.warning(
+            "PiperPlus TTS attempt %d/%d failed (%s); retrying in %dms",
+            attempt,
+            max_attempts,
+            reason,
+            delay_ms,
+        )
+        log_tts_event(
+            event="tts_provider_retry",
+            provider="piper",
+            attempt=attempt,
+            max_attempts=max_attempts,
+            retry_delay_ms=delay_ms,
+            retry_reason=reason,
+            status_code=status_code,
+            error_type=error_type,
+        )
+
     async def close(self) -> None:
         if self._client is not None and not self._client.is_closed:
             await self._client.aclose()
@@ -726,28 +825,79 @@ class PiperPlusTTSClient:
         if speaker_id is not None:
             payload["speaker_id"] = speaker_id
 
-        try:
-            client = self._get_client()
-            response = await client.post(
-                f"{self.api_url}/synthesize",
-                json=payload,
-            )
-
-            if response.status_code >= 400:
-                raise RuntimeError(
-                    f"PiperPlus TTS API Error {response.status_code}: {response.text}"
+        max_attempts = get_piper_plus_max_attempts()
+        for attempt in range(1, max_attempts + 1):
+            try:
+                client = self._get_client()
+                response = await client.post(
+                    f"{self.api_url}/synthesize",
+                    json=payload,
                 )
 
-            wav_b64 = base64.b64encode(response.content).decode("utf-8")
-            logger.info("PiperPlus TTS synthesis success: text_len=%d", len(text))
-            return wav_b64
+                if response.status_code >= 400:
+                    if self._is_retryable_status(response.status_code) and attempt < max_attempts:
+                        self._log_retry(
+                            attempt=attempt,
+                            max_attempts=max_attempts,
+                            reason="http_status",
+                            status_code=response.status_code,
+                        )
+                        await self._sleep_before_retry(attempt)
+                        continue
+                    raise RuntimeError(
+                        f"PiperPlus TTS API Error {response.status_code}: {response.text}"
+                    )
 
-        except httpx.TimeoutException as e:
-            logger.error("PiperPlus TTS timeout: %s", e)
-            raise RuntimeError(f"PiperPlus TTS connection timeout: {e}")
-        except Exception as e:
-            logger.exception("PiperPlus TTS synthesis error: %s", e)
-            raise RuntimeError(f"PiperPlus TTS synthesis error: {e}")
+                if not response.content:
+                    if attempt < max_attempts:
+                        self._log_retry(
+                            attempt=attempt,
+                            max_attempts=max_attempts,
+                            reason="empty_audio",
+                        )
+                        await self._sleep_before_retry(attempt)
+                        continue
+                    raise RuntimeError("PiperPlus TTS returned empty audio response")
+
+                wav_b64 = base64.b64encode(response.content).decode("utf-8")
+                logger.info(
+                    "PiperPlus TTS synthesis success: text_len=%d attempt=%d",
+                    len(text),
+                    attempt,
+                )
+                return wav_b64
+
+            except httpx.TimeoutException as e:
+                if attempt < max_attempts:
+                    self._log_retry(
+                        attempt=attempt,
+                        max_attempts=max_attempts,
+                        reason="timeout",
+                        error_type=type(e).__name__,
+                    )
+                    await self._sleep_before_retry(attempt)
+                    continue
+                logger.error("PiperPlus TTS timeout: %s", e)
+                raise RuntimeError(f"PiperPlus TTS connection timeout: {e}")
+            except httpx.RequestError as e:
+                if attempt < max_attempts:
+                    self._log_retry(
+                        attempt=attempt,
+                        max_attempts=max_attempts,
+                        reason="request_error",
+                        error_type=type(e).__name__,
+                    )
+                    await self._sleep_before_retry(attempt)
+                    continue
+                logger.error("PiperPlus TTS request error: %s", e)
+                raise RuntimeError(f"PiperPlus TTS connection error: {e}")
+            except RuntimeError:
+                raise
+            except Exception as e:
+                logger.exception("PiperPlus TTS synthesis error: %s", e)
+                raise RuntimeError(f"PiperPlus TTS synthesis error: {e}")
+
+        raise RuntimeError("PiperPlus TTS failed without a retryable result")
 
 
 # =============================================================================
@@ -839,6 +989,7 @@ class VoiceAgent:
 
         self._tts_cache_max_audio_bytes = get_tts_cache_max_audio_bytes()
         self._tts_cache: TTLCache = TTLCache(maxsize=DEFAULT_TTS_CACHE_MAX_ENTRIES, ttl=3600)
+        self._tts_provider_cooldown_until: dict[str, float] = {}
 
     async def close(self) -> None:
         """Close reusable TTS clients owned by this agent."""
@@ -932,6 +1083,32 @@ class VoiceAgent:
     ) -> None:
         cache_store[cache_key] = entry
         self._evict_tts_cache_over_byte_budget(cache_store)
+
+    def _tts_provider_cooldowns(self) -> dict[str, float]:
+        cooldowns = getattr(self, "_tts_provider_cooldown_until", None)
+        if cooldowns is None:
+            cooldowns = {}
+            self._tts_provider_cooldown_until = cooldowns
+        return cooldowns
+
+    def _tts_provider_cooldown_remaining(self, provider: str) -> float:
+        until = self._tts_provider_cooldowns().get(provider, 0.0)
+        return max(0.0, until - time.monotonic())
+
+    def _clear_tts_provider_failure(self, provider: str) -> None:
+        self._tts_provider_cooldowns().pop(provider, None)
+
+    def _mark_tts_provider_failure(self, provider: str, error: Exception) -> None:
+        cooldown_s = get_tts_provider_failure_cooldown_seconds(provider)
+        if cooldown_s <= 0:
+            return
+        self._tts_provider_cooldowns()[provider] = time.monotonic() + cooldown_s
+        log_tts_event(
+            event="tts_provider_failure_cooldown",
+            provider=provider,
+            cooldown_seconds=cooldown_s,
+            error_type=type(error).__name__,
+        )
 
     @staticmethod
     def _require_audio_response(audio_b64: Any, provider: str) -> str:
@@ -1116,11 +1293,29 @@ class VoiceAgent:
             if self.tts_provider == "piper":
                 # piper-plus: 日本語・英語両対応（単一エンジン）
                 primary_attempt_provider = "piper"
-                audio_b64 = await self._await_tts_attempt(
-                    self.tts_client.synthesize_wav_base64(processed, language),
-                    provider="piper",
-                    role="primary",
-                )
+                if not self._requires_primary_tts_provider():
+                    cooldown_remaining = self._tts_provider_cooldown_remaining("piper")
+                    if cooldown_remaining > 0:
+                        log_tts_event(
+                            event="tts_provider_circuit_open",
+                            provider="piper",
+                            cooldown_remaining_ms=int(cooldown_remaining * 1000),
+                        )
+                        raise RuntimeError(
+                            "piper TTS skipped during failure cooldown "
+                            f"({cooldown_remaining:.2f}s remaining)"
+                        )
+                try:
+                    audio_b64 = await self._await_tts_attempt(
+                        self.tts_client.synthesize_wav_base64(processed, language),
+                        provider="piper",
+                        role="primary",
+                    )
+                    self._clear_tts_provider_failure("piper")
+                except Exception as piper_error:
+                    if not self._requires_primary_tts_provider():
+                        self._mark_tts_provider_failure("piper", piper_error)
+                    raise
                 audio_format = "audio/wav"
             elif language == "en" and self.kokoro_client:
                 # 英語 → Kokoro TTS (voicevox/google の場合)
@@ -1245,13 +1440,14 @@ class VoiceAgent:
                     try:
                         if language == "en":
                             logger.warning("piper failed, falling back to Kokoro for en")
-                            if not self.kokoro_client:
+                            kokoro_client = getattr(self, "kokoro_client", None)
+                            if not kokoro_client:
                                 raise RuntimeError(
                                     "Piper unavailable and Kokoro not configured for English TTS"
                                 )
                             fallback_provider = "kokoro"
                             audio_b64 = await self._await_tts_attempt(
-                                self.kokoro_client.synthesize_wav_base64(processed, language),
+                                kokoro_client.synthesize_wav_base64(processed, language),
                                 provider="kokoro",
                                 role="fallback",
                             )
@@ -1265,15 +1461,16 @@ class VoiceAgent:
                             logger.warning(
                                 "piper failed, falling back to VoiceVox for %s", language
                             )
-                            if not self.voicevox_fallback_client:
+                            voicevox_fallback_client = getattr(
+                                self, "voicevox_fallback_client", None
+                            )
+                            if not voicevox_fallback_client:
                                 raise RuntimeError(
                                     "No VoiceVox fallback client available for piper TTS fallback"
                                 )
                             fallback_provider = "voicevox"
                             audio_b64 = await self._await_tts_attempt(
-                                self.voicevox_fallback_client.synthesize_wav_base64(
-                                    processed, language
-                                ),
+                                voicevox_fallback_client.synthesize_wav_base64(processed, language),
                                 provider="voicevox",
                                 role="fallback",
                             )
@@ -1298,7 +1495,10 @@ class VoiceAgent:
                             role="fallback",
                         )
                         audio_format = "audio/mpeg"
-                    elif self.kokoro_client and primary_attempt_provider != "kokoro":
+                    elif (
+                        getattr(self, "kokoro_client", None)
+                        and primary_attempt_provider != "kokoro"
+                    ):
                         fallback_provider = "kokoro"
                         audio_b64 = await self._await_tts_attempt(
                             self.kokoro_client.synthesize_wav_base64(processed, language),

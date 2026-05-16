@@ -13,8 +13,6 @@ const REQUIRED_FUNCTION_MAX_DURATIONS: Record<string, number> = {
   'src/app/api/cron/update-knowledge-base/route.ts': 300,
   'src/app/api/ocr/route.ts': 120,
   'src/app/api/reception/start/route.ts': 120,
-  'src/app/api/reception/respond/route.ts': 120,
-  'src/app/api/reception/complete/route.ts': 120,
   'src/app/api/reception/status/[receptionSessionId]/route.ts': 120,
   'src/app/api/reception/sensor-status/route.ts': 120,
 };

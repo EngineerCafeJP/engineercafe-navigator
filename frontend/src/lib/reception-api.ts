@@ -30,33 +30,6 @@ export interface StartReceptionResponse {
   stage: ReceptionActiveStage;
 }
 
-export interface RespondReceptionRequest {
-  session_id: string;
-  reception_session_id: string;
-  message: string;
-}
-
-export interface RespondReceptionResponse {
-  response: string;
-  stage: ReceptionActiveStage;
-  purpose: { category: string; detail?: string } | null;
-  next_action: string | null;
-}
-
-export interface CompleteReceptionRequest {
-  session_id: string;
-  reception_session_id: string;
-}
-
-export interface CompleteReceptionResponse {
-  response_text: string;
-  target_agent: string | null;
-  requires_staff: boolean;
-  purpose_category: string | null;
-  action_type: string | null;
-  action_data: Record<string, unknown> | null;
-}
-
 export interface ReceptionStatusResponse {
   session_id: string;
   stage: ReceptionActiveStage;
@@ -106,24 +79,6 @@ export async function startReception(
   request: StartReceptionRequest
 ): Promise<StartReceptionResponse> {
   return requestReceptionApi<StartReceptionResponse>('/api/reception/start', {
-    method: 'POST',
-    body: JSON.stringify(request),
-  });
-}
-
-export async function respondReception(
-  request: RespondReceptionRequest
-): Promise<RespondReceptionResponse> {
-  return requestReceptionApi<RespondReceptionResponse>('/api/reception/respond', {
-    method: 'POST',
-    body: JSON.stringify(request),
-  });
-}
-
-export async function completeReception(
-  request: CompleteReceptionRequest
-): Promise<CompleteReceptionResponse> {
-  return requestReceptionApi<CompleteReceptionResponse>('/api/reception/complete', {
     method: 'POST',
     body: JSON.stringify(request),
   });

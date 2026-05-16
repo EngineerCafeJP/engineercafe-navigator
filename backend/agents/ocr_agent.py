@@ -1,5 +1,7 @@
 import base64
+import json
 import logging
+import re
 import time
 from typing import Annotated, Dict, Any, TypedDict
 
@@ -20,9 +22,15 @@ logger = logging.getLogger(__name__)
 # it sometimes passes the user prompt back as "text".
 _HANDWRITING_PROMPT_MARKERS = (
     "手書き文字をOCRしてください",
-    "・自然な文章として復元",
-    "・読めない場合は None",
+    "手書き文字だけを読み取るOCRエンジン",
+    "画像から読み取れる文字列だけ",
+    "JSONやMarkdownは禁止",
     "・推測は禁止",
+    "読めない場合は None",
+    "transcribe only",
+    "do not repeat",
+    "do not explain",
+    "text_recognition",
 )
 _MEMBER_CARD_PROMPT_MARKERS = (
     "会員証画像を解析してください",
@@ -36,17 +44,70 @@ def _ocr_text_looks_like_prompt_echo(text: str, mode: str) -> bool:
     stripped = (text or "").strip()
     if len(stripped) < 12:
         return False
+    lower = stripped.lower()
     if mode == "handwriting":
-        if "手書き文字をOCRしてください" in stripped:
+        if "手書き文字をOCRしてください" in stripped or "手書き文字だけを読み取る" in stripped:
             return True
-        hits = sum(1 for m in _HANDWRITING_PROMPT_MARKERS if m in stripped)
+        if "do not repeat" in lower or "transcribe only" in lower:
+            return True
+        hits = sum(1 for m in _HANDWRITING_PROMPT_MARKERS if m.lower() in lower)
         return hits >= 2
     if mode == "member_card":
         if "会員証画像を解析してください" in stripped:
             return True
-        hits = sum(1 for m in _MEMBER_CARD_PROMPT_MARKERS if m in stripped)
+        hits = sum(1 for m in _MEMBER_CARD_PROMPT_MARKERS if m.lower() in lower)
         return hits >= 2
     return False
+
+
+def _message_content_to_text(content: Any) -> str:
+    """Extract text from a LangChain message content payload."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict):
+                text = item.get("text")
+                if isinstance(text, str):
+                    parts.append(text)
+        return "\n".join(parts)
+    return str(content or "")
+
+
+def _strip_wrapping_markup(text: str) -> str:
+    """Remove common assistant wrapping around short OCR answers."""
+    cleaned = text.strip()
+    fence_match = re.fullmatch(r"```(?:json|text)?\s*(.*?)\s*```", cleaned, flags=re.DOTALL)
+    if fence_match:
+        cleaned = fence_match.group(1).strip()
+
+    if cleaned.startswith("{") and cleaned.endswith("}"):
+        try:
+            data = json.loads(cleaned)
+        except json.JSONDecodeError:
+            pass
+        else:
+            for key in ("text", "recognized_text", "transcription", "value"):
+                value = data.get(key)
+                if isinstance(value, str):
+                    cleaned = value.strip()
+                    break
+
+    return cleaned.strip().strip('"').strip("'").strip()
+
+
+def _parse_text_recognition_content(raw_content: Any, mode: str) -> dict[str, Any]:
+    """Normalize OCR text and apply prompt-echo / no-text guards."""
+    raw = _strip_wrapping_markup(_message_content_to_text(raw_content))
+    if not raw or raw.lower() in {"none", "null", "n/a"}:
+        return {"success": False, "text": None, "error": "no_text_detected"}
+    if _ocr_text_looks_like_prompt_echo(raw, mode):
+        logger.warning("OCR returned prompt echo; treating as no text (mode=%s)", mode)
+        return {"success": False, "text": None, "error": "prompt_echo"}
+    return {"success": True, "text": raw, "error": None}
 
 
 # =====================================================
@@ -90,8 +151,10 @@ class VisionAgent:
     def __init__(self):
         provider = OpenRouterProvider()
         config = get_model_config("vision")
+        handwriting_config = get_model_config("vision_handwriting")
 
         self.llm = provider.get_langchain_llm(config=config)
+        self.handwriting_llm = provider.get_langchain_llm(config=handwriting_config)
         self.vision_llm = self.llm.bind_tools(TOOLS)
 
         self.app = self._build_graph()
@@ -121,6 +184,14 @@ class VisionAgent:
         response = await self.vision_llm.ainvoke(state["messages"])
         return {"messages": [response]}
 
+    async def _run_handwriting_ocr(self, message: HumanMessage) -> dict[str, Any]:
+        """Run handwriting OCR without tool-calling to avoid prompt echo tool args."""
+        response = await self.handwriting_llm.ainvoke([message])
+        return _parse_text_recognition_content(
+            getattr(response, "content", response),
+            "handwriting",
+        )
+
     # =====================================================
     # Prompt Builder (⭐ NEW)
     # =====================================================
@@ -137,14 +208,13 @@ class VisionAgent:
 
         elif mode == "handwriting":
             instruction = (
-                "手書き文字をOCRしてください。\n"
-                "・自然な文章として復元\n"
-                "・改行やノイズを補正\n"
-                "・意味が通る文章に整形\n"
+                "あなたは手書き文字だけを読み取るOCRエンジンです。\n"
+                "画像から読み取れる文字列だけを、そのまま1行で返してください。\n"
+                "・説明、前置き、翻訳、要約は禁止\n"
+                "・JSONやMarkdownは禁止\n"
+                "・この指示文を繰り返すことは禁止\n"
                 "・推測は禁止\n"
-                "・読めない場合は None\n"
-                "text_recognition ツールには、上記の指示文を書き写さず、"
-                "画像から読み取った本文だけを渡すこと。\n"
+                "・読めない場合は None だけを返す\n"
             )
 
         else:
@@ -219,8 +289,6 @@ class VisionAgent:
 
         message = self._build_prompt(mode, image_base64)
 
-        result = await self.app.ainvoke({"messages": [message]})
-
         # ---------- parse ----------
         text_result = {"success": False, "text": None, "error": None}
         face_result = {
@@ -230,29 +298,22 @@ class VisionAgent:
             "error": None,
         }
 
-        for msg in result["messages"]:
-            if not isinstance(msg, ToolMessage):
-                continue
+        if mode == "handwriting":
+            text_result = await self._run_handwriting_ocr(message)
+        else:
+            result = await self.app.ainvoke({"messages": [message]})
+            for msg in result["messages"]:
+                if not isinstance(msg, ToolMessage):
+                    continue
 
-            if msg.name == "text_recognition":
-                raw = (msg.content or "").strip()
-                if not raw or raw.lower() == "none":
-                    text_result["error"] = "no_text_detected"
-                elif _ocr_text_looks_like_prompt_echo(raw, mode):
-                    logger.warning(
-                        "OCR text_recognition returned prompt echo; treating as no text (mode=%s)",
-                        mode,
-                    )
-                    text_result["error"] = "no_text_detected"
-                else:
-                    text_result["success"] = True
-                    text_result["text"] = raw
+                if msg.name == "text_recognition":
+                    text_result = _parse_text_recognition_content(msg.content, mode)
 
-            elif msg.name == "face_recognition":
-                face_result["success"] = True
-                if msg.content and msg.content.lower() != "none":
-                    face_result["detected"] = True
-                    face_result["expression"] = {"emotion": msg.content}
+                elif msg.name == "face_recognition":
+                    face_result["success"] = True
+                    if msg.content and msg.content.lower() != "none":
+                        face_result["detected"] = True
+                        face_result["expression"] = {"emotion": msg.content}
 
         confidence = self._estimate_confidence(
             text_result,
@@ -273,3 +334,5 @@ class VisionAgent:
     async def close(self):
         if hasattr(self.llm, "aclose"):
             await self.llm.aclose()
+        if hasattr(self.handwriting_llm, "aclose"):
+            await self.handwriting_llm.aclose()

@@ -14,6 +14,8 @@ environments that lack the dependency.
 import asyncio
 import base64
 import os
+import socket
+from urllib.parse import urlparse
 
 import httpx
 import pytest
@@ -31,6 +33,18 @@ def _is_service_available(url: str, timeout: float = 2.0) -> bool:
     try:
         resp = httpx.get(url, timeout=timeout)
         return resp.status_code < 500
+    except Exception:
+        return False
+
+
+def _is_postgres_available(db_uri: str, timeout: float = 2.0) -> bool:
+    """Return True if the PostgreSQL TCP endpoint can be reached."""
+    try:
+        parsed = urlparse(db_uri)
+        if parsed.scheme not in {"postgresql", "postgres"} or not parsed.hostname:
+            return False
+        with socket.create_connection((parsed.hostname, parsed.port or 5432), timeout=timeout):
+            return True
     except Exception:
         return False
 
@@ -136,14 +150,23 @@ class TestVoiceVoxSmoke:
 class TestCheckpointerSmoke:
     """Verify AsyncPostgresSaver creation and teardown via Supabase DB."""
 
+    pytestmark = pytest.mark.e2e
+
     @pytest.fixture(autouse=True)
     def _require_supabase_db(self):
         db_uri = os.getenv("SUPABASE_DB_URI", "")
-        if not db_uri or "localhost:0" in db_uri:
+        if (
+            not db_uri
+            or db_uri.startswith("test-")
+            or db_uri.startswith("placeholder")
+            or "localhost:0" in db_uri
+        ):
             pytest.skip(
                 "SUPABASE_DB_URI not set or dummy. "
                 "Set it to a real PostgreSQL connection string to run this test."
             )
+        if not _is_postgres_available(db_uri):
+            pytest.skip("SUPABASE_DB_URI PostgreSQL endpoint is not reachable")
 
     async def test_create_and_close_checkpointer(self):
         """create_checkpointer should return an AsyncPostgresSaver instance."""

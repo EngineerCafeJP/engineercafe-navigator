@@ -256,6 +256,80 @@ def test_agent_response_evidence_metadata_skips_fallback_sources():
     )
 
 
+def test_detect_hallucination_flag_marks_unsupported_concrete_claim():
+    from backend.workflows.main_workflow import _detect_hallucination_flag
+
+    assert (
+        _detect_hallucination_flag(
+            "営業時間は9:00から22:00です。",
+            {"sources": []},
+        )
+        is True
+    )
+
+
+def test_detect_hallucination_flag_keeps_cautious_fallback_clear():
+    from backend.workflows.main_workflow import _detect_hallucination_flag
+
+    assert (
+        _detect_hallucination_flag(
+            "確認できませんでした。スタッフにお問い合わせください。",
+            {"sources": ["fallback"], "rag_fallback": True},
+        )
+        is False
+    )
+
+
+def test_detect_hallucination_flag_respects_explicit_metadata_override():
+    from backend.workflows.main_workflow import _detect_hallucination_flag
+
+    assert (
+        _detect_hallucination_flag(
+            "営業時間は9:00から22:00です。",
+            {"sources": [], "hallucination_flag": "false"},
+        )
+        is False
+    )
+    assert (
+        _detect_hallucination_flag(
+            "確認できませんでした。",
+            {"sources": ["enhanced_rag"], "hallucination_flag": "true"},
+        )
+        is True
+    )
+
+
+@pytest.mark.asyncio
+async def test_format_response_sets_hallucination_flag_from_simple_detector():
+    from backend.workflows.main_workflow import MainWorkflow
+
+    workflow = object.__new__(MainWorkflow)
+    workflow._character_control_agent = None
+    runtime = _mock_runtime()
+
+    with patch("backend.utils.memory_helper.get_memory_helper") as mock_get_helper:
+        mock_helper = AsyncMock()
+        mock_helper.store_message = AsyncMock()
+        mock_get_helper.return_value = mock_helper
+
+        result = await workflow._format_response_node(
+            {
+                "query": "営業時間は？",
+                "answer": "営業時間は9:00から22:00です。",
+                "session_id": "test-session",
+                "language": "ja",
+                "metadata": {"sources": []},
+                "context": {},
+                "messages": [],
+            },
+            runtime,
+        )
+
+    assert result["metadata"]["hallucination_flag"] is True
+    assert result["metadata"]["ltm_store_write"] == "skipped"
+    mock_helper.store_message.assert_awaited_once()
+
+
 class TestMainWorkflowMemoryIntegration:
     """MainWorkflow のメモリ統合テスト"""
 
@@ -441,9 +515,10 @@ class TestMainWorkflowMemoryIntegration:
                     "backend.workflows.main_workflow.store_with_retry",
                     side_effect=_passthrough,
                 ):
-                    await workflow._format_response_node(state, runtime)
+                    result = await workflow._format_response_node(state, runtime)
 
                 assert runtime.store.aput.await_count == 2
+                assert result["metadata"]["ltm_store_write"] == "success"
                 calls = runtime.store.aput.await_args_list
                 candidate_args = calls[0].args
                 fast_path_args = calls[1].args
@@ -519,9 +594,10 @@ class TestMainWorkflowMemoryIntegration:
                     "backend.workflows.main_workflow.store_with_retry",
                     side_effect=_passthrough,
                 ):
-                    await workflow._format_response_node(state, runtime)
+                    result = await workflow._format_response_node(state, runtime)
 
                 calls = runtime.store.aput.await_args_list
+                assert result["metadata"]["ltm_store_write"] == "success"
                 candidate_args = calls[0].args
                 fast_path_args = calls[1].args
                 assert candidate_args[0] == ("visitor_memory_candidates", "visitor-4")
@@ -649,8 +725,9 @@ class TestMainWorkflowMemoryIntegration:
                     "backend.workflows.main_workflow.store_with_retry",
                     side_effect=_passthrough,
                 ):
-                    await workflow._format_response_node(state, runtime)
+                    result = await workflow._format_response_node(state, runtime)
                 runtime.store.aput.assert_not_called()
+                assert result["metadata"]["ltm_store_write"] == "skipped"
 
     @pytest.mark.asyncio
     @patch("backend.workflows.main_workflow.OrchestratorAgent")
@@ -711,6 +788,7 @@ class TestMainWorkflowMemoryIntegration:
                     result = await workflow._format_response_node(state, runtime)
                 assert "messages" in result
                 assert len(result["messages"]) == 2
+                assert result["metadata"]["ltm_store_write"] == "failed"
 
     @pytest.mark.asyncio
     @patch("backend.workflows.main_workflow.OrchestratorAgent")
@@ -775,9 +853,10 @@ class TestMainWorkflowMemoryIntegration:
                     "backend.workflows.main_workflow.store_with_retry",
                     side_effect=_passthrough,
                 ):
-                    await workflow._format_response_node(state, runtime)
+                    result = await workflow._format_response_node(state, runtime)
 
                 mock_promoter.promote_for_user.assert_called_once()
+                assert result["metadata"]["ltm_store_write"] == "success"
 
     @pytest.mark.asyncio
     @patch("backend.workflows.main_workflow.OrchestratorAgent")

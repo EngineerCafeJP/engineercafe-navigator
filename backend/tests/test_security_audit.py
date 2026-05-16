@@ -67,30 +67,11 @@ def test_reception_endpoints_require_api_key(api_key_guard: dict[str, str]) -> N
     started = _start_reception(api_key_guard)
     reception_session_id = started["reception_session_id"]
 
-    respond_without_key = client.post(
-        "/api/reception/respond",
-        json={
-            "session_id": "session-001",
-            "reception_session_id": reception_session_id,
-            "message": "こんにちは",
-        },
-    )
-    assert respond_without_key.status_code == 403
-
     status_without_key = client.get(
         f"/api/reception/status/{reception_session_id}",
         params={"session_id": "session-001"},
     )
     assert status_without_key.status_code == 403
-
-    complete_without_key = client.post(
-        "/api/reception/complete",
-        json={
-            "session_id": "session-001",
-            "reception_session_id": reception_session_id,
-        },
-    )
-    assert complete_without_key.status_code == 403
 
 
 def test_legacy_slides_content_removed(api_key_guard: dict[str, str]) -> None:

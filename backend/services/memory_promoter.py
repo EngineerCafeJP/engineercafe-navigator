@@ -13,6 +13,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable
 
+from backend.observability.structured_logger import log_ltm_promote
 from backend.utils.cafe_entity import canonicalize_facility_memory_key_text
 
 
@@ -49,16 +50,25 @@ class MemoryPromoter:
         """
         candidate_ns = (self.candidate_namespace_root, user_id)
         long_term_ns = (self.long_term_namespace_root, user_id)
+        try:
+            log_ltm_promote(status="started", user_id=user_id)
+        except Exception:
+            pass
 
         candidate_items = await store.asearch(candidate_ns, query="", limit=max_candidates)
         if not candidate_items:
-            return {
+            stats = {
                 "candidates": 0,
                 "aggregated": 0,
                 "promoted": 0,
                 "duplicates_skipped": 0,
                 "rule_rejected": 0,
             }
+            try:
+                log_ltm_promote(status="skipped", user_id=user_id, **stats)
+            except Exception:
+                pass
+            return stats
 
         aggregated = self.aggregate_candidates(candidate_items)
         existing_items = await store.asearch(long_term_ns, query="", limit=max_existing)
@@ -80,7 +90,19 @@ class MemoryPromoter:
                 continue
 
             payload = self.to_long_term_record(aggregate)
-            await store.aput(long_term_ns, str(uuid.uuid4()), payload)
+            try:
+                await store.aput(long_term_ns, str(uuid.uuid4()), payload)
+            except Exception as exc:
+                try:
+                    log_ltm_promote(
+                        status="failed",
+                        user_id=user_id,
+                        error_type=type(exc).__name__,
+                        promoted=promoted,
+                    )
+                except Exception:
+                    pass
+                raise
             promoted += 1
             promoted_candidate_keys.extend(aggregate["candidate_keys"])
 
@@ -92,13 +114,18 @@ class MemoryPromoter:
                     # cleanup failure is non-fatal
                     pass
 
-        return {
+        stats = {
             "candidates": len(candidate_items),
             "aggregated": len(aggregated),
             "promoted": promoted,
             "duplicates_skipped": duplicates_skipped,
             "rule_rejected": rule_rejected,
         }
+        try:
+            log_ltm_promote(status="success", user_id=user_id, **stats)
+        except Exception:
+            pass
+        return stats
 
     @staticmethod
     def aggregate_candidates(items: Iterable[Any]) -> Dict[str, Dict[str, Any]]:

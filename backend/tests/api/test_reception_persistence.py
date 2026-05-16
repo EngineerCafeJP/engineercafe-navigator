@@ -6,7 +6,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Iterator, Optional
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import Mock
 import uuid
 
 import pytest
@@ -142,27 +142,6 @@ def reset_session_storage() -> Iterator[None]:
     reception_module._reset_session_storage()
     yield
     reception_module._reset_session_storage()
-
-
-@dataclass
-class _FakePurposeFlow:
-    response_text: str = "Welcome to the coworking area."
-    action_type: str = "guide"
-    action_data: Optional[dict[str, Any]] = None
-
-
-@dataclass
-class _FakeHandoffResult:
-    workflow_state: dict[str, Any] = None  # type: ignore[assignment]
-    target_agent: str = "facility_agent"
-    purpose_flow: _FakePurposeFlow = None  # type: ignore[assignment]
-    requires_staff: bool = False
-
-    def __post_init__(self) -> None:
-        if self.workflow_state is None:
-            self.workflow_state = {"step": "routed"}
-        if self.purpose_flow is None:
-            self.purpose_flow = _FakePurposeFlow()
 
 
 def _sample_session_data(
@@ -365,26 +344,6 @@ def test_reception_api_session_survives_restart() -> None:
     start = _start_session(session_id="sess-001")
     reception_session_id = start["reception_session_id"]
 
-    response = client.post(
-        "/api/reception/respond",
-        json={
-            "session_id": "sess-001",
-            "reception_session_id": reception_session_id,
-            "message": "こんにちは",
-        },
-    )
-    assert response.status_code == 200
-
-    response = client.post(
-        "/api/reception/respond",
-        json={
-            "session_id": "sess-001",
-            "reception_session_id": reception_session_id,
-            "message": "コワーキングスペースを利用したいです",
-        },
-    )
-    assert response.status_code == 200
-
     reception_module._active_sessions.clear()
     reception_module._session_repository = ReceptionRepository(fake_client)  # type: ignore[arg-type]
 
@@ -393,29 +352,5 @@ def test_reception_api_session_survives_restart() -> None:
         params={"session_id": "sess-001"},
     )
     assert status.status_code == 200
-    assert status.json()["stage"] == "routing"
-    assert status.json()["purpose"] == "facility_use"
-
-    fake_result = _FakeHandoffResult()
-    mock_service = AsyncMock()
-    mock_service.prepare_handoff.return_value = fake_result
-    mock_workflow = AsyncMock()
-    mock_workflow.ainvoke_from_reception = AsyncMock(return_value={"answer": "Welcome"})
-
-    with (
-        patch("backend.api.reception._get_handoff_service", return_value=mock_service),
-        patch(
-            "backend.workflows.main_workflow.get_workflow",
-            new=AsyncMock(return_value=mock_workflow),
-        ),
-    ):
-        complete = client.post(
-            "/api/reception/complete",
-            json={
-                "session_id": "sess-001",
-                "reception_session_id": reception_session_id,
-            },
-        )
-
-    assert complete.status_code == 200
-    assert fake_client.storage["reception_sessions"][reception_session_id]["status"] == "completed"
+    assert status.json()["stage"] == "greeting"
+    assert status.json()["purpose"] is None

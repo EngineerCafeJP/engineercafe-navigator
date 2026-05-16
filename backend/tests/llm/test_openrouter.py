@@ -4,7 +4,7 @@ OpenRouterProvider のユニットテスト
 
 import os
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 import httpx
 from langchain_core.messages import HumanMessage
 
@@ -53,13 +53,21 @@ class TestOpenRouterProvider:
                 # 2回目（フォールバック）は成功
                 return mock_response_success
 
-        with patch.object(self.provider._http_client, "post", side_effect=mock_post):
+        with (
+            patch.object(self.provider._http_client, "post", side_effect=mock_post),
+            patch("backend.llm.openrouter.record_llm_call_metadata") as metadata_mock,
+        ):
             response = await self.provider.generate(messages, config)
 
             # フォールバックが成功し、レスポンスが返る
             assert response == "Fallback response"
             # 2回呼び出されていることを確認（1回目: プライマリ失敗、2回目: フォールバック成功）
             assert call_count == 2
+            metadata_mock.assert_called_once_with(
+                provider="openrouter",
+                model="google/gemini-2.5-flash-lite",
+                llm_latency_ms=ANY,
+            )
 
     @pytest.mark.asyncio
     async def test_fallback_on_network_error(self):
@@ -150,13 +158,21 @@ class TestOpenRouterProvider:
         async def mock_post(*args, **kwargs):
             return mock_response
 
-        with patch.object(self.provider._http_client, "post", side_effect=mock_post) as mock:
+        with (
+            patch.object(self.provider._http_client, "post", side_effect=mock_post) as mock,
+            patch("backend.llm.openrouter.record_llm_call_metadata") as metadata_mock,
+        ):
             response = await self.provider.generate(messages, config)
 
             # プライマリモデルが成功し、レスポンスが返る
             assert response == "Primary model response"
             # 1回だけ呼び出されることを確認（フォールバック不要）
             assert mock.call_count == 1
+            metadata_mock.assert_called_once_with(
+                provider="openrouter",
+                model="google/gemini-3.1-flash-lite-preview",
+                llm_latency_ms=ANY,
+            )
 
     @pytest.mark.asyncio
     async def test_cerebras_fast_primary_before_openrouter(self):
@@ -185,12 +201,18 @@ class TestOpenRouterProvider:
                 new=AsyncMock(return_value="Cerebras fast response"),
             ) as cerebras_mock,
             patch.object(self.provider._http_client, "post", new=AsyncMock()) as openrouter_mock,
+            patch("backend.llm.openrouter.record_llm_call_metadata") as metadata_mock,
         ):
             response = await self.provider.generate(messages, config)
 
         assert response == "Cerebras fast response"
         cerebras_mock.assert_awaited_once()
         openrouter_mock.assert_not_called()
+        metadata_mock.assert_called_once_with(
+            provider="cerebras",
+            model="gpt-oss-120b",
+            llm_latency_ms=ANY,
+        )
 
     @pytest.mark.asyncio
     async def test_cerebras_fast_primary_falls_back_to_openrouter(self):
@@ -390,6 +412,51 @@ class TestOpenRouterProvider:
 
             assert response == "Fallback after 503"
             assert call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_http_fallback_uses_fallback_model_env_override(self):
+        """Fallback generation should honor fallback_model_env overrides."""
+        messages = [HumanMessage(content="Read this handwriting")]
+        config = ModelConfig(
+            model_id=SupportedModel.GEMINI_3_1_FLASH_LITE,
+            fallback_model=SupportedModel.GEMINI_2_5_FLASH_LITE,
+            fallback_model_env="VISION_HANDWRITING_FALLBACK_MODEL",
+        )
+
+        mock_response_error = MagicMock()
+        mock_response_error.status_code = 503
+        mock_response_error.text = "Service Unavailable"
+
+        mock_response_success = MagicMock()
+        mock_response_success.json.return_value = {
+            "choices": [{"message": {"content": "Fallback env response"}}]
+        }
+
+        posted_models: list[str] = []
+
+        async def mock_post(*args, **kwargs):
+            posted_models.append(kwargs["json"]["model"])
+            if len(posted_models) == 1:
+                raise httpx.HTTPStatusError(
+                    "503 Error", request=MagicMock(), response=mock_response_error
+                )
+            return mock_response_success
+
+        with (
+            patch.dict(
+                os.environ,
+                {"VISION_HANDWRITING_FALLBACK_MODEL": "openai/gpt-4.1-mini"},
+                clear=False,
+            ),
+            patch.object(self.provider._http_client, "post", side_effect=mock_post),
+        ):
+            response = await self.provider.generate(messages, config)
+
+        assert response == "Fallback env response"
+        assert posted_models == [
+            "google/gemini-3.1-flash-lite-preview",
+            "openai/gpt-4.1-mini",
+        ]
 
     @pytest.mark.asyncio
     async def test_close_method(self):

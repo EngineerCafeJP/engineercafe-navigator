@@ -79,6 +79,10 @@ class Settings(BaseSettings):
     # 外部サービス
     # ============================================
     langsmith_api_key: str = Field(default="", description="LangSmith API Key")
+    langsmith_project: str = Field(
+        default="engineer-cafe-navigator-production",
+        description="LangSmith project name for production tracing",
+    )
     connpass_api_key: str = Field(default="", description="Connpass API Key")
 
     # ============================================

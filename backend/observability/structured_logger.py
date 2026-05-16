@@ -13,6 +13,7 @@ CHAT_RESPONSE_LOGGER_NAME = "backend.observability.chat_response"
 STT_LOGGER_NAME = "backend.observability.stt"
 TTS_LOGGER_NAME = "backend.observability.tts"
 TTS_CACHE_LOGGER_NAME = "backend.observability.tts_cache"
+MEMORY_LOGGER_NAME = "backend.observability.memory"
 
 LtmStoreWrite = Literal["success", "failed", "skipped"]
 
@@ -20,6 +21,7 @@ _CHAT_LOG_HANDLER_MARKER = "_engineer_cafe_chat_response_json_handler"
 _STT_LOG_HANDLER_MARKER = "_engineer_cafe_stt_json_handler"
 _TTS_LOG_HANDLER_MARKER = "_engineer_cafe_tts_json_handler"
 _TTS_CACHE_LOG_HANDLER_MARKER = "_engineer_cafe_tts_cache_json_handler"
+_MEMORY_LOG_HANDLER_MARKER = "_engineer_cafe_memory_json_handler"
 
 
 class _ChatResponseJsonFormatter(logging.Formatter):
@@ -107,6 +109,20 @@ def _get_tts_logger() -> logging.Logger:
     return logger
 
 
+def _get_memory_logger() -> logging.Logger:
+    logger = logging.getLogger(MEMORY_LOGGER_NAME)
+    logger.setLevel(logging.INFO)
+    logger.propagate = _propagate_observability_logs()
+
+    if not any(getattr(handler, _MEMORY_LOG_HANDLER_MARKER, False) for handler in logger.handlers):
+        handler = logging.StreamHandler(sys.stdout)
+        handler.setFormatter(_SttJsonFormatter())
+        setattr(handler, _MEMORY_LOG_HANDLER_MARKER, True)
+        logger.addHandler(handler)
+
+    return logger
+
+
 def _current_request_id() -> str | None:
     try:
         from backend.utils.structured_logging import get_request_id
@@ -138,6 +154,34 @@ def _coerce_ltm_store_write(value: Any) -> LtmStoreWrite:
     return "skipped"
 
 
+def _coerce_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(value)
+
+
+def _coerce_optional_latency_ms(value: Any) -> int | None:
+    if value is None or value == "":
+        return None
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def _coerce_agent_class(value: Any) -> str | None:
+    if not value:
+        return None
+    agent = str(value)
+    if agent.endswith("Agent") or agent in {"SafetyGuard"}:
+        return agent
+    return None
+
+
 def build_chat_response_payload(
     *,
     request_id: str | None,
@@ -148,8 +192,8 @@ def build_chat_response_payload(
     route = (
         metadata.get("route")
         or metadata.get("category")
-        or metadata.get("agent")
         or metadata.get("request_type")
+        or metadata.get("reception_target_agent")
         or "unknown"
     )
     sources = _coerce_sources(metadata.get("sources"))
@@ -164,9 +208,13 @@ def build_chat_response_payload(
         "request_id": request_id,
         "language": language or "unknown",
         "route": str(route),
+        "agent_class": _coerce_agent_class(metadata.get("agent")),
+        "provider": str(metadata.get("provider") or metadata.get("llm_provider") or "unknown"),
+        "model": str(metadata.get("model") or metadata.get("llm_model") or "unknown"),
+        "llm_latency_ms": _coerce_optional_latency_ms(metadata.get("llm_latency_ms")),
         "sources": sources,
         "rag_fallback": rag_fallback,
-        "hallucination_flag": bool(metadata.get("hallucination_flag", False)),
+        "hallucination_flag": _coerce_bool(metadata.get("hallucination_flag", False)),
         "ltm_store_write": _coerce_ltm_store_write(metadata.get("ltm_store_write")),
         "latency_ms": latency_ms,
     }
@@ -231,6 +279,53 @@ def log_tts_event(*, event: str, **fields: Any) -> dict[str, Any]:
     logger = _get_tts_logger()
     logger.info(event, extra={**payload, "observability_payload": payload})
     return payload
+
+
+def log_memory_event(*, event: str, **fields: Any) -> dict[str, Any]:
+    """Log a memory/reception/LTM observability event and return the payload."""
+
+    payload = build_stt_event_payload(event=event, **fields)
+    logger = _get_memory_logger()
+    logger.info(event, extra={**payload, "observability_payload": payload})
+    return payload
+
+
+def log_reception_transition(
+    *,
+    session_id: str | None,
+    from_stage: str | None,
+    to_stage: str | None,
+    action: str | None = None,
+    status: str | None = None,
+    **fields: Any,
+) -> dict[str, Any]:
+    """Log a reception workflow stage transition."""
+
+    return log_memory_event(
+        event="reception_transition",
+        session_id=session_id,
+        from_stage=from_stage,
+        to_stage=to_stage,
+        action=action,
+        status=status,
+        **fields,
+    )
+
+
+def log_ltm_promote(
+    *,
+    status: str,
+    user_id: str | None = None,
+    **fields: Any,
+) -> dict[str, Any]:
+    """Log a long-term-memory promotion event."""
+
+    return log_memory_event(
+        event="ltm_promote",
+        status=status,
+        user_id=user_id,
+        **fields,
+    )
 
 
 def log_tts_cache_event(*, hit: bool, cache_key: str, language: str | None = None) -> None:
