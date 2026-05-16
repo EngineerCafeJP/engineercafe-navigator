@@ -10,6 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 from backend.agents.orchestrator_agent import OrchestratorAgent
+from langchain_core.messages import AIMessage, HumanMessage
 from unittest.mock import MagicMock, Mock, AsyncMock, patch
 
 
@@ -372,6 +373,67 @@ class TestMainWorkflowMemoryIntegration:
             assert "context" in result
             assert "memory" in result["context"]
             mock_helper.get_context.assert_called_once()
+
+    @pytest.mark.asyncio
+    @patch("backend.workflows.main_workflow.OrchestratorAgent")
+    async def test_memory_loader_node_infers_request_type_from_checkpoint_when_stm_writes_disabled(
+        self, mock_orchestrator_class
+    ):
+        """STM writes off でも LangGraph 履歴から前ターン意図を復元する。"""
+        from backend.workflows.main_workflow import MainWorkflow
+
+        mock_orchestrator_class.return_value = AsyncMock()
+        mock_helper = AsyncMock()
+        mock_helper.get_context = AsyncMock(
+            return_value={
+                "recent_messages": [],
+                "context_string": "",
+                "knowledge_results": [],
+                "inherited_request_type": None,
+            }
+        )
+        mock_helper._rank_messages = Mock(side_effect=lambda messages, _query: messages)
+        mock_helper._build_comprehensive_context = Mock(return_value="checkpoint context")
+        mock_helper.store_message = AsyncMock()
+        classifier = MagicMock()
+        classifier.classify_with_details = AsyncMock(return_value=MagicMock(category="general"))
+        rag = MagicMock()
+        rag.search = AsyncMock(
+            return_value={
+                "success": True,
+                "data": {"results": [], "context": ""},
+            }
+        )
+
+        with (
+            patch("backend.utils.memory_helper.get_memory_helper", return_value=mock_helper),
+            patch(
+                "backend.utils.memory_feature_flags.get_memory_feature_flags",
+                return_value=SimpleNamespace(enable_agent_memory_stm_writes=False),
+            ),
+            patch("backend.utils.query_classifier.QueryClassifier", return_value=classifier),
+            patch("backend.tools.enhanced_rag.EnhancedRAGSearch", return_value=rag),
+        ):
+            workflow = MainWorkflow()
+            result = await workflow._memory_loader_node(
+                {
+                    "query": "隣のカフェは？",
+                    "session_id": "test-session",
+                    "language": "ja",
+                    "context": {},
+                    "messages": [
+                        HumanMessage(content="エンジニアカフェの営業時間を教えて"),
+                        AIMessage(content="9時から22時です。"),
+                    ],
+                },
+                _mock_runtime(),
+            )
+
+        memory = result["context"]["memory"]
+        assert memory["stm_source"] == "langgraph_checkpointer"
+        assert memory["inherited_request_type"] == "hours"
+        assert memory["recent_messages"][0]["metadata"]["request_type"] == "hours"
+        mock_helper._build_comprehensive_context.assert_called_once()
 
     @pytest.mark.asyncio
     @patch("backend.workflows.main_workflow.OrchestratorAgent")

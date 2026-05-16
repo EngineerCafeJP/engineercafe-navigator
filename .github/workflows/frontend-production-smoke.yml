@@ -54,4 +54,5 @@ jobs:
           FRONTEND_BASE_URL: ${{ steps.target.outputs.target_url }}
           MAX_ATTEMPTS: ${{ env.MAX_ATTEMPTS }}
           SLEEP_SECONDS: ${{ env.SLEEP_SECONDS }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: bash scripts/verify-frontend-production.sh

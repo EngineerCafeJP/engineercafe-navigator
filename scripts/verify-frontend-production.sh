@@ -9,10 +9,14 @@ set -euo pipefail
 # Usage:
 #   ./scripts/verify-frontend-production.sh <frontend_base_url>
 #   FRONTEND_BASE_URL=https://example.vercel.app ./scripts/verify-frontend-production.sh
+#
+# For protected Vercel preview deployments, set VERCEL_AUTOMATION_BYPASS_SECRET.
+# The value is sent as a request header and is never logged.
 
 FRONTEND_BASE_URL="${1:-${FRONTEND_BASE_URL:-${FRONTEND_PRODUCTION_ORIGIN:-}}}"
 MAX_ATTEMPTS="${MAX_ATTEMPTS:-12}"
 SLEEP_SECONDS="${SLEEP_SECONDS:-15}"
+VERCEL_AUTOMATION_BYPASS_SECRET="${VERCEL_AUTOMATION_BYPASS_SECRET:-}"
 
 if [[ -z "$FRONTEND_BASE_URL" ]]; then
   echo "error: frontend base URL is required." >&2
@@ -60,13 +64,28 @@ request_with_retries() {
     : > "$body_file"
 
     if [[ "$method" == "GET" ]]; then
-      code="$(curl -sS -o "$body_file" -w "%{http_code}" "$BASE_URL$path" || true)"
+      if [[ -n "$VERCEL_AUTOMATION_BYPASS_SECRET" ]]; then
+        code="$(curl -sS -o "$body_file" -w "%{http_code}" \
+          -H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET" \
+          "$BASE_URL$path" || true)"
+      else
+        code="$(curl -sS -o "$body_file" -w "%{http_code}" "$BASE_URL$path" || true)"
+      fi
     else
-      code="$(curl -sS -o "$body_file" -w "%{http_code}" \
-        -X "$method" \
-        -H "Content-Type: application/json" \
-        -d "$body" \
-        "$BASE_URL$path" || true)"
+      if [[ -n "$VERCEL_AUTOMATION_BYPASS_SECRET" ]]; then
+        code="$(curl -sS -o "$body_file" -w "%{http_code}" \
+          -X "$method" \
+          -H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET" \
+          -H "Content-Type: application/json" \
+          -d "$body" \
+          "$BASE_URL$path" || true)"
+      else
+        code="$(curl -sS -o "$body_file" -w "%{http_code}" \
+          -X "$method" \
+          -H "Content-Type: application/json" \
+          -d "$body" \
+          "$BASE_URL$path" || true)"
+      fi
     fi
 
     if [[ "$code" == "$expected" ]]; then
@@ -93,6 +112,11 @@ echo "Frontend Production Smoke Verification"
 echo "URL: $BASE_URL"
 echo "Attempts: $MAX_ATTEMPTS"
 echo "Sleep seconds: $SLEEP_SECONDS"
+if [[ -n "$VERCEL_AUTOMATION_BYPASS_SECRET" ]]; then
+  echo "Vercel deployment protection bypass: enabled"
+else
+  echo "Vercel deployment protection bypass: disabled"
+fi
 echo "============================================"
 echo
 

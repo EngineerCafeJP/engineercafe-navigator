@@ -3,6 +3,7 @@ import {
   MOCK_EDITOR_CONFIG,
   MOCK_KNOWLEDGE_ENTRY,
   MOCK_KNOWLEDGE_LIST,
+  MOCK_METADATA_TEMPLATES,
 } from './helpers/mocks';
 import {
   acceptDialog,
@@ -34,6 +35,12 @@ function buildChunkTitles(baseTitle: string, chunkCount: number): string[] {
     ...Array.from({ length: chunkCount - 1 }, (_, index) => `${baseTitle} [chunk ${index + 1}]`),
   ];
 }
+
+test.beforeEach(async ({ page }) => {
+  await page.route('/api/admin/knowledge/metadata-templates', async (route) => {
+    return route.fulfill({ json: MOCK_METADATA_TEMPLATES });
+  });
+});
 
 test.describe('Knowledge 一覧ページ', () => {
   test.beforeEach(async ({ page }) => {

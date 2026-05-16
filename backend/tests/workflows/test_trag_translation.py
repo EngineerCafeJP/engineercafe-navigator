@@ -15,6 +15,7 @@ from backend.workflows.main_workflow import (
     _TRAG_PREAMBLE_RE,
     _clean_trag_translation,
     _get_trag_client,
+    _is_acceptable_trag_japanese,
     _is_pathological_translation,
 )
 
@@ -87,6 +88,29 @@ class TestJaRegex:
 
     def test_rejects_chinese_only(self):
         assert not _JA_RE.search("营业时间")
+
+
+class TestTragJapaneseAcceptance:
+    """tRAG 日本語翻訳受け入れ判定テスト"""
+
+    @pytest.mark.parametrize("text", ["営業時間", "会員登録", "駐車場"])
+    def test_accepts_japanese_kanji_only_domain_translations(self, text):
+        assert _is_acceptable_trag_japanese(text) is True
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "营业时间",
+            "会员注册",
+            "停车场",
+            "영업시간",
+            "abc123",
+            "亜亜亜亜",
+            "営業時間営業時間営業時間",
+        ],
+    )
+    def test_rejects_non_japanese_or_low_information_output(self, text):
+        assert _is_acceptable_trag_japanese(text) is False
 
 
 class TestGetTragClient:
@@ -200,6 +224,51 @@ class TestTragTranslationIntegration:
         assert rag.search.await_args.kwargs["query"] == "営業時間は何時までですか？"
         knowledge_results = result["context"]["knowledge_results"]
         assert knowledge_results["translated_query"] == "営業時間は何時までですか？"
+
+    @pytest.mark.asyncio
+    @patch("backend.workflows.main_workflow.OrchestratorAgent")
+    async def test_kanji_only_translation_is_used_for_rag(
+        self,
+        mock_orch_class,
+        english_state,
+    ):
+        """Kanji-only Japanese translations must not be rejected by tRAG."""
+        from backend.workflows.main_workflow import MainWorkflow
+
+        mock_orch_class.return_value = AsyncMock()
+        classifier = MagicMock()
+        classifier.classify_with_details = AsyncMock(
+            return_value=MagicMock(category="business-hours")
+        )
+        rag = MagicMock()
+        rag.search = AsyncMock(
+            return_value={
+                "success": True,
+                "data": {"results": [{"id": "hours"}], "context": "営業時間 context"},
+            }
+        )
+
+        with (
+            patch("backend.utils.memory_helper.get_memory_helper") as mock_mh,
+            patch(
+                "backend.workflows.main_workflow._translate_llm_with_retry",
+                new_callable=AsyncMock,
+                return_value="営業時間",
+            ) as translate_mock,
+            patch("backend.utils.query_classifier.QueryClassifier", return_value=classifier),
+            patch("backend.tools.enhanced_rag.EnhancedRAGSearch", return_value=rag),
+        ):
+            mock_mh.return_value = _mock_memory_helper()
+
+            wf = MainWorkflow()
+            runtime = _mock_runtime()
+            result = await wf._memory_loader_node(english_state, runtime)
+
+        translate_mock.assert_awaited_once_with("What are the opening hours?", "en")
+        rag.search.assert_awaited_once()
+        assert rag.search.await_args.kwargs["query"] == "営業時間"
+        knowledge_results = result["context"]["knowledge_results"]
+        assert knowledge_results["translated_query"] == "営業時間"
 
     @pytest.mark.asyncio
     @patch("backend.workflows.main_workflow.OrchestratorAgent")

@@ -8,11 +8,19 @@ const env = process.env as Record<string, string | undefined>;
 const originalAdminApiSecret = process.env.ADMIN_API_SECRET;
 const originalNodeEnv = process.env.NODE_ENV;
 
-function createRequest(pathname: string, authorization?: string): NextRequest {
+function createRequest(
+  pathname: string,
+  authorization?: string,
+  extraHeaders: Record<string, string> = {},
+): NextRequest {
   const headers = new Headers();
 
   if (authorization) {
     headers.set('authorization', authorization);
+  }
+
+  for (const [key, value] of Object.entries(extraHeaders)) {
+    headers.set(key, value);
   }
 
   return new NextRequest(`https://example.com${pathname}`, { headers });
@@ -37,6 +45,19 @@ test('returns 401 when authorization header is missing', async () => {
   process.env.ADMIN_API_SECRET = 'test-secret';
 
   const response = await middleware(createRequest('/api/admin/knowledge'));
+
+  assert.equal(response.status, 401);
+  assert.deepEqual(await response.json(), { error: 'Unauthorized' });
+});
+
+test('returns 401 for same-origin admin browser requests without bearer token', async () => {
+  process.env.ADMIN_API_SECRET = 'test-secret';
+
+  const response = await middleware(
+    createRequest('/api/admin/knowledge', undefined, {
+      'sec-fetch-site': 'same-origin',
+    }),
+  );
 
   assert.equal(response.status, 401);
   assert.deepEqual(await response.json(), { error: 'Unauthorized' });
@@ -93,11 +114,21 @@ test('fails closed in production when ADMIN_API_SECRET is only whitespace', asyn
   assert.deepEqual(await response.json(), { error: 'Unauthorized' });
 });
 
-test('allows requests in development when ADMIN_API_SECRET is not set', async () => {
+test('fails closed for admin routes in development when ADMIN_API_SECRET is not set', async () => {
   delete env.ADMIN_API_SECRET;
   env.NODE_ENV = 'development';
 
   const response = await middleware(createRequest('/api/admin/knowledge'));
+
+  assert.equal(response.status, 401);
+  assert.deepEqual(await response.json(), { error: 'Unauthorized' });
+});
+
+test('allows non-admin operational routes in development when ADMIN_API_SECRET is not set', async () => {
+  delete env.ADMIN_API_SECRET;
+  env.NODE_ENV = 'development';
+
+  const response = await middleware(createRequest('/api/monitoring/dashboard'));
 
   assert.equal(response.status, 200);
   assert.equal(response.headers.get('x-middleware-next'), '1');
