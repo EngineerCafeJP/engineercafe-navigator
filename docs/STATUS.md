@@ -1,8 +1,57 @@
 # 現在の状態
 
-Last updated: 2026-05-05（git 同期メモ。**ライブの run / revision は 2026-05-03 のまま**で、再 dispatch していないため数値は更新していません）。
+Last updated: 2026-05-18（Wave 2 closeout。PR #852 / #874 / #875 merge 後、Cloud Run revision / live API / CI/CD / Vercel Preview を実測更新）。
 
 > **2026-05-05 git 同期メモ**: ルート README / `docs/README.md` / `docs/architecture/SYSTEM-ARCHITECTURE.md` / `docs/SECURITY.md` / `docs/DEPLOYMENT.md` / `docs/DEVELOPER-GUIDE.md` / `docs/api/API.md` / `frontend/README.md` / `backend/README.md` をスタブ化・索引化し、`docs/adr/README.md` と `docs/plans/comprehensive-refactoring-plan-2026-05-05.md` を新規追加しました（コード・運用ゲートには変更なし）。alpha NO-GO 判定は本ページの 2026-05-03 Reset Snapshot を引き続き正本とします。次に live workflow を再実行したタイミングで、本ページの run ID / revision を更新してください。
+
+## 2026-05-18 Wave 2 Closeout Snapshot
+
+Wave 2 の Date / Audio / Calendar critical UX fixes は、PR #852 で本体実装を merge し、PR #874 / #875 で live E2E follow-up と CI 到達性を修復した。最終的に develop CI/CD、Cloud Run deploy、live API verification まで完了した。
+
+確認元:
+
+- PR #852 `fix(wave2): implement date audio calendar reliability`
+- PR #874 `fix(wave2): close live E2E follow-up gaps`
+- PR #875 `fix(ci): skip direct DB E2E when Postgres is unreachable`
+- Final merge commit `eee8c0b19f459dcd25ccc5aad211895b037514c6`
+- PR #874 CI run `26001835735`, conclusion `success`
+- post-#874 develop CI run `26002065329`, conclusion `success`
+- PR #875 CI run `26002651705`, conclusion `success`
+- post-#875 develop CI run `26002826450`, conclusion `success`
+- Frontend Production Smoke run `25995874988`, conclusion `success`
+- Cloud Run revision `engineer-cafe-backend-00218-8zv`, traffic 100%
+- `event-kb-sync` latest execution `event-kb-sync-92wns`, `EXECUTION_SUCCEEDED`
+- Vercel Preview redeploy `dpl_BaPptKnk1KgRWn6TDyXGj6vBBdcD`, status `Ready`
+- PR #874 Vercel Preview deployment `GGugatUfdthE34EsnzBedLDFeZ2Q`, status `Ready`
+
+実測結果:
+
+- `/health` は `status=ok`, `api=ok`, `supabase=ok`, `llm_provider=configured`
+- `/api/chat` に `今日は何月何日ですか？` を送ると `今日は2026年5月18日（月曜日）です。` と返り、`metadata.sources=["system_clock"]`, `provider_called=false`
+- `/api/chat` に `今週のエンジニアカフェのイベントを教えてください。` を送ると `metadata.sources=["spreadsheet", "google_calendar", "connpass"]` で、5/19, 5/20, 5/23 のイベントを含む回答を返す
+- post-#875 live API smoke は Cloud Run `engineer-cafe-backend-00218-8zv` に対して以下を 200 で確認:
+  - `メインホールはどこにありますか？` -> `facility-info`, `FacilityAgent`, 1階メインホール / コワーキング
+  - `営業時間とWi-Fiのパスワードを教えてください` -> `facility-info`, `FacilityAgent`, 9:00〜22:00 / `engnecf-guest-*` / `akarenga-112years`
+  - `3Dプリンターの使い方を教えてください` -> `facility-info`, `FacilityAgent`, MAKER'sスペース / 無料講習 / 前日予約
+  - `サイノカフェのランチは？` -> `saino-cafe`, `BusinessInfoAgent`, サンド / ワッフル / 価格
+  - `ハッカソンの開催予定は？` -> `event`, `EventAgent`, Connpass `https://engineercafe.connpass.com/`
+  - `コーヒーはいくらですか？` -> `saino-cafe`, `BusinessInfoAgent`, ブレンド380円 / シングルオリジン460円 ほか
+- `event-kb-sync` job は `python -m backend.scripts.sync_event_kb --include-spreadsheet` で deploy 済み
+- Scheduler `event-kb-sync-daily` は `0 9 * * *`, `Asia/Tokyo`, `ENABLED`
+- Vercel Preview は `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` 欠落で失敗していたが、Preview 全体 / Development / GitHub Secrets / Google Secret Manager を同期後、同じ PR preview を再デプロイして `Ready` になった
+
+GitHub Issue 状態:
+
+- Closed by PR #852: #770, #851, #855, #856, #857, #858, #859, #860, #861, #862, #863, #864, #865, #866, #867, #868, #869, #870, #871
+- post-#875 の追加証跡は #855 / #857 / #770 にコメント追記済み
+
+残リスク:
+
+- GitHub runner から Supabase direct Postgres へ到達できない環境では、PR #875 により direct DB E2E は skip される。HTTP/Cloud Run live proof は通っているが、direct DB proof は到達可能 runner で別途確認する。
+- `VoiceInterface.tsx` の React hook dependency warning は既存 cleanup debt として残る。
+- iPad Safari 実機スピーカー証跡は次回 onsite window で取得する。今回の closeout は CI browser proof + production smoke + live backend proof。
+
+この snapshot の設計判断は [ADR-026](adr/026-wave2-kiosk-ux-reliability-baseline.md) を正本とする。
 
 ## 概要
 
