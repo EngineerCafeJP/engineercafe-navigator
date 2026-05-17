@@ -65,6 +65,18 @@ ADR-023 (Semantic Router + Critic node) はルーティング層の肥大化を�
 - `chat_response` payload で **provider 別 latency 分布**が可視化可能（Cerebras vs OpenRouter primary vs OpenRouter fallback の 3 系統が区別できる）
 - Cerebras 成功率の真の signal が `token_tracker WARNING` ではなく `provider="cerebras"` event count で取れる
 
+#### 達成状況 (2026-05-17 PR #841 マージ後 audit pass 3)
+
+| 完了条件 | 達成状況 | 残課題 |
+|---|---|---|
+| `ltm_store_write="success"` >= 95% (名前明示ターン) | 🟡 setter 配線済（main_workflow.py:2009 `_mark_ltm_store_write` + 6 箇所 call）。**ただし live evidence は LTM 候補入力ターンが少なく未計測** | E2E proof でカバー (P1-2 / Issue #847 参照) |
+| `memory_*` event >= 5 種類 emit | 🔴 **3 種類のみ** (`memory_context_load`, `memory_recent_messages_load`, `memory_store_message`)。`memory_promote`, `memory_extractor_*`, `memory_candidate_aggregate` 等が不足 | **FU-04 として追加 PR 必須** |
+| `route="unknown"` 率 <= 0.5% | 🟡 facility-info / hours は OK だが、EventAgent ターンで route=unknown 観測 (1/2 = 50%) | **FU-05 として追加 PR 必須** — agent ノードで `metadata["route"]` 明示 set |
+| `chat_response.provider` 別分布可視化 | 🔴 **schema 完成、live data は 100% unknown**。Cerebras 呼ばれているのに `provider=unknown / model=unknown / llm_latency_ms=null` を返す | **FU-01 として追加 PR 必須** — ContextVar 経由ではなく agent metadata 経由で provider/model を伝達 |
+| Cerebras 成功率 signal が `provider="cerebras"` event count で取れる | 🔴 上記 FU-01 と同件 | FU-01 で同梱解決 |
+
+→ **Phase A0 は「コードレベル完了、live data 検証は半壊」**。Phase A1/A2/A3 着手前に上記 FU-01/04/05 完了を強く推奨。
+
 ### D2: Phase A1 — agent_memory schema 最適化
 
 #### スコープ
@@ -79,6 +91,17 @@ ADR-023 (Semantic Router + Critic node) はルーティング層の肥大化を�
 #### 完了条件
 - memory loader p95 latency ≤ 100ms — 計測 probe は Phase A0 で `memory_loader_get_recent_messages_duration_ms` event family として emit（LangSmith dashboard の `event="memory_loader_get_recent_messages"` で p95 算出）
 - agent_memory total rows × 1000 件規模で線形時間に依存しないことを benchmark
+
+#### 達成状況 (2026-05-17 PR #841 マージ後 audit pass 3)
+
+| 完了条件 | 達成状況 | 残課題 |
+|---|---|---|
+| migration: `idx_agent_memory_session` 追加 | ✅ `20260517000001_add_agent_memory_session_index.sql` で `(agent_name, value->>'sessionId', created_at DESC) WHERE key LIKE 'message_%'` 配備 | — |
+| `memory_helper.py` 全 query を SQL filter 化 | ✅ `_AGENT_MEMORY_SESSION_COLUMN = "value->>sessionId"` + `.filter(...)` 3 箇所 (L156/349/703) | — |
+| memory loader p95 ≤ 100ms | 🔴 **計測 probe `memory_loader_get_recent_messages_duration_ms` event が live で 0 件 emit** | **FU-03 として追加 PR 必須** — `_get_recent_messages` の前後で `time.perf_counter()` 計測 + event emit |
+| 1000 件規模 benchmark | 🟡 benchmark script 未作成 | FU-03 に同梱 |
+
+→ **Phase A1 は「migration + コード完成、SLO 検証は probe 欠落で不能」**。FU-03 完了後に benchmark で SLO 検証可能。
 
 ### D3: Phase A2 — Hierarchical Store namespace 移行
 
