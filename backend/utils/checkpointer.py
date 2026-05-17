@@ -428,7 +428,9 @@ async def get_checkpointer() -> AsyncPostgresSaver:
     global _checkpointer_instance, _checkpointer_loop
 
     loop = asyncio.get_running_loop()
-    if _checkpointer_instance is not None and _checkpointer_loop is not loop:
+    if _checkpointer_instance is not None and _checkpointer_loop is None:
+        _checkpointer_loop = loop
+    elif _checkpointer_instance is not None and _checkpointer_loop is not loop:
         logger.warning("Checkpointer event loop changed; recreating singleton instance")
         _checkpointer_instance = None
         _checkpointer_loop = None
@@ -436,7 +438,9 @@ async def get_checkpointer() -> AsyncPostgresSaver:
     if _checkpointer_instance is None:
         async with _get_checkpointer_lock():
             loop = asyncio.get_running_loop()
-            if _checkpointer_instance is not None and _checkpointer_loop is not loop:
+            if _checkpointer_instance is not None and _checkpointer_loop is None:
+                _checkpointer_loop = loop
+            elif _checkpointer_instance is not None and _checkpointer_loop is not loop:
                 logger.warning("Checkpointer event loop changed while waiting; recreating")
                 _checkpointer_instance = None
                 _checkpointer_loop = None

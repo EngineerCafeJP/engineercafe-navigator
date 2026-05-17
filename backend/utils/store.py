@@ -225,7 +225,9 @@ async def get_store() -> AsyncPostgresStore:
     """
     global _store_instance, _store_loop
     loop = asyncio.get_running_loop()
-    if _store_instance is not None and _store_loop is not loop:
+    if _store_instance is not None and _store_loop is None:
+        _store_loop = loop
+    elif _store_instance is not None and _store_loop is not loop:
         logger.warning("Store event loop changed; recreating singleton instance")
         _store_instance = None
         _store_loop = None
@@ -233,7 +235,9 @@ async def get_store() -> AsyncPostgresStore:
     if _store_instance is None:
         async with _get_store_lock():
             loop = asyncio.get_running_loop()
-            if _store_instance is not None and _store_loop is not loop:
+            if _store_instance is not None and _store_loop is None:
+                _store_loop = loop
+            elif _store_instance is not None and _store_loop is not loop:
                 logger.warning("Store event loop changed while waiting; recreating")
                 _store_instance = None
                 _store_loop = None

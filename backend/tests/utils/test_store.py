@@ -38,9 +38,11 @@ class FakeStore:
 def _reset_singleton():
     """各テスト前後にシングルトンをリセット"""
     store_module._store_instance = None
+    store_module._store_loop = None
     FakePool.instances = []
     yield
     store_module._store_instance = None
+    store_module._store_loop = None
     FakePool.instances = []
 
 

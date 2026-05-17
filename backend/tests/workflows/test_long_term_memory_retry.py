@@ -12,8 +12,10 @@ from backend.utils.store import store_with_retry
 @pytest.fixture(autouse=True)
 def _reset_store_singleton():
     store_module._store_instance = None
+    store_module._store_loop = None
     yield
     store_module._store_instance = None
+    store_module._store_loop = None
 
 
 def _setup_mock_store():

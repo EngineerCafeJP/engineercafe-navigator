@@ -93,10 +93,10 @@
     {
       "id": "rt-011",
       "query": "カフェでコーヒーは飲めますか？",
-      "expected_agent": "facility",
-      "expected_category": "facility-info",
+      "expected_agent": "business_info",
+      "expected_category": "saino-cafe",
       "language": "ja",
-      "tags": ["fast-path", "facility", "cafe"],
+      "tags": ["fast-path", "business_info", "cafe"],
       "note": "cafe&bar saino - 有料"
     },
     {
@@ -343,10 +343,10 @@
     {
       "id": "rt-040",
       "query": "サイノカフェのメニューを教えて",
-      "expected_agent": "facility",
-      "expected_category": "facility-info",
+      "expected_agent": "business_info",
+      "expected_category": "saino-cafe",
       "language": "ja",
-      "tags": ["fast-path", "food_drink"],
+      "tags": ["fast-path", "business_info", "food_drink"],
       "note": "cafe&bar saino - 平日12:00-20:00"
     },
     {
