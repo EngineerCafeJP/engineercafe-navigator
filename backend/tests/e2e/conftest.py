@@ -12,6 +12,7 @@ import re
 import uuid
 from pathlib import Path
 
+import psycopg
 import pytest
 import pytest_asyncio
 
@@ -47,6 +48,27 @@ def _is_real_url(value: str) -> bool:
     return not any(lower.startswith(p) for p in _PLACEHOLDER_URLS)
 
 
+def _is_real_db_uri(value: str) -> bool:
+    """DB URI がテスト用プレースホルダーでないことを確認"""
+    if not value:
+        return False
+    lower = value.lower()
+    return (
+        lower.startswith(("postgresql://", "postgres://"))
+        and not lower.startswith(_PLACEHOLDER_PREFIXES)
+        and "localhost:0" not in lower
+    )
+
+
+def _is_postgres_connectable(db_uri: str, timeout: int = 5) -> bool:
+    """Return True when this runner can open a PostgreSQL connection."""
+    try:
+        with psycopg.connect(db_uri, connect_timeout=timeout):
+            return True
+    except Exception:
+        return False
+
+
 # ---------------------------------------------------------------------------
 # Session-scoped fixtures
 # ---------------------------------------------------------------------------
@@ -68,6 +90,17 @@ def _check_e2e_env():
             "SUPABASE_URL / SUPABASE_KEY is missing or is a placeholder. "
             "Set real values to run E2E tests."
         )
+
+
+@pytest.fixture(scope="session")
+def reachable_supabase_db_uri(_check_e2e_env) -> str:
+    """SUPABASE_DB_URI を使う E2E 用に runner からの DB 到達性を確認する。"""
+    db_uri = os.getenv("SUPABASE_DB_URI", "")
+    if not _is_real_db_uri(db_uri):
+        pytest.skip("SUPABASE_DB_URI not configured for direct PostgreSQL E2E tests")
+    if not _is_postgres_connectable(db_uri):
+        pytest.skip("SUPABASE_DB_URI PostgreSQL endpoint is not reachable from this runner")
+    return db_uri
 
 
 async def _close_shared_llm_provider() -> None:

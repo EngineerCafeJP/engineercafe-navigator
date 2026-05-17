@@ -16,7 +16,6 @@ store フィクスチャは sync にして AsyncPostgresStore の CM を返す�
 """
 
 import asyncio
-import os
 import uuid
 
 import pytest
@@ -29,17 +28,14 @@ from langgraph.store.postgres.aio import AsyncPostgresStore
 
 
 @pytest.fixture
-def store_cm(_check_e2e_env):
+def store_cm(reachable_supabase_db_uri):
     """AsyncPostgresStore コンテキストマネージャーを返す（sync fixture）。
 
     sync fixture なので event loop に依存しない。
     テスト関数内で ``async with store_cm as store`` するため、
     store の接続はテスト自身の event loop で確立される。
     """
-    db_uri = os.getenv("SUPABASE_DB_URI")
-    if not db_uri:
-        pytest.skip("SUPABASE_DB_URI not set")
-    return AsyncPostgresStore.from_conn_string(db_uri)
+    return AsyncPostgresStore.from_conn_string(reachable_supabase_db_uri)
 
 
 @pytest.fixture

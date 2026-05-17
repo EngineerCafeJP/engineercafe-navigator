@@ -1,6 +1,5 @@
 """E2E tests for memory promotion using a real AsyncPostgresStore."""
 
-import os
 import uuid
 
 import pytest
@@ -12,16 +11,14 @@ from backend.services.memory_promoter import MemoryPromoter
 
 @pytest.mark.e2e
 class TestMemoryPromotionStoreE2E:
-    async def test_promotes_repeated_candidates_to_long_term_memory(self):
-        db_uri = os.getenv("SUPABASE_DB_URI")
-        if not db_uri:
-            pytest.skip("SUPABASE_DB_URI not set")
-
+    async def test_promotes_repeated_candidates_to_long_term_memory(
+        self, reachable_supabase_db_uri
+    ):
         user_id = f"promoter-e2e-{uuid.uuid4().hex[:8]}"
         candidate_ns = ("visitor_memory_candidates", user_id)
         long_term_ns = ("visitor_memories", user_id)
 
-        async with AsyncPostgresStore.from_conn_string(db_uri) as store:
+        async with AsyncPostgresStore.from_conn_string(reachable_supabase_db_uri) as store:
             await store.setup()
             promoter = MemoryPromoter()
 
