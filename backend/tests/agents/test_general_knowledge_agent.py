@@ -293,6 +293,118 @@ class TestGeneralKnowledgeAgentIntegration:
         self.mock_rag_search.search.assert_not_called()
 
     @pytest.mark.asyncio
+    async def test_memory_query_recalls_session_seat_and_purpose_from_state_context(self):
+        result = await self.agent.answer_query(
+            query="この会話の最初に伝えた希望席と目的を覚えていますか。",
+            language="ja",
+            session_id="alpha-m-stm-session-test",
+            query_type="memory",
+            state_context={
+                "recent_messages": [
+                    {
+                        "role": "user",
+                        "content": (
+                            "この会話では、私の希望席は窓側で、"
+                            "目的は集中作業です。覚えてください。"
+                        ),
+                        "metadata": {},
+                    },
+                ],
+                "context_string": "セッション内の会話履歴: ユーザー: 希望席は窓側、目的は集中作業",
+                "stm_source": "langgraph_checkpointer",
+            },
+        )
+
+        assert "窓" in result["answer"]
+        assert "集中" in result["answer"]
+        assert result["metadata"]["provider_called"] is False
+        self.mock_provider.generate.assert_not_called()
+        self.mock_web_search.search.assert_not_called()
+        self.mock_rag_search.search.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_memory_query_recalls_window_summary_user_facts(self):
+        result = await self.agent.answer_query(
+            query="この会話の最初に伝えた希望席と目的を覚えていますか。",
+            language="ja",
+            session_id="alpha-m-stm-session-test",
+            query_type="memory",
+            state_context={
+                "recent_messages": [
+                    {
+                        "role": "assistant",
+                        "content": (
+                            "[Previous 22 messages summarized: Important earlier user facts: "
+                            "この会話では、私の希望席は窓側で、目的は集中作業です。覚えてください。]"
+                        ),
+                        "metadata": {},
+                    },
+                ],
+                "context_string": "",
+                "stm_source": "langgraph_checkpointer",
+            },
+        )
+
+        assert "窓" in result["answer"]
+        assert "集中" in result["answer"]
+        assert result["metadata"]["provider_called"] is False
+        self.mock_provider.generate.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_memory_query_recalls_reception_practical_context(self):
+        result = await self.agent.answer_query(
+            query="私の希望席と利用目的を確認してください。",
+            language="ja",
+            session_id="alpha-m-recv-session-test",
+            query_type="memory",
+            state_context={
+                "recent_messages": [
+                    {
+                        "role": "user",
+                        "content": "窓側の席がいいです。コワーキングスペースを使いたいです。",
+                        "metadata": {},
+                    },
+                ],
+                "context_string": "",
+                "stm_source": "langgraph_checkpointer",
+            },
+        )
+
+        assert "窓" in result["answer"]
+        assert "コワーキング" in result["answer"]
+        assert result["metadata"]["provider_called"] is False
+        self.mock_provider.generate.assert_not_called()
+        self.mock_web_search.search.assert_not_called()
+        self.mock_rag_search.search.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_memory_query_does_not_treat_assistant_clarification_as_user_fact(self):
+        result = await self.agent.answer_query(
+            query="私の希望席と利用目的を確認してください。",
+            language="ja",
+            session_id="alpha-m-recv-session-test",
+            query_type="memory",
+            state_context={
+                "recent_messages": [
+                    {
+                        "role": "assistant",
+                        "content": "希望席は窓側、利用目的はコワーキングでよろしいですか？",
+                        "metadata": {},
+                    },
+                ],
+                "context_string": (
+                    "セッション内の会話履歴:\n"
+                    "アシスタント: 希望席は窓側、利用目的はコワーキングでよろしいですか？"
+                ),
+                "stm_source": "langgraph_checkpointer",
+            },
+        )
+
+        assert result["metadata"]["provider"] == "openrouter"
+        assert "希望席は窓側、利用目的はコワーキングです" not in result["answer"]
+        self.mock_provider.generate.assert_called_once()
+
+    @pytest.mark.asyncio
     async def test_answer_query_current_weather_uses_web_search(self):
         self.mock_web_search.search = AsyncMock(
             return_value={

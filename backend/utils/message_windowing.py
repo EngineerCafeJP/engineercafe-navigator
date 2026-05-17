@@ -20,24 +20,75 @@ logger = logging.getLogger(__name__)
 DEFAULT_MAX_MESSAGES = 20
 DEFAULT_SUMMARY_THRESHOLD = 30
 
-_IMPORTANT_MEMORY_MARKERS = (
-    "覚えて",
+_IMPORTANT_MEMORY_DECLARATION_MARKERS = (
+    "覚えてください",
+    "覚えておいて",
+    "希望席は",
+    "好きな席は",
+    "利用目的は",
+    "目的は",
+    "名前は",
+    "呼んでください",
+    "prefer",
+    "remember that",
+    "my name is",
+    "call me",
+)
+_IMPORTANT_MEMORY_ENTITY_MARKERS = (
     "希望席",
     "好きな席",
     "利用目的",
-    "目的は",
-    "名前は",
-    "呼んで",
+    "目的",
+    "名前",
     "窓側",
     "集中作業",
     "コワーキング",
+    "preferred seat",
+    "seat preference",
+    "purpose",
+)
+_IMPORTANT_MEMORY_PREFERENCE_MARKERS = (
+    "がいい",
+    "を使いたい",
+    "したい",
+    "希望します",
+    "お願いします",
     "prefer",
-    "remember",
-    "my name",
-    "call me",
+    "would like",
+    "i want",
+)
+_QUESTION_OR_LOOKUP_MARKERS = (
+    "?",
+    "？",
+    "ですか",
+    "ますか",
+    "でしょうか",
+    "教えて",
+    "空いて",
+    "空き",
+    "available",
+    "tell me",
+    "what",
+    "where",
+    "how",
 )
 _MAX_SUMMARY_FACTS = 5
 _MAX_SUMMARY_FACT_CHARS = 160
+
+
+def _looks_like_declared_user_fact(content: str) -> bool:
+    normalized = content.lower()
+    if any(marker in normalized for marker in _QUESTION_OR_LOOKUP_MARKERS):
+        return False
+
+    has_entity = any(marker.lower() in normalized for marker in _IMPORTANT_MEMORY_ENTITY_MARKERS)
+    if not has_entity:
+        return False
+
+    if any(marker.lower() in normalized for marker in _IMPORTANT_MEMORY_DECLARATION_MARKERS):
+        return True
+
+    return any(marker.lower() in normalized for marker in _IMPORTANT_MEMORY_PREFERENCE_MARKERS)
 
 
 def _extract_important_user_facts(messages: List[BaseMessage]) -> List[str]:
@@ -49,8 +100,7 @@ def _extract_important_user_facts(messages: List[BaseMessage]) -> List[str]:
         content = str(msg.content or "").strip()
         if not content:
             continue
-        normalized = content.lower()
-        if not any(marker.lower() in normalized for marker in _IMPORTANT_MEMORY_MARKERS):
+        if not _looks_like_declared_user_fact(content):
             continue
         compact = " ".join(content.split())
         if len(compact) > _MAX_SUMMARY_FACT_CHARS:

@@ -47,6 +47,25 @@ class TestMessageWindow:
         assert "希望席は窓側" in summary_text
         assert "目的は集中作業" in summary_text
 
+    def test_window_summary_does_not_promote_lookup_questions_as_user_facts(self):
+        """Seat/event lookup questions should not become remembered preferences."""
+        window = MessageWindow(max_messages=4)
+        msgs = [
+            HumanMessage(content="窓側の席は空いていますか？"),
+            AIMessage(content="空き状況を確認します。"),
+        ]
+        for i in range(8):
+            msgs.append(HumanMessage(content=f"ターン {i} です。助言をください。"))
+            msgs.append(AIMessage(content=f"助言 {i} です。"))
+
+        result = window.apply_window(msgs)
+        summaries = [m for m in result if isinstance(m, SystemMessage)]
+
+        assert summaries
+        summary_text = summaries[0].content
+        assert "Important earlier user facts" not in summary_text
+        assert "窓側の席は空いていますか" not in summary_text
+
     def test_system_messages_preserved(self):
         """System messages should always be preserved"""
         window = MessageWindow(max_messages=3)

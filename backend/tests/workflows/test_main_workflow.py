@@ -43,6 +43,33 @@ def test_checkpoint_summary_messages_are_available_to_memory_context():
     assert "目的は集中作業" in rows[0]["content"]
 
 
+def test_checkpoint_recent_memory_keeps_first_preference_after_20_turns():
+    from backend.workflows.main_workflow import MainWorkflow
+
+    messages = [
+        HumanMessage(
+            content="この会話では、私の希望席は窓側で、目的は集中作業です。覚えてください。"
+        ),
+        AIMessage(content="覚えておきます。"),
+    ]
+    for turn in range(2, 20):
+        messages.extend(
+            [
+                HumanMessage(
+                    content=(
+                        f"ターン {turn} です。エンジニアカフェで作業するときの"
+                        "簡単な助言を一つください。"
+                    )
+                ),
+                AIMessage(content="短く休憩を入れると集中しやすいです。"),
+            ]
+        )
+
+    rows = MainWorkflow._checkpoint_messages_to_recent_memory(messages)
+
+    assert any("窓側" in row["content"] and "集中作業" in row["content"] for row in rows)
+
+
 def test_memory_context_queries_do_not_bypass_memory_loader_fast_path():
     from backend.workflows.main_workflow import MainWorkflow
 
@@ -514,6 +541,59 @@ class TestMainWorkflowMemoryIntegration:
                 context_signals=None,
                 long_term_memory=[],
             )
+
+    @pytest.mark.asyncio
+    @patch("backend.workflows.main_workflow.OrchestratorAgent")
+    async def test_general_knowledge_node_passes_memory_context_for_memory_route(
+        self, mock_orchestrator_class
+    ):
+        """memory route は knowledge_results ではなく STM 文脈をGKAへ渡す。"""
+        from backend.workflows.main_workflow import MainWorkflow
+
+        mock_orchestrator_class.return_value = AsyncMock()
+
+        workflow = MainWorkflow()
+        workflow._general_knowledge_agent.answer_query = AsyncMock(
+            return_value={
+                "answer": "この会話では、希望席は窓側、利用目的は集中作業です。",
+                "emotion": "relaxed",
+                "metadata": {
+                    "agent": "GeneralKnowledgeAgent",
+                    "status": "success",
+                    "query_type": "general_memory",
+                },
+            }
+        )
+
+        memory_context = {
+            "recent_messages": [
+                {
+                    "role": "user",
+                    "content": "この会話では、私の希望席は窓側で、目的は集中作業です。",
+                    "metadata": {},
+                }
+            ],
+            "context_string": "セッション内の会話履歴",
+            "stm_source": "langgraph_checkpointer",
+        }
+        state = {
+            "query": "この会話の最初に伝えた希望席と目的を覚えていますか。",
+            "session_id": "test-session",
+            "language": "ja",
+            "routing": {"request_type": "memory"},
+            "metadata": {},
+            "context": {
+                "memory": memory_context,
+                "knowledge_results": {"context_string": "これは渡さない"},
+            },
+        }
+
+        await workflow._general_knowledge_node(state)
+
+        assert (
+            workflow._general_knowledge_agent.answer_query.await_args.kwargs["state_context"]
+            is memory_context
+        )
 
     @pytest.mark.asyncio
     @patch("backend.workflows.main_workflow.OrchestratorAgent")

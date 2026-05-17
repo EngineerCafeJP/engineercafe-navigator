@@ -350,7 +350,7 @@ class GeneralKnowledgeAgent:
                     else "An error occurred while processing memory."
                 ),
                 "emotion": "surprised",
-            "metadata": {"agent": self.name, "status": "error", "error": str(e)},
+                "metadata": {"agent": self.name, "status": "error", "error": str(e)},
             }
 
     @staticmethod
@@ -389,18 +389,7 @@ class GeneralKnowledgeAgent:
 
         seat: Optional[str] = None
         purpose: Optional[str] = None
-        contents: list[str] = []
-        for message in context.get("recent_messages", []):
-            if not isinstance(message, dict):
-                continue
-            content = str(message.get("content") or "")
-            if not content:
-                continue
-            contents.append(content)
-
-        context_string = str(context.get("context_string") or "").strip()
-        if context_string:
-            contents.append(context_string)
+        contents = self._trusted_session_memory_contents(context)
 
         for content in contents:
             lower_content = content.lower()
@@ -459,6 +448,30 @@ class GeneralKnowledgeAgent:
             "emotion": "relaxed",
             "metadata": metadata,
         }
+
+    @staticmethod
+    def _trusted_session_memory_contents(context: Dict[str, Any]) -> list[str]:
+        """Return user-authored or workflow-summarized facts for deterministic recall."""
+        contents: list[str] = []
+        for message in context.get("recent_messages", []):
+            if not isinstance(message, dict):
+                continue
+            content = str(message.get("content") or "")
+            if not content:
+                continue
+            role = str(message.get("role") or "").lower()
+            if role == "user" or "Important earlier user facts:" in content:
+                contents.append(content)
+
+        context_string = str(context.get("context_string") or "").strip()
+        if context_string:
+            for line in context_string.splitlines():
+                stripped = line.strip()
+                if stripped.startswith(("ユーザー:", "User:")):
+                    contents.append(stripped.split(":", 1)[1].strip())
+                elif "Important earlier user facts:" in stripped:
+                    contents.append(stripped)
+        return contents
 
     def _detect_memory_query_type(self, query: str) -> str:
         """メモリ質問タイプの判定"""
