@@ -366,19 +366,33 @@ GAS エディタ → 左サイドバー「プロジェクトの設定」→「�
 
 ### 3.5 動作確認 (terisuke 手元)
 
+> **重要**: GAS Web App は必ず `script.googleusercontent.com` に **302 redirect** する
+> (Google の CSRF サンドボックス設計)。curl はデフォで redirect を追わないので
+> **必ず `-L` フラグを付ける**。同じ理由で Backend の httpx も `follow_redirects=True` が必須 (§4.2 参照)。
+
 ```bash
 TOKEN="<SHARED_TOKEN>"
 URL="<WEB_APP_URL>"
 
 # 認証なし → unauthorized
-curl "${URL}"
+curl -sSL "${URL}"
 # → {"error":"unauthorized"}
 
 # 正しい token → 37 件の upcoming events
-curl "${URL}?token=${TOKEN}" | jq '.count, .events[0:3]'
+curl -sSL "${URL}?token=${TOKEN}" | jq '.count, .events[0:3]'
 # expect:
 # 37
 # [{ "title": "...", "date": "2026-05-17", "event_start": "09:00", ... }, ...]
+
+# PII 防御の audit (絶対実施)
+curl -sSL "${URL}?token=${TOKEN}" | jq '.events[0] | keys'
+# expect (PII keys なし):
+# ["additional_info", "capacity", "date", "description",
+#  "entry_fee", "entry_fee_amount", "event_end", "event_start",
+#  "facility", "facility_end", "facility_start",
+#  "hashtags", "online", "organizer", "organizer_type",
+#  "row", "time_table", "title"]
+# ❌ NG: "email", "name", "phone" などが出てきたら GAS の COL map 修正必須
 ```
 
 ---
@@ -458,7 +472,13 @@ class SheetsEventSource:
             return []
 
         try:
-            async with httpx.AsyncClient(timeout=HTTP_TIMEOUT_SEC) as client:
+            # NOTE: Apps Script Web App は必ず 302 redirect を返す
+            # (script.google.com/macros/s/.../exec → script.googleusercontent.com/macros/echo?...)
+            # → follow_redirects=True 必須。デフォの False だと HTML レスポンスを受け取り JSON parse 失敗。
+            async with httpx.AsyncClient(
+                timeout=HTTP_TIMEOUT_SEC,
+                follow_redirects=True,
+            ) as client:
                 resp = await client.get(self.url, params={"token": self.token})
                 resp.raise_for_status()
                 payload = resp.json()
@@ -691,10 +711,11 @@ curl "${URL}?token=${TOKEN}" | jq '.events[0] | keys'
 
 ## 9. 完了条件
 
-### Day 0 (terisuke)
-- [ ] GAS Web App デプロイ + 動作確認 `count=37` 確認
-- [ ] Secret Manager 登録 + Cloud Run env bind
-- [ ] PII 監査 (§7) で expected keys のみ返却を確認
+### Day 0 (terisuke) ✅ **完了 (2026-05-17)**
+- [x] GAS Web App デプロイ + 動作確認 (count=36, sheet ID `153ib48CUk7P_Qf8DEXx2XYAMhaQnqyFUNQ18NEnnz_k`)
+- [x] Secret Manager 登録 (`EVENT_SHEET_GAS_URL` v1 + `EVENT_SHEET_GAS_TOKEN` v1)
+- [x] Cloud Run env bind (rev `engineer-cafe-backend-00214-f5t`, トラフィック 100%)
+- [x] PII 監査 (§7): 18 公開 keys のみ返却、`email` / `name` / `phone` 等は GAS から返らない確認済
 
 ### Backend engineer (Wave 2 Theme C)
 - [ ] `backend/services/sheets_event_source.py` 新規実装 (§4.2)
