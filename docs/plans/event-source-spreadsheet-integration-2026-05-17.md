@@ -122,14 +122,13 @@ Merge ルール (新提案):
 # Sheets API は既に有効化済 (確認済)
 # gcloud services list --enabled | grep sheets → sheets.googleapis.com  ✅
 
-# SA に必要な role 追加 (一度きり)
-gcloud projects add-iam-policy-binding aipartner-426616 \
-  --member="serviceAccount:639959525777-compute@developer.gserviceaccount.com" \
-  --role="roles/iam.serviceAccountTokenCreator"
-
 # spreadsheet の共有設定 (terisuke が手動で実行)
 # - スプレッドシートを開き「共有」
 # - 上記 SA email を「閲覧者」として追加
+#
+# Note: SA ImpersonateUser / TokenCreator role などの project-level IAM 追加は不要。
+# spreadsheet 1 件のみ Viewer share + Sheets API readonly scope で十分。
+# 過去 review (PR #852 W4) で TokenCreator は over-privileged として削除。
 ```
 
 ### 4.2 backend 依存追加 (`backend/pyproject.toml`)
@@ -157,16 +156,22 @@ import logging
 from datetime import datetime
 from typing import List
 
-from google.oauth2 import service_account
+import google.auth  # google.auth.default() for Application Default Credentials on Cloud Run
 from googleapiclient.discovery import build
 
-from backend.services.event_kb_sync import EventSourceRecord
+from backend.services.event_kb_sync import EventSourceRecord, EVENT_KB_SOURCE_PREFIX
+from backend.utils.input_sanitizer import sanitize_input  # PR #852 W3 review: prompt injection 防止
 
 logger = logging.getLogger(__name__)
 
 SPREADSHEET_ID_ENV = "ENGINEER_CAFE_EVENT_SHEET_ID"
 SHEET_RANGE = "alert_discord!A3:B"  # A=title, B=date
 EVENT_SOURCE_NAME = "spreadsheet"
+MAX_TITLE_LENGTH = 200  # 既存 sanitize_input パターンに合わせる
+
+# Use existing constant from event_kb_sync (`EVENT_KB_SOURCE_PREFIX = "event_bridge"`)
+# to keep the source label format consistent across sources.
+_SOURCE_LABEL = f"{EVENT_KB_SOURCE_PREFIX}:{EVENT_SOURCE_NAME}"
 
 
 class SheetsEventSource:
@@ -181,8 +186,12 @@ class SheetsEventSource:
             )
 
     def _client(self):
-        # Cloud Run の default SA を使う (Application Default Credentials)
-        credentials, _ = service_account.default(
+        # Cloud Run の default SA を使う (Application Default Credentials).
+        # 注: `google.auth.default()` を使うこと。`google.oauth2.service_account.default()`
+        # は存在しない (PR #852 W1 review)。voice_agent.py は
+        # `service_account.Credentials.from_service_account_file(...)` の明示パス、
+        # こちらは ADC で SA を自動解決する Cloud Run native パス。
+        credentials, _ = google.auth.default(
             scopes=["https://www.googleapis.com/auth/spreadsheets.readonly"]
         )
         return build("sheets", "v4", credentials=credentials, cache_discovery=False)
@@ -208,8 +217,14 @@ class SheetsEventSource:
         for row in rows:
             if len(row) < 2:
                 continue
-            title, date_str = row[0], row[1]
-            if not title or not date_str or title == "#N/A" or date_str == "#N/A":
+            title_raw, date_str = row[0], row[1]
+            if not title_raw or not date_str or title_raw == "#N/A" or date_str == "#N/A":
+                continue
+            # PR #852 W3 review: spreadsheet cells are user-input flowing into RAG
+            # corpus + LLM prompt. Sanitize titles to prevent prompt injection
+            # (e.g. row containing "Ignore previous instructions...").
+            title = sanitize_input(str(title_raw).strip(), MAX_TITLE_LENGTH)
+            if not title:
                 continue
             try:
                 start = self._parse_date(date_str)
@@ -219,7 +234,7 @@ class SheetsEventSource:
             records.append(
                 EventSourceRecord(
                     external_id=f"sheet:{title}:{start}",
-                    title=str(title).strip(),
+                    title=title,
                     start=start,
                     end="",
                     description="",
@@ -266,8 +281,9 @@ if args.include_spreadsheet:
 await sync_event_kb_records(records, ...)
 ```
 
-Cloud Scheduler ジョブ (FU-02 と同じ):
+Cloud Scheduler ジョブは **FU-02 (#844) で land する Cloud Run Jobs invocation パターンと同じ** ものを使用する (PR #852 S2 review)。下記は概念図で、正式コマンドは FU-02 PR でフィックスされた YAML/Terraform を参照すること:
 ```bash
+# 概念例 — FU-02 が land 後はそちらの IaC を踏襲
 gcloud scheduler jobs create http event-kb-sync-daily \
   --location=asia-northeast1 \
   --schedule="0 0 * * *" \
@@ -278,7 +294,7 @@ gcloud scheduler jobs create http event-kb-sync-daily \
 
 ### 4.5 EventAgent merge ロジック更新
 
-[`backend/agents/event_agent.py:167`](backend/agents/event_agent.py:167) `_merge_events` の拡張:
+`_merge_events` の **定義は [`backend/agents/event_agent.py:575`](backend/agents/event_agent.py:575)** (call site は L167, L649 にあり、PR #852 W2 review 指摘で正)。定義側の signature を拡張する:
 
 ```python
 def _merge_events(
@@ -287,9 +303,13 @@ def _merge_events(
     connpass_result: Dict,
     spreadsheet_result: Dict | None = None,   # NEW
 ) -> List[Dict]:
-    # 1. spreadsheet を最優先で投入 (verified=True)
+    # 1. spreadsheet を最優先 (source="spreadsheet" を priority signal として扱う)
     # 2. calendar / connpass で同 title + date を見つけたら spreadsheet 側を採用
     # 3. spreadsheet にない event は補助情報として priority=low
+    # 注: EventSourceRecord に `verified` field は現状なし (PR #852 S1 review)。
+    #     source="spreadsheet" が implicit な verification signal として機能する。
+    #     必要なら別 PR で EventSourceRecord に `verified: bool = False` を追加し、
+    #     spreadsheet 経路でのみ True を立てる設計を検討。
     ...
 ```
 
@@ -311,10 +331,15 @@ gcloud run services update engineer-cafe-backend \
 ## 5. 着手前の確認事項 (terisuke 案件)
 
 - [ ] **スプレッドシート ID 提供** — Apps Script URL ではなく実 Spreadsheet の share URL or ID
-- [ ] **スプレッドシートが現在も手動メンテされているか確認**
-- [ ] **B 列の日付フォーマット確認** (`2026/05/20` か `2026-05-20` か Excel シリアル値か)
-- [ ] **C 列以降の追加情報あるか** (場所、URL、説明文等あれば取り込み拡張)
-- [ ] **SA email `639959525777-compute@developer.gserviceaccount.com` に spreadsheet 共有設定**
+- [x] **スプレッドシートが現在も手動メンテされているか確認** — terisuke 2026-05-17 confirmed: 継続メンテ中
+- [ ] **サニタイズ済 5 行サンプル提供** — PR #852 S3 review 推奨。これ 1 つで「B 列フォーマット」「C 列以降の追加情報」「ヘッダー構成」が一気に判明する。サンプル例:
+  ```
+  A2: イベント名 | B2: 開催日       (ヘッダー)
+  A3: ゆるもくXR | B3: 2026/05/20
+  A4: お昼だよ   | B4: 2026/05/20
+  ...
+  ```
+- [ ] **SA email `639959525777-compute@developer.gserviceaccount.com` に spreadsheet 共有設定** (「閲覧者」権限のみで OK、project-level IAM 追加は不要)
 - [ ] **Cafe 側運用 SOP との整合** — Apps Script 廃止後の Discord 通知をどうするか (backend で代替するか、別の運用に切替済か)
 
 ---
@@ -328,7 +353,8 @@ cd backend && pytest tests/services/test_sheets_event_source.py -v
 # 2. Cron 経由で knowledge_base に spreadsheet 由来 record が入る確認
 gcloud scheduler jobs run event-kb-sync-daily --location=asia-northeast1 --project=aipartner-426616
 
-# Supabase で確認:
+# Supabase で確認 (prefix は backend/services/event_kb_sync.py:32 の
+# EVENT_KB_SOURCE_PREFIX = "event_bridge" constant に依存。typo NG):
 # SELECT count(*) FROM knowledge_base WHERE category='event' AND source LIKE 'event_bridge:spreadsheet%';
 # → > 0 が PASS
 
