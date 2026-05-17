@@ -136,6 +136,11 @@ class EventAgent:
         if self._asks_connpass(query):
             return self._get_connpass_response(language, include_evidence=include_evidence)
 
+        if self._asks_hackathon_schedule(query):
+            return self._get_hackathon_schedule_response(
+                language, include_evidence=include_evidence
+            )
+
         if self._asks_event_clarification(query):
             return self._get_event_clarification_response(language)
 
@@ -622,6 +627,63 @@ class EventAgent:
             "organize an event",
         )
         return any(marker in normalized for marker in hosting_markers)
+
+    @staticmethod
+    def _asks_hackathon_schedule(query: str) -> bool:
+        normalized = query.lower()
+        schedule_markers = ("予定", "開催", "ありますか", "schedule", "upcoming")
+        return any(marker in normalized for marker in ("ハッカソン", "hackathon")) and any(
+            marker in normalized for marker in schedule_markers
+        )
+
+    @staticmethod
+    def _get_hackathon_schedule_response(language: str, *, include_evidence: bool = False) -> Dict:
+        answers = {
+            "ja": (
+                "[relaxed]エンジニアカフェではハッカソン、LT会、もくもく会などの"
+                "技術イベントが定期的に開催されています。直近の開催予定や申込は"
+                "Connpassのイベント一覧 https://engineercafe.connpass.com/ で確認できます。"
+                "定員があるイベントは先着順が多いので、気になる回は早めに確認してください。"
+            ),
+            "en": (
+                "[relaxed]Engineer Cafe regularly hosts technical events such as "
+                "hackathons, lightning talks, and coworking study sessions. Please "
+                "check upcoming schedules and sign-up pages on Connpass: "
+                "https://engineercafe.connpass.com/. Many events have capacity limits, "
+                "so checking early is recommended."
+            ),
+        }
+        answer = answers.get(language, answers["ja"])
+        metadata = {
+            "agent": "EventAgent",
+            "category": "event",
+            "request_type": "event",
+            "route": "event",
+            "time_range": "upcoming",
+            "event_count": 0,
+            "sources": ["connpass"],
+            "searched_sources": ["connpass"],
+            "source_statuses": {"connpass": "static_link"},
+        }
+        if include_evidence:
+            metadata["rag_evidence"] = {
+                "source": "event_agent_static_hackathon",
+                "category": "event",
+                "context_char_count": len(answer),
+                "contexts": [answer],
+                "results": [
+                    {
+                        "source": "connpass",
+                        "title": "Engineer Cafe Connpass event listings",
+                        "content": "https://engineercafe.connpass.com/",
+                    }
+                ],
+            }
+        return {
+            "answer": answer,
+            "emotion": "relaxed",
+            "metadata": metadata,
+        }
 
     @staticmethod
     def _get_event_hosting_response(language: str) -> Dict:

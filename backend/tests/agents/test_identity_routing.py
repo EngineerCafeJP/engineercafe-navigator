@@ -85,6 +85,10 @@ NON_IDENTITY_AMBIGUOUS_QUERIES = [
     "which AI events are held here?",
     # Chinese capability marker without self-referential identity token
     "能帮我连接 Wi-Fi 吗",
+    # Domain object + generic "how to use" should route to the facility domain,
+    # not to the assistant self-introduction capability path.
+    "3Dプリンターの使い方を教えてください",
+    "Wi-Fiの使い方を教えてください",
 ]
 
 # LLM-provider tokens that must NEVER appear in a hardcoded identity response.

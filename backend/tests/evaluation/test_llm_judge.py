@@ -266,6 +266,31 @@ class TestLLMJudgeOpenRouterFallback:
                 assert call_kwargs["api_key"] == "sk-openai-test"
                 assert "openai_api_base" not in call_kwargs
 
+    def test_placeholder_openai_key_falls_back_to_openrouter(self):
+        """pytest default OPENAI_API_KEY must not shadow a real OpenRouter key."""
+        env = {
+            "OPENAI_API_KEY": "test-openai-key",
+            "OPENROUTER_API_KEY": "sk-or-test",
+        }
+        with patch.dict("os.environ", env, clear=True):
+            with patch("backend.tests.utils.evaluators.llm_judge.ChatOpenAI") as mock_chat:
+                mock_chat.return_value = "mock_llm"
+                LLMJudgeEvaluator()
+                call_kwargs = mock_chat.call_args[1]
+                assert call_kwargs["api_key"] == "sk-or-test"
+                assert call_kwargs["openai_api_base"] == "https://openrouter.ai/api/v1"
+                assert call_kwargs["model"] == "openai/gpt-5.4-mini"
+
+    def test_placeholder_keys_disable_llm(self):
+        """Unit-test placeholders should not create a live judge client."""
+        env = {
+            "OPENAI_API_KEY": "test-openai-key",
+            "OPENROUTER_API_KEY": "test-openrouter-key",
+        }
+        with patch.dict("os.environ", env, clear=True):
+            evaluator = LLMJudgeEvaluator()
+            assert evaluator.is_available is False
+
     def test_no_keys_no_llm(self):
         """API キーが未設定の場合は LLM なし"""
         with patch.dict("os.environ", {}, clear=True):

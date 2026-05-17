@@ -15,14 +15,14 @@ class TestOrchestratorFastRouting:
         """Create orchestrator instance"""
         return OrchestratorAgent()
 
-    def test_rt_011_food_drink_verb(self, orchestrator):
-        """Test rt-011: 飲食動詞 fast-path"""
+    def test_rt_011_coffee_drink_routes_to_saino(self, orchestrator):
+        """rt-011: coffee drink requests use the Saino business-info canonical."""
         result = orchestrator._try_fast_routing("カフェでコーヒーは飲めますか？")
 
         assert result is not None, "rt-011 should match fast-path"
-        assert result["agent"] == "facility", "rt-011 should route to facility"
+        assert result["agent"] == "business_info", "rt-011 should route to business_info"
         assert result["request_type"] == "food_drink", "rt-011 should be food_drink type"
-        assert result["category"] == "facility-info", "rt-011 should be facility-info category"
+        assert result["category"] == "saino-cafe", "rt-011 should be saino-cafe category"
 
     def test_llm_agent_class_name_is_normalized_to_graph_node(self, orchestrator):
         decision = orchestrator._parse_llm_response("""
@@ -97,18 +97,23 @@ class TestOrchestratorFastRouting:
     def test_food_drink_verb_variations(self, orchestrator):
         """Test various food/drink verb patterns"""
         test_queries = [
-            "コーヒーは飲めますか",
-            "ランチは食べられますか",
-            "注文できますか",
-            "コーヒーを飲みたい",
-            "ちょっと休憩したい",
-            "I want coffee",
+            ("コーヒーは飲めますか", "business_info", "saino-cafe"),
+            ("ランチは食べられますか", "facility", "facility-info"),
+            ("注文できますか", "facility", "facility-info"),
+            ("コーヒーを飲みたい", "business_info", "saino-cafe"),
+            ("ちょっと休憩したい", "facility", "facility-info"),
+            ("I want coffee", "business_info", "saino-cafe"),
         ]
 
-        for query in test_queries:
+        for query, expected_agent, expected_category in test_queries:
             result = orchestrator._try_fast_routing(query)
             assert result is not None, f"Query '{query}' should match fast-path"
-            assert result["agent"] == "facility", f"Query '{query}' should route to facility"
+            assert (
+                result["agent"] == expected_agent
+            ), f"Query '{query}' should route to {expected_agent}"
+            assert (
+                result["category"] == expected_category
+            ), f"Query '{query}' should be {expected_category}"
             assert (
                 result["request_type"] == "food_drink"
             ), f"Query '{query}' should be food_drink type"
@@ -293,14 +298,23 @@ class TestOrchestratorFastRouting:
         assert result["category"] == "saino-cafe"
         assert result["request_type"] == "hours"
 
-    def test_saino_menu_routes_to_facility_food_drink(self, orchestrator):
-        """Saino menu questions stay on facility food/drink canonical answers."""
+    def test_saino_menu_routes_to_business_info_food_drink(self, orchestrator):
+        """Saino menu questions stay with the Saino business-info canonical."""
         result = orchestrator._try_fast_routing("サイノカフェのメニューを教えて")
 
         assert result is not None
-        assert result["agent"] == "facility"
-        assert result["category"] == "facility-info"
+        assert result["agent"] == "business_info"
+        assert result["category"] == "saino-cafe"
         assert result["request_type"] == "food_drink"
+
+    def test_bare_coffee_price_routes_to_saino_price(self, orchestrator):
+        """Coffee price without entity name should use the adjacent Saino cafe."""
+        result = orchestrator._try_fast_routing("コーヒーはいくらですか？")
+
+        assert result is not None
+        assert result["agent"] == "business_info"
+        assert result["category"] == "saino-cafe"
+        assert result["request_type"] == "price"
 
     def test_business_hours_english_extended(self, orchestrator):
         """英語: closed, holiday キーワード"""
@@ -489,6 +503,22 @@ class TestOrchestratorFastRouting:
 
         assert result is not None
         assert result["agent"] == "facility"
+        assert result["request_type"] == "facility"
+
+    def test_3d_printer_how_to_routes_to_facility_not_assistant_profile(self, orchestrator):
+        result = orchestrator._try_fast_routing("3Dプリンターの使い方を教えてください")
+
+        assert result is not None
+        assert result["agent"] == "facility"
+        assert result["category"] == "facility-info"
+        assert result["request_type"] == "facility"
+
+    def test_main_hall_location_routes_to_facility_not_general_location(self, orchestrator):
+        result = orchestrator._try_fast_routing("メインホールはどこにありますか？")
+
+        assert result is not None
+        assert result["agent"] == "facility"
+        assert result["category"] == "facility-info"
         assert result["request_type"] == "facility"
 
     def test_no_false_positive_compound_greeting(self, orchestrator):

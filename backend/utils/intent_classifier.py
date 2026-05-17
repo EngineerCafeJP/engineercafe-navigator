@@ -37,6 +37,7 @@ from backend.config.routing_constants import (
     TEMPORARY_EXIT_KEYWORDS,
     TOILET_KEYWORDS,
     WIFI_KEYWORDS,
+    extract_request_type,
     match_farewell_keywords,
     match_keywords,
     match_pet_policy_keywords,
@@ -77,6 +78,22 @@ FILLER_INTENTS = frozenset(
 
 def _matches_any_lower(lower_query: str, keywords: tuple[str, ...] | list[str]) -> bool:
     return any(keyword.lower() in lower_query for keyword in keywords)
+
+
+def _matches_pricing_intent(lower_query: str) -> bool:
+    """Match pricing intent without treating the "fee" inside "coffee" as a hit."""
+    english_terms = ("cost", "price", "fee", "free")
+    if any(re.search(rf"\b{re.escape(term)}\b", lower_query) for term in english_terms):
+        return True
+    if "how much" in lower_query:
+        return True
+
+    guarded_terms = set(english_terms) | {"how much"}
+    return any(
+        keyword.lower() in lower_query
+        for keyword in PRICING_KEYWORDS
+        if keyword.lower() not in guarded_terms
+    )
 
 
 @dataclass(frozen=True)
@@ -165,6 +182,26 @@ def is_assistant_profile_question(lower_query: str) -> bool:
         "転職",
     )
     if any(marker in lower_query for marker in domain_service_markers):
+        return False
+
+    domain_object_keyword_groups = (
+        WIFI_KEYWORDS,
+        EVENT_KEYWORDS,
+        FACILITY_EQUIPMENT_KEYWORDS,
+        CONTACT_KEYWORDS,
+        FLOOR_LAYOUT_KEYWORDS,
+        BASEMENT_KEYWORDS,
+        MEETING_ROOM_KEYWORDS,
+        FOOD_DRINK_KEYWORDS,
+        FOOD_DRINK_VERBS,
+        TOILET_KEYWORDS,
+        ACCESSIBILITY_KEYWORDS,
+        PHOTOGRAPHY_KEYWORDS,
+        CHILDREN_NOISE_KEYWORDS,
+        TEMPORARY_EXIT_KEYWORDS,
+        SLIDE_KEYWORDS,
+    )
+    if any(match_keywords(lower_query, keywords) for keywords in domain_object_keyword_groups):
         return False
 
     # Substring identity markers that are unambiguous on their own.
@@ -429,25 +466,22 @@ def classify_fast_intent(query: str) -> Optional[FastIntent]:
 
     cafe_entity = resolve_cafe_entity(query)
     if cafe_entity == "saino":
+        request_type = "general"
         if match_keywords(lower_query, BUSINESS_HOURS_KEYWORDS):
-            return FastIntent(
-                "business_info",
-                "saino-cafe",
-                "hours",
-                "Saino cafe hours reference detected",
-            )
+            request_type = "hours"
+        elif _matches_pricing_intent(lower_query):
+            request_type = "price"
+        elif match_keywords(lower_query, FOOD_DRINK_KEYWORDS) or match_keywords(
+            lower_query, FOOD_DRINK_VERBS
+        ):
+            request_type = "food_drink"
+        else:
+            request_type = extract_request_type(lower_query) or request_type
         return FastIntent(
-            "facility",
-            "facility-info",
-            (
-                "food_drink"
-                if (
-                    match_keywords(lower_query, FOOD_DRINK_KEYWORDS)
-                    or match_keywords(lower_query, FOOD_DRINK_VERBS)
-                )
-                else "facility"
-            ),
-            "Saino cafe facility reference detected",
+            "business_info",
+            "saino-cafe",
+            request_type,
+            "Saino cafe reference detected",
         )
 
     if cafe_entity == "ambiguous-cafe" and (
@@ -540,6 +574,13 @@ def classify_fast_intent(query: str) -> Optional[FastIntent]:
         return FastIntent(
             "facility", "facility-info", "access", "Access/direction keyword detected"
         )
+    if match_keywords(lower_query, EXCLUSIVE_RENTAL_KEYWORDS):
+        return FastIntent(
+            "facility",
+            "facility-info",
+            "exclusive_rental",
+            "Exclusive rental keyword detected",
+        )
     if match_keywords(lower_query, FACILITY_EQUIPMENT_KEYWORDS):
         return FastIntent(
             "facility", "facility-info", "facility", "Facility equipment keyword detected"
@@ -556,13 +597,6 @@ def classify_fast_intent(query: str) -> Optional[FastIntent]:
         )
     if match_keywords(lower_query, SMOKING_KEYWORDS):
         return FastIntent("facility", "facility-info", "smoking", "Smoking policy keyword detected")
-    if match_keywords(lower_query, EXCLUSIVE_RENTAL_KEYWORDS):
-        return FastIntent(
-            "facility",
-            "facility-info",
-            "exclusive_rental",
-            "Exclusive rental keyword detected",
-        )
     if match_keywords(lower_query, TOILET_KEYWORDS):
         return FastIntent("facility", "facility-info", "toilet", "Toilet/restroom keyword detected")
     if match_keywords(lower_query, ACCESSIBILITY_KEYWORDS):

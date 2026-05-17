@@ -57,8 +57,10 @@ _CONNECTION_ERROR_MESSAGES = (
 
 # Non-async types in tests still expect these module globals to exist.
 _checkpointer_lock = asyncio.Lock()
+_checkpointer_lock_loop: asyncio.AbstractEventLoop | None = None
 _checkpointer_cm = None
 _checkpointer_instance: Optional[AsyncPostgresSaver] = None
+_checkpointer_loop: asyncio.AbstractEventLoop | None = None
 
 _CONTEXT_SIGNALS_MSGPACK_MODULE = (
     "backend.utils.context_priority",
@@ -70,6 +72,17 @@ _CONTEXT_SIGNALS_JSON_MODULE = (
     "context_priority",
     "ContextSignals",
 )
+
+
+def _get_checkpointer_lock() -> asyncio.Lock:
+    """Return a lock bound to the current event loop."""
+    global _checkpointer_lock, _checkpointer_lock_loop
+
+    loop = asyncio.get_running_loop()
+    if _checkpointer_lock_loop is not loop:
+        _checkpointer_lock = asyncio.Lock()
+        _checkpointer_lock_loop = loop
+    return _checkpointer_lock
 
 
 def _revive_context_signals(kwargs: dict[str, Any]) -> ContextSignals:
@@ -247,7 +260,19 @@ class ResilientAsyncPostgresSaver(AsyncPostgresSaver):
                 )
 
     async def aclose(self) -> None:
-        await self.pool.close()
+        try:
+            await self.pool.close()
+        except asyncio.CancelledError as close_error:
+            logger.warning(
+                "Checkpointer pool close was cancelled; dropping cached pool: %s",
+                close_error,
+            )
+        except Exception as close_error:
+            logger.warning(
+                "Error closing checkpointer pool: %s",
+                close_error,
+                exc_info=True,
+            )
 
     async def _run_with_connection_retry(
         self,
@@ -400,12 +425,24 @@ async def create_memory_checkpointer() -> AsyncPostgresSaver:
 
 async def get_checkpointer() -> AsyncPostgresSaver:
     """Return the process-wide resilient checkpointer singleton."""
-    global _checkpointer_instance
+    global _checkpointer_instance, _checkpointer_loop
+
+    loop = asyncio.get_running_loop()
+    if _checkpointer_instance is not None and _checkpointer_loop is not loop:
+        logger.warning("Checkpointer event loop changed; recreating singleton instance")
+        _checkpointer_instance = None
+        _checkpointer_loop = None
 
     if _checkpointer_instance is None:
-        async with _checkpointer_lock:
+        async with _get_checkpointer_lock():
+            loop = asyncio.get_running_loop()
+            if _checkpointer_instance is not None and _checkpointer_loop is not loop:
+                logger.warning("Checkpointer event loop changed while waiting; recreating")
+                _checkpointer_instance = None
+                _checkpointer_loop = None
             if _checkpointer_instance is None:
                 _checkpointer_instance = await create_checkpointer()
+                _checkpointer_loop = loop
                 logger.info("Checkpointer singleton instance created")
 
     return _checkpointer_instance
@@ -423,7 +460,7 @@ async def prewarm_checkpointer() -> AsyncPostgresSaver:
 
 async def close_checkpointer() -> None:
     """Close the singleton checkpointer and drop the cached instance."""
-    global _checkpointer_instance, _checkpointer_cm
+    global _checkpointer_instance, _checkpointer_cm, _checkpointer_loop
 
     if _checkpointer_instance is None:
         return
@@ -433,11 +470,17 @@ async def close_checkpointer() -> None:
         if callable(aclose):
             await aclose()
         logger.info("Checkpointer singleton instance closed")
+    except asyncio.CancelledError as error:
+        logger.warning(
+            "Checkpointer singleton close was cancelled; dropping cached instance: %s",
+            error,
+        )
     except Exception as error:
         logger.warning("Error closing checkpointer: %s", error, exc_info=True)
     finally:
         _checkpointer_instance = None
         _checkpointer_cm = None
+        _checkpointer_loop = None
 
 
 async def reset_checkpointer() -> None:

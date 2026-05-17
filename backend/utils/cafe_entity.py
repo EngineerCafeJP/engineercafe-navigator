@@ -119,7 +119,7 @@ _ENGINEER_CAFE_CONTEXT_MARKERS = (
     "機材",
 )
 
-_CAFE_MARKERS = ("カフェ", "cafe", "coffee", "喫茶", "咖啡", "카페")
+_CAFE_MARKERS = ("カフェ", "コーヒー", "珈琲", "cafe", "coffee", "喫茶", "咖啡", "카페")
 
 
 def normalize_cafe_entity_text(text: str) -> str:

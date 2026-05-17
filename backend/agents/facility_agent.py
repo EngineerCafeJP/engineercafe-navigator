@@ -456,15 +456,16 @@ class FacilityAgent:
         if self._asks_3d_printer_use(normalized):
             answers = {
                 "ja": (
-                    "[relaxed]3Dプリンターは地下1階のMAKER'sスペースで利用できます。"
-                    "初回は約1時間の無料講習が必要で、講習後はWeb予約優先制です。"
+                    "[relaxed]3Dプリンターを館内で使う手順は、まず地下1階の"
+                    "MAKER'sスペースで約1時間の無料講習を受け、操作方法と"
+                    "安全ルールを確認します。講習後はWeb予約優先制で利用でき、"
                     "予約は前日まで受け付けています。"
                 ),
                 "en": (
-                    "[relaxed]You can use 3D printers in MAKER's Space on B1F. "
-                    "First-time users need a free training session of about one hour; "
-                    "after that, use is prioritized by web reservation, accepted until "
-                    "the day before."
+                    "[relaxed]To use a 3D printer here, first take the free one-hour "
+                    "training in MAKER's Space on B1F to learn the operation steps and "
+                    "safety rules. After training, use is prioritized by web reservation, "
+                    "accepted until the day before."
                 ),
                 "zh": (
                     "[relaxed]3D打印机可在地下一层MAKER's Space使用。"
@@ -1160,6 +1161,22 @@ class FacilityAgent:
             }
             return self._canonical_result(answers.get(language, answers["ja"]), request_type)
 
+        if self._asks_wifi_credential(normalized) and self._asks_business_hours(normalized):
+            answers = {
+                "ja": (
+                    "[relaxed]エンジニアカフェの開館時間は9:00〜22:00です。"
+                    "Wi-FiのSSIDは engnecf-guest-2.4GHz または engnecf-guest-5GHz、"
+                    "パスワードは akarenga-112years です。受付カードの裏面にも記載されています。"
+                ),
+                "en": (
+                    "[relaxed]Engineer Cafe is open from 9:00 to 22:00. "
+                    "The Wi-Fi SSIDs are engnecf-guest-2.4GHz and engnecf-guest-5GHz, "
+                    "and the password is akarenga-112years. It is also printed on the "
+                    "back of the reception card."
+                ),
+            }
+            return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
         if self._asks_wifi_credential(normalized):
             answers = {
                 "ja": (
@@ -1372,7 +1389,21 @@ class FacilityAgent:
         excluded_markers = ("貸切", "飲食", "食べ", "food", "eat", "exclusive", "rental")
         if any(marker in query for marker in excluded_markers):
             return False
-        return any(marker in query for marker in ("どんなスペース", "どんな場所", "what kind"))
+        main_hall_info_markers = (
+            "どこ",
+            "場所",
+            "ありますか",
+            "ある",
+            "どんなスペース",
+            "どんな場所",
+            "どの階",
+            "何階",
+            "where",
+            "located",
+            "location",
+            "what kind",
+        )
+        return any(marker in query for marker in main_hall_info_markers)
 
     @staticmethod
     def _asks_maker_space_equipment(query: str) -> bool:
@@ -1867,6 +1898,19 @@ class FacilityAgent:
     def _asks_wifi_credential(query: str) -> bool:
         keywords = ("ssid", "password", "パスワード", "密码", "비밀번호")
         return any(keyword in query for keyword in keywords)
+
+    @staticmethod
+    def _asks_business_hours(query: str) -> bool:
+        business_hours_markers = (
+            "営業時間",
+            "開館時間",
+            "何時",
+            "いつまで",
+            "opening hours",
+            "business hours",
+            "open hours",
+        )
+        return any(marker in query for marker in business_hours_markers)
 
     async def get_accessibility_summary(self, language: str = "ja") -> Dict:
         """アクセシビリティ情報のサマリーを取得
