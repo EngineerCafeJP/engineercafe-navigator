@@ -759,9 +759,10 @@ jobs:
           CHAT_BODY=$(mktemp)
           cat > "$CHAT_BODY" <<JSON
           {
-            "query": "量子コンピュータを初心者向けに一文で説明してください",
+            "query": "覚えて、私はCIテストユーザーです。量子コンピュータを初心者向けに一文で説明してください",
             "session_id": "${SESSION_ID}",
-            "language": "ja"
+            "language": "ja",
+            "visitor_id": "${SESSION_ID}"
           }
           JSON
 
@@ -795,12 +796,18 @@ jobs:
           ]
           if missing:
               raise SystemExit(f"error: /api/chat metadata missing LLM observability fields: {missing}")
+          if provider != "cerebras" or model != "gpt-oss-120b":
+              raise SystemExit(
+                  "error: /api/chat did not complete through Cerebras direct hop: "
+                  f"provider={provider} model={model}"
+              )
           print(
               "Chat response metadata check passed: "
               f"provider={provider} model={model} route={route} llm_latency_ms={latency}"
           )
           PY
 
+          CHAT_LOG_OK=false
           for attempt in 1 2 3 4 5 6 7 8 9 10; do
             LOG_JSON=$(gcloud logging read \
               "resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"engineer-cafe-backend\" AND resource.labels.revision_name=\"${LATEST_READY_REVISION}\" AND jsonPayload.event=\"chat_response\" AND jsonPayload.request_id=\"${REQUEST_ID}\"" \
@@ -826,6 +833,11 @@ jobs:
               failures.append("llm_latency_ms")
           if failures:
               raise SystemExit(f"error: Cloud Logging chat_response missing fields: {failures}")
+          if payload.get("provider") != "cerebras" or payload.get("model") != "gpt-oss-120b":
+              raise SystemExit(
+                  "error: Cloud Logging chat_response did not record Cerebras direct hop: "
+                  f"provider={payload.get('provider')} model={payload.get('model')}"
+              )
           print(
               "Cloud Logging observability check passed: "
               f"provider={payload.get('provider')} model={payload.get('model')} "
@@ -833,14 +845,55 @@ jobs:
           )
           PY
             then
-              exit 0
+              CHAT_LOG_OK=true
+              break
             fi
             echo "Waiting for chat_response log row (attempt $attempt/10)..."
             sleep 10
           done
 
-          echo "error: chat_response log row with request_id=${REQUEST_ID} did not arrive" >&2
-          exit 1
+          if [[ "$CHAT_LOG_OK" != "true" ]]; then
+            echo "error: chat_response log row with request_id=${REQUEST_ID} did not arrive" >&2
+            exit 1
+          fi
+
+          for event_name in \
+            memory_loader_get_recent_messages_duration_ms \
+            memory_extractor_run \
+            memory_promote_run \
+            memory_candidate_aggregate; do
+            EVENT_OK=false
+            for attempt in 1 2 3 4 5 6 7 8 9 10; do
+              EVENT_JSON=$(gcloud logging read \
+                "resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"engineer-cafe-backend\" AND resource.labels.revision_name=\"${LATEST_READY_REVISION}\" AND jsonPayload.event=\"${event_name}\" AND jsonPayload.request_id=\"${REQUEST_ID}\"" \
+                --project=aipartner-426616 \
+                --limit=1 \
+                --format=json)
+              if python3 - "$EVENT_JSON" "$event_name" <<'PY'
+          import json
+          import sys
+
+          rows = json.loads(sys.argv[1])
+          event_name = sys.argv[2]
+          if not rows:
+              raise SystemExit(1)
+          payload = rows[0].get("jsonPayload") or {}
+          if payload.get("event") != event_name:
+              raise SystemExit(f"error: unexpected memory event payload: {payload}")
+          print(f"Cloud Logging memory event check passed: {event_name}")
+          PY
+              then
+                EVENT_OK=true
+                break
+              fi
+              echo "Waiting for ${event_name} log row (attempt $attempt/10)..."
+              sleep 10
+            done
+            if [[ "$EVENT_OK" != "true" ]]; then
+              echo "error: ${event_name} log row with request_id=${REQUEST_ID} did not arrive" >&2
+              exit 1
+            fi
+          done
 
   # Frontend: Vercel deploy is handled by Vercel Deploy Hook (auto-deploy on push).
   # The former CI-based `frontend-deploy-production` job was removed 2026-03-18
