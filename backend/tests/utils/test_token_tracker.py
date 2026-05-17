@@ -5,6 +5,7 @@ record()、total_tokens、total_cost_usd、summary、reset、
 ContextVar ヘルパー（get_token_tracker / reset_token_tracker）を検証する。
 """
 
+import logging
 from unittest.mock import patch
 
 import pytest
@@ -56,6 +57,28 @@ def test_record_negative_tokens():
     assert usage.prompt_tokens == 0
     assert usage.completion_tokens == 0
     assert usage.total_tokens == 0
+
+
+def test_cerebras_fast_model_cost_is_env_configurable_without_unknown_warning(
+    monkeypatch,
+    caplog,
+):
+    """Cerebras direct-hop models should not pollute production logs as unknown."""
+
+    monkeypatch.setenv("CEREBRAS_FAST_MODEL", "gpt-oss-120b")
+    monkeypatch.setenv("CEREBRAS_INPUT_COST_PER_1K", "0.25")
+    monkeypatch.setenv("CEREBRAS_OUTPUT_COST_PER_1K", "0.75")
+    tracker = TokenTracker()
+
+    with caplog.at_level(logging.WARNING):
+        usage = tracker.record(
+            model="gpt-oss-120b",
+            prompt_tokens=1000,
+            completion_tokens=2000,
+        )
+
+    assert usage.estimated_cost_usd == 1.75
+    assert "No cost data for model" not in caplog.text
 
 
 # ============================================

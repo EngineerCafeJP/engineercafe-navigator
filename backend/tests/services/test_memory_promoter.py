@@ -1,7 +1,7 @@
 """Tests for backend.services.memory_promoter."""
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -28,6 +28,26 @@ class TestMemoryPromoterAggregation:
         assert aggregate["candidate_count"] == 2
         assert aggregate["confidence_max"] == 0.9
         assert aggregate["confidence_avg"] == pytest.approx(0.85)
+
+    def test_aggregate_candidates_emits_memory_candidate_aggregate_event(self):
+        items = [
+            _item("k1", {"candidate_type": "visitor_name", "content": "田中", "confidence": 0.9}),
+            _item("k2", {"candidate_type": "visitor_name", "content": "田中", "confidence": 0.8}),
+        ]
+
+        with patch("backend.services.memory_promoter.log_memory_event") as mock_log:
+            grouped = MemoryPromoter.aggregate_candidates(items)
+
+        assert len(grouped) == 1
+        payloads = [call.kwargs for call in mock_log.call_args_list]
+        aggregate_event = next(
+            payload for payload in payloads if payload["event"] == "memory_candidate_aggregate"
+        )
+        assert aggregate_event["success"] is True
+        assert aggregate_event["candidate_count"] == 2
+        assert aggregate_event["aggregated_count"] == 1
+        assert aggregate_event["candidate_types"] == ["visitor_name"]
+        assert isinstance(aggregate_event["duration_ms"], int)
 
     def test_should_promote_explicit_remember(self):
         decision = MemoryPromoter.should_promote(
@@ -109,6 +129,37 @@ class TestMemoryPromoterService:
         assert payload["data"] == "田中"
         assert payload["source"] == "promoter"
         assert payload["promotion"]["candidate_count"] == 2
+
+    @pytest.mark.asyncio
+    async def test_promote_for_user_emits_memory_promote_run_event(self):
+        promoter = MemoryPromoter()
+        store = AsyncMock()
+
+        candidate_items = [
+            _item("c1", {"candidate_type": "visitor_name", "content": "田中", "confidence": 0.9}),
+            _item("c2", {"candidate_type": "visitor_name", "content": "田中", "confidence": 0.92}),
+        ]
+        store.asearch = AsyncMock(side_effect=[candidate_items, []])
+        store.aput = AsyncMock()
+
+        with (
+            patch("backend.services.memory_promoter.log_ltm_promote"),
+            patch("backend.services.memory_promoter.log_memory_event") as mock_log,
+        ):
+            stats = await promoter.promote_for_user(store, "u1")
+
+        assert stats["promoted"] == 1
+        payloads = [call.kwargs for call in mock_log.call_args_list]
+        promote_events = [
+            payload for payload in payloads if payload["event"] == "memory_promote_run"
+        ]
+        assert [payload["status"] for payload in promote_events] == ["started", "success"]
+        success_event = promote_events[-1]
+        assert success_event["user_id"] == "u1"
+        assert success_event["candidates"] == 2
+        assert success_event["aggregated"] == 1
+        assert success_event["promoted"] == 1
+        assert isinstance(success_event["duration_ms"], int)
 
     @pytest.mark.asyncio
     async def test_promote_for_user_skips_duplicate_existing(self):

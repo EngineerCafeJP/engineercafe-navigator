@@ -6,6 +6,7 @@ through stale PostgreSQL connections after idle scale-to-zero periods.
 """
 
 import asyncio
+import inspect
 import logging
 import os
 import re
@@ -19,11 +20,18 @@ from langgraph.checkpoint.base import (
     CheckpointMetadata,
     RunnableConfig,
 )
+from langgraph.checkpoint.serde.jsonplus import (
+    EXT_CONSTRUCTOR_KW_ARGS,
+    JsonPlusSerializer,
+    _msgpack_ext_hook,
+)
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+import ormsgpack
 from psycopg import AsyncConnection, InterfaceError, OperationalError
 from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool, PoolClosed
 
+from backend.utils.context_priority import ContextSignals
 from backend.utils.postgres_sanitizer import sanitize_for_postgres
 
 logger = logging.getLogger(__name__)
@@ -51,6 +59,62 @@ _CONNECTION_ERROR_MESSAGES = (
 _checkpointer_lock = asyncio.Lock()
 _checkpointer_cm = None
 _checkpointer_instance: Optional[AsyncPostgresSaver] = None
+
+_CONTEXT_SIGNALS_MSGPACK_MODULE = (
+    "backend.utils.context_priority",
+    "ContextSignals",
+)
+_CONTEXT_SIGNALS_JSON_MODULE = (
+    "backend",
+    "utils",
+    "context_priority",
+    "ContextSignals",
+)
+
+
+def _revive_context_signals(kwargs: dict[str, Any]) -> ContextSignals:
+    normalized = dict(kwargs)
+    for tuple_field in ("memory_topics", "previous_categories"):
+        value = normalized.get(tuple_field)
+        if isinstance(value, list):
+            normalized[tuple_field] = tuple(value)
+    return ContextSignals(**normalized)
+
+
+def _context_signals_msgpack_ext_hook(code: int, data: bytes) -> Any:
+    """Revive ContextSignals explicitly while delegating other LangGraph types."""
+    if code == EXT_CONSTRUCTOR_KW_ARGS:
+        try:
+            module_name, class_name, kwargs = ormsgpack.unpackb(
+                data,
+                ext_hook=_context_signals_msgpack_ext_hook,
+                option=ormsgpack.OPT_NON_STR_KEYS,
+            )
+        except Exception:
+            return _msgpack_ext_hook(code, data)
+
+        if (module_name, class_name) == _CONTEXT_SIGNALS_MSGPACK_MODULE and isinstance(
+            kwargs, dict
+        ):
+            return _revive_context_signals(kwargs)
+
+    return _msgpack_ext_hook(code, data)
+
+
+def create_checkpointer_serde() -> JsonPlusSerializer:
+    """Create LangGraph serde with ContextSignals allowlisted for checkpoints."""
+    serializer_params = inspect.signature(JsonPlusSerializer).parameters
+    kwargs: dict[str, Any] = {}
+
+    if "allowed_json_modules" in serializer_params:
+        kwargs["allowed_json_modules"] = [_CONTEXT_SIGNALS_JSON_MODULE]
+
+    if "allowed_msgpack_modules" in serializer_params:
+        kwargs["allowed_msgpack_modules"] = [_CONTEXT_SIGNALS_MSGPACK_MODULE]
+    elif "__unpack_ext_hook__" in serializer_params:
+        kwargs["__unpack_ext_hook__"] = _context_signals_msgpack_ext_hook
+
+    return JsonPlusSerializer(**kwargs)
 
 
 def _mask_connection_string(db_uri: str) -> str:
@@ -134,7 +198,7 @@ class ResilientAsyncPostgresSaver(AsyncPostgresSaver):
     """AsyncPostgresSaver that can replace its own pool after connection loss."""
 
     def __init__(self, factory: _CheckpointerFactory, pool: AsyncConnectionPool) -> None:
-        super().__init__(conn=pool)
+        super().__init__(conn=pool, serde=create_checkpointer_serde())
         self._factory = factory
         self._pool_refresh_lock = asyncio.Lock()
 

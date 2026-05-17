@@ -24,6 +24,7 @@ import logging
 from typing import Dict, Any, List, Optional, Literal
 
 from backend.config.prompts.memory_prompts import build_memory_prompt
+from backend.agents.llm_metadata import merge_llm_metadata
 from backend.llm.openrouter import OpenRouterProvider
 from backend.llm.models import get_model_config
 from backend.tools.enhanced_rag import EnhancedRAGSearch
@@ -225,14 +226,14 @@ class GeneralKnowledgeAgent:
 
             logger.info("回答生成完了: emotion=%s, confidence=%s", emotion, confidence)
 
-            return {
-                "answer": response_text,
-                "emotion": emotion,
-                "metadata": {
+            metadata = merge_llm_metadata(
+                {
                     "agent": self.name,
                     "status": "success",
                     "confidence": confidence,
                     "category": "general_knowledge",
+                    "request_type": mode,
+                    "route": "general_knowledge",
                     "query_type": mode,
                     "model_use_case": (
                         "deep_reasoning" if mode == "deep_reasoning" else "general_knowledge"
@@ -241,6 +242,13 @@ class GeneralKnowledgeAgent:
                     "web_search_used": "web_search" in sources,
                     "rag_used": any(source.startswith("knowledge_base") for source in sources),
                 },
+                response_text,
+            )
+
+            return {
+                "answer": str(response_text),
+                "emotion": emotion,
+                "metadata": metadata,
             }
 
         except Exception as e:
@@ -296,17 +304,25 @@ class GeneralKnowledgeAgent:
 
             emotion = self._determine_memory_emotion(context, query_type)
 
-            return {
-                "answer": answer,
-                "emotion": emotion,
-                "metadata": {
+            metadata = merge_llm_metadata(
+                {
                     "agent": self.name,
                     "status": "success",
+                    "category": "general_knowledge",
+                    "request_type": query_type,
+                    "route": "general_knowledge",
                     "query_type": query_type,
                     "message_count": len(context.get("recent_messages", [])),
                     "inherited_request_type": context.get("inherited_request_type"),
                     "long_term_memory_count": len(context.get("long_term_memory", [])),
                 },
+                answer,
+            )
+
+            return {
+                "answer": str(answer),
+                "emotion": emotion,
+                "metadata": metadata,
             }
         except Exception as e:
             logger.exception("Memory query error: %s", e)
@@ -707,6 +723,8 @@ class GeneralKnowledgeAgent:
                 "agent": self.name,
                 "status": "success",
                 "category": "general_knowledge",
+                "request_type": "assistant_profile",
+                "route": "general_knowledge",
                 "query_type": "assistant_profile",
                 "sources": [],
                 "web_search_used": False,
@@ -755,6 +773,8 @@ class GeneralKnowledgeAgent:
                 "agent": self.name,
                 "status": "success",
                 "category": "general_knowledge",
+                "request_type": "daily_conversation",
+                "route": "general_knowledge",
                 "query_type": "daily_conversation",
                 "sources": [],
                 "web_search_used": False,
@@ -779,6 +799,8 @@ class GeneralKnowledgeAgent:
                 "agent": self.name,
                 "status": "current_info_unavailable",
                 "category": "general_knowledge",
+                "request_type": "current_info",
+                "route": "general_knowledge",
                 "query_type": "current_info",
                 "sources": [],
                 "web_search_used": False,

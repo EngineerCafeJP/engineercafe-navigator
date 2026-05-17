@@ -6,6 +6,7 @@ FacilityAgent テストスイート
 import pytest
 from unittest.mock import AsyncMock, patch
 from backend.agents.facility_agent import FacilityAgent
+from backend.llm.openrouter import LLMResponseText
 
 
 class TestFacilityAgent:
@@ -46,8 +47,13 @@ class TestFacilityAgent:
                 },
             }
 
-            mock_llm.return_value = (
-                "[relaxed]Wi-Fiは無料で利用可能です。接続方法はスタッフにお尋ねください。"
+            mock_llm.return_value = LLMResponseText(
+                "[relaxed]Wi-Fiは無料で利用可能です。接続方法はスタッフにお尋ねください。",
+                {
+                    "provider": "cerebras",
+                    "model": "gpt-oss-120b",
+                    "llm_latency_ms": 23,
+                },
             )
 
             result = await agent.answer_facility_query(
@@ -63,6 +69,9 @@ class TestFacilityAgent:
             assert result["emotion"] in ["relaxed", "informative", "helpful"]
             assert result["metadata"]["agent"] == "FacilityAgent"
             assert result["metadata"]["request_type"] == "wifi"
+            assert result["metadata"]["provider"] == "cerebras"
+            assert result["metadata"]["model"] == "gpt-oss-120b"
+            assert result["metadata"]["llm_latency_ms"] == 23
 
     # ==========================================================================
     # 基本機能テスト - 設備

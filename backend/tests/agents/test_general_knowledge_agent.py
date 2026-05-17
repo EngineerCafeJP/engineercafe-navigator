@@ -7,6 +7,7 @@ import time
 import pytest
 from unittest.mock import patch, MagicMock, AsyncMock
 from backend.agents.general_knowledge_agent import GeneralKnowledgeAgent
+from backend.llm.openrouter import LLMResponseText
 
 
 class TestGeneralKnowledgeAgent:
@@ -176,8 +177,13 @@ class TestGeneralKnowledgeAgentIntegration:
         # OpenRouterProviderのモック
         self.mock_provider = MagicMock()
         self.mock_provider.generate = AsyncMock(
-            return_value=(
-                "[helpful]これはテスト回答です。" "Engineer Cafeについての情報をお伝えします。"
+            return_value=LLMResponseText(
+                "[helpful]これはテスト回答です。Engineer Cafeについての情報をお伝えします。",
+                {
+                    "provider": "openrouter",
+                    "model": "google/gemini-3.1-flash-lite-preview",
+                    "llm_latency_ms": 45,
+                },
             )
         )
 
@@ -225,6 +231,9 @@ class TestGeneralKnowledgeAgentIntegration:
         assert result["metadata"]["agent"] == "GeneralKnowledgeAgent"
         assert "confidence" in result["metadata"]
         assert 0 <= result["metadata"]["confidence"] <= 1
+        assert result["metadata"]["provider"] == "openrouter"
+        assert result["metadata"]["model"] == "google/gemini-3.1-flash-lite-preview"
+        assert result["metadata"]["llm_latency_ms"] == 45
 
     @pytest.mark.asyncio
     async def test_answer_general_query_english(self):
