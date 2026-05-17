@@ -311,7 +311,7 @@ def required_sources_for_case(case: dict[str, Any]) -> list[str]:
     if route in {"business_info", "facility"}:
         return ["enhanced_rag"]
     if route == "event":
-        return ["google_calendar|connpass"]
+        return ["google_calendar|connpass|spreadsheet"]
     return []
 
 

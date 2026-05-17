@@ -7,13 +7,19 @@ FROM python:3.11-slim AS base
 # Set working directory
 WORKDIR /app
 
+# Keep runtime local time consistent across Cloud Run services and jobs.
+ENV TZ=Asia/Tokyo
+
 # Install system dependencies (curl/unzip for Vosk model download, ffmpeg for pydub audio conversion)
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
     gcc \
     g++ \
     curl \
     unzip \
     ffmpeg \
+    tzdata \
+    && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime \
+    && echo $TZ > /etc/timezone \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements

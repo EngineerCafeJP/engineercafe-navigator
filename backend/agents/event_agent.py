@@ -14,6 +14,7 @@ from langchain_core.messages import HumanMessage
 from backend.agents.llm_metadata import merge_llm_metadata
 from backend.config.prompts.event_prompts import build_event_prompt, get_time_range_label
 from backend.llm import get_llm_provider, get_model_config
+from backend.services.sheets_event_source import SheetsEventSource
 from backend.tools.calendar_service import CalendarService
 from backend.tools.connpass_service import ConnpassService
 
@@ -52,6 +53,7 @@ class EventAgent:
         """
         self.calendar_service = CalendarService()
         self.connpass_service = ConnpassService()
+        self.sheets_event_source = SheetsEventSource()
         self.llm_provider = get_llm_provider()
 
     async def answer_event_query(
@@ -143,10 +145,11 @@ class EventAgent:
         # クエリからキーワードを抽出（Connpass用）
         keyword = self.connpass_service.extract_keyword_from_query(query)
 
-        # Google CalendarとConnpassを並列検索（タイムアウト付き）
+        # Spreadsheet、Google Calendar、Connpassを並列検索（タイムアウト付き）
         try:
-            calendar_result, connpass_result = await asyncio.wait_for(
+            spreadsheet_result, calendar_result, connpass_result = await asyncio.wait_for(
                 asyncio.gather(
+                    self.sheets_event_source.search_events(time_range),
                     self.calendar_service.search_events(time_range),
                     self.connpass_service.search_events(time_range, keyword=keyword),
                     return_exceptions=True,
@@ -154,6 +157,9 @@ class EventAgent:
                 timeout=35.0,
             )
             # Handle individual service failures gracefully
+            if isinstance(spreadsheet_result, Exception):
+                logger.warning("Spreadsheet event search failed: %s", spreadsheet_result)
+                spreadsheet_result = {"success": False, "data": {"events": []}}
             if isinstance(calendar_result, Exception):
                 logger.warning("Calendar search failed: %s", calendar_result)
                 calendar_result = {"success": False, "data": {"events": []}}
@@ -165,7 +171,7 @@ class EventAgent:
             return self._get_no_events_response(language, time_range)
 
         # 両方の結果をマージ
-        events = self._merge_events(calendar_result, connpass_result)
+        events = self._merge_events(calendar_result, connpass_result, spreadsheet_result)
         event_count = len(events)
 
         # イベントなしの場合
@@ -193,11 +199,13 @@ class EventAgent:
             response_text = self._enforce_emotion_tag(response_text, event_count)
 
             # ソース別のイベント数をカウント
+            spreadsheet_count = sum(1 for e in events if e.get("source") == "spreadsheet")
             calendar_count = sum(1 for e in events if e.get("source") == "google_calendar")
             connpass_count = sum(1 for e in events if e.get("source") == "connpass")
             sources = [
                 source
                 for source, count in (
+                    ("spreadsheet", spreadsheet_count),
                     ("google_calendar", calendar_count),
                     ("connpass", connpass_count),
                 )
@@ -319,9 +327,19 @@ class EventAgent:
 
             # ソースラベル
             if language == "en":
-                source_label = "[Calendar]" if source == "google_calendar" else "[Connpass]"
+                if source == "spreadsheet":
+                    source_label = "[Event Sheet]"
+                elif source == "google_calendar":
+                    source_label = "[Calendar]"
+                else:
+                    source_label = "[Connpass]"
             else:
-                source_label = "[カレンダー]" if source == "google_calendar" else "[Connpass]"
+                if source == "spreadsheet":
+                    source_label = "[イベント管理シート]"
+                elif source == "google_calendar":
+                    source_label = "[カレンダー]"
+                else:
+                    source_label = "[Connpass]"
 
             # Connpassの場合は参加者情報を追加
             participant_info = ""
@@ -398,7 +416,7 @@ class EventAgent:
                 "agent": "EventAgent",
                 "time_range": time_range,
                 "event_count": 0,
-                "sources": ["google_calendar", "connpass"],
+                "sources": ["spreadsheet", "google_calendar", "connpass"],
             },
         }
 
@@ -580,13 +598,18 @@ class EventAgent:
 
         return normalized
 
-    def _merge_events(self, calendar_result: Dict, connpass_result: Dict) -> List[Dict]:
-        """Google CalendarとConnpassのイベントをマージ（重複排除付き）
+    def _merge_events(
+        self,
+        calendar_result: Dict,
+        connpass_result: Dict,
+        spreadsheet_result: Optional[Dict] = None,
+    ) -> List[Dict]:
+        """Spreadsheet、Google Calendar、Connpassのイベントをマージ（重複排除付き）
 
         両方のソースからイベントを取得し、タイトルの正規化ベースで
         重複を排除してから開始日時順にソートして返す。
 
-        Google Calendar優先: 重複時はGoogle Calendarの情報を優先する。
+        優先度: Spreadsheet > Connpass > Google Calendar。
 
         Args:
             calendar_result: CalendarServiceの結果
@@ -596,30 +619,36 @@ class EventAgent:
             重複排除済み、開始日時順のイベントリスト
         """
         events: List[Dict] = []
-        seen_titles: set[str] = set()
+        seen_keys: set[tuple[str, str]] = set()
 
-        # Google Calendarイベント（優先: 先に登録）
-        if calendar_result.get("success"):
-            calendar_events = calendar_result.get("data", {}).get("events", [])
-            for event in calendar_events:
+        ordered_sources = [
+            (spreadsheet_result, "spreadsheet"),
+            (connpass_result, "connpass"),
+            (calendar_result, "google_calendar"),
+        ]
+        for result, source_name in ordered_sources:
+            if not result or not result.get("success"):
+                continue
+            for event in result.get("data", {}).get("events", []):
                 normalized = self._normalize_title(event.get("title", ""))
-                if normalized and normalized not in seen_titles:
-                    seen_titles.add(normalized)
-                    events.append({**event, "source": "google_calendar"})
-
-        # Connpassイベント（重複時はスキップ）
-        if connpass_result.get("success"):
-            connpass_events = connpass_result.get("data", {}).get("events", [])
-            for event in connpass_events:
-                normalized = self._normalize_title(event.get("title", ""))
-                if normalized and normalized not in seen_titles:
-                    seen_titles.add(normalized)
-                    events.append(event)
+                if not normalized:
+                    continue
+                event_date = self._event_date_key(event)
+                key = (normalized, event_date)
+                if key in seen_keys:
+                    continue
+                seen_keys.add(key)
+                events.append({**event, "source": event.get("source") or source_name})
 
         # 開始日時でソート
         events.sort(key=lambda e: e.get("start", "") or "")
 
         return events
+
+    @staticmethod
+    def _event_date_key(event: Dict) -> str:
+        start = str(event.get("start") or event.get("started_at") or event.get("starts_at") or "")
+        return start[:10]
 
     async def get_today_events(self, language: str = "ja") -> Dict:
         """本日のイベント情報を取得
@@ -638,8 +667,9 @@ class EventAgent:
                 - has_events (bool): イベントがあるかどうか
         """
         try:
-            calendar_result, connpass_result = await asyncio.wait_for(
+            spreadsheet_result, calendar_result, connpass_result = await asyncio.wait_for(
                 asyncio.gather(
+                    self.sheets_event_source.search_events("today"),
                     self.calendar_service.search_events("today"),
                     self.connpass_service.search_events("today"),
                     return_exceptions=True,
@@ -647,6 +677,9 @@ class EventAgent:
                 timeout=35.0,
             )
             # Handle individual service failures gracefully
+            if isinstance(spreadsheet_result, Exception):
+                logger.warning("Spreadsheet event search failed: %s", spreadsheet_result)
+                spreadsheet_result = {"success": False, "data": {"events": []}}
             if isinstance(calendar_result, Exception):
                 logger.warning("Calendar search failed: %s", calendar_result)
                 calendar_result = {"success": False, "data": {"events": []}}
@@ -654,7 +687,7 @@ class EventAgent:
                 logger.warning("Connpass search failed: %s", connpass_result)
                 connpass_result = {"success": False, "data": {"events": []}}
 
-            events = self._merge_events(calendar_result, connpass_result)
+            events = self._merge_events(calendar_result, connpass_result, spreadsheet_result)
             formatted_text = self._format_calendar_events(events, language)
 
             return {

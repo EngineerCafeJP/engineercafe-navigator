@@ -18,6 +18,7 @@ const originalNavigator = globalThis.navigator;
 const originalWindow = (globalThis as typeof globalThis & { window?: unknown }).window;
 const originalDocument = (globalThis as typeof globalThis & { document?: unknown }).document;
 const originalPlayAudio = MobileAudioService.prototype.playAudio;
+const originalStop = MobileAudioService.prototype.stop;
 
 const restoreAudioInteractionSingleton = (): void => {
   (AudioInteractionManager as unknown as { instance?: AudioInteractionManager }).instance = undefined;
@@ -49,6 +50,7 @@ const installBrowserStubs = (): void => {
 
 afterEach(() => {
   MobileAudioService.prototype.playAudio = originalPlayAudio;
+  MobileAudioService.prototype.stop = originalStop;
   console.error = originalConsoleError;
   resetAudioUserInteractionGate();
   GlobalAudioManager.getInstance().dispose();
@@ -65,6 +67,52 @@ afterEach(() => {
     configurable: true,
     value: originalDocument,
   });
+});
+
+test("AudioQueue skip settles current playback once even when stop emits ended", async () => {
+  installBrowserStubs();
+
+  let playAudioCalls = 0;
+  let stopCalls = 0;
+  MobileAudioService.prototype.playAudio = function (): Promise<AudioOperationResult> {
+    playAudioCalls += 1;
+    return new Promise(() => undefined);
+  };
+  MobileAudioService.prototype.stop = function (): void {
+    stopCalls += 1;
+    (this as unknown as { options: MobileAudioOptions }).options.onEnded?.();
+  };
+
+  const queue = new AudioQueue();
+  let playbackEndCalls = 0;
+  const finished = new Promise<void>((resolve) => {
+    queue.setOnFinished(resolve);
+  });
+
+  queue.add({
+    id: "skip-current",
+    audioData: "UklGRiQAAABXQVZFZm10IBAAAAABAAEA",
+    onPlaybackEnd: () => {
+      playbackEndCalls += 1;
+    },
+  });
+
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, 0);
+  });
+
+  queue.skip();
+
+  await Promise.race([
+    finished,
+    new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error("AudioQueue did not finish after skip")), 1000);
+    }),
+  ]);
+
+  assert.equal(playAudioCalls, 1);
+  assert.equal(stopCalls, 1);
+  assert.equal(playbackEndCalls, 1);
 });
 
 test("AudioQueue only fires onPlaybackEnd once when service emits onError before resolving failure", async () => {

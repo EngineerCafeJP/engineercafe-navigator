@@ -176,6 +176,11 @@ const LOADING_LABELS = {
 const PARALLEL_VOICE_FILLER_ENABLED =
   process.env.NEXT_PUBLIC_PARALLEL_VOICE_FILLER !== 'false';
 const AUTO_VRM_PLAYBACK_WAIT_MS = 180;
+const FALLBACK_NOTICE_LIMIT_PER_SESSION = 2;
+const FALLBACK_NOTICE_TEXT: Record<'ja' | 'en', string> = {
+  ja: '音声の再生に失敗しました。もう一度お試しください。',
+  en: 'Audio playback failed. Please try again.',
+};
 
 /** UUID v4 を生成する。crypto.randomUUID が無い環境（HTTP や古いブラウザ）用のフォールバック付き。 */
 const generateUuid = (): string => {
@@ -239,6 +244,11 @@ type VoiceTimingTelemetry = {
   usedProxyFallback?: boolean;
   status?: number;
   upstreamStatus?: Record<string, unknown> | null;
+  from?: string;
+  to?: string;
+  characterState?: string;
+  isConversationActive?: boolean;
+  shouldListen?: boolean;
 };
 
 const elapsedMs = (startedAt: number): number => Math.max(0, Math.round(performance.now() - startedAt));
@@ -342,6 +352,7 @@ export default function VoiceInterface({
   } | null>(null);
   const isReplayingPendingIOSAudioRef = useRef(false);
   const pendingIOSPlaybackReplayTokenRef = useRef(0);
+  const fallbackNoticeCountRef = useRef(0);
 
   useEffect(() => {
     visitorIdRef.current = getOrCreateVisitorId();
@@ -448,6 +459,64 @@ export default function VoiceInterface({
     return mobileAudioServiceRef.current;
   }, [volume]);
 
+  const playAudioFallbackNotice = useCallback(() => {
+    const message = FALLBACK_NOTICE_TEXT[currentLanguage];
+    setError(message);
+
+    if (isMuted || typeof window === 'undefined') {
+      return;
+    }
+    if (fallbackNoticeCountRef.current >= FALLBACK_NOTICE_LIMIT_PER_SESSION) {
+      return;
+    }
+    fallbackNoticeCountRef.current += 1;
+
+    try {
+      const AudioContextCtor =
+        window.AudioContext ||
+        (window as typeof window & { webkitAudioContext?: typeof AudioContext })
+          .webkitAudioContext;
+      if (AudioContextCtor) {
+        const ctx = new AudioContextCtor();
+        const oscillator = ctx.createOscillator();
+        const gain = ctx.createGain();
+        oscillator.type = 'sine';
+        oscillator.frequency.value = 880;
+        gain.gain.value = 0.08;
+        oscillator.connect(gain);
+        gain.connect(ctx.destination);
+        oscillator.start();
+        window.setTimeout(() => {
+          oscillator.stop();
+          void ctx.close().catch(() => {});
+        }, 120);
+      }
+    } catch {
+      // Best-effort fallback cue.
+    }
+
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(message);
+      utterance.lang = toLocale(currentLanguage);
+      utterance.volume = Math.max(0.2, Math.min(1, volume));
+      window.speechSynthesis.speak(utterance);
+    }
+  }, [currentLanguage, isMuted, volume]);
+
+  const handleVoiceControllerTransition = useCallback(
+    (transition: {
+      from: string;
+      to: string;
+      characterState: string;
+      isConversationActive: boolean;
+      shouldListen: boolean;
+    }) => {
+      emitVoiceTelemetry('voice_controller_state_transition', 'state', transition);
+    },
+    [emitVoiceTelemetry],
+  );
+
   const voiceController = useVoiceSessionController({
     enabled: true,
     wakeWordEnabled,
@@ -458,6 +527,8 @@ export default function VoiceInterface({
       markAudioUserInteraction();
       setError(null);
     },
+    onThinkingWatchdogExpire: playAudioFallbackNotice,
+    onStateTransition: handleVoiceControllerTransition,
   });
 
   const sessionState = normalizeSessionState(voiceController.mode);
@@ -546,6 +617,7 @@ export default function VoiceInterface({
     setLoadingMessage('');
     setLoadingPhase(null);
     setExclusiveUiLock(false);
+    fallbackNoticeCountRef.current = 0;
     sessionIdRef.current = createSessionId();
   }, []);
 
@@ -637,6 +709,7 @@ export default function VoiceInterface({
         audioBytes = Uint8Array.from(atob(audioBase64), (char) => char.charCodeAt(0));
       } catch (decodeError) {
         console.error('Audio decode failed:', decodeError);
+        playAudioFallbackNotice();
         completeAssistantTurn(true);
         return;
       }
@@ -680,6 +753,7 @@ export default function VoiceInterface({
         onError: (playbackError) => {
           cleanupAudioPlayback();
           setError(formatError(playbackError, currentLanguage));
+          playAudioFallbackNotice();
           completeAssistantTurn(true);
         },
       });
@@ -687,6 +761,7 @@ export default function VoiceInterface({
       const result = await audioService.playAudio(audioBlob);
       if (!result.success) {
         cleanupAudioPlayback();
+        playAudioFallbackNotice();
         completeAssistantTurn(true);
         throw result.error ?? new Error('音声再生に失敗しました');
       }
@@ -700,6 +775,7 @@ export default function VoiceInterface({
       ensureAudioService,
       isMuted,
       onAssistantPlaybackStart,
+      playAudioFallbackNotice,
       onVisemeControl,
       revokeAudioUrl,
       scheduleLipSyncFrames,
@@ -989,6 +1065,7 @@ export default function VoiceInterface({
             audioBytes = Uint8Array.from(atob(ttsResult.audioResponse), (char) => char.charCodeAt(0));
           } catch (decodeError) {
             console.error('Audio decode failed:', decodeError);
+            playAudioFallbackNotice();
             completeAssistantTurn(true);
             return;
           }
@@ -1042,6 +1119,7 @@ export default function VoiceInterface({
           });
         } else {
           cancelFastFiller();
+          playAudioFallbackNotice();
           voiceController.notifySpeaking();
           window.setTimeout(() => {
             completeAssistantTurn();
@@ -1054,6 +1132,7 @@ export default function VoiceInterface({
         }
         cancelFastFiller();
         setError(formatError(voiceError, currentLanguage));
+        playAudioFallbackNotice();
         completeAssistantTurn(true);
       }
     },
@@ -1066,6 +1145,7 @@ export default function VoiceInterface({
       ensureVisitorId,
       isMuted,
       onAssistantPlaybackStart,
+      playAudioFallbackNotice,
       onSlideAgentResponse,
       onVisemeControl,
       onVoiceTurnAssistantSpeakingVisual,
@@ -1181,6 +1261,7 @@ export default function VoiceInterface({
           await playAssistantAudio(ttsResult.audioResponse, playbackMetadata);
         } else {
           cancelFastFiller();
+          playAudioFallbackNotice();
           voiceController.notifySpeaking();
           window.setTimeout(() => {
             completeAssistantTurn();
@@ -1193,6 +1274,7 @@ export default function VoiceInterface({
 
         cancelFastFiller();
         setError(formatError(sendError, currentLanguage));
+        playAudioFallbackNotice();
         completeAssistantTurn(true);
       } finally {
         if (requestAbortRef.current === abortController) {
@@ -1213,6 +1295,7 @@ export default function VoiceInterface({
       fetchAutoVrmControl,
       onSlideAgentResponse,
       playAssistantAudio,
+      playAudioFallbackNotice,
       resolveAutoVrmControlForPlayback,
       scheduleFastFiller,
       stopPlayback,
@@ -1280,6 +1363,7 @@ export default function VoiceInterface({
         if (typeof ttsResult.audioResponse === 'string' && ttsResult.audioResponse.length > 0) {
           await playAssistantAudio(ttsResult.audioResponse, playbackMetadata);
         } else {
+          playAudioFallbackNotice();
           voiceController.notifySpeaking();
           window.setTimeout(() => {
             completeAssistantTurn();
@@ -1291,6 +1375,7 @@ export default function VoiceInterface({
         }
 
         setError(formatError(speakError, currentLanguage));
+        playAudioFallbackNotice();
         completeAssistantTurn(true);
       } finally {
         if (requestAbortRef.current === abortController) {
@@ -1308,6 +1393,7 @@ export default function VoiceInterface({
       currentLanguage,
       fetchAutoVrmControl,
       playAssistantAudio,
+      playAudioFallbackNotice,
       resolveAutoVrmControlForPlayback,
       stopPlayback,
       voiceController,
@@ -1531,6 +1617,7 @@ export default function VoiceInterface({
     shouldListenRef.current = true;
     isStoppingRecorderRef.current = false;
     forceSkipAutoResumeRef.current = false;
+    fallbackNoticeCountRef.current = 0;
     cancelPendingRequest();
     stopPlayback(false);
     setError(null);

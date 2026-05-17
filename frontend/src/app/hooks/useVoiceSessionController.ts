@@ -34,6 +34,14 @@ export interface UseVoiceSessionControllerOptions {
   onWakeWord?: (match: WakeWordMatch) => void;
   onSessionStart?: (source: ContinuousListeningStartSource) => void;
   onSessionEnd?: (reason: ContinuousListeningEndReason) => void;
+  onThinkingWatchdogExpire?: () => void;
+  onStateTransition?: (transition: {
+    from: ContinuousListeningMode;
+    to: ContinuousListeningMode;
+    characterState: VoiceCharacterState;
+    isConversationActive: boolean;
+    shouldListen: boolean;
+  }) => void;
 }
 
 export interface UseVoiceSessionControllerResult {
@@ -55,6 +63,15 @@ export interface UseVoiceSessionControllerResult {
 }
 
 const DEFAULT_WAKE_WORDS = ['すみません', 'hello'];
+export const VOICE_SESSION_THINKING_WATCHDOG_MS = 5000;
+
+const logVoiceSessionDebug = (message: string, details: Record<string, unknown>): void => {
+  if (process.env.NODE_ENV === 'production') {
+    return;
+  }
+
+  console.debug(`[VoiceSessionController] ${message}`, details);
+};
 
 export function useVoiceSessionController({
   enabled = true,
@@ -76,13 +93,34 @@ export function useVoiceSessionController({
   onWakeWord,
   onSessionStart,
   onSessionEnd,
+  onThinkingWatchdogExpire,
+  onStateTransition,
 }: UseVoiceSessionControllerOptions = {}): UseVoiceSessionControllerResult {
   const hasDetectedSpeechRef = useRef(false);
   const onWakeWordRef = useRef(onWakeWord);
+  const onThinkingWatchdogExpireRef = useRef(onThinkingWatchdogExpire);
+  const onStateTransitionRef = useRef(onStateTransition);
+  const previousModeRef = useRef<ContinuousListeningMode | null>(null);
+  const thinkingWatchdogRef = useRef<number | null>(null);
 
   useEffect(() => {
     onWakeWordRef.current = onWakeWord;
   }, [onWakeWord]);
+
+  useEffect(() => {
+    onThinkingWatchdogExpireRef.current = onThinkingWatchdogExpire;
+  }, [onThinkingWatchdogExpire]);
+
+  useEffect(() => {
+    onStateTransitionRef.current = onStateTransition;
+  }, [onStateTransition]);
+
+  const clearThinkingWatchdog = useCallback(() => {
+    if (thinkingWatchdogRef.current !== null) {
+      window.clearTimeout(thinkingWatchdogRef.current);
+      thinkingWatchdogRef.current = null;
+    }
+  }, []);
 
   const {
     mode,
@@ -103,6 +141,52 @@ export function useVoiceSessionController({
   });
 
   const silenceEnabled = enabled && isConversationActive && mode === 'listening';
+
+  useEffect(() => {
+    const previousMode = previousModeRef.current;
+    previousModeRef.current = mode;
+
+    if (previousMode === null || previousMode === mode) {
+      return;
+    }
+
+    const nextCharacterState: VoiceCharacterState =
+      mode === 'processing' ? 'thinking' : mode === 'wake-word' ? 'idle' : mode;
+    const transition = {
+      from: previousMode,
+      to: mode,
+      characterState: nextCharacterState,
+      isConversationActive,
+      shouldListen,
+    };
+
+    logVoiceSessionDebug('state transition', transition);
+    onStateTransitionRef.current?.(transition);
+  }, [isConversationActive, mode, shouldListen]);
+
+  useEffect(() => {
+    clearThinkingWatchdog();
+
+    if (!enabled || mode !== 'processing') {
+      return;
+    }
+
+    logVoiceSessionDebug('thinking watchdog armed', {
+      timeoutMs: VOICE_SESSION_THINKING_WATCHDOG_MS,
+    });
+
+    thinkingWatchdogRef.current = window.setTimeout(() => {
+      thinkingWatchdogRef.current = null;
+      hasDetectedSpeechRef.current = false;
+      logVoiceSessionDebug('thinking watchdog expired', {
+        timeoutMs: VOICE_SESSION_THINKING_WATCHDOG_MS,
+      });
+      onThinkingWatchdogExpireRef.current?.();
+      completeAssistantTurn(true);
+    }, VOICE_SESSION_THINKING_WATCHDOG_MS);
+
+    return clearThinkingWatchdog;
+  }, [clearThinkingWatchdog, completeAssistantTurn, enabled, mode]);
 
   const handleWakeWord = useCallback(
     (match: WakeWordMatch) => {
@@ -207,6 +291,10 @@ export function useVoiceSessionController({
       return;
     }
 
+    logVoiceSessionDebug('notify processing', {
+      isConversationActive,
+    });
+
     if (!isConversationActive) {
       startSession('manual');
     }
@@ -220,6 +308,10 @@ export function useVoiceSessionController({
       return;
     }
 
+    logVoiceSessionDebug('notify speaking', {
+      isConversationActive,
+    });
+
     if (!isConversationActive) {
       startSession('manual');
     }
@@ -230,6 +322,9 @@ export function useVoiceSessionController({
 
   const notifySpeakingComplete = useCallback(
     (skipAutoResume = false) => {
+      logVoiceSessionDebug('notify speaking complete', {
+        skipAutoResume,
+      });
       hasDetectedSpeechRef.current = false;
       completeAssistantTurn(skipAutoResume);
     },

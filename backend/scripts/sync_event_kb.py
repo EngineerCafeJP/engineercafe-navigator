@@ -16,6 +16,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from backend.services.event_kb_sync import parse_ics_event_records, sync_event_kb_records
+from backend.services.sheets_event_source import SheetsEventSource
 
 
 def _parse_args() -> argparse.Namespace:
@@ -32,24 +33,38 @@ def _parse_args() -> argparse.Namespace:
         default=False,
         help="Plan records without embeddings or Supabase writes.",
     )
+    parser.add_argument(
+        "--include-spreadsheet",
+        action="store_true",
+        default=False,
+        help="Also fetch public Cafe events from EVENT_SHEET_GAS_URL/TOKEN.",
+    )
     return parser.parse_args()
 
 
 async def _main() -> None:
     args = _parse_args()
+    events = []
     if args.ics_file:
         ics_content = args.ics_file.read_text(encoding="utf-8")
+        events.extend(parse_ics_event_records(ics_content))
     elif args.ics_url:
         async with httpx.AsyncClient() as client:
             response = await client.get(args.ics_url, timeout=30.0)
             response.raise_for_status()
             ics_content = response.text
-    else:
+        events.extend(parse_ics_event_records(ics_content))
+
+    if args.include_spreadsheet:
+        events.extend(await SheetsEventSource().fetch_events())
+
+    if not events:
         raise SystemExit(
-            "--ics-file or --ics-url/GOOGLE_CALENDAR_ICAL_URL is required for event sync"
+            "No events were fetched. Configure --ics-file, --ics-url/"
+            "GOOGLE_CALENDAR_ICAL_URL, or --include-spreadsheet with "
+            "EVENT_SHEET_GAS_URL/TOKEN."
         )
 
-    events = parse_ics_event_records(ics_content)
     supabase_client = None
     if not args.dry_run:
         url = os.getenv("SUPABASE_URL", "")

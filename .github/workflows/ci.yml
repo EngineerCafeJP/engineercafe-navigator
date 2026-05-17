@@ -534,10 +534,20 @@ jobs:
             "GOOGLE_CALENDAR_ICAL_URL" \
             "${GOOGLE_CALENDAR_ICAL_URL}" \
             "GOOGLE_CALENDAR_ICAL_URL GitHub secret is not configured; relying on existing Google Secret Manager value if present"
+          sync_secret_from_env \
+            "EVENT_SHEET_GAS_URL" \
+            "${EVENT_SHEET_GAS_URL}" \
+            "EVENT_SHEET_GAS_URL GitHub secret is not configured; relying on existing Google Secret Manager value if present"
+          sync_secret_from_env \
+            "EVENT_SHEET_GAS_TOKEN" \
+            "${EVENT_SHEET_GAS_TOKEN}" \
+            "EVENT_SHEET_GAS_TOKEN GitHub secret is not configured; relying on existing Google Secret Manager value if present"
         env:
           LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
           CONNPASS_API_KEY: ${{ secrets.CONNPASS_API_KEY }}
           GOOGLE_CALENDAR_ICAL_URL: ${{ secrets.GOOGLE_CALENDAR_ICAL_URL }}
+          EVENT_SHEET_GAS_URL: ${{ secrets.EVENT_SHEET_GAS_URL }}
+          EVENT_SHEET_GAS_TOKEN: ${{ secrets.EVENT_SHEET_GAS_TOKEN }}
 
       - name: Deploy to Cloud Run
         run: |
@@ -558,6 +568,16 @@ jobs:
           else
             echo "::warning::GOOGLE_CALENDAR_ICAL_URL latest secret version not available; Google Calendar event sync disabled"
           fi
+          if gcloud secrets versions access latest --secret=EVENT_SHEET_GAS_URL >/dev/null 2>&1; then
+            BACKEND_SECRET_ARGS="${BACKEND_SECRET_ARGS},EVENT_SHEET_GAS_URL=EVENT_SHEET_GAS_URL:latest"
+          else
+            echo "::warning::EVENT_SHEET_GAS_URL latest secret version not available; spreadsheet event sync disabled"
+          fi
+          if gcloud secrets versions access latest --secret=EVENT_SHEET_GAS_TOKEN >/dev/null 2>&1; then
+            BACKEND_SECRET_ARGS="${BACKEND_SECRET_ARGS},EVENT_SHEET_GAS_TOKEN=EVENT_SHEET_GAS_TOKEN:latest"
+          else
+            echo "::warning::EVENT_SHEET_GAS_TOKEN latest secret version not available; spreadsheet event sync disabled"
+          fi
 
           gcloud run deploy engineer-cafe-backend \
             --image asia-northeast1-docker.pkg.dev/aipartner-426616/cloud-run-source-deploy/engineer-cafe-backend:${{ github.sha }} \
@@ -572,7 +592,7 @@ jobs:
             --max-instances 15 \
             --cpu-boost \
             --no-cpu-throttling \
-            --update-env-vars "ENVIRONMENT=production,TTS_PROVIDER=piper,TTS_REQUIRE_PRIMARY_PROVIDER=true,PIPER_PLUS_API_URL=https://piper-plus-639959525777.asia-northeast1.run.app,VOICEVOX_API_URL=https://voicevox-proto-639959525777.asia-northeast2.run.app,STT_PROVIDER=qwen-primary,STT_QWEN_RUNTIME=torch,STT_LLM_POSTPROCESS=false,VOICE_STT_REQUEST_TIMEOUT_SECONDS=15,QWEN_STT_TIMEOUT=15,QWEN_STT_HEDGE_DELAY_SECONDS=1.5,QWEN_STT_HEDGE_GRACE_SECONDS=4,QWEN_STT_LATENCY_BUDGET_SECONDS=11.5,STT_PRELOAD_QWEN_PRIMARY=true,STT_PRELOAD_VOSK_FALLBACK=true,ENABLE_AGENT_MEMORY_STM_WRITES=false,ALLOW_AGENT_MEMORY_STM_WRITE_DISABLE=true,ENABLE_MEMORY_CANDIDATES=true,ENABLE_MEMORY_PROMOTION=true,ENABLE_LONG_TERM_MEMORY_RERANK=true,HF_HOME=/app/.hf_cache,FRONTEND_PRODUCTION_ORIGIN=${FRONTEND_PRODUCTION_ORIGIN},ALLOWED_ORIGINS=${FRONTEND_PRODUCTION_ORIGIN},FAST_LLM_ENABLED=true,FAST_LLM_PRIMARY_PROVIDER=cerebras,FAST_LLM_PRIMARY_MODEL=google/gemini-3.1-flash-lite-preview,FAST_LLM_FALLBACK_PROVIDER=gemini,FAST_LLM_FALLBACK_MODEL=google/gemini-2.5-flash-lite,FAST_LLM_TERTIARY_PROVIDER=cerebras,CEREBRAS_ENABLED=true,CEREBRAS_FAST_MODEL=gpt-oss-120b,CEREBRAS_REASONING_EFFORT=low,DEEP_REASONING_MODEL=google/gemini-3.1-pro-preview,DEEP_REASONING_FALLBACK_MODEL=google/gemini-2.5-pro,LANGSMITH_PROJECT=engineer-cafe-navigator-production,LANGCHAIN_PROJECT=engineer-cafe-navigator-production" \
+            --update-env-vars "ENVIRONMENT=production,TZ=Asia/Tokyo,TTS_PROVIDER=piper,TTS_REQUIRE_PRIMARY_PROVIDER=true,PIPER_PLUS_API_URL=https://piper-plus-639959525777.asia-northeast1.run.app,VOICEVOX_API_URL=https://voicevox-proto-639959525777.asia-northeast2.run.app,STT_PROVIDER=qwen-primary,STT_QWEN_RUNTIME=torch,STT_LLM_POSTPROCESS=false,VOICE_STT_REQUEST_TIMEOUT_SECONDS=15,QWEN_STT_TIMEOUT=15,QWEN_STT_HEDGE_DELAY_SECONDS=1.5,QWEN_STT_HEDGE_GRACE_SECONDS=4,QWEN_STT_LATENCY_BUDGET_SECONDS=11.5,STT_PRELOAD_QWEN_PRIMARY=true,STT_PRELOAD_VOSK_FALLBACK=true,ENABLE_AGENT_MEMORY_STM_WRITES=false,ALLOW_AGENT_MEMORY_STM_WRITE_DISABLE=true,ENABLE_MEMORY_CANDIDATES=true,ENABLE_MEMORY_PROMOTION=true,ENABLE_LONG_TERM_MEMORY_RERANK=true,HF_HOME=/app/.hf_cache,FRONTEND_PRODUCTION_ORIGIN=${FRONTEND_PRODUCTION_ORIGIN},ALLOWED_ORIGINS=${FRONTEND_PRODUCTION_ORIGIN},FAST_LLM_ENABLED=true,FAST_LLM_PRIMARY_PROVIDER=cerebras,FAST_LLM_PRIMARY_MODEL=google/gemini-3.1-flash-lite-preview,FAST_LLM_FALLBACK_PROVIDER=gemini,FAST_LLM_FALLBACK_MODEL=google/gemini-2.5-flash-lite,FAST_LLM_TERTIARY_PROVIDER=cerebras,CEREBRAS_ENABLED=true,CEREBRAS_FAST_MODEL=gpt-oss-120b,CEREBRAS_REASONING_EFFORT=low,DEEP_REASONING_MODEL=google/gemini-3.1-pro-preview,DEEP_REASONING_FALLBACK_MODEL=google/gemini-2.5-pro,LANGSMITH_PROJECT=engineer-cafe-navigator-production,LANGCHAIN_PROJECT=engineer-cafe-navigator-production" \
             --update-secrets "${BACKEND_SECRET_ARGS}"
 
           LATEST_READY_REVISION=$(gcloud run services describe engineer-cafe-backend \
@@ -605,7 +625,7 @@ jobs:
             --project="${PROJECT_ID}" \
             --quiet
 
-          for secret_name in OPENROUTER_API_KEY SUPABASE_URL SUPABASE_KEY GOOGLE_CALENDAR_ICAL_URL; do
+          for secret_name in OPENROUTER_API_KEY SUPABASE_URL SUPABASE_KEY GOOGLE_CALENDAR_ICAL_URL EVENT_SHEET_GAS_URL EVENT_SHEET_GAS_TOKEN; do
             if ! gcloud secrets versions access latest --secret="${secret_name}" >/dev/null 2>&1; then
               echo "error: required secret ${secret_name} is missing or has no enabled version" >&2
               exit 1
@@ -618,14 +638,14 @@ jobs:
             --image="${IMAGE}" \
             --service-account="${JOB_SERVICE_ACCOUNT}" \
             --command=python \
-            --args=-m,backend.scripts.sync_event_kb \
+            --args=-m,backend.scripts.sync_event_kb,--include-spreadsheet \
             --tasks=1 \
             --max-retries=1 \
             --task-timeout=3600s \
             --cpu=1 \
             --memory=1Gi \
-            --set-env-vars="ENVIRONMENT=production,GOOGLE_CLOUD_PROJECT=${PROJECT_ID}" \
-            --set-secrets="OPENROUTER_API_KEY=OPENROUTER_API_KEY:latest,SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_KEY=SUPABASE_KEY:latest,GOOGLE_CALENDAR_ICAL_URL=GOOGLE_CALENDAR_ICAL_URL:latest"
+            --set-env-vars="ENVIRONMENT=production,TZ=Asia/Tokyo,GOOGLE_CLOUD_PROJECT=${PROJECT_ID}" \
+            --set-secrets="OPENROUTER_API_KEY=OPENROUTER_API_KEY:latest,SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_KEY=SUPABASE_KEY:latest,GOOGLE_CALENDAR_ICAL_URL=GOOGLE_CALENDAR_ICAL_URL:latest,EVENT_SHEET_GAS_URL=EVENT_SHEET_GAS_URL:latest,EVENT_SHEET_GAS_TOKEN=EVENT_SHEET_GAS_TOKEN:latest"
 
           JOB_RUN_URI="https://run.googleapis.com/v2/projects/${PROJECT_ID}/locations/${REGION}/jobs/${JOB_NAME}:run"
           if gcloud scheduler jobs describe "${SCHEDULER_JOB_NAME}" \
@@ -741,6 +761,8 @@ jobs:
           check_secret_binding "LANGSMITH_API_KEY" "LangSmith"
           check_secret_binding "CONNPASS_API_KEY" "Connpass"
           check_secret_binding "GOOGLE_CALENDAR_ICAL_URL" "Google Calendar ICS"
+          check_secret_binding "EVENT_SHEET_GAS_URL" "Event Sheet GAS URL"
+          check_secret_binding "EVENT_SHEET_GAS_TOKEN" "Event Sheet GAS token"
 
           SERVICE_URL=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["status"]["url"])' "$SERVICE_JSON")
           LATEST_READY_REVISION=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["status"]["latestReadyRevisionName"])' "$SERVICE_JSON")

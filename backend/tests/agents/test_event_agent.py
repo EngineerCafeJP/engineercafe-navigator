@@ -15,6 +15,9 @@ class TestEventAgent:
     def setup_method(self):
         """各テストメソッドの前に実行"""
         self.agent = EventAgent()
+        self.agent.sheets_event_source.search_events = AsyncMock(
+            return_value={"success": True, "data": {"events": []}}
+        )
 
     def test_format_calendar_events_japanese(self):
         """日本語のイベント整形をテスト"""
@@ -35,6 +38,21 @@ class TestEventAgent:
         assert "Lightning Talk Event" in formatted
         assert "勉強会" in formatted
         assert "2025-01-20" in formatted
+
+    def test_format_spreadsheet_events_japanese(self):
+        events = [
+            {
+                "title": "スプレッドシート管理イベント",
+                "start": "2026-05-20T19:00:00+09:00",
+                "description": "公開済みイベント",
+                "source": "spreadsheet",
+            }
+        ]
+
+        formatted = self.agent._format_calendar_events(events, "ja")
+
+        assert "スプレッドシート管理イベント" in formatted
+        assert "[イベント管理シート]" in formatted
 
     def test_format_calendar_events_english(self):
         """英語のイベント整形をテスト"""
@@ -203,9 +221,56 @@ class TestEventDeduplication:
 
         # 重複排除で1件になる
         assert len(events) == 1
-        # Google Calendar優先
-        assert events[0].get("source") == "google_calendar"
-        assert events[0]["description"] == "From Calendar"
+        # Connpass takes priority over Google Calendar for public event metadata.
+        assert events[0].get("source") == "connpass"
+        assert events[0]["description"] == "From Connpass"
+
+    def test_spreadsheet_takes_priority_over_connpass_and_calendar(self):
+        """同じ日付・タイトルならイベント管理シートを優先する"""
+        spreadsheet_result = {
+            "success": True,
+            "data": {
+                "events": [
+                    {
+                        "title": "Python Workshop #3",
+                        "start": "2025-02-15T14:00:00+09:00",
+                        "description": "From Spreadsheet",
+                        "source": "spreadsheet",
+                    }
+                ]
+            },
+        }
+        calendar_result = {
+            "success": True,
+            "data": {
+                "events": [
+                    {
+                        "title": "Python Workshop #3",
+                        "start": "2025-02-15T14:00:00Z",
+                        "description": "From Calendar",
+                    }
+                ]
+            },
+        }
+        connpass_result = {
+            "success": True,
+            "data": {
+                "events": [
+                    {
+                        "title": "Python Workshop #3",
+                        "start": "2025-02-15T14:00:00Z",
+                        "description": "From Connpass",
+                        "source": "connpass",
+                    }
+                ]
+            },
+        }
+
+        events = self.agent._merge_events(calendar_result, connpass_result, spreadsheet_result)
+
+        assert len(events) == 1
+        assert events[0]["source"] == "spreadsheet"
+        assert events[0]["description"] == "From Spreadsheet"
 
     def test_keep_different_events(self):
         """異なるタイトルのイベントは保持されることを確認"""
@@ -249,6 +314,9 @@ class TestGetTodayEvents:
 
     def setup_method(self):
         self.agent = EventAgent()
+        self.agent.sheets_event_source.search_events = AsyncMock(
+            return_value={"success": True, "data": {"events": []}}
+        )
 
     @pytest.mark.asyncio
     async def test_returns_events_when_available(self):
@@ -400,6 +468,9 @@ class TestEventAgentHallucinationGuards:
 
     def setup_method(self):
         self.agent = EventAgent()
+        self.agent.sheets_event_source.search_events = AsyncMock(
+            return_value={"success": True, "data": {"events": []}}
+        )
 
     @pytest.mark.asyncio
     async def test_no_events_returns_sad_emotion(self):

@@ -7,6 +7,7 @@ EventAgent用プロンプトテンプレート
 from typing import Dict
 
 from backend.utils.language_types import LANGUAGE_INSTRUCTION
+from backend.utils.time_utils import get_now_jst
 
 # 時間範囲ラベル
 TIME_RANGE_LABELS: Dict[str, Dict[str, str]] = {
@@ -22,6 +23,31 @@ def get_time_range_label(time_range: str, language: str) -> str:
     """時間範囲ラベルを取得"""
     labels = TIME_RANGE_LABELS.get(time_range, TIME_RANGE_LABELS["thisWeek"])
     return labels.get(language, labels.get("ja", "今週"))
+
+
+def build_range_interpretation_rule(language: str) -> str:
+    """Return the JST date-range rule that the LLM must preserve."""
+
+    now = get_now_jst()
+    current = now.strftime("%Y-%m-%d %H:%M:%S %Z")
+    if language == "en":
+        return (
+            f"Range interpretation rule (JST, current datetime: {current}): "
+            "today = today 00:00 through before tomorrow 00:00; "
+            "tomorrow = tomorrow 00:00 through before the day after tomorrow 00:00; "
+            "this week = today through the end of the current week, excluding past days; "
+            "this month = today through the end of the current month, excluding past days; "
+            "next week = next Monday through next Sunday."
+        )
+
+    return (
+        f"範囲解釈ルール（JST基準、現在日時: {current}）: "
+        "「今日」は本日00:00から翌日00:00未満、"
+        "「明日」は翌日00:00から翌々日00:00未満、"
+        "「今週」は本日から今週末までで過去日は含めない、"
+        "「今月」は本日から今月末までで過去日は含めない、"
+        "「来週」は来週の月曜から日曜までとして扱ってください。"
+    )
 
 
 def build_event_prompt(query: str, events_text: str, time_range: str, language: str) -> str:
@@ -45,6 +71,7 @@ def build_event_prompt(query: str, events_text: str, time_range: str, language: 
     """
     time_range_text = get_time_range_label(time_range, language)
     has_events = bool(events_text.strip())
+    range_rule = build_range_interpretation_rule(language)
 
     oral_instruction_ja = (
         "回答は口語（話し言葉）で返してください。"
@@ -88,6 +115,8 @@ def build_event_prompt(query: str, events_text: str, time_range: str, language: 
 
 {grounding_rule_en}
 
+{range_rule}
+
 Question: {query}
 
 Events {time_range_text}:
@@ -104,6 +133,8 @@ Maximum 2-3 sentences.
         prompt = f"""{time_range_text}のイベント情報に基づいて、質問に答えてください。
 
 {grounding_rule_ja}
+
+{range_rule}
 
 質問: {query}
 

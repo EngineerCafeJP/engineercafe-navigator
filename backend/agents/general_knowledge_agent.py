@@ -21,6 +21,8 @@ Engineer Cafeに関する一般情報、AI・技術トピック、福岡のテ�
 """
 
 import logging
+import re
+from datetime import timedelta
 from typing import Dict, Any, List, Optional, Literal
 
 from backend.config.prompts.memory_prompts import build_memory_prompt
@@ -35,6 +37,7 @@ from backend.utils.language_types import (
     SupportedLanguage,
 )
 from backend.utils.memory_interface import MemorySystemInterface
+from backend.utils.time_utils import get_now_jst
 
 logger = logging.getLogger(__name__)
 
@@ -141,6 +144,9 @@ class GeneralKnowledgeAgent:
         logger.info("一般質問処理開始: query=%s..., language=%s", query[:50], language)
 
         try:
+            if self._is_date_only_query(query):
+                return self._current_date_response(query, language)
+
             mode = self._resolve_general_mode(query, query_type)
             if mode == "assistant_profile":
                 return self._assistant_profile_response(language)
@@ -728,29 +734,177 @@ class GeneralKnowledgeAgent:
 
     @staticmethod
     def _is_current_info_query(lower_query: str) -> bool:
+        if GeneralKnowledgeAgent._is_date_only_query(lower_query):
+            return False
+
         markers = (
-            "今日",
-            "明日",
-            "今朝",
-            "今夜",
-            "今週",
             "最新",
             "現在",
             "ニュース",
             "天気",
             "気温",
             "雨",
-            "today",
-            "tomorrow",
-            "this week",
+            "検索",
+            "動向",
+            "トレンド",
             "latest",
             "current",
             "news",
             "weather",
             "temperature",
             "rain",
+            "search",
+            "trend",
+            "updates",
         )
         return any(marker in lower_query for marker in markers)
+
+    @staticmethod
+    def _compact_query(query: str) -> str:
+        return re.sub(r"[\s　]+", "", query.lower()).strip("!?？。、.,")
+
+    @staticmethod
+    def _is_date_only_query(query: str) -> bool:
+        compact = GeneralKnowledgeAgent._compact_query(query)
+        if compact in {
+            "今日",
+            "本日",
+            "明日",
+            "昨日",
+            "今週",
+            "today",
+            "tomorrow",
+            "yesterday",
+            "thisweek",
+        }:
+            return True
+
+        live_info_markers = (
+            "イベント",
+            "event",
+            "予定",
+            "schedule",
+            "ニュース",
+            "news",
+            "天気",
+            "weather",
+            "気温",
+            "temperature",
+            "雨",
+            "rain",
+            "最新",
+            "latest",
+            "検索",
+            "search",
+            "動向",
+            "トレンド",
+            "trend",
+            "updates",
+        )
+        if any(marker in compact for marker in live_info_markers):
+            return False
+
+        relative_date_markers = (
+            "今日",
+            "本日",
+            "明日",
+            "昨日",
+            "今週",
+            "today",
+            "tomorrow",
+            "yesterday",
+            "thisweek",
+        )
+        date_question_markers = (
+            "日付",
+            "何月何日",
+            "何日",
+            "何曜日",
+            "曜日",
+            "date",
+            "dayisit",
+            "dayis",
+            "whatday",
+        )
+        if any(marker in compact for marker in relative_date_markers) and any(
+            marker in compact for marker in date_question_markers
+        ):
+            return True
+
+        return any(
+            marker in compact
+            for marker in (
+                "今日の日付",
+                "本日の日付",
+                "明日の日付",
+                "昨日の日付",
+                "whatisthedate",
+                "whatsthedate",
+                "todaysdate",
+                "tomorrowsdate",
+                "yesterdaysdate",
+            )
+        )
+
+    def _current_date_response(self, query: str, language: SupportedLanguage) -> Dict[str, Any]:
+        compact = self._compact_query(query)
+        now = get_now_jst()
+
+        if "今週" in compact or "thisweek" in compact:
+            start = now.date() - timedelta(days=now.weekday())
+            end = start + timedelta(days=6)
+            if language == "en":
+                answer = (
+                    f"[helpful]This week is {start.strftime('%B %-d, %Y')} "
+                    f"through {end.strftime('%B %-d, %Y')} in Japan time."
+                )
+            else:
+                answer = (
+                    f"[helpful]今週は{start.month}月{start.day}日から"
+                    f"{end.month}月{end.day}日までです。"
+                )
+        else:
+            offset = 0
+            label_ja = "今日"
+            label_en = "Today"
+            if "明日" in compact or "tomorrow" in compact:
+                offset = 1
+                label_ja = "明日"
+                label_en = "Tomorrow"
+            elif "昨日" in compact or "yesterday" in compact:
+                offset = -1
+                label_ja = "昨日"
+                label_en = "Yesterday"
+
+            target = now + timedelta(days=offset)
+            weekdays_ja = ("月", "火", "水", "木", "金", "土", "日")
+            if language == "en":
+                answer = (
+                    f"[helpful]{label_en} is {target.strftime('%A, %B %-d, %Y')} " "in Japan time."
+                )
+            else:
+                answer = (
+                    f"[helpful]{label_ja}は{target.year}年{target.month}月{target.day}日"
+                    f"（{weekdays_ja[target.weekday()]}曜日）です。"
+                )
+
+        return {
+            "answer": answer,
+            "emotion": "helpful",
+            "metadata": {
+                "agent": self.name,
+                "status": "success",
+                "category": "general_knowledge",
+                "request_type": "current-time",
+                "route": "general_knowledge",
+                "query_type": "current-time",
+                "sources": ["system_clock"],
+                "web_search_used": False,
+                "rag_used": False,
+                "provider_called": False,
+                "timezone": "Asia/Tokyo",
+            },
+        }
 
     @staticmethod
     def _is_deep_reasoning_query(lower_query: str) -> bool:

@@ -96,6 +96,27 @@ async def test_plan_event_kb_records_uses_event_category_upload_path():
 
 
 @pytest.mark.asyncio
+async def test_plan_event_kb_records_preserves_spreadsheet_source():
+    event = EventSourceRecord(
+        external_id="sheet:event_status:row42",
+        title="Spreadsheet Event",
+        start="2026-05-20T19:00:00+09:00",
+        end="2026-05-20T21:00:00+09:00",
+        description="Public event from the managed spreadsheet.",
+        location="Engineer Cafe",
+        source="spreadsheet",
+    )
+
+    records = await plan_event_kb_records([event])
+
+    assert len(records) == 1
+    record = records[0]
+    assert record["source"] == "event_bridge:spreadsheet:sheet:event_status:row42"
+    assert record["metadata"]["sync_source"] == "spreadsheet"
+    assert record["metadata"]["external_event_id"] == "sheet:event_status:row42"
+
+
+@pytest.mark.asyncio
 async def test_sync_event_kb_records_dry_run_does_not_embed_or_write():
     events = parse_ics_event_records(SAMPLE_ICS)
     supabase = MagicMock()

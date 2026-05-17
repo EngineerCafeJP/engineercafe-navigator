@@ -5,7 +5,9 @@ GeneralKnowledgeAgent のユニットテスト
 import os
 import time
 import pytest
+from datetime import datetime
 from unittest.mock import patch, MagicMock, AsyncMock
+from zoneinfo import ZoneInfo
 from backend.agents.general_knowledge_agent import GeneralKnowledgeAgent
 from backend.llm.openrouter import LLMResponseText
 
@@ -139,6 +141,15 @@ class TestGeneralKnowledgeAgent:
             self.agent._resolve_general_mode("弁証法的に比較分析してください", "general")
             == "deep_reasoning"
         )
+
+    def test_date_only_is_not_current_info(self):
+        assert self.agent._is_current_info_query("今日は何月何日ですか？") is False
+        assert self.agent._is_current_info_query("今日") is False
+        assert self.agent._is_current_info_query("明日") is False
+        assert self.agent._is_current_info_query("今週") is False
+        assert self.agent._is_current_info_query("今日の福岡の天気は？") is True
+        assert self.agent._is_current_info_query("今日のニュースは？") is True
+        assert self.agent._is_current_info_query("today technology updates") is True
 
     def test_normalize_weather_query_defaults_to_fukuoka_tenjin(self):
         normalized = self.agent._normalize_current_info_query("今日の天気は？")
@@ -425,6 +436,44 @@ class TestGeneralKnowledgeAgentIntegration:
         assert result["metadata"]["web_search_used"] is True
         self.mock_web_search.search.assert_awaited_once()
         self.mock_provider.generate.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_answer_query_date_only_uses_system_clock_without_search(self):
+        fixed_now = datetime(2026, 5, 18, 10, 30, tzinfo=ZoneInfo("Asia/Tokyo"))
+
+        with patch("backend.agents.general_knowledge_agent.get_now_jst", return_value=fixed_now):
+            result = await self.agent.answer_query(
+                query="今日は何月何日ですか？",
+                language="ja",
+                session_id="test_session",
+                query_type="current_info",
+            )
+
+        assert "2026年5月18日" in result["answer"]
+        assert result["metadata"]["query_type"] == "current-time"
+        assert result["metadata"]["sources"] == ["system_clock"]
+        assert result["metadata"]["web_search_used"] is False
+        assert result["metadata"]["provider_called"] is False
+        self.mock_web_search.search.assert_not_called()
+        self.mock_provider.generate.assert_not_called()
+        self.mock_rag_search.search.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_answer_query_tomorrow_date_only_uses_system_clock_without_search(self):
+        fixed_now = datetime(2026, 5, 18, 10, 30, tzinfo=ZoneInfo("Asia/Tokyo"))
+
+        with patch("backend.agents.general_knowledge_agent.get_now_jst", return_value=fixed_now):
+            result = await self.agent.answer_query(
+                query="明日は何日ですか",
+                language="ja",
+                session_id="test_session",
+                query_type="current_info",
+            )
+
+        assert "2026年5月19日" in result["answer"]
+        assert result["metadata"]["query_type"] == "current-time"
+        self.mock_web_search.search.assert_not_called()
+        self.mock_provider.generate.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_general_light_does_not_search_when_rag_misses(self):

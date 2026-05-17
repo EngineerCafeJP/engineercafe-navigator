@@ -38,6 +38,24 @@ class TestQueryClassifier:
         assert result.confidence == 0.9
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "今日は何月何日ですか?",
+            "今日の日付を教えて",
+            "明日は何日ですか",
+            "今日",
+            "今週",
+        ],
+    )
+    async def test_date_only_query_routes_to_current_time(self, query):
+        """日付確認だけのクエリはカレンダーではなく現在時刻系に分類する"""
+        result = await self.classifier.classify_with_details(query)
+
+        assert result.category == "current-time"
+        assert result.confidence == 1.0
+
+    @pytest.mark.asyncio
     async def test_engineer_cafe_specific_query(self):
         """エンジニアカフェ特定クエリの分類"""
         result = await self.classifier.classify_with_details("エンジニアカフェの営業時間は?")
@@ -188,7 +206,9 @@ class TestQueryClassifier:
     def test_is_calendar_query(self):
         """カレンダークエリ判定のテスト"""
         assert self.classifier._is_calendar_query("イベント")
-        assert self.classifier._is_calendar_query("今日")
+        assert not self.classifier._is_calendar_query("今日")
+        assert not self.classifier._is_calendar_query("今日は何月何日")
+        assert self.classifier._is_calendar_query("今日のイベント")
         assert self.classifier._is_calendar_query("カレンダー")
 
     def test_is_facility_query(self):

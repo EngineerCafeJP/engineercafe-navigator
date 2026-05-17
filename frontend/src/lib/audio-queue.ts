@@ -25,6 +25,7 @@ export class AudioQueue {
   private volume = 0.8;
   private onFinishedCallback?: () => void;
   private isSkipping = false;
+  private currentPlaybackSettler: (() => void) | null = null;
 
   constructor() {
     // Initialize audio queue
@@ -66,10 +67,13 @@ export class AudioQueue {
    */
   clear(): void {
     this.queue = [];
+    const settleCurrentPlayback = this.currentPlaybackSettler;
+    this.currentPlaybackSettler = null;
     if (this.currentAudioService) {
       this.currentAudioService.stop();
       this.currentAudioService = null;
     }
+    settleCurrentPlayback?.();
     this.isPlaying = false;
   }
 
@@ -144,6 +148,7 @@ export class AudioQueue {
   private async playAudio(item: AudioQueueItem): Promise<void> {
     return new Promise((resolve, reject) => {
       let settled = false;
+      let resolveCurrentPlayback: (() => void) | null = null;
 
       let audioService: MobileAudioService | null = null;
       const settle = (complete: () => void): void => {
@@ -151,11 +156,17 @@ export class AudioQueue {
           return;
         }
         settled = true;
+        if (this.currentPlaybackSettler === resolveCurrentPlayback) {
+          this.currentPlaybackSettler = null;
+        }
         if (audioService && this.currentAudioService === audioService) {
           this.currentAudioService = null;
         }
         item.onPlaybackEnd?.();
         complete();
+      };
+      resolveCurrentPlayback = () => {
+        settle(() => resolve());
       };
 
       audioService = new MobileAudioService({
@@ -172,6 +183,7 @@ export class AudioQueue {
       });
 
       this.currentAudioService = audioService;
+      this.currentPlaybackSettler = resolveCurrentPlayback;
 
       audioService.playAudio(item.audioData)
         .then((result) => {
@@ -191,9 +203,14 @@ export class AudioQueue {
    * Skip the current audio and play next
    */
   skip(): void {
-    if (this.currentAudioService) {
+    if (this.currentAudioService || this.currentPlaybackSettler) {
       this.isSkipping = true;
+      const audioService = this.currentAudioService;
+      const settleCurrentPlayback = this.currentPlaybackSettler;
       this.currentAudioService = null;
+      this.currentPlaybackSettler = null;
+      audioService?.stop();
+      settleCurrentPlayback?.();
       this.isPlaying = false; // Set isPlaying to false immediately
       
       // Trigger next playback safely using setTimeout to avoid race conditions
