@@ -190,6 +190,9 @@ class QueryClassifier:
 
     def _is_current_time_query(self, normalized_question: str) -> bool:
         """現在時刻クエリかどうかをチェック"""
+        if self._is_date_only_query(normalized_question):
+            return True
+
         time_keywords = [
             "現在時刻",
             "現在の時刻",
@@ -211,6 +214,92 @@ class QueryClassifier:
                     return True
 
         return any(keyword in normalized_question for keyword in time_keywords)
+
+    @staticmethod
+    def _is_date_only_query(normalized_question: str) -> bool:
+        """日付だけを確認するクエリかどうかをチェック"""
+        compact = re.sub(r"[\s　]+", "", normalized_question.lower())
+        compact = compact.strip("!?？。、.,")
+
+        if compact in {
+            "今日",
+            "本日",
+            "明日",
+            "昨日",
+            "今週",
+            "today",
+            "tomorrow",
+            "yesterday",
+            "thisweek",
+        }:
+            return True
+
+        live_info_markers = (
+            "イベント",
+            "event",
+            "予定",
+            "schedule",
+            "ニュース",
+            "news",
+            "天気",
+            "weather",
+            "気温",
+            "temperature",
+            "雨",
+            "rain",
+            "最新",
+            "latest",
+            "検索",
+            "search",
+            "動向",
+            "トレンド",
+            "trend",
+            "updates",
+        )
+        if any(marker in compact for marker in live_info_markers):
+            return False
+
+        relative_date_markers = (
+            "今日",
+            "本日",
+            "明日",
+            "昨日",
+            "今週",
+            "today",
+            "tomorrow",
+            "yesterday",
+            "thisweek",
+        )
+        date_question_markers = (
+            "日付",
+            "何月何日",
+            "何日",
+            "何曜日",
+            "曜日",
+            "date",
+            "dayisit",
+            "dayis",
+            "whatday",
+        )
+        if any(marker in compact for marker in relative_date_markers) and any(
+            marker in compact for marker in date_question_markers
+        ):
+            return True
+
+        return any(
+            marker in compact
+            for marker in (
+                "今日の日付",
+                "本日の日付",
+                "明日の日付",
+                "昨日の日付",
+                "whatisthedate",
+                "whatsthedate",
+                "todaysdate",
+                "tomorrowsdate",
+                "yesterdaysdate",
+            )
+        )
 
     def _check_cafe_ambiguity(
         self, normalized_question: str, conversation_context: Optional[Dict] = None
@@ -303,6 +392,9 @@ class QueryClassifier:
 
     def _is_calendar_query(self, normalized_question: str) -> bool:
         """カレンダー/イベントクエリかどうかをチェック"""
+        if self._is_date_only_query(normalized_question):
+            return False
+
         calendar_keywords = [
             "カレンダー",
             "calendar",
@@ -310,16 +402,8 @@ class QueryClassifier:
             "event",
             "予定",
             "schedule",
-            "今日",
-            "today",
-            "明日",
-            "tomorrow",
-            "今週",
-            "this week",
             "直近",
             "upcoming",
-            "何月",
-            "何日",
         ]
 
         return any(keyword in normalized_question for keyword in calendar_keywords)

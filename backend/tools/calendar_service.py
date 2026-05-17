@@ -10,7 +10,7 @@ import logging
 import os
 import re
 import hashlib
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Literal, Optional
 from zoneinfo import ZoneInfo
 import httpx
@@ -36,6 +36,16 @@ _NOISE_SUMMARIES = frozenset(
     }
 )
 
+_CANCELLED_SUMMARY_PREFIXES = (
+    "キャンセル",
+    "中止",
+    "延期",
+    "[cancelled]",
+    "[canceled]",
+    "cancelled",
+    "canceled",
+)
+
 
 def _is_noise_summary(summary: Optional[str]) -> bool:
     """Return True if ``summary`` is an empty/placeholder/noise value.
@@ -53,6 +63,8 @@ def _is_noise_summary(summary: Optional[str]) -> bool:
         return True
     lowered = stripped.lower()
     if lowered in _NOISE_SUMMARIES:
+        return True
+    if lowered.startswith(_CANCELLED_SUMMARY_PREFIXES):
         return True
     # Bare "予定" with no additional detail is a placeholder.
     if stripped == "予定":
@@ -126,7 +138,7 @@ class CalendarService:
             weekday = today_start.weekday()
             week_start = today_start - timedelta(days=weekday)
             week_end = week_start + timedelta(days=6, hours=23, minutes=59, seconds=59)
-            return (week_start, week_end)
+            return (max(today_start, week_start), week_end)
 
         elif time_range == "nextWeek":
             # 来週の月曜日から日曜日
@@ -144,13 +156,13 @@ class CalendarService:
             else:
                 next_month = month_start.replace(month=month_start.month + 1)
             month_end = next_month - timedelta(seconds=1)
-            return (month_start, month_end)
+            return (max(today_start, month_start), month_end)
 
         # デフォルトは今週
         weekday = today_start.weekday()
         week_start = today_start - timedelta(days=weekday)
         week_end = week_start + timedelta(days=6, hours=23, minutes=59, seconds=59)
-        return (week_start, week_end)
+        return (max(today_start, week_start), week_end)
 
     async def _fetch_ics_events(self, time_min: datetime, time_max: datetime) -> List[Dict]:
         """
@@ -268,6 +280,9 @@ class CalendarService:
 
                 event_data[prop_name.upper()] = value
 
+            if event_data.get("STATUS", "").strip().upper() == "CANCELLED":
+                return None
+
             # 必須フィールドの確認
             if "DTSTART" not in event_data:
                 return None
@@ -374,9 +389,16 @@ class CalendarService:
                 # ISO形式からdatetimeに変換
                 if "T" in start_str:
                     if start_str.endswith("Z"):
-                        event_start = datetime.fromisoformat(start_str[:-1])
+                        aware_start = datetime.fromisoformat(start_str[:-1]).replace(
+                            tzinfo=timezone.utc
+                        )
+                        event_start = aware_start.astimezone(_JST).replace(tzinfo=None)
                     else:
-                        event_start = datetime.fromisoformat(start_str)
+                        parsed_start = datetime.fromisoformat(start_str)
+                        if parsed_start.tzinfo is not None:
+                            event_start = parsed_start.astimezone(_JST).replace(tzinfo=None)
+                        else:
+                            event_start = parsed_start
                 else:
                     # 終日イベント
                     event_start = datetime.fromisoformat(start_str)

@@ -9,8 +9,10 @@ from evaluation.live_quality_gates import (
     check_safety,
     denies_explicit_ltm_recall,
     post_json,
+    required_sources_for_case,
     recalled_facts,
     run_m_suite,
+    source_requirement_ok,
 )
 
 
@@ -45,6 +47,32 @@ def test_event_fact_accepts_usable_english_event_synonyms() -> None:
 
     assert quality["facts_found"] is True
     assert quality["missing_facts"] == []
+
+
+def test_event_source_requirement_accepts_spreadsheet_events() -> None:
+    case = {"expected_route": "event"}
+
+    assert required_sources_for_case(case) == ["google_calendar|connpass|spreadsheet"]
+    ok, missing = source_requirement_ok(
+        {"sources": ["spreadsheet"]},
+        required_sources_for_case(case),
+    )
+
+    assert ok is True
+    assert missing == []
+
+
+def test_event_answer_quality_rejects_prohibited_cancelled_claims() -> None:
+    quality = check_answer_quality(
+        "本日はキャンセル済みイベントがあります。",
+        {
+            "expected_facts": ["イベント"],
+            "expected_language": "ja",
+            "prohibited_claims": ["キャンセル", "cancelled"],
+        },
+    )
+
+    assert quality["prohibited_found"] == ["キャンセル"]
 
 
 def test_explicit_ltm_denial_allows_ssid_word_without_warning_signal() -> None:

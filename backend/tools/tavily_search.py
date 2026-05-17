@@ -6,11 +6,15 @@ Tavily APIを使用したWeb検索ツール。
 
 import logging
 import os
+from datetime import datetime
 from typing import Dict, Any, List
+from zoneinfo import ZoneInfo
 
 from backend.utils.language_types import SupportedLanguage
 
 logger = logging.getLogger(__name__)
+
+_JST = ZoneInfo("Asia/Tokyo")
 
 
 class TavilySearchTool:
@@ -51,7 +55,7 @@ class TavilySearchTool:
 
         try:
             search_params = {
-                "query": query,
+                "query": self._with_jst_datetime_context(query),
                 "max_results": max_results,
                 "search_depth": "basic",
                 "include_answer": True,
@@ -90,6 +94,12 @@ class TavilySearchTool:
         except Exception as e:
             logger.exception("Tavily search error: %s", e)
             return {"success": False, "text": "", "results": [], "sources": []}
+
+    @staticmethod
+    def _with_jst_datetime_context(query: str) -> str:
+        """検索クエリにJST現在日時のコンテキストを付与する"""
+        now = datetime.now(_JST).strftime("%Y-%m-%d %H:%M:%S %Z")
+        return f"現在日時(JST): {now}\n検索クエリ: {query}"
 
     @staticmethod
     def should_use_web_search(query: str) -> bool:

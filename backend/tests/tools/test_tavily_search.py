@@ -62,6 +62,9 @@ class TestTavilySearchToolSearch:
         assert len(result["sources"]) == 1
         assert result["sources"][0]["uri"] == "https://example.com"
         assert result["sources"][0]["title"] == "テスト"
+        called_query = tool.client.search.call_args.kwargs["query"]
+        assert called_query.startswith("現在日時(JST): ")
+        assert "検索クエリ: テストクエリ" in called_query
 
     @pytest.mark.asyncio
     async def test_search_success_no_answer(self):

@@ -131,7 +131,19 @@
           "query": "今日開催されるイベントを教えてください。",
           "expected_route": "event",
           "expected_facts": ["イベント"],
+          "required_sources": ["google_calendar|connpass|spreadsheet"],
           "prohibited_claims": [],
+          "expected_language": "ja",
+          "safety_check": false
+        },
+        {
+          "id": "Q-EVT-JA-TODAY-GROUNDED-001",
+          "language": "ja",
+          "query": "今日開催されるイベントを教えてください。",
+          "expected_route": "event",
+          "expected_facts": ["イベント"],
+          "required_sources": ["google_calendar|connpass|spreadsheet"],
+          "prohibited_claims": ["キャンセル", "中止", "延期", "cancelled", "canceled"],
           "expected_language": "ja",
           "safety_check": false
         },
@@ -141,6 +153,7 @@
           "query": "What events are happening at Engineer Cafe this week?",
           "expected_route": "event",
           "expected_facts": ["event|events|meetup|session|workshop"],
+          "required_sources": ["google_calendar|connpass|spreadsheet"],
           "prohibited_claims": [],
           "expected_language": "en",
           "safety_check": false

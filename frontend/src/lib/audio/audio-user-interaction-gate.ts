@@ -1,14 +1,62 @@
 type UserInteractionCallback = () => void | Promise<void>;
 
 const INTERACTION_EVENTS: Array<'click' | 'touchstart' | 'keydown'> = ['click', 'touchstart', 'keydown'];
+export const AUDIO_USER_INTERACTION_SESSION_STORAGE_KEY =
+  'engineer-cafe:audio-user-interaction-unlocked';
+export const DEFAULT_AUDIO_USER_INTERACTION_WAIT_TIMEOUT_MS = 5000;
 
 let hasUserInteracted = false;
 let listenersRegistered = false;
 const pendingCallbacks = new Set<UserInteractionCallback>();
 let pendingInteractionPromise: Promise<void> | null = null;
 let resolvePendingInteraction: (() => void) | null = null;
+let pendingInteractionTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
 const isBrowser = (): boolean => typeof window !== 'undefined' && typeof document !== 'undefined';
+
+const readStoredAudioInteractionBypass = (): boolean => {
+  if (!isBrowser()) {
+    return false;
+  }
+
+  try {
+    return window.sessionStorage?.getItem(AUDIO_USER_INTERACTION_SESSION_STORAGE_KEY) === 'true';
+  } catch {
+    return false;
+  }
+};
+
+const persistAudioInteractionBypass = (): void => {
+  if (!isBrowser()) {
+    return;
+  }
+
+  try {
+    window.sessionStorage?.setItem(AUDIO_USER_INTERACTION_SESSION_STORAGE_KEY, 'true');
+  } catch {
+    // Session storage can be unavailable in private or restricted browser contexts.
+  }
+};
+
+const clearStoredAudioInteractionBypass = (): void => {
+  if (!isBrowser()) {
+    return;
+  }
+
+  try {
+    window.sessionStorage?.removeItem(AUDIO_USER_INTERACTION_SESSION_STORAGE_KEY);
+  } catch {
+    // Ignore storage cleanup failures in tests and restricted browser contexts.
+  }
+};
+
+const refreshAudioInteractionFromSessionStorage = (): boolean => {
+  if (!hasUserInteracted && readStoredAudioInteractionBypass()) {
+    hasUserInteracted = true;
+  }
+
+  return hasUserInteracted;
+};
 
 export const isIOSWebKitAudio = (): boolean => {
   if (!isBrowser()) return false;
@@ -46,6 +94,10 @@ export const getTapToEnableAudioMessage = (language: string = 'ja'): string => {
 };
 
 const clearPendingInteraction = (): void => {
+  if (pendingInteractionTimeoutId !== null) {
+    clearTimeout(pendingInteractionTimeoutId);
+    pendingInteractionTimeoutId = null;
+  }
   resolvePendingInteraction?.();
   pendingInteractionPromise = null;
   resolvePendingInteraction = null;
@@ -79,6 +131,7 @@ const unlockAudioInteraction = (): void => {
   }
 
   hasUserInteracted = true;
+  persistAudioInteractionBypass();
   removeInteractionListeners();
   clearPendingInteraction();
   flushPendingCallbacks();
@@ -103,7 +156,7 @@ const ensureInteractionListenersRegistered = (): void => {
 };
 
 export const registerAudioInteractionCallback = (callback: UserInteractionCallback): void => {
-  if (hasUserInteracted) {
+  if (refreshAudioInteractionFromSessionStorage()) {
     Promise.resolve(callback()).catch((error) => {
       console.error('[AudioInteractionGate] Failed to run audio interaction callback:', error);
     });
@@ -114,8 +167,10 @@ export const registerAudioInteractionCallback = (callback: UserInteractionCallba
   ensureInteractionListenersRegistered();
 };
 
-export const waitForAudioUserInteraction = (): Promise<void> => {
-  if (hasUserInteracted) {
+export const waitForAudioUserInteraction = (
+  timeoutMs: number = DEFAULT_AUDIO_USER_INTERACTION_WAIT_TIMEOUT_MS,
+): Promise<void> => {
+  if (refreshAudioInteractionFromSessionStorage()) {
     return Promise.resolve();
   }
 
@@ -127,6 +182,12 @@ export const waitForAudioUserInteraction = (): Promise<void> => {
     });
   }
 
+  if (timeoutMs > 0 && pendingInteractionTimeoutId === null) {
+    pendingInteractionTimeoutId = setTimeout(() => {
+      unlockAudioInteraction();
+    }, timeoutMs);
+  }
+
   return pendingInteractionPromise;
 };
 
@@ -134,7 +195,7 @@ export const markAudioUserInteraction = (): void => {
   unlockAudioInteraction();
 };
 
-export const hasAudioUserInteraction = (): boolean => hasUserInteracted;
+export const hasAudioUserInteraction = (): boolean => refreshAudioInteractionFromSessionStorage();
 
 export const registerAudioContextResumeOnInteraction = (audioContext: AudioContext): void => {
   registerAudioInteractionCallback(async () => {
@@ -147,7 +208,12 @@ export const registerAudioContextResumeOnInteraction = (audioContext: AudioConte
 export const resetAudioUserInteractionGate = (): void => {
   removeInteractionListeners();
   pendingCallbacks.clear();
+  if (pendingInteractionTimeoutId !== null) {
+    clearTimeout(pendingInteractionTimeoutId);
+    pendingInteractionTimeoutId = null;
+  }
   pendingInteractionPromise = null;
   resolvePendingInteraction = null;
   hasUserInteracted = false;
+  clearStoredAudioInteractionBypass();
 };

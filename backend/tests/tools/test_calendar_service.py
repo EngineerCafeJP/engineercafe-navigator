@@ -165,7 +165,7 @@ class TestCalculateTimeRange:
         assert time_max == datetime(2026, 3, 1, 23, 59, 59, 0)
 
     def test_calculate_this_month(self, service, mock_now, monkeypatch):
-        """Test 'thisMonth' returns first day to last day of current month"""
+        """Test 'thisMonth' excludes past days in the current month"""
         monkeypatch.setattr(
             "backend.tools.calendar_service.datetime",
             MagicMock(now=lambda *args, **kwargs: mock_now),
@@ -173,8 +173,8 @@ class TestCalculateTimeRange:
 
         time_min, time_max = service._calculate_time_range("thisMonth")
 
-        # First day of February 2026
-        assert time_min == datetime(2026, 2, 1, 0, 0, 0, 0)
+        # FU-18: do not include past events earlier in the current month.
+        assert time_min == datetime(2026, 2, 16, 0, 0, 0, 0)
         # Last day of February 2026 (28 days in 2026)
         assert time_max.year == 2026
         assert time_max.month == 2
@@ -235,6 +235,33 @@ class TestParseICSContent:
         assert events[0]["location"] == "Tokyo Office"
         # Timezone info in parameter should be handled
         assert events[0]["start"] == "2026-02-15T19:00:00"
+
+    def test_parse_ics_filters_cancelled_status(self, service):
+        ics = """BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+DTSTART:20260518T100000Z
+DTEND:20260518T120000Z
+SUMMARY:Cancelled Workshop
+STATUS:CANCELLED
+UID:cancelled-001
+END:VEVENT
+END:VCALENDAR"""
+
+        assert service._parse_ics_content(ics) == []
+
+    def test_parse_ics_filters_cancelled_summary_prefix(self, service):
+        ics = """BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+DTSTART:20260518T100000Z
+DTEND:20260518T120000Z
+SUMMARY:中止イベント
+UID:cancelled-002
+END:VEVENT
+END:VCALENDAR"""
+
+        assert service._parse_ics_content(ics) == []
 
 
 class TestSearchEvents:
@@ -576,3 +603,23 @@ class TestParseICSNoiseFiltering:
         assert any(
             "Filtered" in m and "low-value" in m for m in messages
         ), f"expected a 'Filtered ... low-value' log, got: {messages}"
+
+
+class TestFilterEventsByTime:
+    @pytest.fixture
+    def service(self):
+        return CalendarService()
+
+    def test_filter_events_converts_utc_to_jst_before_time_window(self, service):
+        events = [{"title": "JST Today", "start": "2026-05-17T15:30:00Z"}]
+        time_min = datetime(2026, 5, 18, 0, 0, 0)
+        time_max = datetime(2026, 5, 18, 23, 59, 59)
+
+        assert service._filter_events_by_time(events, time_min, time_max) == events
+
+    def test_filter_events_excludes_next_jst_day_utc_boundary(self, service):
+        events = [{"title": "JST Tomorrow", "start": "2026-05-18T15:00:00Z"}]
+        time_min = datetime(2026, 5, 18, 0, 0, 0)
+        time_max = datetime(2026, 5, 18, 23, 59, 59)
+
+        assert service._filter_events_by_time(events, time_min, time_max) == []

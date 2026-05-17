@@ -65,6 +65,14 @@ class TestEventPrompts:
         # 異なるプロンプトであることを確認
         assert result_ja != result_en
 
+    def test_build_event_prompt_contains_jst_range_rule(self):
+        """イベント範囲の解釈ルールをプロンプトに明示する"""
+        prompt = build_event_prompt("今週のイベントは？", "- LT会", "thisWeek", "ja")
+
+        assert "範囲解釈ルール" in prompt
+        assert "JST" in prompt
+        assert "過去日は含めない" in prompt
+
 
 class TestFacilityPrompts:
     """FacilityAgent プロンプトのテスト"""

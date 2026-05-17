@@ -2,8 +2,13 @@ import assert from 'node:assert/strict';
 import { afterEach, beforeEach, test } from 'node:test';
 
 import {
+  AUDIO_USER_INTERACTION_SESSION_STORAGE_KEY,
   getTapToEnableAudioMessage,
+  hasAudioUserInteraction,
   isIOSWebKitAudio,
+  registerAudioInteractionCallback,
+  resetAudioUserInteractionGate,
+  waitForAudioUserInteraction,
 } from '../../lib/audio/audio-user-interaction-gate';
 
 interface NavigatorStub {
@@ -11,6 +16,12 @@ interface NavigatorStub {
   vendor: string;
   platform: string;
   maxTouchPoints: number;
+}
+
+interface SessionStorageStub {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
 }
 
 const originalWindowDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'window');
@@ -51,14 +62,35 @@ const stubNavigator = ({
   defineNavigatorProperty('maxTouchPoints', maxTouchPoints);
 };
 
+const createSessionStorageStub = (): SessionStorageStub => {
+  const values = new Map<string, string>();
+
+  return {
+    getItem(key: string): string | null {
+      return values.get(key) ?? null;
+    },
+    setItem(key: string, value: string): void {
+      values.set(key, value);
+    },
+    removeItem(key: string): void {
+      values.delete(key);
+    },
+  };
+};
+
 beforeEach(() => {
   Object.defineProperty(globalThis, 'window', {
     configurable: true,
-    value: {},
+    value: {
+      sessionStorage: createSessionStorageStub(),
+    },
   });
   Object.defineProperty(globalThis, 'document', {
     configurable: true,
-    value: {},
+    value: {
+      addEventListener() {},
+      removeEventListener() {},
+    },
   });
   Object.defineProperty(globalThis, 'navigator', {
     configurable: true,
@@ -74,6 +106,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  resetAudioUserInteractionGate();
   restoreGlobalProperty('window', originalWindowDescriptor);
   restoreGlobalProperty('document', originalDocumentDescriptor);
   restoreGlobalProperty('navigator', originalNavigatorDescriptor);
@@ -175,4 +208,35 @@ test('getTapToEnableAudioMessage falls back to English for empty string', {
   concurrency: false,
 }, () => {
   assert.equal(getTapToEnableAudioMessage(''), 'Tap once more to enable audio playback');
+});
+
+test('waitForAudioUserInteraction unlocks after timeout and persists session bypass', {
+  concurrency: false,
+}, async () => {
+  const startedAt = Date.now();
+
+  await waitForAudioUserInteraction(10);
+
+  assert.equal(hasAudioUserInteraction(), true);
+  assert.equal(
+    window.sessionStorage.getItem(AUDIO_USER_INTERACTION_SESSION_STORAGE_KEY),
+    'true',
+  );
+  assert.ok(Date.now() - startedAt < 1000);
+});
+
+test('sessionStorage bypass immediately unlocks gate callbacks', {
+  concurrency: false,
+}, async () => {
+  window.sessionStorage.setItem(AUDIO_USER_INTERACTION_SESSION_STORAGE_KEY, 'true');
+
+  let callbackCalls = 0;
+  registerAudioInteractionCallback(() => {
+    callbackCalls += 1;
+  });
+
+  await waitForAudioUserInteraction(1000);
+
+  assert.equal(hasAudioUserInteraction(), true);
+  assert.equal(callbackCalls, 1);
 });
