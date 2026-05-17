@@ -225,6 +225,29 @@ test('waitForAudioUserInteraction unlocks after timeout and persists session byp
   assert.ok(Date.now() - startedAt < 1000);
 });
 
+test('timeout unlock flushes pending callbacks once and makes later waits immediate', {
+  concurrency: false,
+}, async () => {
+  let callbackCalls = 0;
+  registerAudioInteractionCallback(() => {
+    callbackCalls += 1;
+  });
+
+  await waitForAudioUserInteraction(10);
+
+  assert.equal(callbackCalls, 1);
+  assert.equal(
+    window.sessionStorage.getItem(AUDIO_USER_INTERACTION_SESSION_STORAGE_KEY),
+    'true',
+  );
+
+  const secondWaitStartedAt = Date.now();
+  await waitForAudioUserInteraction(1000);
+
+  assert.equal(callbackCalls, 1);
+  assert.ok(Date.now() - secondWaitStartedAt < 250);
+});
+
 test('sessionStorage bypass immediately unlocks gate callbacks', {
   concurrency: false,
 }, async () => {

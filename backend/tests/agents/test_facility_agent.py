@@ -269,6 +269,14 @@ class TestFacilityAgent:
         assert "2階と地下1階は利用できません" in wheelchair["answer"]
         assert "多目的トイレはありません" in wheelchair["answer"]
 
+        photography = agent._get_canonical_response(
+            "館内で写真を撮ってもいいですか？", "photography", "ja"
+        )
+        assert photography is not None
+        assert "写真撮影" in photography["answer"]
+        assert "可能" in photography["answer"]
+        assert "プライバシー" in photography["answer"]
+
     def test_alpha_c127_ja_operational_detail_canonical(self):
         """JA C-127: 貸切・防音室・充電・夏場・建築特徴を固定する"""
         agent = FacilityAgent()

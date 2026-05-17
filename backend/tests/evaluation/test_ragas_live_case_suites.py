@@ -233,6 +233,13 @@ def test_source_requirement_accepts_knowledge_and_event_alternatives():
         ["google_calendar"],
     )
     assert _source_requirement_ok(
+        {"sources": [], "searched_sources": ["spreadsheet"]}, [EVENT_SOURCE_REQUIREMENT]
+    ) == (
+        True,
+        [],
+        ["spreadsheet"],
+    )
+    assert _source_requirement_ok(
         {"sources": ["fallback"]}, [LOCAL_KNOWLEDGE_SOURCE_REQUIREMENT]
     ) == (
         False,

@@ -790,6 +790,31 @@ class FacilityAgent:
             }
             return self._canonical_result(answers.get(language, answers["ja"]), request_type)
 
+        if request_type == "photography" or self._asks_photography_policy(normalized):
+            answers = {
+                "ja": (
+                    "[relaxed]一般利用時の写真撮影やスナップ撮影は可能です。"
+                    "他の利用者の顔や作業内容が写り込む場合はプライバシーに配慮し、"
+                    "商業撮影、三脚・フラッシュ、大規模な撮影は事前にスタッフへ確認してください。"
+                ),
+                "en": (
+                    "[relaxed]Casual photos and snapshots are allowed. Please respect "
+                    "other visitors' privacy if faces or work screens may be visible. "
+                    "Commercial shoots, tripods, flash, or large-scale filming should "
+                    "be confirmed with staff in advance."
+                ),
+                "zh": (
+                    "[relaxed]一般参观时可以拍照和进行简单记录。若拍到其他使用者的脸或"
+                    "工作内容，请注意隐私。商业拍摄、三脚架、闪光灯或大规模拍摄请事先向工作人员确认。"
+                ),
+                "ko": (
+                    "[relaxed]일반 이용 중 사진 촬영이나 스냅 촬영은 가능합니다. "
+                    "다른 이용자의 얼굴이나 작업 내용이 찍힐 수 있으면 개인정보에 유의해 주세요. "
+                    "상업 촬영, 삼각대, 플래시, 대규모 촬영은 사전에 직원에게 확인해 주세요."
+                ),
+            }
+            return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
         if request_type == "bicycle" or self._asks_bicycle_parking(normalized):
             answers = {
                 "ja": (
@@ -1602,6 +1627,24 @@ class FacilityAgent:
             "accessibility",
             "accessible",
             "barrier-free",
+        )
+        return any(keyword in query for keyword in keywords)
+
+    @staticmethod
+    def _asks_photography_policy(query: str) -> bool:
+        keywords = (
+            "撮影",
+            "写真",
+            "カメラ",
+            "スナップ",
+            "photo",
+            "photography",
+            "filming",
+            "camera",
+            "拍照",
+            "摄影",
+            "촬영",
+            "사진",
         )
         return any(keyword in query for keyword in keywords)
 

@@ -555,6 +555,23 @@ class TestOrchestratorFastRouting:
         assert result["category"] == "current_info"
         assert result["request_type"] == "current_info"
 
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "今天是几月几号？",
+            "本周是哪几天？",
+            "오늘 날짜 알려줘",
+            "이번 주는 며칠부터 며칠까지예요?",
+        ],
+    )
+    def test_multilingual_date_only_routes_to_general_fast_path(self, orchestrator, query):
+        result = orchestrator._try_fast_routing(query)
+
+        assert result is not None
+        assert result["agent"] == "general_knowledge"
+        assert result["category"] == "current_info"
+        assert result["request_type"] == "current_info"
+
     def test_visitor_name_memory_write_not_assistant_profile(self, orchestrator):
         result = orchestrator._try_fast_routing("私の名前は田中です。覚えて")
 

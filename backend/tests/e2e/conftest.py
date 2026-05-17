@@ -13,6 +13,7 @@ import uuid
 from pathlib import Path
 
 import pytest
+import pytest_asyncio
 
 from backend.tests.fixtures.dataset_loader import DatasetLoader
 from backend.tests.utils.evaluators.llm_judge import LLMJudgeEvaluator, QualityDimension
@@ -69,16 +70,42 @@ def _check_e2e_env():
         )
 
 
-@pytest.fixture
-def workflow(_check_e2e_env):
+async def _close_shared_llm_provider() -> None:
+    """Close and reset the process-wide LLM provider used by agent singletons."""
+    from backend.llm import provider as llm_provider_module
+    from backend.llm.provider import reset_provider
+
+    provider = getattr(llm_provider_module, "_provider_instance", None)
+    if provider is not None:
+        close = getattr(provider, "close", None)
+        if callable(close):
+            try:
+                await close()
+            except RuntimeError as e:
+                if "Event loop is closed" not in str(e):
+                    raise
+    reset_provider()
+
+
+@pytest_asyncio.fixture(loop_scope="function")
+async def workflow(_check_e2e_env):
     """MainWorkflow インスタンス（function-scoped、checkpointer なし）
 
     各テスト関数で新しいインスタンスを作成し、httpxクライアントの
     イベントループ不整合を回避する。
     """
+    from backend.llm.provider import reset_provider
     from backend.workflows.main_workflow import MainWorkflow
 
-    return MainWorkflow(checkpointer=None)
+    reset_provider()
+    workflow = MainWorkflow(checkpointer=None)
+    try:
+        yield workflow
+    finally:
+        try:
+            await workflow.close()
+        finally:
+            await _close_shared_llm_provider()
 
 
 @pytest.fixture(scope="session")
@@ -319,7 +346,8 @@ def keywords_match(answer: str, expected_keywords: list[str], threshold: float =
     """
     if not expected_keywords:
         return True
-    hits = sum(1 for kw in expected_keywords if kw in answer)
+    normalized_answer = normalize_assertion_text(answer)
+    hits = sum(1 for kw in expected_keywords if normalize_assertion_text(kw) in normalized_answer)
     return (hits / len(expected_keywords)) >= threshold
 
 
