@@ -65,6 +65,7 @@ class TestGKAAnswerQueryDispatch:
             "さっき何を聞いた？",
             "",
             "ja",
+            state_context=None,
             long_term_memory=long_term_memory,
         )
         assert result["answer"] == "メモリ回答"
@@ -199,6 +200,36 @@ class TestGKAHandleMemoryQuery:
         prompt = call_kwargs["messages"][0].content
         assert "長期メモリ" in prompt
         assert "山田次郎" in prompt
+
+    @pytest.mark.asyncio
+    async def test_handle_memory_query_uses_state_context_for_session_preference_recall(self):
+        """同一セッションの受付実用情報は state context から決定的に回答する"""
+        mock_memory = MagicMock()
+        mock_memory.get_context = AsyncMock()
+
+        agent = self._create_agent(memory_system=mock_memory)
+        result = await agent._handle_memory_query(
+            "私の希望席と利用目的を確認してください。",
+            "session1",
+            "ja",
+            state_context={
+                "recent_messages": [
+                    {
+                        "role": "user",
+                        "content": "窓側の席がいいです。コワーキングスペースを使いたいです。",
+                    }
+                ],
+                "context_string": "窓側の席がいいです。コワーキングスペースを使いたいです。",
+            },
+        )
+
+        assert result["metadata"]["status"] == "success"
+        assert result["metadata"]["sources"] == ["session_memory"]
+        assert result["metadata"]["provider_called"] is False
+        assert "希望席は窓側" in result["answer"]
+        assert "利用目的はコワーキング" in result["answer"]
+        mock_memory.get_context.assert_not_called()
+        agent.provider.generate.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_handle_memory_query_error(self):

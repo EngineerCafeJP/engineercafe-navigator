@@ -10,7 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 from backend.agents.orchestrator_agent import OrchestratorAgent
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from unittest.mock import MagicMock, Mock, AsyncMock, patch
 
 
@@ -21,6 +21,36 @@ def _mock_runtime():
     rt.context.user_id = "anonymous"
     rt.store = None
     return rt
+
+
+def test_checkpoint_summary_messages_are_available_to_memory_context():
+    from backend.workflows.main_workflow import MainWorkflow
+
+    rows = MainWorkflow._checkpoint_messages_to_recent_memory(
+        [
+            SystemMessage(
+                content=(
+                    "[Previous 22 messages summarized: Important earlier user facts: "
+                    "この会話では、私の希望席は窓側で、目的は集中作業です。覚えてください。]"
+                )
+            ),
+            HumanMessage(content="この会話の最初に伝えた希望席と目的を覚えていますか。"),
+        ]
+    )
+
+    assert rows[0]["role"] == "assistant"
+    assert "希望席は窓側" in rows[0]["content"]
+    assert "目的は集中作業" in rows[0]["content"]
+
+
+def test_memory_context_queries_do_not_bypass_memory_loader_fast_path():
+    from backend.workflows.main_workflow import MainWorkflow
+
+    workflow = object.__new__(MainWorkflow)
+
+    assert workflow._requires_memory_loader_before_fast_path(
+        "私の希望席と利用目的を確認してください。"
+    )
 
 
 class _StubLanguageProcessor:

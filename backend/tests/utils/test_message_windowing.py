@@ -25,6 +25,28 @@ class TestMessageWindow:
         # Should have max_messages conv msgs + 1 summary
         assert len(result) <= 5 + 1  # 5 recent + 1 summary
 
+    def test_window_summary_preserves_explicit_user_memory_facts(self):
+        """Dropped messages should leave explicit user facts in the summary."""
+        window = MessageWindow(max_messages=4)
+        msgs = [
+            HumanMessage(
+                content="この会話では、私の希望席は窓側で、目的は集中作業です。覚えてください。"
+            ),
+            AIMessage(content="承知しました。"),
+        ]
+        for i in range(8):
+            msgs.append(HumanMessage(content=f"ターン {i} です。助言をください。"))
+            msgs.append(AIMessage(content=f"助言 {i} です。"))
+
+        result = window.apply_window(msgs)
+        summaries = [m for m in result if isinstance(m, SystemMessage)]
+
+        assert summaries
+        summary_text = summaries[0].content
+        assert "Important earlier user facts" in summary_text
+        assert "希望席は窓側" in summary_text
+        assert "目的は集中作業" in summary_text
+
     def test_system_messages_preserved(self):
         """System messages should always be preserved"""
         window = MessageWindow(max_messages=3)
