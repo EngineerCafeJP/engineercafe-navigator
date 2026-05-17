@@ -8,7 +8,7 @@ from unittest.mock import ANY, AsyncMock, MagicMock, patch
 import httpx
 from langchain_core.messages import HumanMessage
 
-from backend.llm.openrouter import OpenRouterProvider, OpenRouterError
+from backend.llm.openrouter import LLMResponseText, OpenRouterProvider, OpenRouterError
 from backend.llm.models import ModelConfig, SupportedModel
 
 
@@ -166,6 +166,10 @@ class TestOpenRouterProvider:
 
             # プライマリモデルが成功し、レスポンスが返る
             assert response == "Primary model response"
+            assert isinstance(response, LLMResponseText)
+            assert response.llm_metadata["provider"] == "openrouter"
+            assert response.llm_metadata["model"] == "google/gemini-3.1-flash-lite-preview"
+            assert isinstance(response.llm_metadata["llm_latency_ms"], int)
             # 1回だけ呼び出されることを確認（フォールバック不要）
             assert mock.call_count == 1
             metadata_mock.assert_called_once_with(
@@ -173,6 +177,37 @@ class TestOpenRouterProvider:
                 model="google/gemini-3.1-flash-lite-preview",
                 llm_latency_ms=ANY,
             )
+
+    @pytest.mark.asyncio
+    async def test_generate_returns_metadata_when_context_tracker_fails(self):
+        """Provider/model metadata is carried on the return value, not only ContextVar."""
+        messages = [HumanMessage(content="Test message")]
+        config = ModelConfig(
+            model_id=SupportedModel.GEMINI_3_1_FLASH_LITE,
+            fallback_model=None,
+        )
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "choices": [{"message": {"content": "Context-free metadata response"}}]
+        }
+
+        async def mock_post(*args, **kwargs):
+            return mock_response
+
+        with (
+            patch.object(self.provider._http_client, "post", side_effect=mock_post),
+            patch(
+                "backend.llm.openrouter.record_llm_call_metadata",
+                side_effect=RuntimeError("context unavailable"),
+            ),
+        ):
+            response = await self.provider.generate(messages, config)
+
+        assert response == "Context-free metadata response"
+        assert response.llm_metadata["provider"] == "openrouter"
+        assert response.llm_metadata["model"] == "google/gemini-3.1-flash-lite-preview"
+        assert isinstance(response.llm_metadata["llm_latency_ms"], int)
 
     @pytest.mark.asyncio
     async def test_cerebras_fast_primary_before_openrouter(self):
@@ -206,6 +241,10 @@ class TestOpenRouterProvider:
             response = await self.provider.generate(messages, config)
 
         assert response == "Cerebras fast response"
+        assert isinstance(response, LLMResponseText)
+        assert response.llm_metadata["provider"] == "cerebras"
+        assert response.llm_metadata["model"] == "gpt-oss-120b"
+        assert isinstance(response.llm_metadata["llm_latency_ms"], int)
         cerebras_mock.assert_awaited_once()
         openrouter_mock.assert_not_called()
         metadata_mock.assert_called_once_with(

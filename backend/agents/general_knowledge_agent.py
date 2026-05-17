@@ -24,6 +24,7 @@ import logging
 from typing import Dict, Any, List, Optional, Literal
 
 from backend.config.prompts.memory_prompts import build_memory_prompt
+from backend.agents.llm_metadata import merge_llm_metadata
 from backend.llm.openrouter import OpenRouterProvider
 from backend.llm.models import get_model_config
 from backend.tools.enhanced_rag import EnhancedRAGSearch
@@ -88,6 +89,7 @@ class GeneralKnowledgeAgent:
                 query,
                 session_id or "",
                 language,
+                state_context=state_context,
                 long_term_memory=long_term_memory,
             )
         if query_type == "assistant_profile":
@@ -225,14 +227,14 @@ class GeneralKnowledgeAgent:
 
             logger.info("回答生成完了: emotion=%s, confidence=%s", emotion, confidence)
 
-            return {
-                "answer": response_text,
-                "emotion": emotion,
-                "metadata": {
+            metadata = merge_llm_metadata(
+                {
                     "agent": self.name,
                     "status": "success",
                     "confidence": confidence,
                     "category": "general_knowledge",
+                    "request_type": mode,
+                    "route": "general_knowledge",
                     "query_type": mode,
                     "model_use_case": (
                         "deep_reasoning" if mode == "deep_reasoning" else "general_knowledge"
@@ -241,6 +243,13 @@ class GeneralKnowledgeAgent:
                     "web_search_used": "web_search" in sources,
                     "rag_used": any(source.startswith("knowledge_base") for source in sources),
                 },
+                response_text,
+            )
+
+            return {
+                "answer": str(response_text),
+                "emotion": emotion,
+                "metadata": metadata,
             }
 
         except Exception as e:
@@ -265,17 +274,24 @@ class GeneralKnowledgeAgent:
         query: str,
         session_id: str,
         language: str = "ja",
+        state_context: Optional[Dict[str, Any]] = None,
         long_term_memory: Optional[list] = None,
     ) -> Dict[str, Any]:
         """メモリ関連クエリを処理"""
-        if not self.memory_system:
+        has_state_memory_context = self._has_state_memory_context(state_context)
+        if not self.memory_system and not has_state_memory_context:
             return self._handle_no_memory_system(language)
 
         try:
             query_type = self._detect_memory_query_type(query)
-            context = await self.memory_system.get_context(
-                query, session_id, {"language": language, "inherit_context": True}
-            )
+            if has_state_memory_context:
+                context = dict(state_context)
+            elif self.memory_system:
+                context = await self.memory_system.get_context(
+                    query, session_id, {"language": language, "inherit_context": True}
+                )
+            else:
+                return self._no_history_response(language)
             context = self._merge_long_term_memory_context(
                 context,
                 long_term_memory,
@@ -287,6 +303,15 @@ class GeneralKnowledgeAgent:
                     return self._memory_write_ack_response(language)
                 return self._no_history_response(language)
 
+            preference_response = self._session_preference_recall_response(
+                query,
+                context,
+                query_type,
+                language,
+            )
+            if preference_response is not None:
+                return preference_response
+
             prompt = self._build_memory_prompt(query, context, query_type, language)
 
             from langchain_core.messages import HumanMessage
@@ -296,17 +321,25 @@ class GeneralKnowledgeAgent:
 
             emotion = self._determine_memory_emotion(context, query_type)
 
-            return {
-                "answer": answer,
-                "emotion": emotion,
-                "metadata": {
+            metadata = merge_llm_metadata(
+                {
                     "agent": self.name,
                     "status": "success",
+                    "category": "general_knowledge",
+                    "request_type": query_type,
+                    "route": "general_knowledge",
                     "query_type": query_type,
                     "message_count": len(context.get("recent_messages", [])),
                     "inherited_request_type": context.get("inherited_request_type"),
                     "long_term_memory_count": len(context.get("long_term_memory", [])),
                 },
+                answer,
+            )
+
+            return {
+                "answer": str(answer),
+                "emotion": emotion,
+                "metadata": metadata,
             }
         except Exception as e:
             logger.exception("Memory query error: %s", e)
@@ -319,6 +352,126 @@ class GeneralKnowledgeAgent:
                 "emotion": "surprised",
                 "metadata": {"agent": self.name, "status": "error", "error": str(e)},
             }
+
+    @staticmethod
+    def _has_state_memory_context(state_context: Optional[Dict[str, Any]]) -> bool:
+        if not isinstance(state_context, dict):
+            return False
+        return bool(
+            state_context.get("recent_messages")
+            or state_context.get("context_string")
+            or state_context.get("long_term_memory")
+        )
+
+    def _session_preference_recall_response(
+        self,
+        query: str,
+        context: Dict[str, Any],
+        query_type: str,
+        language: str,
+    ) -> Optional[Dict[str, Any]]:
+        """Answer practical same-session seat/purpose recalls deterministically."""
+        normalized = query.lower()
+        asks_seat_or_purpose = any(
+            marker in normalized
+            for marker in (
+                "希望席",
+                "好きな席",
+                "利用目的",
+                "目的",
+                "preferred seat",
+                "seat preference",
+                "purpose",
+            )
+        )
+        if not asks_seat_or_purpose:
+            return None
+
+        seat: Optional[str] = None
+        purpose: Optional[str] = None
+        contents = self._trusted_session_memory_contents(context)
+
+        for content in contents:
+            lower_content = content.lower()
+            if seat is None:
+                if "窓側" in content or ("窓" in content and "席" in content):
+                    seat = "窓側"
+                elif "電源" in content and "席" in content:
+                    seat = "電源に近い席"
+                elif "集中スペース" in content:
+                    seat = "集中スペース"
+            if purpose is None:
+                if "集中作業" in content:
+                    purpose = "集中作業"
+                elif "コワーキングスペース" in content or "コワーキング" in content:
+                    purpose = "コワーキング"
+                elif "開発作業" in content or "作業" in content:
+                    purpose = "作業"
+                elif "coworking" in lower_content:
+                    purpose = "coworking"
+                elif "focus work" in lower_content:
+                    purpose = "focus work"
+
+        if seat is None and purpose is None:
+            return None
+
+        if language == "en":
+            parts = []
+            if seat:
+                parts.append(f"your preferred seat is {seat}")
+            if purpose:
+                parts.append(f"your purpose is {purpose}")
+            answer = "[relaxed]In this session, " + " and ".join(parts) + "."
+        else:
+            if seat and purpose:
+                answer = f"[relaxed]この会話では、希望席は{seat}、利用目的は{purpose}です。"
+            elif seat:
+                answer = f"[relaxed]この会話では、希望席は{seat}です。"
+            else:
+                answer = f"[relaxed]この会話では、利用目的は{purpose}です。"
+
+        metadata = {
+            "agent": self.name,
+            "status": "success",
+            "category": "general_knowledge",
+            "request_type": query_type,
+            "route": "general_knowledge",
+            "query_type": query_type,
+            "message_count": len(context.get("recent_messages", [])),
+            "inherited_request_type": context.get("inherited_request_type"),
+            "long_term_memory_count": len(context.get("long_term_memory", [])),
+            "provider_called": False,
+            "sources": ["session_memory"],
+        }
+        return {
+            "answer": answer,
+            "emotion": "relaxed",
+            "metadata": metadata,
+        }
+
+    @staticmethod
+    def _trusted_session_memory_contents(context: Dict[str, Any]) -> list[str]:
+        """Return user-authored or workflow-summarized facts for deterministic recall."""
+        contents: list[str] = []
+        for message in context.get("recent_messages", []):
+            if not isinstance(message, dict):
+                continue
+            content = str(message.get("content") or "")
+            if not content:
+                continue
+            role = str(message.get("role") or "").lower()
+            if role == "user" or "Important earlier user facts:" in content:
+                contents.append(content)
+
+        context_string = str(context.get("context_string") or "").strip()
+        if context_string:
+            for line in context_string.splitlines():
+                stripped = line.strip()
+                if stripped.startswith(("ユーザー:", "User:")):
+                    contents.append(stripped.split(":", 1)[1].strip())
+                elif "Important earlier user facts:" in stripped:
+                    contents.append(stripped)
+        return contents
 
     def _detect_memory_query_type(self, query: str) -> str:
         """メモリ質問タイプの判定"""
@@ -707,6 +860,8 @@ class GeneralKnowledgeAgent:
                 "agent": self.name,
                 "status": "success",
                 "category": "general_knowledge",
+                "request_type": "assistant_profile",
+                "route": "general_knowledge",
                 "query_type": "assistant_profile",
                 "sources": [],
                 "web_search_used": False,
@@ -755,6 +910,8 @@ class GeneralKnowledgeAgent:
                 "agent": self.name,
                 "status": "success",
                 "category": "general_knowledge",
+                "request_type": "daily_conversation",
+                "route": "general_knowledge",
                 "query_type": "daily_conversation",
                 "sources": [],
                 "web_search_used": False,
@@ -779,6 +936,8 @@ class GeneralKnowledgeAgent:
                 "agent": self.name,
                 "status": "current_info_unavailable",
                 "category": "general_knowledge",
+                "request_type": "current_info",
+                "route": "general_knowledge",
                 "query_type": "current_info",
                 "sources": [],
                 "web_search_used": False,

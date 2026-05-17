@@ -13,7 +13,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable
 
-from backend.observability.structured_logger import log_ltm_promote
+from backend.observability.structured_logger import log_ltm_promote, log_memory_event
 from backend.utils.cafe_entity import canonicalize_facility_memory_key_text
 
 
@@ -21,6 +21,17 @@ from backend.utils.cafe_entity import canonicalize_facility_memory_key_text
 class PromotionDecision:
     promote: bool
     reason: str
+
+
+def _duration_ms(started_at: float) -> int:
+    return max(0, int((time.perf_counter() - started_at) * 1000))
+
+
+def _log_memory_event_safely(event: str, **fields: Any) -> None:
+    try:
+        log_memory_event(event=event, **fields)
+    except Exception:
+        pass
 
 
 class MemoryPromoter:
@@ -48,90 +59,126 @@ class MemoryPromoter:
         Returns:
             集計統計 {"candidates", "aggregated", "promoted", "duplicates_skipped", ...}
         """
+        started_at = time.perf_counter()
         candidate_ns = (self.candidate_namespace_root, user_id)
         long_term_ns = (self.long_term_namespace_root, user_id)
         try:
             log_ltm_promote(status="started", user_id=user_id)
         except Exception:
             pass
+        _log_memory_event_safely(
+            "memory_promote_run",
+            status="started",
+            user_id=user_id,
+            max_candidates=max_candidates,
+            max_existing=max_existing,
+            delete_promoted_candidates=delete_promoted_candidates,
+        )
 
-        candidate_items = await store.asearch(candidate_ns, query="", limit=max_candidates)
-        if not candidate_items:
+        try:
+            candidate_items = await store.asearch(candidate_ns, query="", limit=max_candidates)
+            if not candidate_items:
+                stats = {
+                    "candidates": 0,
+                    "aggregated": 0,
+                    "promoted": 0,
+                    "duplicates_skipped": 0,
+                    "rule_rejected": 0,
+                }
+                try:
+                    log_ltm_promote(status="skipped", user_id=user_id, **stats)
+                except Exception:
+                    pass
+                _log_memory_event_safely(
+                    "memory_promote_run",
+                    status="skipped",
+                    user_id=user_id,
+                    duration_ms=_duration_ms(started_at),
+                    **stats,
+                )
+                return stats
+
+            aggregated = self.aggregate_candidates(candidate_items)
+            existing_items = await store.asearch(long_term_ns, query="", limit=max_existing)
+            existing_keys = self.build_existing_index(existing_items)
+
+            promoted = 0
+            duplicates_skipped = 0
+            rule_rejected = 0
+            promoted_candidate_keys: list[str] = []
+
+            for agg_key, aggregate in aggregated.items():
+                decision = self.should_promote(aggregate)
+                if not decision.promote:
+                    rule_rejected += 1
+                    continue
+
+                if agg_key in existing_keys:
+                    duplicates_skipped += 1
+                    continue
+
+                payload = self.to_long_term_record(aggregate)
+                try:
+                    await store.aput(long_term_ns, str(uuid.uuid4()), payload)
+                except Exception as exc:
+                    try:
+                        log_ltm_promote(
+                            status="failed",
+                            user_id=user_id,
+                            error_type=type(exc).__name__,
+                            promoted=promoted,
+                        )
+                    except Exception:
+                        pass
+                    raise
+                promoted += 1
+                promoted_candidate_keys.extend(aggregate["candidate_keys"])
+
+            if delete_promoted_candidates and hasattr(store, "adelete"):
+                for key in promoted_candidate_keys:
+                    try:
+                        await store.adelete(candidate_ns, key)
+                    except Exception:
+                        # cleanup failure is non-fatal
+                        pass
+
             stats = {
-                "candidates": 0,
-                "aggregated": 0,
-                "promoted": 0,
-                "duplicates_skipped": 0,
-                "rule_rejected": 0,
+                "candidates": len(candidate_items),
+                "aggregated": len(aggregated),
+                "promoted": promoted,
+                "duplicates_skipped": duplicates_skipped,
+                "rule_rejected": rule_rejected,
             }
             try:
-                log_ltm_promote(status="skipped", user_id=user_id, **stats)
+                log_ltm_promote(status="success", user_id=user_id, **stats)
             except Exception:
                 pass
+            _log_memory_event_safely(
+                "memory_promote_run",
+                status="success",
+                user_id=user_id,
+                duration_ms=_duration_ms(started_at),
+                **stats,
+            )
             return stats
-
-        aggregated = self.aggregate_candidates(candidate_items)
-        existing_items = await store.asearch(long_term_ns, query="", limit=max_existing)
-        existing_keys = self.build_existing_index(existing_items)
-
-        promoted = 0
-        duplicates_skipped = 0
-        rule_rejected = 0
-        promoted_candidate_keys: list[str] = []
-
-        for agg_key, aggregate in aggregated.items():
-            decision = self.should_promote(aggregate)
-            if not decision.promote:
-                rule_rejected += 1
-                continue
-
-            if agg_key in existing_keys:
-                duplicates_skipped += 1
-                continue
-
-            payload = self.to_long_term_record(aggregate)
-            try:
-                await store.aput(long_term_ns, str(uuid.uuid4()), payload)
-            except Exception as exc:
-                try:
-                    log_ltm_promote(
-                        status="failed",
-                        user_id=user_id,
-                        error_type=type(exc).__name__,
-                        promoted=promoted,
-                    )
-                except Exception:
-                    pass
-                raise
-            promoted += 1
-            promoted_candidate_keys.extend(aggregate["candidate_keys"])
-
-        if delete_promoted_candidates and hasattr(store, "adelete"):
-            for key in promoted_candidate_keys:
-                try:
-                    await store.adelete(candidate_ns, key)
-                except Exception:
-                    # cleanup failure is non-fatal
-                    pass
-
-        stats = {
-            "candidates": len(candidate_items),
-            "aggregated": len(aggregated),
-            "promoted": promoted,
-            "duplicates_skipped": duplicates_skipped,
-            "rule_rejected": rule_rejected,
-        }
-        try:
-            log_ltm_promote(status="success", user_id=user_id, **stats)
-        except Exception:
-            pass
-        return stats
+        except Exception as exc:
+            _log_memory_event_safely(
+                "memory_promote_run",
+                status="failed",
+                user_id=user_id,
+                duration_ms=_duration_ms(started_at),
+                error_type=type(exc).__name__,
+            )
+            raise
 
     @staticmethod
     def aggregate_candidates(items: Iterable[Any]) -> Dict[str, Dict[str, Any]]:
         """候補メモリを type+content 単位で集約する。"""
+        started_at = time.perf_counter()
         grouped: Dict[str, Dict[str, Any]] = {}
+        candidate_count = 0
         for item in items:
+            candidate_count += 1
             value = getattr(item, "value", None) or {}
             ctype = value.get("candidate_type") or value.get("type") or "unknown"
             content = str(value.get("content", "")).strip()
@@ -184,6 +231,14 @@ class MemoryPromoter:
             g["languages"] = sorted(g["languages"])
             g["sources"] = sorted(g["sources"])
             g["evidence_queries"] = sorted(g["evidence_queries"])
+        _log_memory_event_safely(
+            "memory_candidate_aggregate",
+            success=True,
+            duration_ms=_duration_ms(started_at),
+            candidate_count=candidate_count,
+            aggregated_count=len(grouped),
+            candidate_types=sorted({str(g["candidate_type"]) for g in grouped.values()}),
+        )
         return grouped
 
     @staticmethod

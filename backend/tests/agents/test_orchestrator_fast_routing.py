@@ -177,6 +177,32 @@ class TestOrchestratorFastRouting:
             assert result["agent"] == expected_agent
             assert result["request_type"] == expected_type
 
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "私の希望席と利用目的を確認してください。",
+            "この会話で伝えた希望席と利用目的を教えてください。",
+            "前に話した好きな席を覚えていますか。",
+        ],
+    )
+    def test_reception_practical_fact_recall_routes_to_memory(self, orchestrator, query):
+        assert orchestrator._is_memory_related_question(query) is True
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "窓側の席がいいです。コワーキングスペースを使いたいです。",
+            "利用目的はコワーキングです。",
+            "エンジニアカフェの目的を教えてください。",
+        ],
+    )
+    def test_reception_practical_fact_statements_do_not_route_to_memory(
+        self,
+        orchestrator,
+        query,
+    ):
+        assert orchestrator._is_memory_related_question(query) is False
+
     def test_filler_intent_reuses_fast_classifier(self):
         assert filler_intent_for_query("WiFiのパスワードは？") == "wifi"
         assert filler_intent_for_query("明日のイベントは？") == "event"

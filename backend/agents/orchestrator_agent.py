@@ -51,6 +51,41 @@ from backend.utils.intent_classifier import (
 
 logger = logging.getLogger(__name__)
 
+_RECEPTION_MEMORY_FACT_MARKERS = (
+    "希望席",
+    "好きな席",
+    "座席希望",
+    "席の希望",
+    "利用目的",
+    "来館目的",
+    "訪問目的",
+)
+_RECEPTION_MEMORY_RECALL_MARKERS = (
+    "確認",
+    "教えて",
+    "覚えていますか",
+    "覚えてますか",
+    "覚えてる",
+    "覚えている",
+    "知っていますか",
+    "知ってますか",
+    "わかりますか",
+    "分かりますか",
+)
+_RECEPTION_MEMORY_CONTEXT_MARKERS = (
+    "私の",
+    "わたしの",
+    "僕の",
+    "ぼくの",
+    "俺の",
+    "この会話",
+    "先ほど",
+    "さっき",
+    "前に",
+    "前回",
+    "以前",
+)
+
 
 @dataclass
 class OrchestratorDecision:
@@ -394,7 +429,25 @@ class OrchestratorAgent:
         if match_keywords(lower_query, MEMORY_EXCLUSION_FACILITY):
             return False
 
+        if self._is_reception_memory_confirmation_question(lower_query):
+            return True
+
         return match_keywords(lower_query, MEMORY_KEYWORDS)
+
+    @staticmethod
+    def _is_reception_memory_confirmation_question(lower_query: str) -> bool:
+        """Detect receptionist recall of practical visit facts without catching statements."""
+        has_fact = any(marker in lower_query for marker in _RECEPTION_MEMORY_FACT_MARKERS)
+        if not has_fact:
+            return False
+
+        has_recall_action = any(
+            marker in lower_query for marker in _RECEPTION_MEMORY_RECALL_MARKERS
+        )
+        if not has_recall_action:
+            return False
+
+        return any(marker in lower_query for marker in _RECEPTION_MEMORY_CONTEXT_MARKERS)
 
     async def close(self):
         """リソースのクリーンアップ"""

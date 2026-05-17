@@ -8,6 +8,7 @@ from typing import Dict, Optional
 
 from langchain_core.messages import HumanMessage
 
+from backend.agents.llm_metadata import merge_llm_metadata
 from backend.llm import get_llm_provider, get_model_config
 from backend.tools.enhanced_rag import EnhancedRAGSearch
 
@@ -122,14 +123,22 @@ class FarewellAgent:
                 config=get_model_config("facility_info"),
             )
 
-            return {
-                "answer": response_text,
-                "emotion": "happy",
-                "metadata": {
+            metadata = merge_llm_metadata(
+                {
                     "agent": "FarewellAgent",
                     "confidence": 0.85,
+                    "category": "farewell",
+                    "request_type": "farewell",
+                    "route": "farewell",
                     "sources": ["enhanced_rag"],
                 },
+                response_text,
+            )
+
+            return {
+                "answer": str(response_text),
+                "emotion": "happy",
+                "metadata": metadata,
             }
 
         except Exception as e:
@@ -231,6 +240,9 @@ class FarewellAgent:
             "metadata": {
                 "agent": "FarewellAgent",
                 "confidence": 0.3,
+                "category": "farewell",
+                "request_type": "farewell",
+                "route": "farewell",
                 "sources": ["fallback"],
             },
         }

@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from typing import Annotated, Any, Optional, TypedDict, cast
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
+from langchain_core.messages import SystemMessage
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.runtime import Runtime
@@ -673,6 +674,28 @@ class MainWorkflow:
         "tell me more about that",
         "tell me more about it",
     )
+    _MEMORY_CONTEXT_QUERY_MARKERS = (
+        "覚えていますか",
+        "覚えてますか",
+        "覚えている",
+        "覚えて",
+        "前回",
+        "前に",
+        "以前",
+        "この会話",
+        "最初に伝えた",
+        "希望席",
+        "好きな席",
+        "利用目的",
+        "目的を確認",
+        "名前を覚え",
+        "名前を知っていますか",
+        "do you remember",
+        "previously",
+        "last time",
+        "my preference",
+        "my name",
+    )
 
     def _build_graph(self) -> StateGraph:
         """Supervisor Patternに基づくグラフ構造を構築"""
@@ -787,10 +810,22 @@ class MainWorkflow:
         if any(marker in lower_query for marker in self._ANAPHORA_MARKERS):
             return True
 
+        if any(marker in lower_query for marker in self._MEMORY_CONTEXT_QUERY_MARKERS):
+            return True
+
         if self._has_mixed_intent_greeting(stripped_query):
             return True
 
-        return RoutingLogicAgent._is_memory_related_question(self, stripped_query)
+        memory_checker = getattr(self, "orchestrator", None)
+        if memory_checker and hasattr(memory_checker, "_is_memory_related_question"):
+            try:
+                return bool(memory_checker._is_memory_related_question(stripped_query))
+            except AttributeError:
+                logger.debug(
+                    "Memory fast-path checker is incomplete; falling back to routing logic"
+                )
+
+        return RoutingLogicAgent()._is_memory_related_question(stripped_query)
 
     def _resolve_cafe_entity_for_turn(
         self,
@@ -1039,6 +1074,10 @@ class MainWorkflow:
                 role = "user"
             elif isinstance(message, AIMessage):
                 role = "assistant"
+            elif isinstance(message, SystemMessage) and "Important earlier user facts:" in str(
+                message.content
+            ):
+                role = "assistant"
             else:
                 continue
             content = message.content
@@ -1059,7 +1098,10 @@ class MainWorkflow:
                     "metadata": metadata,
                 }
             )
-        return recent[-20:]
+        # A 20-turn live STM gate needs the initial preference/purpose turn to
+        # remain visible. Keep a broader bounded window here; message_windowing
+        # already summarizes older facts before this converter runs.
+        return recent[-100:]
 
     async def _reception_check_node(self, state: WorkflowStateDict) -> dict[str, Any]:
         from backend.utils.reception_status import check_reception_status
@@ -1923,7 +1965,12 @@ class MainWorkflow:
         language = state.get("language", "ja")
         session_id = state.get("session_id", "")
         query_type = state.get("routing", {}).get("request_type", "general")
-        state_context = state.get("context", {}).get("knowledge_results")
+        memory_context = state.get("context", {}).get("memory")
+        state_context = (
+            memory_context
+            if query_type == "memory"
+            else state.get("context", {}).get("knowledge_results")
+        )
         priority_signals = state.get("context", {}).get("priority_signals")
         long_term_memory = state.get("context", {}).get("long_term_memory", [])
 

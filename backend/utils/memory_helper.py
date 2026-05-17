@@ -9,6 +9,7 @@ conversation_sessionsテーブルでセッション境界を判定し、
 """
 
 import os
+import time
 import uuid
 from typing import Optional, Dict, Any, List
 from datetime import datetime
@@ -26,6 +27,20 @@ from backend.utils.postgres_sanitizer import sanitize_for_postgres
 logger = logging.getLogger(__name__)
 
 _AGENT_MEMORY_SESSION_COLUMN = "value->>sessionId"
+_DURATION_EVENT_ALIASES = {
+    "memory_loader_get_recent_messages_duration_ms": (
+        "memory_loader_get_recent_messages",
+        "memory_loader_get_recent_messages_duration_ms",
+    ),
+    "memory_loader_get_previous_request_type_duration_ms": (
+        "memory_loader_get_previous_request_type",
+        "memory_loader_get_previous_request_type_duration_ms",
+    ),
+    "memory_cleanup_session_duration_ms": (
+        "memory_cleanup_session",
+        "memory_cleanup_session_duration_ms",
+    ),
+}
 
 
 def infer_previous_request_type_from_messages(messages: List[Dict[str, Any]]) -> Optional[str]:
@@ -51,9 +66,22 @@ def _log_memory_event_safely(event: str, **fields: Any) -> None:
     try:
         from backend.observability.structured_logger import log_memory_event
 
+        alias = _DURATION_EVENT_ALIASES.get(event)
+        if alias:
+            alias_event, duration_field = alias
+            if "duration_ms" in fields:
+                fields.setdefault(duration_field, fields["duration_ms"])
+            log_memory_event(event=alias_event, **fields)
+            log_memory_event(event=event, **fields)
+            return
+
         log_memory_event(event=event, **fields)
     except Exception:
         pass
+
+
+def _duration_ms(started_at: float) -> int:
+    return max(0, int((time.perf_counter() - started_at) * 1000))
 
 
 class SimplifiedMemoryHelper:
@@ -141,9 +169,20 @@ class SimplifiedMemoryHelper:
             存在しない場合は None
         """
         logger.info("Getting previous request type for session: %s", session_id)
+        started_at = time.perf_counter()
 
         if not self.supabase:
             logger.warning("Supabase not available")
+            _log_memory_event_safely(
+                "memory_loader_get_previous_request_type_duration_ms",
+                session_id=session_id,
+                success=True,
+                skipped=True,
+                reason="supabase_unavailable",
+                duration_ms=_duration_ms(started_at),
+                row_count=0,
+                request_type=None,
+            )
             return None
 
         try:
@@ -161,6 +200,14 @@ class SimplifiedMemoryHelper:
             )
 
             if not response.data:
+                _log_memory_event_safely(
+                    "memory_loader_get_previous_request_type_duration_ms",
+                    session_id=session_id,
+                    success=True,
+                    duration_ms=_duration_ms(started_at),
+                    row_count=0,
+                    request_type=None,
+                )
                 return None
 
             # 最新のuser messageを探す。session_id/role は SQL 側で絞り込み済み。
@@ -170,28 +217,58 @@ class SimplifiedMemoryHelper:
                 if request_type:
                     logger.info("Found previous request type: %s", request_type)
                     _log_memory_event_safely(
+                        "memory_loader_get_previous_request_type_duration_ms",
+                        session_id=session_id,
+                        success=True,
+                        duration_ms=_duration_ms(started_at),
+                        row_count=len(response.data),
+                        request_type=request_type,
+                    )
+                    _log_memory_event_safely(
                         "memory_previous_request_type_load",
                         session_id=session_id,
                         success=True,
                         request_type=request_type,
+                        duration_ms=_duration_ms(started_at),
+                        row_count=len(response.data),
                     )
                     return request_type
 
+            _log_memory_event_safely(
+                "memory_loader_get_previous_request_type_duration_ms",
+                session_id=session_id,
+                success=True,
+                duration_ms=_duration_ms(started_at),
+                row_count=len(response.data),
+                request_type=None,
+            )
             _log_memory_event_safely(
                 "memory_previous_request_type_load",
                 session_id=session_id,
                 success=True,
                 request_type=None,
+                duration_ms=_duration_ms(started_at),
+                row_count=len(response.data),
             )
             return None
 
         except Exception as e:
             logger.error("Error getting previous request type: %s", e)
             _log_memory_event_safely(
+                "memory_loader_get_previous_request_type_duration_ms",
+                session_id=session_id,
+                success=False,
+                duration_ms=_duration_ms(started_at),
+                row_count=0,
+                error_type=type(e).__name__,
+            )
+            _log_memory_event_safely(
                 "memory_previous_request_type_load",
                 session_id=session_id,
                 success=False,
                 error_type=type(e).__name__,
+                duration_ms=_duration_ms(started_at),
+                row_count=0,
             )
             return None
 
@@ -236,11 +313,22 @@ class SimplifiedMemoryHelper:
         if memory_flags and not memory_flags.enable_agent_memory_stm_writes:
             recent_messages = []
             _log_memory_event_safely(
+                "memory_loader_get_recent_messages_duration_ms",
+                session_id=session_id,
+                success=True,
+                skipped=True,
+                reason="agent_memory_stm_writes_disabled",
+                duration_ms=0,
+                row_count=0,
+            )
+            _log_memory_event_safely(
                 "memory_recent_messages_load",
                 session_id=session_id,
                 success=True,
                 skipped=True,
                 reason="agent_memory_stm_writes_disabled",
+                duration_ms=0,
+                row_count=0,
             )
         else:
             recent_messages = await self._get_recent_messages(session_id)
@@ -331,7 +419,17 @@ class SimplifiedMemoryHelper:
         Returns:
             セッション内のメッセージリスト
         """
+        started_at = time.perf_counter()
         if not self.supabase:
+            _log_memory_event_safely(
+                "memory_loader_get_recent_messages_duration_ms",
+                session_id=session_id,
+                success=True,
+                skipped=True,
+                reason="supabase_unavailable",
+                duration_ms=_duration_ms(started_at),
+                row_count=0,
+            )
             return []
 
         try:
@@ -339,6 +437,26 @@ class SimplifiedMemoryHelper:
             session_active = await self._is_session_active(session_id)
             if not session_active:
                 logger.info("Session %s is not active, returning empty messages", session_id)
+                duration_ms = _duration_ms(started_at)
+                _log_memory_event_safely(
+                    "memory_loader_get_recent_messages_duration_ms",
+                    session_id=session_id,
+                    success=True,
+                    skipped=True,
+                    reason="session_inactive",
+                    duration_ms=duration_ms,
+                    row_count=0,
+                )
+                _log_memory_event_safely(
+                    "memory_recent_messages_load",
+                    session_id=session_id,
+                    success=True,
+                    skipped=True,
+                    reason="session_inactive",
+                    duration_ms=duration_ms,
+                    row_count=0,
+                    message_count=0,
+                )
                 return []
 
             response = (
@@ -353,6 +471,22 @@ class SimplifiedMemoryHelper:
             )
 
             if not response.data:
+                duration_ms = _duration_ms(started_at)
+                _log_memory_event_safely(
+                    "memory_loader_get_recent_messages_duration_ms",
+                    session_id=session_id,
+                    success=True,
+                    duration_ms=duration_ms,
+                    row_count=0,
+                )
+                _log_memory_event_safely(
+                    "memory_recent_messages_load",
+                    session_id=session_id,
+                    success=True,
+                    duration_ms=duration_ms,
+                    row_count=0,
+                    message_count=0,
+                )
                 return []
 
             # メッセージを整形。session_id は SQL 側で絞り込み済み。
@@ -378,20 +512,42 @@ class SimplifiedMemoryHelper:
             # DESC順で取得しているので時系列順に戻し、max_entriesで制限
             messages = messages[::-1]
             result = messages[-self.max_entries :] if len(messages) > self.max_entries else messages
+            duration_ms = _duration_ms(started_at)
+            _log_memory_event_safely(
+                "memory_loader_get_recent_messages_duration_ms",
+                session_id=session_id,
+                success=True,
+                duration_ms=duration_ms,
+                row_count=len(response.data),
+                message_count=len(result),
+            )
             _log_memory_event_safely(
                 "memory_recent_messages_load",
                 session_id=session_id,
                 success=True,
+                duration_ms=duration_ms,
+                row_count=len(response.data),
                 message_count=len(result),
             )
             return result
 
         except Exception as e:
             logger.error("Error getting recent messages: %s", e)
+            duration_ms = _duration_ms(started_at)
+            _log_memory_event_safely(
+                "memory_loader_get_recent_messages_duration_ms",
+                session_id=session_id,
+                success=False,
+                duration_ms=duration_ms,
+                row_count=0,
+                error_type=type(e).__name__,
+            )
             _log_memory_event_safely(
                 "memory_recent_messages_load",
                 session_id=session_id,
                 success=False,
+                duration_ms=duration_ms,
+                row_count=0,
                 error_type=type(e).__name__,
             )
             return []
@@ -690,8 +846,18 @@ class SimplifiedMemoryHelper:
             session_id: セッションID
         """
         logger.info("Cleaning up messages for session: %s", session_id)
+        started_at = time.perf_counter()
 
         if not self.supabase:
+            _log_memory_event_safely(
+                "memory_cleanup_session_duration_ms",
+                session_id=session_id,
+                success=True,
+                skipped=True,
+                reason="supabase_unavailable",
+                duration_ms=_duration_ms(started_at),
+                deleted_count=0,
+            )
             return
 
         try:
@@ -706,19 +872,38 @@ class SimplifiedMemoryHelper:
 
             deleted_count = len(response.data or [])
             logger.info("Cleaned up %d messages for session: %s", deleted_count, session_id)
+            duration_ms = _duration_ms(started_at)
+            _log_memory_event_safely(
+                "memory_cleanup_session_duration_ms",
+                session_id=session_id,
+                success=True,
+                duration_ms=duration_ms,
+                deleted_count=deleted_count,
+            )
             _log_memory_event_safely(
                 "memory_cleanup_session",
                 session_id=session_id,
                 success=True,
+                duration_ms=duration_ms,
                 deleted_count=deleted_count,
             )
 
         except Exception as e:
             logger.error("Error during session cleanup: %s", e)
+            duration_ms = _duration_ms(started_at)
+            _log_memory_event_safely(
+                "memory_cleanup_session_duration_ms",
+                session_id=session_id,
+                success=False,
+                duration_ms=duration_ms,
+                deleted_count=0,
+                error_type=type(e).__name__,
+            )
             _log_memory_event_safely(
                 "memory_cleanup_session",
                 session_id=session_id,
                 success=False,
+                duration_ms=duration_ms,
                 error_type=type(e).__name__,
             )
 

@@ -7,6 +7,7 @@ from psycopg import OperationalError
 from psycopg_pool import PoolClosed
 
 from backend.utils import checkpointer
+from backend.utils.context_priority import ContextSignals
 
 
 class TestMaskConnectionString:
@@ -90,7 +91,59 @@ class TestCheckpointerFactory:
         assert "Failed to connect to Supabase PostgreSQL" in str(exc_info.value)
 
 
+class TestCheckpointerSerde:
+    def test_context_signals_round_trips_through_msgpack(self):
+        signals = ContextSignals(
+            memory_topics=("event", "facility"),
+            rag_cache_top_score=0.91,
+            request_specificity=0.82,
+            conversation_depth=4,
+            previous_categories=("facility",),
+        )
+        serde = checkpointer.create_checkpointer_serde()
+
+        loaded = serde.loads_typed(serde.dumps_typed({"signals": signals}))
+
+        assert loaded == {"signals": signals}
+
+    def test_future_langgraph_serializer_gets_msgpack_allowlist(self):
+        class FutureJsonPlusSerializer:
+            def __init__(
+                self,
+                *,
+                allowed_json_modules=None,
+                allowed_msgpack_modules=None,
+                __unpack_ext_hook__=None,
+            ):
+                self.allowed_json_modules = allowed_json_modules
+                self.allowed_msgpack_modules = allowed_msgpack_modules
+                self.unpack_ext_hook = __unpack_ext_hook__
+
+        with patch.object(checkpointer, "JsonPlusSerializer", FutureJsonPlusSerializer):
+            serde = checkpointer.create_checkpointer_serde()
+
+        assert serde.allowed_json_modules == [
+            ("backend", "utils", "context_priority", "ContextSignals")
+        ]
+        assert serde.allowed_msgpack_modules == [
+            ("backend.utils.context_priority", "ContextSignals")
+        ]
+        assert serde.unpack_ext_hook is None
+
+
 class TestResilientAsyncPostgresSaver:
+    @pytest.mark.asyncio
+    async def test_uses_context_signals_aware_serde(self):
+        saver = checkpointer.ResilientAsyncPostgresSaver(
+            factory=MagicMock(),
+            pool=MagicMock(),
+        )
+        signals = ContextSignals(previous_categories=("facility",))
+
+        loaded = saver.serde.loads_typed(saver.serde.dumps_typed(signals))
+
+        assert loaded == signals
+
     @pytest.mark.asyncio
     async def test_aget_tuple_strips_postgres_nul_chars_before_read(self):
         saver = checkpointer.ResilientAsyncPostgresSaver(

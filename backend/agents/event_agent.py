@@ -11,6 +11,7 @@ from typing import Dict, List, Optional
 
 from langchain_core.messages import HumanMessage
 
+from backend.agents.llm_metadata import merge_llm_metadata
 from backend.config.prompts.event_prompts import build_event_prompt, get_time_range_label
 from backend.llm import get_llm_provider, get_model_config
 from backend.tools.calendar_service import CalendarService
@@ -204,10 +205,14 @@ class EventAgent:
             ] or ["google_calendar", "connpass"]
             metadata = {
                 "agent": "EventAgent",
+                "category": "event",
+                "request_type": "event",
+                "route": "event",
                 "time_range": time_range,
                 "event_count": event_count,
                 "sources": sources,
             }
+            merge_llm_metadata(metadata, response_text)
             if include_evidence:
                 metadata["rag_evidence"] = {
                     "source": "event_agent",
@@ -226,7 +231,7 @@ class EventAgent:
                 }
 
             return {
-                "answer": response_text,
+                "answer": str(response_text),
                 "emotion": emotion,
                 "metadata": metadata,
             }
@@ -435,6 +440,9 @@ class EventAgent:
         context = answer.split("]", 1)[1] if answer.startswith("[") and "]" in answer else answer
         metadata = {
             "agent": "EventAgent",
+            "category": "event",
+            "request_type": "event",
+            "route": "event",
             "time_range": "thisWeek",
             "event_count": 0,
             "sources": ["connpass"],

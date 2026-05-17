@@ -10,6 +10,7 @@ from typing import Dict, Optional, Literal
 
 from langchain_core.messages import HumanMessage
 
+from backend.agents.llm_metadata import merge_llm_metadata
 from backend.llm import get_llm_provider, get_model_config
 
 logger = logging.getLogger(__name__)
@@ -151,6 +152,9 @@ class SlideAgent:
                 "emotion": "neutral",
                 "metadata": {
                     "agent": "SlideAgent",
+                    "category": "slide",
+                    "request_type": "slide_next",
+                    "route": "slide",
                     "action": "next",
                     "slideNumber": current,
                 },
@@ -171,6 +175,9 @@ class SlideAgent:
                 "emotion": "neutral",
                 "metadata": {
                     "agent": "SlideAgent",
+                    "category": "slide",
+                    "request_type": "slide_previous",
+                    "route": "slide",
                     "action": "previous",
                     "slideNumber": current,
                 },
@@ -196,6 +203,9 @@ class SlideAgent:
                 "emotion": "neutral",
                 "metadata": {
                     "agent": "SlideAgent",
+                    "category": "slide",
+                    "request_type": "slide_goto",
+                    "route": "slide",
                     "action": "goto",
                     "slideNumber": current,
                 },
@@ -218,6 +228,9 @@ class SlideAgent:
                 "emotion": "neutral",
                 "metadata": {
                     "agent": "SlideAgent",
+                    "category": "slide",
+                    "request_type": "slide_narrate",
+                    "route": "slide",
                     "action": "narrate",
                     "slideNumber": slide_number,
                 },
@@ -238,6 +251,9 @@ class SlideAgent:
             "emotion": emotion,
             "metadata": {
                 "agent": "SlideAgent",
+                "category": "slide",
+                "request_type": "slide_narrate",
+                "route": "slide",
                 "action": "narrate",
                 "slideNumber": slide_number,
                 "characterAction": character_action,
@@ -263,6 +279,9 @@ class SlideAgent:
                 "emotion": "neutral",
                 "metadata": {
                     "agent": "SlideAgent",
+                    "category": "slide",
+                    "request_type": "slide_question",
+                    "route": "slide",
                     "action": "question",
                     "slideNumber": current,
                 },
@@ -282,6 +301,9 @@ class SlideAgent:
                     "emotion": "helpful",
                     "metadata": {
                         "agent": "SlideAgent",
+                        "category": "slide",
+                        "request_type": "slide_question",
+                        "route": "slide",
                         "action": "question",
                         "slideNumber": current,
                     },
@@ -298,14 +320,22 @@ class SlideAgent:
                 config=get_model_config("qa_response"),
             )
 
-            return {
-                "answer": response_text,
-                "emotion": "helpful",
-                "metadata": {
+            metadata = merge_llm_metadata(
+                {
                     "agent": "SlideAgent",
+                    "category": "slide",
+                    "request_type": "slide_question",
+                    "route": "slide",
                     "action": "question",
                     "slideNumber": current,
                 },
+                response_text,
+            )
+
+            return {
+                "answer": str(response_text),
+                "emotion": "helpful",
+                "metadata": metadata,
                 "slideNumber": current,
             }
 
@@ -321,6 +351,9 @@ class SlideAgent:
                 "emotion": "apologetic",
                 "metadata": {
                     "agent": "SlideAgent",
+                    "category": "slide",
+                    "request_type": "slide_question",
+                    "route": "slide",
                     "action": "question",
                     "slideNumber": current,
                 },
