@@ -12,8 +12,8 @@
 
 | 区分 | 件数 | 想定総工数 |
 |---|---|---|
-| 🔴 **P0** (Phase 2 開始前に必修) | **4** | 半日〜2日 |
-| 🟠 **P1** (Phase 2 開始前に望ましい) | **2** | 1〜2日 |
+| 🔴 **P0** (Phase 2 開始前に必修) | **5** | 半日〜2日 |
+| 🟠 **P1** (Phase 2 開始前に望ましい) | **1** | 1日 |
 | 🟡 **P2** (Phase 2 と並行可能) | 5 | Issue #770 frontend 5 項目 |
 | 🟢 **Phase 2 scope (本ハンドオフ対象外)** | 6 | dynamic filler / cross-encoder rerank / D-RAG 等 |
 
@@ -25,7 +25,7 @@
 | **FU-02** | 🔴 P0 | Event KB Cron Sync 未デプロイ (script はある、Cloud Scheduler API 自体が未有効化) | 半日 | Issue #517 解消 |
 | **FU-03** | 🔴 P0 | Phase A1 SLO probe `memory_loader_get_recent_messages_duration_ms` 未配線 | 2 時間 | ADR-024 A1 完了条件達成 |
 | **FU-04** | 🔴 P0 | `memory_*` event family が 3 種類 (ADR-024 A0 目標 ≥ 5) | 半日 | ADR-024 A0 完了条件達成 |
-| **FU-05** | 🟠 P0 | `ContextSignals` msgpack 未登録 (LangGraph 将来 version でブロック予定) | 1 時間 | LangGraph 互換性 |
+| **FU-05** | 🔴 P0 | `ContextSignals` msgpack 未登録 (LangGraph 将来 version でブロック予定) | 1 時間 | LangGraph 互換性 |
 | **FU-06** | 🟠 P1 | cross-session recall (Issue #655 M-LTM-001) E2E proof 未取得 | 1 日 | Issue #655 解消 |
 
 ### 推奨 PR 分割（5 PRs + 1 非コード作業）
@@ -116,16 +116,32 @@ async def generate(...) -> tuple[str, dict]:
     return response_text, llm_meta
 ```
 
-各 agent (`event_agent.py`, `facility_agent.py`, `business_info_agent.py`, `general_knowledge_agent.py`, `farewell_agent.py`, `slide_agent.py`) で:
+各 agent で:
 ```python
 response_text, llm_meta = await self.llm_provider.generate(...)
 return {
     "answer": response_text,
-    "metadata": {**meta, **llm_meta},  # provider/model/llm_latency_ms を直接含める
+    "metadata": {**meta, **llm_meta, "route": <category 文字列>},  # provider/model/llm_latency_ms + route を直接含める
 }
 ```
 
+**Agent ごとの注意 (call site の差異)**:
+| Agent | 呼び出し prefix | call sites |
+|---|---|---|
+| `event_agent.py` | `self.llm_provider.generate(...)` | 1 (L180) |
+| `business_info_agent.py` | `self.llm_provider.generate(...)` | 1 (L171) |
+| `farewell_agent.py` | `self.llm_provider.generate(...)` | 1 (L120) |
+| `slide_agent.py` | `self.llm_provider.generate(...)` | 1 (L296) |
+| `facility_agent.py` | `self.llm_provider.generate(...)` | (該当 call site を grep で再確認) |
+| **`general_knowledge_agent.py`** | **`self.provider.generate(...)`** (命名違い) | **2 (L220, L295)** |
+
+`general_knowledge_agent.py` だけ `self.provider` を使う + 2 call site あるので忘れずに両方更新する。
+
 `main.py:871` `_attach_latest_llm_metadata(metadata)` は呼び出し不要に。あるいは setdefault で既存 metadata の値を優先するように。
+
+**`_record_successful_llm_call` の扱い**: 現状 openrouter.py に 4 callsite (L262/300/333/367) あり。`token_tracker.record_llm_call` は cost accounting と兼用しているため**残す**。FU-01 はあくまで agent metadata 経由で provider/model を伝達する追加経路を作る (既存 ContextVar 経路は cost tracking 用に維持)。
+
+**Test 更新**: `backend/tests/agents/test_event_agent.py` 等の既存テストで `await llm_provider.generate(...)` の戻り値モックを `(str, dict)` tuple に変更する必要あり。`backend/tests/api/test_chat_api.py` の `mock_result["metadata"]` に既に `provider/model/llm_latency_ms` が含まれているので、agent 改修後はこちらの assert はそのまま PASS する。
 
 **選択肢B (ContextVar を残す, パッチ)**:
 
@@ -276,20 +292,30 @@ python -m backend.scripts.bench_memory_loader --session-id=bench-1 --message-cou
 
 ---
 
-### 🔴 FU-04: `memory_*` event family 3 種類 (ADR-024 A0 目標 ≥ 5)
+### 🔴 FU-04: `memory_*` event family の cross-module diversity 不足
 
-**何が壊れているか**: ADR-024 A0 完了条件「`memory_*` event 5 種類以上 emit」に対し、実観測 **3 種類のみ**:
-- `memory_context_load` ✅
-- `memory_recent_messages_load` ✅
-- `memory_store_message` ✅
-- `memory_promote` ❌ 未配線
-- `memory_extractor_*` ❌ 未配線
-- `memory_candidate_aggregate` ❌ 未配線
+**何が壊れているか**: ADR-024 A0 完了条件「`memory_*` event 5 種類以上 emit」に対し、`backend/utils/memory_helper.py` は **5 event 名を定義済** だが live 観測は 3 種類のみ。さらに **他モジュールからの event は 0 件**:
+
+定義済み (memory_helper.py 内):
+- `memory_context_load` ✅ live 観測
+- `memory_recent_messages_load` ✅ live 観測
+- `memory_store_message` ✅ live 観測
+- `memory_previous_request_type_load` ⚠️ 定義済だが live 未観測 (code path 未トリガ)
+- `memory_cleanup_session` ⚠️ 定義済だが live 未観測 (code path 未トリガ)
+
+未配線 (他モジュール):
+- `memory_promote_run` ❌ `memory_promoter.py` 未配線
+- `memory_extractor_run` ❌ `memory_extractor.py` 未配線
+- `memory_candidate_aggregate` ❌ `memory_promoter.py:aggregate_candidates` 未配線
 
 **Impact**:
 - LTM 昇格が live で起こっているか観測不能 (Issue #655 cross-session recall の根本原因)
 - memory extractor の動作が見えない (どのターンで「太郎」を抽出したか不明)
 - memory candidate の集約状況も見えない
+
+**post-fix 期待状態**:
+- 合計 8 event 種類 (memory_helper 5 + memory_promoter/extractor 3) が定義済み
+- 名前明示ターンで `memory_extractor_run`, `memory_candidate_aggregate`, `memory_promote_run` が連鎖して emit されることを E2E で確認
 
 **Fix steps**:
 
@@ -356,20 +382,27 @@ to allow explicitly: [('backend.utils.context_priority', 'ContextSignals')]
 
 **選択肢A (推奨)**: `ContextSignals` を `allowed_msgpack_modules` に登録。
 
-[`backend/utils/checkpointer.py`](../../backend/utils/checkpointer.py) または StateGraph compile 時:
+> **⚠️ 重要**: 既存 `backend/utils/checkpointer.py:133` で `ResilientAsyncPostgresSaver(AsyncPostgresSaver)` という subclass が定義されており、`ResilientAsyncPostgresSaver(factory=self, pool=pool)` (L124) で構築される。直接 `AsyncPostgresSaver(conn, serde=serde)` のコードを貼ると subclass 構造を壊す。**`serde` kwarg は subclass コンストラクタ + factory に thread する必要あり**。実装時は subclass の `__init__` シグネチャを慎重に拡張する。
+
 ```python
-from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+# checkpointer.py 既存 import に追加
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 
-serde = JsonPlusSerializer(
+# _CheckpointerFactory or ResilientAsyncPostgresSaver の初期化箇所で serde を構築
+_RESILIENT_SERDE = JsonPlusSerializer(
     allowed_msgpack_modules=[
         ("backend.utils.context_priority", "ContextSignals"),
     ],
 )
-saver = AsyncPostgresSaver(conn, serde=serde)
+
+# ResilientAsyncPostgresSaver.__init__ で super に serde を渡す
+class ResilientAsyncPostgresSaver(AsyncPostgresSaver):
+    def __init__(self, factory, pool):
+        super().__init__(conn=pool, serde=_RESILIENT_SERDE)  # 既存シグネチャを確認して合わせる
+        ...
 ```
 
-**選択肢B**: `ContextSignals` を dataclass → `TypedDict` に refactor (msgpack 自動対応)。
+**選択肢B**: `ContextSignals` を dataclass → `TypedDict` に refactor (msgpack 自動対応、subclass 触らないので安全)。
 
 **Verification**:
 ```bash
@@ -532,7 +565,7 @@ cd frontend && mise exec -- pnpm install && mise exec -- pnpm lint --quiet
 - [ADR-023: Semantic Router + LangGraph runtime self-evaluation](../adr/023-semantic-router-and-runtime-self-evaluation.md) — Phase 2 の母艦
 - [ADR-024: Memory & Reception Modernization](../adr/024-memory-and-reception-modernization.md) — Phase A0/A1 の達成状況テーブル参照
 - [ADR-025: Frontend proxy deletion → Vite migration](../adr/025-frontend-proxy-deletion-and-vite-migration.md)
-- [docs/plans/broken-systems-immediate-fixes-handoff-2026-05-17.md](broken-systems-immediate-fixes-handoff-2026-05-17.md) — PR #841 で解決済の 16 FIX (FIX-01〜16)
+- Issue #834 ([Broken Systems] FIX-01 〜 FIX-09 tracker, **PR #835/#841 で close 済**) — PR #841 で解決済の 16 FIX (FIX-01〜16) の履歴。詳細 evidence は Issue #834 のコメント参照
 - [docs/plans/post-adr023-investigation-2026-05-17.md](post-adr023-investigation-2026-05-17.md) — 元の investigation report
 
 ### PR / Issue 履歴
