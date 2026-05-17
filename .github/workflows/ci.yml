@@ -755,11 +755,12 @@ jobs:
 
           REQUEST_ID="ci-llm-observability-${GITHUB_SHA:0:12}-$(date +%s)"
           SESSION_ID="${REQUEST_ID}"
+          VISITOR_NAME="CI検証太郎${GITHUB_SHA:0:6}"
           API_KEY="$(gcloud secrets versions access latest --secret=API_SECRET_KEY)"
           CHAT_BODY=$(mktemp)
           cat > "$CHAT_BODY" <<JSON
           {
-            "query": "覚えて、私はCIテストユーザーです。量子コンピュータを初心者向けに一文で説明してください",
+            "query": "私の名前は${VISITOR_NAME}です。量子コンピュータを初心者向けに一文で説明してください",
             "session_id": "${SESSION_ID}",
             "language": "ja",
             "visitor_id": "${SESSION_ID}"
