@@ -361,7 +361,7 @@ class TestClassifyPurposeNode:
             result = await classify_purpose(state)
 
         assert result["stage"] == "completed"
-        assert result["target_agent"] == "facility"
+        assert result["target_agent"] == "business_info"
         assert result["reception_action"] == "bypass_for_information_query"
         assert result["purpose"]["request_type"] == "food_drink"
 

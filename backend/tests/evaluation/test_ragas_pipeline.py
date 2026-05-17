@@ -346,6 +346,23 @@ class TestResolveEvaluationLLM:
                     )
                     assert result == "mock_llm"
 
+    @pytest.mark.skipif(not _ragas_available, reason="ragas not installed")
+    def test_placeholder_openai_key_falls_back_to_openrouter(self):
+        """pytest default OPENAI_API_KEY must not shadow a real OpenRouter key."""
+        env = {
+            "OPENAI_API_KEY": "test-openai-key",
+            "OPENROUTER_API_KEY": "sk-or-test",
+        }
+        with patch.dict("os.environ", env, clear=True):
+            with patch("ragas.llms.llm_factory") as mock_factory:
+                with patch("openai.OpenAI") as mock_openai:
+                    mock_factory.return_value = "mock_llm"
+                    result = RagasEvaluator._resolve_evaluation_llm()
+
+        assert result == "mock_llm"
+        mock_openai.assert_called_once()
+        assert mock_openai.call_args.kwargs["api_key"] == "sk-or-test"
+
     def test_openrouter_llm_factory_import_error(self):
         """ragas.llms.llm_factory がインポートできない場合は None"""
         env = {"OPENROUTER_API_KEY": "sk-or-test"}
@@ -421,6 +438,18 @@ class TestRagasJudgeMetadata:
         assert metadata["openai_key_present"] is False
         assert metadata["openrouter_key_present"] is True
         assert metadata["release_gate_eligible"] is False
+
+    def test_placeholder_openai_key_does_not_hide_openrouter_metadata(self):
+        env = {
+            "OPENAI_API_KEY": "test-openai-key",
+            "OPENROUTER_API_KEY": "sk-or-test",
+        }
+        with patch.dict("os.environ", env, clear=True):
+            metadata = resolve_ragas_judge_metadata()
+
+        assert metadata["provider"] == "openrouter"
+        assert metadata["openai_key_present"] is False
+        assert metadata["openrouter_key_present"] is True
 
     def test_no_keys_records_no_provider(self):
         with patch.dict("os.environ", {}, clear=True):

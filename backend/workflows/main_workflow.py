@@ -61,6 +61,7 @@ logger = logging.getLogger(__name__)
 
 # 非同期シングルトン用ロック
 _workflow_lock = asyncio.Lock()
+_workflow_lock_loop: asyncio.AbstractEventLoop | None = None
 
 # tRAG: Reusable httpx client for KO/ZH translation
 _trag_http_client: Optional["_httpx.AsyncClient"] = None
@@ -2483,6 +2484,37 @@ class MainWorkflow:
 
 # シングルトンインスタンス
 _workflow_instance: MainWorkflow | None = None
+_workflow_loop: asyncio.AbstractEventLoop | None = None
+
+
+def _get_workflow_lock() -> asyncio.Lock:
+    """Return a lock bound to the current event loop."""
+    global _workflow_lock, _workflow_lock_loop
+
+    loop = asyncio.get_running_loop()
+    if _workflow_lock_loop is not loop:
+        _workflow_lock = asyncio.Lock()
+        _workflow_lock_loop = loop
+    return _workflow_lock
+
+
+async def _discard_workflow_instance(reason: str) -> None:
+    """Drop the cached workflow, best-effort closing loop-bound resources."""
+    global _workflow_instance, _workflow_loop
+
+    workflow = _workflow_instance
+    workflow_loop = _workflow_loop
+    _workflow_instance = None
+    _workflow_loop = None
+    if workflow is None:
+        return
+    if workflow_loop is not None and workflow_loop is not asyncio.get_running_loop():
+        logger.warning("Discarding workflow without close because %s", reason)
+        return
+    try:
+        await workflow.close()
+    except Exception:
+        logger.warning("Error closing workflow while discarding it: %s", reason, exc_info=True)
 
 
 async def get_workflow() -> MainWorkflow:
@@ -2493,9 +2525,18 @@ async def get_workflow() -> MainWorkflow:
     環境変数が設定されていない場合はCheckpointerなしで動作します。
     asyncio.Lockを使用してrace conditionを防止。
     """
-    global _workflow_instance
+    global _workflow_instance, _workflow_loop
+    loop = asyncio.get_running_loop()
+    if _workflow_instance is not None and _workflow_loop is not loop:
+        logger.warning("Workflow event loop changed; recreating singleton instance")
+        await _discard_workflow_instance("event loop changed")
+
     if _workflow_instance is None:
-        async with _workflow_lock:
+        async with _get_workflow_lock():
+            loop = asyncio.get_running_loop()
+            if _workflow_instance is not None and _workflow_loop is not loop:
+                logger.warning("Workflow event loop changed while waiting; recreating")
+                await _discard_workflow_instance("event loop changed while waiting")
             # Double-check after acquiring lock
             if _workflow_instance is None:
                 checkpointer = None
@@ -2522,6 +2563,7 @@ async def get_workflow() -> MainWorkflow:
                     logger.warning("Failed to create store: %s", e)
 
                 _workflow_instance = MainWorkflow(checkpointer=checkpointer, store=store)
+                _workflow_loop = loop
     return _workflow_instance
 
 
@@ -2531,14 +2573,16 @@ def get_workflow_sync() -> MainWorkflow:
 
     注意: Checkpointerなしで動作します。本番環境では get_workflow() を使用してください。
     """
-    global _workflow_instance
+    global _workflow_instance, _workflow_loop
     if _workflow_instance is None:
         logger.warning("Using sync workflow without checkpointer")
         _workflow_instance = MainWorkflow(checkpointer=None)
+        _workflow_loop = None
     return _workflow_instance
 
 
 def reset_workflow() -> None:
     """ワークフローインスタンスをリセット（テスト用）"""
-    global _workflow_instance
+    global _workflow_instance, _workflow_loop
     _workflow_instance = None
+    _workflow_loop = None

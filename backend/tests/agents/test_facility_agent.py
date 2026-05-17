@@ -233,6 +233,13 @@ class TestFacilityAgent:
         assert "Wi-Fi" in main_hall["answer"]
         assert "4Kモニター" in main_hall["answer"]
 
+        main_hall_location = agent._get_canonical_response(
+            "メインホールはどこにありますか？", "facility", "ja"
+        )
+        assert main_hall_location is not None
+        assert "1階メインホール" in main_hall_location["answer"]
+        assert "コワーキングスペース" in main_hall_location["answer"]
+
         lounge = agent._get_canonical_response("談話室はどんなスペースですか？", "facility", "ja")
         assert lounge is not None
         assert "saino" in lounge["answer"]
@@ -469,6 +476,36 @@ class TestFacilityAgent:
         assert "福岡市在住の学生は無料" in response["answer"]
         assert "紙の印刷" not in response["answer"]
 
+    def test_3d_printer_how_to_canonical_mentions_training_and_reservation(self):
+        """3Dプリンターの使い方は講習・予約優先制まで案内する"""
+        agent = FacilityAgent()
+        response = agent._get_canonical_response(
+            "3Dプリンターの使い方を教えてください",
+            "facility",
+            "ja",
+        )
+
+        assert response is not None
+        assert "MAKER'sスペース" in response["answer"]
+        assert "手順" in response["answer"]
+        assert "操作方法" in response["answer"]
+        assert "講習" in response["answer"]
+        assert "予約" in response["answer"]
+
+    def test_hours_and_wifi_password_canonical_answers_both_intents(self):
+        """営業時間と Wi-Fi パスワードの複合質問は両方の事実を返す"""
+        agent = FacilityAgent()
+        response = agent._get_canonical_response(
+            "営業時間とWi-Fiのパスワードを教えてください",
+            "wifi",
+            "ja",
+        )
+
+        assert response is not None
+        assert "22:00" in response["answer"]
+        assert "engnecf-guest" in response["answer"]
+        assert "akarenga-112years" in response["answer"]
+
     def test_english_printer_copier_canonical(self):
         """gt-094: printer/copier questions must not route to building history."""
         agent = FacilityAgent()
@@ -511,6 +548,7 @@ class TestFacilityAgent:
         )
 
         assert response is not None
+        assert "ランチ向け" in response["answer"]
         assert "てりたまハンバーグサンド" in response["answer"]
         assert "ツナチーズメルトサンド" in response["answer"]
         assert "ドリンクセット" in response["answer"]

@@ -4,6 +4,7 @@ import asyncio
 
 import pytest
 
+from backend.evaluation.ragas_pipeline import resolve_ragas_judge_metadata
 from backend.tests.fixtures.dataset_loader import DatasetLoader
 
 WORKFLOW_CASE_TIMEOUT = 90
@@ -47,6 +48,24 @@ def _format_ragas_failure_context(metric_name: str, scores, errors, details) -> 
     if detail_lines:
         parts.append("details=[" + "; ".join(detail_lines) + "]")
     return " | ".join(parts)
+
+
+def _require_release_gate_ragas_judge() -> None:
+    """Only run blocking live RAGAS gates with a direct OpenAI judge.
+
+    The OpenRouter path is useful as a local fallback but is explicitly not a
+    release-gate provider: RAGAS can issue many nested LLM calls, and the
+    fallback has proven too slow and unstable for a blocking CI gate.
+    """
+    metadata = resolve_ragas_judge_metadata()
+    if not metadata.get("release_gate_eligible"):
+        pytest.xfail(
+            "RAGAS live release gate requires direct OpenAI judge "
+            f"(provider={metadata.get('provider')}, "
+            f"fallback={metadata.get('fallback')}, "
+            f"openai_key_present={metadata.get('openai_key_present')}, "
+            f"openrouter_key_present={metadata.get('openrouter_key_present')})"
+        )
 
 
 async def _collect_scores(metric_name, invoke_workflow, ragas_evaluator, cases):
@@ -125,6 +144,7 @@ class TestRagasLiveE2E:
 
     async def test_ragas_faithfulness(self, invoke_workflow, ragas_evaluator, gt_cases):
         """Faithfulness >= 0.7"""
+        _require_release_gate_ragas_judge()
         if not gt_cases:
             pytest.skip("No ground truth cases")
 
@@ -147,6 +167,7 @@ class TestRagasLiveE2E:
 
     async def test_ragas_answer_relevancy(self, invoke_workflow, ragas_evaluator, gt_cases):
         """Answer Relevancy >= 0.7"""
+        _require_release_gate_ragas_judge()
         if not gt_cases:
             pytest.skip("No ground truth cases")
 

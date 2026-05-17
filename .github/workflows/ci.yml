@@ -418,7 +418,7 @@ jobs:
           SUPABASE_DB_URI: "postgresql://test:test@localhost:0/test"
 
   # Backend: E2E tests (optional, informational only)
-  # Only runs on push to main/develop when OPENROUTER_API_KEY secret is available
+  # Only runs on push when required live E2E secrets are available.
   backend-test-e2e:
     needs: [changes, backend-test]
     if: needs.changes.outputs.backend == 'true' && github.event_name == 'push'
@@ -439,8 +439,49 @@ jobs:
           pip install -e ".[dev,evaluation]"
         working-directory: backend
 
+      - name: Check backend E2E secrets
+        id: e2e_secrets
+        shell: bash
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          CONNPASS_API_KEY: ${{ secrets.CONNPASS_API_KEY }}
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+          GOOGLE_CALENDAR_ICAL_URL: ${{ secrets.GOOGLE_CALENDAR_ICAL_URL }}
+        run: |
+          set -euo pipefail
+
+          missing_required=()
+          for name in OPENROUTER_API_KEY SUPABASE_URL SUPABASE_KEY; do
+            if [[ -z "${!name:-}" ]]; then
+              missing_required+=("$name")
+            fi
+          done
+
+          missing_live_sources=()
+          for name in CONNPASS_API_KEY TAVILY_API_KEY GOOGLE_CALENDAR_ICAL_URL; do
+            if [[ -z "${!name:-}" ]]; then
+              missing_live_sources+=("$name")
+            fi
+          done
+
+          if (( ${#missing_required[@]} > 0 )); then
+            echo "::notice::Skipping backend E2E; missing required GitHub secrets: ${missing_required[*]}"
+            echo "required_ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "required_ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+          if (( ${#missing_live_sources[@]} > 0 )); then
+            echo "::warning::Backend E2E live-source secrets are missing: ${missing_live_sources[*]}. Live-source answer-quality tests will skip instead of reporting quality failures."
+            echo "live_sources_ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "live_sources_ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Run E2E tests
-        if: env.OPENROUTER_API_KEY != ''
+        if: steps.e2e_secrets.outputs.required_ready == 'true'
         run: pytest -m "e2e" --run-e2e --tb=short -q -x --timeout=300
         working-directory: backend
         env:
@@ -448,6 +489,13 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           SUPABASE_DB_URI: ${{ secrets.SUPABASE_DB_URI }}
+          CONNPASS_API_KEY: ${{ secrets.CONNPASS_API_KEY }}
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+          GOOGLE_CALENDAR_ICAL_URL: ${{ secrets.GOOGLE_CALENDAR_ICAL_URL }}
+
+      - name: Skip E2E tests
+        if: steps.e2e_secrets.outputs.required_ready != 'true'
+        run: echo "Backend E2E skipped because required GitHub secrets are not configured."
 
       - name: Upload E2E reports
         if: always()

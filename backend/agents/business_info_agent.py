@@ -984,8 +984,6 @@ Information: {context}
             }
             return self._canonical_result(answers.get(language, answers["ja"]), request_type)
 
-        return None
-
     @staticmethod
     def _asks_saino_cafe(query: str) -> bool:
         return is_saino_reference(query)
@@ -1037,14 +1035,16 @@ Information: {context}
         if any(keyword in query for keyword in ("フード", "food", "menu", "メニュー", "ランチ")):
             answers = {
                 "ja": (
-                    "[relaxed]サイノカフェのフードは、てりたまハンバーグサンド"
+                    "[relaxed]サイノカフェでランチ向けに食べるなら、サンドや"
+                    "ワッフルなどのフードメニューがあります。てりたまハンバーグサンド"
                     "700円、ツナチーズメルトサンド700円、あんバター白玉サンド"
-                    "650円、ワッフル420円、アイスクリーム420円などがあります。"
+                    "650円、ワッフル420円、アイスクリーム420円などで、"
                     "ドリンクセットは50円引きです。"
                 ),
                 "en": (
-                    "[relaxed]cafe&bar saino serves food such as teritama hamburger "
-                    "sandwiches for 700 yen, tuna cheese melt sandwiches for 700 yen, "
+                    "[relaxed]For lunch at cafe&bar saino, choose from food items "
+                    "such as teritama hamburger sandwiches for 700 yen, tuna cheese "
+                    "melt sandwiches for 700 yen, "
                     "an-butter shiratama sandwiches for 650 yen, waffles for 420 yen, "
                     "and ice cream for 420 yen. Drink sets are 50 yen off."
                 ),
@@ -1111,7 +1111,31 @@ Information: {context}
             }
             return answers.get(language, answers["ja"])
 
-        return None
+        answers = {
+            "ja": (
+                "[relaxed]隣のカフェは1階のcafe&bar sainoです。営業時間は、"
+                "平日はDay Time 12:00〜17:00、Night Time 18:00〜20:00、"
+                "土日祝は11:00〜20:00です。月曜と水曜が定休日で、"
+                "コーヒーやランチ向けのサンド、Night Timeのバー利用も案内できます。"
+            ),
+            "en": (
+                "[relaxed]The adjacent cafe is cafe&bar saino on the 1st floor. "
+                "It is open on weekdays from 12:00 to 17:00 for Day Time and "
+                "18:00 to 20:00 for Night Time, and on weekends and holidays "
+                "from 11:00 to 20:00. It is closed on Mondays and Wednesdays."
+            ),
+            "zh": (
+                "[relaxed]旁边的咖啡店是1楼的cafe&bar saino。平日Day Time为"
+                "12:00到17:00，Night Time为18:00到20:00；周末和节假日为"
+                "11:00到20:00。周一和周三定休。"
+            ),
+            "ko": (
+                "[relaxed]옆 카페는 1층의 cafe&bar saino입니다. 평일 Day Time은 "
+                "12:00-17:00, Night Time은 18:00-20:00이며, 주말과 공휴일은 "
+                "11:00-20:00입니다. 정기 휴일은 월요일과 수요일입니다."
+            ),
+        }
+        return answers.get(language, answers["ja"])
 
     @staticmethod
     def _ambiguous_cafe_hours_answer(language: str) -> str:

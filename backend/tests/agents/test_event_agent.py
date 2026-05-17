@@ -288,6 +288,23 @@ class TestEventAgent:
         assert "参加費無料" in response["answer"]
         assert "早めの申込" in response["answer"]
 
+    @pytest.mark.asyncio
+    async def test_hackathon_schedule_canonical_skips_live_calendar(self):
+        """ハッカソン予定は不完全な単一イベント断定に倒さず Connpass 導線を返す"""
+        self.agent.calendar_service.search_events = AsyncMock(
+            side_effect=AssertionError("hackathon schedule should skip live calendar")
+        )
+        self.agent.connpass_service.search_events = AsyncMock(
+            side_effect=AssertionError("hackathon schedule should skip live connpass search")
+        )
+
+        response = await self.agent.answer_event_query("ハッカソンの開催予定は？", "ja")
+
+        assert "ハッカソン" in response["answer"]
+        assert "定期的に開催" in response["answer"]
+        assert "https://engineercafe.connpass.com/" in response["answer"]
+        assert response["metadata"]["sources"] == ["connpass"]
+
     def test_connpass_canonical_response_multilingual_includes_url(self):
         for language in ("zh", "ko"):
             response = self.agent._get_connpass_response(language)

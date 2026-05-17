@@ -72,6 +72,17 @@ def _safe_int_env(name: str, default: int) -> int:
         return default
 
 
+_PLACEHOLDER_KEY_PREFIXES = ("test-", "placeholder", "fake-", "sk-test-")
+
+
+def _is_real_api_key(value: str | None) -> bool:
+    """Return False for pytest/default placeholder API keys."""
+    if not value:
+        return False
+    lower = value.lower()
+    return not any(lower.startswith(prefix) for prefix in _PLACEHOLDER_KEY_PREFIXES)
+
+
 # 評価ケース数の上限（LLM APIコスト制御）
 EVAL_MAX_CASES = _safe_int_env("EVAL_MAX_CASES", 10)
 
@@ -119,8 +130,8 @@ _COLUMN_NAME_MAP = {
 
 def resolve_ragas_judge_metadata() -> Dict[str, Any]:
     """Return non-secret metadata for the RAGAS judge provider selected by env."""
-    openai_present = bool(os.environ.get("OPENAI_API_KEY"))
-    openrouter_present = bool(os.environ.get("OPENROUTER_API_KEY"))
+    openai_present = _is_real_api_key(os.environ.get("OPENAI_API_KEY"))
+    openrouter_present = _is_real_api_key(os.environ.get("OPENROUTER_API_KEY"))
 
     if openai_present:
         return {
@@ -283,7 +294,7 @@ class RagasEvaluator:
             3. Neither → None (RAGAS will fail gracefully)
         """
         openai_key = os.environ.get("OPENAI_API_KEY")
-        if openai_key:
+        if _is_real_api_key(openai_key):
             try:
                 from langchain_openai import ChatOpenAI
 
@@ -309,7 +320,7 @@ class RagasEvaluator:
                 return None
 
         openrouter_key = os.environ.get("OPENROUTER_API_KEY")
-        if not openrouter_key:
+        if not _is_real_api_key(openrouter_key):
             logger.info("No OPENAI_API_KEY or OPENROUTER_API_KEY found for RAGAS evaluation")
             return None
 
@@ -346,11 +357,11 @@ class RagasEvaluator:
             2. OPENROUTER_API_KEY set → embedding_factory via OpenRouter
             3. Neither → None
         """
-        if os.environ.get("OPENAI_API_KEY"):
+        if _is_real_api_key(os.environ.get("OPENAI_API_KEY")):
             return None
 
         openrouter_key = os.environ.get("OPENROUTER_API_KEY")
-        if not openrouter_key:
+        if not _is_real_api_key(openrouter_key):
             return None
 
         try:

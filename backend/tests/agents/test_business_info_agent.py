@@ -556,6 +556,21 @@ class TestBusinessInfoAgent:
         assert response["metadata"]["category"] == "saino-cafe"
         assert response["metadata"]["cafe_entity_resolution"]["entity"] == "saino_cafe"
 
+    def test_adjacent_cafe_default_includes_hours_tokens(self):
+        """フォローアップの隣のカフェ質問も固定回答で営業時間を返す。"""
+        response = self.agent._get_canonical_response(
+            "隣のカフェは？",
+            None,
+            "ja",
+        )
+
+        assert response is not None
+        assert "cafe&bar saino" in response["answer"]
+        assert "Day Time 12:00〜17:00" in response["answer"]
+        assert "Night Time 18:00〜20:00" in response["answer"]
+        assert response["metadata"]["category"] == "saino-cafe"
+        assert response["metadata"]["cafe_entity_resolution"]["entity"] == "saino_cafe"
+
     def test_cafe_with_coworking_context_prefers_engineer_cafe_hours(self):
         """コワーキング/施設利用文脈はEngineer Cafeへ寄せる"""
         response = self.agent._get_canonical_response(
@@ -572,6 +587,19 @@ class TestBusinessInfoAgent:
         """gt-017: 価格fast-path後もsainoのコーヒー価格を返す"""
         response = self.agent._get_canonical_response(
             "サイノカフェのコーヒーの値段は？",
+            "price",
+            "ja",
+        )
+
+        assert response is not None
+        assert "ブレンドコーヒー380円" in response["answer"]
+        assert "カフェラテ570円" in response["answer"]
+        assert "施設・設備の利用料は無料" not in response["answer"]
+
+    def test_bare_coffee_price_prefers_saino(self):
+        """コーヒー価格の単独質問もSainoの価格として案内する。"""
+        response = self.agent._get_canonical_response(
+            "コーヒーはいくらですか？",
             "price",
             "ja",
         )

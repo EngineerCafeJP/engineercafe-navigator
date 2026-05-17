@@ -148,9 +148,22 @@ async def store_with_retry(
 
 # 非同期シングルトン用ロック
 _store_lock = asyncio.Lock()
+_store_lock_loop: asyncio.AbstractEventLoop | None = None
 
 # シングルトンインスタンス
 _store_instance: Optional[AsyncPostgresStore] = None
+_store_loop: asyncio.AbstractEventLoop | None = None
+
+
+def _get_store_lock() -> asyncio.Lock:
+    """Return a lock bound to the current event loop."""
+    global _store_lock, _store_lock_loop
+
+    loop = asyncio.get_running_loop()
+    if _store_lock_loop is not loop:
+        _store_lock = asyncio.Lock()
+        _store_lock_loop = loop
+    return _store_lock
 
 
 async def create_store() -> AsyncPostgresStore:
@@ -210,11 +223,27 @@ async def get_store() -> AsyncPostgresStore:
     Returns:
         AsyncPostgresStore: Store のシングルトンインスタンス
     """
-    global _store_instance
+    global _store_instance, _store_loop
+    loop = asyncio.get_running_loop()
+    if _store_instance is not None and _store_loop is None:
+        _store_loop = loop
+    elif _store_instance is not None and _store_loop is not loop:
+        logger.warning("Store event loop changed; recreating singleton instance")
+        _store_instance = None
+        _store_loop = None
+
     if _store_instance is None:
-        async with _store_lock:
+        async with _get_store_lock():
+            loop = asyncio.get_running_loop()
+            if _store_instance is not None and _store_loop is None:
+                _store_loop = loop
+            elif _store_instance is not None and _store_loop is not loop:
+                logger.warning("Store event loop changed while waiting; recreating")
+                _store_instance = None
+                _store_loop = None
             if _store_instance is None:
                 _store_instance = await create_store()
+                _store_loop = loop
                 logger.info("Store singleton instance created")
     return _store_instance
 
@@ -225,7 +254,7 @@ async def close_store() -> None:
 
     アプリケーション終了時に呼び出して、接続をクリーンアップします。
     """
-    global _store_instance
+    global _store_instance, _store_loop
     if _store_instance is not None:
         try:
             await _store_instance.__aexit__(None, None, None)
@@ -233,10 +262,16 @@ async def close_store() -> None:
             if isinstance(pool, AsyncConnectionPool):
                 await pool.close()
             logger.info("Store singleton pool closed")
+        except asyncio.CancelledError as e:
+            logger.warning(
+                "Store singleton close was cancelled; dropping cached instance: %s",
+                e,
+            )
         except Exception as e:
             logger.warning("Error closing store: %s", e, exc_info=True)
         finally:
             _store_instance = None
+            _store_loop = None
 
 
 async def reset_store() -> None:

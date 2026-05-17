@@ -21,6 +21,16 @@ except ImportError:
     HumanMessage = None
     SystemMessage = None
 
+_PLACEHOLDER_KEY_PREFIXES = ("test-", "placeholder", "fake-")
+
+
+def _is_real_api_key(value: str | None) -> bool:
+    """Ignore test placeholders injected by pytest defaults."""
+    if not value:
+        return False
+    lower = value.lower()
+    return not any(lower.startswith(prefix) for prefix in _PLACEHOLDER_KEY_PREFIXES)
+
 
 class QualityDimension(str, Enum):
     """回答品質の評価軸"""
@@ -100,9 +110,9 @@ class LLMJudgeEvaluator:
         base_url = None
         model_name = self.model_name
 
-        if not api_key:
+        if not _is_real_api_key(api_key):
             api_key = os.getenv("OPENROUTER_API_KEY")
-            if api_key:
+            if _is_real_api_key(api_key):
                 base_url = "https://openrouter.ai/api/v1"
                 # OpenRouter requires provider-prefixed model names
                 _openrouter_model_map = {
@@ -111,6 +121,8 @@ class LLMJudgeEvaluator:
                     "gpt-4": "openai/gpt-4",
                 }
                 model_name = _openrouter_model_map.get(model_name, model_name)
+            else:
+                api_key = None
 
         if api_key:
             try:

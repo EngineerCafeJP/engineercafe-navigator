@@ -687,7 +687,9 @@ FACILITY_EQUIPMENT_KEYWORDS = [
     "vrゴーグル",
     "VRゴーグル",
     "テラス席",
+    "メインホール",
     "メインホール使いたい",
+    "main hall",
     "レーザーカッター",
     "レーザー加工機",
     "プロジェクター",
@@ -1228,6 +1230,8 @@ def extract_request_type(query: str) -> Optional[str]:
         return "pets"
     if match_keywords(lower_query, FLOOR_LAYOUT_KEYWORDS):
         return "floor_layout"
+    if match_keywords(lower_query, EXCLUSIVE_RENTAL_KEYWORDS):
+        return "exclusive_rental"
     if match_keywords(lower_query, FACILITY_EQUIPMENT_KEYWORDS):
         return "facility"
     # basement: キーワード + regex パターン

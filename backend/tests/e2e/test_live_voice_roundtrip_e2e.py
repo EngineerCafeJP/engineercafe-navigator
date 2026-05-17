@@ -45,6 +45,13 @@ class TestLiveVoiceRoundTripE2E:
         実音声 fixture を STT し、その transcript で LangGraph に問い合わせ、
         返答をそのまま TTS できることを確認する。
         """
+        pytest.importorskip(
+            "qwen_asr",
+            reason=(
+                "qwen-asr audio runtime is not installed in this Python E2E environment; "
+                "Cloud Run voice coverage is handled by the live browser voice workflow."
+            ),
+        )
         session_id = str(uuid.uuid4())
 
         stt_response = await live_api_client.post(

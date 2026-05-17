@@ -121,11 +121,12 @@ class TestFastPathAccuracy:
         assert precision == 1.0, f"fast-path精度(precision)が{precision:.1%} < 100%"
 
     def test_rt011_food_drink_verb_fixed(self, orchestrator):
-        """rt-011: 飲食動詞が正しくfacilityにルーティングされる (改善ポイント)"""
+        """rt-011: コーヒー希望はSaino案内へルーティングされる。"""
         result = orchestrator._try_fast_routing("カフェでコーヒーは飲めますか？")
         assert result is not None, "rt-011 should be fast-pathed"
-        assert result["agent"] == "facility"
+        assert result["agent"] == "business_info"
         assert result["request_type"] == "food_drink"
+        assert result["category"] == "saino-cafe"
 
     def test_rt014_meeting_room_floor_fixed(self, orchestrator):
         """rt-014: 会議室+階情報が正しくfacilityにルーティングされる (改善ポイント)"""
