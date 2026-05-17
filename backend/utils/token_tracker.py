@@ -5,11 +5,26 @@
 """
 
 import logging
+import os
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Any, List, Optional
 
 logger = logging.getLogger(__name__)
+
+_DEFAULT_CEREBRAS_INPUT_COST_PER_1K = 0.0
+_DEFAULT_CEREBRAS_OUTPUT_COST_PER_1K = 0.0
+
+
+def _env_float(name: str, default: float) -> float:
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        logger.warning("Invalid %s=%r. Falling back to %.6f.", name, raw, default)
+        return default
 
 
 @dataclass
@@ -130,6 +145,19 @@ class TokenTracker:
                     input_cost = (prompt_tokens / 1000) * config.input_cost_per_1k
                     output_cost = (completion_tokens / 1000) * config.output_cost_per_1k
                     return input_cost + output_cost
+            cerebras_fast_model = os.getenv("CEREBRAS_FAST_MODEL", "gpt-oss-120b").strip()
+            if model == cerebras_fast_model or model.startswith("gpt-oss"):
+                input_cost_per_1k = _env_float(
+                    "CEREBRAS_INPUT_COST_PER_1K",
+                    _DEFAULT_CEREBRAS_INPUT_COST_PER_1K,
+                )
+                output_cost_per_1k = _env_float(
+                    "CEREBRAS_OUTPUT_COST_PER_1K",
+                    _DEFAULT_CEREBRAS_OUTPUT_COST_PER_1K,
+                )
+                input_cost = (prompt_tokens / 1000) * input_cost_per_1k
+                output_cost = (completion_tokens / 1000) * output_cost_per_1k
+                return input_cost + output_cost
             logger.warning("No cost data for model '%s'. Cost reported as $0.00.", model)
         except Exception as e:
             logger.debug("Cost estimation failed: %s", e)

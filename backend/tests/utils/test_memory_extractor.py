@@ -1,5 +1,7 @@
 """Tests for backend.utils.memory_extractor — memory extraction from conversations."""
 
+from unittest.mock import patch
+
 from backend.utils.memory_extractor import (
     extract_memories,
     extract_memory_candidates,
@@ -92,6 +94,23 @@ class TestExtractMemories:
         lang_prefs = [m for m in result if m["type"] == "language_preference"]
         assert len(lang_prefs) == 1
 
+    def test_extract_memories_emits_memory_extractor_run_event(self):
+        with patch("backend.observability.structured_logger.log_memory_event") as mock_log:
+            result = extract_memories("私は田中です", "こんにちは田中さん", "ja")
+
+        assert any(memory["type"] == "visitor_name" for memory in result)
+        payloads = [call.kwargs for call in mock_log.call_args_list]
+        extractor_event = next(
+            payload
+            for payload in payloads
+            if payload["event"] == "memory_extractor_run" and payload["extractor_type"] == "direct"
+        )
+        assert extractor_event["success"] is True
+        assert extractor_event["language"] == "ja"
+        assert extractor_event["extracted_count"] >= 1
+        assert "visitor_name" in extractor_event["memory_types"]
+        assert isinstance(extractor_event["duration_ms"], int)
+
 
 class TestExtractMemoryCandidates:
     """extract_memory_candidates() のテスト"""
@@ -146,6 +165,29 @@ class TestExtractMemoryCandidates:
         assert len(loc) == 1
         assert loc[0]["sensitivity"] == "non_pii"
         assert loc[0]["volatility"] == "medium"
+
+    def test_extract_memory_candidates_emits_candidate_extractor_event(self):
+        with patch("backend.observability.structured_logger.log_memory_event") as mock_log:
+            result = extract_memory_candidates(
+                "私は田中です",
+                "こんにちは田中さん",
+                "ja",
+                extracted_at=1700000000.0,
+            )
+
+        assert any(candidate["candidate_type"] == "visitor_name" for candidate in result)
+        payloads = [call.kwargs for call in mock_log.call_args_list]
+        candidate_event = next(
+            payload
+            for payload in payloads
+            if payload["event"] == "memory_extractor_run"
+            and payload["extractor_type"] == "candidate"
+        )
+        assert candidate_event["success"] is True
+        assert candidate_event["language"] == "ja"
+        assert candidate_event["extracted_count"] >= 1
+        assert "visitor_name" in candidate_event["candidate_types"]
+        assert isinstance(candidate_event["duration_ms"], int)
 
 
 class TestExtractName:

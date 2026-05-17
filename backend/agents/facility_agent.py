@@ -12,6 +12,7 @@ from backend.config.prompts.facility_prompts import (
     FACILITY_ENHANCEMENT_KEYWORDS,
     build_facility_prompt,
 )
+from backend.agents.llm_metadata import merge_llm_metadata
 from backend.config.routing_constants import match_pet_policy_keywords
 from backend.llm import get_llm_provider, get_model_config
 from backend.tools.enhanced_rag import EnhancedRAGSearch
@@ -185,16 +186,22 @@ class FacilityAgent:
             # 感情タグを決定
             emotion = self._determine_emotion(request_type, response_text)
 
-            return {
-                "answer": response_text,
-                "emotion": emotion,
-                "metadata": {
+            metadata = merge_llm_metadata(
+                {
                     "agent": "FacilityAgent",
                     "confidence": 0.85,
                     "category": rag_category,
                     "request_type": request_type,
+                    "route": rag_category,
                     "sources": ["enhanced_rag"],
                 },
+                response_text,
+            )
+
+            return {
+                "answer": str(response_text),
+                "emotion": emotion,
+                "metadata": metadata,
             }
 
         except Exception as e:
@@ -1194,6 +1201,7 @@ class FacilityAgent:
                 "confidence": 0.95,
                 "category": "facility-info",
                 "request_type": request_type,
+                "route": "facility-info",
                 "sources": ["enhanced_rag"],
             },
         }
@@ -1970,6 +1978,7 @@ class FacilityAgent:
                 "agent": "FacilityAgent",
                 "confidence": 0.3,
                 "request_type": request_type,
+                "route": request_type or "facility-info",
                 "sources": ["fallback"],
             },
         }

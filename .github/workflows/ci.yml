@@ -39,6 +39,10 @@ jobs:
               - '.github/workflows/voice-e2e-nightly.yml'
             backend:
               - 'backend/**'
+              - 'infra/**'
+              - 'scripts/**'
+              - '.github/workflows/ci.yml'
+              - '.github/workflows/alpha-live-verification.yml'
 
   # Frontend: Lint
   frontend-lint:
@@ -526,9 +530,14 @@ jobs:
             "CONNPASS_API_KEY" \
             "${CONNPASS_API_KEY}" \
             "CONNPASS_API_KEY GitHub secret is not configured; relying on existing Google Secret Manager value if present"
+          sync_secret_from_env \
+            "GOOGLE_CALENDAR_ICAL_URL" \
+            "${GOOGLE_CALENDAR_ICAL_URL}" \
+            "GOOGLE_CALENDAR_ICAL_URL GitHub secret is not configured; relying on existing Google Secret Manager value if present"
         env:
           LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
           CONNPASS_API_KEY: ${{ secrets.CONNPASS_API_KEY }}
+          GOOGLE_CALENDAR_ICAL_URL: ${{ secrets.GOOGLE_CALENDAR_ICAL_URL }}
 
       - name: Deploy to Cloud Run
         run: |
@@ -544,6 +553,11 @@ jobs:
           else
             echo "::warning::CONNPASS_API_KEY latest secret version not available; Connpass updates disabled"
           fi
+          if gcloud secrets versions access latest --secret=GOOGLE_CALENDAR_ICAL_URL >/dev/null 2>&1; then
+            BACKEND_SECRET_ARGS="${BACKEND_SECRET_ARGS},GOOGLE_CALENDAR_ICAL_URL=GOOGLE_CALENDAR_ICAL_URL:latest"
+          else
+            echo "::warning::GOOGLE_CALENDAR_ICAL_URL latest secret version not available; Google Calendar event sync disabled"
+          fi
 
           gcloud run deploy engineer-cafe-backend \
             --image asia-northeast1-docker.pkg.dev/aipartner-426616/cloud-run-source-deploy/engineer-cafe-backend:${{ github.sha }} \
@@ -558,7 +572,7 @@ jobs:
             --max-instances 15 \
             --cpu-boost \
             --no-cpu-throttling \
-            --update-env-vars "ENVIRONMENT=production,TTS_PROVIDER=piper,TTS_REQUIRE_PRIMARY_PROVIDER=true,PIPER_PLUS_API_URL=https://piper-plus-639959525777.asia-northeast1.run.app,VOICEVOX_API_URL=https://voicevox-proto-639959525777.asia-northeast2.run.app,STT_PROVIDER=qwen-primary,STT_QWEN_RUNTIME=torch,STT_LLM_POSTPROCESS=false,VOICE_STT_REQUEST_TIMEOUT_SECONDS=15,QWEN_STT_TIMEOUT=15,QWEN_STT_HEDGE_DELAY_SECONDS=1.5,QWEN_STT_HEDGE_GRACE_SECONDS=4,QWEN_STT_LATENCY_BUDGET_SECONDS=11.5,STT_PRELOAD_QWEN_PRIMARY=true,STT_PRELOAD_VOSK_FALLBACK=true,ENABLE_AGENT_MEMORY_STM_WRITES=false,ALLOW_AGENT_MEMORY_STM_WRITE_DISABLE=true,HF_HOME=/app/.hf_cache,FRONTEND_PRODUCTION_ORIGIN=${FRONTEND_PRODUCTION_ORIGIN},ALLOWED_ORIGINS=${FRONTEND_PRODUCTION_ORIGIN},FAST_LLM_ENABLED=true,FAST_LLM_PRIMARY_PROVIDER=cerebras,FAST_LLM_PRIMARY_MODEL=google/gemini-3.1-flash-lite-preview,FAST_LLM_FALLBACK_PROVIDER=gemini,FAST_LLM_FALLBACK_MODEL=google/gemini-2.5-flash-lite,FAST_LLM_TERTIARY_PROVIDER=cerebras,CEREBRAS_ENABLED=true,CEREBRAS_FAST_MODEL=gpt-oss-120b,CEREBRAS_REASONING_EFFORT=low,DEEP_REASONING_MODEL=google/gemini-3.1-pro-preview,DEEP_REASONING_FALLBACK_MODEL=google/gemini-2.5-pro,LANGSMITH_PROJECT=engineer-cafe-navigator-production,LANGCHAIN_PROJECT=engineer-cafe-navigator-production" \
+            --update-env-vars "ENVIRONMENT=production,TTS_PROVIDER=piper,TTS_REQUIRE_PRIMARY_PROVIDER=true,PIPER_PLUS_API_URL=https://piper-plus-639959525777.asia-northeast1.run.app,VOICEVOX_API_URL=https://voicevox-proto-639959525777.asia-northeast2.run.app,STT_PROVIDER=qwen-primary,STT_QWEN_RUNTIME=torch,STT_LLM_POSTPROCESS=false,VOICE_STT_REQUEST_TIMEOUT_SECONDS=15,QWEN_STT_TIMEOUT=15,QWEN_STT_HEDGE_DELAY_SECONDS=1.5,QWEN_STT_HEDGE_GRACE_SECONDS=4,QWEN_STT_LATENCY_BUDGET_SECONDS=11.5,STT_PRELOAD_QWEN_PRIMARY=true,STT_PRELOAD_VOSK_FALLBACK=true,ENABLE_AGENT_MEMORY_STM_WRITES=false,ALLOW_AGENT_MEMORY_STM_WRITE_DISABLE=true,ENABLE_MEMORY_CANDIDATES=true,ENABLE_MEMORY_PROMOTION=true,ENABLE_LONG_TERM_MEMORY_RERANK=true,HF_HOME=/app/.hf_cache,FRONTEND_PRODUCTION_ORIGIN=${FRONTEND_PRODUCTION_ORIGIN},ALLOWED_ORIGINS=${FRONTEND_PRODUCTION_ORIGIN},FAST_LLM_ENABLED=true,FAST_LLM_PRIMARY_PROVIDER=cerebras,FAST_LLM_PRIMARY_MODEL=google/gemini-3.1-flash-lite-preview,FAST_LLM_FALLBACK_PROVIDER=gemini,FAST_LLM_FALLBACK_MODEL=google/gemini-2.5-flash-lite,FAST_LLM_TERTIARY_PROVIDER=cerebras,CEREBRAS_ENABLED=true,CEREBRAS_FAST_MODEL=gpt-oss-120b,CEREBRAS_REASONING_EFFORT=low,DEEP_REASONING_MODEL=google/gemini-3.1-pro-preview,DEEP_REASONING_FALLBACK_MODEL=google/gemini-2.5-pro,LANGSMITH_PROJECT=engineer-cafe-navigator-production,LANGCHAIN_PROJECT=engineer-cafe-navigator-production" \
             --update-secrets "${BACKEND_SECRET_ARGS}"
 
           LATEST_READY_REVISION=$(gcloud run services describe engineer-cafe-backend \
@@ -574,6 +588,82 @@ jobs:
             --to-latest
         env:
           FRONTEND_PRODUCTION_ORIGIN: ${{ vars.FRONTEND_PRODUCTION_ORIGIN }}
+
+      - name: Deploy Event KB sync job and scheduler
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          PROJECT_ID="aipartner-426616"
+          REGION="asia-northeast1"
+          JOB_NAME="event-kb-sync"
+          SCHEDULER_JOB_NAME="event-kb-sync-daily"
+          JOB_SERVICE_ACCOUNT="engineer-cafe-navigator@${PROJECT_ID}.iam.gserviceaccount.com"
+          IMAGE="asia-northeast1-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/engineer-cafe-backend:${{ github.sha }}"
+
+          gcloud services enable cloudscheduler.googleapis.com run.googleapis.com \
+            --project="${PROJECT_ID}" \
+            --quiet
+
+          for secret_name in OPENROUTER_API_KEY SUPABASE_URL SUPABASE_KEY GOOGLE_CALENDAR_ICAL_URL; do
+            if ! gcloud secrets versions access latest --secret="${secret_name}" >/dev/null 2>&1; then
+              echo "error: required secret ${secret_name} is missing or has no enabled version" >&2
+              exit 1
+            fi
+          done
+
+          gcloud run jobs deploy "${JOB_NAME}" \
+            --project="${PROJECT_ID}" \
+            --region="${REGION}" \
+            --image="${IMAGE}" \
+            --service-account="${JOB_SERVICE_ACCOUNT}" \
+            --command=python \
+            --args=-m,backend.scripts.sync_event_kb \
+            --tasks=1 \
+            --max-retries=1 \
+            --task-timeout=3600s \
+            --cpu=1 \
+            --memory=1Gi \
+            --set-env-vars="ENVIRONMENT=production,GOOGLE_CLOUD_PROJECT=${PROJECT_ID}" \
+            --set-secrets="OPENROUTER_API_KEY=OPENROUTER_API_KEY:latest,SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_KEY=SUPABASE_KEY:latest,GOOGLE_CALENDAR_ICAL_URL=GOOGLE_CALENDAR_ICAL_URL:latest"
+
+          JOB_RUN_URI="https://run.googleapis.com/v2/projects/${PROJECT_ID}/locations/${REGION}/jobs/${JOB_NAME}:run"
+          if gcloud scheduler jobs describe "${SCHEDULER_JOB_NAME}" \
+            --project="${PROJECT_ID}" \
+            --location="${REGION}" >/dev/null 2>&1; then
+            gcloud scheduler jobs update http "${SCHEDULER_JOB_NAME}" \
+              --project="${PROJECT_ID}" \
+              --location="${REGION}" \
+              --schedule="0 9 * * *" \
+              --time-zone="Asia/Tokyo" \
+              --uri="${JOB_RUN_URI}" \
+              --http-method=POST \
+              --update-headers="Content-Type=application/json" \
+              --message-body="{}" \
+              --oauth-service-account-email="${JOB_SERVICE_ACCOUNT}" \
+              --oauth-token-scope="https://www.googleapis.com/auth/cloud-platform" \
+              --attempt-deadline=30s \
+              --max-retry-attempts=1
+          else
+            gcloud scheduler jobs create http "${SCHEDULER_JOB_NAME}" \
+              --project="${PROJECT_ID}" \
+              --location="${REGION}" \
+              --schedule="0 9 * * *" \
+              --time-zone="Asia/Tokyo" \
+              --uri="${JOB_RUN_URI}" \
+              --http-method=POST \
+              --headers="Content-Type=application/json" \
+              --message-body="{}" \
+              --oauth-service-account-email="${JOB_SERVICE_ACCOUNT}" \
+              --oauth-token-scope="https://www.googleapis.com/auth/cloud-platform" \
+              --attempt-deadline=30s \
+              --max-retry-attempts=1
+          fi
+
+          gcloud run jobs execute "${JOB_NAME}" \
+            --project="${PROJECT_ID}" \
+            --region="${REGION}" \
+            --wait
 
       - name: Smoke test deployed service
         run: |
@@ -650,8 +740,10 @@ jobs:
 
           check_secret_binding "LANGSMITH_API_KEY" "LangSmith"
           check_secret_binding "CONNPASS_API_KEY" "Connpass"
+          check_secret_binding "GOOGLE_CALENDAR_ICAL_URL" "Google Calendar ICS"
 
           SERVICE_URL=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["status"]["url"])' "$SERVICE_JSON")
+          LATEST_READY_REVISION=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["status"]["latestReadyRevisionName"])' "$SERVICE_JSON")
           echo "Testing $SERVICE_URL/health ..."
           for i in 1 2 3; do
             HEALTH=$(curl -sf --max-time 30 "$SERVICE_URL/health") && break
@@ -660,6 +752,148 @@ jobs:
           done
           echo "$HEALTH"
           echo "$HEALTH" | python3 -c "import sys,json; d=json.load(sys.stdin); assert d['status']=='ok', f'Health check failed: {d}'"
+
+          REQUEST_ID="ci-llm-observability-${GITHUB_SHA:0:12}-$(date +%s)"
+          SESSION_ID="${REQUEST_ID}"
+          API_KEY="$(gcloud secrets versions access latest --secret=API_SECRET_KEY)"
+          CHAT_BODY=$(mktemp)
+          cat > "$CHAT_BODY" <<JSON
+          {
+            "query": "覚えて、私はCIテストユーザーです。量子コンピュータを初心者向けに一文で説明してください",
+            "session_id": "${SESSION_ID}",
+            "language": "ja",
+            "visitor_id": "${SESSION_ID}"
+          }
+          JSON
+
+          echo "Testing $SERVICE_URL/api/chat LLM observability with request_id=$REQUEST_ID ..."
+          CHAT_RESPONSE=$(curl -sf --max-time 120 \
+            -X POST "$SERVICE_URL/api/chat" \
+            -H "Content-Type: application/json" \
+            -H "X-API-Key: ${API_KEY}" \
+            -H "X-Request-ID: ${REQUEST_ID}" \
+            --data-binary @"$CHAT_BODY")
+
+          python3 - "$CHAT_RESPONSE" <<'PY'
+          import json
+          import sys
+
+          response = json.loads(sys.argv[1])
+          metadata = response.get("metadata") or {}
+          provider = metadata.get("provider") or metadata.get("llm_provider")
+          model = metadata.get("model") or metadata.get("llm_model")
+          route = metadata.get("route") or metadata.get("category") or metadata.get("request_type")
+          latency = metadata.get("llm_latency_ms")
+          missing = [
+              name
+              for name, value in {
+                  "provider": provider,
+                  "model": model,
+                  "route": route,
+                  "llm_latency_ms": latency,
+              }.items()
+              if value in (None, "", "unknown")
+          ]
+          if missing:
+              raise SystemExit(f"error: /api/chat metadata missing LLM observability fields: {missing}")
+          if provider != "cerebras" or model != "gpt-oss-120b":
+              raise SystemExit(
+                  "error: /api/chat did not complete through Cerebras direct hop: "
+                  f"provider={provider} model={model}"
+              )
+          print(
+              "Chat response metadata check passed: "
+              f"provider={provider} model={model} route={route} llm_latency_ms={latency}"
+          )
+          PY
+
+          CHAT_LOG_OK=false
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            LOG_JSON=$(gcloud logging read \
+              "resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"engineer-cafe-backend\" AND resource.labels.revision_name=\"${LATEST_READY_REVISION}\" AND jsonPayload.event=\"chat_response\" AND jsonPayload.request_id=\"${REQUEST_ID}\"" \
+              --project=aipartner-426616 \
+              --limit=1 \
+              --format=json)
+            if python3 - "$LOG_JSON" <<'PY'
+          import json
+          import sys
+
+          rows = json.loads(sys.argv[1])
+          if not rows:
+              raise SystemExit(1)
+          payload = rows[0].get("jsonPayload") or {}
+          failures = []
+          if payload.get("provider") in (None, "", "unknown"):
+              failures.append("provider")
+          if payload.get("model") in (None, "", "unknown"):
+              failures.append("model")
+          if payload.get("route") in (None, "", "unknown"):
+              failures.append("route")
+          if payload.get("llm_latency_ms") is None:
+              failures.append("llm_latency_ms")
+          if failures:
+              raise SystemExit(f"error: Cloud Logging chat_response missing fields: {failures}")
+          if payload.get("provider") != "cerebras" or payload.get("model") != "gpt-oss-120b":
+              raise SystemExit(
+                  "error: Cloud Logging chat_response did not record Cerebras direct hop: "
+                  f"provider={payload.get('provider')} model={payload.get('model')}"
+              )
+          print(
+              "Cloud Logging observability check passed: "
+              f"provider={payload.get('provider')} model={payload.get('model')} "
+              f"route={payload.get('route')} llm_latency_ms={payload.get('llm_latency_ms')}"
+          )
+          PY
+            then
+              CHAT_LOG_OK=true
+              break
+            fi
+            echo "Waiting for chat_response log row (attempt $attempt/10)..."
+            sleep 10
+          done
+
+          if [[ "$CHAT_LOG_OK" != "true" ]]; then
+            echo "error: chat_response log row with request_id=${REQUEST_ID} did not arrive" >&2
+            exit 1
+          fi
+
+          for event_name in \
+            memory_loader_get_recent_messages_duration_ms \
+            memory_extractor_run \
+            memory_promote_run \
+            memory_candidate_aggregate; do
+            EVENT_OK=false
+            for attempt in 1 2 3 4 5 6 7 8 9 10; do
+              EVENT_JSON=$(gcloud logging read \
+                "resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"engineer-cafe-backend\" AND resource.labels.revision_name=\"${LATEST_READY_REVISION}\" AND jsonPayload.event=\"${event_name}\" AND jsonPayload.request_id=\"${REQUEST_ID}\"" \
+                --project=aipartner-426616 \
+                --limit=1 \
+                --format=json)
+              if python3 - "$EVENT_JSON" "$event_name" <<'PY'
+          import json
+          import sys
+
+          rows = json.loads(sys.argv[1])
+          event_name = sys.argv[2]
+          if not rows:
+              raise SystemExit(1)
+          payload = rows[0].get("jsonPayload") or {}
+          if payload.get("event") != event_name:
+              raise SystemExit(f"error: unexpected memory event payload: {payload}")
+          print(f"Cloud Logging memory event check passed: {event_name}")
+          PY
+              then
+                EVENT_OK=true
+                break
+              fi
+              echo "Waiting for ${event_name} log row (attempt $attempt/10)..."
+              sleep 10
+            done
+            if [[ "$EVENT_OK" != "true" ]]; then
+              echo "error: ${event_name} log row with request_id=${REQUEST_ID} did not arrive" >&2
+              exit 1
+            fi
+          done
 
   # Frontend: Vercel deploy is handled by Vercel Deploy Hook (auto-deploy on push).
   # The former CI-based `frontend-deploy-production` job was removed 2026-03-18

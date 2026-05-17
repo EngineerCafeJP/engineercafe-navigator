@@ -24,6 +24,10 @@ class ContextSignals:
     conversation_depth: int = 0
     previous_categories: tuple = ()
 
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "memory_topics", tuple(self.memory_topics or ()))
+        object.__setattr__(self, "previous_categories", tuple(self.previous_categories or ()))
+
 
 class ContextPriorityEngine:
     """コンテキスト駆動の優先度エンジン"""

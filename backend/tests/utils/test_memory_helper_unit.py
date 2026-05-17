@@ -307,6 +307,45 @@ class TestGetPreviousRequestType:
         assert result == "hours"
 
     @pytest.mark.asyncio
+    async def test_emits_previous_request_type_duration_probe(self, helper_with_client):
+        helper, client = helper_with_client
+        chain = _build_chain_mock(
+            Mock(
+                data=[
+                    {
+                        "value": {
+                            "role": "user",
+                            "sessionId": "sess-1",
+                            "request_type": "hours",
+                        }
+                    },
+                ]
+            )
+        )
+        client.table.return_value = chain
+
+        with patch("backend.observability.structured_logger.log_memory_event") as mock_log:
+            result = await helper.get_previous_request_type("sess-1")
+
+        assert result == "hours"
+        payloads = [call.kwargs for call in mock_log.call_args_list]
+        probe = next(
+            payload
+            for payload in payloads
+            if payload["event"] == "memory_loader_get_previous_request_type"
+        )
+        compatibility_probe = next(
+            payload
+            for payload in payloads
+            if payload["event"] == "memory_loader_get_previous_request_type_duration_ms"
+        )
+        assert probe["success"] is True
+        assert probe["row_count"] == 1
+        assert probe["request_type"] == "hours"
+        assert isinstance(probe["memory_loader_get_previous_request_type_duration_ms"], int)
+        assert compatibility_probe["request_type"] == "hours"
+
+    @pytest.mark.asyncio
     async def test_returns_none_when_no_messages(self, helper_with_client):
         """メッセージが存在しない場合 None を返す"""
         helper, client = helper_with_client
@@ -451,6 +490,46 @@ class TestGetRecentMessages:
         memory_chain.filter.assert_called_once_with("value->>sessionId", "eq", "sess-1")
 
     @pytest.mark.asyncio
+    async def test_emits_recent_messages_duration_probe(self, helper_with_client):
+        helper, client = helper_with_client
+        memory_chain = _build_chain_mock(
+            Mock(
+                data=[
+                    {
+                        "value": {
+                            "role": "user",
+                            "content": "Hello",
+                            "sessionId": "sess-1",
+                            "timestamp": 1000,
+                        }
+                    },
+                ]
+            )
+        )
+        client.table.return_value = memory_chain
+
+        with patch("backend.observability.structured_logger.log_memory_event") as mock_log:
+            messages = await helper._get_recent_messages("sess-1")
+
+        assert len(messages) == 1
+        payloads = [call.kwargs for call in mock_log.call_args_list]
+        probe = next(
+            payload
+            for payload in payloads
+            if payload["event"] == "memory_loader_get_recent_messages"
+        )
+        compatibility_probe = next(
+            payload
+            for payload in payloads
+            if payload["event"] == "memory_loader_get_recent_messages_duration_ms"
+        )
+        assert probe["success"] is True
+        assert probe["row_count"] == 1
+        assert probe["message_count"] == 1
+        assert isinstance(probe["memory_loader_get_recent_messages_duration_ms"], int)
+        assert compatibility_probe["message_count"] == 1
+
+    @pytest.mark.asyncio
     async def test_returns_empty_list_when_session_inactive(self, helper_with_client):
         """非アクティブセッションでは空リストを返す"""
         helper, client = helper_with_client
@@ -466,9 +545,20 @@ class TestGetRecentMessages:
     @pytest.mark.asyncio
     async def test_returns_empty_list_when_supabase_is_none(self, helper_without_client):
         """supabase が None の場合は空リストを返す"""
-        messages = await helper_without_client._get_recent_messages("sess-1")
+        with patch("backend.observability.structured_logger.log_memory_event") as mock_log:
+            messages = await helper_without_client._get_recent_messages("sess-1")
 
         assert messages == []
+        payloads = [call.kwargs for call in mock_log.call_args_list]
+        probe = next(
+            payload
+            for payload in payloads
+            if payload["event"] == "memory_loader_get_recent_messages"
+        )
+        assert probe["success"] is True
+        assert probe["skipped"] is True
+        assert probe["reason"] == "supabase_unavailable"
+        assert probe["row_count"] == 0
 
     @pytest.mark.asyncio
     async def test_returns_empty_list_when_no_data(self, helper_with_client):
@@ -509,9 +599,19 @@ class TestGetRecentMessages:
 
         client.table.side_effect = table_side_effect
 
-        messages = await helper._get_recent_messages(_ACTIVE_SESSION_ID)
+        with patch("backend.observability.structured_logger.log_memory_event") as mock_log:
+            messages = await helper._get_recent_messages(_ACTIVE_SESSION_ID)
 
         assert messages == []
+        payloads = [call.kwargs for call in mock_log.call_args_list]
+        probe = next(
+            payload
+            for payload in payloads
+            if payload["event"] == "memory_loader_get_recent_messages"
+        )
+        assert probe["success"] is False
+        assert probe["error_type"] == "Exception"
+        assert isinstance(probe["memory_loader_get_recent_messages_duration_ms"], int)
 
 
 # =============================================================================
@@ -1422,6 +1522,48 @@ class TestGetContext:
 
             mock_rag_class.assert_not_called()
             assert result["knowledge_results"] == []
+
+    @pytest.mark.asyncio
+    async def test_get_context_emits_recent_messages_probe_when_stm_writes_disabled(self):
+        with patch.dict(
+            os.environ,
+            {
+                "SUPABASE_URL": "",
+                "SUPABASE_KEY": "",
+                "ENABLE_AGENT_MEMORY_STM_WRITES": "false",
+                "ENVIRONMENT": "development",
+            },
+        ):
+            helper = SimplifiedMemoryHelper()
+            with (
+                patch("backend.observability.structured_logger.log_memory_event") as mock_log,
+                patch("backend.tools.enhanced_rag.EnhancedRAGSearch") as mock_rag_class,
+            ):
+                result = await helper.get_context(
+                    "営業時間は？",
+                    "sess-1",
+                    {"include_knowledge_base": False},
+                )
+
+            mock_rag_class.assert_not_called()
+            assert result["recent_messages"] == []
+            payloads = [call.kwargs for call in mock_log.call_args_list]
+            probe = next(
+                payload
+                for payload in payloads
+                if payload["event"] == "memory_loader_get_recent_messages"
+            )
+            compatibility_probe = next(
+                payload
+                for payload in payloads
+                if payload["event"] == "memory_loader_get_recent_messages_duration_ms"
+            )
+            assert probe["success"] is True
+            assert probe["skipped"] is True
+            assert probe["reason"] == "agent_memory_stm_writes_disabled"
+            assert probe["row_count"] == 0
+            assert probe["memory_loader_get_recent_messages_duration_ms"] == 0
+            assert compatibility_probe["reason"] == "agent_memory_stm_writes_disabled"
 
     @pytest.mark.asyncio
     async def test_handles_rag_failure_gracefully(self):

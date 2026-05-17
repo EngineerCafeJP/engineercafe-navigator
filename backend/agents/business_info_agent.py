@@ -8,6 +8,7 @@ from typing import Dict, Optional
 
 from langchain_core.messages import HumanMessage
 
+from backend.agents.llm_metadata import merge_llm_metadata
 from backend.llm import get_llm_provider, get_model_config
 from backend.tools.enhanced_rag import EnhancedRAGSearch
 from backend.utils.cafe_entity import (
@@ -176,16 +177,22 @@ class BusinessInfoAgent:
             # 感情タグを決定
             emotion = self._determine_emotion(request_type, response_text)
 
-            return {
-                "answer": response_text,
-                "emotion": emotion,
-                "metadata": {
+            metadata = merge_llm_metadata(
+                {
                     "agent": "BusinessInfoAgent",
                     "confidence": 0.85,
                     "category": category,
                     "request_type": request_type,
+                    "route": category,
                     "sources": ["enhanced_rag"],
                 },
+                response_text,
+            )
+
+            return {
+                "answer": str(response_text),
+                "emotion": emotion,
+                "metadata": metadata,
             }
 
         except Exception as e:
@@ -1145,6 +1152,7 @@ Information: {context}
             "agent": "BusinessInfoAgent",
             "confidence": 0.95,
             "request_type": request_type,
+            "route": category or request_type or "business_info",
             "sources": ["enhanced_rag"],
         }
         if category:

@@ -18,6 +18,19 @@ from typing import Any, Dict, List
 logger = logging.getLogger(__name__)
 
 
+def _duration_ms(started_at: float) -> int:
+    return max(0, int((time.perf_counter() - started_at) * 1000))
+
+
+def _log_memory_event_safely(event: str, **fields: Any) -> None:
+    try:
+        from backend.observability.structured_logger import log_memory_event
+
+        log_memory_event(event=event, **fields)
+    except Exception:
+        pass
+
+
 def extract_memories(
     query: str,
     answer: str,
@@ -35,6 +48,7 @@ def extract_memories(
         抽出されたメモリのリスト。各メモリは以下の形式:
         {"type": str, "content": str, "confidence": float}
     """
+    started_at = time.perf_counter()
     memories: List[Dict[str, Any]] = []
 
     # 1. 名前の抽出
@@ -102,6 +116,15 @@ def extract_memories(
             }
         )
 
+    _log_memory_event_safely(
+        "memory_extractor_run",
+        extractor_type="direct",
+        language=language,
+        success=True,
+        duration_ms=_duration_ms(started_at),
+        extracted_count=len(memories),
+        memory_types=sorted({str(memory.get("type", "unknown")) for memory in memories}),
+    )
     return memories
 
 
@@ -118,8 +141,18 @@ def extract_memory_candidates(
 
     既存 extract_memories() の互換性を保ちながら、段階昇格に必要なメタデータを付与する。
     """
+    started_at = time.perf_counter()
     base_memories = extract_memories(query=query, answer=answer, language=language)
     if not base_memories:
+        _log_memory_event_safely(
+            "memory_extractor_run",
+            extractor_type="candidate",
+            language=language,
+            success=True,
+            duration_ms=_duration_ms(started_at),
+            extracted_count=0,
+            candidate_types=[],
+        )
         return []
 
     ts = extracted_at if extracted_at is not None else time.time()
@@ -147,6 +180,17 @@ def extract_memory_candidates(
                 },
             }
         )
+    _log_memory_event_safely(
+        "memory_extractor_run",
+        extractor_type="candidate",
+        language=language,
+        success=True,
+        duration_ms=_duration_ms(started_at),
+        extracted_count=len(candidates),
+        candidate_types=sorted(
+            {str(candidate.get("candidate_type", "unknown")) for candidate in candidates}
+        ),
+    )
     return candidates
 
 

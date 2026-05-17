@@ -14,7 +14,7 @@ import json
 import logging
 import os
 import time
-from typing import AsyncGenerator, Dict, List, Optional
+from typing import Any, AsyncGenerator, Dict, List, Mapping, Optional
 
 import httpx
 from langchain_core.messages import (
@@ -54,6 +54,25 @@ class OpenRouterError(Exception):
         self.status_code = status_code
         self.response = response
         super().__init__(self.message)
+
+
+class LLMResponseText(str):
+    """Generated text plus explicit LLM observability metadata.
+
+    This is intentionally a ``str`` subclass so existing callers keep working
+    while agents can propagate provider/model/latency without ContextVar state.
+    """
+
+    llm_metadata: dict[str, Any]
+
+    def __new__(
+        cls,
+        value: str,
+        metadata: Mapping[str, Any] | None = None,
+    ) -> "LLMResponseText":
+        obj = str.__new__(cls, value)
+        obj.llm_metadata = dict(metadata or {})
+        return obj
 
 
 class OpenRouterProvider(LLMProvider):
@@ -127,10 +146,17 @@ class OpenRouterProvider(LLMProvider):
         await self._http_client.aclose()
 
     @staticmethod
-    def _record_successful_llm_call(*, provider: str, model: str, started_at: float) -> None:
-        """Record request-scoped provider/model metadata without shared instance state."""
+    def _record_successful_llm_call(
+        *, provider: str, model: str, started_at: float
+    ) -> dict[str, Any]:
+        """Return explicit provider/model metadata and mirror it to token tracking."""
 
         latency_ms = int((time.perf_counter() - started_at) * 1000)
+        metadata = {
+            "provider": provider,
+            "model": model,
+            "llm_latency_ms": max(0, latency_ms),
+        }
         try:
             record_llm_call_metadata(
                 provider=provider,
@@ -139,6 +165,7 @@ class OpenRouterProvider(LLMProvider):
             )
         except Exception as e:
             logger.debug("LLM metadata tracking failed (non-critical): %s", e)
+        return metadata
 
     def _convert_messages(self, messages: List[BaseMessage]) -> List[Dict[str, str]]:
         """
@@ -259,12 +286,12 @@ class OpenRouterProvider(LLMProvider):
             try:
                 started_at = time.perf_counter()
                 response_text = await self._cerebras_generate(messages, root_cfg)
-                self._record_successful_llm_call(
+                metadata = self._record_successful_llm_call(
                     provider="cerebras",
                     model=cerebras_model_slug(),
                     started_at=started_at,
                 )
-                return response_text
+                return LLMResponseText(response_text, metadata)
             except Exception as ce:
                 _cerebras_tried = True
                 logger.warning("Cerebras primary failed; falling back to OpenRouter: %s", ce)
@@ -297,12 +324,12 @@ class OpenRouterProvider(LLMProvider):
                     logger.debug("Token tracking failed (non-critical): %s", e)
 
             response_text = data["choices"][0]["message"]["content"]
-            self._record_successful_llm_call(
+            metadata = self._record_successful_llm_call(
                 provider="openrouter",
                 model=primary_slug,
                 started_at=started_at,
             )
-            return response_text
+            return LLMResponseText(response_text, metadata)
 
         except httpx.HTTPStatusError as e:
             if config.fallback_model and _fallback_count < 1:
@@ -330,12 +357,12 @@ class OpenRouterProvider(LLMProvider):
                 try:
                     started_at = time.perf_counter()
                     response_text = await self._cerebras_generate(messages, root_cfg)
-                    self._record_successful_llm_call(
+                    metadata = self._record_successful_llm_call(
                         provider="cerebras",
                         model=cerebras_model_slug(),
                         started_at=started_at,
                     )
-                    return response_text
+                    return LLMResponseText(response_text, metadata)
                 except Exception as ce:
                     logger.warning("Cerebras fallback failed: %s", ce, exc_info=True)
 
@@ -364,12 +391,12 @@ class OpenRouterProvider(LLMProvider):
                 try:
                     started_at = time.perf_counter()
                     response_text = await self._cerebras_generate(messages, root_cfg)
-                    self._record_successful_llm_call(
+                    metadata = self._record_successful_llm_call(
                         provider="cerebras",
                         model=cerebras_model_slug(),
                         started_at=started_at,
                     )
-                    return response_text
+                    return LLMResponseText(response_text, metadata)
                 except Exception as ce:
                     logger.warning("Cerebras fallback failed: %s", ce, exc_info=True)
 
