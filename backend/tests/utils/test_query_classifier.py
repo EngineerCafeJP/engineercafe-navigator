@@ -5,6 +5,63 @@ QueryClassifier のユニットテスト
 import pytest
 from backend.utils.query_classifier import QueryClassifier, QueryClassificationResult
 
+DATE_ONLY_QUERY_SAMPLES = {
+    "ja": [
+        "今日",
+        "本日",
+        "今日は何月何日ですか?",
+        "今日の日付を教えて",
+        "明日は何日ですか",
+        "昨日は何曜日でしたか",
+        "今週は何日から何日まで?",
+        "本日は何曜日ですか",
+        "明日の日付を教えて",
+        "昨日の日付は?",
+    ],
+    "en": [
+        "today",
+        "today's date?",
+        "What is the date today?",
+        "What date is it tomorrow?",
+        "What day is it today?",
+        "What day of the week is tomorrow?",
+        "yesterday's date?",
+        "What date was yesterday?",
+        "this week",
+        "What dates are this week?",
+    ],
+    "zh": [
+        "今天",
+        "今天是几月几号？",
+        "今天日期是什么？",
+        "今天星期几？",
+        "今天周几？",
+        "明天是几号？",
+        "明天是幾月幾日？",
+        "昨天是星期几？",
+        "本周是哪几天？",
+        "這周是幾號到幾號？",
+    ],
+    "ko": [
+        "오늘",
+        "오늘 날짜 알려줘",
+        "오늘은 몇 월 며칠인가요?",
+        "오늘은 무슨 요일인가요?",
+        "내일은 며칠이에요?",
+        "내일 날짜 알려줘",
+        "어제는 무슨 요일이었나요?",
+        "어제 날짜가 뭐였죠?",
+        "이번 주는 며칠부터 며칠까지예요?",
+        "금주 날짜 알려줘",
+    ],
+}
+
+DATE_ONLY_QUERY_CASES = [
+    pytest.param(language, query, id=f"{language}:{index}")
+    for language, queries in DATE_ONLY_QUERY_SAMPLES.items()
+    for index, query in enumerate(queries, start=1)
+]
+
 
 class TestQueryClassifier:
     """QueryClassifier のテストクラス"""
@@ -54,6 +111,19 @@ class TestQueryClassifier:
 
         assert result.category == "current-time"
         assert result.confidence == 1.0
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("language,query", DATE_ONLY_QUERY_CASES)
+    async def test_multilingual_date_only_queries_route_to_current_time(self, language, query):
+        """JA/EN/ZH/KOの日付だけの質問はcalendarではなくsystem clock系へ回す"""
+        assert len(DATE_ONLY_QUERY_SAMPLES[language]) == 10
+
+        result = await self.classifier.classify_with_details(query)
+        normalized = self.classifier._normalize_query(query)
+
+        assert result.category == "current-time"
+        assert result.confidence == 1.0
+        assert self.classifier._is_calendar_query(normalized) is False
 
     @pytest.mark.asyncio
     async def test_engineer_cafe_specific_query(self):

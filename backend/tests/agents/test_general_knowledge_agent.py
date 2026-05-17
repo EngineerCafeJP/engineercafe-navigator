@@ -11,6 +11,96 @@ from zoneinfo import ZoneInfo
 from backend.agents.general_knowledge_agent import GeneralKnowledgeAgent
 from backend.llm.openrouter import LLMResponseText
 
+DATE_ONLY_AGENT_CASES = [
+    pytest.param("ja", "今日", "2026年5月18日", id="ja:bare-today"),
+    pytest.param("ja", "本日", "2026年5月18日", id="ja:bare-honjitstu"),
+    pytest.param("ja", "今日は何月何日ですか?", "2026年5月18日", id="ja:today-full"),
+    pytest.param("ja", "今日の日付を教えて", "2026年5月18日", id="ja:today-date"),
+    pytest.param("ja", "明日は何日ですか", "2026年5月19日", id="ja:tomorrow-day"),
+    pytest.param("ja", "昨日は何曜日でしたか", "2026年5月17日", id="ja:yesterday-weekday"),
+    pytest.param("ja", "今週は何日から何日まで?", "5月18日から5月24日", id="ja:this-week"),
+    pytest.param("ja", "本日は何曜日ですか", "月曜日", id="ja:weekday"),
+    pytest.param("ja", "明日の日付を教えて", "2026年5月19日", id="ja:tomorrow-date"),
+    pytest.param("ja", "昨日の日付は?", "2026年5月17日", id="ja:yesterday-date"),
+    pytest.param("en", "today", "Monday, May 18, 2026", id="en:bare-today"),
+    pytest.param("en", "today's date?", "Monday, May 18, 2026", id="en:today-date"),
+    pytest.param("en", "What is the date today?", "Monday, May 18, 2026", id="en:today-full"),
+    pytest.param("en", "What date is it tomorrow?", "Tuesday, May 19, 2026", id="en:tomorrow-date"),
+    pytest.param("en", "What day is it today?", "Monday, May 18, 2026", id="en:today-day"),
+    pytest.param(
+        "en",
+        "What day of the week is tomorrow?",
+        "Tuesday, May 19, 2026",
+        id="en:tomorrow-weekday",
+    ),
+    pytest.param("en", "yesterday's date?", "Sunday, May 17, 2026", id="en:yesterday-date"),
+    pytest.param("en", "What date was yesterday?", "Sunday, May 17, 2026", id="en:yesterday-full"),
+    pytest.param("en", "this week", "May 18, 2026 through May 24, 2026", id="en:this-week"),
+    pytest.param(
+        "en", "What dates are this week?", "May 18, 2026 through May 24, 2026", id="en:week-dates"
+    ),
+    pytest.param("zh", "今天", "今天是日本时间2026年5月18日", id="zh:bare-today"),
+    pytest.param("zh", "今天是几月几号？", "今天是日本时间2026年5月18日", id="zh:today-full"),
+    pytest.param("zh", "今天日期是什么？", "今天是日本时间2026年5月18日", id="zh:today-date"),
+    pytest.param("zh", "今天星期几？", "星期一", id="zh:weekday"),
+    pytest.param("zh", "今天周几？", "星期一", id="zh:weekday-short"),
+    pytest.param("zh", "明天是几号？", "明天是日本时间2026年5月19日", id="zh:tomorrow-day"),
+    pytest.param("zh", "明天是幾月幾日？", "明天是日本时间2026年5月19日", id="zh:tomorrow-full"),
+    pytest.param("zh", "昨天是星期几？", "昨天是日本时间2026年5月17日", id="zh:yesterday-weekday"),
+    pytest.param("zh", "本周是哪几天？", "本周是日本时间2026年5月18日到5月24日", id="zh:this-week"),
+    pytest.param(
+        "zh",
+        "這周是幾號到幾號？",
+        "本周是日本时间2026年5月18日到5月24日",
+        id="zh:week-range",
+    ),
+    pytest.param("ko", "오늘", "오늘은 일본 시간 기준 2026년 5월 18일", id="ko:bare-today"),
+    pytest.param(
+        "ko",
+        "오늘 날짜 알려줘",
+        "오늘은 일본 시간 기준 2026년 5월 18일",
+        id="ko:today-date",
+    ),
+    pytest.param(
+        "ko",
+        "오늘은 몇 월 며칠인가요?",
+        "오늘은 일본 시간 기준 2026년 5월 18일",
+        id="ko:today-full",
+    ),
+    pytest.param("ko", "오늘은 무슨 요일인가요?", "월요일", id="ko:weekday"),
+    pytest.param(
+        "ko",
+        "내일은 며칠이에요?",
+        "내일은 일본 시간 기준 2026년 5월 19일",
+        id="ko:tomorrow-day",
+    ),
+    pytest.param(
+        "ko",
+        "내일 날짜 알려줘",
+        "내일은 일본 시간 기준 2026년 5월 19일",
+        id="ko:tomorrow-date",
+    ),
+    pytest.param(
+        "ko",
+        "어제는 무슨 요일이었나요?",
+        "어제는 일본 시간 기준 2026년 5월 17일",
+        id="ko:yesterday-weekday",
+    ),
+    pytest.param(
+        "ko",
+        "어제 날짜가 뭐였죠?",
+        "어제는 일본 시간 기준 2026년 5월 17일",
+        id="ko:yesterday-date",
+    ),
+    pytest.param(
+        "ko",
+        "이번 주는 며칠부터 며칠까지예요?",
+        "2026년 5월 18일부터 5월 24일까지",
+        id="ko:this-week",
+    ),
+    pytest.param("ko", "금주 날짜 알려줘", "2026년 5월 18일부터 5월 24일까지", id="ko:week-date"),
+]
+
 
 class TestGeneralKnowledgeAgent:
     """GeneralKnowledgeAgent のテストクラス"""
@@ -474,6 +564,32 @@ class TestGeneralKnowledgeAgentIntegration:
         assert result["metadata"]["query_type"] == "current-time"
         self.mock_web_search.search.assert_not_called()
         self.mock_provider.generate.assert_not_called()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("language,query,expected_fragment", DATE_ONLY_AGENT_CASES)
+    async def test_multilingual_date_only_queries_use_system_clock_without_external_calls(
+        self, language, query, expected_fragment
+    ):
+        fixed_now = datetime(2026, 5, 18, 10, 30, tzinfo=ZoneInfo("Asia/Tokyo"))
+
+        with patch("backend.agents.general_knowledge_agent.get_now_jst", return_value=fixed_now):
+            result = await self.agent.answer_query(
+                query=query,
+                language=language,
+                session_id="test_session",
+                query_type="current_info",
+            )
+
+        assert expected_fragment in result["answer"]
+        assert result["emotion"] == "helpful"
+        assert result["metadata"]["query_type"] == "current-time"
+        assert result["metadata"]["sources"] == ["system_clock"]
+        assert result["metadata"]["web_search_used"] is False
+        assert result["metadata"]["rag_used"] is False
+        assert result["metadata"]["provider_called"] is False
+        self.mock_web_search.search.assert_not_called()
+        self.mock_provider.generate.assert_not_called()
+        self.mock_rag_search.search.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_general_light_does_not_search_when_rag_misses(self):

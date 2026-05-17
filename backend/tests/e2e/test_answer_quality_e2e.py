@@ -7,13 +7,15 @@ from backend.tests.fixtures.dataset_loader import DatasetLoader
 
 
 def _is_infra_degraded_answer(answer: str) -> bool:
+    """Detect infrastructure failures without masking normal product fallbacks."""
     text = (answer or "").lower()
     markers = (
         "event loop is closed",
-        "申し訳",
-        "見つかりません",
-        "お問い合わせ",
-        "しばらくしてから",
+        "httpx connection pool",
+        "connection pool issue",
+        "technical issue",
+        "一時的なエラー",
+        "技術的な問題",
     )
     return any(m in text for m in markers)
 

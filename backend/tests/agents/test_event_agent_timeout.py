@@ -56,6 +56,7 @@ class TestAnswerEventQueryTimeout:
         assert result["emotion"] == "sad"
         assert result["metadata"]["event_count"] == 0
         assert result["metadata"]["agent"] == "EventAgent"
+        assert result["metadata"]["sources"] == []
 
     @pytest.mark.asyncio
     async def test_answer_event_query_calendar_failure(self):
@@ -90,6 +91,7 @@ class TestAnswerEventQueryTimeout:
         # Connpass の結果が使われてイベントが見つかる
         assert result["emotion"] == "happy"
         assert result["metadata"]["event_count"] > 0
+        assert result["metadata"]["sources"] == ["connpass"]
 
     @pytest.mark.asyncio
     async def test_answer_event_query_connpass_failure(self):
@@ -124,6 +126,7 @@ class TestAnswerEventQueryTimeout:
         # Calendar の結果が使われてイベントが見つかる
         assert result["emotion"] == "happy"
         assert result["metadata"]["event_count"] > 0
+        assert result["metadata"]["sources"] == ["google_calendar"]
 
 
 # ==============================================================================

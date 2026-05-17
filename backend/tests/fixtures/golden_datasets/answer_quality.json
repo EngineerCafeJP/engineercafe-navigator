@@ -18,8 +18,8 @@
     {
       "id": "aq-002",
       "question": "サイノカフェのランチは？",
-      "expected_answer": "サイノカフェは平日12:00-20:00に営業している併設のカフェ＆バーです。ランチやドリンクメニューがあります。",
-      "expected_keywords": ["メニュー", "12:00"],
+      "expected_answer": "サイノカフェではランチ向けのサンドやワッフルなどのフードメニューがあり、商品ごとに料金があります。",
+      "expected_keywords": ["サンド", "円"],
       "expected_agent": "facility",
       "language": "ja",
       "category": "food_drink",

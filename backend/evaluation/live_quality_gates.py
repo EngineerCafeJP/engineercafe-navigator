@@ -303,6 +303,17 @@ def flatten_metadata_sources(value: Any) -> set[str]:
     return {source for source in sources if source}
 
 
+def source_gate_sources(metadata: dict[str, Any]) -> set[str]:
+    """Sources that satisfy live source gates.
+
+    `sources` is answer evidence. `searched_sources` records successful live
+    source searches even when the grounded answer is "no events".
+    """
+    return flatten_metadata_sources(metadata.get("sources")) | flatten_metadata_sources(
+        metadata.get("searched_sources")
+    )
+
+
 def required_sources_for_case(case: dict[str, Any]) -> list[str]:
     explicit = case.get("required_sources")
     if isinstance(explicit, list):
@@ -320,7 +331,7 @@ def source_requirement_ok(
 ) -> tuple[bool, list[str]]:
     if not required_sources:
         return True, []
-    actual_sources = flatten_metadata_sources(metadata.get("sources"))
+    actual_sources = source_gate_sources(metadata)
     missing: list[str] = []
     for requirement in required_sources:
         alternatives = [part.strip().lower() for part in requirement.split("|") if part.strip()]
@@ -519,7 +530,7 @@ async def run_q_suite(
             metadata,
             required_sources_for_case(case),
         )
-        actual_sources = sorted(flatten_metadata_sources(metadata.get("sources")))
+        actual_sources = sorted(source_gate_sources(metadata))
         if not route_ok:
             status = "FAIL"
         elif not sources_ok:

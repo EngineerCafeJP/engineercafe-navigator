@@ -86,6 +86,8 @@ class TestEventAgent:
         assert response["metadata"]["agent"] == "EventAgent"
         assert response["metadata"]["time_range"] == "thisWeek"
         assert response["metadata"]["event_count"] == 0
+        assert response["metadata"]["sources"] == []
+        assert response["metadata"]["searched_sources"] == []
 
     def test_get_no_events_response_english(self):
         """英語のイベントなし応答をテスト"""
@@ -95,6 +97,8 @@ class TestEventAgent:
         assert "today" in response["answer"].lower()
         assert response["emotion"] == "sad"
         assert response["metadata"]["agent"] == "EventAgent"
+        assert response["metadata"]["sources"] == []
+        assert response["metadata"]["searched_sources"] == []
 
     def test_get_no_events_response_various_time_ranges(self):
         """各時間範囲のイベントなし応答をテスト"""
@@ -106,6 +110,161 @@ class TestEventAgent:
             assert response_en["metadata"]["time_range"] == time_range
             assert response_ja["emotion"] == "sad"
             assert response_en["emotion"] == "sad"
+            assert response_ja["metadata"]["sources"] == []
+            assert response_en["metadata"]["sources"] == []
+            assert response_ja["metadata"]["searched_sources"] == []
+            assert response_en["metadata"]["searched_sources"] == []
+
+    @pytest.mark.asyncio
+    async def test_no_events_metadata_sources_empty_when_all_live_sources_empty(self):
+        """No-events answers must not claim empty live sources as evidence."""
+        with (
+            patch.object(
+                self.agent.sheets_event_source,
+                "search_events",
+                new_callable=AsyncMock,
+                return_value={"success": True, "data": {"events": []}},
+            ),
+            patch.object(
+                self.agent.calendar_service,
+                "search_events",
+                new_callable=AsyncMock,
+                return_value={"success": True, "data": {"events": []}},
+            ),
+            patch.object(
+                self.agent.connpass_service,
+                "search_events",
+                new_callable=AsyncMock,
+                return_value={"success": True, "data": {"events": []}},
+            ),
+        ):
+            response = await self.agent.answer_event_query("今週のイベントは？", "ja")
+
+        assert response["metadata"]["time_range"] == "thisWeek"
+        assert response["metadata"]["event_count"] == 0
+        assert response["metadata"]["sources"] == []
+        assert response["metadata"]["searched_sources"] == [
+            "spreadsheet",
+            "google_calendar",
+            "connpass",
+        ]
+        assert response["metadata"]["source_statuses"] == {
+            "spreadsheet": "empty",
+            "google_calendar": "empty",
+            "connpass": "empty",
+        }
+
+    @pytest.mark.asyncio
+    async def test_metadata_sources_omit_empty_and_failed_partial_sources(self):
+        """Only successful non-empty source results should appear in metadata."""
+        connpass_events = [
+            {
+                "title": "Connpass Meetup",
+                "start": "2026-05-20T19:00:00+09:00",
+                "description": "Public event",
+                "source": "connpass",
+            }
+        ]
+        with (
+            patch.object(
+                self.agent.sheets_event_source,
+                "search_events",
+                new_callable=AsyncMock,
+                return_value={"success": True, "data": {"events": []}},
+            ),
+            patch.object(
+                self.agent.calendar_service,
+                "search_events",
+                new_callable=AsyncMock,
+                side_effect=Exception("calendar unavailable"),
+            ) as mock_calendar,
+            patch.object(
+                self.agent.connpass_service,
+                "search_events",
+                new_callable=AsyncMock,
+                return_value={"success": True, "data": {"events": connpass_events}},
+            ) as mock_connpass,
+            patch.object(
+                self.agent.connpass_service,
+                "extract_keyword_from_query",
+                return_value=None,
+            ),
+            patch.object(
+                self.agent.llm_provider,
+                "generate",
+                new_callable=AsyncMock,
+                return_value="[happy]今週はConnpass Meetupがあります。",
+            ),
+        ):
+            response = await self.agent.answer_event_query("今週のイベントは？", "ja")
+
+        assert response["metadata"]["time_range"] == "thisWeek"
+        assert response["metadata"]["event_count"] == 1
+        assert response["metadata"]["sources"] == ["connpass"]
+        assert response["metadata"]["searched_sources"] == ["spreadsheet", "connpass"]
+        assert response["metadata"]["source_statuses"] == {
+            "spreadsheet": "empty",
+            "google_calendar": "failed",
+            "connpass": "ok",
+        }
+        mock_calendar.assert_called_once_with("thisWeek")
+        mock_connpass.assert_called_once_with("thisWeek", keyword=None)
+
+    @pytest.mark.asyncio
+    async def test_llm_failure_returns_grounded_event_summary_not_no_events(self):
+        """If live sources returned events, LLM failure must not become a no-events answer."""
+        connpass_events = [
+            {
+                "title": "Connpass Meetup",
+                "start": "2026-05-20T19:00:00+09:00",
+                "description": "Public event",
+                "source": "connpass",
+            }
+        ]
+        with (
+            patch.object(
+                self.agent.sheets_event_source,
+                "search_events",
+                new_callable=AsyncMock,
+                return_value={"success": True, "data": {"events": []}},
+            ),
+            patch.object(
+                self.agent.calendar_service,
+                "search_events",
+                new_callable=AsyncMock,
+                return_value={"success": True, "data": {"events": []}},
+            ),
+            patch.object(
+                self.agent.connpass_service,
+                "search_events",
+                new_callable=AsyncMock,
+                return_value={"success": True, "data": {"events": connpass_events}},
+            ),
+            patch.object(
+                self.agent.connpass_service,
+                "extract_keyword_from_query",
+                return_value=None,
+            ),
+            patch.object(
+                self.agent.llm_provider,
+                "generate",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("provider unavailable"),
+            ),
+        ):
+            response = await self.agent.answer_event_query("今週のイベントは？", "ja")
+
+        assert response["emotion"] == "happy"
+        assert response["answer"].startswith("[happy]")
+        assert "Connpass Meetup" in response["answer"]
+        assert response["metadata"]["event_count"] == 1
+        assert response["metadata"]["sources"] == ["connpass"]
+        assert response["metadata"]["searched_sources"] == [
+            "spreadsheet",
+            "google_calendar",
+            "connpass",
+        ]
+        assert response["metadata"]["llm_fallback"] is True
 
     def test_connpass_canonical_response_english(self):
         """Connpass質問には実際の一覧URLと申込確認を返す"""

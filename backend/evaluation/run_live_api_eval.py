@@ -47,7 +47,9 @@ CASE_SUITE_EXPECTED_TOTALS = {
     CASE_SUITE_ALPHA_127: 127,
 }
 LOCAL_KNOWLEDGE_SOURCE_REQUIREMENT = "enhanced_rag|knowledge_base|knowledge_base_cached"
-EVENT_SOURCE_REQUIREMENT = f"google_calendar|connpass|{LOCAL_KNOWLEDGE_SOURCE_REQUIREMENT}"
+EVENT_SOURCE_REQUIREMENT = (
+    f"google_calendar|connpass|spreadsheet|{LOCAL_KNOWLEDGE_SOURCE_REQUIREMENT}"
+)
 NO_SOURCE_REQUIRED_CATEGORIES = {"emergency", "farewell", "reception"}
 EVENT_LIKE_CATEGORIES = {"event", "community", "clarification"}
 LIVE_CONTEXT_REQUIRED_SOURCE_LABEL = "live_api_metadata"
@@ -92,6 +94,12 @@ def _flatten_metadata_sources(value: Any) -> set[str]:
     return {source for source in sources if source}
 
 
+def _source_gate_sources(metadata: Dict[str, Any]) -> set[str]:
+    return _flatten_metadata_sources(metadata.get("sources")) | _flatten_metadata_sources(
+        metadata.get("searched_sources")
+    )
+
+
 def _required_live_sources(query: Dict[str, Any]) -> List[str]:
     category = str(query.get("category") or "").strip().lower().replace("-", "_")
     question = str(query.get("question") or "").strip().lower()
@@ -107,7 +115,7 @@ def _required_live_sources(query: Dict[str, Any]) -> List[str]:
 def _source_requirement_ok(
     metadata: Dict[str, Any], required_sources: Sequence[str]
 ) -> tuple[bool, List[str], List[str]]:
-    actual_sources = sorted(_flatten_metadata_sources(metadata.get("sources")))
+    actual_sources = sorted(_source_gate_sources(metadata))
     missing: List[str] = []
     for requirement in required_sources:
         alternatives = [part.strip().lower() for part in requirement.split("|") if part.strip()]

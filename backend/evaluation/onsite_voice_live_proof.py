@@ -127,12 +127,18 @@ def flatten_metadata_sources(value: Any) -> set[str]:
     return {source for source in sources if source}
 
 
+def source_gate_sources(metadata: dict[str, Any]) -> set[str]:
+    return flatten_metadata_sources(metadata.get("sources")) | flatten_metadata_sources(
+        metadata.get("searched_sources")
+    )
+
+
 def source_requirement_ok(
     metadata: dict[str, Any], required_sources: list[str]
 ) -> tuple[bool, list[str]]:
     if not required_sources:
         return True, []
-    actual_sources = flatten_metadata_sources(metadata.get("sources"))
+    actual_sources = source_gate_sources(metadata)
     missing: list[str] = []
     for requirement in required_sources:
         alternatives = [part.strip().lower() for part in requirement.split("|") if part.strip()]

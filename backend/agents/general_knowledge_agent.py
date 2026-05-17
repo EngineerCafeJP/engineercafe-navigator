@@ -37,6 +37,7 @@ from backend.utils.language_types import (
     SupportedLanguage,
 )
 from backend.utils.memory_interface import MemorySystemInterface
+from backend.utils.query_classifier import QueryClassifier
 from backend.utils.time_utils import get_now_jst
 
 logger = logging.getLogger(__name__)
@@ -765,98 +766,42 @@ class GeneralKnowledgeAgent:
 
     @staticmethod
     def _is_date_only_query(query: str) -> bool:
-        compact = GeneralKnowledgeAgent._compact_query(query)
-        if compact in {
-            "今日",
-            "本日",
-            "明日",
-            "昨日",
-            "今週",
-            "today",
-            "tomorrow",
-            "yesterday",
-            "thisweek",
-        }:
-            return True
-
-        live_info_markers = (
-            "イベント",
-            "event",
-            "予定",
-            "schedule",
-            "ニュース",
-            "news",
-            "天気",
-            "weather",
-            "気温",
-            "temperature",
-            "雨",
-            "rain",
-            "最新",
-            "latest",
-            "検索",
-            "search",
-            "動向",
-            "トレンド",
-            "trend",
-            "updates",
-        )
-        if any(marker in compact for marker in live_info_markers):
-            return False
-
-        relative_date_markers = (
-            "今日",
-            "本日",
-            "明日",
-            "昨日",
-            "今週",
-            "today",
-            "tomorrow",
-            "yesterday",
-            "thisweek",
-        )
-        date_question_markers = (
-            "日付",
-            "何月何日",
-            "何日",
-            "何曜日",
-            "曜日",
-            "date",
-            "dayisit",
-            "dayis",
-            "whatday",
-        )
-        if any(marker in compact for marker in relative_date_markers) and any(
-            marker in compact for marker in date_question_markers
-        ):
-            return True
-
-        return any(
-            marker in compact
-            for marker in (
-                "今日の日付",
-                "本日の日付",
-                "明日の日付",
-                "昨日の日付",
-                "whatisthedate",
-                "whatsthedate",
-                "todaysdate",
-                "tomorrowsdate",
-                "yesterdaysdate",
-            )
-        )
+        return QueryClassifier._is_date_only_query(query)
 
     def _current_date_response(self, query: str, language: SupportedLanguage) -> Dict[str, Any]:
         compact = self._compact_query(query)
         now = get_now_jst()
 
-        if "今週" in compact or "thisweek" in compact:
+        if any(
+            marker in compact
+            for marker in (
+                "今週",
+                "thisweek",
+                "本周",
+                "这周",
+                "這周",
+                "这个星期",
+                "這個星期",
+                "이번주",
+                "금주",
+            )
+        ):
             start = now.date() - timedelta(days=now.weekday())
             end = start + timedelta(days=6)
             if language == "en":
                 answer = (
                     f"[helpful]This week is {start.strftime('%B %-d, %Y')} "
                     f"through {end.strftime('%B %-d, %Y')} in Japan time."
+                )
+            elif language == "zh":
+                answer = (
+                    f"[helpful]本周是日本时间{start.year}年{start.month}月{start.day}日"
+                    f"到{end.month}月{end.day}日。"
+                )
+            elif language == "ko":
+                answer = (
+                    f"[helpful]이번 주는 일본 시간 기준 {start.year}년 {start.month}월 "
+                    f"{start.day}일부터 {end.month}월 {end.day}일까지입니다."
                 )
             else:
                 answer = (
@@ -867,20 +812,49 @@ class GeneralKnowledgeAgent:
             offset = 0
             label_ja = "今日"
             label_en = "Today"
-            if "明日" in compact or "tomorrow" in compact:
+            label_zh = "今天"
+            label_ko = "오늘"
+            if "明日" in compact or "tomorrow" in compact or "明天" in compact or "내일" in compact:
                 offset = 1
                 label_ja = "明日"
                 label_en = "Tomorrow"
-            elif "昨日" in compact or "yesterday" in compact:
+                label_zh = "明天"
+                label_ko = "내일"
+            elif (
+                "昨日" in compact
+                or "yesterday" in compact
+                or "昨天" in compact
+                or "어제" in compact
+            ):
                 offset = -1
                 label_ja = "昨日"
                 label_en = "Yesterday"
+                label_zh = "昨天"
+                label_ko = "어제"
 
             target = now + timedelta(days=offset)
             weekdays_ja = ("月", "火", "水", "木", "金", "土", "日")
+            weekdays_zh = ("星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日")
+            weekdays_ko = ("월요일", "화요일", "수요일", "목요일", "금요일", "토요일", "일요일")
             if language == "en":
                 answer = (
                     f"[helpful]{label_en} is {target.strftime('%A, %B %-d, %Y')} " "in Japan time."
+                )
+            elif language == "zh":
+                answer = (
+                    f"[helpful]{label_zh}是日本时间{target.year}年{target.month}月"
+                    f"{target.day}日（{weekdays_zh[target.weekday()]}）。"
+                )
+            elif language == "ko":
+                label_ko_with_particle = {
+                    "오늘": "오늘은",
+                    "내일": "내일은",
+                    "어제": "어제는",
+                }.get(label_ko, f"{label_ko}은")
+                answer = (
+                    f"[helpful]{label_ko_with_particle} 일본 시간 기준 "
+                    f"{target.year}년 {target.month}월 "
+                    f"{target.day}일({weekdays_ko[target.weekday()]})입니다."
                 )
             else:
                 answer = (

@@ -46,6 +46,7 @@ from backend.utils.cafe_entity import (
     is_saino_reference,
     resolve_cafe_entity,
 )
+from backend.utils.query_classifier import QueryClassifier
 
 _MATA_KIMASU_FAREWELL_RE = re.compile(r"また\s*来(ます|る|るね|ますね)\s*[。!！?？\.]?\s*$")
 _SERVICE_INTENT_RE = re.compile(r"(受付|予約|会員|問合せ|問い合わせ)")
@@ -317,6 +318,9 @@ def is_reception_continuation_utterance(query: str) -> bool:
 
 def is_current_info_request(lower_query: str) -> bool:
     """Detect daily receptionist questions that need current external facts."""
+    if QueryClassifier._is_date_only_query(lower_query):
+        return True
+
     current_markers = (
         "今日",
         "明日",

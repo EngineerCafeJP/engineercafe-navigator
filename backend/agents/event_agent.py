@@ -146,6 +146,11 @@ class EventAgent:
         keyword = self.connpass_service.extract_keyword_from_query(query)
 
         # Spreadsheet、Google Calendar、Connpassを並列検索（タイムアウト付き）
+        source_statuses = {
+            "spreadsheet": "timeout",
+            "google_calendar": "timeout",
+            "connpass": "timeout",
+        }
         try:
             spreadsheet_result, calendar_result, connpass_result = await asyncio.wait_for(
                 asyncio.gather(
@@ -168,15 +173,32 @@ class EventAgent:
                 connpass_result = {"success": False, "data": {"events": []}}
         except asyncio.TimeoutError:
             logger.warning("Event search timed out after 35s for query: %s", query[:50])
-            return self._get_no_events_response(language, time_range)
+            return self._get_no_events_response(
+                language,
+                time_range,
+                searched_sources=[],
+                source_statuses=source_statuses,
+            )
 
         # 両方の結果をマージ
         events = self._merge_events(calendar_result, connpass_result, spreadsheet_result)
         event_count = len(events)
+        sources = self._sources_from_events(events)
+        searched_sources, source_statuses = self._source_search_metadata(
+            spreadsheet_result,
+            calendar_result,
+            connpass_result,
+        )
 
         # イベントなしの場合
         if event_count == 0:
-            return self._get_no_events_response(language, time_range)
+            return self._get_no_events_response(
+                language,
+                time_range,
+                sources=sources,
+                searched_sources=searched_sources,
+                source_statuses=source_statuses,
+            )
 
         # イベント情報を整形してプロンプト構築
         events_text = self._format_calendar_events(events, language)
@@ -198,19 +220,6 @@ class EventAgent:
             # the prompt should already prevent this.
             response_text = self._enforce_emotion_tag(response_text, event_count)
 
-            # ソース別のイベント数をカウント
-            spreadsheet_count = sum(1 for e in events if e.get("source") == "spreadsheet")
-            calendar_count = sum(1 for e in events if e.get("source") == "google_calendar")
-            connpass_count = sum(1 for e in events if e.get("source") == "connpass")
-            sources = [
-                source
-                for source, count in (
-                    ("spreadsheet", spreadsheet_count),
-                    ("google_calendar", calendar_count),
-                    ("connpass", connpass_count),
-                )
-                if count > 0
-            ] or ["google_calendar", "connpass"]
             metadata = {
                 "agent": "EventAgent",
                 "category": "event",
@@ -219,6 +228,8 @@ class EventAgent:
                 "time_range": time_range,
                 "event_count": event_count,
                 "sources": sources,
+                "searched_sources": searched_sources,
+                "source_statuses": source_statuses,
             }
             merge_llm_metadata(metadata, response_text)
             if include_evidence:
@@ -246,7 +257,15 @@ class EventAgent:
 
         except Exception as e:
             logger.exception("LLM error: %s", e)
-            return self._get_no_events_response(language, time_range)
+            return self._get_event_summary_response(
+                events,
+                language,
+                time_range,
+                sources=sources,
+                searched_sources=searched_sources,
+                source_statuses=source_statuses,
+                include_evidence=include_evidence,
+            )
 
     @staticmethod
     def _enforce_emotion_tag(response_text: str, event_count: int) -> str:
@@ -380,7 +399,45 @@ class EventAgent:
         """イベント情報のプロンプトを構築（外部テンプレートに委譲）"""
         return build_event_prompt(query, events_text, time_range, language)
 
-    def _get_no_events_response(self, language: str, time_range: str) -> Dict:
+    @staticmethod
+    def _sources_from_events(events: List[Dict]) -> List[str]:
+        """Return source labels for actual non-empty merged event results."""
+        source_order = ("spreadsheet", "google_calendar", "connpass")
+        seen_sources = {
+            str(event.get("source", "")).strip()
+            for event in events
+            if str(event.get("source", "")).strip()
+        }
+        ordered_sources = [source for source in source_order if source in seen_sources]
+        extra_sources = sorted(seen_sources - set(source_order))
+        return ordered_sources + extra_sources
+
+    @staticmethod
+    def _source_search_metadata(*results: Optional[Dict]) -> tuple[List[str], Dict[str, str]]:
+        """Return successful search sources separately from answer evidence sources."""
+        source_names = ("spreadsheet", "google_calendar", "connpass")
+        searched_sources: List[str] = []
+        source_statuses: Dict[str, str] = {}
+
+        for source_name, result in zip(source_names, results):
+            if not result or not result.get("success"):
+                source_statuses[source_name] = "failed"
+                continue
+
+            searched_sources.append(source_name)
+            event_count = len(result.get("data", {}).get("events", []))
+            source_statuses[source_name] = "ok" if event_count > 0 else "empty"
+
+        return searched_sources, source_statuses
+
+    def _get_no_events_response(
+        self,
+        language: str,
+        time_range: str,
+        sources: Optional[List[str]] = None,
+        searched_sources: Optional[List[str]] = None,
+        source_statuses: Optional[Dict[str, str]] = None,
+    ) -> Dict:
         """イベントなし時の応答を返す"""
         time_range_text = get_time_range_label(time_range, language)
 
@@ -416,8 +473,74 @@ class EventAgent:
                 "agent": "EventAgent",
                 "time_range": time_range,
                 "event_count": 0,
-                "sources": ["spreadsheet", "google_calendar", "connpass"],
+                "sources": list(sources or []),
+                "searched_sources": list(searched_sources or []),
+                "source_statuses": dict(source_statuses or {}),
             },
+        }
+
+    def _get_event_summary_response(
+        self,
+        events: List[Dict],
+        language: str,
+        time_range: str,
+        *,
+        sources: Optional[List[str]] = None,
+        searched_sources: Optional[List[str]] = None,
+        source_statuses: Optional[Dict[str, str]] = None,
+        include_evidence: bool = False,
+    ) -> Dict:
+        """Return a deterministic grounded event summary when LLM generation fails."""
+        time_range_text = get_time_range_label(time_range, language)
+        event_lines = [
+            self._format_event_evidence_line(event, language)
+            for event in events[:5]
+            if event.get("title")
+        ]
+        joined = " / ".join(event_lines)
+
+        if language == "en":
+            answer = f"[happy]For {time_range_text}, these events are scheduled: {joined}."
+        elif language == "zh":
+            answer = f"[happy]{time_range_text}有以下活动：{joined}。"
+        elif language == "ko":
+            answer = f"[happy]{time_range_text}에는 다음 이벤트가 예정되어 있습니다: {joined}."
+        else:
+            answer = f"[happy]{time_range_text}のイベントは、{joined}です。"
+
+        metadata = {
+            "agent": "EventAgent",
+            "category": "event",
+            "request_type": "event",
+            "route": "event",
+            "time_range": time_range,
+            "event_count": len(events),
+            "sources": list(sources or self._sources_from_events(events)),
+            "searched_sources": list(searched_sources or []),
+            "source_statuses": dict(source_statuses or {}),
+            "llm_fallback": True,
+        }
+        if include_evidence:
+            metadata["rag_evidence"] = {
+                "source": "event_agent",
+                "category": "event",
+                "context_char_count": len(joined),
+                "contexts": [joined],
+                "results": [
+                    {
+                        "source": event.get("source", "unknown"),
+                        "title": event.get("title"),
+                        "start": event.get("start"),
+                        "content": self._format_event_evidence_line(event, language),
+                    }
+                    for event in events[:10]
+                ],
+            }
+
+        return {
+            "answer": answer,
+            "emotion": "happy",
+            "metadata": metadata,
         }
 
     @staticmethod

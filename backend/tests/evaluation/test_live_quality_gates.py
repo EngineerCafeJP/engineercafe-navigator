@@ -62,6 +62,19 @@ def test_event_source_requirement_accepts_spreadsheet_events() -> None:
     assert missing == []
 
 
+def test_event_source_requirement_accepts_successful_searched_source_without_events() -> None:
+    """No-events answers can satisfy source freshness via searched_sources."""
+    case = {"expected_route": "event"}
+
+    ok, missing = source_requirement_ok(
+        {"sources": [], "searched_sources": ["google_calendar"]},
+        required_sources_for_case(case),
+    )
+
+    assert ok is True
+    assert missing == []
+
+
 def test_event_answer_quality_rejects_prohibited_cancelled_claims() -> None:
     quality = check_answer_quality(
         "本日はキャンセル済みイベントがあります。",
