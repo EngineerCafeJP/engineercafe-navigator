@@ -215,13 +215,23 @@ async def test_repository_non_uuid_session_id_skips_primary_key_lookup() -> None
 
 
 @pytest.mark.asyncio
-async def test_repository_non_uuid_conversation_session_id_skips_lookup() -> None:
-    mock_client = Mock()
-    repo = ReceptionRepository(mock_client)  # type: ignore[arg-type]
+async def test_repository_non_uuid_conversation_session_id_resolves_stable_session() -> None:
+    fake_client = _FakeSupabaseClient()
+    repo = ReceptionRepository(fake_client)  # type: ignore[arg-type]
 
-    assert await repo.get_session_by_conversation_id("alpha-b-20260502-B1-BIZ-003") is None
+    synthetic_id = "alpha-m-recv-session-20260517"
+    await repo.store_session(
+        synthetic_id,
+        _sample_session_data(stage="purpose_hearing", status="active")
+        | {"id": synthetic_id, "session_id": synthetic_id},
+    )
 
-    mock_client.table.assert_not_called()
+    found = await repo.get_session_by_conversation_id(synthetic_id)
+
+    assert found is not None
+    assert found["stage"] == "purpose_hearing"
+    assert found["session_id"] is None
+    assert found["session_data"]["session_id"] == synthetic_id
 
 
 @pytest.mark.asyncio
