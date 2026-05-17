@@ -234,7 +234,7 @@ Thinking → Speaking → Idle の state machine が **必ず** 完遂する。�
 
 | 層 | 問題 | Evidence / Issue |
 |----|------|----------------|
-| Cloud Scheduler API | 未有効化 → KB sync cron 動かず | **FU-02** (Issue #844, separate handoff) |
+| Cloud Scheduler API | ✅ 解消済 (Issue #844 closed, job `event-kb-sync-daily` ENABLED) | **FU-02** (完了) |
 | Spreadsheet 統合 | Apps Script の `alert_discord` SoT を Backend が使っていない | **FU-07** (Issue #851, PR #852 OPEN) |
 | `calendar_service._calculate_time_range` | `thisWeek` が Mon-Sun で **過去日含む** | `tools/calendar_service.py:124-129` |
 | `_NOISE_SUMMARIES` | "Busy" のみ filter、「キャンセル」prefix が漏れる | `tools/calendar_service.py:18` |
@@ -244,8 +244,13 @@ Thinking → Speaking → Idle の state machine が **必ず** 完遂する。�
 ### 4.3 修正項目
 
 #### FU-02 [既存 Issue #844]: Cloud Scheduler 有効化 + KB cron deploy
-- **Status**: 別ハンドオフ (`phase2-readiness-handoff-2026-05-17.md` PR-M) で進行中
-- **Wave 2 関係**: Theme C の前提条件。Theme C 開始前に完了済を確認する Day 0 task
+- **Status**: ✅ **完了** (Issue #844 closed 2026-05-17T05:54:24Z, Cloud Scheduler job `event-kb-sync-daily` ENABLED 09:00 JST 日次)
+- **Verification**:
+  ```bash
+  $ gcloud scheduler jobs list --project=aipartner-426616 --location=asia-northeast1
+  event-kb-sync-daily  asia-northeast1  0 9 * * * (Asia/Tokyo)  HTTP  ENABLED
+  ```
+- **Wave 2 関係**: Theme C の前提条件 (満たし済)。Day 0 タスク削減
 
 #### FU-07 [既存 Issue #851 / PR #852]: Spreadsheet (Apps Script SoT) 統合
 - **Status**: PR #852 OPEN (`fix/phase2-readiness-fu07-event-spreadsheet`)
@@ -362,7 +367,7 @@ graph LR
 **Merge 順序:**
 
 ```
-Day 0:    PR-M (FU-02) ─────────────────────────────────────────→ merged
+Day 0:    FU-02 ✅ 既に完了 (Cloud Scheduler ENABLED 2026-05-17)
 Day 1:    PR-W2A (Theme A 全部) ────────┬─→ merged
           PR-W2B-1 (Audio core) ────────┼─→ merged
 Day 2-3:  PR-W2B-2 (Audio UX) ──────────┼─→ merged
@@ -378,7 +383,7 @@ Day 6-7:  Live 検証 + RAGAS + E2E
 
 | Day | 担当 | タスク |
 |-----|------|-------|
-| **Day 0** | terisuke | `gcloud services enable cloudscheduler.googleapis.com` (FU-02 prerequisite) |
+| **Day 0** | terisuke | ✅ FU-02 (Cloud Scheduler) 既に完了 — Day 0 タスクなし |
 | **Day 0** | terisuke | Cloud Run `--update-env-vars TZ=Asia/Tokyo` (FU-08) |
 | **Day 1** | Backend | PR-W2A (FU-08〜12) 実装 + ローカルテスト |
 | **Day 1** | Frontend | PR-W2B-1 (FU-13〜15) 実装 + Playwright |
