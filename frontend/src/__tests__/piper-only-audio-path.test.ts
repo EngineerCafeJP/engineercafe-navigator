@@ -5,10 +5,6 @@ import { test } from 'node:test';
 
 const frontendRoot = path.resolve(__dirname, '..', '..');
 
-function readComponent(relativePath: string): string {
-  return fs.readFileSync(path.join(frontendRoot, 'src', relativePath), 'utf8');
-}
-
 function readReceptionGuideModule(): string {
   const guideRoot = path.join(frontendRoot, 'src', 'app', 'components');
   const guideFiles = [
@@ -29,8 +25,20 @@ function readReceptionGuideModule(): string {
     .join('\n');
 }
 
+function readVoiceInterfaceModules(): string {
+  const voiceRoot = path.join(frontendRoot, 'src', 'app', 'components');
+  const voiceFiles = [
+    'VoiceInterface.tsx',
+    'voice-interface/useVoiceTurnProcessor.ts',
+  ];
+
+  return voiceFiles
+    .map((file) => fs.readFileSync(path.join(voiceRoot, file), 'utf8'))
+    .join('\n');
+}
+
 test('voice UI does not synthesize assistant speech with browser Web Speech', () => {
-  const voiceInterface = readComponent('app/components/VoiceInterface.tsx');
+  const voiceInterface = readVoiceInterfaceModules();
   const receptionGuide = readReceptionGuideModule();
   const combined = `${voiceInterface}\n${receptionGuide}`;
 
@@ -39,7 +47,7 @@ test('voice UI does not synthesize assistant speech with browser Web Speech', ()
 });
 
 test('assistant TTS requests explicitly use Piper Plus', () => {
-  const voiceInterface = readComponent('app/components/VoiceInterface.tsx');
+  const voiceInterface = readVoiceInterfaceModules();
   const receptionGuide = readReceptionGuideModule();
 
   assert.ok((voiceInterface.match(/ttsProvider:\s*'piper'/g) ?? []).length >= 3);
