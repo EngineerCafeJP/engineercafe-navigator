@@ -13,6 +13,7 @@ const originalNavigator = globalThis.navigator;
 const originalWindow = (globalThis as typeof globalThis & { window?: unknown }).window;
 const originalDocument = (globalThis as typeof globalThis & { document?: unknown }).document;
 const originalAudio = (globalThis as typeof globalThis & { Audio?: unknown }).Audio;
+const originalFetch = globalThis.fetch;
 const originalCreateObjectURL = URL.createObjectURL;
 const originalRevokeObjectURL = URL.revokeObjectURL;
 
@@ -40,6 +41,7 @@ after(() => {
     configurable: true,
     value: originalAudio,
   });
+  globalThis.fetch = originalFetch;
   Object.defineProperty(URL, "createObjectURL", {
     configurable: true,
     value: originalCreateObjectURL,
@@ -405,4 +407,78 @@ test("playAudioWithLipSync reports aborted playback as cancelled", async () => {
   const result = await playback;
   assert.equal(result.success, false);
   assert.equal(result.method, "cancelled");
+});
+
+test("MobileAudioService emits audio_playback_failed telemetry on failed playback", async () => {
+  const originalConsoleWarn = console.warn;
+  let capturedInit: RequestInit | undefined;
+  let capturedBody: Record<string, unknown> | null = null;
+
+  class RejectingAudioElement {
+    public preload = "";
+    public volume = 1;
+    public paused = true;
+    public ended = false;
+
+    constructor(public readonly url: string) {}
+
+    setAttribute() {}
+    removeAttribute() {}
+    load() {}
+    pause() {
+      this.paused = true;
+    }
+    addEventListener() {}
+    removeEventListener() {}
+    async play() {
+      throw new Error("HTML audio blocked");
+    }
+  }
+
+  Object.defineProperty(globalThis, "navigator", {
+    configurable: true,
+    value: { userAgent: "node-test" },
+  });
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: { innerWidth: 390, setTimeout, clearTimeout },
+  });
+  Object.defineProperty(globalThis, "document", {
+    configurable: true,
+    value: {
+      addEventListener() {},
+      removeEventListener() {},
+    },
+  });
+  Object.defineProperty(globalThis, "Audio", {
+    configurable: true,
+    value: RejectingAudioElement,
+  });
+  globalThis.fetch = (async (_input, init) => {
+    capturedInit = init;
+    capturedBody =
+      typeof init?.body === "string" ? (JSON.parse(init.body) as Record<string, unknown>) : null;
+    return new Response(JSON.stringify({ success: true }), { status: 200 });
+  }) as typeof fetch;
+  console.warn = () => undefined;
+
+  try {
+    const service = new MobileAudioService({ preferredMethod: "html-audio" });
+    const result = await service.playAudio("https://example.com/audio.mp3");
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 0);
+    });
+
+    assert.equal(result.success, false);
+    assert.equal(result.method, "html-audio");
+    assert.equal(capturedInit?.keepalive, true);
+    assert.ok(capturedBody);
+    const payload = capturedBody as Record<string, unknown>;
+    assert.equal(payload.event, "audio_playback_failed");
+    assert.equal(payload.method, "html-audio");
+    assert.equal(payload.errorType, "playback_failed");
+    assert.match(String(payload.errorMessage), /HTML audio playback failed/);
+  } finally {
+    console.warn = originalConsoleWarn;
+  }
 });

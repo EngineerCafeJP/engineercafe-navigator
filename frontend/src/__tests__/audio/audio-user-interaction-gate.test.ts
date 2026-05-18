@@ -27,6 +27,7 @@ interface SessionStorageStub {
 const originalWindowDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'window');
 const originalDocumentDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'document');
 const originalNavigatorDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+const originalFetch = globalThis.fetch;
 
 const restoreGlobalProperty = (
   key: 'window' | 'document' | 'navigator',
@@ -106,6 +107,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  globalThis.fetch = originalFetch;
   resetAudioUserInteractionGate();
   restoreGlobalProperty('window', originalWindowDescriptor);
   restoreGlobalProperty('document', originalDocumentDescriptor);
@@ -246,6 +248,32 @@ test('timeout unlock flushes pending callbacks once and makes later waits immedi
 
   assert.equal(callbackCalls, 1);
   assert.ok(Date.now() - secondWaitStartedAt < 250);
+});
+
+test('timeout unlock emits user interaction gate telemetry with fetch keepalive fallback', {
+  concurrency: false,
+}, async () => {
+  let capturedInit: RequestInit | undefined;
+  let capturedBody: Record<string, unknown> | null = null;
+
+  globalThis.fetch = (async (_input, init) => {
+    capturedInit = init;
+    capturedBody =
+      typeof init?.body === 'string' ? (JSON.parse(init.body) as Record<string, unknown>) : null;
+    return new Response(JSON.stringify({ success: true }), { status: 200 });
+  }) as typeof fetch;
+
+  await waitForAudioUserInteraction(10);
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, 0);
+  });
+
+  assert.equal(capturedInit?.keepalive, true);
+  assert.ok(capturedBody);
+  const payload = capturedBody as Record<string, unknown>;
+  assert.equal(payload.event, 'user_interaction_gate_timeout');
+  assert.equal(payload.timeoutMs, 10);
+  assert.equal(payload.isIOSWebKitAudio, false);
 });
 
 test('sessionStorage bypass immediately unlocks gate callbacks', {

@@ -1,0 +1,12 @@
+[Unit]
+Description=Run Engineer Cafe Event KB sync daily
+
+[Timer]
+OnCalendar=*-*-* 09:00:00
+Timezone=Asia/Tokyo
+Persistent=true
+RandomizedDelaySec=5m
+Unit=event-kb-sync.service
+
+[Install]
+WantedBy=timers.target

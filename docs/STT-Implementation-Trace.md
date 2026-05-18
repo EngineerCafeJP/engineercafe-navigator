@@ -4,6 +4,22 @@
 **プロジェクト:** Engineer Cafe Navigator
 **対象:** フロントエンド → バックエンド → Docker デプロイメント
 
+## Wave 2 状態更新（2026-05-18）
+
+Wave 2 後の本番 STT 経路は Qwen3-ASR primary + Vosk hedge/fallback である。ブラウザは
+`frontend/src/lib/api/voice-client.ts:259` から `/api/voice` に base64 音声を送り、Next.js proxy
+`frontend/src/app/api/voice/route.ts:26` が backend `/api/voice` へ転送する。FastAPI は
+`backend/main.py:1316` の `_handle_stt()` で base64 decode、短すぎる音声の拒否、タイムアウト制御、
+`STTAgent.speech_to_text()` 呼び出し、`stt_request_complete` ログを担当する。
+
+実 STT runtime は `backend/agents/stt_agent.py:1534` の Qwen client と
+`backend/agents/stt_agent.py:1118` の Vosk client が中心で、Qwen runtime は
+`backend/agents/stt_agent.py:1631`、Vosk runtime は `backend/agents/stt_agent.py:1210` にある。
+Wave 2 の品質補正は deterministic Qwen correction と optional LLM post-process
+`backend/agents/stt_agent.py:887`、Vosk route-critical correction
+`backend/agents/stt_agent.py:505`、Qwen/Vosk suspicious transcript gates
+`backend/agents/stt_agent.py:679` と `backend/agents/stt_agent.py:765` に集約されている。
+
 ---
 
 ## 1. 全体アーキテクチャ図

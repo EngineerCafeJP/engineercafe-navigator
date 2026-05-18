@@ -1,392 +1,669 @@
-# デプロイガイド
+# Deployment Guide
 
-> **索引**: [Documentation hub（README.md）](README.md)
+> Index: [Documentation hub](README.md)
 >
-> Engineer Cafe Navigator の本番デプロイ運用ガイド
-> Last updated: 2026-05-05（ライブ revision・run ID は [STATUS.md](STATUS.md) を正とする）
+> Engineer Cafe Navigator deployment guide for Wave 3.
+> Last updated: 2026-05-18. Live revision and run IDs are tracked in
+> [STATUS.md](STATUS.md).
 
-## インフラ構成
+This project now supports two deployment paths:
+
+| Path | Target operator | Runtime shape | Use when |
+| --- | --- | --- | --- |
+| Path A: GCP production | Current Engineer Cafe production operators | Vercel frontend, Cloud Run backend/TTS, Supabase, Google Secret Manager, Cloud Monitoring/Terraform | You are reproducing or changing the current production environment |
+| Path B: OSS docker-compose self-hosting | Contributors and external deployers without a GCP account | Docker Compose app stack, Postgres + pgvector, OpenTelemetry Collector, Prometheus, Loki, Grafana, Alertmanager, Mailhog | You need a portable local or VPS deployment |
+
+The two paths share the same application contract: FastAPI backend on port
+`8000`, Next.js frontend on port `3000`, protected backend routes using
+`X-API-Key`, and Wave 3 telemetry emitted through OpenTelemetry-compatible
+metrics/logs.
+
+## Common Deployment Contract
+
+### Runtime Components
 
 ```text
 Browser / Kiosk
-     |
-     v
-Vercel (Next.js 15 frontend)
-  - 本番公開面
-  - App Router + API proxy routes
-     |
-     v
-Cloud Run: engineer-cafe-backend (asia-northeast1)
-  - FastAPI + LangGraph
-  - protected API の本体
-     |
-     +---> Supabase (PostgreSQL + pgvector)
-     |
-     +---> Cloud Run: piper-plus / voicevox-proto (TTS 経路)
-     |
-     +---> OpenRouter / Gemini / Cerebras (LLM 経路)
+  |
+  v
+Next.js frontend
+  |
+  v
+FastAPI backend
+  |
+  +--> PostgreSQL + pgvector
+  +--> LLM provider: OpenRouter / Cerebras / configured fallback
+  +--> STT/TTS provider: Qwen primary, Piper/VoiceVox/Kokoro as configured
+  +--> Observability: Cloud Monitoring or Prometheus/Grafana
 ```
 
-### サービス一覧
+### Required Invariants
 
-| サービス | プラットフォーム | リージョン | 用途 |
-| --- | --- | --- | --- |
-| Frontend | Vercel | Global CDN | Next.js UI + API プロキシ |
-| Backend | Cloud Run `engineer-cafe-backend` | `asia-northeast1` | FastAPI + LangGraph |
-| PiperPlus / VoiceVox | Cloud Run | `asia-northeast1` / `asia-northeast2` | TTS 経路（deploy 設定に従う） |
-| Database | Supabase (PostgreSQL + pgvector) | Managed | 会話履歴・ナレッジ・セッション等 |
-| LLM プロバイダ | OpenRouter / Gemini / Cerebras | Managed | 応答生成・fast フォールバック・フィラー |
+- The frontend's `BACKEND_API_KEY` must equal the backend's
+  `API_SECRET_KEY`.
+- Production frontend origin must match backend `FRONTEND_PRODUCTION_ORIGIN`
+  and be included in `ALLOWED_ORIGINS`.
+- Secrets are never committed or pasted into logs. Use environment bindings,
+  Google Secret Manager, SOPS, or Vault.
+- Cloud Run env updates must use `--update-env-vars` and `--update-secrets`;
+  avoid `--set-env-vars` on an existing service because it can drop unrelated
+  values.
+- Apple Silicon manual image builds for Cloud Run must target `linux/amd64`.
+- Gemini, Cerebras, and other model IDs must be verified against the provider's
+  real API availability before deployment.
 
-### フロントエンド origin の正本
+## Environment Variables
 
-- 正規の production origin は Vercel プロジェクトの primary production ドメイン
-- 任意の preview URL を正本にしない
-- backend 側の `FRONTEND_PRODUCTION_ORIGIN` と `ALLOWED_ORIGINS` はこの値と一致させる
+### Frontend Variables
 
-### レガシー注記
-
-- 旧 Cloudflare Workers frontend は現行 production default ではない
-- 運用判断は Vercel + Cloud Run を正とする
-
-## 環境変数
-
-### フロントエンド（Vercel）
-
-Vercel project の Environment Variables に設定する。
+Set these in Vercel for Path A. For Path B, set them in `frontend/.env.local`
+or an equivalent compose/host environment.
 
 | Variable | Required | Description |
 | --- | --- | --- |
-| `NEXT_PUBLIC_SUPABASE_URL` | Yes (production build/startup) | Supabase project URL. `frontend/src/lib/env.ts` と `pnpm env:check:production` の production required 対象 |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Yes (production build/startup) | Supabase anon key. 値は公開前提だが smoke / logs には出力しない |
-| `BACKEND_API_URL` | Yes (production build/startup) | server-side proxy の転送先 |
-| `BACKEND_API_KEY` | Yes (production build/startup) | protected backend route へ送る `X-API-Key` |
-| `ADMIN_API_SECRET` | Yes (protected routes) | `/api/admin/*`, `/api/cron/*`, `/api/monitoring/*` を保護。middleware は production で未設定時 fail closed |
-| `NEXT_PUBLIC_BACKEND_API_URL` | If direct-call flags are used | browser から見える backend URL |
-| `SUPABASE_SERVICE_ROLE_KEY` | Functionally required for server-side Supabase admin features | server-only の service role。build/startup block 対象ではない |
-| `ALERT_WEBHOOK_SECRET` | If used | `/api/alerts/webhook` POST を保護 |
-| Other AI / optional keys | As needed | frontend README と CI 設定に合わせる |
+| `NEXT_PUBLIC_SUPABASE_URL` | Production build/startup | Supabase project URL. Required by `frontend/src/lib/env.ts` and `pnpm env:check:production` |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Production build/startup | Supabase anon key. Public by design, but do not print it in smoke output |
+| `BACKEND_API_URL` | Production build/startup | Server-side proxy target, for example Cloud Run URL or `http://backend:8000` in compose |
+| `BACKEND_API_KEY` | Production build/startup | Value sent to backend as `X-API-Key`; must match `API_SECRET_KEY` |
+| `ADMIN_API_SECRET` | Protected routes | Protects `/api/admin/*`, `/api/cron/*`, and `/api/monitoring/*`; production fails closed when absent |
+| `NEXT_PUBLIC_BACKEND_API_URL` | Direct-call frontend modes | Browser-visible backend URL, for example `http://localhost:8000` |
+| `SUPABASE_SERVICE_ROLE_KEY` | Server-side admin features | Server-only service role key |
+| `ALERT_WEBHOOK_SECRET` | Alert webhook | Protects `/api/alerts/webhook` when used |
+| `OPENROUTER_API_KEY` | Cron/knowledge jobs | Required by frontend-side knowledge update jobs |
 
-production build/startup required の正本は `frontend/src/lib/env.ts` の
-`productionRequiredVercelEnvKeys`。Vercel production build では
-`frontend/package.json` の `build` が `pnpm env:check:production` を先に実行し、
-不足・空白・不正 URL を値なしで明示失敗させる。
-
-### バックエンド（Cloud Run）
-
-正本は `.github/workflows/ci.yml` の deploy job。
-
-典型的な deploy 設定:
-
-- `--memory 8Gi --cpu 4 --concurrency 1 --min-instances 1 --max-instances 3`
-- non-secret env 例:
-  - `ENVIRONMENT=production`
-  - `TTS_PROVIDER=piper`
-  - `TTS_REQUIRE_PRIMARY_PROVIDER=true`
-  - `STT_PROVIDER=qwen-primary`
-  - `QWEN_STT_TIMEOUT=45`
-  - `QWEN_STT_HEDGE_DELAY_SECONDS=2`
-  - `QWEN_STT_HEDGE_GRACE_SECONDS=6`
-  - `FRONTEND_PRODUCTION_ORIGIN=<vercel-production-origin>`
-  - `ALLOWED_ORIGINS=<vercel-production-origin>`
-- secret は `--update-secrets` で更新する
-
-| Variable | Required | Description |
-| --- | --- | --- |
-| `API_SECRET_KEY` | Yes (production) | frontend -> backend 認証の正本 |
-| `ENVIRONMENT` | Yes | Cloud Run では `production` |
-| `OPENROUTER_API_KEY` | Yes | LLM provider |
-| `FAST_LLM_ENABLED` | If using fast path | identity 以外の daily/general light fast LLM を有効化 |
-| `FAST_LLM_PRIMARY_PROVIDER` / `FAST_LLM_PRIMARY_MODEL` | If using fast path | fast answer の primary provider / model |
-| `FAST_LLM_FALLBACK_PROVIDER` / `FAST_LLM_FALLBACK_MODEL` | If using fast path | fast answer の fallback provider / model |
-| `FAST_LLM_TERTIARY_PROVIDER` | If using Cerebras | OpenRouter primary/fallback 失敗後の tertiary provider |
-| `CEREBRAS_ENABLED` | If using Cerebras | Cerebras tertiary fallback / filler を有効化 |
-| `CEREBRAS_API_KEY` | If using Cerebras | Cerebras fast answer / filler provider |
-| `CEREBRAS_FAST_MODEL` | If using Cerebras | default: `gpt-oss-120b` |
-| `CEREBRAS_REASONING_EFFORT` | If using Cerebras GPT OSS | `low` / `medium` / `high`; alpha fast path は `low` |
-| `SUPABASE_URL` / `SUPABASE_KEY` / `SUPABASE_DB_URI` | Yes | Supabase / Postgres 接続 |
-| `ALLOWED_ORIGINS` | Yes | CORS origin |
-| `TTS_PROVIDER` / `STT_PROVIDER` | Per deploy | 音声経路設定 |
-| `TTS_REQUIRE_PRIMARY_PROVIDER` | Production Piper deploy | `true` の場合、primary TTS 失敗時に別 provider へ黙って fallback しない |
-| `VOICEVOX_API_URL` | If using VoiceVox | `voicevox-proto` URL |
-
-注意:
-
-- Cloud Run の env 更新は `--update-env-vars` を使う
-- `--set-env-vars` で既存値を消さない
-- 新しい secret provider を追加した場合は、GitHub Actions secret と Google Secret Manager の両方を更新する
-- Gemini preview model は deploy 前に実 API model id / region / quota を確認する。docs 上の marketing name をそのまま Cloud Run env に入れない
-
-## デプロイ手順
-
-### デプロイ手順: フロントエンド（Vercel）
-
-1. `develop` へ merge する
-2. Vercel の Git integration または deploy hook で build / deploy を走らせる
-3. production domain を canonical URL として扱う
-
-リリース前のローカル確認:
+Production frontend validation:
 
 ```bash
 cd frontend
+VERCEL_ENV=production pnpm env:check:production
 pnpm lint
 pnpm typecheck
 pnpm build
 ```
 
-### デプロイ手順: バックエンド（Cloud Run）
+### Backend Variables
 
-`develop` への push で backend path に変更がある場合、GitHub Actions の
-`backend-deploy-staging` が image build と Cloud Run deploy を実施する。
+| Variable | Path A | Path B | Description |
+| --- | --- | --- | --- |
+| `API_SECRET_KEY` | Required secret | Required secret | Backend API auth key |
+| `ENVIRONMENT` | `production` | `development` or `production` | Runtime environment; backend refuses production startup without `API_SECRET_KEY` |
+| `SECRET_BACKEND` | `gcp` or `env` | `env`, `sops`, or `vault` | Secret provider selector; see [SOPS and secret backend docs](deployment/secrets-sops.md) |
+| `OPENROUTER_API_KEY` | Required secret | Required for real chat/RAG | LLM provider key |
+| `SUPABASE_URL` | Required secret | Required if using Supabase API features | Supabase API URL |
+| `SUPABASE_KEY` | Required secret | Required if using Supabase API features | Supabase service/server key |
+| `SUPABASE_DB_URI` | Required secret | Defaults to compose Postgres in `docker-compose.yml` | PostgreSQL/pgvector connection string |
+| `ALLOWED_ORIGINS` | Required | Required for browser access | Comma-separated allowed origins |
+| `FRONTEND_PRODUCTION_ORIGIN` | Required | Optional | Canonical production frontend origin |
+| `STT_PROVIDER` | `qwen-primary` | `qwen-primary` or local-compatible setting | STT provider dispatch |
+| `TTS_PROVIDER` | `piper` in production Piper deploys | `voicevox` by default, or `piper` if configured | TTS provider dispatch |
+| `TTS_REQUIRE_PRIMARY_PROVIDER` | `true` for Piper production | Optional | Prevents silent fallback from primary TTS |
+| `VOICEVOX_API_URL` | If VoiceVox is used | `http://voicevox:50021` with compose voice profile | VoiceVox engine URL |
+| `OTEL_SERVICE_NAME` | Recommended | Set by compose | Service name in telemetry |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | Collector endpoint when used | `http://otel-collector:4318` | OTLP HTTP endpoint |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | `http/protobuf` when used | `http/protobuf` | OTLP transport |
+| `FAST_LLM_ENABLED` and `FAST_LLM_*` | Optional | Optional | Fast answer provider/model settings |
+| `CEREBRAS_ENABLED`, `CEREBRAS_API_KEY`, `CEREBRAS_FAST_MODEL` | Optional | Optional | Cerebras fallback/filler settings |
+| `GOOGLE_CALENDAR_ICAL_URL`, `EVENT_SHEET_GAS_URL`, `EVENT_SHEET_GAS_TOKEN` | Event KB sync | Event KB sync | Source secrets for event knowledge sync |
 
-manual deploy をする場合も、workflow と同じ前提に寄せる:
+For secret backend examples, do not duplicate secret values in this file. Use:
 
-- `linux/amd64` build
-- Artifact Registry push
-- `gcloud run deploy`
-- secret は `--update-secrets`
+- [deployment/secrets-sops.md](deployment/secrets-sops.md) for `env`, `sops`,
+  `gcp`, and `vault`.
+- [deployment/cron-options.md](deployment/cron-options.md) for portable event
+  knowledge sync schedules.
 
-### Cerebras のシークレット設定
+## Path A: GCP Production
 
-Cerebras を有効化する場合は、local secret を chat や issue comment に貼らない。
-
-GitHub Actions:
-
-```bash
-gh secret set CEREBRAS_API_KEY --body "$CEREBRAS_API_KEY"
-```
-
-Google Secret Manager:
-
-```bash
-gcloud secrets create CEREBRAS_API_KEY --replication-policy=automatic
-printf "%s" "$CEREBRAS_API_KEY" | \
-  gcloud secrets versions add CEREBRAS_API_KEY --data-file=-
-```
-
-既に secret がある場合は `gcloud secrets create` は不要。
-
-Cloud Run deploy command では `--update-secrets` に次を追加する。
+### Architecture
 
 ```text
-CEREBRAS_API_KEY=CEREBRAS_API_KEY:latest
+Browser / Kiosk
+  |
+  v
+Vercel production deployment
+  |
+  v
+Cloud Run: engineer-cafe-backend (asia-northeast1)
+  |
+  +--> Supabase managed PostgreSQL + pgvector
+  +--> Cloud Run TTS service: PiperPlus / VoiceVox as configured
+  +--> OpenRouter / Cerebras / configured LLM providers
+  +--> Cloud Logging / Cloud Monitoring / Terraform alerts
 ```
 
-Terraform では `infra/terraform/secrets.tf` に runtime secret container を定義している。ただし既存 Secret Manager resource との衝突を避けるため、`manage_runtime_secrets` の default は `false` とする。Terraform 管理へ移す場合は、先に `google_secret_manager_secret.runtime["CEREBRAS_API_KEY"]` を import するか、未作成環境で `manage_runtime_secrets=true` を使う。secret version / 値は Terraform state に入れない。
+Current canonical backend service:
 
-## CI / CD
-
-- Pull request: lint・typecheck・build・backend テスト・Playwright マージゲート
-- Backend 自動デプロイ: `develop` push → GitHub Actions → Cloud Run
-- Frontend 自動デプロイ: `develop` push → Vercel
-
-## 本番設定の確認方法
-
-### バックエンド（Cloud Run）
-
-```bash
-gcloud run services describe engineer-cafe-backend \
-  --region asia-northeast1 \
-  --project aipartner-426616 \
-  --format yaml
+```text
+project: aipartner-426616
+region: asia-northeast1
+service: engineer-cafe-backend
 ```
 
-確認ポイント:
+The canonical production frontend origin is the primary Vercel production
+domain. Do not promote a preview URL into `FRONTEND_PRODUCTION_ORIGIN`.
 
-- image
-- env vars
-- secret bindings
-- traffic / revision
+### Services
 
-### フロントエンド（Vercel）
+| Service | Platform | Region | Purpose |
+| --- | --- | --- | --- |
+| Frontend | Vercel | Global CDN | Next.js UI and API proxy routes |
+| Backend | Cloud Run `engineer-cafe-backend` | `asia-northeast1` | FastAPI + LangGraph protected API |
+| PiperPlus / VoiceVox | Cloud Run | Deployment-specific | TTS path |
+| Database | Supabase managed PostgreSQL + pgvector | Managed | Conversation history, knowledge, sessions |
+| Observability | Cloud Logging, Cloud Monitoring, Terraform | GCP | Production logs, metrics, alerting |
 
-- Vercel dashboard の Deployments / Domains を確認
-- CLI を使う場合は `vercel list --yes`
-- `FRONTEND_PRODUCTION_ORIGIN` が production domain と一致していることを確認
-- production env の明示チェック:
+### Deploy Frontend
+
+1. Merge to `develop`.
+2. Let Vercel Git integration or the deployment hook build and deploy.
+3. Confirm the production deployment is attached to the primary production
+   domain.
+
+Pre-deploy validation:
 
 ```bash
 cd frontend
 VERCEL_ENV=production pnpm env:check:production
+pnpm lint
+pnpm typecheck
+pnpm build
 ```
 
-### 最近のログ確認
+### Deploy Backend
 
-- Cloud Run: deploy 後 15-60 分は `gcloud logging read` を見る
-- Vercel: deployment history を first signal とし、`vercel logs` だけに依存しない
-- Supabase: 現行 operator flow では CLI だけで十分な recent runtime log が取れない場合がある
+The source of truth for automated deployment is `.github/workflows/ci.yml`.
+When backend paths change on `develop`, the backend deploy job builds the image
+and deploys to Cloud Run.
 
-### ヘルスチェック
+Manual deploys should match the workflow:
 
 ```bash
-curl -sf "$(gcloud run services describe engineer-cafe-backend --region asia-northeast1 --format='value(status.url)')/health"
+PROJECT=aipartner-426616
+REGION=asia-northeast1
+SERVICE=engineer-cafe-backend
+IMAGE="asia-northeast1-docker.pkg.dev/${PROJECT}/cloud-run-source-deploy/${SERVICE}:latest"
+
+gcloud run deploy "${SERVICE}" \
+  --project="${PROJECT}" \
+  --region="${REGION}" \
+  --image="${IMAGE}" \
+  --platform=managed \
+  --memory=8Gi \
+  --cpu=4 \
+  --concurrency=1 \
+  --min-instances=1 \
+  --max-instances=3 \
+  --update-env-vars="ENVIRONMENT=production,STT_PROVIDER=qwen-primary,TTS_PROVIDER=piper,TTS_REQUIRE_PRIMARY_PROVIDER=true,FRONTEND_PRODUCTION_ORIGIN=https://YOUR-PRODUCTION-DOMAIN,ALLOWED_ORIGINS=https://YOUR-PRODUCTION-DOMAIN,SECRET_BACKEND=gcp" \
+  --update-secrets="API_SECRET_KEY=API_SECRET_KEY:latest,OPENROUTER_API_KEY=OPENROUTER_API_KEY:latest,SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_KEY=SUPABASE_KEY:latest,SUPABASE_DB_URI=SUPABASE_DB_URI:latest"
 ```
 
-## リリース前チェック
+Add optional secrets only when the feature is enabled:
 
-### リリース前（毎回）
+```text
+CEREBRAS_API_KEY=CEREBRAS_API_KEY:latest
+LANGSMITH_API_KEY=LANGSMITH_API_KEY:latest
+GOOGLE_CALENDAR_ICAL_URL=GOOGLE_CALENDAR_ICAL_URL:latest
+EVENT_SHEET_GAS_URL=EVENT_SHEET_GAS_URL:latest
+EVENT_SHEET_GAS_TOKEN=EVENT_SHEET_GAS_TOKEN:latest
+```
 
-- CI が green
-- Vercel target 環境に `NEXT_PUBLIC_SUPABASE_URL` と `NEXT_PUBLIC_SUPABASE_ANON_KEY` がある
-- Vercel target 環境に `BACKEND_API_KEY` がある
-- Cloud Run target 環境に `API_SECRET_KEY` がある
-- Vercel に `ADMIN_API_SECRET` がある
-- `FRONTEND_PRODUCTION_ORIGIN` が Vercel production domain と一致
-- backend の `ALLOWED_ORIGINS` が同じ origin を含む
-- 新しい env var を追加した場合は docs を更新済み
-- schema change がある場合は Supabase migration 適用済み
-- Apple Silicon で build する場合は `--platform linux/amd64`
-- identity / help / capability route が provider self-disclosure を返さない
-- daily/general light route が RAG miss だけで Tavily / web search に落ちない
-- Gemini / Cerebras の model id は公式 API availability check と benchmark 結果で採用理由が残っている
+### GCP Secret Manager
 
-### デプロイ後
-
-- backend `/health` が `200`
-- backend protected route に `X-API-Key` なしで投げると `403`
-- frontend が critical console error なしで表示される
-- admin route は `ADMIN_API_SECRET` なしで `401`
-- voice path の smoke test が通る
-- production frontend 経由の `GET /api/voice?action=supported_languages` が `200`
-- production frontend 経由の `POST /api/character` が `200`
-- `frontend-latency-probe` workflow で `/api/qa` `/api/voice` `/api/character` の p50 / p95 / p99 を採取する
-- Cloud Run logs に immediate な `403` / `5xx` spike がない
-- Cloud Run logs で `assistant_profile` / `daily_conversation` / `general_light` / `current_info` の route 分布を確認する
-- `あなたの名前は`, `何ができますか`, `明日のイベントを教えて` を production frontend 経由で確認する
-
-## リリース時のガードレール
-
-現在の最重要 release risk は、backend auth 自体の欠如ではなく、次の不整合です。
-
-- Vercel `BACKEND_API_KEY`
-- Cloud Run `API_SECRET_KEY`
-
-frontend は `BACKEND_API_KEY` が missing / stale でも startup 自体は止まりません。
-そのため release validation では、実際の Vercel -> Cloud Run 経路を通す必要があります。
-
-最低限の運用ルール:
-
-1. target production deployment を Vercel で特定する
-2. その deployment に対して frontend-authenticated smoke check を実行する
-3. 同じ時間帯の Cloud Run logs を確認する
-4. ここまで通って初めて healthy deploy とみなす
-
-実装済みの補助:
-
-- manual / local 実行: `scripts/verify-frontend-production.sh`
-- GitHub Actions: `.github/workflows/frontend-production-smoke.yml`
-
-## レイテンシのベースライン
-
-live 検証の前に、frontend 実経路の遅延を最低 1 回は採取する。
-
-### GitHub Actions（ワークフロー）
-
-- workflow: `Frontend Latency Probe`
-- trigger: `workflow_dispatch`
-- artifact:
-  - `artifacts/latency-probe.json`
-  - `artifacts/latency-probe.md`
-
-### ローカル実行
+Create a secret container once, then add versions:
 
 ```bash
-python scripts/latency_probe.py \
-  --base-url https://frontend-delta-six-20.vercel.app \
-  --iterations 3
+PROJECT=aipartner-426616
+
+gcloud secrets create CEREBRAS_API_KEY \
+  --project="${PROJECT}" \
+  --replication-policy=automatic
+
+printf "%s" "$CEREBRAS_API_KEY" | \
+  gcloud secrets versions add CEREBRAS_API_KEY \
+    --project="${PROJECT}" \
+    --data-file=-
 ```
 
-この probe は以下を対象にする。
+Terraform defines runtime secret containers in `infra/terraform/secrets.tf`,
+but `manage_runtime_secrets` defaults to `false` to avoid taking ownership of
+existing Secret Manager resources. Do not put secret values into Terraform
+state.
 
-- `POST /api/qa`
-- `POST /api/voice` (`text_to_speech`)
-- `POST /api/character`
+### GCP Observability
 
-field verification で iPad 系の音声停止が出たため、数値だけでなく実機再生も合わせて確認する。
-
-### Alpha fast response のゲート
-
-ADR 018 の実装後は、release 前に次の gate を通す。
-
-| 経路 | ゲート |
-| --- | --- |
-| identity / help / capability | p95 1s 未満、LLM / RAG / web search 不使用、provider self-disclosure 0 件 |
-| daily/general light | p95 3s 未満、current-info でない限り Tavily / web search 不使用 |
-| current-info | calendar / web search を使う理由が route metadata に残る |
-| voice full turn | STT / chat / TTS の区間別 p50 / p95 を採取し、#613 に追記 |
-
-## ロールバック
-
-### フロントエンド（Vercel）
-
-- Vercel Deployments から previous deployment を promote / revert
-
-### バックエンド（Cloud Run）
+Terraform lives in `infra/terraform/` and covers Cloud Monitoring alerting,
+log-based metrics, dashboards, and secret containers. Notification channels are
+environment-specific and must be provided before manual apply.
 
 ```bash
-gcloud run revisions list \
-  --service engineer-cafe-backend \
-  --region asia-northeast1 \
-  --project aipartner-426616
-
-gcloud run services update-traffic engineer-cafe-backend \
-  --region asia-northeast1 \
-  --project aipartner-426616 \
-  --to-revisions REVISION_NAME=100
+cd infra/terraform
+terraform init
+terraform plan \
+  -var='project_id=aipartner-426616' \
+  -var='region=asia-northeast1'
 ```
 
-## データベース（Supabase）
+Wave 3 also keeps portable alert definitions in
+`infra/observability/alerts.rules.yml`. When using the GCP path, keep Cloud
+Monitoring policies and portable alert rules behaviorally aligned.
 
-- RLS は有効
-- service role access は server-side only
+### Path A Smoke Test
+
+Use the production secret from Secret Manager and run the six inherited Wave 2
+queries against Cloud Run:
 
 ```bash
-supabase db push
+PROJECT=aipartner-426616
+REGION=asia-northeast1
+SERVICE=engineer-cafe-backend
+API_KEY="$(gcloud secrets versions access latest --secret=API_SECRET_KEY --project="${PROJECT}")"
+URL="$(gcloud run services describe "${SERVICE}" --region="${REGION}" --project="${PROJECT}" --format='value(status.url)')"
+
+run_chat() {
+  curl -sSL -X POST "${URL}/api/chat" \
+    -H "Content-Type: application/json" \
+    -H "X-API-Key: ${API_KEY}" \
+    -d "{\"query\":\"$1\",\"session_id\":\"smoke-$(date +%s%N)\",\"language\":\"ja\"}" \
+    --max-time 60 | jq -r '.metadata.agent + " | " + .answer[0:100]'
+}
+
+run_chat "今日は何月何日ですか"
+run_chat "今週開催されるイベントを全部教えて"
+run_chat "ハッカソンの予定はありますか？"
+run_chat "Engineer Cafe のメインホールの広さは？"
+run_chat "営業時間とWi-Fiについて教えて"
+run_chat "サイノカフェのランチメニュー"
 ```
 
-代表 table:
+Expected result: all six requests return HTTP `200`, the selected agent is
+reasonable for the question, and no provider self-disclosure appears in the
+answer.
 
-- `knowledge_base`
-- `conversation_sessions`
-- `conversation_history`
-- `agent_memory`
-- `reception_sessions`
+Run the existing endpoint/auth verification script as an additional backend
+check:
 
-## トラブルシューティング
+```bash
+API_SECRET_KEY="${API_KEY}" ./scripts/verify-deployment.sh
+```
 
-### デプロイ後のバックエンドエラー
+Verify the real Vercel-to-Cloud-Run route after the Vercel deployment is live:
+
+```bash
+FRONTEND_BASE_URL="https://YOUR-PRODUCTION-DOMAIN" \
+  ./scripts/verify-frontend-production.sh
+```
+
+Check logs and alert surfaces:
 
 ```bash
 gcloud logging read \
   'resource.type="cloud_run_revision" AND resource.labels.service_name="engineer-cafe-backend"' \
-  --project aipartner-426616 \
-  --limit 50 \
-  --format "table(timestamp, textPayload)"
+  --project="${PROJECT}" \
+  --limit=50 \
+  --freshness=1h \
+  --format='table(timestamp,severity,jsonPayload.event,textPayload)'
+
+gcloud alpha monitoring policies list \
+  --project="${PROJECT}" \
+  --format='value(displayName,enabled)'
 ```
 
-### フロントの admin ルート設定ミス
+## Path B: OSS Docker Compose Self-Hosting
 
-- `ADMIN_API_SECRET` が Vercel 側と一致しているか確認
+Path B is for deployers without GCP. It should be enough to clone the repo,
+provide local secrets, and run Docker Compose.
 
-### `POST /api/character` で `403` が増える
+### Architecture
 
-まず deploy / config mismatch を疑う:
+```text
+Browser
+  |
+  v
+frontend container :3000
+  |
+  v
+backend container :8000
+  |
+  +--> postgres container :5432 (pgvector image)
+  +--> otel-collector :4317/:4318/:9464
+  +--> prometheus :9090
+  +--> loki :3100
+  +--> grafana :3001
+  +--> alertmanager :9093
+  +--> mailhog :8025
+```
 
-- Vercel の `BACKEND_API_KEY` を確認
-- Cloud Run の `API_SECRET_KEY` を確認
-- `scripts/verify-frontend-production.sh <frontend_url>` で frontend-authenticated smoke check を再実行
-- 同じ deploy window の Cloud Run logs を確認
+Default `docker-compose.yml` services:
 
-### Supabase errors
+| Service | URL/port | Purpose |
+| --- | --- | --- |
+| `frontend` | `http://localhost:3000` | Next.js app |
+| `backend` | `http://localhost:8000` | FastAPI app |
+| `postgres` | `localhost:5432` | Local PostgreSQL + pgvector |
+| `otel-collector` | `localhost:4317`, `4318`, `9464` | OTLP receiver and Prometheus exporter |
+| `loki` | `http://localhost:3100` | Logs |
+| `prometheus` | `http://localhost:9090` | Metrics and portable alert rules |
+| `grafana` | `http://localhost:3001` | Dashboards, default `admin` / `admin` |
+| `alertmanager` | `http://localhost:9093` | Alert routing |
+| `mailhog` | `http://localhost:8025` | Local alert email capture |
 
-- `SUPABASE_DB_URI` が CI placeholder になっていないか確認
+Optional voice services are under the `voice` compose profile:
 
-## 現在の本番リスク
+```bash
+docker compose --profile voice up -d voicevox kokoro-tts
+```
 
-追跡先:
+### Prerequisites
 
-- `#468`: deploy-time auth drift guardrails
-- `#140`: latency / load baseline
-- `#458`: emotion / animation contract mismatch
-- `#138` / `#398`: multilingual quality closure
+- Docker Engine or Docker Desktop with Compose v2.
+- Node and Python are only required for local host-side validation; compose
+  builds the app containers itself.
+- A real `OPENROUTER_API_KEY` for full chat/RAG smoke tests.
+- Either local env files or a supported secret backend.
 
-[ドキュメント索引へ](README.md)
+### Local Env Files
+
+Create `backend/.env` for compose. Minimum useful local example:
+
+```bash
+API_SECRET_KEY=replace-with-local-dev-key
+ENVIRONMENT=development
+SECRET_BACKEND=env
+OPENROUTER_API_KEY=sk-or-replace-me
+SUPABASE_DB_URI=postgresql://postgres:postgres@postgres:5432/engineer_cafe
+SUPABASE_URL=http://localhost:54321
+SUPABASE_KEY=replace-if-needed
+ALLOWED_ORIGINS=http://localhost:3000
+FRONTEND_PRODUCTION_ORIGIN=http://localhost:3000
+STT_PROVIDER=qwen-primary
+TTS_PROVIDER=voicevox
+VOICEVOX_API_URL=http://voicevox:50021
+OTEL_SERVICE_NAME=engineer-cafe-backend
+OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+```
+
+Create `frontend/.env.local`:
+
+```bash
+NEXT_PUBLIC_SUPABASE_URL=http://localhost:54321
+NEXT_PUBLIC_SUPABASE_ANON_KEY=replace-if-needed
+BACKEND_API_URL=http://backend:8000
+NEXT_PUBLIC_BACKEND_API_URL=http://localhost:8000
+BACKEND_API_KEY=replace-with-local-dev-key
+ADMIN_API_SECRET=replace-with-local-admin-key
+```
+
+For real local Supabase-compatible API features, point `SUPABASE_URL`,
+`SUPABASE_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, and
+`NEXT_PUBLIC_SUPABASE_ANON_KEY` at your Supabase project or add a local
+Supabase service. The compose file already provides Postgres for backend
+database access through `SUPABASE_DB_URI`.
+
+If you do not want plaintext env files on disk, use SOPS or Vault as described
+in [deployment/secrets-sops.md](deployment/secrets-sops.md). Keep
+`SECRET_BACKEND=env` for standard Docker Compose env files.
+
+### Start Path B
+
+Build and start the base nine-service stack:
+
+```bash
+docker compose up -d --build
+docker compose ps
+```
+
+Expected base services: `frontend`, `backend`, `postgres`, `otel-collector`,
+`loki`, `prometheus`, `grafana`, `alertmanager`, and `mailhog` are `Up` or
+`healthy`.
+
+Start with local voice engines when validating voice:
+
+```bash
+docker compose --profile voice up -d --build
+```
+
+### Path B Health Smoke
+
+```bash
+curl -fsS http://localhost:8000/health
+curl -fsS http://localhost:3000 >/dev/null
+curl -fsS http://localhost:9090/-/healthy
+curl -fsS http://localhost:9093/-/healthy
+curl -fsS http://localhost:8025 >/dev/null
+```
+
+Grafana is available at `http://localhost:3001` with default credentials
+`admin` / `admin`.
+
+### Path B Six-Query Chat Smoke
+
+Use the same six questions as Path A, pointed at localhost:
+
+```bash
+API_KEY="${API_SECRET_KEY:-replace-with-local-dev-key}"
+URL="http://localhost:8000"
+
+run_chat() {
+  body="$(jq -nc --arg query "$1" --arg session_id "smoke-$(date +%s%N)" \
+    '{query:$query,session_id:$session_id,language:"ja"}')"
+
+  status_and_body="$(curl -sS -w '\n%{http_code}' -X POST "${URL}/api/chat" \
+    -H "Content-Type: application/json" \
+    -H "X-API-Key: ${API_KEY}" \
+    -d "${body}" \
+    --max-time 60)"
+
+  status="$(printf '%s' "${status_and_body}" | tail -n1)"
+  response="$(printf '%s' "${status_and_body}" | sed '$d')"
+  test "${status}" = "200"
+  printf '%s\n' "${response}" | jq -r '.metadata.agent + " | " + .answer[0:100]'
+}
+
+run_chat "今日は何月何日ですか"
+run_chat "今週開催されるイベントを全部教えて"
+run_chat "ハッカソンの予定はありますか？"
+run_chat "Engineer Cafe のメインホールの広さは？"
+run_chat "営業時間とWi-Fiについて教えて"
+run_chat "サイノカフェのランチメニュー"
+```
+
+Expected result: six `200` responses. If a query fails because a real LLM,
+embedding, or knowledge source key is missing, fix env configuration first; do
+not weaken the smoke criteria.
+
+### Path B Observability Smoke
+
+Prometheus should scrape the collector:
+
+```bash
+curl -fsS http://localhost:9090/api/v1/targets | jq '.data.activeTargets[] | {job:.labels.job, health:.health}'
+```
+
+Alert rules should load from `infra/observability/alerts.rules.yml`:
+
+```bash
+curl -fsS http://localhost:9090/api/v1/rules | jq '.data.groups[].rules[].name'
+```
+
+Mailhog captures Alertmanager email locally:
+
+```bash
+curl -fsS http://localhost:8025/api/v2/messages | jq '.total'
+```
+
+Grafana provisions the dashboard and data sources from
+`infra/observability/grafana/provisioning`.
+
+### Stop Path B
+
+```bash
+docker compose down
+```
+
+Remove local persisted data only when you intentionally want a clean database
+and observability state:
+
+```bash
+docker compose down -v
+```
+
+## Event Knowledge Sync
+
+The portable entry point is:
+
+```bash
+python -m backend.scripts.sync_event_kb --include-spreadsheet
+```
+
+Use `--dry-run` before a live write:
+
+```bash
+python -m backend.scripts.sync_event_kb --dry-run --include-spreadsheet
+```
+
+Supported scheduler shapes are documented in
+[deployment/cron-options.md](deployment/cron-options.md):
+
+- GCP Cloud Scheduler to Cloud Run Job for Path A.
+- GitHub Actions cron.
+- systemd timer.
+- In-process APScheduler for single-process deployments.
+
+## Release Checklist
+
+### Before Deploying
+
+- CI is green.
+- Frontend production env check passes.
+- `BACKEND_API_KEY` and `API_SECRET_KEY` are present and intentionally paired.
+- `FRONTEND_PRODUCTION_ORIGIN` and `ALLOWED_ORIGINS` match the canonical
+  frontend origin.
+- Database migrations are applied when schema changes exist.
+- New env vars are documented in this file or the linked deployment docs.
+- Provider model IDs and regional availability are verified.
+- The selected path has a rollback procedure ready.
+
+### After Deploying
+
+- `/health` returns `200`.
+- Protected backend routes return `403` without `X-API-Key`.
+- Six-query smoke passes on the deployed backend.
+- Frontend-authenticated smoke passes through the real frontend route.
+- Voice smoke passes when voice was changed.
+- Logs show no immediate `403` or `5xx` spike.
+- Wave 3 metrics and alert surfaces are visible in Cloud Monitoring or
+  Prometheus/Grafana.
+
+## Rollback
+
+### Path A Frontend
+
+Use Vercel Deployments to promote or revert to the previous healthy production
+deployment.
+
+### Path A Backend
+
+```bash
+PROJECT=aipartner-426616
+REGION=asia-northeast1
+SERVICE=engineer-cafe-backend
+
+gcloud run revisions list \
+  --service="${SERVICE}" \
+  --region="${REGION}" \
+  --project="${PROJECT}"
+
+gcloud run services update-traffic "${SERVICE}" \
+  --region="${REGION}" \
+  --project="${PROJECT}" \
+  --to-revisions=REVISION_NAME=100
+```
+
+### Path B Compose
+
+Pin the previous image tag or git revision, then recreate the affected
+containers:
+
+```bash
+git checkout <known-good-revision>
+docker compose up -d --build backend frontend
+docker compose ps
+```
+
+If the rollback includes database changes, restore from the operator's database
+backup before restarting the backend.
+
+## Troubleshooting
+
+### Backend returns 403 after deploy
+
+Check auth drift first:
+
+```bash
+# Path A: verify Cloud Run API_SECRET_KEY binding and Vercel BACKEND_API_KEY.
+gcloud run services describe engineer-cafe-backend \
+  --region=asia-northeast1 \
+  --project=aipartner-426616 \
+  --format='yaml(spec.template.spec.containers[0].env)'
+
+# Path B: verify local env files and container env.
+docker compose exec backend printenv API_SECRET_KEY
+docker compose exec frontend printenv BACKEND_API_KEY
+```
+
+Do not print real production secret values in shared logs or issue comments.
+
+### Backend is unhealthy in Path B
+
+```bash
+docker compose ps
+docker compose logs --tail=200 backend
+docker compose logs --tail=100 postgres
+docker compose exec backend python scripts/healthcheck.py --verbose
+```
+
+Common causes are missing `API_SECRET_KEY` with `ENVIRONMENT=production`,
+missing LLM key, Postgres startup still in progress, or invalid
+`SUPABASE_DB_URI`.
+
+### Observability is blank in Path B
+
+```bash
+docker compose logs --tail=100 otel-collector
+curl -fsS http://localhost:9464/metrics | head
+curl -fsS http://localhost:9090/api/v1/targets | jq '.data.activeTargets'
+```
+
+Confirm `OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318` inside the
+backend container and that Prometheus target `otel-collector:9464` is healthy.
+
+### Supabase or database errors
+
+- Path A: verify `SUPABASE_URL`, `SUPABASE_KEY`, and `SUPABASE_DB_URI` are bound
+  from Secret Manager.
+- Path B: verify the compose Postgres URI is
+  `postgresql://postgres:postgres@postgres:5432/engineer_cafe` from inside the
+  backend container.
+
+### Event KB sync fails
+
+Run dry-run first and check the selected secret provider:
+
+```bash
+SECRET_BACKEND=env \
+python -m backend.scripts.sync_event_kb --dry-run --include-spreadsheet
+```
+
+See [deployment/cron-options.md](deployment/cron-options.md) for scheduler
+setup and required source secrets.
+
+## Current Production Risk References
+
+- `#468`: deploy-time auth drift guardrails.
+- `#140`: latency and load baseline.
+- `#458`: emotion / animation contract mismatch.
+- `#138` / `#398`: multilingual quality closure.
+- `#896`: Wave 3 two-path deployment documentation.
+
+[Back to documentation index](README.md)

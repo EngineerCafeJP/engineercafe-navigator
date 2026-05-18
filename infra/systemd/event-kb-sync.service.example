@@ -1,0 +1,17 @@
+[Unit]
+Description=Engineer Cafe Event KB sync
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/engineer-cafe-navigator
+EnvironmentFile=/etc/engineer-cafe/event-kb-sync.env
+ExecStart=/opt/engineer-cafe-navigator/.venv/bin/python -m backend.scripts.sync_event_kb --include-spreadsheet
+User=engineer-cafe
+Group=engineer-cafe
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/opt/engineer-cafe-navigator /etc/engineer-cafe

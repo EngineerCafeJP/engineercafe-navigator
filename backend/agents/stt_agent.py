@@ -1,8 +1,7 @@
 """
 STTAgent - Speech-to-Text エージェント
 
-ローカルSTT（Vosk / Qwen3-ASR）をデフォルト候補に、Google Cloud STT を
-フォールバックとして実装します。
+ローカルSTT（Vosk / Qwen3-ASR）をデフォルト候補として実装します。
 
 仕様:
 - 入力: WAV バイナリ（16kHz, 16bit, mono 推奨）
@@ -40,7 +39,11 @@ from typing import Any, Dict, List, Optional
 import httpx as _stt_httpx
 
 from backend.agents.stt_onnx import QwenOnnxRuntime, QwenOnnxRuntimeConfig
-from backend.observability.structured_logger import log_stt_event
+from backend.observability.structured_logger import (
+    log_stt_event,
+    log_stt_qwen_complete,
+    log_stt_winner,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -288,9 +291,7 @@ TRUNCATED_WAV_AUDIO_ERROR = (
     "(minimum 44 bytes). Received truncated data."
 )
 AUDIO_CONVERSION_ERROR_PREFIX = "Failed to convert WebM audio to WAV for STT transcription"
-PYDUB_IMPORT_ERROR = (
-    "WebM audio conversion requires pydub. Install backend dependencies with pydub included."
-)
+PYDUB_IMPORT_ERROR = "WebM audio conversion requires pydub. Install backend dependencies with pydub included."  # noqa: E501
 _MEDIA_CONTAINER_SIGNATURES = (
     b"\x1a\x45\xdf\xa3",  # WebM / Matroska EBML
     b"OggS",
@@ -1467,66 +1468,6 @@ class LocalSTTClient:
 
 
 # -----------------------------------------------------------------------------
-# Google Cloud STT Client (fallback)
-# -----------------------------------------------------------------------------
-
-
-class GoogleSTTClient:
-    def __init__(self):
-        self.project_id = os.getenv("GOOGLE_CLOUD_PROJECT_ID") or os.getenv("GOOGLE_CLOUD_PROJECT")
-        self.credentials_source = os.getenv("GOOGLE_CLOUD_CREDENTIALS") or os.getenv(
-            "GOOGLE_APPLICATION_CREDENTIALS"
-        )
-        logger.info("GoogleSTTClient initialized (project=%s)", self.project_id)
-
-    def is_available(self) -> bool:
-        """Google Cloud STT の認証情報が設定されているか確認"""
-        # On Cloud Run, the service account is attached via Workload Identity
-        if os.getenv("ENVIRONMENT") == "production":
-            return bool(self.project_id or os.getenv("GOOGLE_CLOUD_PROJECT"))
-        return bool(self.credentials_source)
-
-    def _sync_transcribe(self, audio_data: bytes, language: str = "ja") -> str:
-        # Synchronous blocking call to Google Cloud Speech API
-        from google.cloud import speech
-
-        client = speech.SpeechClient()
-        lang_code = "ja-JP" if language.startswith("ja") else "en-US"
-
-        audio = speech.RecognitionAudio(content=audio_data)
-        config = speech.RecognitionConfig(
-            encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
-            sample_rate_hertz=16000,
-            language_code=lang_code,
-            enable_automatic_punctuation=True,
-        )
-
-        response = client.recognize(config=config, audio=audio)
-        transcripts = []
-        for result in response.results:
-            if result.alternatives:
-                transcripts.append(result.alternatives[0].transcript)
-
-        return " ".join(transcripts).strip()
-
-    async def transcribe(self, audio_data: bytes, language: str = "ja") -> str:
-        loop = None
-        try:
-            import asyncio
-
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = None
-
-        if loop:
-            with concurrent.futures.ThreadPoolExecutor() as pool:
-                return await loop.run_in_executor(pool, self._sync_transcribe, audio_data, language)
-        else:
-            # Fallback synchronous
-            return self._sync_transcribe(audio_data, language)
-
-
-# -----------------------------------------------------------------------------
 # Qwen3-ASR Client (optional local provider)
 # -----------------------------------------------------------------------------
 
@@ -1943,6 +1884,24 @@ class QwenOnnxSTTClient:
 
         text = result.text.strip()
         if not text:
+            log_stt_event(
+                event="stt_qwen_runtime_complete",
+                stt_trace_id=stt_trace_id,
+                provider="qwen-primary",
+                model_name=self.model_name,
+                model_variant=self.model_variant,
+                language=language,
+                device=self.device,
+                success=False,
+                error_type="EmptyRecognitionResult",
+                conversion_required=conversion_required,
+                stt_qwen_runtime_duration_ms=_duration_ms(runtime_started_at),
+                stt_qwen_audio_conversion_duration_ms=audio_conversion_duration_ms,
+                stt_qwen_wav_decode_duration_ms=wav_decode_duration_ms,
+                stt_qwen_pcm_prepare_duration_ms=pcm_prepare_duration_ms,
+                stt_qwen_model_inference_duration_ms=inference_duration_ms,
+                **audio_metadata,
+            )
             raise RuntimeError("Qwen3-ASR ONNX returned empty recognition result")
 
         detected_language = result.language or lang_code
@@ -2027,12 +1986,10 @@ class STTAgent:
 
         Args:
             stt_provider: STT provider name
-                ('vosk', 'google', 'qwen', 'qwen0.6b-cpu',
-                or 'qwen-primary').
+                ('vosk', 'qwen', 'qwen0.6b-cpu', or 'qwen-primary').
                 If None, uses ``STT_PROVIDER`` env var; if that is also unset,
-                defaults to ``google`` when ``ENVIRONMENT=production``, else
-                ``qwen0.6b-cpu``. Cloud Run でイメージ同梱の Vosk を使う場合は
-                必ず ``STT_PROVIDER=vosk`` を設定すること。
+                defaults to ``qwen-primary`` when ``ENVIRONMENT=production``, else
+                ``qwen0.6b-cpu``.
             stt_client: Custom STT client instance.
                 If None, creates default based on provider.
             use_grammar: Whether to use domain-specific grammar.
@@ -2041,13 +1998,22 @@ class STTAgent:
                 post-validation. If None, creates default.
             confidence_threshold: Min confidence for Vosk before
                 Google fallback. Defaults to 0.4.
-            fallback_client: Google STT client for fallback.
-                If None and provider is 'vosk', creates one.
+            fallback_client: Optional local/custom STT fallback.
         """
         self.stt_provider = stt_provider or os.getenv(
             "STT_PROVIDER",
-            "google" if os.getenv("ENVIRONMENT") == "production" else "qwen0.6b-cpu",
+            ("qwen-primary" if os.getenv("ENVIRONMENT") == "production" else "qwen0.6b-cpu"),
         )
+        allowed_providers = {
+            "vosk",
+            "qwen",
+            "qwen0.6b-cpu",
+            "qwen-0.6b-cpu",
+            "qwen-primary",
+        }
+        if self.stt_provider not in allowed_providers:
+            allowed = ", ".join(sorted(allowed_providers))
+            raise ValueError(f"Unknown STT provider: {self.stt_provider}. Allowed: {allowed}")
         self.use_grammar = use_grammar
         self.confidence_threshold = confidence_threshold
         self._vosk_fallback_client = None
@@ -2059,8 +2025,6 @@ class STTAgent:
             self.stt_client = stt_client
         elif self.stt_provider == "vosk":
             self.stt_client = LocalSTTClient()
-        elif self.stt_provider == "google":
-            self.stt_client = GoogleSTTClient()
         elif self.stt_provider == "qwen":
             self.stt_client = QwenSTTClient(
                 model_variant=os.getenv("QWEN_STT_MODEL_VARIANT", "1.7b"),
@@ -2095,13 +2059,9 @@ class STTAgent:
         else:
             raise ValueError(f"Unknown STT provider: {self.stt_provider}")
 
-        # #9: Fallback client (Google STT) for low-confidence Vosk results
-        if fallback_client is not None:
-            self.fallback_client = fallback_client
-        elif self.stt_provider == "vosk":
-            self.fallback_client = GoogleSTTClient()
-        else:
-            self.fallback_client = None
+        # Optional custom fallback for low-confidence Vosk results. Wave 3 removes
+        # the built-in Google Cloud fallback so application code stays portable.
+        self.fallback_client = fallback_client
 
         # #1: LanguageProcessor for post-validation of Vosk language detection
         if language_processor is not None:
@@ -2185,7 +2145,7 @@ class STTAgent:
         language: str,
         vosk_result: Dict[str, Any],
     ) -> Dict[str, Any]:
-        """低信頼度の場合に Google STT でフォールバックを試行する。"""
+        """低信頼度の場合に設定済みの STT フォールバックを試行する。"""
         if self.fallback_client is None:
             return vosk_result
 
@@ -2193,7 +2153,7 @@ class STTAgent:
             hasattr(self.fallback_client, "is_available")
             and not self.fallback_client.is_available()
         ):
-            logger.debug("Google STT credentials not configured, skipping fallback")
+            logger.debug("STT fallback client not available, skipping fallback")
             return vosk_result
 
         vosk_confidence = vosk_result.get("confidence")
@@ -2201,26 +2161,26 @@ class STTAgent:
             return vosk_result
 
         logger.info(
-            "Vosk confidence %.3f < threshold %s, attempting Google STT fallback...",
+            "Vosk confidence %.3f < threshold %s, attempting STT fallback...",
             vosk_confidence,
             self.confidence_threshold,
         )
 
         try:
-            google_transcript = await self.fallback_client.transcribe(audio_data, language)
-            if google_transcript and google_transcript.strip():
-                logger.info("Google STT fallback succeeded: %s", google_transcript[:100])
+            fallback_transcript = await self.fallback_client.transcribe(audio_data, language)
+            if fallback_transcript and fallback_transcript.strip():
+                logger.info("STT fallback succeeded: %s", fallback_transcript[:100])
                 return {
                     "success": True,
-                    "transcript": google_transcript,
+                    "transcript": fallback_transcript,
                     "confidence": None,
                     "language": language,
-                    "provider": "google-fallback",
+                    "provider": "fallback",
                     "fallback_used": True,
                     "original_confidence": vosk_confidence,
                 }
         except Exception as e:
-            logger.warning("Google STT fallback failed: %s, using Vosk result", e)
+            logger.warning("STT fallback failed: %s, using Vosk result", e)
 
         return vosk_result
 
@@ -2392,6 +2352,7 @@ class STTAgent:
             stt_trace_id=stt_trace_id,
             language=language,
         )
+        prepared_audio_metadata = _wav_metadata(audio_data)
 
         async def _run_qwen():
             qwen_started_at = time.perf_counter()
@@ -2417,40 +2378,54 @@ class STTAgent:
                     timeout=self._qwen_timeout,
                 )
             except asyncio.CancelledError:
-                log_stt_event(
-                    event="stt_qwen_complete",
+                qwen_duration_ms = _duration_ms(qwen_started_at)
+                log_stt_qwen_complete(
                     stt_trace_id=stt_trace_id,
                     provider="qwen-primary",
                     language=language,
+                    audio_duration_ms=prepared_audio_metadata.get("audio_duration_ms"),
+                    latency_ms=qwen_duration_ms,
+                    confidence=None,
+                    transcript_length=0,
+                    winner=False,
                     success=False,
                     cancelled=True,
                     error_type="CancelledError",
-                    stt_qwen_duration_ms=_duration_ms(qwen_started_at),
+                    stt_qwen_duration_ms=qwen_duration_ms,
                     qwen_postprocess_enabled=qwen_postprocess_enabled,
                 )
                 raise
             except Exception as exc:
-                log_stt_event(
-                    event="stt_qwen_complete",
+                qwen_duration_ms = _duration_ms(qwen_started_at)
+                log_stt_qwen_complete(
                     stt_trace_id=stt_trace_id,
                     provider="qwen-primary",
                     language=language,
+                    audio_duration_ms=prepared_audio_metadata.get("audio_duration_ms"),
+                    latency_ms=qwen_duration_ms,
+                    confidence=None,
+                    transcript_length=0,
+                    winner=False,
                     success=False,
                     error_type=type(exc).__name__,
-                    stt_qwen_duration_ms=_duration_ms(qwen_started_at),
+                    stt_qwen_duration_ms=qwen_duration_ms,
                     qwen_postprocess_enabled=qwen_postprocess_enabled,
                 )
                 raise
 
-            log_stt_event(
-                event="stt_qwen_complete",
+            qwen_duration_ms = _duration_ms(qwen_started_at)
+            log_stt_qwen_complete(
                 stt_trace_id=stt_trace_id,
                 provider="qwen-primary",
                 language=result.language,
+                audio_duration_ms=prepared_audio_metadata.get("audio_duration_ms"),
+                latency_ms=qwen_duration_ms,
+                transcript_length=len(result.text),
+                winner=False,
                 success=True,
                 transcript_chars=len(result.text),
                 confidence=result.confidence,
-                stt_qwen_duration_ms=_duration_ms(qwen_started_at),
+                stt_qwen_duration_ms=qwen_duration_ms,
                 qwen_postprocess_enabled=qwen_postprocess_enabled,
             )
             return result
@@ -2749,12 +2724,18 @@ class STTAgent:
                     if not vosk_task.done():
                         vosk_task.cancel()
                         await asyncio.gather(vosk_task, return_exceptions=True)
-                    log_stt_event(
-                        event="stt_winner",
+                    log_stt_winner(
                         stt_trace_id=stt_trace_id,
+                        winner_provider="qwen-primary",
                         stt_winner="qwen",
                         provider="qwen-primary",
                         language=qwen_result.language,
+                        confidence=qwen_result.confidence,
+                        latency_ms=_duration_ms(overall_started_at),
+                        alternatives=[
+                            ("qwen-primary", qwen_result.confidence),
+                            ("vosk-fallback", None),
+                        ],
                         success=True,
                         stt_overall_duration_ms=_duration_ms(overall_started_at),
                         stt_hedge_started=hedge_started,
@@ -2828,12 +2809,25 @@ class STTAgent:
                         qwen_result = qwen_rejection
                         qwen_error_for_log = qwen_rejection
                     else:
-                        log_stt_event(
-                            event="stt_winner",
+                        log_stt_winner(
                             stt_trace_id=stt_trace_id,
+                            winner_provider="qwen-primary",
                             stt_winner="qwen",
                             provider="qwen-primary",
                             language=qwen_result.language,
+                            confidence=qwen_result.confidence,
+                            latency_ms=_duration_ms(overall_started_at),
+                            alternatives=[
+                                ("qwen-primary", qwen_result.confidence),
+                                (
+                                    "vosk-fallback",
+                                    (
+                                        vosk_result.confidence
+                                        if isinstance(vosk_result, TranscriptionResult)
+                                        else None
+                                    ),
+                                ),
+                            ],
                             success=True,
                             stt_overall_duration_ms=_duration_ms(overall_started_at),
                             stt_hedge_started=hedge_started,
@@ -2859,12 +2853,18 @@ class STTAgent:
                     if corrected != transcript:
                         postprocessed = True
                         transcript = corrected
-                log_stt_event(
-                    event="stt_winner",
+                log_stt_winner(
                     stt_trace_id=stt_trace_id,
+                    winner_provider="vosk-fallback",
                     stt_winner="vosk",
                     provider="vosk-fallback",
                     language=vosk_result.language,
+                    confidence=vosk_result.confidence,
+                    latency_ms=_duration_ms(overall_started_at),
+                    alternatives=[
+                        ("vosk-fallback", vosk_result.confidence),
+                        ("qwen-primary", None),
+                    ],
                     success=True,
                     stt_overall_duration_ms=_duration_ms(overall_started_at),
                     stt_hedge_started=hedge_started,
@@ -2884,11 +2884,12 @@ class STTAgent:
                 }
 
             # Both failed
-            log_stt_event(
-                event="stt_winner",
+            log_stt_winner(
                 stt_trace_id=stt_trace_id,
+                winner_provider="none",
                 stt_winner="none",
                 success=False,
+                latency_ms=_duration_ms(overall_started_at),
                 stt_overall_duration_ms=_duration_ms(overall_started_at),
                 stt_hedge_started=hedge_started,
                 stt_hedge_wait_duration_ms=hedge_wait_duration_ms,
@@ -2955,16 +2956,19 @@ class STTAgent:
             Recognition result dict with keys:
                 - success (bool): Whether recognition succeeded.
                 - transcript (str): Recognized text.
-                - confidence (float): Recognition confidence (0.0-1.0). None for Google STT.
+                - confidence (float): Recognition confidence (0.0-1.0). None for provider-specific
+                  clients that do not report confidence.
                 - language (str): Detected language code.
-                - provider (str): STT provider used ('vosk', 'google', or 'qwen').
+                - provider (str): STT provider used ('vosk', 'qwen', or 'qwen-primary').
                 - error (str): Error message if failed. Optional.
-                - fallback_used (bool): Whether Google fallback was used. Optional.
+                - fallback_used (bool): Whether custom fallback was used. Optional.
         """
         provider = self.stt_provider
         if provider == "qwen-primary":
             return await self._transcribe_qwen_primary(audio_data, language)
         grammar = self._resolve_grammar(conversation_stage)
+        stt_started_at = time.perf_counter()
+        audio_metadata = _wav_metadata(audio_data)
         try:
             if language is None and isinstance(self.stt_client, LocalSTTClient):
                 result = await self.stt_client.transcribe_auto_detect(audio_data, grammar=grammar)
@@ -2983,7 +2987,7 @@ class STTAgent:
                 else:
                     result = await self.stt_client.transcribe(audio_data, lang)
 
-            # Handle TranscriptionResult vs str (GoogleSTTClient returns str)
+            # Handle TranscriptionResult vs provider-specific string results.
             if isinstance(result, TranscriptionResult):
                 # #1: LanguageProcessor post-validation
                 validated = await self._validate_language(result, audio_data)
@@ -2995,7 +2999,7 @@ class STTAgent:
                     "provider": provider,
                     "language_validated": validated is not result,
                 }
-                # #9: Low-confidence fallback to Google STT
+                # #9: Low-confidence fallback when explicitly configured.
                 response = await self._try_fallback(audio_data, validated.language, response)
 
                 # Vosk-only: LLM post-processing for accuracy
@@ -3012,8 +3016,48 @@ class STTAgent:
                         response["original_transcript"] = original
                         response["postprocessed"] = True
 
+                if provider == "vosk":
+                    log_stt_winner(
+                        winner_provider=response.get("provider", "vosk"),
+                        stt_winner=response.get("provider", "vosk"),
+                        provider=response.get("provider", "vosk"),
+                        language=response.get("language"),
+                        confidence=response.get("confidence"),
+                        latency_ms=_duration_ms(stt_started_at),
+                        alternatives=[
+                            (
+                                response.get("provider", "vosk"),
+                                response.get("confidence"),
+                            )
+                        ],
+                        success=True,
+                    )
+                elif provider in {"qwen", "qwen0.6b-cpu", "qwen-0.6b-cpu"}:
+                    log_stt_qwen_complete(
+                        provider=provider,
+                        language=response.get("language"),
+                        audio_duration_ms=audio_metadata.get("audio_duration_ms"),
+                        latency_ms=_duration_ms(stt_started_at),
+                        confidence=response.get("confidence"),
+                        transcript_length=len(str(response.get("transcript") or "")),
+                        winner=True,
+                        success=True,
+                    )
+
                 return response
             else:
+                if provider in {"qwen", "qwen0.6b-cpu", "qwen-0.6b-cpu"}:
+                    transcript = str(result or "")
+                    log_stt_qwen_complete(
+                        provider=provider,
+                        language=language or "ja",
+                        audio_duration_ms=audio_metadata.get("audio_duration_ms"),
+                        latency_ms=_duration_ms(stt_started_at),
+                        confidence=None,
+                        transcript_length=len(transcript),
+                        winner=True,
+                        success=True,
+                    )
                 return {
                     "success": True,
                     "transcript": result,
@@ -3023,6 +3067,28 @@ class STTAgent:
                 }
         except Exception as e:
             logger.error("STT failed (%s): %s", provider, e)
+            if provider == "vosk":
+                log_stt_winner(
+                    winner_provider="none",
+                    stt_winner="none",
+                    provider="vosk",
+                    language=language,
+                    latency_ms=_duration_ms(stt_started_at),
+                    success=False,
+                    error_type=type(e).__name__,
+                )
+            elif provider in {"qwen", "qwen0.6b-cpu", "qwen-0.6b-cpu"}:
+                log_stt_qwen_complete(
+                    provider=provider,
+                    language=language,
+                    audio_duration_ms=audio_metadata.get("audio_duration_ms"),
+                    latency_ms=_duration_ms(stt_started_at),
+                    confidence=None,
+                    transcript_length=0,
+                    winner=False,
+                    success=False,
+                    error_type=type(e).__name__,
+                )
             return {
                 "success": False,
                 "transcript": "",

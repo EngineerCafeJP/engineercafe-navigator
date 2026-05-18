@@ -13,6 +13,7 @@ import {
   type AudioDataInput,
   type MobileAudioPlayerOptions
 } from './audio-interfaces';
+import { emitVoiceTelemetry } from '../telemetry/voice-telemetry';
 
 export interface MobileAudioOptions extends MobileAudioPlayerOptions {
   retryAttempts?: number;
@@ -23,6 +24,19 @@ const ANDROID_WEB_AUDIO_DECODE_LIMIT_BYTES = 1_000_000;
 
 // Legacy type alias for backward compatibility
 export type AudioPlaybackResult = AudioOperationResult;
+
+function emitAudioPlaybackFailedTelemetry(
+  error: AudioError,
+  method: AudioOperationResult['method'] | null | undefined,
+): void {
+  emitVoiceTelemetry('audio_playback_failed', {
+    method: method ?? 'unknown',
+    errorType: error.type,
+    errorName: error.name,
+    errorMessage: error.message,
+    requiresUserInteraction: error.requiresUserInteraction,
+  });
+}
 
 export function estimateAudioDataByteLength(audioData: AudioDataInput): number | null {
   if (audioData instanceof Blob) {
@@ -150,6 +164,8 @@ export class MobileAudioService {
         'Audio playback failed'
       );
 
+      emitAudioPlaybackFailedTelemetry(error, result.method);
+
       return {
         success: false,
         method: result.method ?? 'web-audio',
@@ -157,6 +173,7 @@ export class MobileAudioService {
       };
     } catch (error) {
       const audioError = AudioError.fromError(error as Error, AudioErrorType.PLAYBACK_FAILED);
+      emitAudioPlaybackFailedTelemetry(audioError, 'web-audio');
       return {
         success: false,
         method: 'web-audio',

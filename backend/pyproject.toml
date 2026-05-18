@@ -26,7 +26,6 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "httpx>=0.27.0",
     "supabase>=2.0.0",
-    "google-auth>=2.0.0",
     "pykakasi>=1.2.0",
     "numpy>=1.24.0,<2.0",
     "scipy>=1.10.0",
@@ -90,7 +89,6 @@ uvicorn = {extras = ["standard"], version = "^0.30.0"}
 python-dotenv = "^1.0.0"
 httpx = "^0.27.0"
 supabase = "^2.0.0"
-google-auth = "^2.0.0"
 pykakasi = "^1.2.0"
 numpy = "^1.24.0,<2.0"
 scipy = "^1.10.0"

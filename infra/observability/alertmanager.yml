@@ -1,0 +1,26 @@
+global:
+  smtp_smarthost: mailhog:1025
+  smtp_from: alerts@engineer-cafe.local
+  smtp_require_tls: false
+
+route:
+  receiver: company-mailhog
+  group_by: ["alertname", "service", "severity"]
+  group_wait: 10s
+  group_interval: 5m
+  repeat_interval: 3h
+
+receivers:
+  - name: company-mailhog
+    email_configs:
+      - to: company@cor-jp.com
+        send_resolved: true
+        headers:
+          Subject: '[Engineer Cafe] {{ .CommonLabels.alertname }}'
+
+inhibit_rules:
+  - source_matchers:
+      - severity="P1"
+    target_matchers:
+      - severity=~"P2|P3"
+    equal: ["service"]

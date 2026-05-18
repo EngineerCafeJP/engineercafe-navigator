@@ -1,0 +1,50 @@
+name: Event KB sync
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Plan rows without writing to Supabase"
+        required: false
+        default: "false"
+  schedule:
+    - cron: "0 0 * * *" # 09:00 JST
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SECRET_BACKEND: env
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      GOOGLE_CALENDAR_ICAL_URL: ${{ secrets.GOOGLE_CALENDAR_ICAL_URL }}
+      EVENT_SHEET_GAS_URL: ${{ secrets.EVENT_SHEET_GAS_URL }}
+      EVENT_SHEET_GAS_TOKEN: ${{ secrets.EVENT_SHEET_GAS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install backend
+        run: python -m pip install -e "backend"
+
+      - name: Verify CLI
+        run: python -m backend.scripts.sync_event_kb --help
+
+      - name: Sync Event KB
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(--include-spreadsheet)
+          if [[ "${{ github.event.inputs.dry_run || 'false' }}" == "true" ]]; then
+            args+=(--dry-run)
+          fi
+          python -m backend.scripts.sync_event_kb "${args[@]}"

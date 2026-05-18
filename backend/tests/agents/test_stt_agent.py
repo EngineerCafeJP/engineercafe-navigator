@@ -15,7 +15,6 @@ from unittest.mock import ANY, AsyncMock, MagicMock, patch
 from backend.agents.stt_agent import (
     MAX_AUDIO_UPLOAD_BYTES,
     LocalSTTClient,
-    GoogleSTTClient,
     Qwen06BCpuSTTClient,
     QwenOnnxSTTClient,
     QwenSTTClient,
@@ -575,7 +574,10 @@ class TestGrammarSupport:
         client = LocalSTTClient()
         mock_recognizer = MagicMock()
         mock_recognizer.FinalResult.return_value = json.dumps(
-            {"result": [{"conf": 1.0, "word": "エンジニアカフェ"}], "text": "エンジニアカフェ"}
+            {
+                "result": [{"conf": 1.0, "word": "エンジニアカフェ"}],
+                "text": "エンジニアカフェ",
+            }
         )
 
         with _vosk_patched():
@@ -736,32 +738,6 @@ class TestAutoDetection:
 
 
 # ==============================================================================
-# GoogleSTTClient Tests
-# ==============================================================================
-
-
-class TestGoogleSTTClient:
-    """Tests for Google Cloud STT"""
-
-    def test_init(self):
-        """GoogleSTTClient initializes with env vars"""
-        client = GoogleSTTClient()
-        # Should initialize without error
-        assert client is not None
-
-    @pytest.mark.asyncio
-    async def test_transcribe_sync_wrapper(self):
-        """GoogleSTTClient.transcribe wraps synchronous Google API"""
-        client = GoogleSTTClient()
-
-        test_audio = b"\x00\x01\x02\x03"
-
-        with patch.object(client, "_sync_transcribe", return_value="Hello world"):
-            result = await client.transcribe(test_audio, language="en")
-            assert result == "Hello world"
-
-
-# ==============================================================================
 # QwenSTTClient Tests
 # ==============================================================================
 
@@ -778,7 +754,8 @@ class TestQwenSTTClient:
         non_wav_audio = b"\x1a\x45\xdf\xa3" + (b"webm-opus-data" * 4)
 
         with patch(
-            "backend.agents.stt_agent.convert_audio_to_wav_bytes", return_value=test_wav_16khz
+            "backend.agents.stt_agent.convert_audio_to_wav_bytes",
+            return_value=test_wav_16khz,
         ) as mock_convert:
             with patch.object(client, "_load_model"):
                 result = await client.transcribe(non_wav_audio, language="ja")
@@ -838,8 +815,14 @@ class TestQwenSTTClient:
                 "エンジンやカベの営業時間を教えてください。",
                 "エンジニアカフェの営業時間を教えてください。",
             ),
-            ("エンジニアカベの場所はどこですか。", "エンジニアカフェの場所はどこですか。"),
-            ("才能カフェの営業時間を教えてください。", "サイノカフェの営業時間を教えてください。"),
+            (
+                "エンジニアカベの場所はどこですか。",
+                "エンジニアカフェの場所はどこですか。",
+            ),
+            (
+                "才能カフェの営業時間を教えてください。",
+                "サイノカフェの営業時間を教えてください。",
+            ),
             (
                 "カフェアンドバー 才能のメニューを教えてください。",
                 "サイノカフェのメニューを教えてください。",
@@ -1036,11 +1019,14 @@ class TestSTTAgent:
 
     def test_init_env_var_provider(self, monkeypatch):
         """STTAgent reads STT_PROVIDER from environment"""
-        monkeypatch.setenv("STT_PROVIDER", "google")
+        monkeypatch.setenv("STT_PROVIDER", "qwen-primary")
 
-        with patch("backend.agents.stt_agent.GoogleSTTClient"):
+        with (
+            patch("backend.agents.stt_agent._build_qwen_06b_cpu_client"),
+            patch("backend.agents.stt_agent.LocalSTTClient"),
+        ):
             agent = STTAgent()
-            assert agent.stt_provider == "google"
+            assert agent.stt_provider == "qwen-primary"
 
     def test_init_custom_provider(self):
         """STTAgent accepts custom provider name"""
@@ -1180,7 +1166,10 @@ class OnnxAsrPipeline:
         )
 
         fake_soundfile = MagicMock()
-        with patch("backend.agents.stt_onnx.importlib.import_module", return_value=fake_soundfile):
+        with patch(
+            "backend.agents.stt_onnx.importlib.import_module",
+            return_value=fake_soundfile,
+        ):
             result = runtime.transcribe(
                 np.zeros(1600, dtype=np.float32), 16000, language="Japanese"
             )
@@ -1630,12 +1619,12 @@ class OnnxAsrPipeline:
         assert result["language"] == "ja"
 
     @pytest.mark.asyncio
-    async def test_speech_to_text_google_returns_str(self):
-        """STTAgent handles GoogleSTTClient string return type"""
+    async def test_speech_to_text_custom_client_returns_str(self):
+        """STTAgent handles provider clients that return plain strings"""
         mock_client = AsyncMock()
         mock_client.transcribe.return_value = "Hello world"
 
-        agent = STTAgent(stt_provider="google", stt_client=mock_client)
+        agent = STTAgent(stt_provider="qwen", stt_client=mock_client)
         result = await agent.speech_to_text(b"test_audio", language="en")
 
         assert result["success"] is True
@@ -2189,11 +2178,11 @@ class TestStageGrammar:
 
 
 class TestLowConfidenceFallback:
-    """Tests for low-confidence fallback to Google STT"""
+    """Tests for explicitly configured low-confidence STT fallback"""
 
     @pytest.mark.asyncio
     async def test_fallback_triggered_on_low_confidence(self):
-        """Low Vosk confidence triggers Google STT fallback"""
+        """Low Vosk confidence triggers configured STT fallback"""
         mock_client = MagicMock(spec=LocalSTTClient)
         mock_client.transcribe = AsyncMock(
             return_value=TranscriptionResult(
@@ -2219,7 +2208,7 @@ class TestLowConfidenceFallback:
 
         assert result["success"] is True
         assert result["transcript"] == "こんにちは"
-        assert result["provider"] == "google-fallback"
+        assert result["provider"] == "fallback"
         assert result["fallback_used"] is True
         assert result["original_confidence"] == pytest.approx(0.2)
 
@@ -2256,8 +2245,8 @@ class TestLowConfidenceFallback:
         mock_fallback.transcribe.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_fallback_google_failure_returns_vosk_result(self):
-        """Google STT fails → Vosk result returned"""
+    async def test_fallback_failure_returns_vosk_result(self):
+        """Fallback STT fails → Vosk result returned"""
         mock_client = MagicMock(spec=LocalSTTClient)
         mock_client.transcribe = AsyncMock(
             return_value=TranscriptionResult(
@@ -2270,7 +2259,7 @@ class TestLowConfidenceFallback:
 
         mock_fallback = MagicMock()
         mock_fallback.is_available.return_value = True
-        mock_fallback.transcribe = AsyncMock(side_effect=RuntimeError("Google API error"))
+        mock_fallback.transcribe = AsyncMock(side_effect=RuntimeError("fallback API error"))
 
         agent = STTAgent(
             stt_provider="vosk",

@@ -3,6 +3,34 @@
 Issue #513 Phase 1b monitors Cloud Run logs through Terraform-managed log metrics,
 dashboard panels, and alert policies. Terraform changes are applied manually after merge.
 
+## Wave 3 Metrics And Alerts
+
+Wave 3 adds Terraform-managed log metrics in `infra/terraform/log_metrics.tf` and alert policies
+in `infra/terraform/alerts.tf`. Metric names to verify after apply:
+
+- `engineer_cafe_chat_response_count`
+- `engineer_cafe_chat_response_latency_ms`
+- `engineer_cafe_chat_rag_fallback_count`
+- `engineer_cafe_stt_winner_count`
+- `engineer_cafe_stt_none_count`
+- `engineer_cafe_stt_overall_duration_ms`
+- `engineer_cafe_tts_complete_count`
+- `engineer_cafe_tts_failure_count`
+- `engineer_cafe_tts_overall_duration_ms`
+- `engineer_cafe_memory_helper_error_count`
+
+Alert policies to check in Cloud Monitoring:
+
+- `Engineer Cafe chat fallback burn rate`
+- `Engineer Cafe STT failure burn rate`
+- `Engineer Cafe chat response p95 latency`
+- `Engineer Cafe STT p95 latency`
+- `Engineer Cafe TTS p95 latency`
+- `Engineer Cafe TTS failures`
+- `Engineer Cafe memory helper errors`
+- `Engineer Cafe critical API errors`
+- `Engineer Cafe LTM connection errors`
+
 ## On-site Ops Gate
 
 Use `scripts/onsite-voice-live-proof.sh` for #774/#483/#489/#140 operational proof. It runs the
