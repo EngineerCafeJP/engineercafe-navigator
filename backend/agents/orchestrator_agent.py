@@ -17,6 +17,7 @@ LangGraph の Supervisor Agent パターンに従い、クエリを適切なエ�
 import json
 import logging
 import os
+import time
 from dataclasses import dataclass, field, replace
 from typing import Optional
 
@@ -35,6 +36,7 @@ from backend.config.routing_constants import (
 )
 from backend.llm.models import get_model_config
 from backend.llm.openrouter import OpenRouterProvider
+from backend.observability.structured_logger import log_agent_routing
 from backend.utils.input_sanitizer import (
     MAX_CONTEXT_LENGTH,
     MAX_QUERY_LENGTH,
@@ -219,6 +221,31 @@ class OrchestratorAgent:
             "request_type": request_type,
         }
 
+    def _log_routing_decision(
+        self,
+        *,
+        decision: OrchestratorDecision,
+        session_id: str,
+        started_at: float,
+    ) -> None:
+        """Emit Wave 3 agent routing telemetry without affecting routing."""
+        try:
+            log_agent_routing(
+                routed_to=str(decision.next_agent),
+                intent=decision.request_type or decision.category,
+                confidence=decision.confidence,
+                fallback_used=bool(decision.debug_info.get("fallback")),
+                latency_ms=int((time.perf_counter() - started_at) * 1000),
+                session_id=session_id,
+                language=str(decision.language),
+                category=decision.category,
+                request_type=decision.request_type,
+                fast_path=bool(decision.debug_info.get("fast_path")),
+                reasoning=decision.reasoning[:200],
+            )
+        except Exception as exc:
+            logger.debug("Agent routing telemetry skipped: %s", exc)
+
     async def decide_next_agent(
         self,
         query: str,
@@ -238,6 +265,7 @@ class OrchestratorAgent:
         Returns:
             OrchestratorDecision: オーケストレーターの決定結果
         """
+        started_at = time.perf_counter()
         sanitized_query = sanitize_input(query, MAX_QUERY_LENGTH)
 
         language_result = self.language_processor.detect_language(sanitized_query)
@@ -245,7 +273,7 @@ class OrchestratorAgent:
 
         # 高速パス: メモリ関連の質問は即座にルーティング
         if self._is_memory_related_question(sanitized_query):
-            return OrchestratorDecision(
+            decision = OrchestratorDecision(
                 next_agent="general_knowledge",
                 language=response_language,
                 category="memory",
@@ -257,11 +285,17 @@ class OrchestratorAgent:
                     language_result=language_result,
                 ),
             )
+            self._log_routing_decision(
+                decision=decision,
+                session_id=session_id,
+                started_at=started_at,
+            )
+            return decision
 
         # 高速パス: 明確なキーワードマッチングでルーティング
         fast_route = self._try_fast_routing(sanitized_query)
         if fast_route:
-            return OrchestratorDecision(
+            decision = OrchestratorDecision(
                 next_agent=fast_route["agent"],
                 language=response_language,
                 category=fast_route["category"],
@@ -273,6 +307,12 @@ class OrchestratorAgent:
                     language_result=language_result,
                 ),
             )
+            self._log_routing_decision(
+                decision=decision,
+                session_id=session_id,
+                started_at=started_at,
+            )
+            return decision
 
         # LLMによる動的ルーティング
         agent_descriptions = "\n".join(
@@ -306,23 +346,29 @@ class OrchestratorAgent:
                 config=routing_config,
             )
 
-            decision = self._parse_llm_response(response_content)
+            parsed_decision = self._parse_llm_response(response_content)
 
-            return OrchestratorDecision(
-                next_agent=decision["next_agent"],
+            decision = OrchestratorDecision(
+                next_agent=parsed_decision["next_agent"],
                 language=response_language,
-                category=decision["category"],
-                request_type=decision["request_type"],
+                category=parsed_decision["category"],
+                request_type=parsed_decision["request_type"],
                 confidence=0.8,
-                reasoning=decision["reasoning"],
+                reasoning=parsed_decision["reasoning"],
                 debug_info=self._create_debug_info(
                     fast_path=False,
                     language_result=language_result,
                     llm_response_length=len(response_content),
-                    raw_next_agent=decision["raw_next_agent"],
-                    agent_resolution_source=decision["agent_resolution_source"],
+                    raw_next_agent=parsed_decision["raw_next_agent"],
+                    agent_resolution_source=parsed_decision["agent_resolution_source"],
                 ),
             )
+            self._log_routing_decision(
+                decision=decision,
+                session_id=session_id,
+                started_at=started_at,
+            )
+            return decision
 
         except Exception as e:
             logger.warning("LLM routing failed: %s", e, exc_info=True)
@@ -336,7 +382,7 @@ class OrchestratorAgent:
                 prefer_category=True,
             )
 
-            return OrchestratorDecision(
+            decision = OrchestratorDecision(
                 next_agent=next_agent,
                 language=response_language,
                 category=classification.category,
@@ -351,6 +397,12 @@ class OrchestratorAgent:
                     agent_resolution_source=resolution_source,
                 ),
             )
+            self._log_routing_decision(
+                decision=decision,
+                session_id=session_id,
+                started_at=started_at,
+            )
+            return decision
 
     def _create_debug_info(
         self,

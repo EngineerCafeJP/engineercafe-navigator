@@ -494,14 +494,6 @@ export default function VoiceInterface({
     } catch {
       // Best-effort fallback cue.
     }
-
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(message);
-      utterance.lang = toLocale(currentLanguage);
-      utterance.volume = Math.max(0.2, Math.min(1, volume));
-      window.speechSynthesis.speak(utterance);
-    }
   }, [currentLanguage, isMuted, volume]);
 
   const handleVoiceControllerTransition = useCallback(

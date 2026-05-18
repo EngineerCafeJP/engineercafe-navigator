@@ -9,7 +9,7 @@ STTAgent と VoiceAgent が連携して動作し、音声入力→テキスト�
 2. TestVoiceAgentPipeline: VoiceAgent 単体のモック統合テスト（HTTP呼び出しモック）
 3. TestSTTToVoicePipeline: STT→Voice のフルパイプライン統合テスト
 
-すべての外部依存（Vosk, Google STT, VoiceVox, Kokoro）はモックで置き換え、
+すべての外部依存（Vosk, custom STT fallback, VoiceVox, Kokoro）はモックで置き換え、
 エージェント間のインターフェース契約が正しいことを検証する。
 """
 
@@ -55,8 +55,8 @@ def mock_local_stt_client():
 
 
 @pytest.fixture
-def mock_google_stt_client():
-    """GoogleSTTClient のモック。transcribe / is_available を提供。"""
+def mock_fallback_stt_client():
+    """custom fallback client のモック。transcribe / is_available を提供。"""
     client = AsyncMock()
     client.transcribe = AsyncMock()
     client.is_available = MagicMock(return_value=True)
@@ -104,12 +104,12 @@ def mock_clarification_agent():
 
 
 @pytest.fixture
-def stt_agent_vosk(mock_local_stt_client, mock_google_stt_client):
+def stt_agent_vosk(mock_local_stt_client, mock_fallback_stt_client):
     """Vosk ベースの STTAgent（モック注入済み）。"""
     return STTAgent(
         stt_provider="vosk",
         stt_client=mock_local_stt_client,
-        fallback_client=mock_google_stt_client,
+        fallback_client=mock_fallback_stt_client,
         language_processor=None,
         use_grammar=False,
         confidence_threshold=0.4,
@@ -117,11 +117,11 @@ def stt_agent_vosk(mock_local_stt_client, mock_google_stt_client):
 
 
 @pytest.fixture
-def stt_agent_google(mock_google_stt_client):
-    """Google STT ベースの STTAgent（モック注入済み）。"""
+def stt_agent_qwen_custom(mock_fallback_stt_client):
+    """Qwen provider のカスタム STTAgent（モック注入済み）。"""
     return STTAgent(
-        stt_provider="google",
-        stt_client=mock_google_stt_client,
+        stt_provider="qwen",
+        stt_client=mock_fallback_stt_client,
         fallback_client=None,
         language_processor=None,
     )
@@ -182,22 +182,22 @@ class TestSTTAgentPipeline:
     async def test_vosk_low_confidence_fallback(
         self,
         mock_local_stt_client,
-        mock_google_stt_client,
+        mock_fallback_stt_client,
     ):
-        """Vosk の confidence が閾値未満のとき Google STT にフォールバックする。"""
+        """Vosk の confidence が閾値未満のとき custom STT fallback にフォールバックする。"""
         mock_local_stt_client.transcribe.return_value = TranscriptionResult(
             text="こ に ち は",
             confidence=0.2,
             language="ja",
             word_confidences=[{"word": "こ", "conf": 0.2}],
         )
-        mock_google_stt_client.is_available.return_value = True
-        mock_google_stt_client.transcribe.return_value = "こんにちは"
+        mock_fallback_stt_client.is_available.return_value = True
+        mock_fallback_stt_client.transcribe.return_value = "こんにちは"
 
         agent = STTAgent(
             stt_provider="vosk",
             stt_client=mock_local_stt_client,
-            fallback_client=mock_google_stt_client,
+            fallback_client=mock_fallback_stt_client,
             language_processor=None,
             confidence_threshold=0.4,
         )
@@ -207,29 +207,29 @@ class TestSTTAgentPipeline:
 
         assert result["success"] is True
         assert result["transcript"] == "こんにちは"
-        assert result["provider"] == "google-fallback"
+        assert result["provider"] == "fallback"
         assert result["fallback_used"] is True
         assert result["original_confidence"] == 0.2
-        mock_google_stt_client.transcribe.assert_awaited_once_with(audio_data, "ja")
+        mock_fallback_stt_client.transcribe.assert_awaited_once_with(audio_data, "ja")
 
-    async def test_google_stt_fallback_unavailable(
+    async def test_custom_stt_fallback_unavailable(
         self,
         mock_local_stt_client,
-        mock_google_stt_client,
+        mock_fallback_stt_client,
     ):
-        """Google STTが利用不可(is_available=False)の場合、Vosk結果がそのまま返る。"""
+        """custom STT fallbackが利用不可(is_available=False)の場合、Vosk結果がそのまま返る。"""
         mock_local_stt_client.transcribe.return_value = TranscriptionResult(
             text="なにか",
             confidence=0.3,
             language="ja",
             word_confidences=[{"word": "なにか", "conf": 0.3}],
         )
-        mock_google_stt_client.is_available.return_value = False
+        mock_fallback_stt_client.is_available.return_value = False
 
         agent = STTAgent(
             stt_provider="vosk",
             stt_client=mock_local_stt_client,
-            fallback_client=mock_google_stt_client,
+            fallback_client=mock_fallback_stt_client,
             language_processor=None,
             confidence_threshold=0.4,
         )
@@ -241,21 +241,23 @@ class TestSTTAgentPipeline:
         assert result["transcript"] == "なにか"
         assert result["confidence"] == 0.3
         assert result["provider"] == "vosk"
-        mock_google_stt_client.transcribe.assert_not_awaited()
+        mock_fallback_stt_client.transcribe.assert_not_awaited()
 
-    async def test_stt_provider_google(self, stt_agent_google, mock_google_stt_client):
-        """STTAgent を stt_provider='google' で構成した場合、GoogleSTTClient が使われる。"""
-        mock_google_stt_client.transcribe.return_value = "What are the business hours?"
+    async def test_stt_provider_qwen_custom_client(
+        self, stt_agent_qwen_custom, mock_fallback_stt_client
+    ):
+        """STTAgent を stt_provider='qwen' で構成した場合、custom client が使われる。"""
+        mock_fallback_stt_client.transcribe.return_value = "What are the business hours?"
 
         audio_data = b"fake-wav-data"
-        result = await stt_agent_google.speech_to_text(audio_data, language="en")
+        result = await stt_agent_qwen_custom.speech_to_text(audio_data, language="en")
 
         assert result["success"] is True
         assert result["transcript"] == "What are the business hours?"
         assert result["confidence"] is None
         assert result["language"] == "en"
-        assert result["provider"] == "google"
-        mock_google_stt_client.transcribe.assert_awaited_once_with(audio_data, "en")
+        assert result["provider"] == "qwen"
+        mock_fallback_stt_client.transcribe.assert_awaited_once_with(audio_data, "en")
 
     async def test_stt_error_handling(self, stt_agent_vosk, mock_local_stt_client):
         """STTで例外発生時、errorフィールドを含むエラーdictが返る。"""
@@ -271,13 +273,13 @@ class TestSTTAgentPipeline:
         assert result["provider"] == "vosk"
 
     async def test_grammar_resolution_with_stage(
-        self, mock_local_stt_client, mock_google_stt_client
+        self, mock_local_stt_client, mock_fallback_stt_client
     ):
         """conversation_stage='greeting' 指定時、_resolve_grammar が greeting 用 grammar を返す。"""
         agent = STTAgent(
             stt_provider="vosk",
             stt_client=mock_local_stt_client,
-            fallback_client=mock_google_stt_client,
+            fallback_client=mock_fallback_stt_client,
             language_processor=None,
             use_grammar=False,
         )
@@ -297,14 +299,14 @@ class TestSTTAgentPipeline:
             assert word in grammar["en"]
 
     async def test_grammar_resolution_without_stage(
-        self, mock_local_stt_client, mock_google_stt_client
+        self, mock_local_stt_client, mock_fallback_stt_client
     ):
         """use_grammar=False かつ conversation_stage=None のとき、
         _resolve_grammar は None を返す。"""
         agent = STTAgent(
             stt_provider="vosk",
             stt_client=mock_local_stt_client,
-            fallback_client=mock_google_stt_client,
+            fallback_client=mock_fallback_stt_client,
             language_processor=None,
             use_grammar=False,
         )
@@ -535,7 +537,7 @@ class TestSTTToVoicePipeline:
     async def test_full_pipeline_ja(
         self,
         mock_local_stt_client,
-        mock_google_stt_client,
+        mock_fallback_stt_client,
         mock_voicevox_client,
         mock_kokoro_client,
         mock_language_processor,
@@ -564,7 +566,7 @@ class TestSTTToVoicePipeline:
         stt_agent = STTAgent(
             stt_provider="vosk",
             stt_client=mock_local_stt_client,
-            fallback_client=mock_google_stt_client,
+            fallback_client=mock_fallback_stt_client,
             language_processor=None,
         )
 
@@ -599,7 +601,7 @@ class TestSTTToVoicePipeline:
     async def test_full_pipeline_en(
         self,
         mock_local_stt_client,
-        mock_google_stt_client,
+        mock_fallback_stt_client,
         mock_voicevox_client,
         mock_kokoro_client,
         mock_language_processor,
@@ -628,7 +630,7 @@ class TestSTTToVoicePipeline:
         stt_agent = STTAgent(
             stt_provider="vosk",
             stt_client=mock_local_stt_client,
-            fallback_client=mock_google_stt_client,
+            fallback_client=mock_fallback_stt_client,
             language_processor=None,
         )
 
@@ -665,7 +667,7 @@ class TestSTTToVoicePipeline:
     async def test_pipeline_with_auto_detect(
         self,
         mock_local_stt_client,
-        mock_google_stt_client,
+        mock_fallback_stt_client,
         mock_voicevox_client,
         mock_kokoro_client,
         mock_language_processor,
@@ -694,7 +696,7 @@ class TestSTTToVoicePipeline:
         stt_agent = STTAgent(
             stt_provider="vosk",
             stt_client=mock_local_stt_client,
-            fallback_client=mock_google_stt_client,
+            fallback_client=mock_fallback_stt_client,
             language_processor=None,
         )
 

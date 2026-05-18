@@ -1,0 +1,73 @@
+groups:
+  - name: engineer-cafe-navigator-wave3
+    interval: 30s
+    rules:
+      - alert: voice_round_trip_p95_slow
+        expr: histogram_quantile(0.95, sum(rate(voice_round_trip_ms_bucket[10m])) by (le)) > 8000
+        for: 10m
+        labels:
+          severity: P2
+          service: engineer-cafe-navigator
+        annotations:
+          summary: "Voice round trip p95 latency is slow"
+          description: "voice_round_trip_ms p95 exceeded 8000 ms for 10 minutes."
+
+      - alert: chat_response_p95_slow
+        expr: histogram_quantile(0.95, sum(rate(chat_response_ms_bucket[10m])) by (le)) > 6000
+        for: 10m
+        labels:
+          severity: P2
+          service: engineer-cafe-navigator
+        annotations:
+          summary: "Chat response p95 latency is slow"
+          description: "chat_response_ms p95 exceeded 6000 ms for 10 minutes."
+
+      - alert: stt_latency_degradation
+        expr: histogram_quantile(0.95, sum(rate(stt_latency_ms_bucket[15m])) by (le)) > 5000
+        for: 15m
+        labels:
+          severity: P2
+          service: engineer-cafe-navigator
+        annotations:
+          summary: "STT latency degradation"
+          description: "stt_latency_ms p95 exceeded 5000 ms for 15 minutes."
+
+      - alert: backend_error_burst
+        expr: sum(rate(error_count_total[5m])) > 4
+        for: 10m
+        labels:
+          severity: P1
+          service: engineer-cafe-navigator
+        annotations:
+          summary: "Backend error burst"
+          description: "error_count rate exceeded 4 events/second for 10 minutes."
+
+      - alert: agent_routing_skew
+        expr: sum(rate(agent_route_count_total{routed_to="fallback_general"}[30m])) / clamp_min(sum(rate(agent_route_count_total[30m])), 0.001) > 0.3
+        for: 30m
+        labels:
+          severity: P3
+          service: engineer-cafe-navigator
+        annotations:
+          summary: "Agent routing skew toward fallback"
+          description: "fallback_general exceeded 30% of routed agent traffic over 30 minutes."
+
+      - alert: frontend_audio_watchdog_spike
+        expr: sum(rate(frontend_audio_watchdog_count_total[15m])) > 0.011
+        for: 15m
+        labels:
+          severity: P2
+          service: engineer-cafe-navigator
+        annotations:
+          summary: "Frontend audio watchdog spike"
+          description: "frontend_audio_watchdog_count exceeded roughly 10 events per 15 minutes."
+
+      - alert: cloud_run_traffic_zero
+        expr: absent(rate(chat_response_ms_count[30m])) and on() (hour(vector(time() + 9 * 3600)) >= 12 and hour(vector(time() + 9 * 3600)) < 20)
+        for: 30m
+        labels:
+          severity: P3
+          service: engineer-cafe-navigator
+        annotations:
+          summary: "No chat traffic during JST business window"
+          description: "chat_response_ms has no samples for 30 minutes between 12:00 and 20:00 JST."

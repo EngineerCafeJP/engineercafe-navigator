@@ -1,16 +1,7 @@
-# Docker Compose for Engineer Cafe Navigator
-# Frontend (Next.js) + Backend (FastAPI + LangGraph)
-#
-# Note: For local PostgreSQL (LangGraph Checkpointer), use Supabase CLI:
-#   supabase start
-# This provides PostgreSQL at localhost:54322
-#
-# Access from iPad / other devices on the same network:
-#   - Open http://<MacBookのIPアドレス>:3000 (e.g. http://192.168.1.10:3000)
-#   - Ports are bound to 0.0.0.0 so the host accepts external connections
+# Docker Compose for Engineer Cafe Navigator Wave 3
+# App services plus OSS-portable observability stack.
 
 services:
-  # Frontend service - Next.js
   frontend:
     build:
       context: ./frontend
@@ -19,24 +10,24 @@ services:
     ports:
       - "0.0.0.0:3000:3000"
     volumes:
-      # Hot reload support
       - ./frontend:/app
-      - /app/node_modules
-      - /app/.next
+      - frontend-node-modules:/app/node_modules
+      - frontend-next:/app/.next
     environment:
-      - NODE_ENV=development
-      - NEXT_PUBLIC_API_URL=http://localhost:8000
-      # コンテナ内のAPIルートからバックエンドへはサービス名で参照
-      - BACKEND_API_URL=http://backend:8000
+      NODE_ENV: development
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+      BACKEND_API_URL: http://backend:8000
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
     env_file:
-      - ./frontend/.env.local
+      - path: ./frontend/.env.local
+        required: false
     depends_on:
-      - backend
+      backend:
+        condition: service_started
     networks:
       - engineer-cafe-network
     restart: unless-stopped
 
-  # Backend service - FastAPI + LangGraph
   backend:
     build:
       context: ./backend
@@ -45,69 +36,189 @@ services:
     ports:
       - "0.0.0.0:8000:8000"
     volumes:
-      # Hot reload support
       - ./backend:/app
-      - /app/__pycache__
-      # Persist Vosk models built into the image (bind mount overwrites them)
+      - backend-pycache:/app/__pycache__
       - backend-vosk-models:/app/models
     environment:
-      - PYTHONUNBUFFERED=1
+      PYTHONUNBUFFERED: "1"
+      ENVIRONMENT: development
+      SUPABASE_DB_URI: postgresql://postgres:postgres@postgres:5432/engineer_cafe
+      OTEL_SERVICE_NAME: engineer-cafe-backend
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
     env_file:
-      - ./backend/.env
+      - path: ./backend/.env
+        required: false
     depends_on:
-      voicevox:
+      postgres:
         condition: service_healthy
-      kokoro-tts:
-        condition: service_healthy
+      otel-collector:
+        condition: service_started
     healthcheck:
       test: ["CMD", "python", "scripts/healthcheck.py"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 15s
+      start_period: 20s
     networks:
       - engineer-cafe-network
-    extra_hosts:
-      # Allow connection to Supabase Local PostgreSQL on host
-      - "host.docker.internal:host-gateway"
     restart: unless-stopped
 
-  # VoiceVox TTS Engine (Local) - for STT/TTS integration
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: engineer-cafe-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: engineer_cafe
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d engineer_cafe"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - engineer-cafe-network
+    restart: unless-stopped
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.102.1
+    container_name: engineer-cafe-otel-collector
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+      - "9464:9464"
+    volumes:
+      - ./infra/observability/otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml:ro
+    depends_on:
+      loki:
+        condition: service_started
+    networks:
+      - engineer-cafe-network
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:3.2.1
+    container_name: engineer-cafe-loki
+    command: ["-config.file=/etc/loki/local-config.yaml"]
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./infra/observability/loki-config.yaml:/etc/loki/local-config.yaml:ro
+      - loki-data:/loki
+    networks:
+      - engineer-cafe-network
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: engineer-cafe-prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-lifecycle"
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./infra/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infra/observability/alerts.rules.yml:/etc/prometheus/alerts.rules.yml:ro
+      - prometheus-data:/prometheus
+    depends_on:
+      otel-collector:
+        condition: service_started
+      alertmanager:
+        condition: service_started
+    networks:
+      - engineer-cafe-network
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: engineer-cafe-grafana
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./infra/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      prometheus:
+        condition: service_started
+      loki:
+        condition: service_started
+    networks:
+      - engineer-cafe-network
+    restart: unless-stopped
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: engineer-cafe-alertmanager
+    command: ["--config.file=/etc/alertmanager/alertmanager.yml", "--storage.path=/alertmanager"]
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./infra/observability/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager-data:/alertmanager
+    depends_on:
+      mailhog:
+        condition: service_started
+    networks:
+      - engineer-cafe-network
+    restart: unless-stopped
+
+  mailhog:
+    image: mailhog/mailhog:v1.0.1
+    container_name: engineer-cafe-mailhog
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    networks:
+      - engineer-cafe-network
+    restart: unless-stopped
+
   voicevox:
     image: voicevox/voicevox_engine:latest
     container_name: engineer-cafe-voicevox
+    profiles: ["voice"]
     ports:
       - "50021:50021"
     environment:
-      - CPU_NUM_THREADS=4
+      CPU_NUM_THREADS: "4"
     volumes:
-      # Model cache persistence
       - voicevox-cache:/root/.cache/voicevox_engine
-    networks:
-      - engineer-cafe-network
-    restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:50021/version"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 60s
-
-  # Kokoro TTS Engine (Local) - for English TTS
-  kokoro-tts:
-    image: ghcr.io/remsky/kokoro-fastapi-cpu:latest
-    container_name: engineer-cafe-kokoro-tts
-    ports:
-      - "8880:8880"
     networks:
       - engineer-cafe-network
     restart: unless-stopped
+
+  kokoro-tts:
+    image: ghcr.io/remsky/kokoro-fastapi-cpu:latest
+    container_name: engineer-cafe-kokoro-tts
+    profiles: ["voice"]
+    ports:
+      - "8880:8880"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8880/v1/audio/voices"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 30s
+    networks:
+      - engineer-cafe-network
+    restart: unless-stopped
 
 networks:
   engineer-cafe-network:
@@ -117,5 +228,10 @@ volumes:
   frontend-node-modules:
   frontend-next:
   backend-pycache:
-  voicevox-cache:
   backend-vosk-models:
+  postgres-data:
+  loki-data:
+  prometheus-data:
+  grafana-data:
+  alertmanager-data:
+  voicevox-cache:

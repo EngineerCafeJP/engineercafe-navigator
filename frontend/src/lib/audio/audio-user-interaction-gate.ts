@@ -1,3 +1,5 @@
+import { emitVoiceTelemetry } from '../telemetry/voice-telemetry';
+
 type UserInteractionCallback = () => void | Promise<void>;
 
 const INTERACTION_EVENTS: Array<'click' | 'touchstart' | 'keydown'> = ['click', 'touchstart', 'keydown'];
@@ -184,6 +186,10 @@ export const waitForAudioUserInteraction = (
 
   if (timeoutMs > 0 && pendingInteractionTimeoutId === null) {
     pendingInteractionTimeoutId = setTimeout(() => {
+      emitVoiceTelemetry('user_interaction_gate_timeout', {
+        timeoutMs,
+        isIOSWebKitAudio: isIOSWebKitAudio(),
+      });
       unlockAudioInteraction();
     }, timeoutMs);
   }

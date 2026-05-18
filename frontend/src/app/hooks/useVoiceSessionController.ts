@@ -10,6 +10,7 @@ import {
 import { useSilenceDetection } from './useSilenceDetection';
 import { useVoiceWaveform } from './useVoiceWaveform';
 import { useWakeWord, type WakeWordMatch } from './useWakeWord';
+import { emitVoiceTelemetry } from '@/lib/telemetry/voice-telemetry';
 
 export type VoiceCharacterState = 'idle' | 'listening' | 'thinking' | 'speaking';
 
@@ -161,6 +162,7 @@ export function useVoiceSessionController({
     };
 
     logVoiceSessionDebug('state transition', transition);
+    emitVoiceTelemetry('voice_state_transition', transition);
     onStateTransitionRef.current?.(transition);
   }, [isConversationActive, mode, shouldListen]);
 
@@ -180,6 +182,14 @@ export function useVoiceSessionController({
       hasDetectedSpeechRef.current = false;
       logVoiceSessionDebug('thinking watchdog expired', {
         timeoutMs: VOICE_SESSION_THINKING_WATCHDOG_MS,
+      });
+      emitVoiceTelemetry('thinking_watchdog_expire', {
+        mode,
+        timeoutMs: VOICE_SESSION_THINKING_WATCHDOG_MS,
+      });
+      emitVoiceTelemetry('fallback_tts_triggered', {
+        reason: 'thinking_watchdog_expire',
+        mode,
       });
       onThinkingWatchdogExpireRef.current?.();
       completeAssistantTurn(true);
