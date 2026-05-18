@@ -1,0 +1,547 @@
+from __future__ import annotations
+
+from typing import Dict, Optional
+
+from backend.utils.cafe_entity import (
+    cafe_entity_metadata,
+    is_ambiguous_cafe_hours_query,
+    normalize_cafe_query,
+    resolve_cafe_entity,
+)
+
+
+class BusinessInfoCanonicalMixin:
+    def _get_canonical_response(
+        self, query: str, request_type: Optional[str], language: str
+    ) -> Optional[Dict]:
+        """Return complete answers for common visitor-critical business questions."""
+        normalized = normalize_cafe_query(query)
+        cafe_entity = resolve_cafe_entity(normalized)
+        if cafe_entity == "saino":
+            answer = self._saino_cafe_answer(normalized, language, request_type)
+            if answer:
+                return self._canonical_result(
+                    answer,
+                    request_type,
+                    category="saino-cafe",
+                    cafe_entity_resolution=cafe_entity_metadata(
+                        entity="saino_cafe",
+                        status="resolved",
+                        source="business_info_canonical_saino_first",
+                        request_type=request_type,
+                    ),
+                )
+
+        if is_ambiguous_cafe_hours_query(normalized):
+            return self._canonical_result(
+                self._ambiguous_cafe_hours_answer(language),
+                request_type,
+                category="cafe-clarification-needed",
+                cafe_entity_resolution=cafe_entity_metadata(
+                    entity="ambiguous",
+                    status="needs_clarification",
+                    source="business_info_canonical",
+                    request_type=request_type,
+                ),
+            )
+
+        if self._asks_saino_cafe(normalized):
+            answer = self._saino_cafe_answer(normalized, language, request_type)
+            if answer:
+                return self._canonical_result(
+                    answer,
+                    request_type,
+                    category="saino-cafe",
+                    cafe_entity_resolution=cafe_entity_metadata(
+                        entity="saino_cafe",
+                        status="resolved",
+                        source="business_info_canonical",
+                        request_type=request_type,
+                    ),
+                )
+
+        if self._asks_closed_days(normalized):
+            answers = {
+                "ja": (
+                    "[relaxed]エンジニアカフェの休館日は毎月最終月曜日です。"
+                    "その日が祝休日の場合は翌平日が休館日になり、年末年始は"
+                    "12月29日から1月3日まで休館です。"
+                ),
+                "en": (
+                    "[relaxed]Engineer Cafe is closed on the last Monday of each month. "
+                    "If that day is a public holiday, the next weekday is closed instead. "
+                    "It is also closed from December 29 to January 3."
+                ),
+                "zh": (
+                    "[relaxed]工程师咖啡每月最后一个星期一闭馆。"
+                    "如果当天是节假日，则顺延到下一个工作日闭馆；"
+                    "年末年初12月29日至1月3日也闭馆。"
+                ),
+                "ko": (
+                    "[relaxed]엔지니어 카페는 매월 마지막 월요일에 휴관합니다. "
+                    "그날이 공휴일이면 다음 평일이 휴관일이며, 연말연시에는 "
+                    "12월 29일부터 1월 3일까지 휴관합니다."
+                ),
+            }
+            return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
+        if self._asks_consultation(normalized, request_type):
+            if self._asks_skill_change(normalized):
+                answers = {
+                    "ja": (
+                        "[relaxed]はい、コミュニティマネージャーがスキルチェンジ支援に"
+                        "対応しています。未経験からエンジニアになりたい社会人向けの"
+                        "スキルチェンジ相談会も定期開催しています。"
+                    )
+                }
+                return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
+            answers = {
+                "ja": (
+                    "[relaxed]コミュニティマネージャーには、キャリア相談、転職・"
+                    "スキルチェンジ支援、技術相談、コミュニティ運営支援、"
+                    "イベント企画サポートなどを相談できます。相談受付は13:00〜21:00で、"
+                    "基本的に予約不要です。"
+                )
+            }
+            return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
+        if self._asks_corporate_receipt(normalized):
+            answers = {
+                "ja": (
+                    "[relaxed]コワーキング利用は無料のため領収書は発行されません。"
+                    "2階会議室など有料施設は法人名義での予約や領収書・請求書発行に"
+                    "対応できる場合があります。2階会議室は赤煉瓦文化館管理なので、"
+                    "利用前に受付または管理側へ確認してください。"
+                )
+            }
+            return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
+        if self._asks_engineer_friendly_city(normalized):
+            answers = {
+                "ja": (
+                    "[relaxed]エンジニアフレンドリーシティ福岡は、福岡市が推進する"
+                    "「エンジニアが活躍する街」を実現するためのムーブメントです。"
+                    "エンジニアカフェはその中核施設で、EFCアワードや外国人エンジニア支援なども"
+                    "実施されています。"
+                ),
+                "en": (
+                    "[relaxed]Engineer Friendly City Fukuoka is a Fukuoka City "
+                    "initiative to make the city a place where engineers can gather, "
+                    "grow, and thrive. Engineer Cafe is its core facility, and the "
+                    "initiative also includes programs such as the EFC Awards and "
+                    "support for international engineers."
+                ),
+                "zh": (
+                    "[relaxed]Engineer Friendly City Fukuoka是福冈市推进的、让工程师聚集、"
+                    "成长并活跃的城市运动。工程师咖啡是其核心设施，也开展EFC奖项和外国工程师支援等。"
+                ),
+                "ko": (
+                    "[relaxed]Engineer Friendly City Fukuoka는 엔지니어가 모이고 성장하며 "
+                    "활약하는 도시를 만들기 위한 후쿠오카시의 움직임입니다. 엔지니어 카페는 "
+                    "그 핵심 시설이며 EFC 어워드와 외국인 엔지니어 지원도 진행합니다."
+                ),
+            }
+            return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
+        if self._asks_community_program(normalized, request_type):
+            if self._asks_engineer_cafe_lab(normalized):
+                answers = {
+                    "ja": (
+                        "[relaxed]Engineer Cafe Labは25歳以下を対象にした会員制コミュニティです。"
+                        "利用には事前応募と面接があり、会費は無料です。VRやドローンなどの"
+                        "専門機材貸出、限定ワークショップなどの特典があります。"
+                    ),
+                    "en": (
+                        "[relaxed]Engineer Cafe Lab is a membership community for "
+                        "people age 25 or younger. It requires advance application and "
+                        "an interview, has no membership fee, and offers benefits such "
+                        "as specialist equipment loans including VR and drones plus "
+                        "members-only workshops."
+                    ),
+                    "zh": (
+                        "[relaxed]Engineer Cafe Lab是面向25岁以下人群的会员制社区。"
+                        "需要事前申请和面试，会费免费，并提供VR、无人机等专业设备借用和会员限定工作坊。"
+                    ),
+                    "ko": (
+                        "[relaxed]Engineer Cafe Lab은 25세 이하를 대상으로 한 회원제 "
+                        "커뮤니티입니다. 사전 신청과 면접이 필요하고 회비는 무료이며, "
+                        "VR・드론 같은 전문 장비 대여와 회원 한정 워크숍 혜택이 있습니다."
+                    ),
+                }
+                return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
+            if "devday" in normalized:
+                answers = {
+                    "ja": (
+                        "[relaxed]DevDayはENGINEER IGNITION CAMP（EIC）の"
+                        "最終展示会で、2026年2月23日18:00から開催されます。"
+                        "ピッチではなく展示形式で実施され、審査員にはFusic浜崎氏、"
+                        "ヌーラボ橋本氏らが予定されています。"
+                    ),
+                    "en": (
+                        "[relaxed]DevDay is the final exhibition for ENGINEER IGNITION "
+                        "CAMP (EIC). It is scheduled for February 23, 2026 at 18:00, "
+                        "and is held as an exhibition rather than a pitch event."
+                    ),
+                    "zh": (
+                        "[relaxed]DevDay是ENGINEER IGNITION CAMP（EIC）的最终展示会，"
+                        "预定于2026年2月23日18:00举行。形式是展示，不是路演。"
+                    ),
+                    "ko": (
+                        "[relaxed]DevDay는 ENGINEER IGNITION CAMP(EIC)의 최종 전시회로, "
+                        "2026년 2월 23일 18:00에 열릴 예정입니다. 피치가 아니라 "
+                        "전시 형식으로 진행됩니다."
+                    ),
+                }
+                return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
+            if self._asks_eic_completion_conditions(normalized):
+                answers = {
+                    "ja": (
+                        "[relaxed]EICの修了認定には、講義3回への参加、LT発表、"
+                        "Dev & Tips 5回中3回への参加、Boot Camp 2日間への参加、"
+                        "DevDayでの展示発表の5要件をすべて満たす必要があります。"
+                    ),
+                    "en": (
+                        "[relaxed]To complete EIC, participants must attend three "
+                        "lectures, give an LT presentation, attend three of five "
+                        "Dev & Tips sessions, join the two-day Boot Camp, and exhibit "
+                        "at DevDay."
+                    ),
+                    "zh": (
+                        "[relaxed]EIC的结业认定需要满足五项条件：参加3次讲义、"
+                        "进行LT发表、参加5次Dev & Tips中的3次、参加2天Boot Camp、"
+                        "并在DevDay进行展示发表。"
+                    ),
+                    "ko": (
+                        "[relaxed]EIC 수료 인정에는 강의 3회 참가, LT 발표, "
+                        "Dev & Tips 5회 중 3회 참가, Boot Camp 2일 참가, "
+                        "DevDay 전시 발표의 5가지 조건을 모두 충족해야 합니다."
+                    ),
+                }
+                return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
+            answers = {
+                "ja": (
+                    "[relaxed]ENGINEER IGNITION CAMP（EIC）は、エンジニアカフェが"
+                    "主催する短期集中・実践型プログラムです。参加費は無料で、"
+                    "「つくりたい物をつくる」をコンセプトに、事業化や対価を得ることを"
+                    "目指します。"
+                ),
+                "en": (
+                    "[relaxed]ENGINEER IGNITION CAMP (EIC) is a short, intensive, "
+                    "hands-on program hosted by Engineer Cafe. Participation is free, "
+                    "and the concept is to build what you want to build while aiming "
+                    "toward commercialization or earning value from it."
+                ),
+                "zh": (
+                    "[relaxed]ENGINEER IGNITION CAMP（EIC）是工程师咖啡主办的"
+                    "短期集中实践型项目，参加免费。理念是“制作自己想做的东西”，"
+                    "并以事业化或获得对价为目标。"
+                ),
+                "ko": (
+                    "[relaxed]ENGINEER IGNITION CAMP(EIC)는 엔지니어 카페가 주최하는 "
+                    "단기 집중 실천형 프로그램입니다. 참가비는 무료이며, "
+                    "'만들고 싶은 것을 만든다'는 콘셉트로 사업화나 가치 창출을 목표로 합니다."
+                ),
+            }
+            return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
+        if self._asks_opening_hours(normalized, request_type):
+            answers = {
+                "ja": (
+                    "[relaxed]エンジニアカフェの開館時間は朝9時から夜22時まで"
+                    "（9:00〜22:00）です。コミュニティマネージャーへの"
+                    "相談受付は13:00〜21:00です。"
+                ),
+                "en": (
+                    "[relaxed]Engineer Cafe is open from 9:00 AM to 10:00 PM " "(9:00 to 22:00)."
+                ),
+                "zh": (
+                    "[relaxed]工程师咖啡的开放时间是早上9点到晚上10点"
+                    "（9:00到22:00）。社区经理咨询时间是13:00到21:00。"
+                    "每月最后一个星期一和年底年初闭馆休息。"
+                ),
+                "ko": (
+                    "[relaxed]엔지니어 카페의 운영 시간은 오전 9시부터 밤 10시까지"
+                    "(9:00-22:00)입니다. 궁금한 점은 직원에게 문의해 주세요."
+                ),
+            }
+            return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
+        if self._asks_pricing(normalized, request_type):
+            answers = {
+                "ja": (
+                    "[relaxed]エンジニアカフェの利用登録、コワーキングスペース、"
+                    "施設・設備の利用料は無料です。ただしcafe&bar sainoの飲食代と"
+                    "3Dプリンターのフィラメント代は有料です。"
+                ),
+                "en": (
+                    "[relaxed]Engineer Cafe registration, coworking space use, and "
+                    "most equipment use are free. Food and drinks at cafe&bar saino, "
+                    "3D printer filament, and some paid spaces such as second-floor "
+                    "meeting rooms are charged separately."
+                ),
+                "zh": (
+                    "[relaxed]工程师咖啡的使用登记、共享办公空间和大部分设备都是免费的。"
+                    "cafe&bar saino的餐饮、3D打印机耗材以及二楼会议室等部分空间需要另外付费。"
+                ),
+                "ko": (
+                    "[relaxed]엔지니어 카페의 이용 등록, 코워킹 공간, 대부분의 설비 이용은 "
+                    "무료입니다. cafe&bar saino의 음식과 음료, 3D 프린터 필라멘트, "
+                    "2층 회의실 같은 일부 유료 공간은 별도 비용이 필요합니다."
+                ),
+            }
+            return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
+        if self._asks_member_record_phase2_limitation(normalized):
+            answers = {
+                "ja": (
+                    "[relaxed]現在このキオスクでは、会員番号は確認まで対応しています。"
+                    "会員情報に基づく座席の提案や個別案内、DB連携による来館者情報の案内は"
+                    "フェーズ2以降で対応予定です。詳しくは受付スタッフに確認してください。"
+                ),
+                "en": (
+                    "[relaxed]For now, this kiosk can confirm the member number only. "
+                    "Seat suggestions, personalized guidance based on member records, "
+                    "and database-linked visitor information are planned for Phase 2 "
+                    "or later. Please ask reception staff for details."
+                ),
+                "zh": (
+                    "[relaxed]目前这台终端只支持确认会员编号。"
+                    "基于会员信息的座位建议、个别引导以及数据库联动的访客信息说明，"
+                    "计划在第2阶段以后对应。详情请向前台工作人员确认。"
+                ),
+                "ko": (
+                    "[relaxed]현재 이 키오스크에서는 회원 번호 확인까지만 지원합니다. "
+                    "회원 정보에 기반한 좌석 제안, 개별 안내, DB 연동을 통한 방문자 정보 안내는 "
+                    "페이즈 2 이후에 대응할 예정입니다. 자세한 내용은 접수 직원에게 확인해 주세요."
+                ),
+            }
+            return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
+        if self._asks_membership_overview(normalized, request_type):
+            answers = {
+                "ja": (
+                    "[relaxed]エンジニアカフェの会員登録・利用登録は無料です。"
+                    "初めて利用する場合は1階受付でWebフォームに入力し、約5〜10分で"
+                    "登録できます。登録後に会員番号が発行され、2回目以降は会員番号を"
+                    "伝えてチェックインしてください。オンライン事前登録はできません。"
+                ),
+                "en": (
+                    "[relaxed]Engineer Cafe membership registration is free. "
+                    "First-time visitors register at the 1F reception by filling out a "
+                    "web form; it usually takes about 5 to 10 minutes and no ID is required. "
+                    "After registration, you receive a member number. On later visits, "
+                    "give your member number at reception to check in. Online pre-registration "
+                    "is not available."
+                ),
+                "zh": (
+                    "[relaxed]工程师咖啡的会员登记和设施使用是免费的。首次来访时，"
+                    "请在一楼前台填写网页表单，通常约5到10分钟完成，不需要身份证件。"
+                    "登记后会取得会员编号，之后来访时在前台告知会员编号即可。"
+                    "不支持线上预先登记。"
+                ),
+                "ko": (
+                    "[relaxed]엔지니어 카페의 회원 등록과 시설 이용은 무료입니다. "
+                    "처음 방문하실 때는 1층 접수에서 웹 양식을 작성하며 보통 5-10분 정도 "
+                    "걸리고 신분증은 필요하지 않습니다. 등록 후 회원 번호를 받으며, "
+                    "다음 방문부터는 접수에서 회원 번호를 말씀해 주세요. 온라인 사전 등록은 "
+                    "지원하지 않습니다."
+                ),
+            }
+            return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
+        if self._asks_first_visit_registration(normalized, request_type):
+            if (
+                language == "ja"
+                and request_type == "reception"
+                and normalized.strip() == "初めて来ました"
+            ):
+                return self._canonical_result(
+                    (
+                        "[happy]エンジニアカフェへようこそ！初めてのご利用ですね。"
+                        "1階受付で利用登録手続きをお願いします。"
+                    ),
+                    request_type,
+                )
+
+            answers = {
+                "ja": (
+                    "[happy]初めて利用する場合は受付で利用登録を行います。"
+                    "所要時間は約5〜10分です。Webフォームに氏名等を入力して完了です。"
+                    "来館時のみ可能で、オンライン事前登録はできません。登録料は無料です。"
+                ),
+                "en": (
+                    "[relaxed]Register at reception on arrival. Ask staff for assistance. "
+                    "It takes about 5 to 10 minutes and is completed with a web form. "
+                    "Online pre-registration is not available."
+                ),
+                "zh": (
+                    "[relaxed]第一次来访时，请到一楼前台办理登记。登记免费，"
+                    "大约需要5到10分钟，需要在前台填写网页表单。不能在线预先登记，"
+                    "有不清楚的地方可以直接询问工作人员。"
+                ),
+                "ko": (
+                    "[relaxed]처음 방문하실 때는 1층 안내 데스크에서 등록하시면 "
+                    "됩니다. 등록은 무료이고 약 5분에서 10분 정도 걸리며, "
+                    "웹 폼을 작성하면 됩니다. 온라인 사전 등록은 지원하지 않습니다. "
+                    "직원에게 문의하시면 안내받을 수 있습니다."
+                ),
+            }
+            return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
+        if self._asks_returning_visit(normalized, request_type):
+            answers = {
+                "ja": (
+                    "[happy]おかえりなさい！エンジニアカフェへようこそ。"
+                    "前にも来たことがある方も、本日は1階受付でチェックインして"
+                    "受付カードを受け取ってください。"
+                ),
+                "en": (
+                    "[relaxed]Welcome back. If you have visited before, please still "
+                    "check in at the 1F reception when you arrive. After receiving a "
+                    "reception card, you can use the coworking space for free."
+                ),
+                "zh": (
+                    "[relaxed]欢迎再次来访。以前来过的访客也请先到一楼前台签到。"
+                    "领取接待卡后即可免费使用共享办公空间。"
+                ),
+                "ko": (
+                    "[relaxed]다시 방문해 주셔서 감사합니다. 이전에 이용하신 분도 "
+                    "방문 시 1층 접수에서 체크인해 주세요. 접수 카드를 받은 뒤 "
+                    "코워킹 공간을 무료로 이용할 수 있습니다."
+                ),
+            }
+            return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
+        if self._asks_reservation_requirement(normalized):
+            answers = {
+                "ja": (
+                    "[relaxed]通常のコワーキング利用は予約なしで利用できます。"
+                    "来館したら1階受付でチェックインしてください。"
+                ),
+                "en": (
+                    "[relaxed]Yes. You can use the regular coworking space at "
+                    "Engineer Cafe without a reservation. Please check in at the "
+                    "1F reception when you arrive."
+                ),
+                "zh": (
+                    "[relaxed]普通共享办公空间无需预约即可使用。" "到馆后请先到一楼前台办理签到。"
+                ),
+                "ko": (
+                    "[relaxed]일반 코워킹 공간은 예약 없이 이용할 수 있습니다. "
+                    "방문하시면 1층 안내 데스크에서 체크인해 주세요."
+                ),
+            }
+            return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
+        if self._asks_what_is_engineer_cafe(normalized, language):
+            answers = {
+                "ja": (
+                    "[relaxed]エンジニアカフェは、福岡市の赤煉瓦文化館内にある、"
+                    "エンジニアのための無料コワーキング・交流スペースです。"
+                    "2019年8月に開設され、Wi-Fiや電源、ものづくり機材があり、"
+                    "学生やフリーランスの方も利用できます。"
+                ),
+                "en": (
+                    "[relaxed]Engineer Cafe is a free public coworking and community "
+                    "space for engineers in Fukuoka's Red Brick Culture Hall. It opened "
+                    "in 2019 as part of the Engineer Friendly City Fukuoka initiative."
+                ),
+                "zh": (
+                    "[relaxed]工程师咖啡是位于福冈市赤砖文化馆内的免费共享办公"
+                    "与交流空间，于2019年8月开设，是“工程师友好城市福冈”的核心设施。"
+                ),
+                "ko": (
+                    "[relaxed]엔지니어 카페는 후쿠오카 텐진의 아카렌가 문화관 "
+                    "안에 있는 엔지니어를 위한 무료 코워킹 및 교류 공간입니다. "
+                    "2019년에 문을 열었고, 엔지니어 프렌들리 시티 후쿠오카의 "
+                    "핵심 시설입니다."
+                ),
+            }
+            return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
+        if self._asks_official_social(normalized):
+            answers = {
+                "ja": (
+                    "[relaxed]エンジニアカフェの公式SNSはX（旧Twitter）の"
+                    "@EngineerCafeJPです。イベント情報はConnpass "
+                    "https://engineercafe.connpass.com/ でも発信しています。"
+                    "公式サイトは https://engineercafe.jp/ です。LINEアカウントはありません。"
+                ),
+                "en": (
+                    "[relaxed]Engineer Cafe's official social account is "
+                    "@EngineerCafeJP on X, formerly Twitter. Event information is also "
+                    "posted on Connpass at https://engineercafe.connpass.com/. "
+                    "The official website is https://engineercafe.jp/. There is no LINE account."
+                ),
+                "zh": (
+                    "[relaxed]工程师咖啡的官方SNS是X（原Twitter）@EngineerCafeJP。"
+                    "活动信息也会在Connpass https://engineercafe.connpass.com/ 发布。"
+                    "官网是 https://engineercafe.jp/，没有LINE账号。"
+                ),
+                "ko": (
+                    "[relaxed]엔지니어 카페의 공식 SNS는 X(구 Twitter)의 @EngineerCafeJP입니다. "
+                    "이벤트 정보는 Connpass https://engineercafe.connpass.com/ 에도 게시됩니다. "
+                    "공식 사이트는 https://engineercafe.jp/ 이며 LINE 계정은 없습니다."
+                ),
+            }
+            return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
+        if self._asks_english_support(normalized):
+            answers = {
+                "ja": (
+                    "[relaxed]公式サイトには英語版 https://engineercafe.jp/en/ があります。"
+                    "スタッフの英語対応は限定的ですが、簡単なコミュニケーションは可能です。"
+                    "国際イベント時は英語対応が強化され、外国人利用者も多く来館します。"
+                ),
+                "en": (
+                    "[relaxed]The official website has an English version at "
+                    "https://engineercafe.jp/en/. Staff English support is limited, "
+                    "but simple communication is possible. Support is stronger during "
+                    "international events, and many international visitors use the facility."
+                ),
+                "zh": (
+                    "[relaxed]官方网站有英文版 https://engineercafe.jp/en/。工作人员的英语支持有限，"
+                    "但可进行简单沟通。国际活动期间英语支持会加强，也有很多外国访客使用。"
+                ),
+                "ko": (
+                    "[relaxed]공식 사이트에는 영어판 https://engineercafe.jp/en/ 이 있습니다. "
+                    "직원의 영어 대응은 제한적이지만 간단한 의사소통은 가능합니다. "
+                    "국제 이벤트 때는 영어 대응이 강화되고 외국인 이용자도 많이 방문합니다."
+                ),
+            }
+            return self._canonical_result(answers.get(language, answers["ja"]), request_type)
+
+        if self._asks_contact(normalized):
+            answers = {
+                "ja": (
+                    "[relaxed]エンジニアカフェへの連絡は、13時から21時の間に"
+                    "080-6742-7231へお電話ください。公式サイトは"
+                    "https://engineercafe.jp/ で、お問い合わせフォームは"
+                    "https://engineercafe.jp/ja/contact です。"
+                    "2階会議室は別途問い合わせが必要な場合があります。"
+                ),
+                "en": (
+                    "[relaxed]Phone: 080-6742-7231 (13:00-21:00). "
+                    "Website: https://engineercafe.jp/. "
+                    "Contact form: https://engineercafe.jp/ja/contact. "
+                    "You can contact Engineer Cafe by phone or through the inquiry form "
+                    "on the official website. For second-floor meeting rooms, a separate "
+                    "inquiry may be needed. "
+                    "You can also visit reception in person during opening hours."
+                ),
+                "zh": (
+                    "[relaxed]电话：080-6742-7231（13:00-21:00）。"
+                    "官网：https://engineercafe.jp/。"
+                    "联系表单：https://engineercafe.jp/ja/contact。"
+                ),
+                "ko": (
+                    "[relaxed]전화는 080-6742-7231(13:00-21:00)입니다. "
+                    "공식 사이트는 https://engineercafe.jp/ 이고 "
+                    "문의 폼은 https://engineercafe.jp/ja/contact 입니다."
+                ),
+            }
+            return self._canonical_result(answers.get(language, answers["ja"]), request_type)

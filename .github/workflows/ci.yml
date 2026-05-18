@@ -340,6 +340,17 @@ jobs:
         run: black --check .
         working-directory: backend
 
+  # Wave 3 guard: prevent closing refactor issues while source files remain oversized.
+  large-file-guard:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true' || needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - name: Check large source files
+        run: python3 scripts/check-large-files.py
+
   # Backend: Test
   backend-test:
     needs: [changes, backend-lint]
@@ -983,6 +994,7 @@ jobs:
       - backend-lint
       - backend-test
       - backend-deploy-staging
+      - large-file-guard
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -1002,7 +1014,8 @@ jobs:
             "${{ needs.frontend-playwright-voice-live.result }}" \
             "${{ needs.backend-lint.result }}" \
             "${{ needs.backend-test.result }}" \
-            "${{ needs.backend-deploy-staging.result }}"; do
+            "${{ needs.backend-deploy-staging.result }}" \
+            "${{ needs.large-file-guard.result }}"; do
             if [[ "$job_result" == "failure" ]] || [[ "$job_result" == "cancelled" ]]; then
               FAILED=true
             fi
