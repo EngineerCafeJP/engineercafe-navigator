@@ -344,6 +344,8 @@ export default function VoiceInterface({
       const abortController = new AbortController();
       requestAbortRef.current = abortController;
       const voiceTurnStartedAt = performance.now();
+      let sttMs: number | undefined;
+      let sttStatus: number | undefined;
 
       try {
         const sttStartedAt = performance.now();
@@ -357,7 +359,8 @@ export default function VoiceInterface({
             signal: abortController.signal,
           },
         );
-        const sttMs = elapsedMs(sttStartedAt);
+        sttMs = elapsedMs(sttStartedAt);
+        sttStatus = sttResponse.status;
         emitVoiceTelemetry('voice_turn_timing', 'stt', {
           sttMs,
           status: sttResponse.status,
@@ -383,6 +386,13 @@ export default function VoiceInterface({
         }
 
         cancelFastFiller();
+        emitVoiceTelemetry('voice_round_trip', 'error', {
+          sttMs,
+          turnTotalMs: elapsedMs(voiceTurnStartedAt),
+          success: false,
+          status: sttStatus,
+          errorType: recordingError instanceof Error ? recordingError.name : 'VoiceRecognitionError',
+        });
         setError(formatError(recordingError, currentLanguage));
         completeAssistantTurn(true);
       } finally {

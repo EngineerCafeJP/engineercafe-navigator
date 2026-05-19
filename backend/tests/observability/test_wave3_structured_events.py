@@ -92,6 +92,27 @@ def test_transcript_fields_mask_pii(monkeypatch):
     assert chat["transcript"] == "[REDACTED_EMAIL] に連絡して"
 
 
+def test_chat_response_transcript_is_env_gated(monkeypatch):
+    monkeypatch.delenv("STT_LOG_TRANSCRIPT", raising=False)
+    hidden = structured_logger_module.build_chat_response_payload(
+        request_id="req-chat-hidden",
+        language="ja",
+        metadata={"query": "2階の会議室について"},
+        latency_ms=1,
+    )
+
+    monkeypatch.setenv("STT_LOG_TRANSCRIPT", "true")
+    visible = structured_logger_module.build_chat_response_payload(
+        request_id="req-chat-visible",
+        language="ja",
+        metadata={"query": "2階の会議室について"},
+        latency_ms=1,
+    )
+
+    assert "transcript" not in hidden
+    assert visible["transcript"] == "2階の会議室について"
+
+
 def test_stt_winner_normalizes_alternatives():
     payload = structured_logger_module.build_stt_winner_payload(
         request_id="req-winner-22",
@@ -195,7 +216,8 @@ def test_frontend_telemetry_event_preserves_browser_message_field(capsys):
     assert payload == captured_payload
 
 
-def test_chat_response_adds_wave3_routing_fields():
+def test_chat_response_adds_wave3_routing_fields(monkeypatch):
+    monkeypatch.setenv("STT_LOG_TRANSCRIPT", "true")
     payload = structured_logger_module.build_chat_response_payload(
         request_id="req-chat-22",
         language="ja",

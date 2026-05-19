@@ -391,9 +391,10 @@ def build_chat_response_payload(
         "ltm_store_write": _coerce_ltm_store_write(metadata.get("ltm_store_write")),
         "latency_ms": latency_ms,
     }
-    transcript = _coerce_optional_text(metadata.get("transcript") or metadata.get("query"))
-    if transcript is not None:
-        payload["transcript"] = _mask_pii_text(transcript)
+    if _stt_log_transcript_enabled():
+        transcript = _coerce_optional_text(metadata.get("transcript") or metadata.get("query"))
+        if transcript is not None:
+            payload["transcript"] = _mask_pii_text(transcript)
     return payload
 
 

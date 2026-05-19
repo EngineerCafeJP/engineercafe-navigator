@@ -6,7 +6,7 @@ Updated: 2026-05-19
 
 - `backend/main.py:319` creates the FastAPI app and attaches lifecycle startup/shutdown.
 - `backend/main.py:363` enforces `X-API-Key` / Bearer auth for protected backend routes.
-- `backend/api/chat.py:562` creates `/api/chat`, `/api/chat/stream`, `/api/interrupt`, and `/api/invoke-agent` routes; `backend/main.py:557` mounts them with API-key protection.
+- `backend/api/chat.py:562` creates `/api/chat`, `/api/chat/stream`, `/api/interrupt`, and `/api/agent/invoke` routes; `backend/main.py:557` mounts them with API-key protection.
 - `backend/api/voice.py:748` creates `/api/voice` and `/api/voice/filler` routes; `backend/main.py:558` mounts them with API-key protection.
 - `backend/api/calendar.py:38` creates `/api/calendar` routes; `backend/main.py:559` mounts them with API-key protection.
 - `backend/main.py:586` mounts `backend/api/reception.py` at `/api/reception/*`.
