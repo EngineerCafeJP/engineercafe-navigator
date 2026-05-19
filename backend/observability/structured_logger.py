@@ -308,6 +308,28 @@ def _coerce_agent_class(value: Any) -> str | None:
     return None
 
 
+def _coerce_optional_text(value: Any, *, max_length: int = 500) -> str | None:
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    return text[:max_length] if text else None
+
+
+def _mask_pii_text(text: str) -> str:
+    try:
+        from backend.utils.pii_scanner import scan_and_mask
+
+        masked, _ = scan_and_mask(text)
+        return masked
+    except Exception:
+        return text
+
+
+def _stt_log_transcript_enabled() -> bool:
+    raw = os.getenv("STT_LOG_TRANSCRIPT", "").strip().lower()
+    return raw in {"1", "true", "yes", "on"}
+
+
 def _safe_log_extra(payload: dict[str, Any]) -> dict[str, Any]:
     extra: dict[str, Any] = {"observability_payload": payload}
     for key, value in payload.items():
@@ -351,7 +373,7 @@ def build_chat_response_payload(
         or "fallback" in {source.lower() for source in sources}
     )
 
-    return {
+    payload = {
         "event": CHAT_RESPONSE_EVENT,
         "request_id": request_id,
         "language": language or "unknown",
@@ -369,6 +391,10 @@ def build_chat_response_payload(
         "ltm_store_write": _coerce_ltm_store_write(metadata.get("ltm_store_write")),
         "latency_ms": latency_ms,
     }
+    transcript = _coerce_optional_text(metadata.get("transcript") or metadata.get("query"))
+    if transcript is not None:
+        payload["transcript"] = _mask_pii_text(transcript)
+    return payload
 
 
 def log_chat_response(
@@ -497,7 +523,8 @@ def build_stt_qwen_complete_payload(
     request_id: str | None = None,
     **fields: Any,
 ) -> dict[str, Any]:
-    return build_stt_event_payload(
+    transcript = fields.pop("transcript", None)
+    payload = build_stt_event_payload(
         event=STT_QWEN_COMPLETE_EVENT,
         request_id=request_id,
         provider=provider,
@@ -510,6 +537,11 @@ def build_stt_qwen_complete_payload(
         session_id=session_id,
         **fields,
     )
+    if _stt_log_transcript_enabled():
+        text = _coerce_optional_text(transcript, max_length=500)
+        if text is not None:
+            payload["transcript"] = _mask_pii_text(text)
+    return payload
 
 
 def log_stt_qwen_complete(**fields: Any) -> dict[str, Any]:

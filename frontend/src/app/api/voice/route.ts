@@ -70,8 +70,14 @@ export async function POST(request: NextRequest) {
         status: sanitizeTelemetryValue(body.status),
         timestamp: sanitizeTelemetryValue(body.timestamp),
       };
-      console.warn('[VoiceClientTelemetry]', telemetry);
-      return NextResponse.json({ success: true });
+      const response = await backendFetch('/api/telemetry/voice', {
+        body: telemetry,
+        timeoutMs: 5_000,
+      });
+      if (!response.ok) {
+        return NextResponse.json({ success: true, proxied: false }, { status: 202 });
+      }
+      return NextResponse.json(response.data, { status: response.status });
     }
 
     const response = await backendFetch('/api/voice', {

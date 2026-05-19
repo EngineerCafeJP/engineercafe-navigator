@@ -101,6 +101,8 @@ export type VoiceTimingTelemetry = {
   requestMode?: string;
   usedProxyFallback?: boolean;
   status?: number;
+  success?: boolean;
+  errorType?: string;
   upstreamStatus?: Record<string, unknown> | null;
   from?: string;
   to?: string;

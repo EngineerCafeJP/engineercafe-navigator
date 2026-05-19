@@ -460,6 +460,7 @@ async def _handle_stt(body: VoiceRequest, request_id: str) -> VoiceResponse:
             provider=stt_result.get("provider"),
         )
 
+    stt_request_duration_ms = int((time.perf_counter() - stt_request_started_at) * 1000)
     deps.log_stt_event(
         event="stt_request_complete",
         request_id=request_id,
@@ -469,7 +470,7 @@ async def _handle_stt(body: VoiceRequest, request_id: str) -> VoiceResponse:
         audio_bytes=len(audio_bytes),
         transcript_chars=len(stt_result.get("transcript") or ""),
         timeout_s=deps._voice_stt_request_timeout_seconds(),
-        stt_request_duration_ms=int((time.perf_counter() - stt_request_started_at) * 1000),
+        stt_request_duration_ms=stt_request_duration_ms,
         stt_base64_decode_duration_ms=base64_decode_duration_ms,
         **deps._stt_warmup_telemetry_fields(),
     )

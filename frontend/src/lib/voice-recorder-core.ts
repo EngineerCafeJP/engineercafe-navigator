@@ -1,3 +1,5 @@
+import { emitVoiceTelemetry } from './telemetry/voice-telemetry';
+
 declare global {
   interface Window {
     __PLAYWRIGHT_VOICE_AUDIO_BASE64__?: string;
@@ -90,7 +92,6 @@ export class VoiceRecorder {
     }
 
     const payload = {
-      action: 'client_telemetry',
       event: 'voice_recorder_error',
       phase,
       sessionId: this.resolveSessionId(),
@@ -103,19 +104,9 @@ export class VoiceRecorder {
 
     window.dispatchEvent(new CustomEvent('voice-recorder-telemetry', { detail: payload }));
 
-    const endpoint = this.options.telemetryEndpoint ?? '/api/voice';
-    window
-      .fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-        keepalive: true,
-      })
-      .catch(() => {
-        /* best-effort client telemetry */
-      });
+    emitVoiceTelemetry('voice_recorder_error', payload, {
+      endpoint: this.options.telemetryEndpoint,
+    });
   }
 
   private isSelectedDeviceFailure(error: unknown): boolean {

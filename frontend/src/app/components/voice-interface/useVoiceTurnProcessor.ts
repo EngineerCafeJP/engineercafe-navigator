@@ -33,6 +33,11 @@ interface VoiceTurnController {
   notifySpeaking: () => void;
 }
 
+interface VoiceTurnInitialTiming {
+  sttMs?: number;
+  turnStartedAt?: number;
+}
+
 interface UseVoiceTurnProcessorArgs {
   currentLanguage: 'ja' | 'en';
   isMuted: boolean;
@@ -194,10 +199,17 @@ export function useVoiceTurnProcessor({
   );
 
   const processVoiceTurnWithParallelFiller = useCallback(
-    async (trimmed: string, abortController: AbortController) => {
+    async (
+      trimmed: string,
+      abortController: AbortController,
+      initialTiming: VoiceTurnInitialTiming = {},
+    ) => {
       const signal = abortController.signal;
       const visitorId = ensureVisitorId();
       const fillerGate = createVoiceFillerPlaybackGate(signal);
+      const turnStartedAt = initialTiming.turnStartedAt ?? performance.now();
+      let qaMs: number | undefined;
+      let ttsMs: number | undefined;
 
       cancelFastFiller();
       stopPlayback(false);
@@ -259,8 +271,9 @@ export function useVoiceTurnProcessor({
             signal,
           },
         );
+        qaMs = elapsedMs(qaStartedAt);
         emitVoiceTelemetry('voice_turn_timing', 'qa', {
-          qaMs: elapsedMs(qaStartedAt),
+          qaMs,
           requestMode: qaResponse.mode,
           usedProxyFallback: qaResponse.usedProxyFallback,
           status: qaResponse.status,
@@ -310,10 +323,19 @@ export function useVoiceTurnProcessor({
           },
           signal,
         );
+        ttsMs = elapsedMs(ttsStartedAt);
         emitVoiceTelemetry('voice_turn_timing', 'tts', {
-          ttsMs: elapsedMs(ttsStartedAt),
+          ttsMs,
           status: 200,
           upstreamStatus: ttsResult.upstreamStatus ?? null,
+        });
+        emitVoiceTelemetry('voice_round_trip', 'complete', {
+          sttMs: initialTiming.sttMs,
+          qaMs,
+          ttsMs,
+          turnTotalMs: elapsedMs(turnStartedAt),
+          success: true,
+          status: 200,
         });
 
         fillerGate.close();
@@ -403,6 +425,14 @@ export function useVoiceTurnProcessor({
         }
         cancelFastFiller();
         setError(formatError(voiceError, currentLanguage));
+        emitVoiceTelemetry('voice_round_trip', 'error', {
+          sttMs: initialTiming.sttMs,
+          qaMs,
+          ttsMs,
+          turnTotalMs: elapsedMs(turnStartedAt),
+          success: false,
+          errorType: voiceError instanceof Error ? voiceError.name : 'VoiceTurnError',
+        });
         playAudioFallbackNotice();
         completeAssistantTurn(true);
       }

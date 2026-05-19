@@ -447,7 +447,7 @@ def test_piper_primary_timeout_default_covers_live_answer_window(monkeypatch):
     monkeypatch.delenv("TTS_PRIMARY_TIMEOUT_SECONDS", raising=False)
     monkeypatch.delenv("TTS_PIPER_TIMEOUT_SECONDS", raising=False)
 
-    assert get_tts_timeout_seconds("piper", "primary") == 4.0
+    assert get_tts_timeout_seconds("piper", "primary") == 20.0
 
 
 def test_piper_voicevox_fallback_requires_url_on_cloud_run(monkeypatch):

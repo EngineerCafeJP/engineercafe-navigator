@@ -25,6 +25,8 @@ _RESERVED_FIELDS = {
     "requestId",
     "session_id",
     "sessionId",
+    "source",
+    "telemetry_event",
 }
 _ROUND_TRIP_EXPLICIT_FIELDS = {
     "chatMs",

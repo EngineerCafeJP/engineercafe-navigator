@@ -137,6 +137,7 @@ async def transcribe_qwen_primary(
             audio_duration_ms=prepared_audio_metadata.get("audio_duration_ms"),
             latency_ms=qwen_duration_ms,
             transcript_length=len(result.text),
+            transcript=result.text,
             winner=False,
             success=True,
             transcript_chars=len(result.text),
