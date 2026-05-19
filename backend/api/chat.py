@@ -204,6 +204,7 @@ def _try_chat_general_fast_path(
         answer, emotion, request_type = static_answer
         metadata = {
             "query": body.query,
+            "transcript": body.query,
             "session_id": session_id,
             "agent": "GeneralKnowledgeAgent",
             "category": "general_knowledge",
@@ -245,6 +246,7 @@ def _try_chat_general_fast_path(
     answer, emotion = _general_fast_path_answer(body.query, language, intent.request_type)
     metadata = {
         "query": body.query,
+        "transcript": body.query,
         "session_id": session_id,
         "agent": "GeneralKnowledgeAgent",
         "category": "general_knowledge",
@@ -345,6 +347,7 @@ async def chat(request: Request, body: ChatRequest):
             sanitized_query = sanitize_input(body.query)
             metadata = {
                 "query": sanitized_query,
+                "transcript": sanitized_query,
                 "session_id": session_id,
                 "agent": "SafetyGuard",
                 "category": "safety",
@@ -414,6 +417,7 @@ async def chat(request: Request, body: ChatRequest):
             metadata=metadata_dict,
         )
         if isinstance(metadata, dict):
+            metadata.setdefault("transcript", body.query)
             metadata.setdefault("response_language", response_language)
             metadata.setdefault("language", response_language)
             deps._attach_latest_llm_metadata(metadata)
@@ -424,7 +428,6 @@ async def chat(request: Request, body: ChatRequest):
             metadata=metadata_dict,
             latency_ms=latency_ms,
         )
-
         return deps.ChatResponse(
             answer=answer,
             emotion=result.get("emotion", "neutral"),

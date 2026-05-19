@@ -93,7 +93,7 @@ DEFAULT_PIPER_PLUS_MAX_ATTEMPTS = 2
 DEFAULT_PIPER_PLUS_RETRY_BACKOFF_SECONDS = 0.15
 DEFAULT_PIPER_FAILURE_COOLDOWN_SECONDS = 10.0
 _DEFAULT_TTS_TIMEOUTS: Dict[str, float] = {
-    "piper": 4.0,
+    "piper": 20.0,
     "kokoro": 3.0,
     "voicevox": 4.0,
 }

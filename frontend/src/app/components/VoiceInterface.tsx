@@ -11,9 +11,12 @@ import {
 import { formatError } from '@/lib/error-messages';
 import {
   interruptVoiceSession,
-  sendVoiceClientTelemetry,
   speechToText,
 } from '@/lib/api/voice-client';
+import {
+  emitVoiceTelemetry as emitBrowserVoiceTelemetry,
+  type VoiceTelemetryEvent,
+} from '@/lib/telemetry/voice-telemetry';
 import {
   useCallback,
   useEffect,
@@ -124,20 +127,12 @@ export default function VoiceInterface({
   }, []);
 
   const emitVoiceTelemetry = useCallback(
-    (event: string, phase: string, metrics: VoiceTimingTelemetry = {}) => {
+    (event: VoiceTelemetryEvent, phase: string, metrics: VoiceTimingTelemetry = {}) => {
       const sessionId = sessionIdRef.current;
-      void sendVoiceClientTelemetry(
-        {
-          event,
-          phase,
-          sessionId,
-          userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : undefined,
-          timestamp: new Date().toISOString(),
-          ...metrics,
-        },
-        { keepalive: true },
-      ).catch(() => {
-        /* telemetry must not affect the voice turn */
+      emitBrowserVoiceTelemetry(event, {
+        phase,
+        sessionId,
+        ...metrics,
       });
     },
     [],
@@ -348,6 +343,9 @@ export default function VoiceInterface({
 
       const abortController = new AbortController();
       requestAbortRef.current = abortController;
+      const voiceTurnStartedAt = performance.now();
+      let sttMs: number | undefined;
+      let sttStatus: number | undefined;
 
       try {
         const sttStartedAt = performance.now();
@@ -361,8 +359,10 @@ export default function VoiceInterface({
             signal: abortController.signal,
           },
         );
+        sttMs = elapsedMs(sttStartedAt);
+        sttStatus = sttResponse.status;
         emitVoiceTelemetry('voice_turn_timing', 'stt', {
-          sttMs: elapsedMs(sttStartedAt),
+          sttMs,
           status: sttResponse.status,
         });
 
@@ -376,13 +376,23 @@ export default function VoiceInterface({
         }
 
         setTranscript(sttResult.transcript);
-        await processVoiceTurnWithParallelFiller(sttResult.transcript.trim(), abortController);
+        await processVoiceTurnWithParallelFiller(sttResult.transcript.trim(), abortController, {
+          sttMs,
+          turnStartedAt: voiceTurnStartedAt,
+        });
       } catch (recordingError) {
         if (recordingError instanceof DOMException && recordingError.name === 'AbortError') {
           return;
         }
 
         cancelFastFiller();
+        emitVoiceTelemetry('voice_round_trip', 'error', {
+          sttMs,
+          turnTotalMs: elapsedMs(voiceTurnStartedAt),
+          success: false,
+          status: sttStatus,
+          errorType: recordingError instanceof Error ? recordingError.name : 'VoiceRecognitionError',
+        });
         setError(formatError(recordingError, currentLanguage));
         completeAssistantTurn(true);
       } finally {

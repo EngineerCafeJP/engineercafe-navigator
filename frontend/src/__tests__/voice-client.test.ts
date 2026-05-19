@@ -134,10 +134,12 @@ test('textToSpeech returns normalized error payload for backend failures', async
   });
 });
 
-test('sendVoiceClientTelemetry posts client_telemetry with keepalive option', async () => {
+test('sendVoiceClientTelemetry posts to dedicated telemetry route with keepalive', async () => {
+  let capturedUrl: string | URL | Request | undefined;
   let capturedInit: RequestInit | undefined;
   let capturedBody: Record<string, unknown> | null = null;
-  global.fetch = (async (_input, init) => {
+  global.fetch = (async (input, init) => {
+    capturedUrl = input;
     capturedInit = init;
     capturedBody =
       typeof init?.body === 'string' ? (JSON.parse(init.body) as Record<string, unknown>) : null;
@@ -156,9 +158,9 @@ test('sendVoiceClientTelemetry posts client_telemetry with keepalive option', as
     { keepalive: true },
   );
 
+  assert.equal(capturedUrl, '/api/telemetry/voice');
   assert.equal(capturedInit?.keepalive, true);
   assert.deepEqual(capturedBody, {
-    action: 'client_telemetry',
     event: 'voice_recorder_error',
     phase: 'start',
     sessionId: 'session-1',

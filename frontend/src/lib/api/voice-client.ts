@@ -97,6 +97,7 @@ export interface VoiceFillerPayload extends VoiceBasePayload {
 
 const VOICE_PATH = '/api/voice';
 const VOICE_FILLER_PATH = '/api/voice/filler';
+const VOICE_TELEMETRY_PATH = '/api/telemetry/voice';
 
 async function readJson(response: Response): Promise<Record<string, unknown>> {
   try {
@@ -318,14 +319,8 @@ export async function sendVoiceClientTelemetry(
   request: VoiceClientTelemetryRequest,
   options: VoiceClientOptions = {},
 ): Promise<VoiceClientResult<VoiceClientTelemetryPayload>> {
-  const response = await postJson(
-    VOICE_PATH,
-    {
-      ...request,
-      action: 'client_telemetry',
-    },
-    options,
-  );
+  const { action: _legacyAction, ...telemetryBody } = request;
+  const response = await postJson(VOICE_TELEMETRY_PATH, telemetryBody, options);
   const data = await readJson(response);
 
   return {

@@ -1,9 +1,4 @@
-export type VoiceTelemetryEvent =
-  | 'voice_state_transition'
-  | 'thinking_watchdog_expire'
-  | 'fallback_tts_triggered'
-  | 'user_interaction_gate_timeout'
-  | 'audio_playback_failed';
+export type VoiceTelemetryEvent = string;
 
 export type VoiceTelemetryTransport = 'sendBeacon' | 'fetch' | 'skipped';
 
