@@ -8,6 +8,7 @@ Conversation turns are advanced by MainWorkflow.invoke_reception_subgraph.
 from __future__ import annotations
 
 import logging
+import os
 import time
 import uuid
 from collections import OrderedDict
@@ -297,7 +298,19 @@ class SensorStatusResponse(BaseModel):
 _sensor_trigger_cooldowns: dict[str, float] = {}
 _latest_sensor_events: dict[str, dict[str, Any]] = {}
 SENSOR_TRIGGER_RATE_LIMIT_SECONDS = 5
-SENSOR_TRIGGER_EVENT_TTL_SECONDS = 30
+DEFAULT_SENSOR_TRIGGER_EVENT_TTL_SECONDS = 30
+
+
+def _sensor_trigger_event_ttl_seconds() -> float:
+    raw = os.getenv(
+        "SENSOR_TRIGGER_EVENT_TTL_SECONDS",
+        str(DEFAULT_SENSOR_TRIGGER_EVENT_TTL_SECONDS),
+    )
+    try:
+        value = float(raw)
+    except ValueError:
+        return float(DEFAULT_SENSOR_TRIGGER_EVENT_TTL_SECONDS)
+    return value if value > 0 else float(DEFAULT_SENSOR_TRIGGER_EVENT_TTL_SECONDS)
 
 
 @reception_router.post("/sensor-trigger", response_model=SensorTriggerResponse)
@@ -381,7 +394,7 @@ async def get_sensor_status(
     if event is None:
         return SensorStatusResponse(triggered=False)
 
-    if time.time() - float(event["timestamp"]) > SENSOR_TRIGGER_EVENT_TTL_SECONDS:
+    if time.time() - float(event["timestamp"]) > _sensor_trigger_event_ttl_seconds():
         _latest_sensor_events.pop(device_id, None)
         return SensorStatusResponse(triggered=False)
 

@@ -10,6 +10,16 @@ export interface DeviceDetectionEvent {
 export const DEFAULT_KIOSK_DEVICE_ID = 'm5stack-001';
 export const KIOSK_DEVICE_ID_STORAGE_KEY = 'engineer_cafe_kiosk_device_id';
 const DEFAULT_SENSOR_POLL_INTERVAL_MS = 1000;
+const DEFAULT_SENSOR_INITIAL_LOOKBACK_MS = 180_000;
+
+function readSensorInitialLookbackMs(): number {
+  const raw = process.env.NEXT_PUBLIC_KIOSK_SENSOR_INITIAL_LOOKBACK_MS;
+  if (raw === undefined || raw === '') {
+    return DEFAULT_SENSOR_INITIAL_LOOKBACK_MS;
+  }
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_SENSOR_INITIAL_LOOKBACK_MS;
+}
 
 let sensorPollingIntervalId: number | null = null;
 let lastSeenSensorTimestampByDevice = new Map<string, number>();
@@ -113,9 +123,10 @@ export function startSensorPolling(
   stopSensorPolling();
   activePollingSessionToken += 1;
   const sessionToken = activePollingSessionToken;
-  // Initialize since to now so pre-existing (stale) events are ignored
+  // Allow a short startup lookback so a sensor trigger just before polling begins is not lost.
   if (!lastSeenSensorTimestampByDevice.has(resolvedDeviceId)) {
-    lastSeenSensorTimestampByDevice.set(resolvedDeviceId, Date.now() / 1000);
+    const initialSince = Math.max(0, (Date.now() - readSensorInitialLookbackMs()) / 1000);
+    lastSeenSensorTimestampByDevice.set(resolvedDeviceId, initialSince);
   }
   void pollSensorStatus(resolvedDeviceId, sessionToken);
   sensorPollingIntervalId = window.setInterval(() => {

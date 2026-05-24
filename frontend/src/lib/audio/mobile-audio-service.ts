@@ -86,6 +86,10 @@ export function isAudioUrlString(audioData: AudioDataInput): audioData is string
   );
 }
 
+export function isBlobAudioUrlString(audioData: AudioDataInput): audioData is string {
+  return typeof audioData === 'string' && audioData.startsWith('blob:');
+}
+
 export function shouldResetWebAudioPlayerForDevice(): boolean {
   if (typeof navigator === 'undefined') {
     return false;
@@ -127,8 +131,9 @@ export class MobileAudioService {
   public async playAudio(audioData: AudioDataInput): Promise<AudioOperationResult> {
     try {
       const result = await this.withPlaybackStartTimeout(async () => {
-        const htmlAudioOnly =
-          this.options.preferredMethod === 'html-audio' || isAudioUrlString(audioData);
+        const preferredHtmlAudioOnly = this.options.preferredMethod === 'html-audio';
+        const audioUrlString = isAudioUrlString(audioData);
+        const htmlAudioOnly = preferredHtmlAudioOnly || audioUrlString;
         if (
           htmlAudioOnly ||
           shouldUseHtmlAudioFirstForPlayback(audioData)
@@ -138,7 +143,15 @@ export class MobileAudioService {
             return htmlAudioResult;
           }
 
-          console.warn('[MOBILE-AUDIO] HTML audio fallback failed, retrying Web Audio:', htmlAudioResult.error);
+          if (isBlobAudioUrlString(audioData)) {
+            console.warn('[MOBILE-AUDIO] HTML audio fallback failed, retrying Web Audio:', htmlAudioResult.error);
+            const webAudioResult = await this.tryWebAudio(await this.toAudioBlob(audioData));
+            if (webAudioResult.success) {
+              return webAudioResult;
+            }
+          } else {
+            console.warn('[MOBILE-AUDIO] HTML audio fallback failed:', htmlAudioResult.error);
+          }
         }
 
         if (htmlAudioOnly) {
@@ -331,6 +344,17 @@ export class MobileAudioService {
     if (audioData instanceof ArrayBuffer) {
       const mimeType = AudioDataProcessor.detectAudioFormat(audioData);
       return new Blob([audioData], { type: mimeType });
+    }
+
+    if (isBlobAudioUrlString(audioData)) {
+      const response = await fetch(audioData);
+      if (!response.ok) {
+        throw new AudioError(
+          AudioErrorType.LOAD_FAILED,
+          `Failed to fetch blob audio URL: ${response.statusText}`,
+        );
+      }
+      return response.blob();
     }
 
     const blobResult = await AudioDataProcessor.base64ToBlob(audioData);

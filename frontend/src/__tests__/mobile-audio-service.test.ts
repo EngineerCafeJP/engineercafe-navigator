@@ -8,6 +8,7 @@ import {
   shouldUseHtmlAudioFirstForPlayback,
 } from "../lib/audio/mobile-audio-service";
 import { AudioPlaybackService } from "../lib/audio/audio-playback-service";
+import { AudioInteractionManager } from "../lib/audio/audio-interaction-manager";
 
 const originalNavigator = globalThis.navigator;
 const originalWindow = (globalThis as typeof globalThis & { window?: unknown }).window;
@@ -267,6 +268,119 @@ test("blob and http audio URLs use HTML audio without creating object URLs", asy
   assert.equal(playbackResult.method, "html-audio");
 
   service.dispose();
+});
+
+test("blob audio URLs fall back to Web Audio when HTML audio fails", async () => {
+  const originalConsoleWarn = console.warn;
+  let fetchUrl = "";
+
+  class RejectingAudioElement {
+    public preload = "";
+    public volume = 1;
+    public paused = true;
+    public ended = false;
+
+    constructor(public readonly url: string) {}
+
+    setAttribute() {}
+    removeAttribute() {}
+    load() {}
+    pause() {
+      this.paused = true;
+    }
+    addEventListener() {}
+    removeEventListener() {}
+    async play() {
+      throw new Error("HTML audio blocked");
+    }
+  }
+
+  class MockAudioContext {
+    public state: AudioContextState = "running";
+    public currentTime = 0;
+    public sampleRate = 24_000;
+    public destination = {};
+
+    addEventListener() {}
+    removeEventListener() {}
+    async resume() {}
+    async close() {
+      this.state = "closed";
+    }
+    createGain() {
+      return {
+        gain: { value: 1 },
+        connect() {},
+      };
+    }
+    createBuffer() {
+      return { duration: 0.01, sampleRate: this.sampleRate };
+    }
+    createBufferSource() {
+      const source: {
+        buffer: unknown;
+        onended: (() => void) | null;
+        connect: () => void;
+        start: () => void;
+        stop: () => void;
+      } = {
+        buffer: null,
+        onended: null,
+        connect() {},
+        start() {
+          setTimeout(() => source.onended?.(), 0);
+        },
+        stop() {},
+      };
+      return source;
+    }
+    async decodeAudioData() {
+      return { duration: 0.01, sampleRate: this.sampleRate };
+    }
+  }
+
+  setUserAgent("Mozilla/5.0 (iPad; CPU OS 18_7_8 like Mac OS X) AppleWebKit/605.1.15");
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: {
+      innerWidth: 1024,
+      setTimeout,
+      clearTimeout,
+      AudioContext: MockAudioContext,
+      webkitAudioContext: MockAudioContext,
+    },
+  });
+  Object.defineProperty(globalThis, "document", {
+    configurable: true,
+    value: {
+      addEventListener() {},
+      removeEventListener() {},
+    },
+  });
+  Object.defineProperty(globalThis, "Audio", {
+    configurable: true,
+    value: RejectingAudioElement,
+  });
+  globalThis.fetch = (async (input) => {
+    fetchUrl = String(input);
+    return new Response(new Uint8Array([0x52, 0x49, 0x46, 0x46]));
+  }) as typeof fetch;
+  console.warn = () => undefined;
+
+  try {
+    await AudioInteractionManager.getInstance().forceInitialize();
+    const service = new MobileAudioService();
+    const result = await service.playAudio("blob:assistant-audio");
+
+    assert.equal(result.success, true);
+    assert.equal(result.method, "web-audio");
+    assert.equal(fetchUrl, "blob:assistant-audio");
+
+    service.dispose();
+  } finally {
+    console.warn = originalConsoleWarn;
+    AudioInteractionManager.getInstance().reset();
+  }
 });
 
 test("playAudioWithLipSync skips analyzer for blob audio URLs", async () => {

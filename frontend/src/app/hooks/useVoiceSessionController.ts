@@ -35,7 +35,6 @@ export interface UseVoiceSessionControllerOptions {
   onWakeWord?: (match: WakeWordMatch) => void;
   onSessionStart?: (source: ContinuousListeningStartSource) => void;
   onSessionEnd?: (reason: ContinuousListeningEndReason) => void;
-  onThinkingWatchdogExpire?: () => void;
   onStateTransition?: (transition: {
     from: ContinuousListeningMode;
     to: ContinuousListeningMode;
@@ -94,12 +93,10 @@ export function useVoiceSessionController({
   onWakeWord,
   onSessionStart,
   onSessionEnd,
-  onThinkingWatchdogExpire,
   onStateTransition,
 }: UseVoiceSessionControllerOptions = {}): UseVoiceSessionControllerResult {
   const hasDetectedSpeechRef = useRef(false);
   const onWakeWordRef = useRef(onWakeWord);
-  const onThinkingWatchdogExpireRef = useRef(onThinkingWatchdogExpire);
   const onStateTransitionRef = useRef(onStateTransition);
   const previousModeRef = useRef<ContinuousListeningMode | null>(null);
   const thinkingWatchdogRef = useRef<number | null>(null);
@@ -107,10 +104,6 @@ export function useVoiceSessionController({
   useEffect(() => {
     onWakeWordRef.current = onWakeWord;
   }, [onWakeWord]);
-
-  useEffect(() => {
-    onThinkingWatchdogExpireRef.current = onThinkingWatchdogExpire;
-  }, [onThinkingWatchdogExpire]);
 
   useEffect(() => {
     onStateTransitionRef.current = onStateTransition;
@@ -187,16 +180,10 @@ export function useVoiceSessionController({
         mode,
         timeoutMs: VOICE_SESSION_THINKING_WATCHDOG_MS,
       });
-      emitVoiceTelemetry('fallback_tts_triggered', {
-        reason: 'thinking_watchdog_expire',
-        mode,
-      });
-      onThinkingWatchdogExpireRef.current?.();
-      completeAssistantTurn(true);
     }, VOICE_SESSION_THINKING_WATCHDOG_MS);
 
     return clearThinkingWatchdog;
-  }, [clearThinkingWatchdog, completeAssistantTurn, enabled, mode]);
+  }, [clearThinkingWatchdog, enabled, mode]);
 
   const handleWakeWord = useCallback(
     (match: WakeWordMatch) => {

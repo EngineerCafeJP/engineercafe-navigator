@@ -189,7 +189,6 @@ export default function VoiceInterface({
       markAudioUserInteraction();
       setError(null);
     },
-    onThinkingWatchdogExpire: () => playAudioFallbackNoticeRef.current(),
     onStateTransition: handleVoiceControllerTransition,
   });
 

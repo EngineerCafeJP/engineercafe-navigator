@@ -324,6 +324,28 @@ async def test_repository_get_latest_sensor_event_ignores_stale_event() -> None:
 
 
 @pytest.mark.asyncio
+async def test_repository_get_latest_sensor_event_uses_configured_ttl(monkeypatch) -> None:
+    monkeypatch.setenv("SENSOR_TRIGGER_EVENT_TTL_SECONDS", "180")
+    fake_client = _FakeSupabaseClient()
+    repo = ReceptionRepository(fake_client)  # type: ignore[arg-type]
+
+    fake_client.storage["sensor_events"] = {
+        "1": {
+            "id": 1,
+            "device_id": "m5stack-001",
+            "sensor_type": "pir_sr04",
+            "distance_mm": 65,
+            "triggered_at": (datetime.now(timezone.utc) - timedelta(seconds=120)).isoformat(),
+        }
+    }
+
+    event = await repo.get_latest_sensor_event("m5stack-001")
+
+    assert event is not None
+    assert event["device_id"] == "m5stack-001"
+
+
+@pytest.mark.asyncio
 async def test_repository_get_latest_sensor_event_respects_since_epoch() -> None:
     fake_client = _FakeSupabaseClient()
     repo = ReceptionRepository(fake_client)  # type: ignore[arg-type]

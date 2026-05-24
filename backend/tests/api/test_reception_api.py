@@ -278,3 +278,51 @@ class TestSensorTriggerEndpoint:
         )
         assert seen_response.status_code == 200
         assert seen_response.json() == {"triggered": False}
+
+    def test_sensor_status_default_ttl_expires_after_30_seconds(self, monkeypatch):
+        monkeypatch.delenv("SENSOR_TRIGGER_EVENT_TTL_SECONDS", raising=False)
+        monkeypatch.setattr(reception_module.time, "time", lambda: 1_000.0)
+        payload = {
+            "sensor_type": "tof",
+            "distance_mm": 500,
+            "device_id": "m5stack-default-ttl-test",
+        }
+
+        trigger_response = client.post("/api/reception/sensor-trigger", json=payload)
+        assert trigger_response.status_code == 200
+
+        monkeypatch.setattr(reception_module.time, "time", lambda: 1_031.0)
+        expired_response = client.get(
+            "/api/reception/sensor-status",
+            params={"device_id": payload["device_id"]},
+        )
+        assert expired_response.status_code == 200
+        assert expired_response.json() == {"triggered": False}
+
+    def test_sensor_status_uses_configured_ttl(self, monkeypatch):
+        monkeypatch.setenv("SENSOR_TRIGGER_EVENT_TTL_SECONDS", "180")
+        monkeypatch.setattr(reception_module.time, "time", lambda: 2_000.0)
+        payload = {
+            "sensor_type": "tof",
+            "distance_mm": 500,
+            "device_id": "m5stack-configured-ttl-test",
+        }
+
+        trigger_response = client.post("/api/reception/sensor-trigger", json=payload)
+        assert trigger_response.status_code == 200
+
+        monkeypatch.setattr(reception_module.time, "time", lambda: 2_120.0)
+        fresh_response = client.get(
+            "/api/reception/sensor-status",
+            params={"device_id": payload["device_id"]},
+        )
+        assert fresh_response.status_code == 200
+        assert fresh_response.json()["triggered"] is True
+
+        monkeypatch.setattr(reception_module.time, "time", lambda: 2_181.0)
+        expired_response = client.get(
+            "/api/reception/sensor-status",
+            params={"device_id": payload["device_id"]},
+        )
+        assert expired_response.status_code == 200
+        assert expired_response.json() == {"triggered": False}
