@@ -566,6 +566,49 @@ class TestGeneralKnowledgeAgentIntegration:
         self.mock_provider.generate.assert_not_called()
 
     @pytest.mark.asyncio
+    async def test_answer_query_current_time_uses_system_clock_without_search(self):
+        fixed_now = datetime(2026, 5, 24, 21, 40, 11, tzinfo=ZoneInfo("Asia/Tokyo"))
+
+        with patch("backend.agents.general_knowledge_agent.get_now_jst", return_value=fixed_now):
+            result = await self.agent.answer_query(
+                query="今何時ですか?",
+                language="ja",
+                session_id="test_session",
+                query_type="current-time",
+            )
+
+        assert "2026年5月24日" in result["answer"]
+        assert "21時40分" in result["answer"]
+        assert result["metadata"]["query_type"] == "current-time"
+        assert result["metadata"]["sources"] == ["system_clock"]
+        assert result["metadata"]["web_search_used"] is False
+        assert result["metadata"]["rag_used"] is False
+        assert result["metadata"]["provider_called"] is False
+        assert result["metadata"]["timezone"] == "Asia/Tokyo"
+        self.mock_web_search.search.assert_not_called()
+        self.mock_provider.generate.assert_not_called()
+        self.mock_rag_search.search.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_answer_query_current_time_natural_english_uses_system_clock(self):
+        fixed_now = datetime(2026, 5, 24, 21, 40, 11, tzinfo=ZoneInfo("Asia/Tokyo"))
+
+        with patch("backend.agents.general_knowledge_agent.get_now_jst", return_value=fixed_now):
+            result = await self.agent.answer_query(
+                query="What time is it now?",
+                language="en",
+                session_id="test_session",
+                query_type="general",
+            )
+
+        assert "21:40" in result["answer"]
+        assert "Japan Standard Time" in result["answer"]
+        assert result["metadata"]["query_type"] == "current-time"
+        self.mock_web_search.search.assert_not_called()
+        self.mock_provider.generate.assert_not_called()
+        self.mock_rag_search.search.assert_not_called()
+
+    @pytest.mark.asyncio
     @pytest.mark.parametrize("language,query,expected_fragment", DATE_ONLY_AGENT_CASES)
     async def test_multilingual_date_only_queries_use_system_clock_without_external_calls(
         self, language, query, expected_fragment

@@ -141,6 +141,8 @@ class GeneralKnowledgeAgent(GeneralKnowledgeMemoryMixin, GeneralKnowledgeRespons
         try:
             if self._is_date_only_query(query):
                 return self._current_date_response(query, language)
+            if query_type == "current-time" or self._is_current_time_query(query):
+                return self._current_time_response(query, language)
 
             mode = self._resolve_general_mode(query, query_type)
             if mode == "assistant_profile":

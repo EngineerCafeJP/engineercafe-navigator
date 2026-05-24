@@ -22,6 +22,7 @@ ON_TOPIC_CATEGORIES: set[str] = {
     "daily_conversation",
     "general_light",
     "current_info",
+    "current-time",
     "consultation",
     "community",
     "career",

@@ -1769,6 +1769,35 @@ class TestOrchestratorIntegration:
 
     @pytest.mark.asyncio
     @patch("backend.workflows.main_workflow.OrchestratorAgent")
+    async def test_keyword_router_fast_routes_current_time(self, mock_orchestrator_class):
+        from backend.workflows.main_workflow import MainWorkflow
+
+        mock_orchestrator_class.return_value = _StubOrchestrator()
+
+        with patch("backend.utils.memory_helper.get_memory_helper") as mock_get_helper:
+            mock_helper = AsyncMock()
+            mock_helper.store_message = AsyncMock()
+            mock_get_helper.return_value = mock_helper
+
+            workflow = MainWorkflow()
+            result = await workflow._keyword_router_node(
+                {
+                    "query": "今何時ですか?",
+                    "session_id": "time-session",
+                    "language": "ja",
+                    "routing": {},
+                }
+            )
+
+        assert result["routing"]["pre_memory_fast_path_agent"] == "general_knowledge"
+        assert result["routing"]["category"] == "current-time"
+        assert result["routing"]["request_type"] == "current-time"
+        assert workflow._keyword_router_decision({"routing": result["routing"]}) == (
+            "general_knowledge"
+        )
+
+    @pytest.mark.asyncio
+    @patch("backend.workflows.main_workflow.OrchestratorAgent")
     async def test_keyword_router_keeps_anaphora_on_normal_path(self, mock_orchestrator_class):
         from backend.workflows.main_workflow import MainWorkflow
 

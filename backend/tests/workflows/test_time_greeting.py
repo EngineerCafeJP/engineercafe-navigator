@@ -168,8 +168,8 @@ class TestFormatResponseClosingWarning:
     @pytest.mark.asyncio
     async def test_no_warning_on_closed_day(self, workflow: MainWorkflow) -> None:
         """休館日には閉館警告が出ないことを検証する。"""
-        # 2026-03-08 は日曜日 (weekday=6)
-        mock_now = datetime(2026, 3, 8, 21, 35, 0, tzinfo=JST)
+        # 2026-03-30 は毎月最終月曜日
+        mock_now = datetime(2026, 3, 30, 21, 35, 0, tzinfo=JST)
         state = _make_state()
         runtime = _make_runtime()
 
@@ -183,3 +183,23 @@ class TestFormatResponseClosingWarning:
 
         closing = result["metadata"]["closing_warning"]
         assert closing["is_closing_soon"] is False
+
+    @pytest.mark.asyncio
+    async def test_closing_warning_on_sunday(self, workflow: MainWorkflow) -> None:
+        """日曜日も通常開館日として閉館警告を出す。"""
+        mock_now = datetime(2026, 3, 8, 21, 40, 0, tzinfo=JST)
+        state = _make_state(answer="元の回答です。", language="ja")
+        runtime = _make_runtime()
+
+        with (
+            patch("backend.utils.time_utils.get_now_jst", return_value=mock_now),
+            patch.object(workflow, "_character_control_agent", None),
+            patch("backend.utils.memory_helper.get_memory_helper") as mock_memory,
+        ):
+            mock_memory.return_value.store_message = AsyncMock()
+            result = await workflow._format_response_node(state, runtime)
+
+        closing = result["metadata"]["closing_warning"]
+        assert closing["is_closing_soon"] is True
+        assert closing["minutes_remaining"] == 20
+        assert "閉館まであと約20分" in result["messages"][-1].content

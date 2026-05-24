@@ -88,6 +88,14 @@ class GeneralKnowledgeResponseMixin:
     def _is_date_only_query(query: str) -> bool:
         return QueryClassifier._is_date_only_query(query)
 
+    @staticmethod
+    def _is_current_time_query(query: str) -> bool:
+        classifier = QueryClassifier()
+        normalized = classifier._normalize_query(query)
+        if QueryClassifier._is_date_only_query(normalized):
+            return False
+        return classifier._is_current_time_query(normalized)
+
     def _current_date_response(self, query: str, language: SupportedLanguage) -> Dict[str, Any]:
         compact = self._compact_query(query)
         from backend.agents import general_knowledge_agent as agent_module
@@ -199,6 +207,54 @@ class GeneralKnowledgeResponseMixin:
                 "rag_used": False,
                 "provider_called": False,
                 "timezone": "Asia/Tokyo",
+            },
+        }
+
+    def _current_time_response(self, query: str, language: SupportedLanguage) -> Dict[str, Any]:
+        from backend.agents import general_knowledge_agent as agent_module
+
+        now = agent_module.get_now_jst()
+        weekdays_ja = ("月", "火", "水", "木", "金", "土", "日")
+        weekdays_zh = ("星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日")
+        weekdays_ko = ("월요일", "화요일", "수요일", "목요일", "금요일", "토요일", "일요일")
+
+        if language == "en":
+            answer = (
+                f"[helpful]The current Japan Standard Time is "
+                f"{now.strftime('%H:%M')} on {now.strftime('%A, %B %-d, %Y')}."
+            )
+        elif language == "zh":
+            answer = (
+                f"[helpful]现在的日本标准时间是{now.year}年{now.month}月{now.day}日"
+                f"（{weekdays_zh[now.weekday()]}）{now.hour}点{now.minute:02d}分。"
+            )
+        elif language == "ko":
+            answer = (
+                f"[helpful]현재 일본 표준시는 {now.year}년 {now.month}월 {now.day}일"
+                f"({weekdays_ko[now.weekday()]}) {now.hour}시 {now.minute:02d}분입니다."
+            )
+        else:
+            answer = (
+                f"[helpful]今の日本標準時は{now.year}年{now.month}月{now.day}日"
+                f"（{weekdays_ja[now.weekday()]}曜日）{now.hour}時{now.minute:02d}分です。"
+            )
+
+        return {
+            "answer": answer,
+            "emotion": "helpful",
+            "metadata": {
+                "agent": self.name,
+                "status": "success",
+                "category": "general_knowledge",
+                "request_type": "current-time",
+                "route": "general_knowledge",
+                "query_type": "current-time",
+                "sources": ["system_clock"],
+                "web_search_used": False,
+                "rag_used": False,
+                "provider_called": False,
+                "timezone": "Asia/Tokyo",
+                "current_time_jst": now.isoformat(),
             },
         }
 

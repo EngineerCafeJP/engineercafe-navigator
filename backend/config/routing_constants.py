@@ -258,6 +258,7 @@ REQUEST_TYPE_TO_AGENT_MAP: dict[str, AgentNodeName] = {
     "assistant_profile": "general_knowledge",
     "daily_conversation": "general_knowledge",
     "current_info": "general_knowledge",
+    "current-time": "general_knowledge",
 }
 
 AgentResolutionSource: TypeAlias = Literal["request_type", "category", "agent", "alias", "fallback"]

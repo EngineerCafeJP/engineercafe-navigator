@@ -10,10 +10,12 @@ import pytest
 
 from backend.utils.time_utils import (
     JST,
+    get_business_hours_for_date,
     get_current_time_period,
     get_minutes_until_closing,
     get_now_jst,
     get_today_business_hours,
+    is_engineer_cafe_closed_date,
     is_closing_soon,
 )
 
@@ -199,10 +201,34 @@ class TestGetTodayBusinessHours:
         assert open_time == time(9, 0)
         assert close_time == time(22, 0)
 
-    def test_sunday_closed(self) -> None:
-        """日曜日（weekday=6）は休館日（None）を検証する。"""
+    def test_sunday(self) -> None:
+        """日曜日（weekday=6）の営業時間を検証する。"""
         result = get_today_business_hours(6)
-        assert result is None
+        assert result is not None
+        open_time, close_time = result
+        assert open_time == time(9, 0)
+        assert close_time == time(22, 0)
+
+    def test_regular_closed_day_last_monday(self) -> None:
+        """毎月最終月曜日は休館日として扱う。"""
+        target = datetime(2026, 3, 30, 21, 30, tzinfo=JST).date()
+
+        assert is_engineer_cafe_closed_date(target) is True
+        assert get_business_hours_for_date(target) is None
+
+    def test_regular_open_day_sunday(self) -> None:
+        """最終月曜・年末年始以外の日曜は9:00-22:00で扱う。"""
+        target = datetime(2026, 3, 8, 21, 30, tzinfo=JST)
+
+        assert is_engineer_cafe_closed_date(target.date()) is False
+        assert get_business_hours_for_date(target) == (time(9, 0), time(22, 0))
+
+    def test_year_end_closed_day(self) -> None:
+        """年末年始は休館日として扱う。"""
+        target = datetime(2026, 12, 30, 12, 0, tzinfo=JST).date()
+
+        assert is_engineer_cafe_closed_date(target) is True
+        assert get_business_hours_for_date(target) is None
 
     def test_custom_config(self) -> None:
         """カスタム設定での営業時間取得を検証する。"""

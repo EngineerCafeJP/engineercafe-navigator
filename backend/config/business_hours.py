@@ -11,8 +11,8 @@
 BUSINESS_HOURS: dict[str, dict[str, str] | None] = {
     "weekday": {"open": "09:00", "close": "22:00"},
     "saturday": {"open": "09:00", "close": "22:00"},
-    "sunday": None,
-    "holiday": None,
+    "sunday": {"open": "09:00", "close": "22:00"},
+    "holiday": {"open": "09:00", "close": "22:00"},
 }
 
 # 閉館警告を表示する閉館前の分数

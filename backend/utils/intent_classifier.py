@@ -203,6 +203,15 @@ def is_current_info_request(lower_query: str) -> bool:
     return any(marker in lower_query for marker in current_markers)
 
 
+def is_current_time_request(lower_query: str) -> bool:
+    """Detect exact current-time questions that should use the system clock."""
+    classifier = QueryClassifier()
+    normalized = classifier._normalize_query(lower_query)
+    if QueryClassifier._is_date_only_query(normalized):
+        return False
+    return classifier._is_current_time_query(normalized)
+
+
 def classify_fast_intent(query: str) -> Optional[FastIntent]:
     """Return the same fast keyword route used by the orchestrator."""
     lower_query = query.lower()
@@ -283,6 +292,14 @@ def classify_fast_intent(query: str) -> Optional[FastIntent]:
                 "greeting",
                 f"Greeting keyword detected: {stripped[:30]}",
             )
+
+    if is_current_time_request(lower_query):
+        return FastIntent(
+            "general_knowledge",
+            "current-time",
+            "current-time",
+            "Current time request detected",
+        )
 
     cafe_entity = resolve_cafe_entity(query)
     if cafe_entity == "saino":
