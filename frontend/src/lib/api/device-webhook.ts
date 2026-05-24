@@ -4,13 +4,16 @@ export interface DeviceDetectionEvent {
   type: 'sensor_triggered' | 'nfc_detected' | 'button_pressed';
   device_id?: string;
   timestamp: string;
-  data?: Record<string, unknown>;
+  data?: {
+    mode?: 'member_card' | 'handwriting';
+    [key: string]: unknown;
+  };
 }
 
 export const DEFAULT_KIOSK_DEVICE_ID = 'm5stack-001';
 export const KIOSK_DEVICE_ID_STORAGE_KEY = 'engineer_cafe_kiosk_device_id';
 const DEFAULT_SENSOR_POLL_INTERVAL_MS = 1000;
-const DEFAULT_SENSOR_INITIAL_LOOKBACK_MS = 180_000;
+const DEFAULT_SENSOR_INITIAL_LOOKBACK_MS = 60_000;
 
 function readSensorInitialLookbackMs(): number {
   const raw = process.env.NEXT_PUBLIC_KIOSK_SENSOR_INITIAL_LOOKBACK_MS;

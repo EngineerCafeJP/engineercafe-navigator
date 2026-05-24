@@ -7,10 +7,10 @@ export type KioskPhase = 'notice' | 'idle' | 'voice' | 'ocr' | 'slides';
 export const KIOSK_IDLE_MS: number = (() => {
   const raw = process.env.NEXT_PUBLIC_KIOSK_IDLE_MS;
   if (raw === undefined || raw === '') {
-    return 90_000;
+    return 60_000;
   }
   const parsed = Number(raw);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 90_000;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 60_000;
 })();
 
 /**
@@ -24,6 +24,20 @@ export const KIOSK_WELCOME_COOLDOWN_MS: number = (() => {
   }
   const parsed = Number(raw);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 12_000;
+})();
+
+/**
+ * Device/sensor-triggered Welcome cooldown (ms). This is longer than the
+ * virtual button guard because physical sensors can fire repeatedly while a
+ * visitor remains near the kiosk.
+ */
+export const KIOSK_DEVICE_WELCOME_COOLDOWN_MS: number = (() => {
+  const raw = process.env.NEXT_PUBLIC_KIOSK_DEVICE_WELCOME_COOLDOWN_MS;
+  if (raw === undefined || raw === '') {
+    return 60_000;
+  }
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 60_000;
 })();
 
 export const KIOSK_TRIGGER_MODE_STORAGE_KEY = 'engineer_cafe_kiosk_trigger_mode';

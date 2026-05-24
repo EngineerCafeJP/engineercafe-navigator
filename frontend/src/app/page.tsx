@@ -1,7 +1,11 @@
 'use client';
 
 import { unlockAudioForUserGesture } from '@/lib/audio/audio-interaction-manager';
-import { startSensorPolling, stopSensorPolling } from '@/lib/api/device-webhook';
+import {
+  startSensorPolling,
+  stopSensorPolling,
+  type DeviceDetectionEvent,
+} from '@/lib/api/device-webhook';
 import { getStageBackgroundStyle } from '@/lib/get-stage-background-style';
 import { overlayLabels } from '@/lib/kiosk-labels';
 import { getMemberCardPhase2ReceptionMessage } from '@/lib/member-card-reception';
@@ -11,20 +15,23 @@ import {
 } from '@/lib/emotion-manager';
 import {
   KIOSK_IDLE_MS,
+  KIOSK_DEVICE_WELCOME_COOLDOWN_MS,
   KIOSK_WELCOME_COOLDOWN_MS,
   type KioskMicMode,
   type KioskPhase,
   type KioskTriggerMode,
   readKioskMicMode,
   readKioskTriggerMode,
-  writeKioskMicMode,
-  writeKioskTriggerMode,
 } from '@/lib/kiosk-constants';
-import { cn } from '@/lib/cn';
-import { Settings, X } from 'lucide-react';
+import { Settings } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import type { CharacterAnimationData } from './utils/character-animation-utils';
 import type { BackgroundOption } from './components/BackgroundSelector';
+import {
+  formatMemberNumberSuccess,
+  kioskVoiceModeBadgeLabel,
+  type WelcomeTriggerSource,
+} from './utils/kiosk-page-helpers';
 import { useKioskViewportLock } from './hooks/useKioskViewportLock';
 import CharacterAvatar from './components/CharacterAvatar';
 import {
@@ -33,57 +40,17 @@ import {
 } from './components/ConversationHistoryEffects';
 import { KioskBottomBar } from './components/KioskBottomBar';
 import { KioskOcrOverlay } from './components/KioskOcrOverlay';
+import { KioskSettingsOverlay } from './components/KioskSettingsOverlay';
+import { KioskSlideOverlay } from './components/KioskSlideOverlay';
 import { KioskWelcomeOverlay } from './components/KioskWelcomeOverlay';
 import { SlideLanguagePicker } from './components/SlideLanguagePicker';
 import InitialSettingsModal from './components/InitialSettingsModal';
-import ReceptionPdfGuide from './components/ReceptionPdfGuide';
 import ClockBadge from './components/ClockBadge';
-import SettingsPanel, {
-  type SettingsPanelPropsFromSource,
-} from './components/SettingsPanel';
-import VoiceInterface, {
-  type VoiceInterfaceMetadata,
-  type VoiceInterfaceRenderProps,
-} from './components/VoiceInterface';
+import type { SettingsPanelPropsFromSource } from './components/SettingsPanel';
+import VoiceInterface, { type VoiceInterfaceMetadata } from './components/VoiceInterface';
 import type { OcrResponse } from '@/lib/api/ocr-api';
 import { startReception } from '@/lib/reception-api';
 import { cancelSttWarmup, sendSttWarmup } from '@/lib/stt-warmup';
-
-function kioskVoiceModeBadgeLabel(
-  voice: VoiceInterfaceRenderProps,
-  labels: (typeof overlayLabels)['ja'] | (typeof overlayLabels)['en'],
-): string {
-  if (voice.sessionState === 'listening') {
-    return labels.voiceModeListening;
-  }
-  if (voice.loadingPhase === 'stt') {
-    return labels.voiceModeStt;
-  }
-  if (voice.loadingPhase === 'tts') {
-    return labels.voiceModeTts;
-  }
-  if (voice.sessionState === 'speaking') {
-    return labels.voiceModeSpeaking;
-  }
-  if (voice.loadingPhase === 'llm') {
-    return labels.voiceModeLlm;
-  }
-  if (voice.sessionState === 'processing') {
-    return labels.voiceModeLlm;
-  }
-  if (voice.isLoading && voice.loadingPhase === 'mic') {
-    return labels.voiceModeStt;
-  }
-  return labels.voiceModeIdle;
-}
-
-function formatMemberNumberSuccess(
-  labels: (typeof overlayLabels)['ja'] | (typeof overlayLabels)['en'],
-  memberNumber: number,
-): string {
-  return labels.ocrMemberReadSuccess.replace('{memberNumber}', String(memberNumber));
-}
-
 
 export default function Home() {
   useKioskViewportLock();
@@ -137,38 +104,64 @@ export default function Home() {
   const lastResponseRef = useRef<string>('');
   const returnToIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const kioskVisitCleanupRef = useRef<(() => void) | null>(null);
-  const kioskPlayWelcomeRef = useRef<(() => Promise<void>) | null>(null);
+  const kioskPlayWelcomeRef = useRef<((source?: WelcomeTriggerSource) => Promise<void>) | null>(
+    null,
+  );
+  const welcomeAutoListenStartRef = useRef<(() => Promise<boolean>) | null>(null);
+  const pendingSensorWelcomeAutoListenRef = useRef(false);
   const prevTriggerModeRef = useRef<KioskTriggerMode>(triggerMode);
-  const welcomeCooldownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const welcomeCooldownActiveRef = useRef(false);
   const [welcomeCooldown, setWelcomeCooldown] = useState(false);
+  const [welcomeCooldownUntilMs, setWelcomeCooldownUntilMs] = useState(0);
+  const [welcomeCooldownRemainingMs, setWelcomeCooldownRemainingMs] = useState(0);
+  const welcomeCooldownUntilRef = useRef(0);
 
   const showAvatarControls = process.env.NEXT_PUBLIC_SHOW_AVATAR_SETTINGS === 'true';
 
-  const armWelcomeCooldown = useCallback((): boolean => {
-    if (welcomeCooldownActiveRef.current) {
+  const showWelcomeCooldownNotice = useCallback((): boolean => {
+    const remainingMs = Math.max(0, welcomeCooldownUntilRef.current - Date.now());
+    if (remainingMs <= 0) {
       return false;
     }
-    welcomeCooldownActiveRef.current = true;
+
     setWelcomeCooldown(true);
-    if (welcomeCooldownTimerRef.current !== null) {
-      clearTimeout(welcomeCooldownTimerRef.current);
-    }
-    welcomeCooldownTimerRef.current = setTimeout(() => {
-      welcomeCooldownTimerRef.current = null;
-      welcomeCooldownActiveRef.current = false;
-      setWelcomeCooldown(false);
-    }, KIOSK_WELCOME_COOLDOWN_MS);
+    setWelcomeCooldownRemainingMs(remainingMs);
     return true;
   }, []);
 
+  const armWelcomeCooldown = useCallback((cooldownMs: number): boolean => {
+    if (showWelcomeCooldownNotice()) {
+      return false;
+    }
+
+    const untilMs = Date.now() + cooldownMs;
+    welcomeCooldownUntilRef.current = untilMs;
+    setWelcomeCooldownUntilMs(untilMs);
+    setWelcomeCooldown(true);
+    setWelcomeCooldownRemainingMs(cooldownMs);
+    return true;
+  }, [showWelcomeCooldownNotice]);
+
   useEffect(() => {
-    return () => {
-      if (welcomeCooldownTimerRef.current !== null) {
-        clearTimeout(welcomeCooldownTimerRef.current);
+    if (welcomeCooldownUntilMs <= 0) {
+      return;
+    }
+
+    const tick = () => {
+      const remainingMs = Math.max(0, welcomeCooldownUntilRef.current - Date.now());
+      setWelcomeCooldownRemainingMs(remainingMs);
+      if (remainingMs <= 0) {
+        welcomeCooldownUntilRef.current = 0;
+        setWelcomeCooldownUntilMs(0);
+        setWelcomeCooldown(false);
       }
     };
-  }, []);
+
+    tick();
+    const intervalId = window.setInterval(tick, 1000);
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [welcomeCooldownUntilMs]);
 
   useEffect(() => {
     kioskPhaseRef.current = kioskPhase;
@@ -194,6 +187,7 @@ export default function Home() {
 
   const returnToIdle = useCallback(() => {
     clearReturnToIdleTimer();
+    pendingSensorWelcomeAutoListenRef.current = false;
     kioskVisitCleanupRef.current?.();
     setKioskPhaseSynced('idle');
   }, [clearReturnToIdleTimer, setKioskPhaseSynced]);
@@ -224,21 +218,55 @@ export default function Home() {
     };
   }, [clearReturnToIdleTimer]);
 
+  const startOcrFromKioskAction = useCallback(
+    (mode: 'member_card' | 'handwriting') => {
+      pendingSensorWelcomeAutoListenRef.current = false;
+      unlockAudioForUserGesture();
+      clearReturnToIdleTimer();
+      setWelcomeMemberOcrOpen(false);
+      setOcrMode(mode);
+      setKioskPhaseSynced('ocr');
+    },
+    [clearReturnToIdleTimer, setKioskPhaseSynced],
+  );
+
   useEffect(() => {
-    const onDeviceDetection = () => {
-      if (kioskPhaseRef.current !== 'idle') {
+    const onDeviceDetection = (event: Event) => {
+      const detail = (event as CustomEvent<DeviceDetectionEvent>).detail;
+      if (!detail) {
         return;
       }
-      void kioskPlayWelcomeRef.current?.();
+
+      if (kioskPhaseRef.current !== 'idle') {
+        if (detail.type === 'sensor_triggered') {
+          showWelcomeCooldownNotice();
+        }
+        return;
+      }
+
+      if (detail.type === 'button_pressed') {
+        const mode = detail.data?.mode;
+        if (mode === 'member_card' || mode === 'handwriting') {
+          startOcrFromKioskAction(mode);
+        }
+        return;
+      }
+
+      if (detail.type === 'sensor_triggered') {
+        if (showWelcomeCooldownNotice()) {
+          return;
+        }
+        void kioskPlayWelcomeRef.current?.('device');
+      }
     };
     window.addEventListener('device-detection', onDeviceDetection);
     return () => {
       window.removeEventListener('device-detection', onDeviceDetection);
     };
-  }, []);
+  }, [showWelcomeCooldownNotice, startOcrFromKioskAction]);
 
   useEffect(() => {
-    if (triggerMode === 'device' && kioskPhase === 'idle') {
+    if (triggerMode === 'device' && kioskPhase !== 'notice' && kioskPhase !== 'slides') {
       startSensorPolling();
     } else {
       stopSensorPolling();
@@ -359,6 +387,17 @@ export default function Home() {
           startPresentation(currentLanguage);
         }}
         onAssistantPlaybackEnd={() => {
+          if (pendingSensorWelcomeAutoListenRef.current && kioskPhaseRef.current === 'voice') {
+            pendingSensorWelcomeAutoListenRef.current = false;
+            clearReturnToIdleTimer();
+            void (async () => {
+              const started = await welcomeAutoListenStartRef.current?.();
+              if (!started && kioskPhaseRef.current === 'voice') {
+                scheduleReturnToIdle();
+              }
+            })();
+            return;
+          }
           if (kioskPhaseRef.current === 'voice') {
             scheduleReturnToIdle();
           }
@@ -386,10 +425,20 @@ export default function Home() {
         }}
       >
         {(voice) => {
+          welcomeAutoListenStartRef.current = async () => {
+            clearReturnToIdleTimer();
+            setKioskVoiceLocked(true);
+            const started = await voice.startListening();
+            if (!started) {
+              setKioskVoiceLocked(false);
+            }
+            return started;
+          };
           kioskVisitCleanupRef.current = () => {
             cancelSttWarmup();
             voice.clearVisitState();
             setKioskVoiceLocked(false);
+            pendingSensorWelcomeAutoListenRef.current = false;
             setWelcomeMemberOcrOpen(false);
             setOcrStatus(null);
             resetConversationHistory();
@@ -397,10 +446,15 @@ export default function Home() {
           const labels = overlayLabels[voice.currentLanguage];
           const receptionTriggerType =
             triggerMode === 'device' ? 'sensor_trigger' : 'button_press';
-          kioskPlayWelcomeRef.current = async () => {
-            if (!armWelcomeCooldown()) {
+          kioskPlayWelcomeRef.current = async (source: WelcomeTriggerSource = 'screen') => {
+            const isDeviceTriggered = source === 'device';
+            const cooldownMs = isDeviceTriggered
+              ? KIOSK_DEVICE_WELCOME_COOLDOWN_MS
+              : KIOSK_WELCOME_COOLDOWN_MS;
+            if (!armWelcomeCooldown(cooldownMs)) {
               return;
             }
+            pendingSensorWelcomeAutoListenRef.current = isDeviceTriggered;
             unlockAudioForUserGesture();
             sendSttWarmup({ language: voice.currentLanguage, sessionId: voice.sessionId });
             clearReturnToIdleTimer();
@@ -624,84 +678,23 @@ export default function Home() {
                   onMemberOcrEnd={handleWelcomeMemberOcrEndSilent}
                 />
 
-                {showSettingsPanel && settingsPanelProps && !showSlideMode ? (
-                  <div
-                    className="absolute inset-0 z-40 pointer-events-none"
-                    aria-hidden={!showSettingsPanel}
-                  >
-                    <div
-                      className="pointer-events-auto absolute top-0 flex max-h-full justify-end"
-                      style={{
-                        top: screenPadding.paddingTop,
-                        right: screenPadding.paddingRight,
-                      }}
-                    >
-                      <SettingsPanel
-                        {...settingsPanelProps}
-                        kiosk_language={voice.currentLanguage}
-                        kiosk_trigger_mode={triggerMode}
-                        kiosk_mic_mode={micInputMode}
-                        on_kiosk_language_change={(language) => {
-                          setCurrentLanguage(language);
-                        }}
-                        on_kiosk_trigger_mode_change={(mode) => {
-                          setTriggerMode(mode);
-                          writeKioskTriggerMode(mode);
-                        }}
-                        on_kiosk_mic_mode_change={(mode) => {
-                          setMicInputMode(mode);
-                          writeKioskMicMode(mode);
-                        }}
-                        volume={Math.round(voice.volume * 100)}
-                        is_muted={voice.isMuted}
-                        on_volume_change={(value) => {
-                          voice.setVolume(value / 100);
-                        }}
-                        on_mute_toggle={() => {
-                          voice.setMuted(!voice.isMuted);
-                        }}
-                        show_close_button
-                        on_close={() => setShowSettingsPanel(false)}
-                        extra_tab={{
-                          label: voice.currentLanguage === 'ja' ? '会話履歴' : 'Conversation',
-                          content: (
-                            <div className="space-y-2 overflow-y-auto pr-1">
-                              {conversationHistory.length === 0 ? (
-                                <p className="text-sm text-gray-600">{labels.helperPrompt}</p>
-                              ) : (
-                                conversationHistory.map((item) => (
-                                  <div
-                                    key={item.id}
-                                    className={cn(
-                                      'rounded-2xl px-3 py-2 text-sm leading-6',
-                                      item.role === 'user'
-                                        ? 'bg-gray-100 text-gray-800'
-                                        : 'bg-blue-50 text-gray-800',
-                                    )}
-                                  >
-                                    <p className="text-xs font-medium text-gray-500">
-                                      {item.role === 'user'
-                                        ? voice.currentLanguage === 'ja'
-                                          ? 'あなた'
-                                          : 'You'
-                                        : 'Navigator'}
-                                    </p>
-                                    <p className="mt-1 whitespace-pre-wrap">{item.text}</p>
-                                  </div>
-                                ))
-                              )}
-                            </div>
-                          ),
-                        }}
-                        slide_mode_open={showSlideMode}
-                        on_open_slides={openSlideLanguagePicker}
-                        on_close_slides={handleCloseSlides}
-                        open_slides_label={labels.openSlides}
-                        close_slides_label={labels.closeSlides}
-                      />
-                    </div>
-                  </div>
-                ) : null}
+                <KioskSettingsOverlay
+                  open={showSettingsPanel}
+                  settingsPanelProps={settingsPanelProps}
+                  showSlideMode={showSlideMode}
+                  screenPadding={screenPadding}
+                  labels={labels}
+                  conversationHistory={conversationHistory}
+                  voice={voice}
+                  triggerMode={triggerMode}
+                  micInputMode={micInputMode}
+                  setCurrentLanguage={setCurrentLanguage}
+                  setTriggerMode={setTriggerMode}
+                  setMicInputMode={setMicInputMode}
+                  onClose={() => setShowSettingsPanel(false)}
+                  onOpenSlides={openSlideLanguagePicker}
+                  onCloseSlides={handleCloseSlides}
+                />
 
                 {(kioskPhase === 'idle' || kioskPhase === 'voice' || kioskPhase === 'notice') && (
                   <KioskBottomBar
@@ -712,10 +705,11 @@ export default function Home() {
                     micInputMode={micInputMode}
                     showKioskScreenChrome={showKioskScreenChrome}
                     welcomeCooldown={welcomeCooldown}
+                    welcomeCooldownRemainingMs={welcomeCooldownRemainingMs}
                     labels={labels}
                     ocrStatus={ocrStatus}
                     voice={voice}
-                    onPlayWelcome={() => kioskPlayWelcomeRef.current?.()}
+                    onPlayWelcome={() => kioskPlayWelcomeRef.current?.('screen')}
                     onStartPresentation={openSlideLanguagePicker}
                     clearReturnToIdleTimer={clearReturnToIdleTimer}
                     setWelcomeMemberOcrOpen={setWelcomeMemberOcrOpen}
@@ -724,7 +718,7 @@ export default function Home() {
                 )}
 
                 <KioskOcrOverlay
-                  visible={kioskPhase === 'ocr' && showKioskScreenChrome}
+                  visible={kioskPhase === 'ocr'}
                   ocrMode={ocrMode}
                   labels={labels}
                   sessionId={voice.sessionId}
@@ -750,41 +744,24 @@ export default function Home() {
                   />
                 ) : null}
 
-                {showSlideMode ? (
-                  <div
-                    className="pointer-events-none absolute inset-0 z-50 flex h-full w-full flex-col"
-                    style={screenPadding}
-                  >
-                    <div
-                      className="pointer-events-auto relative flex h-full min-h-0 w-full flex-col overflow-hidden rounded-2xl bg-white/95 shadow-2xl transition-all duration-300 ease-out sm:rounded-[28px]"
-                      onPointerDownCapture={bumpUserActivity}
-                    >
-                      <button
-                        type="button"
-                        onClick={handleCloseSlides}
-                        aria-label={labels.closeSlides}
-                        className="absolute right-2 top-2 z-30 inline-flex size-9 items-center justify-center rounded-full bg-black/70 text-white shadow-lg transition-transform duration-200 ease-out hover:scale-105 sm:right-3 sm:top-3 sm:size-10"
-                      >
-                        <X className="size-4 sm:size-5" />
-                      </button>
-                      <ReceptionPdfGuide
-                        language={presentationLanguage}
-                        rotateLandscapeHint={labels.slideRotateHint}
-                        autoStartKey={presentationAutoStartKey}
-                        className="min-h-0 flex-1"
-                        sessionId={voice.sessionId}
-                        onVisemeControl={setVisemeFunction}
-                        onExpressionControl={setExpressionFunction}
-                        volume={Math.round(voice.volume * 100)}
-                        onPresentationComplete={() => {
-                          if (kioskPhaseRef.current === 'slides') {
-                            scheduleReturnToIdle();
-                          }
-                        }}
-                      />
-                    </div>
-                  </div>
-                ) : null}
+                <KioskSlideOverlay
+                  open={showSlideMode}
+                  screenPadding={screenPadding}
+                  labels={labels}
+                  language={presentationLanguage}
+                  autoStartKey={presentationAutoStartKey}
+                  sessionId={voice.sessionId}
+                  volume={Math.round(voice.volume * 100)}
+                  onClose={handleCloseSlides}
+                  onPointerActivity={bumpUserActivity}
+                  onVisemeControl={setVisemeFunction}
+                  onExpressionControl={setExpressionFunction}
+                  onPresentationComplete={() => {
+                    if (kioskPhaseRef.current === 'slides') {
+                      scheduleReturnToIdle();
+                    }
+                  }}
+                />
               </main>
             </>
           );

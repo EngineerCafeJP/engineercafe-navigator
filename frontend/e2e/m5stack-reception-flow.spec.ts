@@ -148,6 +148,9 @@ test.describe('M5Stack reception sensor webhook (API + kiosk polling)', () => {
     await expect(page.getByTestId('response-text')).toContainText('エンジニアカフェへようこそ', {
       timeout: 15_000,
     });
+    await expect(page.getByTestId('kiosk-voice-button')).toContainText(/録音中|Recording/, {
+      timeout: 8_000,
+    });
   });
 
   test('schema validation: missing sensor_type and too-long sensor_type return 422', async ({

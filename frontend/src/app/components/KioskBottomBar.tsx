@@ -17,6 +17,7 @@ export function KioskBottomBar({
   micInputMode,
   showKioskScreenChrome,
   welcomeCooldown,
+  welcomeCooldownRemainingMs,
   labels,
   ocrStatus,
   voice,
@@ -33,6 +34,7 @@ export function KioskBottomBar({
   micInputMode: KioskMicMode;
   showKioskScreenChrome: boolean;
   welcomeCooldown: boolean;
+  welcomeCooldownRemainingMs: number;
   labels: (typeof overlayLabels)['ja'] | (typeof overlayLabels)['en'];
   ocrStatus: {
     kind: 'member_card' | 'handwriting' | 'error';
@@ -129,6 +131,12 @@ export function KioskBottomBar({
 
   const statusEnabled =
     kioskPhase === 'voice' || kioskPhase === 'idle' || kioskPhase === 'notice';
+  const cooldownRemainingSeconds = Math.max(0, Math.ceil(welcomeCooldownRemainingMs / 1000));
+  const cooldownMinutes = Math.floor(cooldownRemainingSeconds / 60);
+  const cooldownSeconds = cooldownRemainingSeconds % 60;
+  const welcomeCooldownMessage = labels.welcomeCooldownRemaining
+    .replace('{minutes}', String(cooldownMinutes))
+    .replace('{seconds}', String(cooldownSeconds).padStart(2, '0'));
 
   return (
     <div className="pointer-events-auto absolute inset-x-0 bottom-0 z-[25] flex justify-center pb-[max(0.75rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] pt-2">
@@ -145,6 +153,14 @@ export function KioskBottomBar({
           loadingPhase={voice.loadingPhase}
           sessionState={voice.sessionState}
         />
+        {welcomeCooldown && welcomeCooldownRemainingMs > 0 ? (
+          <div
+            className="flex w-full items-center justify-center rounded-xl border border-amber-200/50 bg-amber-500/25 px-4 py-2 text-center text-sm font-semibold text-amber-50 shadow-sm backdrop-blur-sm"
+            data-testid="kiosk-welcome-cooldown"
+          >
+            {welcomeCooldownMessage}
+          </div>
+        ) : null}
         <div className="flex w-full flex-row flex-wrap items-stretch justify-center gap-2 sm:gap-3">
           {showKioskScreenChrome && (
             <button

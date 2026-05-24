@@ -53,8 +53,9 @@ async function dismissInitialModal(page: import('@playwright/test').Page) {
     }
     await expect(modal).toBeHidden({ timeout: 10_000 });
   }
-  // Wait for the idle phase — the Welcome button should be visible.
-  await expect(page.getByRole('button', { name: 'Welcome' })).toBeVisible({ timeout: 5_000 });
+  // Wait for the idle phase. In device trigger mode the Welcome button is hidden,
+  // but the voice control remains mounted.
+  await expect(page.getByTestId('kiosk-voice-button')).toBeVisible({ timeout: 5_000 });
 }
 
 /**
@@ -182,6 +183,32 @@ async function rejectMicrophonePermission(page: import('@playwright/test').Page)
   });
 }
 
+async function enableDeviceTriggerMode(
+  page: import('@playwright/test').Page,
+  deviceId = 'e2e-device-mode',
+) {
+  await page.addInitScript(({ id }) => {
+    window.localStorage.setItem('engineer_cafe_kiosk_trigger_mode', 'device');
+    window.localStorage.setItem('engineer_cafe_kiosk_device_id', id);
+  }, { id: deviceId });
+  await page.route('**/api/reception/sensor-status**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ triggered: false }),
+    });
+  });
+}
+
+async function dispatchDeviceDetection(
+  page: import('@playwright/test').Page,
+  detail: Record<string, unknown>,
+) {
+  await page.evaluate((eventDetail) => {
+    window.dispatchEvent(new CustomEvent('device-detection', { detail: eventDetail }));
+  }, detail);
+}
+
 // ---------------------------------------------------------------------------
 // A. Welcome button triggers reception greeting
 // ---------------------------------------------------------------------------
@@ -245,6 +272,7 @@ test.describe('Reception flow — Welcome button', () => {
 
 test.describe('Reception flow — device sensor trigger', () => {
   test.beforeEach(async ({ page }) => {
+    await enableDeviceTriggerMode(page, 'e2e-test-sensor');
     await installDeterministicVoiceRecorder(page);
     await keepOcrCameraPending(page);
     await mockReceptionStart(page);
@@ -263,24 +291,22 @@ test.describe('Reception flow — device sensor trigger', () => {
     page,
   }) => {
     // Dispatch the same CustomEvent that M5Stack / NFC readers use.
-    await page.evaluate(() => {
-      window.dispatchEvent(
-        new CustomEvent('device-detection', {
-          detail: {
-            type: 'sensor_triggered',
-            device_id: 'e2e-test-sensor',
-            timestamp: new Date().toISOString(),
-          },
-        }),
-      );
+    await dispatchDeviceDetection(page, {
+      type: 'sensor_triggered',
+      device_id: 'e2e-test-sensor',
+      timestamp: new Date().toISOString(),
     });
 
     // The welcome flow should activate without opening camera/OCR.
+    await expect(page.getByTestId('kiosk-ocr-overlay')).toBeHidden({ timeout: 5_000 });
     await expect(page.getByTestId('kiosk-welcome-ocr-overlay')).toBeHidden({ timeout: 5_000 });
     await expect(page.getByTestId('response-text')).toContainText(
       'エンジニアカフェへようこそ',
       { timeout: 5_000 },
     );
+    await expect(page.getByTestId('kiosk-voice-button')).toContainText(/録音中|Recording/, {
+      timeout: 8_000,
+    });
   });
 
   test('device-detection is ignored when kiosk is not in idle phase', async ({ page }) => {
@@ -289,16 +315,10 @@ test.describe('Reception flow — device sensor trigger', () => {
     await voiceButton.click();
 
     // Now dispatch device-detection — it should be ignored.
-    await page.evaluate(() => {
-      window.dispatchEvent(
-        new CustomEvent('device-detection', {
-          detail: {
-            type: 'sensor_triggered',
-            device_id: 'e2e-test-sensor',
-            timestamp: new Date().toISOString(),
-          },
-        }),
-      );
+    await dispatchDeviceDetection(page, {
+      type: 'sensor_triggered',
+      device_id: 'e2e-test-sensor',
+      timestamp: new Date().toISOString(),
     });
 
     // The kiosk should still be in voice mode, not welcome.
@@ -312,7 +332,153 @@ test.describe('Reception flow — device sensor trigger', () => {
 });
 
 // ---------------------------------------------------------------------------
-// C. Member card OCR during welcome
+// C. Device mode physical button routes
+// ---------------------------------------------------------------------------
+
+test.describe('Reception flow — device mode button routes', () => {
+  test.beforeEach(async ({ page }) => {
+    await enableDeviceTriggerMode(page);
+    await mockReceptionStart(page);
+    await page.route('**/api/voice', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true }),
+      });
+    });
+  });
+
+  test('button_pressed with member_card mode opens the kiosk OCR overlay', async ({ page }) => {
+    await keepOcrCameraPending(page);
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await dismissInitialModal(page);
+
+    await dispatchDeviceDetection(page, {
+      type: 'button_pressed',
+      device_id: 'e2e-device-mode',
+      timestamp: new Date().toISOString(),
+      data: { mode: 'member_card' },
+    });
+
+    await expect(page.getByTestId('kiosk-ocr-overlay')).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByTestId('kiosk-ocr-overlay-title')).toContainText(
+      /会員証|Member card/,
+    );
+    await expect(page.getByTestId('kiosk-welcome-ocr-overlay')).toBeHidden({ timeout: 5_000 });
+  });
+
+  test('button_pressed with handwriting mode sends OCR text to the voice conversation', async ({
+    page,
+  }) => {
+    const qaRequests: Array<Record<string, unknown>> = [];
+    const recognizedText = '筆談で営業時間を知りたいです';
+
+    await provideReadableOcrCamera(page);
+    await page.route('**/api/ocr', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          mode: 'handwriting',
+          member_number: null,
+          recognized_text: recognizedText,
+          confidence: 0.93,
+          language: 'ja',
+          expression: null,
+          processing_time_ms: 121,
+          visitor_identity: null,
+          error: null,
+        }),
+      });
+    });
+    await page.route(`**${QA_CHAT_URL}`, async (route) => {
+      qaRequests.push(route.request().postDataJSON() as Record<string, unknown>);
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          answer: '営業時間はイベントにより変わるため、受付で確認できます。',
+          emotion: 'neutral',
+          metadata: {},
+        }),
+      });
+    });
+
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await dismissInitialModal(page);
+
+    await dispatchDeviceDetection(page, {
+      type: 'button_pressed',
+      device_id: 'e2e-device-mode',
+      timestamp: new Date().toISOString(),
+      data: { mode: 'handwriting' },
+    });
+
+    await expect.poll(() => qaRequests.length, { timeout: 10_000 }).toBe(1);
+    expect(qaRequests[0]).toMatchObject({
+      question: recognizedText,
+      text: recognizedText,
+    });
+    await expect(page.getByTestId('response-text')).toContainText(
+      '営業時間はイベントにより変わるため',
+      { timeout: 8_000 },
+    );
+  });
+
+  test('sensor_triggered ignores OCR mode data and keeps the Welcome route', async ({ page }) => {
+    await installDeterministicVoiceRecorder(page);
+    await keepOcrCameraPending(page);
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await dismissInitialModal(page);
+
+    await dispatchDeviceDetection(page, {
+      type: 'sensor_triggered',
+      device_id: 'e2e-device-mode',
+      timestamp: new Date().toISOString(),
+      data: { mode: 'member_card' },
+    });
+
+    await expect(page.getByTestId('kiosk-ocr-overlay')).toBeHidden({ timeout: 5_000 });
+    await expect(page.getByTestId('kiosk-welcome-ocr-overlay')).toBeHidden({ timeout: 5_000 });
+    await expect(page.getByTestId('response-text')).toContainText(
+      'エンジニアカフェへようこそ',
+      { timeout: 5_000 },
+    );
+  });
+
+  test('sensor re-detection during welcome cooldown shows remaining time', async ({ page }) => {
+    await installDeterministicVoiceRecorder(page);
+    await keepOcrCameraPending(page);
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await dismissInitialModal(page);
+
+    await dispatchDeviceDetection(page, {
+      type: 'sensor_triggered',
+      device_id: 'e2e-device-mode',
+      timestamp: new Date().toISOString(),
+    });
+    await expect(page.getByTestId('response-text')).toContainText(
+      'エンジニアカフェへようこそ',
+      { timeout: 5_000 },
+    );
+
+    await dispatchDeviceDetection(page, {
+      type: 'sensor_triggered',
+      device_id: 'e2e-device-mode',
+      timestamp: new Date().toISOString(),
+    });
+
+    await expect(page.getByTestId('kiosk-welcome-cooldown')).toContainText(
+      /あと\d+分\d+秒|Cooling down.*\d+m \d+s/i,
+      { timeout: 3_000 },
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// D. Member card OCR during welcome
 // ---------------------------------------------------------------------------
 
 test.describe('Reception flow — member card OCR', () => {
