@@ -27,12 +27,12 @@ def _db_timeout_seconds() -> float:
 
 
 def _sensor_event_ttl_seconds() -> float:
-    raw = os.getenv("SENSOR_TRIGGER_EVENT_TTL_SECONDS", "30")
+    raw = os.getenv("SENSOR_TRIGGER_EVENT_TTL_SECONDS", "60")
     try:
         value = float(raw)
     except ValueError:
-        return 30.0
-    return value if value > 0 else 30.0
+        return 60.0
+    return value if value > 0 else 60.0
 
 
 def _is_uuid(value: str) -> bool:

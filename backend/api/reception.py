@@ -298,7 +298,7 @@ class SensorStatusResponse(BaseModel):
 _sensor_trigger_cooldowns: dict[str, float] = {}
 _latest_sensor_events: dict[str, dict[str, Any]] = {}
 SENSOR_TRIGGER_RATE_LIMIT_SECONDS = 5
-DEFAULT_SENSOR_TRIGGER_EVENT_TTL_SECONDS = 30
+DEFAULT_SENSOR_TRIGGER_EVENT_TTL_SECONDS = 60
 
 
 def _sensor_trigger_event_ttl_seconds() -> float:

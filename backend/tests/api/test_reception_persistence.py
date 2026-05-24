@@ -324,8 +324,10 @@ async def test_repository_get_latest_sensor_event_ignores_stale_event() -> None:
 
 
 @pytest.mark.asyncio
-async def test_repository_get_latest_sensor_event_uses_configured_ttl(monkeypatch) -> None:
-    monkeypatch.setenv("SENSOR_TRIGGER_EVENT_TTL_SECONDS", "180")
+async def test_repository_get_latest_sensor_event_uses_default_60_second_ttl(
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("SENSOR_TRIGGER_EVENT_TTL_SECONDS", raising=False)
     fake_client = _FakeSupabaseClient()
     repo = ReceptionRepository(fake_client)  # type: ignore[arg-type]
 
@@ -335,7 +337,53 @@ async def test_repository_get_latest_sensor_event_uses_configured_ttl(monkeypatc
             "device_id": "m5stack-001",
             "sensor_type": "pir_sr04",
             "distance_mm": 65,
-            "triggered_at": (datetime.now(timezone.utc) - timedelta(seconds=120)).isoformat(),
+            "triggered_at": (datetime.now(timezone.utc) - timedelta(seconds=59)).isoformat(),
+        }
+    }
+
+    event = await repo.get_latest_sensor_event("m5stack-001")
+
+    assert event is not None
+    assert event["device_id"] == "m5stack-001"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("env_value", ["invalid", "0", "-1"])
+async def test_repository_get_latest_sensor_event_invalid_ttl_env_falls_back_to_60_seconds(
+    monkeypatch, env_value
+) -> None:
+    monkeypatch.setenv("SENSOR_TRIGGER_EVENT_TTL_SECONDS", env_value)
+    fake_client = _FakeSupabaseClient()
+    repo = ReceptionRepository(fake_client)  # type: ignore[arg-type]
+
+    fake_client.storage["sensor_events"] = {
+        "1": {
+            "id": 1,
+            "device_id": "m5stack-001",
+            "sensor_type": "pir_sr04",
+            "distance_mm": 65,
+            "triggered_at": (datetime.now(timezone.utc) - timedelta(seconds=61)).isoformat(),
+        }
+    }
+
+    event = await repo.get_latest_sensor_event("m5stack-001")
+
+    assert event is None
+
+
+@pytest.mark.asyncio
+async def test_repository_get_latest_sensor_event_uses_configured_ttl(monkeypatch) -> None:
+    monkeypatch.setenv("SENSOR_TRIGGER_EVENT_TTL_SECONDS", "90")
+    fake_client = _FakeSupabaseClient()
+    repo = ReceptionRepository(fake_client)  # type: ignore[arg-type]
+
+    fake_client.storage["sensor_events"] = {
+        "1": {
+            "id": 1,
+            "device_id": "m5stack-001",
+            "sensor_type": "pir_sr04",
+            "distance_mm": 65,
+            "triggered_at": (datetime.now(timezone.utc) - timedelta(seconds=75)).isoformat(),
         }
     }
 

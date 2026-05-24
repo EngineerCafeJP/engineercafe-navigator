@@ -16,6 +16,7 @@
 | [021 — Frontend/backend separation before React/Vite migration](021-frontend-backend-separation-before-react-vite.md) | Next API proxy 廃止を React/Vite 移行より先に行う判断           |
 | [022 — Reception slide static assets](022-reception-slide-static-assets.md)                                         | 受付PDF/音声を frontend static asset として扱う判断             |
 | [026 — Wave 2 kiosk UX reliability baseline](026-wave2-kiosk-ux-reliability-baseline.md)                            | 日付 deterministic / 音声復帰 / event spreadsheet / Vercel Preview env 統一 |
+| [030 — Kiosk device trigger and cooldown contract](030-kiosk-device-trigger-and-cooldown-contract.md)                | sensor Welcome / button OCR / 60秒 cooldown 契約              |
 
 
 ## ワークフロー・音声・観測

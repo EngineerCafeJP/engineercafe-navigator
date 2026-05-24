@@ -279,7 +279,7 @@ class TestSensorTriggerEndpoint:
         assert seen_response.status_code == 200
         assert seen_response.json() == {"triggered": False}
 
-    def test_sensor_status_default_ttl_expires_after_30_seconds(self, monkeypatch):
+    def test_sensor_status_default_ttl_expires_after_60_seconds(self, monkeypatch):
         monkeypatch.delenv("SENSOR_TRIGGER_EVENT_TTL_SECONDS", raising=False)
         monkeypatch.setattr(reception_module.time, "time", lambda: 1_000.0)
         payload = {
@@ -291,7 +291,36 @@ class TestSensorTriggerEndpoint:
         trigger_response = client.post("/api/reception/sensor-trigger", json=payload)
         assert trigger_response.status_code == 200
 
-        monkeypatch.setattr(reception_module.time, "time", lambda: 1_031.0)
+        monkeypatch.setattr(reception_module.time, "time", lambda: 1_060.0)
+        fresh_response = client.get(
+            "/api/reception/sensor-status",
+            params={"device_id": payload["device_id"]},
+        )
+        assert fresh_response.status_code == 200
+        assert fresh_response.json()["triggered"] is True
+
+        monkeypatch.setattr(reception_module.time, "time", lambda: 1_061.0)
+        expired_response = client.get(
+            "/api/reception/sensor-status",
+            params={"device_id": payload["device_id"]},
+        )
+        assert expired_response.status_code == 200
+        assert expired_response.json() == {"triggered": False}
+
+    @pytest.mark.parametrize("env_value", ["invalid", "0", "-1"])
+    def test_sensor_status_invalid_ttl_env_falls_back_to_60_seconds(self, monkeypatch, env_value):
+        monkeypatch.setenv("SENSOR_TRIGGER_EVENT_TTL_SECONDS", env_value)
+        monkeypatch.setattr(reception_module.time, "time", lambda: 1_000.0)
+        payload = {
+            "sensor_type": "tof",
+            "distance_mm": 500,
+            "device_id": f"m5stack-fallback-ttl-test-{env_value}",
+        }
+
+        trigger_response = client.post("/api/reception/sensor-trigger", json=payload)
+        assert trigger_response.status_code == 200
+
+        monkeypatch.setattr(reception_module.time, "time", lambda: 1_061.0)
         expired_response = client.get(
             "/api/reception/sensor-status",
             params={"device_id": payload["device_id"]},
@@ -300,7 +329,7 @@ class TestSensorTriggerEndpoint:
         assert expired_response.json() == {"triggered": False}
 
     def test_sensor_status_uses_configured_ttl(self, monkeypatch):
-        monkeypatch.setenv("SENSOR_TRIGGER_EVENT_TTL_SECONDS", "180")
+        monkeypatch.setenv("SENSOR_TRIGGER_EVENT_TTL_SECONDS", "90")
         monkeypatch.setattr(reception_module.time, "time", lambda: 2_000.0)
         payload = {
             "sensor_type": "tof",
@@ -311,7 +340,7 @@ class TestSensorTriggerEndpoint:
         trigger_response = client.post("/api/reception/sensor-trigger", json=payload)
         assert trigger_response.status_code == 200
 
-        monkeypatch.setattr(reception_module.time, "time", lambda: 2_120.0)
+        monkeypatch.setattr(reception_module.time, "time", lambda: 2_060.0)
         fresh_response = client.get(
             "/api/reception/sensor-status",
             params={"device_id": payload["device_id"]},
@@ -319,7 +348,7 @@ class TestSensorTriggerEndpoint:
         assert fresh_response.status_code == 200
         assert fresh_response.json()["triggered"] is True
 
-        monkeypatch.setattr(reception_module.time, "time", lambda: 2_181.0)
+        monkeypatch.setattr(reception_module.time, "time", lambda: 2_091.0)
         expired_response = client.get(
             "/api/reception/sensor-status",
             params={"device_id": payload["device_id"]},

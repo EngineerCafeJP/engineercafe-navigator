@@ -115,7 +115,7 @@ test('startSensorPolling applies an initial lookback window', async () => {
 
   const url = new URL(capturedUrl, 'https://frontend.test');
   assert.equal(url.searchParams.get('device_id'), 'm5stack-lookback-test');
-  assert.equal(url.searchParams.get('since'), '1712221360');
+  assert.equal(url.searchParams.get('since'), '1712221480');
 });
 
 test('stopSensorPolling suppresses a stale in-flight sensor response', async () => {
