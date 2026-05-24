@@ -51,6 +51,67 @@ const DEFAULT_CONFIDENCE_THRESHOLD_MEMBER = 0.8;
 const DEFAULT_CONFIDENCE_THRESHOLD_HANDWRITING = 0.7;
 const SCAN_LOOP_INTERVAL_MS = 200;
 const SELECTED_CAMERA_DEVICE_ID_STORAGE_KEY = 'kiosk-camera-device-id';
+const IDEAL_CAMERA_SIZE = { width: { ideal: 1280 }, height: { ideal: 720 } } as const;
+
+function isRecoverableCameraConstraintError(error: unknown): boolean {
+  if (!(error instanceof DOMException)) return false;
+  return error.name === 'OverconstrainedError' || error.name === 'NotFoundError';
+}
+
+function getCameraConstraints(selectedDeviceId: string | null): MediaStreamConstraints[] {
+  const fallbackConstraints: MediaStreamConstraints[] = [
+    {
+      video: { facingMode: { ideal: 'environment' }, ...IDEAL_CAMERA_SIZE },
+      audio: false,
+    },
+    {
+      video: IDEAL_CAMERA_SIZE,
+      audio: false,
+    },
+    {
+      video: true,
+      audio: false,
+    },
+  ];
+
+  if (!selectedDeviceId || selectedDeviceId === 'default') {
+    return fallbackConstraints;
+  }
+
+  return [
+    {
+      video: {
+        deviceId: { exact: selectedDeviceId },
+        ...IDEAL_CAMERA_SIZE,
+      },
+      audio: false,
+    },
+    {
+      video: {
+        deviceId: { ideal: selectedDeviceId },
+        ...IDEAL_CAMERA_SIZE,
+      },
+      audio: false,
+    },
+    ...fallbackConstraints,
+  ];
+}
+
+function isTerminalOcrSuccess(
+  result: OcrResponse,
+  mode: OcrMode,
+  confidenceThreshold: number,
+): boolean {
+  if (!result.success || result.confidence < confidenceThreshold) {
+    return false;
+  }
+
+  if (mode === 'member_card') {
+    return typeof result.member_number === 'number';
+  }
+
+  return Boolean(result.recognized_text?.trim());
+}
 
 export function useOcrCamera(options: UseOcrCameraOptions): UseOcrCameraReturn {
   const {
@@ -79,7 +140,9 @@ export function useOcrCamera(options: UseOcrCameraOptions): UseOcrCameraReturn {
   const scanLoopTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastSubmitTimeRef = useRef<number>(0);
   const isSubmittingRef = useRef(false);
+  const submittingRunIdRef = useRef<number | null>(null);
   const attemptsRef = useRef(0);
+  const scanRunIdRef = useRef(0);
 
   // Stable refs for callbacks to avoid stale closures (HIGH-1 fix)
   const onSuccessRef = useRef(options.onSuccess);
@@ -94,11 +157,29 @@ export function useOcrCamera(options: UseOcrCameraOptions): UseOcrCameraReturn {
   // Reuse a single offscreen canvas to avoid GC pressure (HIGH-4 fix)
   const qualityCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
+  const isCurrentScanRun = useCallback((runId: number) => {
+    return scanRunIdRef.current === runId && streamRef.current !== null;
+  }, []);
+
+  const resumeScanning = useCallback((runId: number) => {
+    if (isCurrentScanRun(runId)) {
+      setState('scanning');
+    }
+  }, [isCurrentScanRun]);
+
   // Cleanup
   const stopCamera = useCallback(() => {
+    scanRunIdRef.current += 1;
+    isSubmittingRef.current = false;
+    submittingRunIdRef.current = null;
+
     if (scanLoopTimerRef.current) {
       clearInterval(scanLoopTimerRef.current);
       scanLoopTimerRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.pause();
+      videoRef.current.srcObject = null;
     }
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((t) => t.stop());
@@ -107,7 +188,8 @@ export function useOcrCamera(options: UseOcrCameraOptions): UseOcrCameraReturn {
   }, []);
 
   // Submit a quality-passing frame
-  const submitFrame = useCallback(async () => {
+  const submitFrame = useCallback(async (runId: number) => {
+    if (!isCurrentScanRun(runId)) return;
     if (isSubmittingRef.current) return;
     if (attemptsRef.current >= maxAttempts) return;
 
@@ -126,17 +208,27 @@ export function useOcrCamera(options: UseOcrCameraOptions): UseOcrCameraReturn {
       brightness: quality.brightness,
     });
 
-    if (!quality.passed) return;
+    if (!quality.passed) {
+      resumeScanning(runId);
+      return;
+    }
 
     // Submit cooldown: only send API request every 2 seconds
     const now = Date.now();
-    if (now - lastSubmitTimeRef.current < submitIntervalMs) return;
+    if (now - lastSubmitTimeRef.current < submitIntervalMs) {
+      resumeScanning(runId);
+      return;
+    }
 
     // Capture frame
     const frameData = captureFrame(video);
-    if (!frameData) return;
+    if (!frameData) {
+      resumeScanning(runId);
+      return;
+    }
 
     isSubmittingRef.current = true;
+    submittingRunIdRef.current = runId;
     lastSubmitTimeRef.current = now;
     setState('submitting');
     const currentAttempt = attemptsRef.current + 1;
@@ -149,9 +241,11 @@ export function useOcrCamera(options: UseOcrCameraOptions): UseOcrCameraReturn {
         mode,
         session_id: sessionId,
       });
+      if (!isCurrentScanRun(runId)) return;
+
       setLastResult(result);
 
-      const isSuccess = result.success && result.confidence >= confidenceThreshold;
+      const isSuccess = isTerminalOcrSuccess(result, mode, confidenceThreshold);
 
       if (isSuccess) {
         setState('success');
@@ -162,62 +256,111 @@ export function useOcrCamera(options: UseOcrCameraOptions): UseOcrCameraReturn {
         stopCamera();
         onFallbackRef.current?.();
       } else {
-        setState('scanning');
+        resumeScanning(runId);
       }
     } catch {
+      if (!isCurrentScanRun(runId)) return;
+
       if (currentAttempt >= maxAttempts) {
         setState('fallback');
         stopCamera();
         onFallbackRef.current?.();
       } else {
-        setState('scanning');
+        resumeScanning(runId);
       }
     } finally {
-      isSubmittingRef.current = false;
+      if (submittingRunIdRef.current === runId) {
+        isSubmittingRef.current = false;
+        submittingRunIdRef.current = null;
+      }
     }
-  }, [mode, sessionId, maxAttempts, submitIntervalMs, confidenceThreshold, stopCamera]);
+  }, [
+    mode,
+    sessionId,
+    maxAttempts,
+    submitIntervalMs,
+    confidenceThreshold,
+    stopCamera,
+    isCurrentScanRun,
+    resumeScanning,
+  ]);
 
   // Start camera
   const startCamera = useCallback(async () => {
+    stopCamera();
+    const runId = scanRunIdRef.current;
     setState('starting');
     attemptsRef.current = 0;
+    isSubmittingRef.current = false;
+    submittingRunIdRef.current = null;
+    lastSubmitTimeRef.current = 0;
     setAttempts(0);
     setLastResult(null);
+    setQualityInfo(null);
 
     try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new DOMException('getUserMedia is not available', 'NotSupportedError');
+      }
       const selectedDeviceId =
         typeof window !== 'undefined'
           ? window.localStorage.getItem(SELECTED_CAMERA_DEVICE_ID_STORAGE_KEY)
           : null;
-      const video =
-        selectedDeviceId && selectedDeviceId !== 'default'
-          ? {
-              deviceId: { exact: selectedDeviceId },
-              width: { ideal: 1280 },
-              height: { ideal: 720 },
-            }
-          : { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } };
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video,
-        audio: false,
-      });
+      let stream: MediaStream | null = null;
+      let lastError: unknown = null;
+      const constraintsList = getCameraConstraints(selectedDeviceId);
+
+      for (let i = 0; i < constraintsList.length; i += 1) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia(constraintsList[i]);
+          break;
+        } catch (error) {
+          lastError = error;
+          const canRetry = isRecoverableCameraConstraintError(error);
+          if (i === 0 && selectedDeviceId && canRetry) {
+            window.localStorage.removeItem(SELECTED_CAMERA_DEVICE_ID_STORAGE_KEY);
+          }
+          if (!canRetry) {
+            break;
+          }
+        }
+      }
+
+      if (!stream) {
+        throw lastError ?? new DOMException('Camera stream unavailable', 'NotFoundError');
+      }
+      if (scanRunIdRef.current !== runId) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
       streamRef.current = stream;
 
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        await videoRef.current.play();
+        void videoRef.current.play().catch(() => undefined);
+      }
+
+      if (scanRunIdRef.current !== runId) {
+        stream.getTracks().forEach((t) => t.stop());
+        if (streamRef.current === stream) {
+          streamRef.current = null;
+        }
+        return;
       }
 
       setState('scanning');
 
       // Start scan loop (quality check + submit)
       scanLoopTimerRef.current = setInterval(() => {
-        void submitFrame();
+        void submitFrame(runId);
       }, SCAN_LOOP_INTERVAL_MS);
     } catch {
+      if (scanRunIdRef.current !== runId) return;
+
+      stopCamera();
       setState('error');
     }
-  }, [submitFrame]);
+  }, [stopCamera, submitFrame]);
 
   // Skip button
   const skip = useCallback(() => {

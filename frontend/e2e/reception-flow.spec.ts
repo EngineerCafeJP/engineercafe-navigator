@@ -89,6 +89,98 @@ async function keepOcrCameraPending(page: import('@playwright/test').Page) {
   });
 }
 
+async function recordPendingVideoMediaRequests(page: import('@playwright/test').Page) {
+  await page.addInitScript(() => {
+    const mediaWindow = window as Window & {
+      __PLAYWRIGHT_GET_USER_MEDIA_CALLS__?: Array<Record<string, unknown> | null>;
+    };
+    mediaWindow.__PLAYWRIGHT_GET_USER_MEDIA_CALLS__ = [];
+
+    const existingMediaDevices = navigator.mediaDevices ?? {};
+    const pendingVideoStream = new Promise<MediaStream>(() => {
+      // Keep the OCR camera startup request pending after it has been observed.
+    });
+
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: {
+        ...existingMediaDevices,
+        getUserMedia: async (constraints?: MediaStreamConstraints) => {
+          const snapshot = constraints
+            ? (JSON.parse(JSON.stringify(constraints)) as Record<string, unknown>)
+            : null;
+          mediaWindow.__PLAYWRIGHT_GET_USER_MEDIA_CALLS__?.push(snapshot);
+
+          if (constraints?.video) {
+            return pendingVideoStream;
+          }
+
+          return new MediaStream();
+        },
+      },
+    });
+  });
+}
+
+async function readRecordedGetUserMediaCalls(page: import('@playwright/test').Page) {
+  return page.evaluate(() => {
+    const mediaWindow = window as Window & {
+      __PLAYWRIGHT_GET_USER_MEDIA_CALLS__?: Array<Record<string, unknown> | null>;
+    };
+    return mediaWindow.__PLAYWRIGHT_GET_USER_MEDIA_CALLS__ ?? [];
+  });
+}
+
+async function recordStaleSavedCameraThenFallback(
+  page: import('@playwright/test').Page,
+  staleDeviceId = 'stale-camera-id',
+) {
+  await page.addInitScript(({ deviceId }) => {
+    window.localStorage.setItem('kiosk-camera-device-id', deviceId);
+    const mediaWindow = window as Window & {
+      __PLAYWRIGHT_GET_USER_MEDIA_CALLS__?: Array<Record<string, unknown> | null>;
+    };
+    mediaWindow.__PLAYWRIGHT_GET_USER_MEDIA_CALLS__ = [];
+
+    const existingMediaDevices = navigator.mediaDevices ?? {};
+    const pendingVideoStream = new Promise<MediaStream>(() => {
+      // Keep the fallback camera startup request pending after it has been observed.
+    });
+
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: {
+        ...existingMediaDevices,
+        getUserMedia: async (constraints?: MediaStreamConstraints) => {
+          const snapshot = constraints
+            ? (JSON.parse(JSON.stringify(constraints)) as Record<string, unknown>)
+            : null;
+          mediaWindow.__PLAYWRIGHT_GET_USER_MEDIA_CALLS__?.push(snapshot);
+
+          const videoConstraints =
+            constraints && typeof constraints.video === 'object' ? constraints.video : null;
+          const deviceIdConstraint =
+            videoConstraints && 'deviceId' in videoConstraints
+              ? (videoConstraints.deviceId as { exact?: string } | string)
+              : null;
+          if (
+            typeof deviceIdConstraint === 'object' &&
+            deviceIdConstraint?.exact === deviceId
+          ) {
+            throw new DOMException('Requested camera is no longer available', 'OverconstrainedError');
+          }
+
+          if (constraints?.video) {
+            return pendingVideoStream;
+          }
+
+          return new MediaStream();
+        },
+      },
+    });
+  }, { deviceId: staleDeviceId });
+}
+
 async function provideReadableOcrCamera(page: import('@playwright/test').Page) {
   await page.addInitScript(() => {
     const existingMediaDevices = navigator.mediaDevices ?? {};
@@ -349,7 +441,7 @@ test.describe('Reception flow — device mode button routes', () => {
   });
 
   test('button_pressed with member_card mode opens the kiosk OCR overlay', async ({ page }) => {
-    await keepOcrCameraPending(page);
+    await recordPendingVideoMediaRequests(page);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await dismissInitialModal(page);
 
@@ -365,6 +457,54 @@ test.describe('Reception flow — device mode button routes', () => {
       /会員証|Member card/,
     );
     await expect(page.getByTestId('kiosk-welcome-ocr-overlay')).toBeHidden({ timeout: 5_000 });
+
+    await expect
+      .poll(
+        async () => {
+          const calls = await readRecordedGetUserMediaCalls(page);
+          return calls.filter((call) => Boolean(call?.video)).length;
+        },
+        { timeout: 5_000 },
+      )
+      .toBeGreaterThanOrEqual(1);
+
+    const videoCalls = (await readRecordedGetUserMediaCalls(page)).filter((call) =>
+      Boolean(call?.video),
+    );
+    expect(videoCalls[0]).toMatchObject({
+      audio: false,
+    });
+  });
+
+  test('button_pressed member_card falls back when the saved camera id is stale', async ({
+    page,
+  }) => {
+    await recordStaleSavedCameraThenFallback(page);
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await dismissInitialModal(page);
+
+    await dispatchDeviceDetection(page, {
+      type: 'button_pressed',
+      device_id: 'e2e-device-mode',
+      timestamp: new Date().toISOString(),
+      data: { mode: 'member_card' },
+    });
+
+    await expect
+      .poll(
+        async () => {
+          const calls = await readRecordedGetUserMediaCalls(page);
+          return calls.filter((call) => Boolean(call?.video)).length;
+        },
+        { timeout: 5_000 },
+      )
+      .toBeGreaterThanOrEqual(2);
+
+    const savedCameraId = await page.evaluate(() =>
+      window.localStorage.getItem('kiosk-camera-device-id'),
+    );
+    expect(savedCameraId).toBeNull();
+    await expect(page.getByTestId('kiosk-ocr-overlay')).toBeVisible({ timeout: 5_000 });
   });
 
   test('button_pressed with handwriting mode sends OCR text to the voice conversation', async ({
@@ -625,6 +765,68 @@ test.describe('Reception flow — member card OCR success', () => {
       { timeout: 8_000 },
     );
     await expect(page.getByTestId('response-text')).toContainText('フェーズ2以降');
+  });
+
+  test('member card OCR retries automatic capture after a high-confidence no-number response', async ({
+    page,
+  }) => {
+    const ocrRequests: Array<Record<string, unknown>> = [];
+
+    await page.route('**/api/ocr', async (route) => {
+      ocrRequests.push(route.request().postDataJSON() as Record<string, unknown>);
+
+      const isFirstAttempt = ocrRequests.length === 1;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(
+          isFirstAttempt
+            ? {
+                success: true,
+                mode: 'member_card',
+                member_number: null,
+                recognized_text: 'Engineer Cafe member card text without an ID',
+                confidence: 0.93,
+                language: null,
+                expression: null,
+                processing_time_ms: 98,
+                visitor_identity: null,
+                error: null,
+              }
+            : {
+                success: true,
+                mode: 'member_card',
+                member_number: 24680,
+                recognized_text: null,
+                confidence: 0.96,
+                language: null,
+                expression: null,
+                processing_time_ms: 119,
+                visitor_identity: null,
+                error: null,
+              },
+        ),
+      });
+    });
+
+    await mockReceptionStart(page, '会員証を確認しました。ご用件をお聞かせください。');
+
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await dismissInitialModal(page);
+
+    await page.getByRole('button', { name: /会員証|Member card/ }).click();
+
+    await expect.poll(() => ocrRequests.length, { timeout: 12_000 }).toBe(2);
+    expect(ocrRequests[0]).toMatchObject({ mode: 'member_card' });
+    expect(ocrRequests[1]).toMatchObject({ mode: 'member_card' });
+    expect(typeof ocrRequests[0].image_data).toBe('string');
+    expect(typeof ocrRequests[1].image_data).toBe('string');
+
+    await expect(page.getByTestId('kiosk-ocr-overlay')).toBeHidden({ timeout: 5_000 });
+    await expect(page.getByTestId('response-text')).toContainText(
+      '会員番号 24680 を読み取りました',
+      { timeout: 8_000 },
+    );
   });
 });
 
