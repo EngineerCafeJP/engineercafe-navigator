@@ -8,6 +8,7 @@ type DeviceWindow = EventTarget & {
 
 const originalWindow = global.window;
 const originalFetch = global.fetch;
+const originalDateNow = Date.now;
 
 function createWindow(): DeviceWindow {
   return Object.assign(new EventTarget(), {
@@ -17,6 +18,10 @@ function createWindow(): DeviceWindow {
 
 afterEach(async () => {
   global.fetch = originalFetch;
+  Object.defineProperty(Date, 'now', {
+    configurable: true,
+    value: originalDateNow,
+  });
   (global as typeof globalThis & { window?: Window & typeof globalThis }).window = originalWindow;
 
   const deviceWebhook = await import('../lib/api/device-webhook');
@@ -82,6 +87,35 @@ test('startSensorPolling dispatches device-detection when backend reports a new 
     sensor_type: 'pir_sr04',
     distance_mm: 65,
   });
+});
+
+test('startSensorPolling applies an initial lookback window', async () => {
+  const windowMock = createWindow();
+  (global as unknown as { window: Window & typeof globalThis }).window =
+    windowMock as unknown as Window & typeof globalThis;
+
+  let capturedUrl = '';
+  Object.defineProperty(Date, 'now', {
+    configurable: true,
+    value: () => 1_712_221_540_000,
+  });
+  global.fetch = (async (input) => {
+    capturedUrl = String(input);
+    return new Response(JSON.stringify({ triggered: false }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }) as typeof fetch;
+
+  const { startSensorPolling } = await import('../lib/api/device-webhook');
+  startSensorPolling('m5stack-lookback-test', 60_000);
+
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  const url = new URL(capturedUrl, 'https://frontend.test');
+  assert.equal(url.searchParams.get('device_id'), 'm5stack-lookback-test');
+  assert.equal(url.searchParams.get('since'), '1712221360');
 });
 
 test('stopSensorPolling suppresses a stale in-flight sensor response', async () => {

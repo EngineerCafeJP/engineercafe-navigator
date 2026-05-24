@@ -26,6 +26,15 @@ def _db_timeout_seconds() -> float:
     return value if value > 0 else 3.0
 
 
+def _sensor_event_ttl_seconds() -> float:
+    raw = os.getenv("SENSOR_TRIGGER_EVENT_TTL_SECONDS", "30")
+    try:
+        value = float(raw)
+    except ValueError:
+        return 30.0
+    return value if value > 0 else 30.0
+
+
 def _is_uuid(value: str) -> bool:
     try:
         uuid.UUID(value)
@@ -228,7 +237,7 @@ class ReceptionRepository:
 
         If *since_epoch* is provided (UNIX seconds), only events after that
         timestamp are considered.  Returns ``None`` when no matching row
-        exists or the event is older than 30 seconds.
+        exists or the event is older than the configured TTL.
         """
         client = await self._get_client()
         query = (
@@ -252,7 +261,9 @@ class ReceptionRepository:
         if isinstance(triggered_at, str):
             triggered_at = datetime.fromisoformat(triggered_at.replace("Z", "+00:00"))
 
-        if triggered_at < datetime.now(timezone.utc) - timedelta(seconds=30):
+        if triggered_at < datetime.now(timezone.utc) - timedelta(
+            seconds=_sensor_event_ttl_seconds()
+        ):
             return None
 
         row["triggered_at"] = triggered_at
