@@ -93,6 +93,9 @@ export function OcrCameraView({
     }
     autoStartedRef.current = true;
     void startCamera();
+    return () => {
+      autoStartedRef.current = false;
+    };
   }, [autoStart, startCamera]);
 
   const cameraErrorNotifiedRef = useRef(false);
