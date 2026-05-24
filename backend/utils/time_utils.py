@@ -5,7 +5,8 @@
 営業時間取得などの機能を提供する。
 """
 
-from datetime import datetime, time
+import calendar
+from datetime import date, datetime, time
 from zoneinfo import ZoneInfo
 
 from backend.config.business_hours import BUSINESS_HOURS, CLOSING_WARNING_MINUTES, TIMEZONE
@@ -125,6 +126,29 @@ def get_today_business_hours(
     close_time = time(int(close_parts[0]), int(close_parts[1]))
 
     return (open_time, close_time)
+
+
+def is_engineer_cafe_closed_date(target_date: date) -> bool:
+    """エンジニアカフェの定期休館日に該当するかを返す。"""
+    if (target_date.month, target_date.day) >= (12, 29) or (target_date.month, target_date.day) <= (
+        1,
+        3,
+    ):
+        return True
+
+    if target_date.weekday() != 0:
+        return False
+
+    last_day = calendar.monthrange(target_date.year, target_date.month)[1]
+    return target_date.day + 7 > last_day
+
+
+def get_business_hours_for_date(target: date | datetime) -> tuple[time, time] | None:
+    """日付を考慮したエンジニアカフェの営業時間を返す。"""
+    target_date = target.date() if isinstance(target, datetime) else target
+    if is_engineer_cafe_closed_date(target_date):
+        return None
+    return get_today_business_hours(target_date.weekday())
 
 
 def get_now_jst() -> datetime:

@@ -81,10 +81,17 @@ class TestQueryClassifier:
     @pytest.mark.asyncio
     async def test_current_time_query_english(self):
         """現在時刻クエリの分類（英語）"""
-        result = await self.classifier.classify_with_details("whattimeisitnow")
+        result = await self.classifier.classify_with_details("What time is it now?")
 
         assert result.category == "current-time"
         assert result.confidence == 1.0
+
+    @pytest.mark.asyncio
+    async def test_current_time_query_does_not_catch_business_hours(self):
+        """営業時間質問を現在時刻として誤分類しない。"""
+        result = await self.classifier.classify_with_details("What time do you close?")
+
+        assert result.category != "current-time"
 
     @pytest.mark.asyncio
     async def test_calendar_query(self):

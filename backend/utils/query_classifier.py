@@ -193,6 +193,28 @@ class QueryClassifier:
         if self._is_date_only_query(normalized_question):
             return True
 
+        compact_question = re.sub(r"[\s　]+", "", normalized_question.lower()).strip("!?？。、.,")
+        time_scope_exclusions = [
+            "営業時間",
+            "最終受付",
+            "受付時間",
+            "何時まで",
+            "何時から",
+            "開店",
+            "閉店",
+            "開館",
+            "閉館",
+            "openinghours",
+            "businesshours",
+            "lastreception",
+            "whendoyouopen",
+            "whendoyouclose",
+            "whattimedoyouopen",
+            "whattimedoyouclose",
+        ]
+        if any(exc in compact_question for exc in time_scope_exclusions):
+            return False
+
         time_keywords = [
             "現在時刻",
             "現在の時刻",
@@ -200,7 +222,10 @@ class QueryClassifier:
             "今何時",
             "currenttime",
             "whattime",
+            "what time is it",
             "timenow",
+            "time now",
+            "current time",
             "今時刻",
             "時刻を教えて",
             "whattimeisitnow",
@@ -213,7 +238,10 @@ class QueryClassifier:
                 if "今" in normalized_question or "現在" in normalized_question:
                     return True
 
-        return any(keyword in normalized_question for keyword in time_keywords)
+        return any(
+            keyword in normalized_question.lower() or keyword.replace(" ", "") in compact_question
+            for keyword in time_keywords
+        )
 
     @staticmethod
     def _is_date_only_query(normalized_question: str) -> bool:

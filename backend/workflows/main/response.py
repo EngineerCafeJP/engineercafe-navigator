@@ -313,9 +313,9 @@ class ResponseWorkflowMixin:
             from backend.config.routing_constants import CLOSING_WARNING_TEMPLATES
             from backend.utils.time_utils import (
                 get_current_time_period,
+                get_business_hours_for_date,
                 get_minutes_until_closing,
                 get_now_jst,
-                get_today_business_hours,
                 is_closing_soon,
             )
 
@@ -323,7 +323,7 @@ class ResponseWorkflowMixin:
             time_period = get_current_time_period(now.hour)
             metadata["time_period"] = time_period
 
-            business_hours = get_today_business_hours(now.weekday())
+            business_hours = get_business_hours_for_date(now)
             closing_warning: dict[str, object] = {"is_closing_soon": False}
 
             if business_hours is not None:

@@ -588,6 +588,22 @@ class TestOrchestratorFastRouting:
     @pytest.mark.parametrize(
         "query",
         [
+            "今何時ですか?",
+            "今の時間教えてください",
+            "What time is it now?",
+        ],
+    )
+    def test_current_time_routes_to_current_time_fast_path(self, orchestrator, query):
+        result = orchestrator._try_fast_routing(query)
+
+        assert result is not None
+        assert result["agent"] == "general_knowledge"
+        assert result["category"] == "current-time"
+        assert result["request_type"] == "current-time"
+
+    @pytest.mark.parametrize(
+        "query",
+        [
             "今天是几月几号？",
             "本周是哪几天？",
             "오늘 날짜 알려줘",
