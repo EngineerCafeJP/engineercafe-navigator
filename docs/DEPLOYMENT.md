@@ -207,6 +207,68 @@ EVENT_SHEET_GAS_URL=EVENT_SHEET_GAS_URL:latest
 EVENT_SHEET_GAS_TOKEN=EVENT_SHEET_GAS_TOKEN:latest
 ```
 
+### Scaling and Cost Posture
+
+Cloud Run scaling is the dominant cost lever. Two postures are supported; switch
+between them depending on whether the system is in live production use or in a
+cost-minimal development/test phase.
+
+| Posture | When | backend | piper-plus | voicevox-proto |
+| --- | --- | --- | --- | --- |
+| **Cost-minimal (test)** | No live kiosk traffic; dev/test only | `min=0 / max=2` | `min=0 / max=2` | `min=0 / max=2` |
+| **Production (warm)** | Live event / kiosk in use | `min=5 / max=15` | `min=2 / max=10` | `min=0 / max=12` |
+
+Idle baseline (min instances running 24/7; estimate from config x public pricing,
+actual billing unverified): production posture ~$1,350/mo (backend ~$1,140 +
+piper ~$207); cost-minimal posture ~$0 idle (pay only per request).
+
+**Source of truth**: backend scaling values live in `.github/workflows/ci.yml`
+(the `engineer-cafe-backend` deploy step). Any manual `gcloud run services update`
+to the backend is **overwritten on the next `develop` backend deploy** — to make a
+backend scaling change durable, edit ci.yml. `piper-plus` and `voicevox-proto` are
+not deployed by any workflow, so manual updates to them persist until a manual
+redeploy.
+
+**Cold start**: with `min=0`, the first request after idle pays a cold start
+(~40s) because the backend preloads the Qwen STT model
+(`STT_PRELOAD_QWEN_PRIMARY=true`) during startup; subsequent requests are 2-5s.
+`--cpu-boost` is kept on to speed startup. This is expected in cost-minimal
+posture — do not "fix" it by raising `minScale` unless returning to production.
+
+**Constraints**: keep backend memory at `8Gi` (4Gi OOMs at ~4270 MiB during model
+load). Do not pin traffic to a specific revision; deploys route `--to-latest`.
+
+#### Switch to cost-minimal test posture
+
+Immediate (live, until next CI deploy):
+
+```bash
+gcloud run services update engineer-cafe-backend --region=asia-northeast1 --min-instances=0 --max-instances=2
+gcloud run services update piper-plus            --region=asia-northeast1 --min-instances=0 --max-instances=2
+gcloud run services update voicevox-proto        --region=asia-northeast2 --min-instances=0 --max-instances=2
+```
+
+Durable (backend): set `--min-instances 0 --max-instances 2` in the
+`engineer-cafe-backend` deploy step of `.github/workflows/ci.yml`.
+
+#### Revert to production warm posture
+
+```bash
+gcloud run services update engineer-cafe-backend --region=asia-northeast1 --min-instances=5 --max-instances=15
+gcloud run services update piper-plus            --region=asia-northeast1 --min-instances=2 --max-instances=10
+gcloud run services update voicevox-proto        --region=asia-northeast2 --max-instances=12
+```
+
+Then restore `--min-instances 5 --max-instances 15` in the backend deploy step of
+`.github/workflows/ci.yml` so the next deploy keeps the warm pool, **and** restore
+the matching `minScale`/`maxScale` in `scripts/validate-p0-cloudrun-vercel-timeouts.mjs`
+(the P0 guard tracks the intended posture; it fails CI if ci.yml and the guard
+disagree). (Optional: drive these from GitHub repo variables to switch postures
+without a code change.)
+
+> Current posture (2026-06-01): **cost-minimal test** (Phase 1 complete, no live
+> kiosk traffic). `ci.yml` is set to `min=0 / max=2`.
+
 ### GCP Secret Manager
 
 Create a secret container once, then add versions:
