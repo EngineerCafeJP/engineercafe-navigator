@@ -17,6 +17,7 @@
 | [022 — Reception slide static assets](022-reception-slide-static-assets.md)                                         | 受付PDF/音声を frontend static asset として扱う判断             |
 | [026 — Wave 2 kiosk UX reliability baseline](026-wave2-kiosk-ux-reliability-baseline.md)                            | 日付 deterministic / 音声復帰 / event spreadsheet / Vercel Preview env 統一 |
 | [030 — Kiosk device trigger and cooldown contract](030-kiosk-device-trigger-and-cooldown-contract.md)                | sensor Welcome / button OCR / 60秒 cooldown 契約              |
+| [031 — VNav (Virtual Navigator 2026) Phase 2 program & scope](031-vnav-phase2-program-and-scope.md)                 | 次世代受付バーチャルナビゲーター。オンプレ移行・受付/IoT 統合・FE 分離の親 ADR（「Phase 2」命名衝突の整理） |
 
 
 ## ワークフロー・音声・観測
@@ -55,5 +56,5 @@
 
 ## メモ
 
-- ADR 番号は 005 以降を運用しており、**015 は欠番**です（採番のみ存在し、文書化に至らなかったため）。新しい ADR を起票する際は 027 から付番してください（023–026 は本リスト追加済）。
+- ADR 番号は 005 以降を運用しており、**015 は欠番**です（採番のみ存在し、文書化に至らなかったため）。新しい ADR を起票する際は **032 から付番**してください（027–031 は付番済、031 は本リスト追加済）。VNav 個別 ADR（会員 DB/Auth, オンプレ移行, NFC/混雑）は 032〜 で起票します。
 - 001–004 についても、本リポジトリでは初期から ADR 005 以降のみを保守しています。

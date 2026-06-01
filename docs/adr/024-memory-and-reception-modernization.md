@@ -4,6 +4,8 @@
 
 Accepted (2026-05-17) — 実装は次セッション以降。本 ADR は設計合意の固定版。
 
+> **2026-06-01 追記 (VNav)**: 本 ADR が「OCR / NFC / 会員番号機能の将来パスは別 ADR で議論」と先送りした件は [ADR-031 (VNav Phase 2)](./031-vnav-phase2-program-and-scope.md) で回答した。VNav はこれらを**本実装する**方針のため、Phase A4 のさらなる削除（`identify_by_nfc` stub 等）は VNav スコープ確定まで**保留**し、削除済みの会員特定機能は VNav で会員 DB を伴う形で**再導入**する。
+
 ## Context
 
 ADR-023 (Semantic Router + Critic node) はルーティング層の肥大化を解くが、2026-05-17 に行った GCP Cloud Logging 17 日分（2026-05-01〜2026-05-17, n≈2,000 chat_response events）と静的コード解析の結果、ルーティング層と**並列で解くべき構造的負債が 3 系統**存在することが判明した。

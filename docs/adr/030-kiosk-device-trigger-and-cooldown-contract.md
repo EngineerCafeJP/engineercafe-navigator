@@ -4,6 +4,8 @@
 
 Proposed (2026-05-24) — Issue #913 の kiosk device trigger / cooldown 契約を明文化する。
 
+> **2026-06-01 追記 (VNav)**: 本契約は `sensor_triggered` / `button_pressed` の 2 種のみを定義する。NFC 発火（`nfc` event 種別）は [ADR-031 (VNav Phase 2)](./031-vnav-phase2-program-and-scope.md) スコープ④で本契約を拡張して追加する。
+
 ## Context
 
 Kiosk 端末では、人感センサーによる自動 Welcome と、物理ボタンによる OCR 起動が同じ frontend event 経路に流れる。両者の意味が曖昧なままだと、cooldown 中のイベントを後から実行する、OCR ボタンで Welcome が始まる、または自動録音が意図せず OCR 側で動くといった UX 事故が起きる。
