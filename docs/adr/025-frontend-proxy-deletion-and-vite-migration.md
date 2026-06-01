@@ -4,6 +4,8 @@
 
 Accepted (2026-05-17) — 実装は次セッション以降。ADR-021 を Phase に分解した operational ADR。
 
+> **2026-06-01 追記 (VNav)**: [ADR-031 (VNav Phase 2)](./031-vnav-phase2-program-and-scope.md) より、Phase B3 の Vite go/no-go 判断には**将来の Unity 等への UI 差し替え**を選択肢として含める。
+
 ## Context
 
 [ADR-021](021-frontend-backend-separation-before-react-vite.md) で「Vite 化より先に FE/BE 分離を行う」と Accepted 済み。本 ADR はその方針を **Phase 別実装計画に分解** し、ADR-023 (Routing + Critic) + ADR-024 (Memory + Reception) との依存タイミングを定義する。
