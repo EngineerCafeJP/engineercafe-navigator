@@ -61,11 +61,15 @@ for (let index = 0; index < args.length; index += 1) {
   }
 }
 
+// Scaling posture tracks the current intended Cloud Run cost posture.
+// 2026-06-01: cost-minimal test posture (Phase 1 complete) = min 0 / max 2.
+// To revert to the production warm pool, set minScale/maxScale back to 5 / 15
+// here AND in .github/workflows/ci.yml. See docs/DEPLOYMENT.md "Scaling and Cost Posture".
 const expected = {
   service: process.env.CLOUD_RUN_SERVICE || 'engineer-cafe-backend',
   region: process.env.CLOUD_RUN_REGION || 'asia-northeast1',
-  minScale: 5,
-  maxScale: 15,
+  minScale: 0,
+  maxScale: 2,
   containerConcurrency: 1,
   timeoutSeconds: 300,
   startupCpuBoost: true,
@@ -77,8 +81,8 @@ const expected = {
 const expectedPiperPlus = {
   service: process.env.PIPER_PLUS_SERVICE || 'piper-plus',
   region: process.env.PIPER_PLUS_REGION || 'asia-northeast1',
-  minScale: 2,
-  maxScale: 10,
+  minScale: 0,
+  maxScale: 2,
   containerConcurrency: 4,
   timeoutSeconds: 300,
   startupCpuBoost: true,
@@ -109,8 +113,8 @@ if (!proxySource.includes('BACKEND_PROXY_TIMEOUT_MS = 110_000')) {
 
 const workflowSource = readFileSync(workflowPath, 'utf8');
 for (const requiredDeployFlag of [
-  '--min-instances 5',
-  '--max-instances 15',
+  '--min-instances 0',
+  '--max-instances 2',
   '--cpu-boost',
   '--no-cpu-throttling',
 ]) {

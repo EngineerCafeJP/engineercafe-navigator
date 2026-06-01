@@ -260,8 +260,11 @@ gcloud run services update voicevox-proto        --region=asia-northeast2 --max-
 ```
 
 Then restore `--min-instances 5 --max-instances 15` in the backend deploy step of
-`.github/workflows/ci.yml` so the next deploy keeps the warm pool. (Optional: drive
-these from GitHub repo variables to switch postures without a code change.)
+`.github/workflows/ci.yml` so the next deploy keeps the warm pool, **and** restore
+the matching `minScale`/`maxScale` in `scripts/validate-p0-cloudrun-vercel-timeouts.mjs`
+(the P0 guard tracks the intended posture; it fails CI if ci.yml and the guard
+disagree). (Optional: drive these from GitHub repo variables to switch postures
+without a code change.)
 
 > Current posture (2026-06-01): **cost-minimal test** (Phase 1 complete, no live
 > kiosk traffic). `ci.yml` is set to `min=0 / max=2`.
