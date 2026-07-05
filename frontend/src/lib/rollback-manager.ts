@@ -5,9 +5,10 @@ import { supabaseAdmin } from './supabase';
 /**
  * Rollback manager for safe production deployments
  *
- * TODO(frontend-supabase-cleanup): Alerts still invoke this from a frontend
- * route handler. Move the workflow behind the backend before removing direct
- * Supabase access from frontend runtime code.
+ * Frontend migration note: /api/alerts/webhook still invokes snapshot and
+ * emergency-shutdown actions from a Next route. backend/api/alerts.py only logs
+ * alert rows today, so keep this server-only Supabase path until backend owns
+ * the automated rollback workflow.
  */
 export class RollbackManager {
   private static instance: RollbackManager;

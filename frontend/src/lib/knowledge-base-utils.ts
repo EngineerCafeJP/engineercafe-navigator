@@ -3,9 +3,10 @@ import { supabaseAdmin } from './supabase';
 import { SupportedLanguage } from '@/lib/types';
 
 /**
- * TODO(frontend-supabase-cleanup): This server-only helper still uses direct
- * Supabase access because active admin knowledge routes and cron jobs depend on
- * it. Remove it after those paths proxy through the backend.
+ * Frontend migration note: admin knowledge CRUD/upload now proxy to backend
+ * /api/knowledge, but /api/health/knowledge and legacy seed/import scripts
+ * still call this helper. Keep it server-only until those remaining paths move
+ * to backend or are deleted.
  */
 export interface KnowledgeBaseEntry {
   content: string;
