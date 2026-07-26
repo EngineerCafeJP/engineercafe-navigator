@@ -238,6 +238,36 @@ posture — do not "fix" it by raising `minScale` unless returning to production
 **Constraints**: keep backend memory at `8Gi` (4Gi OOMs at ~4270 MiB during model
 load). Do not pin traffic to a specific revision; deploys route `--to-latest`.
 
+### STT hedge posture
+
+`QWEN_STT_HEDGE_DELAY_SECONDS=0` — the Vosk hedge is **disabled on purpose** (#929).
+
+With the previous value (`1.5`), a Vosk transcription started on every single turn
+and competed with Qwen for the same container CPU. Across the turns measured on
+2026-07-25, Vosk was `cancelled` **4 times out of 4** — it never once produced the
+winning transcript, so it was pure overhead.
+
+Disabling the hedge does **not** remove the Vosk safety net. The "Qwen failed or
+was rejected → fall back to Vosk" path (`backend/agents/stt/qwen_primary.py:481`)
+is independent of the hedge setting, and was observed working in production after
+the change. What is removed is only the *speculative concurrent* run: with the
+hedge off, the Vosk task blocks on `vosk_fallback_allowed.wait()` and consumes no
+CPU (`backend/agents/stt/qwen_primary.py:228-244`).
+
+Measured effect (Cloud Run, same container spec):
+
+| | hedge `1.5` | hedge `0` |
+| --- | --- | --- |
+| STT total | 8.3–12.5 s | 7.8 s |
+| Voice turn total | 16.6–22.6 s | 6.3–9.6 s (warm) |
+
+Trade-off: if Qwen *hangs* rather than fails, recovery is now slower — the request
+waits out `QWEN_STT_TIMEOUT=15` before Vosk runs sequentially. Every measured turn
+had Qwen succeed, so this is accepted.
+
+That `QWEN_STT_HEDGE_DELAY_SECONDS=0` restores hard-timeout-only behaviour is
+covered by `backend/tests/agents/test_stt_agent.py:1464`.
+
 #### Switch to cost-minimal test posture
 
 Immediate (live, until next CI deploy):
