@@ -130,6 +130,15 @@ class ReceptionRepository:
         and completed sessions are returned so that the orchestrator can
         recognise that a session has already finished reception.
 
+        Ordering uses ``updated_at``, not ``created_at`` (#925). ``created_at``
+        is supplied by the caller for API-created rows and was historically
+        written from a naive ``datetime.now()`` on a ``TZ=Asia/Tokyo`` container,
+        landing +9h in the future in this ``TIMESTAMPTZ`` column. Such a row wins
+        a ``created_at desc`` ordering forever, freezing the reception stage at
+        whatever the API first wrote. ``updated_at`` is always stamped by
+        ``store_session`` in UTC, so it stays correct even for rows written
+        before the fix.
+
         Args:
             session_id: The conversation session ID (any string format).
 
@@ -146,7 +155,7 @@ class ReceptionRepository:
                     .select("*")
                     .eq("session_id", session_id)
                     .in_("status", ["active", "completed"])
-                    .order("created_at", desc=True)
+                    .order("updated_at", desc=True)
                     .limit(1)
                     .execute()
                 )
@@ -156,7 +165,7 @@ class ReceptionRepository:
                     .select("*")
                     .eq("id", _stable_reception_id(session_id))
                     .in_("status", ["active", "completed"])
-                    .order("created_at", desc=True)
+                    .order("updated_at", desc=True)
                     .limit(1)
                     .execute()
                 )
