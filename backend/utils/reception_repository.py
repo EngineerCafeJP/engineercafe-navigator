@@ -135,9 +135,21 @@ class ReceptionRepository:
         written from a naive ``datetime.now()`` on a ``TZ=Asia/Tokyo`` container,
         landing +9h in the future in this ``TIMESTAMPTZ`` column. Such a row wins
         a ``created_at desc`` ordering forever, freezing the reception stage at
-        whatever the API first wrote. ``updated_at`` is always stamped by
-        ``store_session`` in UTC, so it stays correct even for rows written
-        before the fix.
+        whatever the API first wrote. ``created_at`` is additionally rewritten on
+        every upsert (``store_session`` defaults it to "now" when the caller omits
+        it), so it never denoted creation time for workflow-written rows anyway.
+
+        ``updated_at`` is stamped in UTC on insert by ``store_session`` and on
+        update by the ``update_updated_at_column`` trigger
+        (``20260308000001_add_reception_tables.sql``). Both clocks are UTC, so
+        ordering stays correct even for rows written before this fix.
+
+        ``nullsfirst=False`` is required: Postgres orders ``DESC`` as NULLS FIRST,
+        and ``updated_at`` is nullable on tables created by the earlier migration
+        (``20260308000001``; the later ``CREATE TABLE IF NOT EXISTS`` never
+        promoted it to ``NOT NULL``). A single NULL row would otherwise win
+        ``limit 1`` permanently — the same failure this fix removes. ``id`` breaks
+        ties so the result is deterministic when two writes share a timestamp.
 
         Args:
             session_id: The conversation session ID (any string format).
@@ -155,7 +167,8 @@ class ReceptionRepository:
                     .select("*")
                     .eq("session_id", session_id)
                     .in_("status", ["active", "completed"])
-                    .order("updated_at", desc=True)
+                    .order("updated_at", desc=True, nullsfirst=False)
+                    .order("id", desc=True)
                     .limit(1)
                     .execute()
                 )
@@ -165,7 +178,8 @@ class ReceptionRepository:
                     .select("*")
                     .eq("id", _stable_reception_id(session_id))
                     .in_("status", ["active", "completed"])
-                    .order("updated_at", desc=True)
+                    .order("updated_at", desc=True, nullsfirst=False)
+                    .order("id", desc=True)
                     .limit(1)
                     .execute()
                 )
