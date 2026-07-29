@@ -23,7 +23,7 @@ Updated: 2026-05-19
 
 - `backend/api/voice.py:343` decodes base64 audio, calls the STT agent for `speech_to_text`, and logs `stt_request_complete`.
 - `backend/agents/stt_agent.py:98` selects STT providers and keeps the public `STTAgent` facade.
-- `backend/agents/stt/qwen_primary.py:50` implements Qwen-primary plus hedged Vosk fallback winner selection.
+- `backend/agents/stt/qwen_primary.py:50` implements Qwen-primary plus Vosk fallback winner selection. The hedge is **disabled in production** (`QWEN_STT_HEDGE_DELAY_SECONDS=0`, #929); Vosk runs sequentially on Qwen failure/rejection only. See [DEPLOYMENT.md](../DEPLOYMENT.md) "STT hedge posture".
 - `backend/agents/stt/qwen_client.py:47` defines the Qwen3-ASR client family, including `Qwen06BCpuSTTClient`.
 - `backend/agents/stt/local_client.py:47` defines the Vosk fallback client.
 - `backend/api/voice.py:634` handles `text_to_speech` and delegates to `VoiceAgent`.

@@ -192,6 +192,14 @@ Alpha voice pipeline の合成音声 round-trip で、Vosk fallback が先に完
 Cloud Run deploy は `QWEN_STT_TIMEOUT=45`、`QWEN_STT_HEDGE_DELAY_SECONDS=2`、
 `QWEN_STT_HEDGE_GRACE_SECONDS=6` を明示する。
 
+> **2026-07-29 追記 (#929)**: 本節の具体値は現行本番と一致しない。hedge は
+> **無効化**され（`QWEN_STT_HEDGE_DELAY_SECONDS=0`）、`QWEN_STT_TIMEOUT` は
+> **10** である。計測した 4/4 ターンで Vosk hedge は cancelled となり、
+> Qwen と CPU を奪い合うだけだったため。現行の正本は
+> `.github/workflows/ci.yml` の deploy step、根拠は
+> [docs/DEPLOYMENT.md](../DEPLOYMENT.md) の「STT hedge posture」節を参照。
+> 本 ADR は当時の判断記録として原文を残す。
+
 ## 互換性
 
 - API response schema は変更しない。
