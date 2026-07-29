@@ -269,6 +269,91 @@ without a code change.)
 > Current posture (2026-06-01): **cost-minimal test** (Phase 1 complete, no live
 > kiosk traffic). `ci.yml` is set to `min=0 / max=2`.
 
+### STT hedge posture
+
+`QWEN_STT_HEDGE_DELAY_SECONDS=0` — the Vosk hedge is **disabled on purpose** (#929).
+
+With the previous value (`1.5`), a Vosk transcription started on every single turn
+and competed with Qwen for the same container CPU. Across the turns measured on
+2026-07-25, Vosk was `cancelled` **4 times out of 4** — it never once produced the
+winning transcript, so it was pure overhead.
+
+Measured effect (Cloud Run, same container spec, **n=4, warm instances only**):
+
+| | hedge `1.5` | hedge `0` |
+| --- | --- | --- |
+| STT total | 8.3–12.5 s | 7.8 s |
+| Voice turn total | 16.6–22.6 s | 6.3–9.6 s |
+
+No p95, no cold-start turn, and no measurement of the rejection or timeout paths
+are included in that sample. Treat the numbers as directional.
+
+#### Required invariant: `QWEN_STT_TIMEOUT` < `VOICE_STT_REQUEST_TIMEOUT_SECONDS`
+
+`backend/api/voice.py:389-391` wraps the whole STT call in an outer deadline:
+
+```python
+stt_timeout_s = deps._voice_stt_request_timeout_seconds()
+if stt_timeout_s > 0:
+    stt_result = await asyncio.wait_for(stt_call, timeout=stt_timeout_s)
+```
+
+The outer clock starts **before** the WebM/Opus→WAV conversion, while Qwen's own
+`QWEN_STT_TIMEOUT` starts after it. If the two values are equal, the outer deadline
+always fires first, `qwen_primary.py:616-621` cancels both tasks, and the Vosk
+fallback at `qwen_primary.py:481` is **never reached** — a hung Qwen becomes a total
+STT failure returning "No speech detected".
+
+That collision predates the hedge change but was masked by it: with `hedge=1.5`,
+Vosk had already started at 1.5 s and returned inside the 15 s envelope. Disabling
+the hedge exposed it. `QWEN_STT_TIMEOUT=10` exists to leave roughly 5 s for the
+sequential Vosk run. **Re-check this invariant whenever either value changes.**
+
+#### What the hedge setting does and does not remove
+
+Disabling the hedge removes only the *speculative concurrent* Vosk run. The
+"Qwen failed or was rejected → fall back to Vosk" path
+(`backend/agents/stt/qwen_primary.py:481`) is independent of the hedge setting and
+was observed working in production on 2026-07-25 05:21 (a `RejectedQwenPrimary`
+turn completed via Vosk in 4.4 s total). With the hedge off, the Vosk task blocks
+on `vosk_fallback_allowed.wait()` and consumes no CPU
+(`qwen_primary.py:228-244`) — though `STT_PRELOAD_VOSK_FALLBACK=true` still keeps
+the models resident in memory.
+
+Two failure classes now run Vosk sequentially rather than concurrently:
+
+1. Qwen hangs → capped at `QWEN_STT_TIMEOUT`, then Vosk
+2. Qwen succeeds but `_reject_suspicious_qwen_result` rejects the transcript
+   (`qwen_primary.py:435-439`) → Vosk starts from zero at that point
+
+Case 2 is the more common one and was nearly free while the hedge was on.
+
+#### Inert-but-retained settings
+
+With `QWEN_STT_HEDGE_DELAY_SECONDS=0`, two other variables stop having any effect:
+
+| Variable | Deployed | Actual behaviour |
+| --- | --- | --- |
+| `QWEN_STT_HEDGE_GRACE_SECONDS` | `4` | collapses to `0.0` (`backend/agents/stt/common.py:231`) and is emitted as `hedge_grace_s=0.0` in telemetry |
+| `QWEN_STT_LATENCY_BUDGET_SECONDS` | `11.5` | parses and appears in `stt_qwen_start` logs, but both consumers are unreachable while the hedge is off |
+
+They are kept so that reverting the posture is a single-token edit. Expect
+`stt_qwen_hedge_start` / `stt_hedge_wait_duration_ms` rows in
+`scripts/stt-postdeploy-logging-check.sh` output to read `0` in this posture — that
+is the intended state, not a telemetry outage.
+
+#### Test coverage
+
+That `QWEN_STT_HEDGE_DELAY_SECONDS=0` parses to hedge-disabled is asserted in
+`backend/tests/agents/test_stt_agent.py:1464`; that test only checks config
+parsing. The behavioural coverage — that Vosk still runs on Qwen failure — lives in
+`TestQwenPrimaryFallback` (`test_stt_agent.py:2666`, `:3260`, `:3318`), which sets
+`_qwen_hedge_delay = None`.
+
+**Not yet covered**: no test exercises `_handle_stt`'s outer timeout together with a
+hedge-disabled `speech_to_text`, which is why the invariant above is not enforced by
+CI. See #929.
+
 ### GCP Secret Manager
 
 Create a secret container once, then add versions:

@@ -6,7 +6,8 @@
 
 ## Wave 2 状態更新（2026-05-18）
 
-Wave 2 後の本番 STT 経路は Qwen3-ASR primary + Vosk hedge/fallback である。ブラウザは
+Wave 2 後の本番 STT 経路は Qwen3-ASR primary + Vosk fallback である（**hedge は
+2026-07-29 に無効化。#929 / [DEPLOYMENT.md](DEPLOYMENT.md) の「STT hedge posture」参照**）。ブラウザは
 `frontend/src/lib/api/voice-client.ts:259` から `/api/voice` に base64 音声を送り、Next.js proxy
 `frontend/src/app/api/voice/route.ts:26` が backend `/api/voice` へ転送する。FastAPI は
 `backend/main.py:1316` の `_handle_stt()` で base64 decode、短すぎる音声の拒否、タイムアウト制御、

@@ -4,6 +4,14 @@
 
 Accepted (2026-04-11)
 
+> **2026-07-29 追記 (#929)**: 本 ADR が前提とする **hedge 実行は本番で無効化された**
+> （`QWEN_STT_HEDGE_DELAY_SECONDS=0`）。計測した 4/4 ターンで Vosk hedge は cancelled と
+> なり、同一コンテナで Qwen と CPU を奪い合うだけだったため。Vosk は現在
+> 「Qwen が失敗または棄却された場合のみ逐次実行」される。本文中の hedge 関連の
+> env 既定値も現行本番と一致しない。現行の正本は `.github/workflows/ci.yml` の
+> deploy step、根拠は [docs/DEPLOYMENT.md](../DEPLOYMENT.md) の「STT hedge posture」節。
+> 本 ADR は当時の設計判断として原文を残す。
+
 ## Context
 
 Engineer Cafe Navigator のアルファテストに向けて、STT (Speech-to-Text) アーキテクチャを再設計する必要がある。
