@@ -6,7 +6,7 @@ using the Supabase Python client.
 
 import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, List, Optional
 
 from backend.domain.reception.models import (
@@ -58,7 +58,11 @@ class SupabaseReceptionSessionRepository(ReceptionSessionRepository):
             "purpose": session.purpose.category if session.purpose else None,
             "language": session.language,
             "trigger_type": session.trigger_type,
-            "updated_at": datetime.now().isoformat(),
+            # naive な datetime.now() は TZ=Asia/Tokyo のコンテナで JST 壁時計時刻になり、
+            # TIMESTAMPTZ 列へ +9h ずれて保存される。updated_at は
+            # get_session_by_conversation_id の並び替えキーなので、ずれると
+            # その行が永久に勝ち続ける (#925)。
+            "updated_at": datetime.now(timezone.utc).isoformat(),
         }
         try:
             client.table("reception_sessions").upsert(data).execute()
@@ -113,7 +117,8 @@ class SupabaseReceptionSessionRepository(ReceptionSessionRepository):
                 client.table("reception_sessions")
                 .select("*")
                 .eq("session_id", conversation_session_id)
-                .order("created_at", desc=True)
+                .order("updated_at", desc=True, nullsfirst=False)
+                .order("id", desc=True)
                 .limit(1)
                 .execute()
             )

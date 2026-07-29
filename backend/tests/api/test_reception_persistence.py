@@ -43,7 +43,10 @@ class _FakeTableQuery:
         self._table_name = table_name
         self._filters: list[tuple[str, str, Any]] = []
         self._limit: Optional[int] = None
-        self._order_by: Optional[tuple[str, bool]] = None
+        # (column, desc, nullsfirst) を適用順に保持する。
+        # 本番コードは updated_at の後に id をタイブレーカーとして指定するため、
+        # 単一キーしか持たない fake では並び替えを再現できない。
+        self._order_by: list[tuple[str, bool, Optional[bool]]] = []
         self._upsert_payload: Optional[dict[str, Any]] = None
         self._update_payload: Optional[dict[str, Any]] = None
 
@@ -66,8 +69,15 @@ class _FakeTableQuery:
         self._filters.append(("gt", column, value))
         return self
 
-    def order(self, column: str, desc: bool = False) -> _FakeTableQuery:
-        self._order_by = (column, desc)
+    def order(
+        self,
+        column: str,
+        *,
+        desc: bool = False,
+        nullsfirst: Optional[bool] = None,
+        **_kwargs: Any,
+    ) -> _FakeTableQuery:
+        self._order_by.append((column, desc, nullsfirst))
         return self
 
     def limit(self, value: int) -> _FakeTableQuery:
@@ -104,9 +114,17 @@ class _FakeTableQuery:
                 updated_rows.append(deepcopy(current))
             return _FakeResult(data=updated_rows)
 
-        if self._order_by is not None:
-            column, desc = self._order_by
-            rows.sort(key=lambda row: str(row.get(column, "")), reverse=desc)
+        # Postgres の ORDER BY を模倣する。
+        # - DESC の既定は NULLS FIRST、ASC の既定は NULLS LAST
+        # - 欠損値は "" ではなく NULL として扱う（str 化すると NULL が最小値になり、
+        #   実際の Postgres と逆の位置に並んでしまう）
+        # 複合キーは最下位から安定ソートを重ねる。
+        for column, desc, nullsfirst in reversed(self._order_by):
+            nulls_first = desc if nullsfirst is None else nullsfirst
+            present = [row for row in rows if row.get(column) is not None]
+            missing = [row for row in rows if row.get(column) is None]
+            present.sort(key=lambda row, _column=column: str(row[_column]), reverse=desc)
+            rows = missing + present if nulls_first else present + missing
 
         if self._limit is not None:
             rows = rows[: self._limit]
@@ -212,6 +230,107 @@ async def test_repository_non_uuid_session_id_skips_primary_key_lookup() -> None
     await repo.complete_session("alpha-b-20260502-B1-BIZ-002")
 
     mock_client.table.assert_not_called()
+
+
+def _seed_api_row(
+    fake_client: _FakeSupabaseClient,
+    *,
+    row_id: str,
+    conversation_id: str,
+    stage: str,
+    created_at: str,
+    updated_at: Optional[str],
+) -> None:
+    """``POST /api/reception/start`` が書く行を再現する。
+
+    ``id`` は会話 session_id とは別に採番されるため、workflow 側の upsert とは
+    別行になる。
+    """
+    fake_client.storage.setdefault("reception_sessions", {})[row_id] = {
+        "id": row_id,
+        "session_id": conversation_id,
+        "stage": stage,
+        "status": "active",
+        "created_at": created_at,
+        "updated_at": updated_at,
+        "session_data": {"stage": stage, "session_id": conversation_id},
+    }
+
+
+@pytest.mark.asyncio
+async def test_conversation_lookup_prefers_latest_write_over_future_dated_created_at() -> None:
+    """+9h ずれた created_at を持つ古い API 行に負けないこと (#925)。
+
+    Bug 再現時（並び替えキーが created_at）は greeting が返り、このテストは失敗する。
+    """
+    fake_client = _FakeSupabaseClient()
+    repo = ReceptionRepository(fake_client)  # type: ignore[arg-type]
+    conversation_id = str(uuid.uuid4())
+
+    # naive datetime.now() が TZ=Asia/Tokyo で採番され、UTC として保存された行。
+    # created_at だけが 9 時間未来にいる。
+    _seed_api_row(
+        fake_client,
+        row_id=str(uuid.uuid4()),
+        conversation_id=conversation_id,
+        stage="greeting",
+        created_at="2026-07-25T14:02:41+00:00",
+        updated_at="2026-07-25T05:02:41+00:00",
+    )
+
+    # workflow が 3 分後に書いた、stage の進んだ行。
+    # created_at を明示するのは、省略すると store_session が「実行時の now」を
+    # 入れてしまい、API 行の固定日付より常に新しくなって順序が逆転しないため。
+    # 本番では API 行の created_at だけが +9h されるので、この並びが再現形。
+    await repo.store_session(
+        conversation_id,
+        {
+            "session_id": conversation_id,
+            "stage": "purpose_hearing",
+            "status": "active",
+            "created_at": "2026-07-25T05:05:54+00:00",
+        },
+    )
+
+    rows = fake_client.storage["reception_sessions"]
+    assert len(rows) == 2, "API 行と workflow 行が別々に存在する前提が崩れている"
+
+    found = await repo.get_session_by_conversation_id(conversation_id)
+
+    assert found is not None
+    assert found["stage"] == "purpose_hearing"
+
+
+@pytest.mark.asyncio
+async def test_conversation_lookup_ignores_rows_with_null_updated_at() -> None:
+    """updated_at が NULL の行に永久に負けないこと。
+
+    Postgres の ORDER BY ... DESC は既定で NULLS FIRST。
+    updated_at は 20260308000001 で作られたテーブルでは nullable のため、
+    nullsfirst=False を外すと NULL 行が limit 1 を占有し続ける。
+    """
+    fake_client = _FakeSupabaseClient()
+    repo = ReceptionRepository(fake_client)  # type: ignore[arg-type]
+    conversation_id = str(uuid.uuid4())
+
+    _seed_api_row(
+        fake_client,
+        row_id=str(uuid.uuid4()),
+        conversation_id=conversation_id,
+        stage="greeting",
+        created_at="2026-07-25T05:00:00+00:00",
+        updated_at=None,
+    )
+
+    await repo.store_session(
+        conversation_id,
+        {"session_id": conversation_id, "stage": "completed", "status": "active"},
+    )
+
+    found = await repo.get_session_by_conversation_id(conversation_id)
+
+    assert found is not None
+    assert found["stage"] == "completed"
 
 
 @pytest.mark.asyncio
