@@ -1,0 +1,84 @@
+# Docker Compose override for the fully-offline COSCUP 2026 demo
+# 使い方（Observability を除外して高速起動）:
+#   docker compose -f docker-compose.yml -f docker-compose.demo.yml --profile voice \
+#     up -d frontend backend postgres kokoro-tts
+#   または scripts/demo/up.sh を使用（起動待ち込み）。
+#
+# 注意:
+# - profiles は override では追加のみで除外できないため、demo 起動は
+#   明示的なサービスリストで observability 系（otel-collector/loki/
+#   prometheus/grafana/alertmanager/mailhog）を起動しない。
+# - backend の depends_on は `!override` で otel-collector 依存を除去し、
+#   postgres のみに絞る（Compose v2.23+ / この demo は Docker Desktop 前提）。
+# - Docker Desktop では host.docker.internal が組み込みで利用可能なため
+#   extra_hosts は不要（Linux 上の compose のみ手動追加が必要）。
+# - Ollama はホスト側 (http://host.docker.internal:11434) で事前に起動し、
+#   `ollama pull qwen3.6:35b` と `ollama pull nomic-embed-text` を済ませておく。
+
+services:
+  backend:
+    environment:
+      # デモ環境フラグ（production 判定を避け、APIキー必須チェックを無効化）
+      ENVIRONMENT: demo
+      # STT: Qwen3-ASR 0.6B ONNX（オフラインで HF に依存しない推論パス）
+      STT_PROVIDER: qwen-primary
+      QWEN_STT_LANGUAGE: en
+      STT_QWEN_RUNTIME: onnx
+      # ONNX アーティファクトの場所（production Dockerfile と同一パス）
+      # 初回のみ: docker compose -f docker-compose.yml -f docker-compose.demo.yml \
+      #   run --rm backend bash scripts/download_qwen_onnx_model.sh
+      STT_QWEN_ONNX_MODEL_DIR: /app/models/qwen3-asr-0.6b-onnx
+      # Qwen3-ASR ONNX をプライマリに（NUMBA_CACHE_DIR 設定済み。ウォーム時
+      # 400ms 前後で精度も高い）。hedge=0 で Vosk レースを無効化し、
+      # Qwen 失敗時のみ Vosk フォールバックへ
+      QWEN_STT_HEDGE_DELAY_SECONDS: "0"
+      # TTS: kokoro をプライマリに（デモスタックに piper-plus サーバーが
+      # 存在しないため。英語品質は良好）。フロントエンドはデモモード時に
+      # ttsProvider='kokoro' を送信する
+      TTS_PROVIDER: kokoro
+      TTS_REQUIRE_PRIMARY_PROVIDER: "false"
+      KOKORO_API_URL: http://kokoro-tts:8880
+      # Kokoro (CPU) は 2〜3 文の合成に数秒かかるためタイムアウトを延長
+      TTS_KOKORO_FALLBACK_TIMEOUT_SECONDS: "30"
+      TTS_KOKORO_TIMEOUT_SECONDS: "30"
+      # やや速めの再生速度（デモの待ち時間削減）
+      KOKORO_TTS_SPEED: "1.1"
+      # LLM: ホストの Ollama（OpenAI 互換 API）。qwen3.6:35b は 2026-08-05
+      # ベンチマーク（docs/demo/coscup2026/evidence/benchmark3）の推奨モデル
+      # （TTFT ~0.4s / 完答 ~1s / 品質最良）。thinking は provider 側で無効化
+      LLM_PROVIDER: ollama
+      OLLAMA_BASE_URL: http://host.docker.internal:11434/v1
+      OLLAMA_MODEL: qwen3.6:35b
+      OLLAMA_API_KEY: dummy
+      # Embedding: 同上の Ollama / nomic-embed-text（768 次元）
+      EMBEDDING_API_URL: http://host.docker.internal:11434/v1/embeddings
+      EMBEDDING_MODEL: nomic-embed-text
+      EMBEDDING_DIMENSIONS: "768"
+      RAG_VECTOR_BACKEND: local-pgvector
+      # 応答を英語固定 + 簡潔化（デモ用 env gates）
+      LANGUAGE_FORCE: en
+      DEMO_CONCISE_ANSWER: "true"
+      # オフライン動作: Hugging Face へのネットワークアクセスを禁止
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+      # librosa/numba の JIT キャッシュ（production Dockerfile と同一設定）
+      NUMBA_CACHE_DIR: /app/.numba_cache
+      # カレンダー ICS を明示的に無効化（オフライン保証。base compose には無いため
+      # backend/.env 側の設定を空で上書き）
+      GOOGLE_CALENDAR_ICAL_URL: ""
+      # ローカルデモでは API キー認証を無効化（デモ用 .env に残っている
+      # API_SECRET_KEY を環境変数で上書き。未設定のまま実行してもよい）
+      API_SECRET_KEY: ""
+    depends_on: !override
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    # ホスト側の 5432 を公開しない（ホストの別 postgres と衝突するため。
+    # backend からは内部ネットワークで接続するため不要）
+    ports: !override []
+
+  frontend:
+    environment:
+      # デモ UI フラグ（初期言語 en / 初回モーダルの英語プリセレクト / TTS kokoro）
+      NEXT_PUBLIC_DEMO_MODE: "true"

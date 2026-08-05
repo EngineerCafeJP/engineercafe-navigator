@@ -181,7 +181,7 @@ async def voice_filler_api(request: Request, body: FillerRequest):
 
 _voice_agent: Optional[Any] = None  # VoiceAgent (lazy-loaded)
 _voice_agents_by_provider: dict[str, Any] = {}
-_ALLOWED_TTS_PROVIDERS = frozenset({"voicevox", "piper"})
+_ALLOWED_TTS_PROVIDERS = frozenset({"voicevox", "piper", "kokoro"})
 _stt_agent: Optional[Any] = None  # STTAgent (lazy-loaded)
 _slide_agent: Optional[Any] = None  # SlideAgent (lazy-loaded)
 _session_task_manager: Optional[Any] = None

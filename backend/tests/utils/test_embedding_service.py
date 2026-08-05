@@ -253,3 +253,156 @@ class TestGenerateEmbedding:
         assert result1 == []
         assert result2 == []
         assert result1 is not result2  # 異なるリストオブジェクトであること
+
+
+# ===========================================================================
+# 環境変数オーバーライドのテスト（COSCUPデモ: Ollama等のOpenAI互換エンドポイント）
+# ===========================================================================
+class TestEnvOverrides:
+    """EMBEDDING_API_URL / EMBEDDING_MODEL / EMBEDDING_DIMENSIONS /
+    EMBEDDING_API_KEY の上書き動作を検証する。"""
+
+    @pytest.mark.asyncio
+    async def test_api_url_override(self, monkeypatch):
+        """EMBEDDING_API_URL 指定時にそのURLへPOSTされること"""
+        fake_embedding = [0.01 * i for i in range(EMBEDDING_DIMENSIONS)]
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"data": [{"embedding": fake_embedding}]}
+
+        monkeypatch.setenv("EMBEDDING_API_URL", "http://localhost:11434/v1/embeddings")
+        monkeypatch.setenv("EMBEDDING_API_KEY", "ollama-dummy")
+
+        with patch("backend.utils.embedding_service.httpx.AsyncClient") as mock_cls:
+            mock_client = _build_mock_client(mock_response)
+            mock_cls.return_value = mock_client
+
+            result = await generate_embedding("test")
+
+        assert result == fake_embedding
+        mock_client.post.assert_called_once_with(
+            "http://localhost:11434/v1/embeddings",
+            headers={
+                "Authorization": "Bearer ollama-dummy",
+                "Content-Type": "application/json",
+            },
+            json={"model": EMBEDDING_MODEL, "input": "test"},
+            timeout=EMBEDDING_TIMEOUT,
+        )
+
+    @pytest.mark.asyncio
+    async def test_model_override(self, monkeypatch):
+        """EMBEDDING_MODEL 指定時にそのモデル名でリクエストされること"""
+        fake_embedding = [0.0] * EMBEDDING_DIMENSIONS
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"data": [{"embedding": fake_embedding}]}
+
+        monkeypatch.setenv("EMBEDDING_MODEL", "nomic-embed-text")
+        monkeypatch.setenv("EMBEDDING_API_KEY", "ollama-dummy")
+
+        with patch("backend.utils.embedding_service.httpx.AsyncClient") as mock_cls:
+            mock_client = _build_mock_client(mock_response)
+            mock_cls.return_value = mock_client
+
+            await generate_embedding("test")
+
+        assert mock_client.post.call_args.kwargs["json"]["model"] == "nomic-embed-text"
+
+    @pytest.mark.asyncio
+    async def test_dimensions_override_valid(self, monkeypatch):
+        """EMBEDDING_DIMENSIONS 指定時はその次元数で検証されること"""
+        fake_embedding = [0.5] * 8
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"data": [{"embedding": fake_embedding}]}
+
+        monkeypatch.setenv("EMBEDDING_DIMENSIONS", "8")
+        monkeypatch.setenv("EMBEDDING_API_KEY", "ollama-dummy")
+
+        with patch("backend.utils.embedding_service.httpx.AsyncClient") as mock_cls:
+            mock_client = _build_mock_client(mock_response)
+            mock_cls.return_value = mock_client
+
+            result = await generate_embedding("test")
+
+        assert result == fake_embedding
+
+    @pytest.mark.asyncio
+    async def test_dimensions_override_mismatch(self, monkeypatch):
+        """EMBEDDING_DIMENSIONS 指定時は既定次元のレスポンスが拒否されること"""
+        wrong_embedding = [0.5] * EMBEDDING_DIMENSIONS
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"data": [{"embedding": wrong_embedding}]}
+
+        monkeypatch.setenv("EMBEDDING_DIMENSIONS", "8")
+        monkeypatch.setenv("EMBEDDING_API_KEY", "ollama-dummy")
+
+        with patch("backend.utils.embedding_service.httpx.AsyncClient") as mock_cls:
+            mock_client = _build_mock_client(mock_response)
+            mock_cls.return_value = mock_client
+
+            result = await generate_embedding("test")
+
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_api_key_takes_precedence(self, monkeypatch):
+        """EMBEDDING_API_KEY が設定されている場合は優先されること"""
+        fake_embedding = [0.0] * EMBEDDING_DIMENSIONS
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"data": [{"embedding": fake_embedding}]}
+
+        monkeypatch.setenv("EMBEDDING_API_KEY", "embed-key")
+        monkeypatch.setenv("OPENROUTER_API_KEY", "or-key")
+
+        with patch("backend.utils.embedding_service.httpx.AsyncClient") as mock_cls:
+            mock_client = _build_mock_client(mock_response)
+            mock_cls.return_value = mock_client
+
+            await generate_embedding("test")
+
+        headers = mock_client.post.call_args.kwargs["headers"]
+        assert headers["Authorization"] == "Bearer embed-key"
+
+    @pytest.mark.asyncio
+    async def test_api_key_falls_back_to_openrouter(self, monkeypatch):
+        """EMBEDDING_API_KEY 未設定時は OPENROUTER_API_KEY にフォールバックすること"""
+        fake_embedding = [0.0] * EMBEDDING_DIMENSIONS
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"data": [{"embedding": fake_embedding}]}
+
+        monkeypatch.delenv("EMBEDDING_API_KEY", raising=False)
+        monkeypatch.setenv("OPENROUTER_API_KEY", "or-key")
+
+        with patch("backend.utils.embedding_service.httpx.AsyncClient") as mock_cls:
+            mock_client = _build_mock_client(mock_response)
+            mock_cls.return_value = mock_client
+
+            await generate_embedding("test")
+
+        headers = mock_client.post.call_args.kwargs["headers"]
+        assert headers["Authorization"] == "Bearer or-key"
+
+    @pytest.mark.asyncio
+    async def test_api_key_empty_string_falls_back_to_openrouter(self, monkeypatch):
+        """EMBEDDING_API_KEY が空文字でも OPENROUTER_API_KEY にフォールバックすること"""
+        fake_embedding = [0.0] * EMBEDDING_DIMENSIONS
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"data": [{"embedding": fake_embedding}]}
+
+        monkeypatch.setenv("EMBEDDING_API_KEY", "")
+        monkeypatch.setenv("OPENROUTER_API_KEY", "or-key")
+
+        with patch("backend.utils.embedding_service.httpx.AsyncClient") as mock_cls:
+            mock_client = _build_mock_client(mock_response)
+            mock_cls.return_value = mock_client
+
+            await generate_embedding("test")
+
+        headers = mock_client.post.call_args.kwargs["headers"]
+        assert headers["Authorization"] == "Bearer or-key"

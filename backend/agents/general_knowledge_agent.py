@@ -26,7 +26,7 @@ from typing import Dict, Any, List, Optional, Literal
 from backend.agents.general_knowledge.memory import GeneralKnowledgeMemoryMixin
 from backend.agents.general_knowledge.responses import GeneralKnowledgeResponseMixin
 from backend.agents.llm_metadata import merge_llm_metadata
-from backend.llm.openrouter import OpenRouterProvider
+from backend.llm.provider import resolve_llm_provider
 from backend.llm.models import get_model_config
 from backend.tools.enhanced_rag import EnhancedRAGSearch
 from backend.tools.tavily_search import TavilySearchTool
@@ -58,7 +58,7 @@ class GeneralKnowledgeAgent(GeneralKnowledgeMemoryMixin, GeneralKnowledgeRespons
         self.name = "GeneralKnowledgeAgent"
         logger.info("GeneralKnowledgeAgent初期化")
 
-        self.provider = OpenRouterProvider()
+        self.provider = resolve_llm_provider()
         self.model_config = get_model_config("general_knowledge")
         self.web_search = TavilySearchTool()
         self.rag_search = EnhancedRAGSearch()

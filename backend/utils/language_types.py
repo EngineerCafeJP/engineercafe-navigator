@@ -5,7 +5,8 @@ Provides centralized SupportedLanguage type, language-specific LLM instructions,
 and default fallback responses for all supported languages (ja, en, zh, ko).
 """
 
-from typing import Literal
+import os
+from typing import Literal, Optional
 
 SupportedLanguage = Literal["ja", "en", "zh", "ko"]
 
@@ -51,3 +52,47 @@ DEFAULT_NOT_FOUND_RESPONSE: dict[str, str] = {
         "일본어로 질문해 주시면 자세히 안내해 드릴 수 있습니다."
     ),
 }
+
+
+def _demo_concise_answer_enabled() -> bool:
+    """DEMO_CONCISE_ANSWER フラグ（1/true/yes/on のみ有効）を返す。"""
+    raw = os.getenv("DEMO_CONCISE_ANSWER", "").strip().lower()
+    return raw in {"1", "true", "yes", "on"}
+
+
+def get_language_instruction(language: str) -> str:
+    """言語別 LLM 指示文を返す。
+
+    DEMO_CONCISE_ANSWER=true の場合のみ、英語（en）の指示文に
+    簡潔回答の 1 文を追記する（デモ専用・env gated）。
+    未設定時は従来の LANGUAGE_INSTRUCTION と同一の値を返す。
+    """
+    instruction = LANGUAGE_INSTRUCTION.get(language, "")
+    if language == "en" and _demo_concise_answer_enabled():
+        instruction = f"{instruction} Keep your answer to 2-3 short sentences (under 35 words)."
+    return instruction
+
+
+def get_forced_response_language() -> Optional[str]:
+    """LANGUAGE_FORCE による応答言語の強制値を返す。
+
+    未設定・空白のみの場合は None（従来の自動検出動作を維持）。
+    例: LANGUAGE_FORCE=en で英語固定、LANGUAGE_FORCE=en-US は "en" に正規化。
+    """
+    raw = os.getenv("LANGUAGE_FORCE", "").strip().lower().split("-", 1)[0]
+    return raw or None
+
+
+def get_calendar_fallback_message() -> Optional[str]:
+    """デモモード時のカレンダー失敗メッセージを返す。
+
+    DEMO_CONCISE_ANSWER=true または LANGUAGE_FORCE=en が有効な場合のみ、
+    カレンダー取得失敗時に来場者向けの自然な英語メッセージを返す。
+    それ以外は None（従来の応答を維持）。
+    """
+    if not (_demo_concise_answer_enabled() or get_forced_response_language() == "en"):
+        return None
+    return (
+        "I can't reach the event calendar right now, "
+        "but our Wi-Fi, meeting rooms, and cafe are open as usual."
+    )

@@ -89,6 +89,10 @@ class VoiceAgent:
             piper_api_url = os.getenv("PIPER_PLUS_API_URL", "http://localhost:8090")
             self.tts_client = PiperPlusTTSClient(api_url=piper_api_url)
             logger.info("Using PiperPlus TTS: %s", piper_api_url)
+        elif tts_provider == "kokoro":
+            kokoro_api_url = os.getenv("KOKORO_API_URL", "http://localhost:8880")
+            self.tts_client = KokoroTTSClient(api_url=kokoro_api_url)
+            logger.info("Using Kokoro TTS: %s", kokoro_api_url)
         else:
             raise ValueError(f"Unknown TTS provider: {tts_provider}")
 
@@ -526,6 +530,17 @@ class VoiceAgent:
                 primary_attempt_provider = "kokoro"
                 audio_b64 = await self._await_tts_attempt(
                     self.kokoro_client.synthesize_wav_base64(processed, language),
+                    provider="kokoro",
+                    role="primary",
+                    language=language,
+                    text_length=len(processed),
+                )
+                audio_format = "audio/wav"
+            elif self.tts_provider == "kokoro":
+                # プライマリ指定が kokoro の場合（COSCUP デモ等のローカル構成）
+                primary_attempt_provider = "kokoro"
+                audio_b64 = await self._await_tts_attempt(
+                    self.tts_client.synthesize_wav_base64(processed, language),
                     provider="kokoro",
                     role="primary",
                     language=language,

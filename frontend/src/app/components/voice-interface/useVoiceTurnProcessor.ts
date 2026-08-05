@@ -2,6 +2,7 @@ import { AudioQueue } from '@/lib/audio-queue';
 import { AudioDataProcessor } from '@/lib/audio/audio-data-processor';
 import { requestAutoCharacterControl } from '@/lib/api/character-client';
 import { submitQaQuestion } from '@/lib/api/qa-client';
+import { getTtsProvider } from '@/lib/env-client';
 import {
   requestVoiceFiller,
   textToSpeech,
@@ -167,7 +168,7 @@ export function useVoiceTurnProcessor({
           text: request.text,
           language: request.language,
           sessionId: request.sessionId,
-          ttsProvider: request.ttsProvider ?? 'piper',
+          ttsProvider: request.ttsProvider ?? getTtsProvider(),
           ...(typeof request.emotion === 'string' && request.emotion.trim()
             ? { emotion: request.emotion.trim() }
             : {}),
@@ -319,7 +320,7 @@ export function useVoiceTurnProcessor({
             language: responseLanguage,
             sessionId: sessionIdRef.current,
             emotion: typeof qaResult.emotion === 'string' ? qaResult.emotion : null,
-            ttsProvider: 'piper',
+            ttsProvider: getTtsProvider(),
           },
           signal,
         );
@@ -552,7 +553,7 @@ export function useVoiceTurnProcessor({
             language: responseLanguage,
             sessionId: sessionIdRef.current,
             emotion: typeof qaResult.emotion === 'string' ? qaResult.emotion : null,
-            ttsProvider: 'piper',
+            ttsProvider: getTtsProvider(),
           },
           abortController.signal,
         );
@@ -667,7 +668,7 @@ export function useVoiceTurnProcessor({
             language: responseLanguage,
             sessionId: sessionIdRef.current,
             emotion: parsedAnswer.primaryEmotion,
-            ttsProvider: 'piper',
+            ttsProvider: getTtsProvider(),
           },
           abortController.signal,
         );

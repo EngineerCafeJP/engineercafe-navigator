@@ -4,6 +4,7 @@ import asyncio
 import base64
 import importlib
 import logging
+import os
 from typing import Any, Optional
 
 import httpx
@@ -156,6 +157,17 @@ class KokoroTTSClient:
         self.api_url = api_url.rstrip("/")
         logger.info("KokoroTTSClient initialized: %s", self.api_url)
 
+    @staticmethod
+    def _speech_speed() -> Optional[float]:
+        """KOKORO_TTS_SPEED 環境変数から再生速度を取得（未設定時は None）。"""
+        raw = os.getenv("KOKORO_TTS_SPEED", "").strip()
+        if not raw:
+            return None
+        try:
+            return float(raw)
+        except ValueError:
+            return None
+
     async def synthesize_wav_base64(self, text: str, lang: str, voice: Optional[str] = None) -> str:
         """
         テキストを音声に合成し、base64エンコードされたWAVを返す
@@ -171,16 +183,21 @@ class KokoroTTSClient:
         if voice is None:
             voice = self.DEFAULT_VOICE_EN
 
+        payload: dict = {
+            "model": "kokoro",
+            "input": text,
+            "voice": voice,
+            "response_format": "wav",
+        }
+        speed = self._speech_speed()
+        if speed is not None:
+            payload["speed"] = speed
+
         try:
             async with _httpx().AsyncClient(timeout=30) as client:
                 response = await client.post(
                     f"{self.api_url}/v1/audio/speech",
-                    json={
-                        "model": "kokoro",
-                        "input": text,
-                        "voice": voice,
-                        "response_format": "wav",
-                    },
+                    json=payload,
                 )
 
                 if response.status_code >= 400:

@@ -1,0 +1,36 @@
+{
+  "model": "qwen3.5:9b",
+  "questions": [
+    {
+      "name": "q1_what_can_i_do",
+      "question": "What can I do at Engineer Cafe?",
+      "ttft_ms": 511,
+      "total_ms": 1443,
+      "finish_reason": "stop",
+      "reasoning_chars": 0,
+      "usage": null,
+      "answer": "You can attend events or work in the Main Hall using free Wi-Fi and power strips while accessing our latest tech like Apple Vision Pro. Additionally, you may visit the B1F fabrication lab to use 3D printers and laser cutters, or book a meeting room on the second floor."
+    },
+    {
+      "name": "q2_where_is_toilet",
+      "question": "Where is the toilet?",
+      "ttft_ms": 470,
+      "total_ms": 2399,
+      "finish_reason": "stop",
+      "reasoning_chars": 0,
+      "usage": null,
+      "answer": "The restrooms are located on the first-floor terrace behind the reception desk; you cannot access them directly from inside the building, so please go out to the far end of the terrace. Western-style toilets with warm-water bidets are available there, though note that there is no dedicated diaper-changing space."
+    },
+    {
+      "name": "q3_cafe_open_weekend",
+      "question": "Is the cafe open on weekends?",
+      "ttft_ms": 2302,
+      "total_ms": 5137,
+      "finish_reason": "stop",
+      "reasoning_chars": 0,
+      "usage": null,
+      "answer": "Yes, Cafe SAINO is open on both Saturdays and Sundays according to our schedule. The hours are 18:00-20:00 during these weekend days."
+    }
+  ],
+  "load_ms": 331
+}

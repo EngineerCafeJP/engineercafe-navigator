@@ -181,6 +181,28 @@ class EventResponseMixin:
         source_statuses: Optional[Dict[str, str]] = None,
     ) -> Dict:
         """イベントなし時の応答を返す"""
+        # デモ用: カレンダー取得失敗（failed/timeout/error）時に、
+        # 来場者向けの自然な英語メッセージを返す（env gated・未設定時は従来動作）
+        from backend.utils.language_types import get_calendar_fallback_message
+
+        statuses = dict(source_statuses or {})
+        if any(str(status) in ("failed", "timeout", "error") for status in statuses.values()):
+            demo_message = get_calendar_fallback_message()
+            if demo_message is not None:
+                return {
+                    "answer": f"[sad]{demo_message}",
+                    "emotion": "sad",
+                    "metadata": {
+                        "agent": "EventAgent",
+                        "time_range": time_range,
+                        "event_count": 0,
+                        "sources": list(sources or []),
+                        "searched_sources": list(searched_sources or []),
+                        "source_statuses": statuses,
+                        "demo_calendar_fallback": True,
+                    },
+                }
+
         time_range_text = get_time_range_label(time_range, language)
 
         no_events_responses = {

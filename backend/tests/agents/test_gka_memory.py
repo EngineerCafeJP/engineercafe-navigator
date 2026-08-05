@@ -15,7 +15,7 @@ class TestGKAMemoryInit:
         """memory_system付きで初期化"""
         mock_memory = MagicMock()
         with patch("backend.agents.general_knowledge_agent.TavilySearchTool"):
-            with patch("backend.agents.general_knowledge_agent.OpenRouterProvider"):
+            with patch("backend.agents.general_knowledge_agent.resolve_llm_provider"):
                 with patch("backend.agents.general_knowledge_agent.EnhancedRAGSearch"):
                     from backend.agents.general_knowledge_agent import GeneralKnowledgeAgent
 
@@ -25,7 +25,7 @@ class TestGKAMemoryInit:
     def test_gka_init_without_memory_system(self):
         """memory_systemなしで初期化"""
         with patch("backend.agents.general_knowledge_agent.TavilySearchTool"):
-            with patch("backend.agents.general_knowledge_agent.OpenRouterProvider"):
+            with patch("backend.agents.general_knowledge_agent.resolve_llm_provider"):
                 with patch("backend.agents.general_knowledge_agent.EnhancedRAGSearch"):
                     from backend.agents.general_knowledge_agent import GeneralKnowledgeAgent
 
@@ -41,7 +41,7 @@ class TestGKAAnswerQueryDispatch:
 
     def _create_agent(self, memory_system=None):
         with patch("backend.agents.general_knowledge_agent.TavilySearchTool"):
-            with patch("backend.agents.general_knowledge_agent.OpenRouterProvider"):
+            with patch("backend.agents.general_knowledge_agent.resolve_llm_provider"):
                 with patch("backend.agents.general_knowledge_agent.EnhancedRAGSearch"):
                     from backend.agents.general_knowledge_agent import GeneralKnowledgeAgent
 
@@ -104,7 +104,7 @@ class TestGKAHandleMemoryQuery:
 
     def _create_agent(self, memory_system=None):
         with patch("backend.agents.general_knowledge_agent.TavilySearchTool"):
-            with patch("backend.agents.general_knowledge_agent.OpenRouterProvider") as mock_prov:
+            with patch("backend.agents.general_knowledge_agent.resolve_llm_provider") as mock_prov:
                 mock_prov.return_value.generate = AsyncMock(return_value="テスト回答")
                 with patch("backend.agents.general_knowledge_agent.EnhancedRAGSearch"):
                     from backend.agents.general_knowledge_agent import GeneralKnowledgeAgent
@@ -252,7 +252,7 @@ class TestGKADetectMemoryQueryType:
 
     def _create_agent(self):
         with patch("backend.agents.general_knowledge_agent.TavilySearchTool"):
-            with patch("backend.agents.general_knowledge_agent.OpenRouterProvider"):
+            with patch("backend.agents.general_knowledge_agent.resolve_llm_provider"):
                 with patch("backend.agents.general_knowledge_agent.EnhancedRAGSearch"):
                     from backend.agents.general_knowledge_agent import GeneralKnowledgeAgent
 
@@ -295,7 +295,7 @@ class TestGKADetermineMemoryEmotion:
 
     def _create_agent(self):
         with patch("backend.agents.general_knowledge_agent.TavilySearchTool"):
-            with patch("backend.agents.general_knowledge_agent.OpenRouterProvider"):
+            with patch("backend.agents.general_knowledge_agent.resolve_llm_provider"):
                 with patch("backend.agents.general_knowledge_agent.EnhancedRAGSearch"):
                     from backend.agents.general_knowledge_agent import GeneralKnowledgeAgent
 
@@ -335,7 +335,7 @@ class TestOrchestratorMemoryRouting:
     @pytest.mark.asyncio
     async def test_routing_memory_to_gka(self):
         """メモリ関連質問がgeneral_knowledgeにルーティングされること"""
-        with patch("backend.agents.orchestrator_agent.OpenRouterProvider"):
+        with patch("backend.agents.orchestrator_agent.resolve_llm_provider"):
             from backend.agents.orchestrator_agent import OrchestratorAgent
 
             orchestrator = OrchestratorAgent()

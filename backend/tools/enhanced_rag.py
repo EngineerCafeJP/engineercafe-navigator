@@ -6,6 +6,7 @@ Supabase + OpenAI Embeddings統合による高精度RAG検索
 import asyncio
 import logging
 import os
+from types import SimpleNamespace
 from typing import List, Dict, Optional
 
 import httpx
@@ -30,8 +31,12 @@ from backend.tools.enhanced_rag_constants import (
 )
 from backend.tools.enhanced_rag_fallbacks import RAGFallbackMixin
 from backend.tools.enhanced_rag_scoring import RAGScoringMixin
+from backend.utils.embedding_service import OPENROUTER_EMBEDDING_URL
 
 logger = logging.getLogger(__name__)
+
+# ローカルpgvectorバックエンド（COSCUPデモ用・完全オフライン）
+_LOCAL_PGVECTOR_BACKEND = "local-pgvector"
 
 
 class EnhancedRAGSearch(RAGFallbackMixin, RAGScoringMixin):
@@ -137,32 +142,68 @@ class EnhancedRAGSearch(RAGFallbackMixin, RAGScoringMixin):
                     error=str(e),
                 )
 
-            # 3. Supabase RPCでベクトル検索（カテゴリ別閾値を使用）
-            try:
-                search_results = await asyncio.wait_for(
-                    asyncio.to_thread(
-                        lambda: self.supabase.rpc(
-                            "search_knowledge_base",
-                            {
-                                "query_embedding": embedding,
-                                "similarity_threshold": self._get_rpc_threshold(category),
-                                "match_count": max_results * 3,  # スコアリング用に多めに取得
-                            },
-                        ).execute()
-                    ),
-                    timeout=RPC_TIMEOUT_SECONDS,
-                )
-            except asyncio.TimeoutError:
-                logger.error("Supabase RPC timed out after %.0fs", RPC_TIMEOUT_SECONDS)
-                _rag_circuit_breaker.record_failure()
-                return await self._fallback_search_response(
-                    query=query,
-                    category=category,
-                    language=language,
-                    include_advice=include_advice,
-                    max_results=max_results,
-                    error="Supabase RPC timeout",
-                )
+            # 3. ベクトル検索（バックエンド切替: デフォルトはSupabase RPC）
+            if os.getenv("RAG_VECTOR_BACKEND") == _LOCAL_PGVECTOR_BACKEND:
+                # ローカルpgvector検索（COSCUPデモ用・完全オフライン）
+                # エラー・結果ゼロの場合は既存フォールバック経路へ委ねる
+                try:
+                    search_results = await self._local_pgvector_search(
+                        embedding=embedding,
+                        category=category,
+                        max_results=max_results,
+                    )
+                except Exception as e:
+                    _rag_circuit_breaker.record_failure()
+                    logger.error(
+                        "Local pgvector search failed, trying fallback search: %s", e
+                    )
+                    return await self._fallback_search_response(
+                        query=query,
+                        category=category,
+                        language=language,
+                        include_advice=include_advice,
+                        max_results=max_results,
+                        error=str(e),
+                    )
+                if not search_results.data:
+                    logger.info(
+                        "Local pgvector search returned no results, trying fallback search"
+                    )
+                    return await self._fallback_search_response(
+                        query=query,
+                        category=category,
+                        language=language,
+                        include_advice=include_advice,
+                        max_results=max_results,
+                        error="Local pgvector search returned no results",
+                    )
+            else:
+                # 既存のSupabase RPCベクトル検索（カテゴリ別閾値を使用）
+                try:
+                    search_results = await asyncio.wait_for(
+                        asyncio.to_thread(
+                            lambda: self.supabase.rpc(
+                                "search_knowledge_base",
+                                {
+                                    "query_embedding": embedding,
+                                    "similarity_threshold": self._get_rpc_threshold(category),
+                                    "match_count": max_results * 3,  # スコアリング用に多めに取得
+                                },
+                            ).execute()
+                        ),
+                        timeout=RPC_TIMEOUT_SECONDS,
+                    )
+                except asyncio.TimeoutError:
+                    logger.error("Supabase RPC timed out after %.0fs", RPC_TIMEOUT_SECONDS)
+                    _rag_circuit_breaker.record_failure()
+                    return await self._fallback_search_response(
+                        query=query,
+                        category=category,
+                        language=language,
+                        include_advice=include_advice,
+                        max_results=max_results,
+                        error="Supabase RPC timeout",
+                    )
 
             # 4. ベクトル検索で結果が不十分な場合、テキストベースのフォールバック
             if not search_results.data or len(search_results.data) < 2:
@@ -395,7 +436,10 @@ class EnhancedRAGSearch(RAGFallbackMixin, RAGScoringMixin):
             return {"success": False, "error": str(e)}
 
     async def _generate_embedding(self, text: str) -> List[float]:
-        """OpenRouter API経由でエンベディングを生成。
+        """OpenRouter/Ollama API経由でエンベディングを生成。
+
+        EMBEDDING_API_URL（未設定時はOpenRouter）とEMBEDDING_API_KEY
+        （未設定時はOPENROUTER_API_KEY）で接続先を上書きできる。
 
         Args:
             text: エンベディング対象テキスト
@@ -415,11 +459,16 @@ class EnhancedRAGSearch(RAGFallbackMixin, RAGScoringMixin):
         if "text-embedding-3-" in self.embedding_model:
             request_body["dimensions"] = self.embedding_dimensions
 
+        # 接続先は環境変数で上書き可能（Ollama等のOpenAI互換エンドポイント）。
+        # デフォルトはOpenRouterのため、未設定時は従来と同一動作。
+        embedding_api_url = os.getenv("EMBEDDING_API_URL", OPENROUTER_EMBEDDING_URL)
+        api_key = os.getenv("EMBEDDING_API_KEY") or self.api_key
+
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                "https://openrouter.ai/api/v1/embeddings",
+                embedding_api_url,
                 headers={
-                    "Authorization": f"Bearer {self.api_key}",
+                    "Authorization": f"Bearer {api_key}",
                     "Content-Type": "application/json",
                 },
                 json=request_body,
@@ -431,3 +480,25 @@ class EnhancedRAGSearch(RAGFallbackMixin, RAGScoringMixin):
 
             data = response.json()
             return data["data"][0]["embedding"]
+
+    async def _local_pgvector_search(
+        self,
+        embedding: List[float],
+        category: str,
+        max_results: int,
+    ) -> SimpleNamespace:
+        """ローカルpgvectorベクトル検索（RAG_VECTOR_BACKEND=local-pgvector時のみ使用）
+
+        Supabase RPCレスポンスと互換にするため、`.data` 属性を持つオブジェクトを返す。
+        接続エラー・テーブル未存在・結果ゼロの場合は空のdataを返し、
+        呼び出し元の既存フォールバック（_fallback_search_response）へ委ねる。
+        """
+        # 遅延インポート: backend/tools/__init__.py 経由の循環インポートを回避
+        from backend.tools import local_rag
+
+        rows = await local_rag.local_pgvector_search(
+            embedding=embedding,
+            similarity_threshold=self._get_rpc_threshold(category),
+            match_count=max_results * 3,  # スコアリング用に多めに取得
+        )
+        return SimpleNamespace(data=rows)

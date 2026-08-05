@@ -2,7 +2,8 @@
 Embedding生成共通サービス
 
 OpenRouter API経由でtext-embedding-3-small (1536d) のembeddingを生成する。
-enhanced_rag.pyとseed_knowledge.pyで共通利用。
+環境変数でOllamaなどのOpenAI互換エンドポイントへ切り替え可能（COSCUPデモ用）。
+enhanced_rag.pyとseed_local_knowledge.pyで共通利用。
 """
 
 import logging
@@ -20,29 +21,39 @@ EMBEDDING_TIMEOUT = 30.0
 
 
 async def generate_embedding(text: str) -> List[float]:
-    """OpenRouter API経由でembeddingを生成
+    """embeddingを生成（環境変数で接続先を上書き可能）
+
+    環境変数:
+        EMBEDDING_API_URL: OpenAI互換embeddingsエンドポイント（デフォルト: OpenRouter）
+        EMBEDDING_MODEL: embeddingモデル名（デフォルト: openai/text-embedding-3-small）
+        EMBEDDING_DIMENSIONS: embedding次元数（デフォルト: 1536）
+        EMBEDDING_API_KEY: APIキー（設定時は優先。未設定時はOPENROUTER_API_KEYにフォールバック。
+            ローカルOllama利用時はダミーキーで可）
 
     Args:
         text: エンベディング対象のテキスト
 
     Returns:
-        1536次元のembeddingベクトル。エラー時は空リスト。
+        EMBEDDING_DIMENSIONS次元のembeddingベクトル。エラー時は空リスト。
     """
-    api_key = os.getenv("OPENROUTER_API_KEY", "")
-
-    if not api_key:
-        logger.warning("OPENROUTER_API_KEY not set, skipping embedding generation")
-        return []
-
     try:
+        api_url = os.getenv("EMBEDDING_API_URL", OPENROUTER_EMBEDDING_URL)
+        model = os.getenv("EMBEDDING_MODEL", EMBEDDING_MODEL)
+        dimensions = int(os.getenv("EMBEDDING_DIMENSIONS", str(EMBEDDING_DIMENSIONS)))
+        api_key = os.getenv("EMBEDDING_API_KEY") or os.getenv("OPENROUTER_API_KEY", "")
+
+        if not api_key:
+            logger.warning("API key not set, skipping embedding generation")
+            return []
+
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                OPENROUTER_EMBEDDING_URL,
+                api_url,
                 headers={
                     "Authorization": f"Bearer {api_key}",
                     "Content-Type": "application/json",
                 },
-                json={"model": EMBEDDING_MODEL, "input": text},
+                json={"model": model, "input": text},
                 timeout=EMBEDDING_TIMEOUT,
             )
 
@@ -58,11 +69,11 @@ async def generate_embedding(text: str) -> List[float]:
             embedding: List[float] = data["data"][0]["embedding"]
 
             # 次元数バリデーション
-            if len(embedding) != EMBEDDING_DIMENSIONS:
+            if len(embedding) != dimensions:
                 logger.error(
                     "Unexpected embedding dimensions: got %d, expected %d",
                     len(embedding),
-                    EMBEDDING_DIMENSIONS,
+                    dimensions,
                 )
                 return []
 
