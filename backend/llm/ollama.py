@@ -138,7 +138,7 @@ class OllamaProvider(LLMProvider):
             "max_tokens": config.max_tokens,
             "top_p": config.top_p,
             "reasoning_effort": "none",
-            "keep_alive": os.getenv("OLLAMA_KEEP_ALIVE", "30m"),
+            "keep_alive": os.getenv("OLLAMA_KEEP_ALIVE", "1h"),
         }
 
     @staticmethod

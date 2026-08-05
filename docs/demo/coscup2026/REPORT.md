@@ -86,9 +86,18 @@
 
 ## 6. オフライン実証
 
-`bash scripts/demo/offline-proof.sh`（Wi-Fi 切断 → tcpdump → デモ 2 項目 + 割り込み完走 → pcap 解析 → Wi-Fi 復元）。
+`bash scripts/demo/offline-proof.sh`（Wi-Fi 切断 → tcpdump → デモ 2 項目 + 割り込み完走 → pcap 解析 → Wi-Fi 復元）。2026-08-05 21:04 JST 実行。
 
-結果: [実行中/完了 — `evidence/offline/` 参照]（8/5 22:00 更新予定）
+**結果: 完走・外向き通信ゼロ**
+
+- デモ① "What can I do at Engineer Cafe?": transcript 正認識 → 英語回答（TTS OK）。E2E 24.4s（※ LLM がコールドリロード 19.7s を含む。ウォーム状態では ~4s）
+- デモ② "Where is the toilet?": E2E **2.2s**（fast path・回答正確）
+- 割り込み: `interrupt=cancelled` ✓
+- **tcpdump: Wi-Fi 切断中に en0 でキャプチャされたパケット数 = 0**（外向き通信ゼロの証明）
+
+証跡: `evidence/offline/offline-run.log`（完走ログ）・`offline-capture.pcap`（0 パケット）
+
+⚠️ 注意: デモ①の LLM 19.7s は **keep_alive（30m→1h に変更）が切れた後のコールドリロード**が原因。デモ当日は warmup.sh を直前に実行し、30 分以上間を空けないこと。ウォーム状態の LLM は 0.9〜3.8s である（§3）。
 
 ## 7. テスト
 
