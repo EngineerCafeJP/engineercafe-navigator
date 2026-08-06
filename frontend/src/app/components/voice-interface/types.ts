@@ -36,6 +36,8 @@ export interface VoiceInterfaceRenderProps {
   currentLanguage: 'ja' | 'en';
   volume: number;
   isMuted: boolean;
+  /** TTS 合成速度倍率（1.0=標準・小さいほど遅い）。piper-plus に speed として渡される */
+  ttsSpeed: number;
   waveformBars: number[];
   wakeWord: {
     isSupported: boolean;
@@ -57,6 +59,7 @@ export interface VoiceInterfaceRenderProps {
   ) => Promise<void>;
   setVolume: (value: number) => void;
   setMuted: (value: boolean) => void;
+  setTtsSpeed: (value: number) => void;
   toggleLanguage: () => void;
 }
 

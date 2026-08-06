@@ -48,8 +48,9 @@ services:
       # Kokoro (CPU) は 2〜3 文の合成に数秒かかるためタイムアウトを延長
       TTS_KOKORO_FALLBACK_TIMEOUT_SECONDS: "30"
       TTS_KOKORO_TIMEOUT_SECONDS: "30"
-      # やや速めの再生速度（デモの待ち時間削減）
-      KOKORO_TTS_SPEED: "1.1"
+      # 再生速度: 実機検証で「速すぎて聞き取れない」との指摘があったため
+      # 1.1 -> 0.95（ややゆっくり）に調整
+      KOKORO_TTS_SPEED: "0.95"
       # LLM: ホストの Ollama（OpenAI 互換 API）。qwen3.6:35b は 2026-08-05
       # ベンチマーク（docs/demo/coscup2026/evidence/benchmark3）の推奨モデル
       # （TTFT ~0.4s / 完答 ~1s / 品質最良）。thinking は provider 側で無効化
@@ -84,6 +85,10 @@ services:
     build:
       context: ./docker/piper-plus
     container_name: engineer-cafe-piper-plus
+    environment:
+      # 話速: server.py が length_scale (1/speed) に変換して合成に適用。
+      # 0.65 = ゆっくり（デフォルト 1.0 は速すぎるため実機指摘で調整）
+      PIPER_SPEED: "0.65"
     ports:
       - "8090:8090"
     healthcheck:

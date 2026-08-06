@@ -74,6 +74,7 @@ Thumbs.db
 
 # - Keep shared Claude Code config/rules/memory, ignore local state and local overrides.
 .claude/state/
+**/.claude/state/
 .claude/logs/
 .claude/sessions/
 .claude/settings.local.json
@@ -150,3 +151,4 @@ backend/tests/evaluation/reports/
 # Demo audio fixtures (generated at prep time)
 scripts/demo/audio/*.wav
 docs/demo/coscup2026/evidence/noise/*.wav
+docs/demo/coscup2026/evidence/scenario/**/*.wav

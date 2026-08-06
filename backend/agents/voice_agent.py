@@ -169,8 +169,10 @@ class VoiceAgent:
         await self.close()
 
     @staticmethod
-    def _tts_cache_key(text: str, language: str, provider: str, emotion: str) -> str:
-        raw = f"{text}|{language}|{provider}|{emotion or 'neutral'}"
+    def _tts_cache_key(
+        text: str, language: str, provider: str, emotion: str, speed: Optional[float] = None
+    ) -> str:
+        raw = f"{text}|{language}|{provider}|{emotion or 'neutral'}|speed={speed or 'default'}"
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
     def _ensure_tts_cache(self) -> TTLCache:
@@ -380,17 +382,20 @@ class VoiceAgent:
         text: str,
         language: Optional[str] = None,
         emotion: Optional[str] = None,
+        speed: Optional[float] = None,
     ) -> Dict[str, Any]:
         """Convert text to speech with language detection.
 
         Features:
             - Automatic language detection (when language is None)
             - TTS provider switching (voicevox / piper / kokoro)
+            - Speech speed override (piper/kokoro): speed 倍率 1.0=標準・小さいほど遅い
 
         Args:
             text: Text to convert to speech. May include emotion tags like [happy].
             language: Language code ('ja' or 'en'). If None, auto-detects from text.
             emotion: Emotion tag to override detected emotion. Optional.
+            speed: TTS 合成速度倍率（未指定時はサーバー側設定に従う）。
 
         Returns:
             TTS result dict with keys:
@@ -430,7 +435,9 @@ class VoiceAgent:
             logger.warning("Text truncated to %d bytes for TTS", max_tts_bytes)
 
         cache_store = self._ensure_tts_cache()
-        cache_key = self._tts_cache_key(processed, language, self.tts_provider, vrm_emotion)
+        cache_key = self._tts_cache_key(
+            processed, language, self.tts_provider, vrm_emotion, speed=speed
+        )
         cached_entry = cache_store.get(cache_key)
         if cached_entry is not None:
             cached_audio = self._cached_audio_from_entry(cached_entry)
@@ -513,7 +520,7 @@ class VoiceAgent:
                         )
                 try:
                     audio_b64 = await self._await_tts_attempt(
-                        self.tts_client.synthesize_wav_base64(processed, language),
+                        self.tts_client.synthesize_wav_base64(processed, language, speed=speed),
                         provider="piper",
                         role="primary",
                         language=language,
@@ -529,7 +536,7 @@ class VoiceAgent:
                 # 英語 → Kokoro TTS
                 primary_attempt_provider = "kokoro"
                 audio_b64 = await self._await_tts_attempt(
-                    self.kokoro_client.synthesize_wav_base64(processed, language),
+                    self.kokoro_client.synthesize_wav_base64(processed, language, speed=speed),
                     provider="kokoro",
                     role="primary",
                     language=language,
@@ -540,7 +547,7 @@ class VoiceAgent:
                 # プライマリ指定が kokoro の場合（COSCUP デモ等のローカル構成）
                 primary_attempt_provider = "kokoro"
                 audio_b64 = await self._await_tts_attempt(
-                    self.tts_client.synthesize_wav_base64(processed, language),
+                    self.tts_client.synthesize_wav_base64(processed, language, speed=speed),
                     provider="kokoro",
                     role="primary",
                     language=language,
@@ -647,7 +654,9 @@ class VoiceAgent:
                                 )
                             fallback_provider = "kokoro"
                             audio_b64 = await self._await_tts_attempt(
-                                kokoro_client.synthesize_wav_base64(processed, language),
+                                kokoro_client.synthesize_wav_base64(
+                                    processed, language, speed=speed
+                                ),
                                 provider="kokoro",
                                 role="fallback",
                                 language=language,
@@ -690,7 +699,9 @@ class VoiceAgent:
                     ):
                         fallback_provider = "kokoro"
                         audio_b64 = await self._await_tts_attempt(
-                            self.kokoro_client.synthesize_wav_base64(processed, language),
+                            self.kokoro_client.synthesize_wav_base64(
+                                processed, language, speed=speed
+                            ),
                             provider="kokoro",
                             role="fallback",
                             language=language,

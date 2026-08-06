@@ -43,6 +43,8 @@ interface UseVoiceTurnProcessorArgs {
   currentLanguage: 'ja' | 'en';
   isMuted: boolean;
   volume: number;
+  /** TTS 合成速度倍率（1.0=標準・小さいほど遅い）。piper-plus に speed として渡される */
+  ttsSpeed: number;
   sessionIdRef: MutableRefObject<string>;
   requestAbortRef: MutableRefObject<AbortController | null>;
   audioQueueRef: MutableRefObject<AudioQueue | null>;
@@ -94,6 +96,7 @@ export function useVoiceTurnProcessor({
   currentLanguage,
   isMuted,
   volume,
+  ttsSpeed,
   sessionIdRef,
   requestAbortRef,
   audioQueueRef,
@@ -160,6 +163,7 @@ export function useVoiceTurnProcessor({
         sessionId: string;
         emotion?: string | null;
         ttsProvider?: string;
+        speed?: number;
       },
       signal: AbortSignal,
     ): Promise<TextToSpeechPayload & Record<string, unknown>> => {
@@ -169,6 +173,7 @@ export function useVoiceTurnProcessor({
           language: request.language,
           sessionId: request.sessionId,
           ttsProvider: request.ttsProvider ?? getTtsProvider(),
+          speed: request.speed,
           ...(typeof request.emotion === 'string' && request.emotion.trim()
             ? { emotion: request.emotion.trim() }
             : {}),
@@ -321,6 +326,7 @@ export function useVoiceTurnProcessor({
             sessionId: sessionIdRef.current,
             emotion: typeof qaResult.emotion === 'string' ? qaResult.emotion : null,
             ttsProvider: getTtsProvider(),
+            speed: ttsSpeed,
           },
           signal,
         );
@@ -470,6 +476,7 @@ export function useVoiceTurnProcessor({
       setMetadata,
       setResponse,
       synthesizeAssistantSpeech,
+      ttsSpeed,
     ],
   );
 
@@ -554,6 +561,7 @@ export function useVoiceTurnProcessor({
             sessionId: sessionIdRef.current,
             emotion: typeof qaResult.emotion === 'string' ? qaResult.emotion : null,
             ttsProvider: getTtsProvider(),
+            speed: ttsSpeed,
           },
           abortController.signal,
         );
@@ -624,6 +632,7 @@ export function useVoiceTurnProcessor({
       setResponse,
       setTranscript,
       synthesizeAssistantSpeech,
+      ttsSpeed,
     ],
   );
 
@@ -669,6 +678,7 @@ export function useVoiceTurnProcessor({
             sessionId: sessionIdRef.current,
             emotion: parsedAnswer.primaryEmotion,
             ttsProvider: getTtsProvider(),
+            speed: ttsSpeed,
           },
           abortController.signal,
         );
@@ -733,6 +743,7 @@ export function useVoiceTurnProcessor({
       setResponse,
       setTranscript,
       synthesizeAssistantSpeech,
+      ttsSpeed,
     ],
   );
 

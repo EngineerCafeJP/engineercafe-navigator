@@ -6,12 +6,17 @@ backend/agents/voice/clients.py の ``PiperPlusTTSClient`` が期待する
 （モデルファイルは Docker build 時に同梱されるため、実行時のネットワーク取得はない）。
 
 言語は MultilingualPhonemizer が文単位で自動判定する（ja/en/zh/es/fr/pt）。
+
+話速: 環境変数 ``PIPER_SPEED``（速度倍率、1.0=標準・小さいほど遅い）を
+Piper の ``length_scale``（= 1 / PIPER_SPEED）に変換して合成に渡す。
+リクエストに ``speed`` フィールドがあれば環境変数より優先する。
 """
 
 from __future__ import annotations
 
 import io
 import logging
+import os
 import wave
 from pathlib import Path
 
@@ -36,6 +41,23 @@ class SynthRequest(BaseModel):
     text: str
     language: str | None = None
     speaker_id: int | None = None
+    speed: float | None = None
+
+
+def _default_speed() -> float:
+    """PIPER_SPEED 環境変数（速度倍率、1.0=標準・小さいほど遅い）。未設定は 1.0。"""
+    raw = os.getenv("PIPER_SPEED", "").strip()
+    if not raw:
+        return 1.0
+    try:
+        value = float(raw)
+    except ValueError:
+        logger.warning("Invalid PIPER_SPEED=%r; using 1.0", raw)
+        return 1.0
+    if value <= 0:
+        logger.warning("PIPER_SPEED=%r must be > 0; using 1.0", raw)
+        return 1.0
+    return value
 
 
 @app.on_event("startup")
@@ -57,7 +79,7 @@ def get_voices() -> dict:
 
 @app.post("/synthesize")
 def synthesize(req: SynthRequest) -> Response:
-    """backend PiperPlusTTSClient 互換: {text, language} -> WAV bytes."""
+    """backend PiperPlusTTSClient 互換: {text, language, speed?} -> WAV bytes."""
     if _voice is None:
         raise HTTPException(status_code=503, detail="Model not loaded yet")
     text = (req.text or "").strip()
@@ -66,8 +88,16 @@ def synthesize(req: SynthRequest) -> Response:
     if len(text.encode("utf-8")) > 1 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="Text too large")
 
-    logger.info("synthesize: lang=%s text_len=%d", req.language, len(text))
+    # 話速: リクエストの speed を優先、無ければ PIPER_SPEED env、無ければ 1.0
+    speed = req.speed if req.speed is not None else _default_speed()
+    if speed <= 0:
+        speed = 1.0
+    # Piper は length_scale（長さ倍率、1.0=標準・大きいほど遅い）で話速を制御する
+    length_scale = 1.0 / speed
+
+    logger.info("synthesize: lang=%s text_len=%d speed=%s length_scale=%.3f",
+                req.language, len(text), speed, length_scale)
     buf = io.BytesIO()
     with wave.open(buf, "wb") as wav_file:
-        _voice.synthesize(text, wav_file)
+        _voice.synthesize(text, wav_file, length_scale=length_scale)
     return Response(content=buf.getvalue(), media_type="audio/wav")

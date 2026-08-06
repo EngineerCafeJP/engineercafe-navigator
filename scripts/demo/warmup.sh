@@ -79,3 +79,6 @@ done
 elapsed=$(( $(date +%s) - started_at ))
 echo "[demo] Warm-up done in ${elapsed}s"
 echo "[demo] STT model, Ollama model, and 2 TTS cache entries are ready."
+echo "[demo] 注意: モデルは Ollama サーバー既定 keep_alive（通常 5 分）でアンロードされます。"
+echo "[demo] デモ中は  bash scripts/demo/heartbeat.sh  （バックグラウンド実行推奨）で保持してください。"
+echo "[demo] 30 分以上間が空きそうな場合は、直前にもう一度 warmup.sh を実行してください。"

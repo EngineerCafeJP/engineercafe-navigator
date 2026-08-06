@@ -34,6 +34,7 @@ Accepted (2026-08-05) / **追補: PiperPlus TTS パリティ回復 (2026-08-06)*
 - `backend/llm/provider.py` の `get_llm_provider()` は `LLM_PROVIDER=ollama` のとき OllamaProvider を選択（既定は従来どおり OpenRouterProvider）。
 - **`resolve_llm_provider(api_key=None)` ヘルパーを新設**し、直接インスタンス化していた 5 箇所（orchestrator / general_knowledge / ocr / language_processor / purpose_classifier）を経由させる。`LLM_PROVIDER=ollama` 時は共有シングルトンとは別の OllamaProvider を返す（close() によるシングルトン破壊を回避）。
 - Ollama ペイロードは `reasoning_effort: "none"`（Qwen3 系 thinking 無効化。ベンチマークで TTFT 37s → 0.4s に改善）と `keep_alive: 30m`（ターン間アンロード防止）を含む。
+  - ⚠️ 追補2 注記: Ollama の **OpenAI 互換 API（/v1）は keep_alive を無視する**（実測: `ollama ps` の UNTIL が更新されない）。モデルはサーバー既定 keep_alive（通常 5 分）でアンロードされ、次ターンはコールドリロード ~12.5s かかる。→ デモ中は `scripts/demo/heartbeat.sh`（native `/api/chat` に keep_alive=1h を定期送信）で常駐させる。
 
 ### D2: Embedding / RAG のローカル化（env-gated）
 
@@ -60,6 +61,20 @@ Accepted (2026-08-05) / **追補: PiperPlus TTS パリティ回復 (2026-08-06)*
 - タイムアウト: `TTS_PIPER_TIMEOUT_SECONDS=20` / `TTS_PIPER_PRIMARY_TIMEOUT_SECONDS=20` / `PIPER_PLUS_MAX_ATTEMPTS=2` / `PIPER_PLUS_RETRY_BACKOFF_SECONDS=0.15` を compose で明示。
 - フロント: `getTtsProvider()` は既定 `'piper'`（デモ時も本番と同じ。`NEXT_PUBLIC_TTS_PROVIDER` で実験的に override 可）。Kokoro のコード・サービス・フォールバック経路は削除しない（本番フォールバック + Slide 9 のコントリビューター功績）。
 - 実測（8/6）: TTS 合成 36-41ms / 転送込み 137-171ms（Q1-Q3 回答文）。Kokoro（2-4s）比 15-20 倍速。割り込み 10/10・オフライン 0 パケット再実証（evidence/offline2/）。
+
+### D3.2（追補 2026-08-07）: 実機フィードバック対応 — 話速調整 UI とモデル常駐
+
+実機ローカルホスト検証の指摘（英語 TTS 速すぎ・2 問目タイムオーバー）への対応。
+
+- **話速（TTS）**: `docker/piper-plus/server.py` に `PIPER_SPEED`（速度倍率）→ Piper `length_scale`（=1/speed）変換を実装。compose 既定 `PIPER_SPEED=0.65`。
+  さらにフロント設定パネル（Multimedia タブ）に**話速スライダー**（0.50〜1.50・localStorage 永続化）を追加し、
+  `/api/voice` の `speed` パラメータ → `PiperPlusTTSClient` → `/synthesize` のパイプラインで伝播。
+  TTS キャッシュキーに speed を含める（異なる話速は別キャッシュ）。Kokoro フォールバックにも同一 speed を適用。
+- **モデル常駐（LLM）**: 上記 D1 注記のとおり OpenAI 互換 API は keep_alive を無視するため、
+  `scripts/demo/heartbeat.sh` を新設（native `/api/chat` に keep_alive=1h を 3 分間隔で定期送信）。
+  デモ中はバックグラウンド実行してモデルを常駐させる。
+- **回帰固定**: `scripts/demo/scenario-test.sh`（S1 followup-turn / S2 keepalive-expiry / S3 tts-speed）を新設。
+  実機のタイミングを狙う手動再現に依存せず、Docker スタック + API で機械的に検証する。
 
 ### D4: 推奨 LLM モデル
 

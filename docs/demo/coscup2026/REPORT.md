@@ -1,6 +1,20 @@
 # COSCUP 2026 ライブデモ 実装レポート
 
-日付: 2026-08-05 / 追補: 2026-08-06（PiperPlus パリティ回復） ｜ ブランチ: `feat/coscup2026-local-demo` ｜ ベース: `develop`
+日付: 2026-08-05 / 追補: 2026-08-06（PiperPlus パリティ回復） / 追補2: 2026-08-07（実機フィードバック対応） ｜ ブランチ: `feat/coscup2026-local-demo` ｜ ベース: `develop`
+
+## 0. 実機フィードバック対応（2026-08-07 追補2）
+
+実機ローカルホスト検証で 2 件の指摘 → **自動シナリオテストで再現・修正・回帰固定**。
+
+| 指摘 | 根本原因（実測で確定） | 修正 | 検証（シナリオテスト） |
+|---|---|---|---|
+| 英語 TTS が速すぎて聞き取れない | `docker/piper-plus/server.py` が `PIPER_SPEED` を**実装していなかった**（clients.py コメントと乖離）。Piper デフォルト速度(length_scale=1.0)で合成 | server.py に `PIPER_SPEED`(→length_scale=1/speed)実装 + compose `PIPER_SPEED=0.65` + **UI に話速スライダー**（設定パネル・Multimedia タブ、0.50〜1.50、localStorage 永続化、/api/voice の speed パラメータで伝播） | `scenario/tts-speed.sh`: speed 1.0→5.2s / 0.8→6.0s / 0.65→7.5s（1.44x 延長、length_scale 有効） |
+| 2 問目でタイムオーバー＝記憶が引けない | **Ollama の OpenAI 互換 API（/v1）は keep_alive を無視**（実測: `ollama ps` の UNTIL が更新されず、`options.keep_alive` も無効）。モデルはサーバー既定（5 分）でアンロードされ、次ターンはコールドリロード ~12.5s | `scripts/demo/heartbeat.sh` 新設（native /api/chat に keep_alive=1h を定期送信で常駐）。**記憶そのものは正常動作**（下記 S1-Q3） | `scenario/followup-turn.sh`: Q2 応答 0.78s（コールドリロードなし）。フォローアップ「What did I just ask about?」→ 回答に「Engineer Cafe」「restroom」＝**文脈継承 true** |
+
+- 追補2 で「2 問目タイムオーバー」の原因は keep_alive 無視であり、**会話履歴（checkpointer/STM）は正常に機能している**ことを実機で確認した。
+- 検証基盤: `scripts/demo/scenario-test.sh`（S1 followup-turn / S2 keepalive-expiry / S3 tts-speed）。
+  実機のタイミングを狙う手動再現に依存せず、Docker スタック + API で回帰固定する。
+  証跡: `docs/demo/coscup2026/evidence/scenario/`
 
 ## 1. 現行パイプライン構成（調査結果・コードと compose から確定）
 
@@ -10,7 +24,7 @@
 | LLM | `get_llm_provider()` シングルトン | **変更前: OpenRouter（クラウド）→ 変更後: Ollama `qwen3.6:35b`（Metal GPU）** | 変更前: あり ❌ → 変更後: なし ✅ |
 | Embedding | `embedding_service.py` | 変更前: OpenRouter → 変更後: Ollama `nomic-embed-text`（768d） | 変更前: あり → 変更後: なし |
 | RAG 検索 | `EnhancedRAGSearch` | 変更前: Supabase RPC → 変更後: ローカル postgres(pgvector) `search_knowledge_base_local`（シード 78 行） | 変更前: あり → 変更後: なし |
-| TTS | PiperPlus（tsukuyomi-chan-6lang・en=対応）プライマリ + Kokoro(af_bella) フォールバック | ローカル `piper-plus:8090`（Docker・モデルビルド時同梱）+ `kokoro-tts:8880` | なし（DL はビルド時のみ） |
+| TTS | PiperPlus（tsukuyomi-chan-6lang・en=対応）プライマリ + Kokoro(af_bella) フォールバック | ローカル `piper-plus:8090`（Docker・モデルビルド時同梱）+ `kokoro-tts:8880`。話速は UI 設定パネルのスライダーで調整可（`PIPER_SPEED=0.65` 相当） | なし（DL はビルド時のみ） |
 | 割り込み | `/api/voice` action=interrupt → `SessionTaskManager.cancel_all_tasks` + フロント `AudioQueue.clear` + `WebAudioPlayer.stop` | — | なし |
 | 言語 | ヒューリスティック検出（ja/en/zh/ko）+ `LANGUAGE_FORCE=en` 強制 | — | なし（LLM フォールバック検出も Ollama 化） |
 | Calendar | `GOOGLE_CALENDAR_ICAL_URL` 未設定 → 非発動。デモ時は自然な英語フォールバック文言 | — | 例外（デモでは不使用） |
@@ -110,13 +124,20 @@ PiperPlus は Kokoro 比 **約 15-20 倍高速**（合成 36-41ms + 転送）。
 - **8/5（Kokoro 構成）**: 完走・**tcpdump 0 パケット**。証跡: `evidence/offline/`
 - **8/6（PiperPlus 構成）**: 完走・0 パケット。証跡: `evidence/offline2/`（PiperPlus プライマリでの再実行）
 
-⚠️ 注意: デモ①の LLM コールドリロード（~20s）は **keep_alive=1h が切れた後**に発生。デモ当日は warmup.sh を直前に実行し、30 分以上間を空けないこと。
+⚠️ 注意: backend は Ollama の **OpenAI 互換 API**（`/v1/chat/completions`）経由のため、
+リクエスト側 `keep_alive` は**無視される**（実測: `/v1` では `ollama ps` の UNTIL が
+更新されず、`options.keep_alive` も無効）。モデルは Ollama サーバー既定 keep_alive
+（通常 **5 分**）でアンロードされ、次ターンはコールドリロード ~12.5s かかる
+（実機で「2 問目がタイムオーバー」の原因）。
+→ デモ中は `bash scripts/demo/heartbeat.sh`（native `/api/chat` に keep_alive=1h を
+定期送信）で常駐させる。実測で `UNTIL 59 minutes from now` に更新されることを確認済み。
 
 ## 7. テスト
 
 - backend: `pytest -m "not ragas and not slow and not e2e"` → **3881 passed / 0 failed**（41 skip は Supabaseローカル 35 / VoiceVox不在 4 / --run-llm 2。8/5 と同数・piper 導入による増減なし — piper ゲートの探索は e2e マーク側にあるため）
 - frontend: **163 passed / 0 failed** / `tsc --noEmit` クリーン
 - 新規テスト: Ollama provider（23）・resolve_llm_provider（4）・local RAG（18）・embedding env（11）・言語強制/簡潔指示/カレンダー文言（24）・デモモード（7）
+- 追補2 新規: piper client speed 送信（1）・voice-client speed payload（2）・TTS cache key speed 分離（既存 cache テストで回帰）
 
 ## 8. 成果物一覧
 
@@ -128,5 +149,6 @@ PiperPlus は Kokoro 比 **約 15-20 倍高速**（合成 36-41ms + 転送）。
 | ベンチ結果 | `docs/demo/coscup2026/evidence/benchmark3/` |
 | ノイズ証跡 | `docs/demo/coscup2026/evidence/noise/` |
 | オフライン証跡 | `docs/demo/coscup2026/evidence/offline/`（実行後） |
-| スクリプト | `scripts/demo/{up,down,warmup,health,latency,offline-proof}.sh`・`benchmark_ollama.py` |
+| シナリオテスト証跡（追補2） | `docs/demo/coscup2026/evidence/scenario/`（tts-speed / followup-turn / keepalive-expiry） |
+| スクリプト | `scripts/demo/{up,down,warmup,heartbeat,health,latency,offline-proof,scenario-test}.sh`・`benchmark_ollama.py`・`scenarios/*.sh` |
 | compose | `docker-compose.demo.yml` |

@@ -28,8 +28,16 @@ docker compose -f docker-compose.yml -f docker-compose.demo.yml --profile voice 
 
 | エンドポイント | 内容 |
 |---|---|
-| `POST /synthesize` | `{"text": "...", "language": "en"}` → `audio/wav`（16bit PCM・22050Hz） |
+| `POST /synthesize` | `{"text": "...", "language": "en", "speed": 0.65}` → `audio/wav`（16bit PCM・22050Hz） |
 | `GET /api/voices` | voice 一覧（compose healthcheck で使用） |
+
+## 話速（PIPER_SPEED）
+
+- 合成話速は環境変数 `PIPER_SPEED`（速度倍率、1.0=標準・**小さいほど遅い**）で制御する。
+  サーバーが `length_scale = 1 / PIPER_SPEED` に変換して Piper に渡す。
+- リクエストに `speed` フィールドがあれば環境変数より優先される。
+- compose 既定: `PIPER_SPEED: "0.65"`（ゆっくり。実機検証でデフォルト 1.0 は
+  「速すぎて聞き取れない」との指摘があったため調整）。
 
 ## 検証（2026-08-06）
 
@@ -37,3 +45,5 @@ docker compose -f docker-compose.yml -f docker-compose.demo.yml --profile voice 
 - 日本語合成: 動作確認済み（デモでは未使用）
 - 割り込み: 合成中キャンセル 10/10
 - オフライン: Wi-Fi 切断 + tcpdump 0 パケットで完走（evidence/offline2/）
+- 話速: `scripts/demo/scenarios/tts-speed.sh` で length_scale の適用を機械検証
+  （speed 0.65 で WAV duration が 1.0 比 1.2 倍以上に延長されること）

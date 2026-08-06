@@ -40,14 +40,24 @@ bash scripts/demo/warmup.sh
 ```
 ⏱ 30 秒〜1 分（STT モデルロード + LLM 1往復 + 回答 2 件の TTS キャッシュ生成）
 
-⚠️ **ウォームアップ後 30 分以内にデモを開始すること**（LLM は keep_alive=1h で保持されるが、空けすぎるとコールドリロードで 20s かかる。デモ直前の実行を推奨）。
+⚠️ **デモ中は `bash scripts/demo/heartbeat.sh` をバックグラウンドで実行すること**
+（backend は Ollama の OpenAI 互換 API を使うため、リクエスト側の `keep_alive`
+は無視される＝実測済み。モデルは Ollama サーバー既定 keep_alive（通常 5 分）で
+アンロードされ、次のターンはコールドリロード ~12.5s かかる＝実機で
+「2 問目がタイムオーバー」の原因になった。heartbeat は native `/api/chat` に
+`keep_alive=1h` を送り、モデルを常駐させる）。
+
+```bash
+nohup bash scripts/demo/heartbeat.sh >/dev/null 2>&1 &   # デモ中はこのまま
+```
+`ollama ps` で `UNTIL 59 minutes from now` が出ていれば保持されている。
 
 ## 4. ヘルスチェック
 
 ```bash
 bash scripts/demo/health.sh      # backend /health + frontend 200
 curl -s http://localhost:8000/health   # {"status":"ok",...}
-ollama ps                        # qwen3.6:35b が LOADED であること
+ollama ps                        # qwen3.6:35b が LOADED（UNTIL が近い/切れていたら heartbeat 再開）
 ```
 ⏱ 10 秒
 
@@ -57,6 +67,9 @@ ollama ps                        # qwen3.6:35b が LOADED であること
 2. 初回モーダルで「English」→ Start
 3. マイク許可を「Allow」
 4. ミュート解除・スピーカー音量確認（ヘッドセット推奨）
+5. 画面右上の ⚙ 設定 → **Multimedia タブ →「音声スピード」** で話速を調整
+   （1.0=標準。実機検証の指摘を受けデフォルト構成は 0.65 ≒ ゆっくり。
+   スライダー 0.50〜1.50 の範囲でリアルタイム調整可能・次回起動時も保持）
 
 **デモ①**: マイクボタン長押し → 「What can I do at Engineer Cafe?」→ 放して回答待ち
 **デモ②**: 回答再生中にマイクボタンを押す → 即停止 → 「Where is the toilet?」で新質問
@@ -75,7 +88,7 @@ bash scripts/demo/down.sh
 | 回答が日本語になる | LANGUAGE_FORCE 確認 | compose 再作成: `up -d backend` |
 | STT が返らない | `docker compose ... logs backend` | warmup.sh 再実行（モデルロード） |
 | TTS が無音/失敗 | piper-plus と kokoro-tts の health | `docker compose ... up -d piper-plus kokoro-tts` |
-| LLM が遅い/停止 | `ollama ps`（モデル unload してないか） | warmup.sh 再実行 |
+| LLM が遅い/停止 | `ollama ps`（モデル unload してないか） | heartbeat 再開 or warmup.sh 再実行 |
 | RAM 不足 | Activity Monitor | `OLLAMA_MODEL=gemma4:e2b` に変更 → `up -d backend` |
 
 TTS フォールバック順: **① PiperPlus（tsukuyomi-chan-6lang）→ ② Kokoro（ローカル）→ ③ ホステッド版 → ④ 録画60秒**（詳細は [`FALLBACK.md`](./FALLBACK.md) へ）。

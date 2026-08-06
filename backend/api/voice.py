@@ -568,6 +568,7 @@ async def voice_api(request: Request, body: VoiceRequest):
                     text=body.text,
                     language=body.language or "ja",
                     emotion=body.emotion,  # Use requested emotion for TTS
+                    speed=body.speed,  # 話速（未指定時はサーバー側設定に従う）
                 )
             )
             if body.sessionId:

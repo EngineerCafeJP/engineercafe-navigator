@@ -68,6 +68,9 @@ export interface SettingsPanelProps {
   is_muted: boolean;
   on_volume_change?: (value: number) => void;
   on_mute_toggle?: () => void;
+  /** TTS 合成速度（1.0=標準・小さいほど遅い） */
+  tts_speed?: number;
+  on_tts_speed_change?: (value: number) => void;
   /** Keyframe tab - run callback is passed from parent */
   on_run_keyframe: (animation: CharacterAnimationData) => void;
   /** Slides tab - when set, a "Slides" tab is shown for opening/closing slide mode */
@@ -118,6 +121,8 @@ export default function SettingsPanel({
   is_muted,
   on_volume_change,
   on_mute_toggle,
+  tts_speed,
+  on_tts_speed_change,
   on_run_keyframe,
   kiosk_language = 'ja',
   kiosk_trigger_mode,
@@ -219,6 +224,8 @@ export default function SettingsPanel({
             isMuted={is_muted}
             onVolumeChange={(value) => on_volume_change?.(value)}
             onMuteToggle={() => on_mute_toggle?.()}
+            ttsSpeed={tts_speed}
+            onTtsSpeedChange={on_tts_speed_change}
           />
 
           <MicrophoneSettings

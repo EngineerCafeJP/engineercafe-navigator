@@ -28,6 +28,7 @@ import { useVoiceSessionController } from '../hooks/useVoiceSessionController';
 import { VoiceRecorder } from '@/lib/voice-recorder';
 import { cancelSttWarmup, sendSttWarmup } from '@/lib/stt-warmup';
 import { VoiceInterfaceDefaultUI } from './voice-interface/VoiceInterfaceDefaultUI';
+import { getInitialTtsSpeed } from './TtsSpeedSettings';
 import {
   DEFAULT_WAKE_WORDS,
   LOADING_LABELS,
@@ -84,6 +85,7 @@ export default function VoiceInterface({
   const [currentLanguage, setCurrentLanguage] = useState<'ja' | 'en'>(language);
   const [volume, setVolumeState] = useState(0.8);
   const [isMuted, setIsMuted] = useState(false);
+  const [ttsSpeed, setTtsSpeedState] = useState(getInitialTtsSpeed());
   const [transcript, setTranscript] = useState('');
   const [response, setResponse] = useState('');
   const [metadata, setMetadata] = useState<VoiceInterfaceMetadata | null>(null);
@@ -251,6 +253,10 @@ export default function VoiceInterface({
     audioQueueRef.current?.setVolume(effectiveVolume);
   }, [audioQueueRef, isMuted, mobileAudioServiceRef]);
 
+  const setTtsSpeed = useCallback((nextSpeed: number) => {
+    setTtsSpeedState(nextSpeed);
+  }, []);
+
   const setMuted = useCallback((nextMuted: boolean) => {
     setIsMuted(nextMuted);
     const effectiveVolume = nextMuted ? 0 : volume;
@@ -289,6 +295,7 @@ export default function VoiceInterface({
     currentLanguage,
     isMuted,
     volume,
+    ttsSpeed,
     sessionIdRef,
     requestAbortRef,
     audioQueueRef,
@@ -701,6 +708,7 @@ export default function VoiceInterface({
       currentLanguage,
       volume,
       isMuted,
+      ttsSpeed,
       waveformBars: voiceController.waveformBars,
       wakeWord: {
         isSupported: voiceController.isWakeWordSupported,
@@ -718,6 +726,7 @@ export default function VoiceInterface({
       speakPreparedText,
       setVolume,
       setMuted,
+      setTtsSpeed,
       toggleLanguage,
     }),
     [
@@ -738,6 +747,7 @@ export default function VoiceInterface({
       sessionState,
       setMuted,
       setVolume,
+      setTtsSpeed,
       startListening,
       stopListening,
       toggleLanguage,
@@ -750,6 +760,7 @@ export default function VoiceInterface({
       voiceController.wakeWordError,
       voiceController.waveformBars,
       volume,
+      ttsSpeed,
     ],
   );
 

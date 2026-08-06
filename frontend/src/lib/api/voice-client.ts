@@ -45,6 +45,8 @@ export interface TextToSpeechRequest {
   readonly outputEncoding?: string;
   readonly ttsProvider?: string;
   readonly includeVrmControl?: boolean;
+  /** 合成速度倍率（1.0=標準・小さいほど遅い）。未指定時はサーバー側設定に従う */
+  readonly speed?: number;
 }
 
 export interface TextToSpeechPayload extends VoiceBasePayload {
@@ -303,6 +305,9 @@ export async function textToSpeech(
         ? { ttsProvider: request.ttsProvider }
         : {}),
       ...(request.includeVrmControl === true ? { includeVrmControl: true } : {}),
+      ...(typeof request.speed === 'number' && request.speed > 0
+        ? { speed: request.speed }
+        : {}),
     },
     options,
   );

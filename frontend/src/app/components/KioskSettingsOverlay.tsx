@@ -80,6 +80,10 @@ export function KioskSettingsOverlay({
           on_mute_toggle={() => {
             voice.setMuted(!voice.isMuted);
           }}
+          tts_speed={voice.ttsSpeed}
+          on_tts_speed_change={(value) => {
+            voice.setTtsSpeed(value);
+          }}
           show_close_button
           on_close={onClose}
           extra_tab={{
