@@ -43,6 +43,7 @@ import { KioskOcrOverlay } from './components/KioskOcrOverlay';
 import { KioskSettingsOverlay } from './components/KioskSettingsOverlay';
 import { KioskSlideOverlay } from './components/KioskSlideOverlay';
 import { KioskWelcomeOverlay } from './components/KioskWelcomeOverlay';
+import { RestroomRouteOverlay } from './components/RestroomRouteOverlay';
 import { SlideLanguagePicker } from './components/SlideLanguagePicker';
 import InitialSettingsModal from './components/InitialSettingsModal';
 import ClockBadge from './components/ClockBadge';
@@ -51,6 +52,19 @@ import VoiceInterface, { type VoiceInterfaceMetadata } from './components/VoiceI
 import type { OcrResponse } from '@/lib/api/ocr-api';
 import { startReception } from '@/lib/reception-api';
 import { cancelSttWarmup, sendSttWarmup } from '@/lib/stt-warmup';
+
+function RestroomRouteTrigger({ response, onTrigger }: { response: string, onTrigger: () => void }) {
+  const lastResponseRef = useRef(response);
+  useEffect(() => {
+    if (response && response !== lastResponseRef.current) {
+      lastResponseRef.current = response;
+      if (/(toilet|restroom|トイレ|お手洗い|洗手间|화장실)/i.test(response)) {
+        onTrigger();
+      }
+    }
+  }, [response, onTrigger]);
+  return null;
+}
 
 export default function Home() {
   useKioskViewportLock();
@@ -96,6 +110,8 @@ export default function Home() {
     useState<SettingsPanelPropsFromSource | null>(null);
   const [presentationAutoStartKey, setPresentationAutoStartKey] = useState(0);
   const [presentationLanguage, setPresentationLanguage] = useState<'ja' | 'en'>('ja');
+  const [showSlideMode, setShowSlideMode] = useState(false);
+  const [showRestroomRoute, setShowRestroomRoute] = useState(false);
   const [slideLanguagePickerOpen, setSlideLanguagePickerOpen] = useState(false);
   const playKeyframeAnimationRef = useRef<((data: CharacterAnimationData) => void) | null>(null);
   const lastVrmControlPlayedRef = useRef<unknown>(null);
@@ -582,6 +598,7 @@ export default function Home() {
 
           return (
             <>
+              <RestroomRouteTrigger response={voice.response} onTrigger={() => setShowRestroomRoute(true)} />
               <ConversationHistoryEffects
                 transcript={voice.transcript}
                 response={voice.response}
@@ -716,6 +733,13 @@ export default function Home() {
                     setOcrMode={setOcrMode}
                   />
                 )}
+
+                <RestroomRouteOverlay
+                  visible={showRestroomRoute}
+                  language={voice.currentLanguage as any}
+                  onClose={() => setShowRestroomRoute(false)}
+                  bumpUserActivity={bumpUserActivity}
+                />
 
                 <KioskOcrOverlay
                   visible={kioskPhase === 'ocr'}
