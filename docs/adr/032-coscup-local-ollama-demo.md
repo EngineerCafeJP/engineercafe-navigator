@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (2026-08-05) — COSCUP 2026（台北, 2026-08-08）ライブデモ専用。本番（エンジニアカフェ実運用）の設定・挙動は不変。すべての変更は env-gated / profile 分離。
+Accepted (2026-08-05) / **追補: PiperPlus TTS パリティ回復 (2026-08-06)** — COSCUP 2026（台北, 2026-08-08）ライブデモ専用。本番（エンジニアカフェ実運用）の設定・挙動は不変。すべての変更は env-gated / profile 分離。
 
 ## Context
 
@@ -48,6 +48,18 @@ Accepted (2026-08-05) — COSCUP 2026（台北, 2026-08-08）ライブデモ専�
 - 言語強制 `LANGUAGE_FORCE=en`、簡潔回答 `DEMO_CONCISE_ANSWER=true`（en 指示に 2-3 文制約を追記）、カレンダー失敗時の自然な英語フォールバック文言。
 - オフライン硬直化: `HF_HUB_OFFLINE=1` / `TRANSFORMERS_OFFLINE=1` / `NUMBA_CACHE_DIR=/app/.numba_cache`（librosa/numba JIT キャッシュ問題の回避。これが無いと Qwen ONNX が RuntimeError で落ちる）。
 - TTS は Kokoro プライマリ（piper-plus サーバーが本リポジトリに不在のため）。`TTS_PROVIDER=kokoro` を `voice_agent` / `api/voice` の許可リストへ追加（env 既定は piper のまま）。
+
+### D3.1（追補 2026-08-06）: TTS の本番パリティ回復 — PiperPlus プライマリ
+
+8/5 実装ではデモ TTS を Kokoro プライマリとしたが、本番は「PiperPlus プライマリ → Kokoro フォールバック」。登壇の核「本物のプロダクトが本物の構成でこの 1 台で動く」との整合のため、PiperPlus をローカル Docker で復元した。
+
+- **`docker/piper-plus/` 新設**: `piper-plus` pip パッケージ（1.13.0・MIT）の `PiperVoice` をラップした FastAPI アダプタ。backend `PiperPlusTTSClient` 互換の `POST /synthesize`（JSON {text, language} → WAV）と `GET /api/voices`（health）を提供。PiperPlus 自体がバックエンドの接続先として `TTS_PROVIDER=piper` で使用される（コード変更なし）。
+- **モデル**: tsukuyomi-chan-6lang-fp16.onnx（39MB・MB-iSTFT・ja/en/zh/es/fr/pt）— production ドキュメントが参照するモデル。英語は MultilingualPhonemizer が文単位自動判定（language_id 指定不要）。
+- **オフライン保証**: モデル + nltk データ（g2p-en 用）を Docker build 時にイメージへ焼き込み（`NLTK_DATA` 指定・旧名 zip も配置）。実行時ネットワーク取得ゼロ。`HF_HUB_OFFLINE` と同等の「実行時はビルド済みアーティファクトのみ」運用。
+- **ARM64 対応**: onnxruntime / pyopenjtalk-plus とも aarch64 wheel が存在することを確認し、Apple Silicon Docker で実証済み。
+- タイムアウト: `TTS_PIPER_TIMEOUT_SECONDS=20` / `TTS_PIPER_PRIMARY_TIMEOUT_SECONDS=20` / `PIPER_PLUS_MAX_ATTEMPTS=2` / `PIPER_PLUS_RETRY_BACKOFF_SECONDS=0.15` を compose で明示。
+- フロント: `getTtsProvider()` は既定 `'piper'`（デモ時も本番と同じ。`NEXT_PUBLIC_TTS_PROVIDER` で実験的に override 可）。Kokoro のコード・サービス・フォールバック経路は削除しない（本番フォールバック + Slide 9 のコントリビューター功績）。
+- 実測（8/6）: TTS 合成 36-41ms / 転送込み 137-171ms（Q1-Q3 回答文）。Kokoro（2-4s）比 15-20 倍速。割り込み 10/10・オフライン 0 パケット再実証（evidence/offline2/）。
 
 ### D4: 推奨 LLM モデル
 

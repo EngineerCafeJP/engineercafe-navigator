@@ -1,7 +1,7 @@
 # Docker Compose override for the fully-offline COSCUP 2026 demo
 # 使い方（Observability を除外して高速起動）:
 #   docker compose -f docker-compose.yml -f docker-compose.demo.yml --profile voice \
-#     up -d frontend backend postgres kokoro-tts
+#     up -d frontend backend postgres piper-plus kokoro-tts
 #   または scripts/demo/up.sh を使用（起動待ち込み）。
 #
 # 注意:
@@ -32,11 +32,18 @@ services:
       # 400ms 前後で精度も高い）。hedge=0 で Vosk レースを無効化し、
       # Qwen 失敗時のみ Vosk フォールバックへ
       QWEN_STT_HEDGE_DELAY_SECONDS: "0"
-      # TTS: kokoro をプライマリに（デモスタックに piper-plus サーバーが
-      # 存在しないため。英語品質は良好）。フロントエンドはデモモード時に
-      # ttsProvider='kokoro' を送信する
-      TTS_PROVIDER: kokoro
+      # TTS: 本番パリティ — PiperPlus プライマリ → Kokoro フォールバック。
+      # piper-plus は docker/piper-plus（tsukuyomi-chan-6lang、ビルド時モデル同梱）。
+      # フロントエンドは getTtsProvider() 経由で ttsProvider='piper' を送信する
+      TTS_PROVIDER: piper
       TTS_REQUIRE_PRIMARY_PROVIDER: "false"
+      PIPER_PLUS_API_URL: http://piper-plus:8090
+      # PiperPlus: 接続・合成のタイムアウト（バックエンド既定 20s を明示）
+      TTS_PIPER_TIMEOUT_SECONDS: "20"
+      TTS_PIPER_PRIMARY_TIMEOUT_SECONDS: "20"
+      PIPER_PLUS_MAX_ATTEMPTS: "2"
+      PIPER_PLUS_RETRY_BACKOFF_SECONDS: "0.15"
+      # Kokoro フォールバック（本番同様）
       KOKORO_API_URL: http://kokoro-tts:8880
       # Kokoro (CPU) は 2〜3 文の合成に数秒かかるためタイムアウトを延長
       TTS_KOKORO_FALLBACK_TIMEOUT_SECONDS: "30"
@@ -73,6 +80,22 @@ services:
       postgres:
         condition: service_healthy
 
+  piper-plus:
+    build:
+      context: ./docker/piper-plus
+    container_name: engineer-cafe-piper-plus
+    ports:
+      - "8090:8090"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8090/api/voices', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - engineer-cafe-network
+    restart: unless-stopped
+
   postgres:
     # ホスト側の 5432 を公開しない（ホストの別 postgres と衝突するため。
     # backend からは内部ネットワークで接続するため不要）
@@ -80,5 +103,5 @@ services:
 
   frontend:
     environment:
-      # デモ UI フラグ（初期言語 en / 初回モーダルの英語プリセレクト / TTS kokoro）
+      # デモ UI フラグ（初期言語 en / 初回モーダルの英語プリセレクト / TTS piper）
       NEXT_PUBLIC_DEMO_MODE: "true"

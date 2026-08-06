@@ -20,7 +20,7 @@ cd "${REPO_ROOT}"
 
 BACKEND_URL="${DEMO_BACKEND_URL:-http://localhost:8000}"
 WIFI_IFACE="${DEMO_WIFI_IFACE:-en0}"
-EVIDENCE_DIR="docs/demo/coscup2026/evidence/offline"
+EVIDENCE_DIR="${DEMO_EVIDENCE_DIR:-docs/demo/coscup2026/evidence/offline2}"
 STT_WAV1="${SCRIPT_DIR}/audio/q1_what_can_i_do.wav"
 STT_WAV2="${SCRIPT_DIR}/audio/q2_where_is_toilet.wav"
 PCAP="${EVIDENCE_DIR}/offline-capture.pcap"
@@ -79,7 +79,7 @@ async def main():
         r = await c.post(f"{base}/api/chat", json={"query": transcript, "session_id":"offline-1", "language":"en"})
         answer = r.json().get("answer")
         t2 = time.perf_counter()
-        r = await c.post(f"{base}/api/voice", json={"action":"text_to_speech","text":answer,"language":"en","sessionId":"offline-1","ttsProvider":"kokoro"})
+        r = await c.post(f"{base}/api/voice", json={"action":"text_to_speech","text":answer,"language":"en","sessionId":"offline-1","ttsProvider":"piper"})
         ok = r.json().get("success")
         t3 = time.perf_counter()
         print(json.dumps({"transcript": transcript, "answer": answer, "stt_ms": int((t1-t0)*1000), "llm_ms": int((t2-t1)*1000), "tts_ms": int((t3-t2)*1000), "e2e_ms": int((t3-t0)*1000), "tts_ok": ok}))
@@ -101,7 +101,7 @@ async def main():
         r = await c.post(f"{base}/api/chat", json={"query": transcript, "session_id":"offline-2", "language":"en"})
         answer = r.json().get("answer")
         t2 = time.perf_counter()
-        r = await c.post(f"{base}/api/voice", json={"action":"text_to_speech","text":answer,"language":"en","sessionId":"offline-2","ttsProvider":"kokoro"})
+        r = await c.post(f"{base}/api/voice", json={"action":"text_to_speech","text":answer,"language":"en","sessionId":"offline-2","ttsProvider":"piper"})
         ok = r.json().get("success")
         t3 = time.perf_counter()
         print(json.dumps({"transcript": transcript, "answer": answer, "stt_ms": int((t1-t0)*1000), "llm_ms": int((t2-t1)*1000), "tts_ms": int((t3-t2)*1000), "e2e_ms": int((t3-t0)*1000), "tts_ok": ok}))
@@ -117,7 +117,7 @@ async def main():
     async with httpx.AsyncClient(timeout=120) as c:
         sid = "offline-interrupt"
         text = "This is a long answer that keeps playing. " * 20
-        task = asyncio.create_task(c.post(f"{base}/api/voice", json={"action":"text_to_speech","text":text,"language":"en","sessionId":sid,"ttsProvider":"kokoro"}, timeout=120))
+        task = asyncio.create_task(c.post(f"{base}/api/voice", json={"action":"text_to_speech","text":text,"language":"en","sessionId":sid,"ttsProvider":"piper"}, timeout=120))
         await asyncio.sleep(0.8)
         r = await c.post(f"{base}/api/voice", json={"action":"interrupt","sessionId":sid})
         print(json.dumps({"interrupt": r.json().get("interruptStatus")}))

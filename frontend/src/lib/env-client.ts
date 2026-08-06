@@ -102,9 +102,10 @@ export function getDefaultKioskLanguage(): 'ja' | 'en' {
 }
 
 /**
- * TTS provider for assistant speech: 'kokoro' during demo mode (no local
- * piper-plus server in the demo stack), otherwise 'piper'.
+ * TTS provider for assistant speech. Defaults to 'piper' (production parity;
+ * the demo stack runs PiperPlus primary via docker/piper-plus). Overridable
+ * via NEXT_PUBLIC_TTS_PROVIDER for experiments.
  */
 export function getTtsProvider(): string {
-  return isDemoMode() ? 'kokoro' : 'piper';
+  return process.env.NEXT_PUBLIC_TTS_PROVIDER ?? 'piper';
 }

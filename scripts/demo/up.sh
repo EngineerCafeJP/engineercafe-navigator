@@ -15,8 +15,11 @@ COMPOSE_CMD=(docker compose -f docker-compose.yml -f docker-compose.demo.yml --p
 BACKEND_URL="${DEMO_BACKEND_URL:-http://localhost:8000}"
 HEALTH_TIMEOUT_SECONDS="${DEMO_HEALTH_TIMEOUT_SECONDS:-120}"
 
-echo "[demo] Starting services: frontend backend postgres kokoro-tts"
-"${COMPOSE_CMD[@]}" up -d frontend backend postgres kokoro-tts
+echo "[demo] Starting services: frontend backend postgres piper-plus kokoro-tts"
+# 注: piper-plus イメージは事前にビルド済みであること（初回のみ）:
+#   docker compose -f docker-compose.yml -f docker-compose.demo.yml --profile voice \
+#     build piper-plus   （ネットワーク必須・デモ実行時は不要）
+"${COMPOSE_CMD[@]}" up -d frontend backend postgres piper-plus kokoro-tts
 
 echo "[demo] Waiting for backend /health (timeout ${HEALTH_TIMEOUT_SECONDS}s)"
 deadline=$((SECONDS + HEALTH_TIMEOUT_SECONDS))
@@ -24,6 +27,15 @@ until curl -fsS "${BACKEND_URL}/health" >/dev/null 2>&1; do
   if ((SECONDS >= deadline)); then
     echo "[demo] ERROR: backend did not become healthy within ${HEALTH_TIMEOUT_SECONDS}s" >&2
     echo "[demo] Hint: run scripts/demo/health.sh or inspect: docker compose -f docker-compose.yml -f docker-compose.demo.yml logs backend" >&2
+    exit 1
+  fi
+  sleep 2
+done
+
+echo "[demo] Waiting for piper-plus /api/voices (timeout ${HEALTH_TIMEOUT_SECONDS}s)"
+until curl -fsS "http://localhost:8090/api/voices" >/dev/null 2>&1; do
+  if ((SECONDS >= deadline)); then
+    echo "[demo] ERROR: piper-plus did not become healthy within ${HEALTH_TIMEOUT_SECONDS}s" >&2
     exit 1
   fi
   sleep 2

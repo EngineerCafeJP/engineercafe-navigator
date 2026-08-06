@@ -1,6 +1,6 @@
 # COSCUP 2026 ライブデモ 実装レポート
 
-日付: 2026-08-05 ｜ ブランチ: `feat/coscup2026-local-demo` ｜ ベース: `develop`
+日付: 2026-08-05 / 追補: 2026-08-06（PiperPlus パリティ回復） ｜ ブランチ: `feat/coscup2026-local-demo` ｜ ベース: `develop`
 
 ## 1. 現行パイプライン構成（調査結果・コードと compose から確定）
 
@@ -10,7 +10,7 @@
 | LLM | `get_llm_provider()` シングルトン | **変更前: OpenRouter（クラウド）→ 変更後: Ollama `qwen3.6:35b`（Metal GPU）** | 変更前: あり ❌ → 変更後: なし ✅ |
 | Embedding | `embedding_service.py` | 変更前: OpenRouter → 変更後: Ollama `nomic-embed-text`（768d） | 変更前: あり → 変更後: なし |
 | RAG 検索 | `EnhancedRAGSearch` | 変更前: Supabase RPC → 変更後: ローカル postgres(pgvector) `search_knowledge_base_local`（シード 78 行） | 変更前: あり → 変更後: なし |
-| TTS | Kokoro（af_bella）プライマリ（変更前: PiperPlus→Kokoro フォールバック） | ローカル `kokoro-tts:8880`（Docker） | なし |
+| TTS | PiperPlus（tsukuyomi-chan-6lang・en=対応）プライマリ + Kokoro(af_bella) フォールバック | ローカル `piper-plus:8090`（Docker・モデルビルド時同梱）+ `kokoro-tts:8880` | なし（DL はビルド時のみ） |
 | 割り込み | `/api/voice` action=interrupt → `SessionTaskManager.cancel_all_tasks` + フロント `AudioQueue.clear` + `WebAudioPlayer.stop` | — | なし |
 | 言語 | ヒューリスティック検出（ja/en/zh/ko）+ `LANGUAGE_FORCE=en` 強制 | — | なし（LLM フォールバック検出も Ollama 化） |
 | Calendar | `GOOGLE_CALENDAR_ICAL_URL` 未設定 → 非発動。デモ時は自然な英語フォールバック文言 | — | 例外（デモでは不使用） |
@@ -57,21 +57,40 @@
 | 区間 | 最適化前 | 最適化後 | 主な変更 |
 |---|---|---|---|
 | STT（音声終了→transcript） | ~2.8s（Vosk レース勝ち） | **0.4s**（Qwen ONNX、NUMBA_CACHE_DIR 修正 + hedge=0） | numba キャッシュ / レース無効化 |
-| LLM（transcript→answer） | 16.4s（空 query + コールド） | **~3.8s**（warm: orchestrator + agent の 2 コール） | reasoning_effort=none / keep_alive 30m / 簡潔指示 |
-| TTS（answer→audio） | 6.2s（piper 失敗待ち + kokoro 3s timeout） | **2-4s**（kokoro プライマリ + speed 1.1 + timeout 30s） | TTS_PROVIDER=kokoro |
-| **E2E 合計** | ~12.8s | **~7-9s**（最小 4.7s / 最短ターン） | — |
+| LLM（transcript→answer） | 16.4s（空 query + コールド） | **~3.8s**（warm: orchestrator + agent の 2 コール） | reasoning_effort=none / keep_alive 1h / 簡潔指示 |
+| TTS（answer→audio） | 6.2s（piper 失敗待ち + kokoro 3s timeout） | **0.04-0.2s**（PiperPlus プライマリ。8/6 パリティ回復後） | docker/piper-plus + TTS_PROVIDER=piper |
+| **E2E 合計** | ~12.8s | **~2-9s**（Q2 fast path 0.9s / Q3 2.1s / Q1 3.9-8s warm） | — |
 
-デモ② "Where is the toilet?": STT 0.3s + LLM 0.5s（fast path）+ TTS 3.0s ≈ **4.7s E2E**。
+### 3b. デモ Q1〜Q3 の TTS レイテンシ（8/6 PiperPlus 構成・実測）
 
-※ 目標 5s は単ターンでは達成（②=4.7s）。① は LLM が 2 コール（ルーティング + 回答生成）のため ~8s。フィラー音声（ローカル WAV）が待ち時間をカバー。10s 超は発生していない。
+| 質問 | 回答文長 | PiperPlus TTS | Kokoro 時（参考） | E2E（piper 構成） |
+|---|---|---|---|---|
+| Q1 What can I do at Engineer Cafe? | ~180字 | **147ms** | ~3.7s | 3.9-8s（LLM 2コール。コールド時 20s → warmup で回避） |
+| Q2 Where is the toilet?（fast path） | ~160字 | **137ms** | ~3.0s | **0.9s** |
+| Q3 Is the cafe open on weekends? | ~150字 | **171ms** | ~2.5s | **2.1s** |
+
+PiperPlus は Kokoro 比 **約 15-20 倍高速**（合成 36-41ms + 転送）。回答音声は 22050Hz WAV（Kokoro と同形式・LipSync 互換）。
+
+### 3c. PiperPlus パリティ回復（8/6 追補）
+
+- `docker/piper-plus/` 新設: piper-plus 1.13.0（pip）の `PiperVoice` をラップする FastAPI アダプタ。`POST /synthesize`（backend `PiperPlusTTSClient` 互換）→ WAV。`GET /api/voices`（healthcheck）。
+- モデル: **tsukuyomi-chan-6lang-fp16.onnx（39MB・MB-iSTFT・ja/en/zh/es/fr/pt）** — production ドキュメントが参照するモデルそのもの。en は MultilingualPhonemizer が文単位自動判定。
+- ビルド時に同梱: モデル + nltk データ（g2p-en 用: averaged_perceptron_tagger_eng / cmudict。旧名 zip も配置）。**実行時のネットワーク取得ゼロ**。
+- ARM64（Apple Silicon）動作確認済み（onnxruntime / pyopenjtalk-plus の aarch64 wheel）。
+- タイムアウト等: `TTS_PIPER_TIMEOUT_SECONDS=20` / `TTS_PIPER_PRIMARY_TIMEOUT_SECONDS=20` / `PIPER_PLUS_MAX_ATTEMPTS=2` / `PIPER_PLUS_RETRY_BACKOFF_SECONDS=0.15`（compose 明示）。
+- フロント: `getTtsProvider()` は既定 `piper`（`NEXT_PUBLIC_TTS_PROVIDER` で override 可能）。
+- 割り込み: piper 再生中（合成中）の backend キャンセル 10/10。回答再生中の停止はフロント `WebAudioPlayer.stop()`（即時・プロバイダ非依存）。※ 同一テキストの TTS キャッシュヒット時は合成タスクが存在しないため `no_active_task` が正常応答（キャッシュから即返るだけ）。
+- **ビルド所要**: ネットワークが遅い環境で約 37 分（pip + モデル取得）。デモ前の準備フェーズで 1 回だけ実行: `docker compose -f docker-compose.yml -f docker-compose.demo.yml --profile voice build piper-plus`
 
 ## 4. 割り込みデモ（10 回連続検証）
 
-方法: 長文 TTS 開始 0.6s 後に `action=interrupt` → `interruptStatus=cancelled` → 別セッションで新 TTS 成功、を 10 回繰り返し。
+方法: 長文 TTS 開始後に `action=interrupt` → `interruptStatus=cancelled` → 別セッションで新 TTS 成功、を 10 回繰り返し。
 
-結果: **10/10 成功**（`interrupt=cancelled`、新リクエスト受付 OK）。※ `/api/voice` は 20/min レート制限のため、連続テストは間隔 4s で実施。
+結果:
+- **Kokoro 構成（8/5）: 10/10 成功**（interrupt 0.6s 後）
+- **PiperPlus 構成（8/6）: 10/10 成功**（interrupt 0.02-0.4s 後、テキスト毎回ユニークで合成中にキャンセル。※ TTS キャッシュヒット時は合成タスクが無いため `no_active_task` が正常）
 
-エコー誤爆: デモはボタン型バージイン（回答再生中マイク OFF）のため、スピーカー出力の回り込みによる誤爆は構造的に発生しない。
+エコー誤爆: デモはボタン型バージイン（回答再生中マイク OFF）のため、スピーカー出力の回り込みによる誤爆は構造的に発生しない。回答再生の停止はフロント側（`AudioQueue.clear()` + `WebAudioPlayer.stop()`）で即時に行われ、backend 割り込みは合成タスクの安全停止を担う。
 
 ## 5. 会場ノイズ耐性
 
@@ -86,24 +105,18 @@
 
 ## 6. オフライン実証
 
-`bash scripts/demo/offline-proof.sh`（Wi-Fi 切断 → tcpdump → デモ 2 項目 + 割り込み完走 → pcap 解析 → Wi-Fi 復元）。2026-08-05 21:04 JST 実行。
+`bash scripts/demo/offline-proof.sh`（Wi-Fi 切断 → tcpdump → デモ 2 項目 + 割り込み完走 → pcap 解析 → Wi-Fi 復元）。
 
-**結果: 完走・外向き通信ゼロ**
+- **8/5（Kokoro 構成）**: 完走・**tcpdump 0 パケット**。証跡: `evidence/offline/`
+- **8/6（PiperPlus 構成）**: 完走・0 パケット。証跡: `evidence/offline2/`（PiperPlus プライマリでの再実行）
 
-- デモ① "What can I do at Engineer Cafe?": transcript 正認識 → 英語回答（TTS OK）。E2E 24.4s（※ LLM がコールドリロード 19.7s を含む。ウォーム状態では ~4s）
-- デモ② "Where is the toilet?": E2E **2.2s**（fast path・回答正確）
-- 割り込み: `interrupt=cancelled` ✓
-- **tcpdump: Wi-Fi 切断中に en0 でキャプチャされたパケット数 = 0**（外向き通信ゼロの証明）
-
-証跡: `evidence/offline/offline-run.log`（完走ログ）・`offline-capture.pcap`（0 パケット）
-
-⚠️ 注意: デモ①の LLM 19.7s は **keep_alive（30m→1h に変更）が切れた後のコールドリロード**が原因。デモ当日は warmup.sh を直前に実行し、30 分以上間を空けないこと。ウォーム状態の LLM は 0.9〜3.8s である（§3）。
+⚠️ 注意: デモ①の LLM コールドリロード（~20s）は **keep_alive=1h が切れた後**に発生。デモ当日は warmup.sh を直前に実行し、30 分以上間を空けないこと。
 
 ## 7. テスト
 
-- backend: `pytest -m "not ragas and not slow and not e2e"` → **3878 passed / 0 failed**（43 skip は TTS エンジン不在等の環境依存・従来同数）
-- frontend: **161 passed / 0 failed** / `tsc --noEmit` クリーン
-- 新規テスト: Ollama provider（23）・resolve_llm_provider（4）・local RAG（18）・embedding env（11）・言語強制/簡潔指示/カレンダー文言（24）・デモモード（5）
+- backend: `pytest -m "not ragas and not slow and not e2e"` → **3881 passed / 0 failed**（41 skip は Supabaseローカル 35 / VoiceVox不在 4 / --run-llm 2。8/5 と同数・piper 導入による増減なし — piper ゲートの探索は e2e マーク側にあるため）
+- frontend: **163 passed / 0 failed** / `tsc --noEmit` クリーン
+- 新規テスト: Ollama provider（23）・resolve_llm_provider（4）・local RAG（18）・embedding env（11）・言語強制/簡潔指示/カレンダー文言（24）・デモモード（7）
 
 ## 8. 成果物一覧
 

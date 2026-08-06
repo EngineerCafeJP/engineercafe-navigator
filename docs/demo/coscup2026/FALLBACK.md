@@ -9,9 +9,12 @@
 |---|---|
 | バックエンド応答なし | `bash scripts/demo/up.sh`（再起動）→ `bash scripts/demo/warmup.sh` |
 | LLM のみ死亡（Ollama 停止等） | `ollama serve` 起動 → `ollama ps` 確認 → warmup.sh |
-| TTS のみ死亡（kokoro-tts） | `docker compose -f docker-compose.yml -f docker-compose.demo.yml --profile voice up -d kokoro-tts` → warmup.sh |
+| **TTS プライマリ（PiperPlus）のみ死亡** | `docker compose -f docker-compose.yml -f docker-compose.demo.yml --profile voice up -d piper-plus` → warmup.sh（復旧まで **Kokoro フォールバックが自動で英語を合成する** — 本番と同一の劣化経路。TTS 自体は止まらない） |
+| TTS 両方死亡（piper-plus + kokoro） | `docker compose ... up -d piper-plus kokoro-tts` → warmup.sh |
 | STT のみ死亡 | `docker compose ... logs backend` で ONNX エラー確認 → モデル再DL（事前手順） |
 | RAM 不足（モデルロード失敗） | `OLLAMA_MODEL=gemma4:e2b` に切替 → `up -d backend` → warmup.sh |
+
+**TTS フォールバック順: ① PiperPlus（tsukuyomi-chan-6lang・ローカル）→ ② Kokoro（ローカル）→ ③ ホステッド版 → ④ 録画60秒。**
 
 ## Tier 2: クラウド版へ切替（デモ中 30 秒）
 

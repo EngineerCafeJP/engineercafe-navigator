@@ -11,14 +11,16 @@
 ollama pull qwen3.6:35b && ollama pull nomic-embed-text
 docker compose -f docker-compose.yml -f docker-compose.demo.yml --profile voice \
   run --rm backend bash scripts/download_qwen_onnx_model.sh /app/models/qwen3-asr-0.6b-onnx
+# PiperPlus TTS イメージ（モデル同梱・約37分。ネットワーク遅い環境は長めに）
+docker compose -f docker-compose.yml -f docker-compose.demo.yml --profile voice build piper-plus
 ```
-⏱ 20〜40 分（回線次第）
+⏱ 40〜80 分（回線次第。PiperPlus ビルドは一度だけ）
 
 ## 1. 起動（会場到着後）
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.demo.yml --profile voice \
-  up -d frontend backend postgres kokoro-tts   # または:
+  up -d frontend backend postgres piper-plus kokoro-tts   # または:
 bash scripts/demo/up.sh
 ```
 ⏱ 初回 3 分 / 2 回目以降 1 分（モデル DL 済みなら）
@@ -72,8 +74,8 @@ bash scripts/demo/down.sh
 |---|---|---|
 | 回答が日本語になる | LANGUAGE_FORCE 確認 | compose 再作成: `up -d backend` |
 | STT が返らない | `docker compose ... logs backend` | warmup.sh 再実行（モデルロード） |
-| TTS が無音/失敗 | kokoro-tts の health | `docker compose ... up -d kokoro-tts` |
+| TTS が無音/失敗 | piper-plus と kokoro-tts の health | `docker compose ... up -d piper-plus kokoro-tts` |
 | LLM が遅い/停止 | `ollama ps`（モデル unload してないか） | warmup.sh 再実行 |
 | RAM 不足 | Activity Monitor | `OLLAMA_MODEL=gemma4:e2b` に変更 → `up -d backend` |
 
-→ 全滅時のフォールバックは [`FALLBACK.md`](./FALLBACK.md) へ。
+TTS フォールバック順: **① PiperPlus（tsukuyomi-chan-6lang）→ ② Kokoro（ローカル）→ ③ ホステッド版 → ④ 録画60秒**（詳細は [`FALLBACK.md`](./FALLBACK.md) へ）。

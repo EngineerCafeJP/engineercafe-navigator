@@ -32,4 +32,12 @@ else
   exit 1
 fi
 
+echo "[demo] GET http://localhost:8090/api/voices (piper-plus)"
+if response=$(curl -fsS --max-time 10 "http://localhost:8090/api/voices"); then
+  echo "[demo]   OK: $(printf '%s' "$response" | head -c 200)"
+else
+  echo "[demo]   ERROR: piper-plus unreachable" >&2
+  exit 1
+fi
+
 echo "[demo] All health checks passed."

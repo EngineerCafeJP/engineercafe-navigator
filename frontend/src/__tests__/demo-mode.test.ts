@@ -42,12 +42,14 @@ test('default kiosk language is en when demo mode is on', () => {
   assert.equal(getDefaultKioskLanguage(), 'en');
 });
 
-test('getTtsProvider stays piper when demo mode is off', () => {
+test('getTtsProvider defaults to piper (production parity)', () => {
   delete env[managedKey];
   assert.equal(getTtsProvider(), 'piper');
 });
 
-test('getTtsProvider is kokoro when demo mode is on', () => {
+test('getTtsProvider is overridable via NEXT_PUBLIC_TTS_PROVIDER', () => {
   env[managedKey] = 'true';
+  env['NEXT_PUBLIC_TTS_PROVIDER'] = 'kokoro';
   assert.equal(getTtsProvider(), 'kokoro');
+  delete env['NEXT_PUBLIC_TTS_PROVIDER'];
 });
