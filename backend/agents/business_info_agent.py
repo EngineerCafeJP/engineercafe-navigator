@@ -14,7 +14,7 @@ from backend.agents.business_info.matchers import BusinessInfoMatcherMixin
 from backend.agents.llm_metadata import merge_llm_metadata
 from backend.llm import get_llm_provider, get_model_config
 from backend.tools.enhanced_rag import EnhancedRAGSearch
-from backend.utils.language_types import LANGUAGE_INSTRUCTION
+from backend.utils.language_types import get_language_instruction
 
 logger = logging.getLogger(__name__)
 
@@ -297,7 +297,7 @@ class BusinessInfoAgent(
         )
 
         # Multilingual: append language instruction for zh/ko
-        lang_suffix = LANGUAGE_INSTRUCTION.get(language, "")
+        lang_suffix = get_language_instruction(language)
 
         if request_type:
             request_type_prompt = self._get_request_type_prompt(request_type, language)

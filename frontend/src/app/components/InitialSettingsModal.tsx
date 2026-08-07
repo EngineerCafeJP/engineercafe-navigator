@@ -14,6 +14,7 @@ import {
   writeKioskTriggerMode,
 } from '@/lib/kiosk-constants';
 import { cn } from '@/lib/cn';
+import { isDemoMode } from '@/lib/env-client';
 import { X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -38,14 +39,15 @@ export default function InitialSettingsModal({
   onPreferencesSaved,
   className,
 }: InitialSettingsModalProps) {
-  const [uiLanguage, setUiLanguage] = useState<'ja' | 'en'>(language);
+  const [uiLanguage, setUiLanguage] = useState<'ja' | 'en'>(isDemoMode() ? 'en' : language);
   const [triggerMode, setTriggerMode] = useState<KioskTriggerMode>('screen');
   const [micMode, setMicMode] = useState<KioskMicMode>('toggle');
   const micPermissionProbeDoneRef = useRef(false);
 
   useEffect(() => {
     if (open) {
-      setUiLanguage(language);
+      // Demo mode (COSCUP 2026 kiosk): preselect English on every open.
+      setUiLanguage(isDemoMode() ? 'en' : language);
       setTriggerMode(readKioskTriggerMode());
       setMicMode(readKioskMicMode());
     }

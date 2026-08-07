@@ -35,7 +35,7 @@ from backend.config.routing_constants import (
     normalize_agent_node,
 )
 from backend.llm.models import get_model_config
-from backend.llm.openrouter import OpenRouterProvider
+from backend.llm.provider import resolve_llm_provider
 from backend.observability.structured_logger import log_agent_routing
 from backend.utils.input_sanitizer import (
     MAX_CONTEXT_LENGTH,
@@ -159,7 +159,7 @@ class OrchestratorAgent:
             api_key: OpenRouter API key (optional, uses env var if not provided)
             debug_mode: デバッグモードの有効/無効
         """
-        self.provider = OpenRouterProvider(api_key=api_key)
+        self.provider = resolve_llm_provider(api_key=api_key)
         self.query_classifier = QueryClassifier(debug_mode=debug_mode)
         self.language_processor = LanguageProcessor()
         self.debug_mode = debug_mode

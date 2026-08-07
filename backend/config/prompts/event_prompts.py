@@ -6,7 +6,7 @@ EventAgent用プロンプトテンプレート
 
 from typing import Dict
 
-from backend.utils.language_types import LANGUAGE_INSTRUCTION
+from backend.utils.language_types import get_language_instruction
 from backend.utils.time_utils import get_now_jst
 
 # 時間範囲ラベル
@@ -108,7 +108,7 @@ def build_event_prompt(query: str, events_text: str, time_range: str, language: 
     emotion_hint_en = "[happy]" if has_events else "[sad]"
 
     # Multilingual: append language instruction for zh/ko
-    lang_suffix = LANGUAGE_INSTRUCTION.get(language, "")
+    lang_suffix = get_language_instruction(language)
 
     if language == "en":
         prompt = f"""Answer the question using the event information for {time_range_text} below.

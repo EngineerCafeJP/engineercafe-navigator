@@ -2,6 +2,7 @@ import { AudioQueue } from '@/lib/audio-queue';
 import { AudioDataProcessor } from '@/lib/audio/audio-data-processor';
 import { requestAutoCharacterControl } from '@/lib/api/character-client';
 import { submitQaQuestion } from '@/lib/api/qa-client';
+import { getTtsProvider, isDemoMode } from '@/lib/env-client';
 import {
   requestVoiceFiller,
   textToSpeech,
@@ -42,6 +43,8 @@ interface UseVoiceTurnProcessorArgs {
   currentLanguage: 'ja' | 'en';
   isMuted: boolean;
   volume: number;
+  /** TTS 合成速度倍率（1.0=標準・小さいほど遅い）。piper-plus に speed として渡される */
+  ttsSpeed: number;
   sessionIdRef: MutableRefObject<string>;
   requestAbortRef: MutableRefObject<AbortController | null>;
   audioQueueRef: MutableRefObject<AudioQueue | null>;
@@ -93,6 +96,7 @@ export function useVoiceTurnProcessor({
   currentLanguage,
   isMuted,
   volume,
+  ttsSpeed,
   sessionIdRef,
   requestAbortRef,
   audioQueueRef,
@@ -159,6 +163,7 @@ export function useVoiceTurnProcessor({
         sessionId: string;
         emotion?: string | null;
         ttsProvider?: string;
+        speed?: number;
       },
       signal: AbortSignal,
     ): Promise<TextToSpeechPayload & Record<string, unknown>> => {
@@ -167,7 +172,9 @@ export function useVoiceTurnProcessor({
           text: request.text,
           language: request.language,
           sessionId: request.sessionId,
-          ttsProvider: request.ttsProvider ?? 'piper',
+          ttsProvider: request.ttsProvider ?? getTtsProvider(),
+          // 話速はデモモード時のみ送信（本番 Cloud Run の挙動を変えない）
+          speed: isDemoMode() ? request.speed : undefined,
           ...(typeof request.emotion === 'string' && request.emotion.trim()
             ? { emotion: request.emotion.trim() }
             : {}),
@@ -319,7 +326,8 @@ export function useVoiceTurnProcessor({
             language: responseLanguage,
             sessionId: sessionIdRef.current,
             emotion: typeof qaResult.emotion === 'string' ? qaResult.emotion : null,
-            ttsProvider: 'piper',
+            ttsProvider: getTtsProvider(),
+            speed: ttsSpeed,
           },
           signal,
         );
@@ -469,6 +477,7 @@ export function useVoiceTurnProcessor({
       setMetadata,
       setResponse,
       synthesizeAssistantSpeech,
+      ttsSpeed,
     ],
   );
 
@@ -552,7 +561,8 @@ export function useVoiceTurnProcessor({
             language: responseLanguage,
             sessionId: sessionIdRef.current,
             emotion: typeof qaResult.emotion === 'string' ? qaResult.emotion : null,
-            ttsProvider: 'piper',
+            ttsProvider: getTtsProvider(),
+            speed: ttsSpeed,
           },
           abortController.signal,
         );
@@ -623,6 +633,7 @@ export function useVoiceTurnProcessor({
       setResponse,
       setTranscript,
       synthesizeAssistantSpeech,
+      ttsSpeed,
     ],
   );
 
@@ -667,7 +678,8 @@ export function useVoiceTurnProcessor({
             language: responseLanguage,
             sessionId: sessionIdRef.current,
             emotion: parsedAnswer.primaryEmotion,
-            ttsProvider: 'piper',
+            ttsProvider: getTtsProvider(),
+            speed: ttsSpeed,
           },
           abortController.signal,
         );
@@ -732,6 +744,7 @@ export function useVoiceTurnProcessor({
       setResponse,
       setTranscript,
       synthesizeAssistantSpeech,
+      ttsSpeed,
     ],
   );
 

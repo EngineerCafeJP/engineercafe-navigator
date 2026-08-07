@@ -1,0 +1,11 @@
+NAME                       ID              SIZE      PROCESSOR    CONTEXT    UNTIL               
+qwen3.6:35b                07d35212591f    29 GB     100% GPU     262144     59 minutes from now    
+nomic-embed-text:latest    0a109f422b47    370 MB    100% GPU     2048       4 minutes from now     
+NAME                       ID              SIZE      PROCESSOR    CONTEXT    UNTIL               
+qwen3.6:35b                07d35212591f    29 GB     100% GPU     262144     59 minutes from now    
+nomic-embed-text:latest    0a109f422b47    370 MB    100% GPU     2048       4 minutes from now     
+=== S2 keepalive-expiry: Fri Aug  7 00:40:44 JST 2026 ===
+wait_seconds=45
+Turn1_chat_ms=3779
+Turn2_chat_ms=3605
+Turn2_ok=None

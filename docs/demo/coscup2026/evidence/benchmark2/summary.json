@@ -1,0 +1,109 @@
+{
+  "models": [
+    {
+      "model": "qwen3.6:35b",
+      "load_ms": 852,
+      "questions": [
+        {
+          "name": "q1_what_can_i_do",
+          "ttft_ms": -1,
+          "total_ms": 70229
+        },
+        {
+          "name": "q2_where_is_toilet",
+          "ttft_ms": 37326,
+          "total_ms": 39587
+        },
+        {
+          "name": "q3_cafe_open_weekend",
+          "ttft_ms": -1,
+          "total_ms": 46556
+        }
+      ]
+    },
+    {
+      "model": "qwen3.5:9b",
+      "load_ms": 450,
+      "questions": [
+        {
+          "name": "q1_what_can_i_do",
+          "ttft_ms": 47361,
+          "total_ms": 49949
+        },
+        {
+          "name": "q2_where_is_toilet",
+          "ttft_ms": -1,
+          "total_ms": 51889
+        },
+        {
+          "name": "q3_cafe_open_weekend",
+          "ttft_ms": 37132,
+          "total_ms": 38292
+        }
+      ]
+    },
+    {
+      "model": "gemma4:e4b",
+      "load_ms": 5886,
+      "questions": [
+        {
+          "name": "q1_what_can_i_do",
+          "ttft_ms": 12626,
+          "total_ms": 15265
+        },
+        {
+          "name": "q2_where_is_toilet",
+          "ttft_ms": 10973,
+          "total_ms": 12870
+        },
+        {
+          "name": "q3_cafe_open_weekend",
+          "ttft_ms": 708,
+          "total_ms": 2617
+        }
+      ]
+    },
+    {
+      "model": "gemma4:e2b",
+      "load_ms": 5055,
+      "questions": [
+        {
+          "name": "q1_what_can_i_do",
+          "ttft_ms": 4776,
+          "total_ms": 6016
+        },
+        {
+          "name": "q2_where_is_toilet",
+          "ttft_ms": 4720,
+          "total_ms": 5483
+        },
+        {
+          "name": "q3_cafe_open_weekend",
+          "ttft_ms": 3977,
+          "total_ms": 4511
+        }
+      ]
+    },
+    {
+      "model": "qwen3:8b",
+      "load_ms": 3180,
+      "questions": [
+        {
+          "name": "q1_what_can_i_do",
+          "ttft_ms": 10180,
+          "total_ms": 13301
+        },
+        {
+          "name": "q2_where_is_toilet",
+          "ttft_ms": 6844,
+          "total_ms": 9355
+        },
+        {
+          "name": "q3_cafe_open_weekend",
+          "ttft_ms": 5731,
+          "total_ms": 7144
+        }
+      ]
+    }
+  ]
+}

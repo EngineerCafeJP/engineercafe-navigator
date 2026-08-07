@@ -205,6 +205,56 @@ async def test_piper_client_reuses_async_client_and_closes(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_piper_client_sends_speed_to_synthesize(monkeypatch):
+    """PiperPlusTTSClient が speed を /synthesize ペイロードに含めること。
+
+    話速 (PIPER_SPEED / UI スライダー) はクライアント -> server.py (length_scale)
+    のパイプラインで伝播する。speed 未指定時はキー自体を送らない
+    （サーバー側の PIPER_SPEED env に従う）。
+    """
+
+    class FakeAsyncClient:
+        instances = []
+
+        def __init__(self, timeout):
+            self.timeout = timeout
+            self.is_closed = False
+            self.posts = []
+            FakeAsyncClient.instances.append(self)
+
+        async def post(self, url, **kwargs):
+            self.posts.append((url, kwargs))
+            return FakeTTSHTTPResponse(content=b"wav-data")
+
+        async def aclose(self):
+            self.is_closed = True
+
+    monkeypatch.setattr("backend.agents.voice_agent.httpx.AsyncClient", FakeAsyncClient)
+    client = PiperPlusTTSClient(api_url="http://piper")
+
+    await client.synthesize_wav_base64("Hello", "en", speed=0.65)
+    await client.synthesize_wav_base64("Hello", "en")
+    await client.synthesize_wav_base64("Hello", "en", speaker_id=1, speed=0.85)
+
+    instance = FakeAsyncClient.instances[0]
+    assert len(instance.posts) == 3
+    assert instance.posts[0][1]["json"] == {
+        "text": "Hello",
+        "language": "en",
+        "speed": 0.65,
+    }
+    assert instance.posts[1][1]["json"] == {"text": "Hello", "language": "en"}
+    assert instance.posts[2][1]["json"] == {
+        "text": "Hello",
+        "language": "en",
+        "speaker_id": 1,
+        "speed": 0.85,
+    }
+
+    await client.close()
+
+
+@pytest.mark.asyncio
 async def test_voicevox_client_reuses_async_client_and_closes(monkeypatch):
     class FakeAsyncClient:
         instances = []
@@ -316,7 +366,7 @@ async def test_text_to_speech_calls_tts_with_processed_text_and_emotion(monkeypa
     agent = VoiceAgent(tts_provider="piper")
     calls = {}
 
-    async def fake_synth(text, lang):
+    async def fake_synth(text, lang, speed=None):
         calls["text"] = text
         calls["lang"] = lang
         return "BASE64_WAV_DUMMY"
@@ -344,7 +394,7 @@ async def test_text_to_speech_does_not_replace_ambiguous_source_text(monkeypatch
     calls = {}
     agent.clarification_agent = AsyncMock()
 
-    async def fake_synth(text, lang):
+    async def fake_synth(text, lang, speed=None):
         calls["text"] = text
         calls["lang"] = lang
         return "PIPER_BASE64_DUMMY"
@@ -367,7 +417,7 @@ async def test_text_to_speech_fallback_on_error(monkeypatch):
     agent = VoiceAgent(tts_provider="voicevox")
     state = {"n": 0}
 
-    async def fake_synth(text, lang, speaker_id=None):
+    async def fake_synth(text, lang, speaker_id=None, speed=None):
         state["n"] += 1
         if state["n"] == 1:
             raise RuntimeError("primary tts failed")
@@ -391,7 +441,7 @@ async def test_text_to_speech_piper_timeout_falls_back_quickly(monkeypatch):
     monkeypatch.setenv("TTS_PIPER_PRIMARY_TIMEOUT_SECONDS", "0.01")
     agent = VoiceAgent(tts_provider="piper")
 
-    async def slow_piper(text, lang):
+    async def slow_piper(text, lang, speed=None):
         await asyncio.sleep(1)
         return "TOO_LATE"
 
@@ -421,7 +471,7 @@ async def test_text_to_speech_piper_primary_required_disables_fallback(monkeypat
     agent = VoiceAgent(tts_provider="piper")
     calls = {"piper": 0}
 
-    async def fake_piper_empty(text, lang):
+    async def fake_piper_empty(text, lang, speed=None):
         del text, lang
         calls["piper"] += 1
         return ""
@@ -466,7 +516,7 @@ async def test_text_to_speech_caches_successful_fallback(monkeypatch):
     calls = {"piper": 0, "voicevox": 0}
     fallback_audio = "V" * 128
 
-    async def slow_piper(text, lang):
+    async def slow_piper(text, lang, speed=None):
         calls["piper"] += 1
         await asyncio.sleep(1)
         return "TOO_LATE"
@@ -501,7 +551,7 @@ async def test_text_to_speech_piper_failure_cooldown_skips_next_primary_attempt(
     calls = {"piper": 0, "voicevox": 0}
     fallback_audio = "V" * 128
 
-    async def broken_piper(text, lang):
+    async def broken_piper(text, lang, speed=None):
         del text, lang
         calls["piper"] += 1
         raise RuntimeError("piper transient failure")
@@ -532,7 +582,7 @@ async def test_text_to_speech_empty_primary_audio_uses_fallback(monkeypatch):
     agent = VoiceAgent(tts_provider="voicevox")
     state = {"n": 0}
 
-    async def fake_synth(text, lang, speaker_id=None):
+    async def fake_synth(text, lang, speaker_id=None, speed=None):
         state["n"] += 1
         if state["n"] == 1:
             return ""
@@ -555,7 +605,7 @@ async def test_text_to_speech_piper_empty_primary_audio_uses_voicevox_fallback(
 ):
     agent = VoiceAgent(tts_provider="piper")
 
-    async def fake_piper_empty(text, lang):
+    async def fake_piper_empty(text, lang, speed=None):
         return ""
 
     async def fake_voicevox_synth(text, lang, speaker_id=None):
@@ -582,7 +632,7 @@ async def test_text_to_speech_piper_empty_primary_audio_uses_voicevox_fallback(
 async def test_text_to_speech_piper_local_fallback_failure_returns_error(monkeypatch):
     agent = VoiceAgent(tts_provider="piper")
 
-    async def fake_piper_empty(text, lang):
+    async def fake_piper_empty(text, lang, speed=None):
         return ""
 
     async def fake_voicevox_fail(text, lang, speaker_id=None):
@@ -607,7 +657,7 @@ async def test_text_to_speech_cache_hit_reuses_audio(monkeypatch):
     calls = {"count": 0}
     first_audio = "A" * 128
 
-    async def fake_synth(text, lang):
+    async def fake_synth(text, lang, speed=None):
         del text, lang
         calls["count"] += 1
         return first_audio
@@ -631,7 +681,7 @@ async def test_text_to_speech_cache_miss_for_different_text(monkeypatch):
     agent = VoiceAgent(tts_provider="piper")
     calls = {"count": 0}
 
-    async def fake_synth(text, lang):
+    async def fake_synth(text, lang, speed=None):
         calls["count"] += 1
         return f"BASE64_WAV_{calls['count']}"
 
@@ -654,7 +704,7 @@ async def test_text_to_speech_cache_expires_after_ttl(monkeypatch):
     agent._tts_cache = TTLCache(maxsize=200, ttl=3600, timer=timer)
     calls = {"count": 0}
 
-    async def fake_synth(text, lang, speaker_id=None):
+    async def fake_synth(text, lang, speaker_id=None, speed=None):
         calls["count"] += 1
         return f"VOICEVOX_BASE64_{calls['count']}"
 
@@ -676,7 +726,7 @@ async def test_text_to_speech_cache_key_varies_by_language(monkeypatch):
     agent = VoiceAgent(tts_provider="piper")
     calls = {"count": 0, "languages": []}
 
-    async def fake_synth(text, lang):
+    async def fake_synth(text, lang, speed=None):
         calls["count"] += 1
         calls["languages"].append(lang)
         return f"PIPER_BASE64_{calls['count']}"
@@ -699,7 +749,7 @@ async def test_text_to_speech_routes_english_to_kokoro(monkeypatch):
     agent = VoiceAgent(tts_provider="voicevox")
     kokoro_called = {"called": False}
 
-    async def fake_kokoro_synth(text, lang, voice=None):
+    async def fake_kokoro_synth(text, lang, voice=None, speed=None):
         kokoro_called["called"] = True
         return "KOKORO_BASE64_WAV"
 
@@ -750,7 +800,7 @@ async def test_text_to_speech_english_kokoro_failure_falls_back_to_voicevox(
     monkeypatch.setenv("KOKORO_API_URL", "http://localhost:8880")
     agent = VoiceAgent(tts_provider="voicevox")
 
-    async def fake_kokoro_fail(text, lang, voice=None):
+    async def fake_kokoro_fail(text, lang, voice=None, speed=None):
         raise RuntimeError("kokoro down")
 
     async def fake_voicevox_synth(text, lang, speaker_id=None):
@@ -804,7 +854,7 @@ async def test_text_to_speech_auto_detects_language_and_routes(monkeypatch):
     kokoro_called = {"called": False}
     voicevox_called = {"called": False}
 
-    async def fake_kokoro_synth(text, lang, voice=None):
+    async def fake_kokoro_synth(text, lang, voice=None, speed=None):
         kokoro_called["called"] = True
         return "KOKORO_BASE64_WAV"
 
@@ -850,7 +900,7 @@ async def test_text_to_speech_piper_routes_japanese(monkeypatch):
     agent = VoiceAgent(tts_provider="piper")
     piper_called = {"called": False}
 
-    async def fake_piper_synth(text, lang):
+    async def fake_piper_synth(text, lang, speed=None):
         piper_called["called"] = True
         return "PIPER_BASE64_JA"
 
@@ -873,7 +923,7 @@ async def test_text_to_speech_truncates_long_spoken_text(monkeypatch):
     agent = VoiceAgent(tts_provider="piper")
     calls = {}
 
-    async def fake_piper_synth(text, lang):
+    async def fake_piper_synth(text, lang, speed=None):
         calls["text"] = text
         calls["lang"] = lang
         return "PIPER_BASE64_JA"
@@ -897,7 +947,7 @@ async def test_text_to_speech_piper_routes_english(monkeypatch):
     agent = VoiceAgent(tts_provider="piper")
     piper_called = {"called": False}
 
-    async def fake_piper_synth(text, lang):
+    async def fake_piper_synth(text, lang, speed=None):
         piper_called["called"] = True
         return "PIPER_BASE64_EN"
 
@@ -920,7 +970,7 @@ async def test_text_to_speech_piper_fallback_japanese_to_voicevox(monkeypatch):
     """piper が日本語合成に失敗したとき、VoiceVox にフォールバックすること"""
     agent = VoiceAgent(tts_provider="piper")
 
-    async def fake_piper_fail(text, lang):
+    async def fake_piper_fail(text, lang, speed=None):
         raise RuntimeError("piper connection error")
 
     voicevox_called = {"called": False}
@@ -959,14 +1009,14 @@ async def test_text_to_speech_piper_fallback_english_to_kokoro(monkeypatch):
     monkeypatch.setenv("KOKORO_API_URL", "http://localhost:8880")
     agent = VoiceAgent(tts_provider="piper")
 
-    async def fake_piper_fail(text, lang):
+    async def fake_piper_fail(text, lang, speed=None):
         raise RuntimeError("piper connection error")
 
     kokoro_called = {"called": False}
 
     fallback_text = {"value": None}
 
-    async def fake_kokoro_synth(text, lang, voice=None):
+    async def fake_kokoro_synth(text, lang, voice=None, speed=None):
         kokoro_called["called"] = True
         fallback_text["value"] = text
         return "KOKORO_FALLBACK_BASE64"

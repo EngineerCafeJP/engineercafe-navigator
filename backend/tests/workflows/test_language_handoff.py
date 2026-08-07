@@ -48,3 +48,29 @@ class TestGetResponseLanguage:
         assert workflow._get_response_language("", "ja") == "ja"
         # Single space: same
         assert workflow._get_response_language("   ", "ja") == "ja"
+
+
+class TestLanguageForceOverride:
+    """LANGUAGE_FORCE env override for _get_response_language (demo mode)."""
+
+    def test_force_en_returns_en_for_japanese_query(self, workflow, monkeypatch):
+        """LANGUAGE_FORCE=en は日本語クエリでも検出前に 'en' を返す。"""
+        monkeypatch.setenv("LANGUAGE_FORCE", "en")
+        assert workflow._get_response_language("営業時間は？", "ja") == "en"
+        assert workflow._get_response_language("今日のイベントは？", "ja") == "en"
+
+    def test_force_en_normalizes_locale(self, workflow, monkeypatch):
+        """LANGUAGE_FORCE=en-US は 'en' に正規化される。"""
+        monkeypatch.setenv("LANGUAGE_FORCE", "en-US")
+        assert workflow._get_response_language("営業時間は？", "ja") == "en"
+
+    def test_force_unset_keeps_detection(self, workflow, monkeypatch):
+        """LANGUAGE_FORCE 未設定時は従来の自動検出動作を維持する。"""
+        monkeypatch.delenv("LANGUAGE_FORCE", raising=False)
+        assert workflow._get_response_language("営業時間は？", "ja") == "ja"
+        assert workflow._get_response_language("What are opening hours?", "ja") == "en"
+
+    def test_force_blank_is_ignored(self, workflow, monkeypatch):
+        """LANGUAGE_FORCE が空白のみの場合は従来動作。"""
+        monkeypatch.setenv("LANGUAGE_FORCE", "   ")
+        assert workflow._get_response_language("営業時間は？", "ja") == "ja"

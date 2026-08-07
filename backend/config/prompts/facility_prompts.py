@@ -6,7 +6,7 @@ FacilityAgent用プロンプトテンプレート
 
 from typing import Dict, Optional
 
-from backend.utils.language_types import LANGUAGE_INSTRUCTION
+from backend.utils.language_types import get_language_instruction
 
 # クエリ拡張キーワード（requestType別）
 FACILITY_ENHANCEMENT_KEYWORDS: Dict[str, Dict[str, str]] = {
@@ -153,7 +153,7 @@ def build_facility_prompt(
     )
 
     # Multilingual: append language instruction for zh/ko
-    lang_suffix = LANGUAGE_INSTRUCTION.get(language, "")
+    lang_suffix = get_language_instruction(language)
 
     if request_type:
         prompt_info = FACILITY_REQUEST_TYPE_PROMPTS.get(

@@ -443,9 +443,9 @@ class LanguageProcessor:
             from langchain_core.messages import HumanMessage, SystemMessage
 
             from backend.llm.models import MODEL_CONFIGS
-            from backend.llm.openrouter import OpenRouterProvider
+            from backend.llm.provider import resolve_llm_provider
 
-            provider = OpenRouterProvider(api_key=api_key)
+            provider = resolve_llm_provider(api_key=api_key)
             result = await provider.generate(
                 [
                     SystemMessage(

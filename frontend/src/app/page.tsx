@@ -23,6 +23,7 @@ import {
   readKioskMicMode,
   readKioskTriggerMode,
 } from '@/lib/kiosk-constants';
+import { getDefaultKioskLanguage } from '@/lib/env-client';
 import { Settings } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import type { CharacterAnimationData } from './utils/character-animation-utils';
@@ -58,7 +59,7 @@ export default function Home() {
   const [kioskPhase, setKioskPhase] = useState<KioskPhase>('notice');
   const kioskPhaseRef = useRef<KioskPhase>('notice');
   const [kioskVoiceLocked, setKioskVoiceLocked] = useState(false);
-  const [currentLanguage, setCurrentLanguage] = useState<'ja' | 'en'>('ja');
+  const [currentLanguage, setCurrentLanguage] = useState<'ja' | 'en'>(getDefaultKioskLanguage());
   const [triggerMode, setTriggerMode] = useState<KioskTriggerMode>('screen');
   const [micInputMode, setMicInputMode] = useState<KioskMicMode>('toggle');
 

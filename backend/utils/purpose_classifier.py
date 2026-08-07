@@ -185,9 +185,9 @@ async def classify_purpose(
     # LLM classification
     try:
         from backend.llm.models import ModelConfig, SupportedModel
-        from backend.llm.openrouter import OpenRouterProvider
+        from backend.llm.provider import resolve_llm_provider
 
-        provider = OpenRouterProvider()
+        provider = resolve_llm_provider()
         config = ModelConfig(
             model_id=SupportedModel.GEMINI_3_1_FLASH_LITE,
             temperature=0.1,

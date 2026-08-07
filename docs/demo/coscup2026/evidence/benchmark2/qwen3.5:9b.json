@@ -1,0 +1,36 @@
+{
+  "model": "qwen3.5:9b",
+  "questions": [
+    {
+      "name": "q1_what_can_i_do",
+      "question": "What can I do at Engineer Cafe?",
+      "ttft_ms": 47361,
+      "total_ms": 49949,
+      "finish_reason": "stop",
+      "reasoning_chars": 0,
+      "usage": null,
+      "answer": "You can work at our coworking area with free Wi-Fi or rent engineering equipment like drones in the Main Hall for demos and rentals. We also have a B1F fabrication lab available for prototyping, plus paid meeting rooms and drinks on the second floor."
+    },
+    {
+      "name": "q2_where_is_toilet",
+      "question": "Where is the toilet?",
+      "ttft_ms": -1,
+      "total_ms": 51889,
+      "finish_reason": "length",
+      "reasoning_chars": 0,
+      "usage": null,
+      "answer": ""
+    },
+    {
+      "name": "q3_cafe_open_weekend",
+      "question": "Is the cafe open on weekends?",
+      "ttft_ms": 37132,
+      "total_ms": 38292,
+      "finish_reason": "stop",
+      "reasoning_chars": 0,
+      "usage": null,
+      "answer": "Yes, the cafe is open on weekends according to our schedule. It remains available for guests on Saturdays and Sundays each week."
+    }
+  ],
+  "load_ms": 450
+}

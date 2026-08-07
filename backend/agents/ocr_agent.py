@@ -13,7 +13,7 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
 
-from backend.llm.openrouter import OpenRouterProvider
+from backend.llm.provider import resolve_llm_provider
 from backend.llm.models import get_model_config
 
 logger = logging.getLogger(__name__)
@@ -149,7 +149,7 @@ class VisionState(TypedDict):
 class VisionAgent:
 
     def __init__(self):
-        provider = OpenRouterProvider()
+        provider = resolve_llm_provider()
         config = get_model_config("vision")
         handwriting_config = get_model_config("vision_handwriting")
 
