@@ -481,6 +481,30 @@ def log_reception_transition(
     )
 
 
+def log_reception_bypass_decision(
+    *,
+    bypass: bool,
+    reason: str,
+    stage: str | None = None,
+    **fields: Any,
+) -> dict[str, Any]:
+    """Log whether an utterance during reception was routed out of the reception flow.
+
+    ``reason`` names the branch that decided the outcome, so a production log alone
+    tells you why a question was (or was not) answered by an agent. Before #928 this
+    path emitted nothing and the same question could be handled two different ways
+    with no way to tell them apart short of inspecting the database.
+    """
+
+    return log_memory_event(
+        event="reception_bypass_decision",
+        bypass=bypass,
+        reason=reason,
+        stage=stage,
+        **fields,
+    )
+
+
 def log_ltm_promote(
     *,
     status: str,

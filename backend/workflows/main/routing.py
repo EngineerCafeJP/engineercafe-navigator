@@ -23,6 +23,7 @@ from backend.utils.cafe_entity import (
     is_colocated_or_adjacent_saino_reference,
     is_saino_reference,
 )
+from backend.observability.structured_logger import log_reception_bypass_decision
 from backend.utils.intent_classifier import is_reception_continuation_utterance
 from backend.workflows.main.types import WorkflowStateDict
 
@@ -212,6 +213,17 @@ class RoutingWorkflowMixin:
             "grab a coffee",
             "want to eat",
             "take a break",
+            # 2026-07-29 (#928) 実地検証で取りこぼしていた疑問形。
+            # 受付発話 16 件（挨拶・用件表明）に対して誤爆 0 件であることを確認済み。
+            # backend/tests/workflows/test_reception_bypass.py で回帰を担保する。
+            "ますか",
+            "調べて",
+            "使える",
+            "って何",
+            "ってなに",
+            "とは",
+            "何が",
+            "何か",
         )
         return any(marker in normalized for marker in question_markers)
 
@@ -234,32 +246,70 @@ class RoutingWorkflowMixin:
 
         return False
 
+    # 受付中でもバイパスしないカテゴリ。
+    # "general" は含めない (#928)。QueryClassifier は施設固有語を含まない質問
+    # （「赤レンガ文化会館について教えて」「駐車場はありますか」等）を general に
+    # 落とすため、除外すると正当な質問まで受付フローに飲まれる。
+    # 挨拶・用件表明は手前の _looks_like_information_query で False になるため、
+    # general を通しても受付フローは壊れない（受付発話 16 件で誤爆 0 件を確認）。
+    _RECEPTION_BYPASS_EXCLUDED_CATEGORIES = frozenset({"daily_conversation", "assistant_profile"})
+
+    _RECEPTION_BYPASS_ELIGIBLE_STAGES = frozenset({"greeting", "purpose_hearing", "routing"})
+
     async def _should_bypass_active_reception_async(
         self,
         query: str,
         reception_status: dict[str, Any],
     ) -> bool:
+        """受付フロー中の情報質問を受付から抜いて通常ルーティングへ回すか判定する。
+
+        判定は必ず ``reception_bypass_decision`` として構造化ログに残す。
+        本 issue (#928) の切り分けでは、どの条件で落ちたかがログに残らず
+        DB 実査が必要になったため、決定経路を可視化する。
+        """
+        stage = reception_status.get("stage")
+
+        def _decide(bypass: bool, reason: str, **extra: Any) -> bool:
+            log_reception_bypass_decision(
+                bypass=bypass,
+                reason=reason,
+                stage=stage,
+                query_chars=len(query),
+                **extra,
+            )
+            return bypass
+
         if is_reception_continuation_utterance(query):
-            return False
+            return _decide(False, "reception_continuation_utterance")
 
         if self._should_bypass_active_reception(query, reception_status):
-            return True
+            return _decide(True, "fast_route_or_static_bypass")
+
         if not self._looks_like_information_query(query):
-            return False
-        if reception_status.get("stage") not in {"greeting", "purpose_hearing", "routing"}:
-            return False
+            return _decide(False, "not_information_query")
+
+        if stage not in self._RECEPTION_BYPASS_ELIGIBLE_STAGES:
+            return _decide(False, "stage_not_eligible")
+
         try:
             from backend.utils.query_classifier import QueryClassifier
 
             classification = await QueryClassifier().classify_with_details(query)
-        except Exception:
-            return False
+        except Exception as exc:
+            logger.warning(
+                "QueryClassifier failed during reception bypass check; "
+                "falling back to reception flow",
+                exc_info=True,
+            )
+            return _decide(False, "classifier_error", error_type=type(exc).__name__)
 
-        return classification.category not in {
-            "general",
-            "daily_conversation",
-            "assistant_profile",
-        }
+        category = classification.category
+        excluded = category in self._RECEPTION_BYPASS_EXCLUDED_CATEGORIES
+        return _decide(
+            not excluded,
+            "category_excluded" if excluded else "information_query",
+            category=category,
+        )
 
     def _active_reception_assistant_profile_response(
         self,
