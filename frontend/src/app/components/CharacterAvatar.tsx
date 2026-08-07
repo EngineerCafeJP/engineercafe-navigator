@@ -98,6 +98,7 @@ export default function CharacterAvatar({
   const expressionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const keyframeAnimationTimeoutsRef = useRef<NodeJS.Timeout[]>([]);
   const playKeyframeAnimationInternalRef = useRef<((animation: CharacterAnimationData) => void) | null>(null);
+  const stopKeyframeAnimationInternalRef = useRef<(() => void) | null>(null);
   const setExpressionWeightsRef = useRef<(weights: Record<string, number>) => void>(() => {});
   // VRM-applied expression weights (includes visemes after attenuation)
   const expressionWeightsAppliedRef = useRef<Record<string, number>>({});
@@ -430,20 +431,22 @@ export default function CharacterAvatar({
         console.error('[CharacterAvatar] Error setting initial neutral expression:', error);
       }
 
-      const playKeyframeAnimation = createKeyframeAnimationPlayer(
-        charactersRef,
-        blendShapeControllerRef,
-        keyframeAnimationTimeoutsRef,
-        isPlayingSequence,
-        setExpressionWeightsRef,
-      );
+      const { play: playKeyframeAnimation, stop: stopKeyframeAnimation } =
+        createKeyframeAnimationPlayer(
+          charactersRef,
+          blendShapeControllerRef,
+          keyframeAnimationTimeoutsRef,
+          isPlayingSequence,
+          setExpressionWeightsRef,
+        );
 
       playKeyframeAnimationInternalRef.current = playKeyframeAnimation;
+      stopKeyframeAnimationInternalRef.current = stopKeyframeAnimation;
       if (charactersRef.current) onCharacterLoad?.(charactersRef.current);
       onEmotionUpdate?.(applyEmotionToCharacter);
       onVisemeControl?.(setViseme);
       onExpressionControl?.(setExpression);
-      onKeyframeAnimationControl?.(playKeyframeAnimation);
+      onKeyframeAnimationControl?.({ play: playKeyframeAnimation, stop: stopKeyframeAnimation });
       setIsLoading(false);
     } catch (error) {
       console.error('Error loading character:', error);
@@ -496,7 +499,7 @@ export default function CharacterAvatar({
     if (avatarRenderMode !== 'fallback') return;
     onVisemeControlRef.current?.(() => {});
     onExpressionControlRef.current?.(() => {});
-    onKeyframeAnimationControlRef.current?.(() => {});
+    onKeyframeAnimationControlRef.current?.({ play: () => {}, stop: () => {} });
   }, [avatarRenderMode]);
 
   useEffect(() => {

@@ -122,7 +122,17 @@ export const createKeyframeAnimationPlayer = (
   isPlayingSequence: MutableRefObject<boolean>,
   setExpressionWeightsRef: MutableRefObject<(weights: Record<string, number>) => void>,
 ) => {
-  return (animation: CharacterAnimationData) => {
+  /** アニメーションを即時停止し、表情・口を neutral に戻す。
+   * 音声再生が先に終わった場合に呼ばれる（キーフレーム duration は音声より長いため）。
+   */
+  const stopKeyframeAnimation = () => {
+    keyframeAnimationTimeoutsRef.current.forEach((id) => clearTimeout(id));
+    keyframeAnimationTimeoutsRef.current = [];
+    isPlayingSequence.current = false;
+    blendShapeControllerRef.current?.resetToNeutral();
+  };
+
+  const playKeyframeAnimation = (animation: CharacterAnimationData) => {
     const vrmRef = charactersRef.current;
     const blendShapeRef = blendShapeControllerRef.current;
     if (!vrmRef || !blendShapeRef) return;
@@ -162,9 +172,15 @@ export const createKeyframeAnimationPlayer = (
     const endTimeout = setTimeout(() => {
       keyframeAnimationTimeoutsRef.current = [];
       isPlayingSequence.current = false;
+      // アニメーション終了時に表情・口を neutral にリセットする。
+      // リセットしないと最後のキーフレームの口形状が残り、
+      // 「回答が終わった後もリップシンクが動き続ける」ように見える(#実機検証)。
+      blendShapeControllerRef.current?.resetToNeutral();
     }, animation.duration + 100);
     keyframeAnimationTimeoutsRef.current.push(endTimeout);
   };
+
+  return { play: playKeyframeAnimation, stop: stopKeyframeAnimation };
 };
 
 export const syncExpressionWeightsFromVrm = ({

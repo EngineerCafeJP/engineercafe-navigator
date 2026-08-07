@@ -99,6 +99,7 @@ export default function Home() {
   const [presentationLanguage, setPresentationLanguage] = useState<'ja' | 'en'>('ja');
   const [slideLanguagePickerOpen, setSlideLanguagePickerOpen] = useState(false);
   const playKeyframeAnimationRef = useRef<((data: CharacterAnimationData) => void) | null>(null);
+  const stopKeyframeAnimationRef = useRef<(() => void) | null>(null);
   const lastVrmControlPlayedRef = useRef<unknown>(null);
   const pendingVrmPlaybackRef = useRef<CharacterAnimationData | null>(null);
   const lastTranscriptRef = useRef<string>('');
@@ -388,6 +389,10 @@ export default function Home() {
           startPresentation(currentLanguage);
         }}
         onAssistantPlaybackEnd={() => {
+          // 音声再生終了時にキーフレームアニメーションを停止し、口を閉じる。
+          // アニメーション duration は音声より長いため、放置すると
+          // 回答終了後も口が動き続ける（実機検証で確認）。
+          stopKeyframeAnimationRef.current?.();
           if (pendingSensorWelcomeAutoListenRef.current && kioskPhaseRef.current === 'voice') {
             pendingSensorWelcomeAutoListenRef.current = false;
             clearReturnToIdleTimer();
@@ -620,8 +625,9 @@ export default function Home() {
                     onExpressionControl={(setExpression) => {
                       setSetExpressionFunction(() => setExpression);
                     }}
-                    onKeyframeAnimationControl={(play) => {
+                    onKeyframeAnimationControl={({ play, stop }) => {
                       playKeyframeAnimationRef.current = play;
+                      stopKeyframeAnimationRef.current = stop;
                       const pending = pendingVrmPlaybackRef.current;
                       if (pending && lastVrmControlPlayedRef.current !== pending) {
                         lastVrmControlPlayedRef.current = pending;
