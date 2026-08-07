@@ -21,6 +21,25 @@ interface FeatureFlags {
   MIGRATION_USER_PERCENTAGE: number; // 0-100
 }
 
+type RAGExperimentOptions = Readonly<{
+  category?: string;
+  language?: string;
+}>;
+
+interface RAGExperimentSearchResult {
+  readonly similarity?: number;
+  readonly [key: string]: unknown;
+}
+
+interface RAGExperimentLogResult {
+  readonly userId: string;
+  readonly variant: 'control' | 'treatment';
+  readonly query: string;
+  readonly responseTime: number;
+  readonly resultCount: number;
+  readonly avgSimilarity: number;
+}
+
 class FeatureFlagManager {
   private static instance: FeatureFlagManager;
   private flags: FeatureFlags;
@@ -173,13 +192,10 @@ export class RAGExperiment {
   static async runExperiment(
     userId: string,
     query: string,
-    options?: {
-      category?: string;
-      language?: string;
-    }
+    options?: RAGExperimentOptions
   ): Promise<{
     variant: 'control' | 'treatment';
-    results: any[];
+    results: RAGExperimentSearchResult[];
     metrics: {
       responseTime: number;
       resultCount: number;
@@ -190,7 +206,7 @@ export class RAGExperiment {
     const variant = useNewImplementation ? 'treatment' : 'control';
     
     const startTime = Date.now();
-    let results: any[];
+    let results: RAGExperimentSearchResult[];
     
     if (variant === 'treatment') {
       // New implementation (would be implemented later)
@@ -202,7 +218,7 @@ export class RAGExperiment {
     
     const responseTime = Date.now() - startTime;
     const avgSimilarity = results.length > 0
-      ? results.reduce((sum, r) => sum + (r.similarity || 0), 0) / results.length
+      ? results.reduce((sum, result) => sum + (result.similarity || 0), 0) / results.length
       : 0;
     
     // Log experiment results if enabled
@@ -233,10 +249,10 @@ export class RAGExperiment {
    */
   static async runParallelComparison(
     query: string,
-    options?: any
+    options?: RAGExperimentOptions
   ): Promise<{
-    control: any;
-    treatment: any;
+    control: Awaited<ReturnType<typeof RAGExperiment.runExperiment>>;
+    treatment: Awaited<ReturnType<typeof RAGExperiment.runExperiment>>;
     comparison: {
       responseTimeDiff: number;
       resultCountDiff: number;
@@ -259,20 +275,26 @@ export class RAGExperiment {
     };
   }
   
-  private static async searchWithCurrentImplementation(query: string, options?: any): Promise<any[]> {
-    // TODO: Implement after backend migration is complete
-    console.warn('[RAGExperiment] Current implementation disabled during migration');
+  private static async searchWithCurrentImplementation(
+    query: string,
+    options?: RAGExperimentOptions
+  ): Promise<RAGExperimentSearchResult[]> {
+    // Backend owns active RAG search through EnhancedRAGSearch behind /api/chat.
+    // There is no frontend/backend experiment search contract yet, so the legacy
+    // A/B helper stays inert until ADR-025 Phase B0/B2 defines that API surface.
     void query;
     void options;
-    return []; // Return empty array during migration
+    return [];
   }
   
-  private static async searchWithNewEmbeddings(query: string, options?: any): Promise<any[]> {
-    // Placeholder for new implementation
+  private static async searchWithNewEmbeddings(
+    query: string,
+    options?: RAGExperimentOptions
+  ): Promise<RAGExperimentSearchResult[]> {
     return this.searchWithCurrentImplementation(query, options);
   }
   
-  private static async logExperimentResult(result: any): Promise<void> {
-    // Log to analytics system
+  private static async logExperimentResult(result: RAGExperimentLogResult): Promise<void> {
+    void result;
   }
 }

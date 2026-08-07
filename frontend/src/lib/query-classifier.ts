@@ -3,7 +3,7 @@
  * EnhancedQAAgentから分離して、テスト可能でメンテナンスしやすい構造にする
  */
 
-import { SupportedLanguage } from '@/lib/types';
+import { STTCorrection } from '@/lib/stt-correction';
 
 export interface QueryClassificationResult {
   category: string;
@@ -36,8 +36,7 @@ export class QueryClassifier {
    * STT補正を適用（既存のロジックを維持）
    */
   private applySttCorrections(query: string): string {
-    // TODO: applySttCorrectionsを適切にインポートまたは実装
-    return query;
+    return STTCorrection.correct(query);
   }
 
   /**
@@ -47,8 +46,8 @@ export class QueryClassifier {
     question: string,
     conversationContext?: any
   ): Promise<QueryClassificationResult> {
-    const normalizedQuestion = this.normalizeQuery(question);
-    const lowerQuestion = normalizedQuestion.toLowerCase();
+    const correctedQuestion = this.applySttCorrections(question);
+    const normalizedQuestion = this.normalizeQuery(correctedQuestion);
     
     // 現在時刻のチェック（最優先）
     if (this.isCurrentTimeQuery(normalizedQuestion)) {

@@ -4,8 +4,9 @@ import { supabaseAdmin } from '../supabase';
 /**
  * RAG Metrics for monitoring search performance and external API usage
  *
- * TODO(frontend-supabase-cleanup): Keep this server-only until monitoring and
- * cron flows are fully handled by the backend.
+ * Frontend migration note: /api/cron/update-knowledge-base records batch-import
+ * metrics here. Backend owns active RAG search, but the cron metrics write path
+ * has not moved behind backend yet, so this remains server-only.
  */
 export class RAGMetrics {
   private static instance: RAGMetrics;
