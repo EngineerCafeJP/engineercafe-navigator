@@ -71,7 +71,6 @@ export const KIOSK_MIC_MODE_STORAGE_KEY = 'engineer_cafe_kiosk_mic_mode';
 
 /** Toggle: tap to start/stop listening. Push-to-talk: hold to listen. */
 export type KioskMicMode = 'toggle' | 'push_to_talk';
-
 export function readKioskMicMode(): KioskMicMode {
   if (typeof window === 'undefined') {
     return 'toggle';
@@ -90,6 +89,44 @@ export function writeKioskMicMode(mode: KioskMicMode): void {
   }
   try {
     window.localStorage.setItem(KIOSK_MIC_MODE_STORAGE_KEY, mode);
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * TTS 合成速度（倍率）。1.0=標準・小さいほど遅い。
+ * UI (SpeakerSettings) のスライダーで調整し、/api/voice text_to_speech に
+ * speed として渡される。未設定時はサーバー側設定 (PIPER_SPEED / KOKORO_TTS_SPEED) に従う。
+ */
+export const KIISK_TTS_SPEED_STORAGE_KEY = 'engineer_cafe_kiosk_tts_speed';
+
+export const KIISK_TTS_SPEED_MIN = 0.5;
+export const KIISK_TTS_SPEED_MAX = 1.5;
+export const KIISK_TTS_SPEED_STEP = 0.05;
+export const KIISK_TTS_SPEED_DEFAULT = 0.85;
+
+export function readKioskTtsSpeed(): number {
+  if (typeof window === 'undefined') {
+    return KIISK_TTS_SPEED_DEFAULT;
+  }
+  try {
+    const v = Number(window.localStorage.getItem(KIISK_TTS_SPEED_STORAGE_KEY));
+    if (Number.isFinite(v) && v >= KIISK_TTS_SPEED_MIN && v <= KIISK_TTS_SPEED_MAX) {
+      return v;
+    }
+  } catch {
+    // ignore
+  }
+  return KIISK_TTS_SPEED_DEFAULT;
+}
+
+export function writeKioskTtsSpeed(speed: number): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  try {
+    window.localStorage.setItem(KIISK_TTS_SPEED_STORAGE_KEY, String(speed));
   } catch {
     // ignore
   }

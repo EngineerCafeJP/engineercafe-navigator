@@ -642,6 +642,21 @@ jobs:
           #   min=0/max=2 = scale-to-zero。アイドル課金ゼロ、初回は ~40s cold start。
           #   本番ウォームプールへ戻す場合は min=1〜5 / max=3〜15 に変更（docs/DEPLOYMENT.md「Scaling and Cost Posture」参照）。
           #   ここは Cloud Run 構成の正本。手動 gcloud で変えてもこの deploy で上書きされる。
+          #
+          # STT hedge posture (#929):
+          #   QWEN_STT_HEDGE_DELAY_SECONDS=0 で Vosk hedge を無効化している。
+          #   1.5 の頃は毎ターン Vosk が Qwen と同一コンテナの CPU を奪い合い、
+          #   計測した 4/4 ターンで Vosk は cancelled（一度も勝たない純粋なオーバーヘッド）だった。
+          #   実測: STT 全体 8.3-12.5s → 7.8s、ターン合計 16.6-22.6s → 6.3-9.6s（n=4, warm）。
+          #
+          #   ⚠️ 不変条件: QWEN_STT_TIMEOUT < VOICE_STT_REQUEST_TIMEOUT_SECONDS
+          #   backend/api/voice.py:389-391 が STT 呼び出し全体を外側タイムアウトで包む。
+          #   外側は音声変換の前に起算されるため、両者が同値だと外側が必ず先に切れ、
+          #   finally が全タスクを cancel して qwen_primary.py:481 の Vosk fallback に
+          #   到達しない（＝Qwen ハング時に STT が完全失敗する）。
+          #   hedge=1.5 の頃は Vosk が 1.5s で走り出していたためこの衝突が隠れていた。
+          #   QWEN_STT_TIMEOUT=10 は Vosk の逐次実行に約 5s の余地を残すための値。
+          #   この 2 値を変更するときは必ず不変条件を確認すること。
           gcloud run deploy engineer-cafe-backend \
             --image asia-northeast1-docker.pkg.dev/aipartner-426616/cloud-run-source-deploy/engineer-cafe-backend:${{ github.sha }} \
             --region asia-northeast1 \
@@ -655,7 +670,7 @@ jobs:
             --max-instances 2 \
             --cpu-boost \
             --no-cpu-throttling \
-            --update-env-vars "ENVIRONMENT=production,TZ=Asia/Tokyo,TTS_PROVIDER=piper,TTS_REQUIRE_PRIMARY_PROVIDER=true,TTS_PIPER_PRIMARY_TIMEOUT_SECONDS=20,PIPER_PLUS_API_URL=https://piper-plus-639959525777.asia-northeast1.run.app,VOICEVOX_API_URL=https://voicevox-proto-639959525777.asia-northeast2.run.app,STT_PROVIDER=qwen-primary,STT_QWEN_RUNTIME=torch,STT_LLM_POSTPROCESS=false,VOICE_STT_REQUEST_TIMEOUT_SECONDS=15,QWEN_STT_TIMEOUT=15,QWEN_STT_HEDGE_DELAY_SECONDS=1.5,QWEN_STT_HEDGE_GRACE_SECONDS=4,QWEN_STT_LATENCY_BUDGET_SECONDS=11.5,STT_PRELOAD_QWEN_PRIMARY=true,STT_PRELOAD_VOSK_FALLBACK=true,STT_LOG_TRANSCRIPT=true,ENABLE_AGENT_MEMORY_STM_WRITES=false,ALLOW_AGENT_MEMORY_STM_WRITE_DISABLE=true,ENABLE_MEMORY_CANDIDATES=true,ENABLE_MEMORY_PROMOTION=true,ENABLE_LONG_TERM_MEMORY_RERANK=true,SENSOR_TRIGGER_EVENT_TTL_SECONDS=60,HF_HOME=/app/.hf_cache,FRONTEND_PRODUCTION_ORIGIN=${FRONTEND_PRODUCTION_ORIGIN},ALLOWED_ORIGINS=${FRONTEND_PRODUCTION_ORIGIN},FAST_LLM_ENABLED=true,FAST_LLM_PRIMARY_PROVIDER=cerebras,FAST_LLM_PRIMARY_MODEL=google/gemini-3.1-flash-lite-preview,FAST_LLM_FALLBACK_PROVIDER=gemini,FAST_LLM_FALLBACK_MODEL=google/gemini-2.5-flash-lite,FAST_LLM_TERTIARY_PROVIDER=cerebras,CEREBRAS_ENABLED=true,CEREBRAS_FAST_MODEL=gpt-oss-120b,CEREBRAS_REASONING_EFFORT=low,DEEP_REASONING_MODEL=google/gemini-3.1-pro-preview,DEEP_REASONING_FALLBACK_MODEL=google/gemini-2.5-pro,LANGSMITH_PROJECT=engineer-cafe-navigator-production,LANGCHAIN_PROJECT=engineer-cafe-navigator-production" \
+            --update-env-vars "ENVIRONMENT=production,TZ=Asia/Tokyo,TTS_PROVIDER=piper,TTS_REQUIRE_PRIMARY_PROVIDER=true,TTS_PIPER_PRIMARY_TIMEOUT_SECONDS=20,PIPER_PLUS_API_URL=https://piper-plus-639959525777.asia-northeast1.run.app,VOICEVOX_API_URL=https://voicevox-proto-639959525777.asia-northeast2.run.app,STT_PROVIDER=qwen-primary,STT_QWEN_RUNTIME=torch,STT_LLM_POSTPROCESS=false,VOICE_STT_REQUEST_TIMEOUT_SECONDS=15,QWEN_STT_TIMEOUT=10,QWEN_STT_HEDGE_DELAY_SECONDS=0,QWEN_STT_HEDGE_GRACE_SECONDS=4,QWEN_STT_LATENCY_BUDGET_SECONDS=11.5,STT_PRELOAD_QWEN_PRIMARY=true,STT_PRELOAD_VOSK_FALLBACK=true,STT_LOG_TRANSCRIPT=true,ENABLE_AGENT_MEMORY_STM_WRITES=false,ALLOW_AGENT_MEMORY_STM_WRITE_DISABLE=true,ENABLE_MEMORY_CANDIDATES=true,ENABLE_MEMORY_PROMOTION=true,ENABLE_LONG_TERM_MEMORY_RERANK=true,SENSOR_TRIGGER_EVENT_TTL_SECONDS=60,HF_HOME=/app/.hf_cache,FRONTEND_PRODUCTION_ORIGIN=${FRONTEND_PRODUCTION_ORIGIN},ALLOWED_ORIGINS=${FRONTEND_PRODUCTION_ORIGIN},FAST_LLM_ENABLED=true,FAST_LLM_PRIMARY_PROVIDER=cerebras,FAST_LLM_PRIMARY_MODEL=google/gemini-3.1-flash-lite-preview,FAST_LLM_FALLBACK_PROVIDER=gemini,FAST_LLM_FALLBACK_MODEL=google/gemini-2.5-flash-lite,FAST_LLM_TERTIARY_PROVIDER=cerebras,CEREBRAS_ENABLED=true,CEREBRAS_FAST_MODEL=gpt-oss-120b,CEREBRAS_REASONING_EFFORT=low,DEEP_REASONING_MODEL=google/gemini-3.1-pro-preview,DEEP_REASONING_FALLBACK_MODEL=google/gemini-2.5-pro,LANGSMITH_PROJECT=engineer-cafe-navigator-production,LANGCHAIN_PROJECT=engineer-cafe-navigator-production" \
             --update-secrets "${BACKEND_SECRET_ARGS}"
 
           LATEST_READY_REVISION=$(gcloud run services describe engineer-cafe-backend \

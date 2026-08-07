@@ -181,7 +181,7 @@ async def voice_filler_api(request: Request, body: FillerRequest):
 
 _voice_agent: Optional[Any] = None  # VoiceAgent (lazy-loaded)
 _voice_agents_by_provider: dict[str, Any] = {}
-_ALLOWED_TTS_PROVIDERS = frozenset({"voicevox", "piper"})
+_ALLOWED_TTS_PROVIDERS = frozenset({"voicevox", "piper", "kokoro"})
 _stt_agent: Optional[Any] = None  # STTAgent (lazy-loaded)
 _slide_agent: Optional[Any] = None  # SlideAgent (lazy-loaded)
 _session_task_manager: Optional[Any] = None
@@ -568,6 +568,9 @@ async def voice_api(request: Request, body: VoiceRequest):
                     text=body.text,
                     language=body.language or "ja",
                     emotion=body.emotion,  # Use requested emotion for TTS
+                    # 話速はデモ環境 (ENVIRONMENT=demo) のみ適用。
+                    # 本番 Cloud Run ではサーバー側既定 (PIPER_SPEED etc.) に従う
+                    speed=body.speed if os.getenv("ENVIRONMENT") == "demo" else None,
                 )
             )
             if body.sessionId:

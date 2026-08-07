@@ -1,0 +1,36 @@
+{
+  "model": "qwen3:8b",
+  "questions": [
+    {
+      "name": "q1_what_can_i_do",
+      "question": "What can I do at Engineer Cafe?",
+      "ttft_ms": 10180,
+      "total_ms": 13301,
+      "finish_reason": "stop",
+      "reasoning_chars": 0,
+      "usage": null,
+      "answer": "At Engineer Cafe, you can cowork in the 1F Main Hall (30 free seats with Wi-Fi) or attend events, access engineering books, and rent tech like Apple Vision Pro. The B1F MAKER's Space offers fabrication tools, and 2F has paid meeting rooms. Drinks and vending machines are also available."
+    },
+    {
+      "name": "q2_where_is_toilet",
+      "question": "Where is the toilet?",
+      "ttft_ms": 6844,
+      "total_ms": 9355,
+      "finish_reason": "stop",
+      "reasoning_chars": 0,
+      "usage": null,
+      "answer": "The restrooms are located at the back of the terrace on the 1F. To access them, go through the passage behind the reception desk to the terrace, then proceed to the far end. Western-style toilets with warm-water bidets are available."
+    },
+    {
+      "name": "q3_cafe_open_weekend",
+      "question": "Is the cafe open on weekends?",
+      "ttft_ms": 5731,
+      "total_ms": 7144,
+      "finish_reason": "stop",
+      "reasoning_chars": 0,
+      "usage": null,
+      "answer": "Yes, the cafe is open on weekends (Saturday and Sunday) with Night Time hours from 18:00-20:00."
+    }
+  ],
+  "load_ms": 3180
+}

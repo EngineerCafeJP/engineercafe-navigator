@@ -12,7 +12,7 @@ import os
 import time
 import uuid
 from collections import OrderedDict
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Literal, Optional
 
 from fastapi import APIRouter, HTTPException, Path, Query
@@ -180,7 +180,9 @@ def _deserialize_session(record: dict[str, Any]) -> ReceptionSession:
         record.get("created_at")
     )
     if created_at is None:
-        created_at = datetime.now()
+        # naive な datetime.now() は TZ=Asia/Tokyo のコンテナで JST 壁時計時刻になり、
+        # TIMESTAMPTZ 列へ +9h ずれて保存される (#925)。
+        created_at = datetime.now(timezone.utc)
 
     return ReceptionSession(
         id=record["id"],

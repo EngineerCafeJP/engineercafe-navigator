@@ -90,7 +90,7 @@ def mock_vision_agent():
     実際の API 呼び出しを行わない。
     """
     with (
-        patch("backend.agents.ocr_agent.OpenRouterProvider") as mock_provider_cls,
+        patch("backend.agents.ocr_agent.resolve_llm_provider") as mock_provider_cls,
         patch("backend.agents.ocr_agent.get_model_config") as mock_get_config,
     ):
         mock_llm = MagicMock()
@@ -112,7 +112,7 @@ class TestVisionAgentInit:
     """VisionAgent.__init__ のテスト"""
 
     def test_creates_openrouter_provider(self, mock_vision_agent):
-        """OpenRouterProvider が呼ばれることを確認"""
+        """resolve_llm_provider が呼ばれることを確認"""
         _, mock_provider_cls, _, _ = mock_vision_agent
         mock_provider_cls.assert_called_once()
 
@@ -789,7 +789,7 @@ class TestVisionWorkflowIntegration:
             patch("backend.agents.slide_agent.SlideAgent"),
             patch("backend.agents.general_knowledge_agent.GeneralKnowledgeAgent"),
             patch("backend.utils.memory_helper.get_memory_helper", return_value=MagicMock()),
-            patch("backend.agents.ocr_agent.OpenRouterProvider"),
+            patch("backend.agents.ocr_agent.resolve_llm_provider"),
             patch("backend.agents.ocr_agent.get_model_config"),
         ):
             from backend.workflows.main_workflow import MainWorkflow

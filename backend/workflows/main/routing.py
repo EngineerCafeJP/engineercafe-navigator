@@ -299,6 +299,13 @@ class RoutingWorkflowMixin:
         }
 
     def _get_response_language(self, query: str, fallback_language: str) -> str:
+        # デモ用: LANGUAGE_FORCE が設定されていれば、言語検出より先に強制返却する
+        from backend.utils.language_types import get_forced_response_language
+
+        forced_language = get_forced_response_language()
+        if forced_language:
+            return forced_language
+
         from backend.utils.language_processor import LanguageProcessor
 
         language_processor = LanguageProcessor()

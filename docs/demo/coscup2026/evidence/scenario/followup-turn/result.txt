@@ -1,0 +1,10 @@
+=== S1 followup-turn: Fri Aug  7 00:39:50 JST 2026 ===
+session_id=scenario-followup
+Q1_answer=You can enjoy free coworking with Wi-Fi, join events like hackathons, and use equipment like 3D printers. Additionally, you can get career consultations and grab food at the cafe.
+Q2_answer=The restroom is at the back of the 1F terrace. You cannot access it directly from inside the building, so go through the passage behind reception to the terrace, then continue to the back.
+Q3_answer=You previously asked about the location of the restroom and the activities available at Engineer Cafe.
+context_inherited=true
+Q1_e2e_ms=5481
+Q2_e2e_ms=680
+Q2_chat_ms=289
+Q3_chat_ms=3652

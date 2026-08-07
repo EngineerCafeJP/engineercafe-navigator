@@ -19,6 +19,9 @@ class VoiceRequest(BaseModel):
     outputEncoding: Optional[str] = Field(default=None, max_length=10)
     ttsProvider: Optional[str] = Field(default=None, max_length=20)
     includeVrmControl: Optional[bool] = False
+    # 話速（TTS 合成速度倍率、1.0=標準・小さいほど遅い）。piper/kokoro 両対応。
+    # 未指定時はサーバー側設定（PIPER_SPEED / KOKORO_TTS_SPEED）に従う。
+    speed: Optional[float] = Field(default=None, gt=0, le=2.0)
 
 
 class VoiceResponse(BaseModel):

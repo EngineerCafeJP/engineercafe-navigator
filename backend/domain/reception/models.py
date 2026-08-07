@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Literal, Optional
 
 from backend.domain.reception.events import (
@@ -123,7 +123,9 @@ class ReceptionSession:
     stage: ReceptionStage = "initiated"
     language: Literal["ja", "en", "zh", "ko"] = "ja"
     trigger_type: Literal["face_detection", "button_press", "wake_word", "nfc"] = "button_press"
-    created_at: datetime = field(default_factory=datetime.now)
+    # tz-aware UTC で採番する。naive な datetime.now() は TZ=Asia/Tokyo の
+    # コンテナ上で JST 壁時計時刻になり、TIMESTAMPTZ 列へ +9h ずれて保存される (#925)。
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     metadata: dict = field(default_factory=dict)
     _events: list = field(default_factory=list, repr=False)
 

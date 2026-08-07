@@ -1,0 +1,36 @@
+{
+  "model": "qwen3.6:35b",
+  "questions": [
+    {
+      "name": "q1_what_can_i_do",
+      "question": "What can I do at Engineer Cafe?",
+      "ttft_ms": 435,
+      "total_ms": 1308,
+      "finish_reason": "stop",
+      "reasoning_chars": 0,
+      "usage": null,
+      "answer": "You can cowork in the Main Hall with free seats and Wi-Fi, or explore latest tech like the Apple Vision Pro and Tello drone. The B1F MAKER's Space offers fabrication tools such as 3D printers and laser cutters for creative projects. Additionally, you can rent meeting rooms on the 2F or enjoy drinks from the available vending machines."
+    },
+    {
+      "name": "q2_where_is_toilet",
+      "question": "Where is the toilet?",
+      "ttft_ms": 388,
+      "total_ms": 859,
+      "finish_reason": "stop",
+      "reasoning_chars": 0,
+      "usage": null,
+      "answer": "The restrooms are located at the far end of the 1F terrace, not directly inside the building. To reach them, please go through the passage behind the reception desk to the terrace first."
+    },
+    {
+      "name": "q3_cafe_open_weekend",
+      "question": "Is the cafe open on weekends?",
+      "ttft_ms": 477,
+      "total_ms": 864,
+      "finish_reason": "stop",
+      "reasoning_chars": 0,
+      "usage": null,
+      "answer": "Yes, Engineer Cafe is open on both Saturday and Sunday. Please note that it is only open on these specific weekdays as well: Tuesday, Thursday, and Friday."
+    }
+  ],
+  "load_ms": 318
+}

@@ -55,3 +55,5 @@ models/
 *.bin
 *.fst
 
+# librosa/numba JIT cache (runtime artifact)
+.numba_cache/
