@@ -42,9 +42,10 @@ export interface CharacterAvatarProps {
   onEmotionUpdate?: (applyEmotion: (emotion: EmotionData) => void) => void;
   onVisemeControl?: (setViseme: (viseme: string, intensity: number) => void) => void;
   onExpressionControl?: (setExpression: (expression: string, weight: number) => void) => void;
-  onKeyframeAnimationControl?: (
-    playKeyframeAnimation: (animation: CharacterAnimationData) => void
-  ) => void;
+  onKeyframeAnimationControl?: (control: {
+    play: (animation: CharacterAnimationData) => void;
+    stop: () => void;
+  }) => void;
   /** Called when user changes background from Settings panel (for parent state sync) */
   onBackgroundChange?: (background: BackgroundSelectorOption) => void;
   /** Called when user changes lighting intensity from Settings panel */
