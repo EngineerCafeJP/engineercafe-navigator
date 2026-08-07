@@ -39,7 +39,8 @@ class TestGetLanguageInstruction:
     @pytest.mark.parametrize("value", ["1", "yes", "on", "TRUE", "True"])
     def test_truthy_variants_enable_concise(self, monkeypatch, value):
         monkeypatch.setenv("DEMO_CONCISE_ANSWER", value)
-        assert "Keep your answer to 2-3 short sentences (under 35 words)." in get_language_instruction("en")
+        concise = "Keep your answer to 2-3 short sentences (under 35 words)."
+        assert concise in get_language_instruction("en")
 
     def test_falsy_variants_keep_base_instruction(self, monkeypatch):
         monkeypatch.setenv("DEMO_CONCISE_ANSWER", "false")

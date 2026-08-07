@@ -427,7 +427,8 @@ class TestResolveLlmProvider:
         assert isinstance(provider, OpenRouterProvider)
 
     def test_ollama_resolve_not_singleton(self, monkeypatch):
-        """resolve_llm_provider はシングルトンとは別インスタンスを返し、close しても共有に影響しないこと"""
+        """resolve_llm_provider はシングルトンとは別インスタンスを返し、
+        close しても共有に影響しないこと"""
         monkeypatch.setenv("LLM_PROVIDER", "ollama")
         resolved = resolve_llm_provider()
         shared = get_llm_provider()
