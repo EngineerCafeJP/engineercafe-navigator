@@ -212,6 +212,7 @@ async def test_piper_client_sends_speed_to_synthesize(monkeypatch):
     のパイプラインで伝播する。speed 未指定時はキー自体を送らない
     （サーバー側の PIPER_SPEED env に従う）。
     """
+
     class FakeAsyncClient:
         instances = []
 

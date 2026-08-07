@@ -169,8 +169,9 @@ class VoiceAgent:
         await self.close()
 
     @staticmethod
-    def _tts_cache_key(text: str, language: str, provider: str, emotion: str,
-                       speed: Optional[float] = None) -> str:
+    def _tts_cache_key(
+        text: str, language: str, provider: str, emotion: str, speed: Optional[float] = None
+    ) -> str:
         raw = f"{text}|{language}|{provider}|{emotion or 'neutral'}|speed={speed or 'default'}"
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
@@ -392,16 +393,11 @@ class VoiceAgent:
             text: Text to convert to speech. May include emotion tags like [happy].
             language: Language code ('ja' or 'en'). If None, auto-detects from text.
             emotion: Emotion tag to override detected emotion. Optional.
+            speed: 合成速度倍率（未指定時はサーバー側設定に従う）.
 
         Returns:
-            TTS result dict with keys:
-                - success (bool): Whether synthesis succeeded.
-                - audioResponse (str): Base64-encoded audio data.
-                - emotion (str): VRM emotion tag used.
-                - cleanText (str): Processed text after cleaning and emotion tag removal.
-                - format (str): Audio format ('audio/wav' or 'audio/mpeg').
-                - language (str): Language used for synthesis.
-                - error (str): Error message if failed. Optional.
+            TTS result dict. success / audioResponse / emotion / cleanText /
+            format / language / error を含む。
         """
         tts_started_at = time.perf_counter()
 
@@ -430,8 +426,9 @@ class VoiceAgent:
             logger.warning("Text truncated to %d bytes for TTS", max_tts_bytes)
 
         cache_store = self._ensure_tts_cache()
-        cache_key = self._tts_cache_key(processed, language, self.tts_provider, vrm_emotion,
-                                        speed=speed)
+        cache_key = self._tts_cache_key(
+            processed, language, self.tts_provider, vrm_emotion, speed=speed
+        )
         cached_entry = cache_store.get(cache_key)
         if cached_entry is not None:
             cached_audio = self._cached_audio_from_entry(cached_entry)
@@ -648,8 +645,9 @@ class VoiceAgent:
                                 )
                             fallback_provider = "kokoro"
                             audio_b64 = await self._await_tts_attempt(
-                                kokoro_client.synthesize_wav_base64(processed, language,
-                                                                    speed=speed),
+                                kokoro_client.synthesize_wav_base64(
+                                    processed, language, speed=speed
+                                ),
                                 provider="kokoro",
                                 role="fallback",
                                 language=language,
@@ -692,8 +690,9 @@ class VoiceAgent:
                     ):
                         fallback_provider = "kokoro"
                         audio_b64 = await self._await_tts_attempt(
-                            self.kokoro_client.synthesize_wav_base64(processed, language,
-                                                                     speed=speed),
+                            self.kokoro_client.synthesize_wav_base64(
+                                processed, language, speed=speed
+                            ),
                             provider="kokoro",
                             role="fallback",
                             language=language,

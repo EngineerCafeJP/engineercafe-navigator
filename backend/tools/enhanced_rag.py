@@ -154,9 +154,7 @@ class EnhancedRAGSearch(RAGFallbackMixin, RAGScoringMixin):
                     )
                 except Exception as e:
                     _rag_circuit_breaker.record_failure()
-                    logger.error(
-                        "Local pgvector search failed, trying fallback search: %s", e
-                    )
+                    logger.error("Local pgvector search failed, trying fallback search: %s", e)
                     return await self._fallback_search_response(
                         query=query,
                         category=category,
@@ -166,9 +164,7 @@ class EnhancedRAGSearch(RAGFallbackMixin, RAGScoringMixin):
                         error=str(e),
                     )
                 if not search_results.data:
-                    logger.info(
-                        "Local pgvector search returned no results, trying fallback search"
-                    )
+                    logger.info("Local pgvector search returned no results, trying fallback search")
                     return await self._fallback_search_response(
                         query=query,
                         category=category,

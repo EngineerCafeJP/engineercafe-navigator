@@ -80,9 +80,7 @@ def load_schema_sql(dimensions: int = EMBEDDING_DIMENSIONS) -> str:
     """
     sql = _SCHEMA_PATH.read_text(encoding="utf-8")
     if dimensions != EMBEDDING_DIMENSIONS:
-        sql = sql.replace(
-            f"vector({EMBEDDING_DIMENSIONS})", f"vector({dimensions})"
-        )
+        sql = sql.replace(f"vector({EMBEDDING_DIMENSIONS})", f"vector({dimensions})")
     return sql
 
 

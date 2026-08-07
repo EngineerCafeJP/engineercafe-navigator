@@ -86,8 +86,15 @@ class TestNormalizeRow:
         normalized = local_rag_module._normalize_row(row)
 
         assert set(normalized.keys()) == {
-            "id", "title", "content", "category", "subcategory",
-            "language", "source", "metadata", "similarity",
+            "id",
+            "title",
+            "content",
+            "category",
+            "subcategory",
+            "language",
+            "source",
+            "metadata",
+            "similarity",
         }
         assert normalized["source"] == "official"
         assert normalized["metadata"]["entity"] == "engineer-cafe"
@@ -345,9 +352,7 @@ class TestLocalBranchRouting:
         fallback_mock = AsyncMock(return_value={"success": False, "error": "boom"})
         rag_search._fallback_search_response = fallback_mock
 
-        result = await rag_search.search(
-            query="営業時間", category="hours", language="ja"
-        )
+        result = await rag_search.search(query="営業時間", category="hours", language="ja")
 
         fallback_mock.assert_awaited_once()
         assert result == {"success": False, "error": "boom"}
@@ -363,9 +368,7 @@ class TestLocalBranchRouting:
         fallback_mock = AsyncMock(return_value={"success": True, "data": {"results": []}})
         rag_search._fallback_search_response = fallback_mock
 
-        result = await rag_search.search(
-            query="営業時間", category="hours", language="ja"
-        )
+        result = await rag_search.search(query="営業時間", category="hours", language="ja")
 
         fallback_mock.assert_awaited_once()
         assert result["success"] is True
@@ -460,9 +463,7 @@ class TestSeedLocalKnowledge:
 
         monkeypatch.setattr(seed, "generate_embedding", AsyncMock(return_value=[]))
 
-        rows = await seed.build_rows(
-            [{"id": "x", "title": "T", "content": "本文"}], 1536
-        )
+        rows = await seed.build_rows([{"id": "x", "title": "T", "content": "本文"}], 1536)
         assert rows == []
 
     @pytest.mark.asyncio
@@ -472,9 +473,7 @@ class TestSeedLocalKnowledge:
 
         monkeypatch.setattr(seed, "generate_embedding", AsyncMock(return_value=[0.5] * 768))
 
-        rows = await seed.build_rows(
-            [{"id": "x", "title": "T", "content": "本文"}], 1536
-        )
+        rows = await seed.build_rows([{"id": "x", "title": "T", "content": "本文"}], 1536)
         assert rows == []
 
     def test_load_yaml_entries(self, tmp_path):
