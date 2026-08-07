@@ -1,6 +1,6 @@
-=== S3 tts-speed: Fri Aug  7 00:39:39 JST 2026 ===
+=== S3 tts-speed: Fri Aug  7 15:57:52 JST 2026 ===
 text=Welcome to Engineer Cafe! You can work in the main hall, use the free Wi-Fi, and explore the latest technology on the first floor.
-speed_1.0_duration=5.201s
-speed_0.8_duration=5.956s
-speed_0.65_duration=7.512s
+speed_1.0_duration=5.155s
+speed_0.8_duration=6.200s
+speed_0.65_duration=6.780s
 length_scale_effective=true
