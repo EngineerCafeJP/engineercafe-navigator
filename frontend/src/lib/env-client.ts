@@ -30,6 +30,9 @@ export const clientEnvSchema = z.object({
   NEXT_PUBLIC_USE_WEB_SPEECH_API: z.string().optional(),
   NEXT_PUBLIC_SKIP_BACKEND: z.string().optional(),
   NEXT_PUBLIC_QA_API_MODE: z.enum(['proxy', 'direct']).optional(),
+
+  // COSCUP 2026 demo kiosk: starts in English when enabled (default: off)
+  NEXT_PUBLIC_DEMO_MODE: z.string().optional(),
 });
 
 export type ClientEnv = z.infer<typeof clientEnvSchema>;
@@ -58,6 +61,7 @@ export function validateClientEnv(): ClientEnvValidationResult {
     NEXT_PUBLIC_USE_WEB_SPEECH_API: process.env.NEXT_PUBLIC_USE_WEB_SPEECH_API,
     NEXT_PUBLIC_SKIP_BACKEND: process.env.NEXT_PUBLIC_SKIP_BACKEND,
     NEXT_PUBLIC_QA_API_MODE: process.env.NEXT_PUBLIC_QA_API_MODE,
+    NEXT_PUBLIC_DEMO_MODE: process.env.NEXT_PUBLIC_DEMO_MODE,
   };
 
   const result = clientEnvSchema.safeParse(envValues);
@@ -71,4 +75,37 @@ export function validateClientEnv(): ClientEnvValidationResult {
   );
 
   return { success: false, errors };
+}
+
+// ---------------------------------------------------------------------------
+// Demo-mode helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * True when NEXT_PUBLIC_DEMO_MODE === 'true' (COSCUP 2026 demo kiosk).
+ *
+ * Follows the same direct process.env parse convention as other NEXT_PUBLIC
+ * feature flags (e.g. NEXT_PUBLIC_PARALLEL_VOICE_FILLER in
+ * app/components/voice-interface/constants.ts).
+ */
+export function isDemoMode(): boolean {
+  return process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
+}
+
+/**
+ * Default kiosk UI language: 'en' during demo mode, otherwise 'ja'.
+ * Used as the lazy initializer for the kiosk language state and as the
+ * first-run settings modal preselection.
+ */
+export function getDefaultKioskLanguage(): 'ja' | 'en' {
+  return isDemoMode() ? 'en' : 'ja';
+}
+
+/**
+ * TTS provider for assistant speech. Defaults to 'piper' (production parity;
+ * the demo stack runs PiperPlus primary via docker/piper-plus). Overridable
+ * via NEXT_PUBLIC_TTS_PROVIDER for experiments.
+ */
+export function getTtsProvider(): string {
+  return process.env.NEXT_PUBLIC_TTS_PROVIDER ?? 'piper';
 }

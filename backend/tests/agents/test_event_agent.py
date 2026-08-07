@@ -762,3 +762,73 @@ class TestEventAgentHallucinationGuards:
         )
 
         assert "[happy]" in prompt
+
+
+class TestEventNoEventsDemoFallback:
+    """デモモード（env gated）でのカレンダー取得失敗時の案内メッセージ"""
+
+    @staticmethod
+    def _mixin():
+        """EventAgent の __init__（LLM provider 解決等）を避け、Mixin 単体をテストする。"""
+        from backend.agents.event.responses import EventResponseMixin
+
+        return EventResponseMixin()
+
+    def test_failed_status_uses_english_message_in_demo(self, monkeypatch):
+        """DEMO_CONCISE_ANSWER=true かつカレンダー失敗時は自然な英語メッセージ。"""
+        monkeypatch.setenv("DEMO_CONCISE_ANSWER", "true")
+        result = self._mixin()._get_no_events_response(
+            "en",
+            "thisWeek",
+            sources=[],
+            searched_sources=["spreadsheet"],
+            source_statuses={
+                "spreadsheet": "ok",
+                "google_calendar": "failed",
+                "connpass": "empty",
+            },
+        )
+        assert "event calendar" in result["answer"]
+        assert result["metadata"]["demo_calendar_fallback"] is True
+        assert result["metadata"]["source_statuses"]["google_calendar"] == "failed"
+
+    def test_timeout_status_uses_english_message_when_language_forced_en(self, monkeypatch):
+        """LANGUAGE_FORCE=en かつ全ソース timeout 時も同じ英語メッセージ。"""
+        monkeypatch.setenv("LANGUAGE_FORCE", "en")
+        result = self._mixin()._get_no_events_response(
+            "en",
+            "today",
+            searched_sources=[],
+            source_statuses={
+                "spreadsheet": "timeout",
+                "google_calendar": "timeout",
+                "connpass": "timeout",
+            },
+        )
+        assert "event calendar" in result["answer"]
+        assert result["metadata"]["demo_calendar_fallback"] is True
+
+    def test_demo_env_unset_keeps_legacy_response(self, monkeypatch):
+        """env 未設定時は従来の no-events 応答を維持（デモ専用ゲート）。"""
+        monkeypatch.delenv("DEMO_CONCISE_ANSWER", raising=False)
+        monkeypatch.delenv("LANGUAGE_FORCE", raising=False)
+        result = self._mixin()._get_no_events_response(
+            "en",
+            "thisWeek",
+            searched_sources=[],
+            source_statuses={"google_calendar": "failed"},
+        )
+        assert "no scheduled" in result["answer"]
+        assert "demo_calendar_fallback" not in result["metadata"]
+
+    def test_demo_active_but_no_failure_keeps_legacy_response(self, monkeypatch):
+        """デモモードでも取得失敗が無ければ従来応答を維持。"""
+        monkeypatch.setenv("DEMO_CONCISE_ANSWER", "true")
+        result = self._mixin()._get_no_events_response(
+            "en",
+            "thisWeek",
+            searched_sources=["google_calendar", "connpass"],
+            source_statuses={"google_calendar": "empty", "connpass": "empty"},
+        )
+        assert "no scheduled" in result["answer"]
+        assert "demo_calendar_fallback" not in result["metadata"]

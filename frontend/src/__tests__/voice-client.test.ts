@@ -118,6 +118,63 @@ test('textToSpeech posts typed text_to_speech payload and normalizes vrmControl'
   assert.deepEqual(result.data.vrmControl, { name: 'talking', duration: 800 });
 });
 
+test('textToSpeech includes speed in payload when provided', async () => {
+  let capturedBody: Record<string, unknown> | null = null;
+  global.fetch = (async (_input, init) => {
+    capturedBody =
+      typeof init?.body === 'string' ? (JSON.parse(init.body) as Record<string, unknown>) : null;
+
+    return jsonResponse({
+      success: true,
+      audioResponse: 'base64-audio',
+      audioFormat: 'audio/wav',
+      phase: 'text_to_speech',
+    });
+  }) as typeof fetch;
+
+  await textToSpeech({
+    text: 'Hello',
+    language: 'en',
+    sessionId: 'session-1',
+    ttsProvider: 'piper',
+    speed: 0.65,
+  });
+
+  assert.deepEqual(capturedBody, {
+    action: 'text_to_speech',
+    text: 'Hello',
+    language: 'en',
+    sessionId: 'session-1',
+    streaming: false,
+    ttsProvider: 'piper',
+    speed: 0.65,
+  });
+});
+
+test('textToSpeech omits speed when not provided', async () => {
+  let capturedBody: Record<string, unknown> | null = null;
+  global.fetch = (async (_input, init) => {
+    capturedBody =
+      typeof init?.body === 'string' ? (JSON.parse(init.body) as Record<string, unknown>) : null;
+
+    return jsonResponse({
+      success: true,
+      audioResponse: 'base64-audio',
+      audioFormat: 'audio/wav',
+      phase: 'text_to_speech',
+    });
+  }) as typeof fetch;
+
+  await textToSpeech({
+    text: 'Hello',
+    language: 'en',
+    sessionId: 'session-1',
+    ttsProvider: 'piper',
+  });
+
+  assert.equal('speed' in (capturedBody ?? {}), false);
+});
+
 test('textToSpeech returns normalized error payload for backend failures', async () => {
   global.fetch = (async () => jsonResponse({ detail: 'Missing text for text_to_speech' }, 400)) as typeof fetch;
 

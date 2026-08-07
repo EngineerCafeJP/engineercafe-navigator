@@ -7,8 +7,8 @@ from typing import Any, Dict, List, Literal
 
 from backend.utils.language_types import (
     DEFAULT_ERROR_RESPONSE,
-    LANGUAGE_INSTRUCTION,
     SupportedLanguage,
+    get_language_instruction,
 )
 from backend.utils.query_classifier import QueryClassifier
 
@@ -481,7 +481,7 @@ class GeneralKnowledgeResponseMixin:
         )
 
         # Multilingual: append language instruction for zh/ko
-        lang_suffix = LANGUAGE_INSTRUCTION.get(language, "")
+        lang_suffix = get_language_instruction(language)
         scope_instruction_ja = (
             "あなた自身の正体を聞かれていない限り、モデル名や提供会社名を自分の正体として述べないでください。"
             "回答は受付での会話として短く自然にしてください。"

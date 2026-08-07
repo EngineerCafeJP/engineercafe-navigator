@@ -1,0 +1,33 @@
+{
+  "model": "qwen3.5:9b",
+  "questions": [
+    {
+      "name": "q1_what_can_i_do",
+      "question": "What can I do at Engineer Cafe?",
+      "ttft_ms": -1,
+      "total_ms": 6216,
+      "finish_reason": "length",
+      "usage": null,
+      "answer": ""
+    },
+    {
+      "name": "q2_where_is_toilet",
+      "question": "Where is the toilet?",
+      "ttft_ms": -1,
+      "total_ms": 9287,
+      "finish_reason": "length",
+      "usage": null,
+      "answer": ""
+    },
+    {
+      "name": "q3_cafe_open_weekend",
+      "question": "Is the cafe open on weekends?",
+      "ttft_ms": -1,
+      "total_ms": 11310,
+      "finish_reason": "length",
+      "usage": null,
+      "answer": ""
+    }
+  ],
+  "load_ms": 4103
+}

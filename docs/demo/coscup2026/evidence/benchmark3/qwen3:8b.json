@@ -1,0 +1,36 @@
+{
+  "model": "qwen3:8b",
+  "questions": [
+    {
+      "name": "q1_what_can_i_do",
+      "question": "What can I do at Engineer Cafe?",
+      "ttft_ms": 622,
+      "total_ms": 3326,
+      "finish_reason": "stop",
+      "reasoning_chars": 0,
+      "usage": null,
+      "answer": "At Engineer Cafe, you can attend events, work in the coworking area, or use the fabrication lab on B1F. You can also rent equipment, access a book library, and enjoy drinks and refreshments."
+    },
+    {
+      "name": "q2_where_is_toilet",
+      "question": "Where is the toilet?",
+      "ttft_ms": 656,
+      "total_ms": 2199,
+      "finish_reason": "stop",
+      "reasoning_chars": 0,
+      "usage": null,
+      "answer": "The toilet is located at the back of the terrace on the 1F. You need to go through the passage behind the reception desk to reach it."
+    },
+    {
+      "name": "q3_cafe_open_weekend",
+      "question": "Is the cafe open on weekends?",
+      "ttft_ms": 575,
+      "total_ms": 1568,
+      "finish_reason": "stop",
+      "reasoning_chars": 0,
+      "usage": null,
+      "answer": "Yes, the cafe is open on weekends. It operates on Saturday and Sunday with both day and night time hours."
+    }
+  ],
+  "load_ms": 2237
+}

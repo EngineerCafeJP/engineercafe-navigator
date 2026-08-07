@@ -1,0 +1,36 @@
+{
+  "model": "qwen3.6:35b",
+  "questions": [
+    {
+      "name": "q1_what_can_i_do",
+      "question": "What can I do at Engineer Cafe?",
+      "ttft_ms": -1,
+      "total_ms": 70229,
+      "finish_reason": "length",
+      "reasoning_chars": 0,
+      "usage": null,
+      "answer": ""
+    },
+    {
+      "name": "q2_where_is_toilet",
+      "question": "Where is the toilet?",
+      "ttft_ms": 37326,
+      "total_ms": 39587,
+      "finish_reason": "stop",
+      "reasoning_chars": 0,
+      "usage": null,
+      "answer": "The restrooms are located at the far end of the first-floor terrace. To reach them, please walk through the passage behind the reception desk to access the terrace directly. They feature Western-style toilets with warm-water bidets."
+    },
+    {
+      "name": "q3_cafe_open_weekend",
+      "question": "Is the cafe open on weekends?",
+      "ttft_ms": -1,
+      "total_ms": 46556,
+      "finish_reason": "length",
+      "reasoning_chars": 0,
+      "usage": null,
+      "answer": ""
+    }
+  ],
+  "load_ms": 852
+}

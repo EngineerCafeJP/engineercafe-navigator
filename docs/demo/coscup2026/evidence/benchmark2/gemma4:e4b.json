@@ -1,0 +1,36 @@
+{
+  "model": "gemma4:e4b",
+  "questions": [
+    {
+      "name": "q1_what_can_i_do",
+      "question": "What can I do at Engineer Cafe?",
+      "ttft_ms": 12626,
+      "total_ms": 15265,
+      "finish_reason": "stop",
+      "reasoning_chars": 0,
+      "usage": null,
+      "answer": "You can cowork or attend events at the 1F Main Hall, which also offers various tech demos and a book library. For hands-on creation, you can use the B1F MAKER's Space with tools like 3D printers and laser cutters. Additionally, we have paid meeting rooms on the 2F for private gatherings."
+    },
+    {
+      "name": "q2_where_is_toilet",
+      "question": "Where is the toilet?",
+      "ttft_ms": 10973,
+      "total_ms": 12870,
+      "finish_reason": "stop",
+      "reasoning_chars": 0,
+      "usage": null,
+      "answer": "The restrooms are located at the back of the terrace on the 1F level. To reach them, you must go through the passage behind the reception desk and proceed to the far end of the terrace. They are western-style toilets with warm-water bidets available."
+    },
+    {
+      "name": "q3_cafe_open_weekend",
+      "question": "Is the cafe open on weekends?",
+      "ttft_ms": 708,
+      "total_ms": 2617,
+      "finish_reason": "stop",
+      "reasoning_chars": 0,
+      "usage": null,
+      "answer": "Yes, SAINO is open on weekends! They are open on both Saturday and Sunday. The opening hours for those days are Day Time from 12:00-17:00 and Night Time from 18:00-20:00."
+    }
+  ],
+  "load_ms": 5886
+}

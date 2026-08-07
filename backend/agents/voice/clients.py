@@ -4,6 +4,7 @@ import asyncio
 import base64
 import importlib
 import logging
+import os
 from typing import Any, Optional
 
 import httpx
@@ -156,7 +157,24 @@ class KokoroTTSClient:
         self.api_url = api_url.rstrip("/")
         logger.info("KokoroTTSClient initialized: %s", self.api_url)
 
-    async def synthesize_wav_base64(self, text: str, lang: str, voice: Optional[str] = None) -> str:
+    @staticmethod
+    def _speech_speed() -> Optional[float]:
+        """KOKORO_TTS_SPEED 環境変数から再生速度を取得（未設定時は None）。"""
+        raw = os.getenv("KOKORO_TTS_SPEED", "").strip()
+        if not raw:
+            return None
+        try:
+            return float(raw)
+        except ValueError:
+            return None
+
+    async def synthesize_wav_base64(
+        self,
+        text: str,
+        lang: str,
+        voice: Optional[str] = None,
+        speed: Optional[float] = None,
+    ) -> str:
         """
         テキストを音声に合成し、base64エンコードされたWAVを返す
 
@@ -164,6 +182,8 @@ class KokoroTTSClient:
             text: 合成するテキスト
             lang: 言語コード（現在は使用されないが、将来の拡張のために保持）
             voice: ボイス名（未指定時はデフォルトボイスを使用）
+            speed: 再生速度倍率（1.0=標準・小さいほど遅い）。リクエスト指定が
+                優先され、未指定時は KOKORO_TTS_SPEED 環境変数に従う。
 
         Returns:
             base64エンコードされたWAVデータ
@@ -171,16 +191,21 @@ class KokoroTTSClient:
         if voice is None:
             voice = self.DEFAULT_VOICE_EN
 
+        payload: dict = {
+            "model": "kokoro",
+            "input": text,
+            "voice": voice,
+            "response_format": "wav",
+        }
+        effective_speed = speed if speed is not None else self._speech_speed()
+        if effective_speed is not None:
+            payload["speed"] = effective_speed
+
         try:
             async with _httpx().AsyncClient(timeout=30) as client:
                 response = await client.post(
                     f"{self.api_url}/v1/audio/speech",
-                    json={
-                        "model": "kokoro",
-                        "input": text,
-                        "voice": voice,
-                        "response_format": "wav",
-                    },
+                    json=payload,
                 )
 
                 if response.status_code >= 400:
@@ -215,7 +240,9 @@ class PiperPlusTTSClient:
     tsukuyomi-chan-6lang モデルで日本語・英語等に対応。
     Docker で起動した piper-plus HTTP API (POST /synthesize) を使用します。
 
-    話速は PIPER_SPEED 環境変数でサーバー側に設定済み (default: 0.65 ≒ ゆっくり)。
+    話速: サーバー側 (docker/piper-plus) が PIPER_SPEED 環境変数を
+    Piper の length_scale (1/speed) に変換して合成に適用する。
+    本クライアントは合成速度を変更しない（音声の再生速度は変更しない）。
     """
 
     def __init__(self, api_url: str = "http://localhost:8090"):
@@ -274,7 +301,11 @@ class PiperPlusTTSClient:
         await self.close()
 
     async def synthesize_wav_base64(
-        self, text: str, lang: str, speaker_id: Optional[int] = None
+        self,
+        text: str,
+        lang: str,
+        speaker_id: Optional[int] = None,
+        speed: Optional[float] = None,
     ) -> str:
         """
         テキストを音声に合成し、base64エンコードされたWAVを返す
@@ -283,6 +314,8 @@ class PiperPlusTTSClient:
             text: 合成するテキスト
             lang: 言語コード ("ja" / "en" 等、tsukuyomi 6言語対応)
             speaker_id: 話者ID（None でモデルデフォルト）
+            speed: 合成速度倍率（1.0=標準・小さいほど遅い）。未指定時は
+                サーバー側 (docker/piper-plus) の PIPER_SPEED に従う。
 
         Returns:
             base64エンコードされたWAVデータ
@@ -290,6 +323,8 @@ class PiperPlusTTSClient:
         payload: dict = {"text": text, "language": lang}
         if speaker_id is not None:
             payload["speaker_id"] = speaker_id
+        if speed is not None:
+            payload["speed"] = speed
 
         max_attempts = get_piper_plus_max_attempts()
         for attempt in range(1, max_attempts + 1):

@@ -1,0 +1,33 @@
+{
+  "model": "qwen3:8b",
+  "questions": [
+    {
+      "name": "q1_what_can_i_do",
+      "question": "What can I do at Engineer Cafe?",
+      "ttft_ms": 11312,
+      "total_ms": 13035,
+      "finish_reason": "length",
+      "usage": null,
+      "answer": "At Engineer Cafe, you can cowork in the 1F Main Hall (30 free seats with Wi-Fi and power strips) or attend events, use"
+    },
+    {
+      "name": "q2_where_is_toilet",
+      "question": "Where is the toilet?",
+      "ttft_ms": 8113,
+      "total_ms": 10832,
+      "finish_reason": "stop",
+      "usage": null,
+      "answer": "The restrooms are located at the back of the terrace on the 1F. To access them, go through the passage behind the reception desk to the terrace, then proceed to the far end. Western-style toilets with warm-water bidets are available."
+    },
+    {
+      "name": "q3_cafe_open_weekend",
+      "question": "Is the cafe open on weekends?",
+      "ttft_ms": 8719,
+      "total_ms": 11181,
+      "finish_reason": "stop",
+      "usage": null,
+      "answer": "Yes, the cafe is open on weekends (Saturday and Sunday) with Day Time 12:00-17:00 and Night Time 18:00-20:00."
+    }
+  ],
+  "load_ms": 2902
+}

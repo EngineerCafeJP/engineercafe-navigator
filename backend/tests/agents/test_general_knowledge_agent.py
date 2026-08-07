@@ -112,7 +112,7 @@ class TestGeneralKnowledgeAgent:
 
         # WebSearchToolとOpenRouterProviderをモック
         with patch("backend.agents.general_knowledge_agent.TavilySearchTool"):
-            with patch("backend.agents.general_knowledge_agent.OpenRouterProvider"):
+            with patch("backend.agents.general_knowledge_agent.resolve_llm_provider"):
                 with patch("backend.agents.general_knowledge_agent.EnhancedRAGSearch"):
                     self.agent = GeneralKnowledgeAgent()
 
@@ -294,7 +294,7 @@ class TestGeneralKnowledgeAgentIntegration:
             return_value=self.mock_web_search,
         ):
             with patch(
-                "backend.agents.general_knowledge_agent.OpenRouterProvider",
+                "backend.agents.general_knowledge_agent.resolve_llm_provider",
                 return_value=self.mock_provider,
             ):
                 with patch(

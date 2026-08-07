@@ -46,10 +46,12 @@ test('voice UI does not synthesize assistant speech with browser Web Speech', ()
   assert.equal(combined.includes('speechSynthesis.speak'), false);
 });
 
-test('assistant TTS requests explicitly use Piper Plus', () => {
+test('assistant TTS requests use getTtsProvider() (defaults to Piper Plus)', () => {
   const voiceInterface = readVoiceInterfaceModules();
   const receptionGuide = readReceptionGuideModule();
 
-  assert.ok((voiceInterface.match(/ttsProvider:\s*'piper'/g) ?? []).length >= 3);
+  // アシスタント TTS は getTtsProvider() 経由（既定=piper、デモモード=kokoro）。
+  // デモモード以外の本番経路が piper であることは getTtsProvider() の実装が保証する。
+  assert.ok((voiceInterface.match(/getTtsProvider\(\)/g) ?? []).length >= 3);
   assert.ok(receptionGuide.includes("ttsProvider: 'piper'"));
 });

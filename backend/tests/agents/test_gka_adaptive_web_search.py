@@ -8,7 +8,7 @@ from backend.utils.context_priority import ContextSignals
 def _make_agent():
     """Create a GeneralKnowledgeAgent with mocked dependencies."""
     with (
-        patch("backend.agents.general_knowledge_agent.OpenRouterProvider"),
+        patch("backend.agents.general_knowledge_agent.resolve_llm_provider"),
         patch("backend.agents.general_knowledge_agent.get_model_config"),
         patch("backend.agents.general_knowledge_agent.TavilySearchTool"),
         patch("backend.agents.general_knowledge_agent.EnhancedRAGSearch"),

@@ -5,6 +5,7 @@ This module defines the base class for LLM providers,
 allowing flexible switching between different AI backends.
 """
 
+import os
 from abc import ABC, abstractmethod
 from typing import AsyncGenerator, List, Optional, TYPE_CHECKING
 
@@ -93,8 +94,9 @@ def get_llm_provider() -> LLMProvider:
     """
     Get the singleton LLM provider instance.
 
-    This function lazily initializes the OpenRouterProvider
-    and returns the same instance on subsequent calls.
+    ``LLM_PROVIDER=ollama`` が設定されている場合は OllamaProvider を、
+    それ以外（デフォルト）は既存の OpenRouterProvider を遅延初期化して
+    同じインスタンスを返す。
 
     Returns:
         The LLM provider instance
@@ -105,10 +107,39 @@ def get_llm_provider() -> LLMProvider:
     """
     global _provider_instance
     if _provider_instance is None:
-        from .openrouter import OpenRouterProvider
+        if os.getenv("LLM_PROVIDER") == "ollama":
+            from .ollama import OllamaProvider
 
-        _provider_instance = OpenRouterProvider()
+            _provider_instance = OllamaProvider()
+        else:
+            from .openrouter import OpenRouterProvider
+
+            _provider_instance = OpenRouterProvider()
     return _provider_instance
+
+
+def resolve_llm_provider(api_key: Optional[str] = None) -> LLMProvider:
+    """
+    Provider を直接生成する呼び出し元向けの解決ヘルパー。
+
+    ``LLM_PROVIDER=ollama``（COSCUP デモ）時は OllamaProvider の新規インスタンスを
+    返す。それ以外は従来通り OpenRouterProvider を生成する（本番挙動は不変）。
+    シングルトンとは別インスタンスなので、呼び出し元が ``close()`` しても
+    ``get_llm_provider()`` の共有インスタンスには影響しない。
+
+    Args:
+        api_key: OpenRouter API key（Ollama 時は未使用）
+
+    Returns:
+        LLMProvider インスタンス
+    """
+    if os.getenv("LLM_PROVIDER") == "ollama":
+        from .ollama import OllamaProvider
+
+        return OllamaProvider()
+    from .openrouter import OpenRouterProvider
+
+    return OpenRouterProvider(api_key=api_key)
 
 
 def reset_provider() -> None:

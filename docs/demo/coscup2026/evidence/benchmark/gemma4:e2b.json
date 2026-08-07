@@ -1,0 +1,33 @@
+{
+  "model": "gemma4:e2b",
+  "questions": [
+    {
+      "name": "q1_what_can_i_do",
+      "question": "What can I do at Engineer Cafe?",
+      "ttft_ms": -1,
+      "total_ms": 2488,
+      "finish_reason": "length",
+      "usage": null,
+      "answer": ""
+    },
+    {
+      "name": "q2_where_is_toilet",
+      "question": "Where is the toilet?",
+      "ttft_ms": 2512,
+      "total_ms": 2601,
+      "finish_reason": "length",
+      "usage": null,
+      "answer": "The restrooms are located at the back of the terrace on the"
+    },
+    {
+      "name": "q3_cafe_open_weekend",
+      "question": "Is the cafe open on weekends?",
+      "ttft_ms": 1744,
+      "total_ms": 1930,
+      "finish_reason": "stop",
+      "usage": null,
+      "answer": "Yes, the cafe is open on weekends. The open days include Saturday and Sunday in addition to the weekdays."
+    }
+  ],
+  "load_ms": 4528
+}

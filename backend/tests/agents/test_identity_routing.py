@@ -169,7 +169,7 @@ class TestAssistantProfileResponse:
     def gka(self) -> GeneralKnowledgeAgent:
         # Patch heavyweight constructors so we don't hit external services.
         with (
-            patch("backend.agents.general_knowledge_agent.OpenRouterProvider") as mock_provider,
+            patch("backend.agents.general_knowledge_agent.resolve_llm_provider") as mock_provider,
             patch("backend.agents.general_knowledge_agent.TavilySearchTool") as mock_tavily,
             patch("backend.agents.general_knowledge_agent.EnhancedRAGSearch") as mock_rag,
             patch("backend.agents.general_knowledge_agent.get_model_config"),

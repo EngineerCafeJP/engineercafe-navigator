@@ -430,3 +430,71 @@ class TestVoiceApiChain:
             )
             tts_data = tts_resp.json()
             assert tts_data["success"] is True
+
+
+class TestTtsSpeedGate:
+    """話速 (speed) はデモ環境 (ENVIRONMENT=demo) のみ有効。
+
+    本番 Cloud Run (ENVIRONMENT != demo) では speed を text_to_speech に
+    渡さない（サーバー側既定の話速に従う）。デモでのみクライアント指定を適用する。
+    """
+
+    @pytest.fixture
+    async def client(self):
+        transport = ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+            yield c
+
+    async def test_speed_applied_in_demo_environment(self, client, monkeypatch):
+        """ENVIRONMENT=demo では speed が text_to_speech に渡る。"""
+        monkeypatch.setenv("ENVIRONMENT", "demo")
+        mock_voice = MagicMock()
+        mock_voice.text_to_speech = AsyncMock(
+            return_value={
+                "success": True,
+                "audioResponse": "base64audio==",
+                "emotion": "neutral",
+                "format": "audio/wav",
+            }
+        )
+
+        with _patch_singletons(voice_mock=mock_voice):
+            resp = await client.post(
+                "/api/voice",
+                json={
+                    "action": "text_to_speech",
+                    "text": "Hello",
+                    "language": "en",
+                    "speed": 0.65,
+                },
+            )
+            assert resp.status_code == 200
+            call = mock_voice.text_to_speech.call_args
+            assert call.kwargs.get("speed") == 0.65
+
+    async def test_speed_ignored_outside_demo_environment(self, client, monkeypatch):
+        """ENVIRONMENT 未設定（本番相当）では speed は text_to_speech に渡らない。"""
+        monkeypatch.delenv("ENVIRONMENT", raising=False)
+        mock_voice = MagicMock()
+        mock_voice.text_to_speech = AsyncMock(
+            return_value={
+                "success": True,
+                "audioResponse": "base64audio==",
+                "emotion": "neutral",
+                "format": "audio/wav",
+            }
+        )
+
+        with _patch_singletons(voice_mock=mock_voice):
+            resp = await client.post(
+                "/api/voice",
+                json={
+                    "action": "text_to_speech",
+                    "text": "Hello",
+                    "language": "en",
+                    "speed": 0.65,
+                },
+            )
+            assert resp.status_code == 200
+            call = mock_voice.text_to_speech.call_args
+            assert call.kwargs.get("speed") is None
