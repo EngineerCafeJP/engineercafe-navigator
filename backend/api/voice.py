@@ -568,7 +568,9 @@ async def voice_api(request: Request, body: VoiceRequest):
                     text=body.text,
                     language=body.language or "ja",
                     emotion=body.emotion,  # Use requested emotion for TTS
-                    speed=body.speed,  # 話速（未指定時はサーバー側設定に従う）
+                    # 話速はデモ環境 (ENVIRONMENT=demo) のみ適用。
+                    # 本番 Cloud Run ではサーバー側既定 (PIPER_SPEED etc.) に従う
+                    speed=body.speed if os.getenv("ENVIRONMENT") == "demo" else None,
                 )
             )
             if body.sessionId:

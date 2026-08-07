@@ -2,7 +2,7 @@ import { AudioQueue } from '@/lib/audio-queue';
 import { AudioDataProcessor } from '@/lib/audio/audio-data-processor';
 import { requestAutoCharacterControl } from '@/lib/api/character-client';
 import { submitQaQuestion } from '@/lib/api/qa-client';
-import { getTtsProvider } from '@/lib/env-client';
+import { getTtsProvider, isDemoMode } from '@/lib/env-client';
 import {
   requestVoiceFiller,
   textToSpeech,
@@ -173,7 +173,8 @@ export function useVoiceTurnProcessor({
           language: request.language,
           sessionId: request.sessionId,
           ttsProvider: request.ttsProvider ?? getTtsProvider(),
-          speed: request.speed,
+          // 話速はデモモード時のみ送信（本番 Cloud Run の挙動を変えない）
+          speed: isDemoMode() ? request.speed : undefined,
           ...(typeof request.emotion === 'string' && request.emotion.trim()
             ? { emotion: request.emotion.trim() }
             : {}),
