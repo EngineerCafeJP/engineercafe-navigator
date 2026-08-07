@@ -95,11 +95,31 @@ export const playRandomVrmAnimation = async (
   vrm: VRM,
   loadVRMAnimation: (animationUrl: string, vrm: VRM, loop?: boolean) => Promise<{ success: boolean; duration: number }>,
 ) => {
-  const animations = ['VRMA_03', 'VRMA_04', 'VRMA_05', 'VRMA_06', 'VRMA_07'];
+  // 実ファイル名の一覧を /api/animations (manifest.json) から動的取得する。
+  // 以前は ['VRMA_03'..'VRMA_07'] をハードコードしていたが、存在しない
+  // ファイル名のため 404 になりクリックアニメーションが機能しなかった (#948)。
+  let animations: string[];
+  try {
+    const response = await fetch('/api/animations');
+    const result = (await response.json()) as { animations?: string[] };
+    animations = (result.animations ?? [])
+      .map((name) => name.replace(/\.vrma$/i, ''))
+      .filter((name) => name.length > 0);
+  } catch (error) {
+    console.error('Failed to fetch VRM animation list:', error);
+    animations = [];
+  }
+
+  // idle は待機モーションなのでランダム対象から除外し、それ以外から選ぶ
+  const candidates = animations.filter((name) => name !== 'idle');
+  if (candidates.length === 0) {
+    // フォールバック: 既知のクリック用アニメーション名
+    candidates.push('bowing', 'greeting', 'looking', 'surprised', 'talking', 'thinking', 'thinking2');
+  }
 
   // Select a random animation
-  const randomIndex = Math.floor(Math.random() * animations.length);
-  const animName = animations[randomIndex];
+  const randomIndex = Math.floor(Math.random() * candidates.length);
+  const animName = candidates[randomIndex];
   const animUrl = `/animations/${animName}.vrma`;
 
   try {
