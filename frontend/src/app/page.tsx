@@ -110,7 +110,6 @@ export default function Home() {
     useState<SettingsPanelPropsFromSource | null>(null);
   const [presentationAutoStartKey, setPresentationAutoStartKey] = useState(0);
   const [presentationLanguage, setPresentationLanguage] = useState<'ja' | 'en'>('ja');
-  const [showSlideMode, setShowSlideMode] = useState(false);
   const [showRestroomRoute, setShowRestroomRoute] = useState(false);
   const [slideLanguagePickerOpen, setSlideLanguagePickerOpen] = useState(false);
   const playKeyframeAnimationRef = useRef<((data: CharacterAnimationData) => void) | null>(null);
@@ -736,7 +735,7 @@ export default function Home() {
 
                 <RestroomRouteOverlay
                   visible={showRestroomRoute}
-                  language={voice.currentLanguage as any}
+                  language={voice.currentLanguage}
                   onClose={() => setShowRestroomRoute(false)}
                   bumpUserActivity={bumpUserActivity}
                 />

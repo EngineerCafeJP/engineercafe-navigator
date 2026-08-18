@@ -5,18 +5,18 @@ import type { overlayLabels } from '@/lib/kiosk-labels';
 
 export function RestroomRouteOverlay({
   visible,
-  language,
+  language = 'ja',
   onClose,
   bumpUserActivity,
 }: {
   visible: boolean;
-  language: 'ja' | 'en' | 'zh' | 'ko';
+  language?: 'ja' | 'en' | 'zh' | 'ko' | string;
   onClose: () => void;
   bumpUserActivity?: () => void;
 }) {
   if (!visible) return null;
 
-  const labels = {
+  const labels: Record<string, { title: string; step1: string; step2: string; step3: string; close: string }> = {
     ja: {
       title: 'トイレへの道順',
       step1: '1. 受付の後ろの通路を進みます',
