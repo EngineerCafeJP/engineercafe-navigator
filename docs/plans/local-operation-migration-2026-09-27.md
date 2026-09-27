@@ -107,8 +107,8 @@ D1 の帰結: Supabase を削除している間は、既定の RAG（Supabase �
 
 - 0-1 **（2026-09-27 実施済み）** `voice-e2e-nightly.yml` を無効化した（戻すときは `gh workflow enable voice-e2e-nightly.yml -R EngineerCafeJP/engineercafe-navigator`）
 - 0-2 **（2026-09-27 実施済み）** `ragas-evaluation.yml` を無効化した（同上）
-- 0-3 Secret Manager にある secret のうち、GCP と無関係なものを環境変数の管理先へ移し、GCP に紐づくものは削除する（次に GCP を使うときに作り直す）。課金停止の後は取り出せなくなるため、移行を先に行う
-- 0-4 Supabase の DB をダンプしてから、Supabase プロジェクトを一旦削除する（D1）
+- 0-3 **（2026-09-27 実施済み）** Secret Manager にある secret のうち、GCP と無関係な実値 9 件を環境変数の管理先へ移し（値の一致をハッシュで確認）、残りは GCP プロジェクトごと削除した（次に GCP を使うときに作り直す）
+- 0-4 **（2026-09-27 実施済み）** Supabase の DB をダンプしてから（`public` と `supabase_migrations`、`knowledge_base` 886 行を照合）、Supabase プロジェクトを削除した（D1）
 
 **Phase 1 — `ci:` CI から GCP を外す**（`.github/workflows` の変更なので、H5 の guard マーカーが要る）
 
