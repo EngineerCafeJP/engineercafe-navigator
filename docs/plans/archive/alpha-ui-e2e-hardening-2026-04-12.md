@@ -1,4 +1,6 @@
 > Status: completed (2026-05-18); archived by FU-29 and superseded by `docs/plans/wave3-engineer-handoff-master-2026-05-18.md`.
+>
+> 2026-09-27: the live Cloud Run backend this plan gated against was deleted for local operation (`docs/plans/local-operation-migration-2026-09-27.md`). `voice-e2e-nightly.yml` was disabled, and the `frontend-playwright-voice-live` and `backend-deploy-staging` jobs were removed from `ci.yml`. No voice round-trip gate runs until one is rebuilt against the local backend.
 
 # Alpha UI/E2E Hardening Plan
 
