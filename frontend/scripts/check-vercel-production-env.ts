@@ -5,6 +5,7 @@ import {
   productionRequiredVercelEnvKeys,
   validateServerEnv,
 } from "../src/lib/env";
+import { isMaintenanceMode } from "../src/lib/maintenance-mode";
 
 const args = new Set(process.argv.slice(2));
 const shouldForce = args.has("--force") || args.has("--production");
@@ -23,6 +24,20 @@ By default this runs only when VERCEL_ENV=production or VERCEL_ENV=preview. Use 
 if (!shouldCheck) {
   console.log(
     `[env-check] skipped: VERCEL_ENV=${process.env.VERCEL_ENV ?? "(unset)"} is not production or preview.`
+  );
+  process.exit(0);
+}
+
+// The maintenance page must deploy even after the retired backend and
+// Supabase credentials are removed (see src/lib/maintenance-mode.ts).
+if (
+  isMaintenanceMode({
+    MAINTENANCE_MODE: process.env.MAINTENANCE_MODE,
+    VERCEL_ENV: process.env.VERCEL_ENV,
+  })
+) {
+  console.log(
+    `[env-check] skipped: maintenance mode is on (VERCEL_ENV=${process.env.VERCEL_ENV ?? "(unset)"}, MAINTENANCE_MODE=${process.env.MAINTENANCE_MODE ?? "(unset)"}).`
   );
   process.exit(0);
 }

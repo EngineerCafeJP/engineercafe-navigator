@@ -35,7 +35,13 @@ UI・VRM・ブラウザ音声・管理画面・バックエンドへのプロキ
 | `on` / `true` / `1` | どこで動かしてもメンテナンス表示 |
 | `off` / `false` / `0` | メンテナンス表示にしない。バックエンドを戻したら Vercel の Production にこれを設定して再デプロイする |
 
-判定は `src/lib/maintenance-mode.ts`、テストは `src/__tests__/middleware.test.ts`（`pnpm exec tsx --test --import ./src/__tests__/node-test-setup.ts src/__tests__/middleware.test.ts`）。
+メンテナンス表示の間は、ビルド時の `pnpm env:check:production` と起動時の `src/instrumentation.ts` が `BACKEND_API_URL`・`BACKEND_API_KEY`・`NEXT_PUBLIC_SUPABASE_URL`・`NEXT_PUBLIC_SUPABASE_ANON_KEY` の必須チェックを飛ばす。停止したサービスの資格情報を Vercel から消しても、メンテナンス表示はデプロイできる。
+
+判定は `src/lib/maintenance-mode.ts`、応答は `src/lib/maintenance-response.ts`。テストは次のとおり。
+
+```bash
+pnpm exec tsx --test --import ./src/__tests__/node-test-setup.ts src/__tests__/middleware.test.ts src/__tests__/maintenance-startup.test.ts
+```
 
 ## ローカル・コマンド
 

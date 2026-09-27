@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { isMaintenanceMode, maintenanceResponse } from './lib/maintenance-mode';
+import { isMaintenanceMode } from './lib/maintenance-mode';
+import { maintenanceResponse } from './lib/maintenance-response';
 
 function unauthorizedResponse(): NextResponse {
   return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
