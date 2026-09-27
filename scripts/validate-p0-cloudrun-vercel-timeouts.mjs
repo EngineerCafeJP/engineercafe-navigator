@@ -6,7 +6,6 @@ import { resolve } from 'node:path';
 const repoRoot = resolve(import.meta.dirname, '..');
 const vercelConfigPath = resolve(repoRoot, 'frontend/vercel.json');
 const proxyConfigPath = resolve(repoRoot, 'frontend/src/lib/api/backend-proxy.ts');
-const workflowPath = resolve(repoRoot, '.github/workflows/ci.yml');
 
 function usage() {
   console.log(`Usage: node scripts/validate-p0-cloudrun-vercel-timeouts.mjs [options]
@@ -64,7 +63,8 @@ for (let index = 0; index < args.length; index += 1) {
 // Scaling posture tracks the current intended Cloud Run cost posture.
 // 2026-06-01: cost-minimal test posture (Phase 1 complete) = min 0 / max 2.
 // To revert to the production warm pool, set minScale/maxScale back to 5 / 15
-// here AND in .github/workflows/ci.yml. See docs/DEPLOYMENT.md "Scaling and Cost Posture".
+// here AND in the Cloud Run deploy job (removed from ci.yml on 2026-09-27).
+// See docs/DEPLOYMENT.md "Scaling and Cost Posture".
 const expected = {
   service: process.env.CLOUD_RUN_SERVICE || 'engineer-cafe-backend',
   region: process.env.CLOUD_RUN_REGION || 'asia-northeast1',
@@ -111,17 +111,10 @@ if (!proxySource.includes('BACKEND_PROXY_TIMEOUT_MS = 110_000')) {
   fail(`backend proxy timeout must be ${expected.proxyTimeoutMs}ms`);
 }
 
-const workflowSource = readFileSync(workflowPath, 'utf8');
-for (const requiredDeployFlag of [
-  '--min-instances 0',
-  '--max-instances 2',
-  '--cpu-boost',
-  '--no-cpu-throttling',
-]) {
-  if (!workflowSource.includes(requiredDeployFlag)) {
-    fail(`backend deploy workflow must include ${requiredDeployFlag}`);
-  }
-}
+// The ci.yml deploy-flag check (--min-instances 0, --max-instances 2, --cpu-boost,
+// --no-cpu-throttling) was removed on 2026-09-27 together with the backend-deploy-staging
+// job and the GCP project it deployed to. If a Cloud Run deploy job comes back, restore
+// that check so the job's flags stay tied to the `expected` values above.
 
 if (expected.proxyTimeoutMs >= expected.vercelMaxDurationSeconds * 1000) {
   fail('proxy timeout must stay below Vercel maxDuration');
