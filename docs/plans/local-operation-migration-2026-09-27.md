@@ -72,7 +72,7 @@
 | TTS | Cloud Run の `piper-plus` / `voicevox-proto`（`ci.yml:673`） | `docker/piper-plus`、compose の `voicevox`・`kokoro-tts`（voice プロファイル）。コードの既定は localhost | 本番の話者・速度の設定をローカルで再現できるかの確認 |
 | Secret | Secret Manager（CI が Cloud Run に注入） | `SECRET_BACKEND=env` が既定（`backend/utils/secrets.py:188`） | 値の置き場を、環境変数を注入する方式へ移す |
 | イベント KB 同期 | Cloud Run job と Cloud Scheduler（毎日 09:00 JST） | `--ics-file` 対応の CLI、systemd timer の雛形（`infra/systemd/`）、GitHub Actions の雛形（`.github/workflows/event-kb-sync.example.yml`） | 実行機での定期実行の方法 |
-| 監視 | Cloud Monitoring（`infra/terraform/`） | compose の OTel / Loki / Prometheus / Grafana（`docker-compose.yml:87-176`） | なし |
+| 監視 | Cloud Monitoring（`infra/terraform/`） | compose の OTel / Loki / Prometheus / Grafana（`docker-compose.yml:87-176`） | 監視 API の `/api/monitoring/dashboard` と `/migration-success`（`backend/api/monitoring.py`）は Supabase の `knowledge_base` を読むので、ローカルの PostgreSQL へ切り替えるか退役させる（PR-6） |
 
 代替が無いもの:
 
@@ -114,11 +114,13 @@ Supabase を使うのは RAG だけではない。ナレッジの CRUD API（`ba
 - 0-5 **（2026-09-27 実施済み）** `frontend-production-smoke.yml`（develop への push で、本番のフロント→バックエンドの疎通を確かめる）を無効化した。戻すときは `gh workflow enable frontend-production-smoke.yml -R EngineerCafeJP/engineercafe-navigator`
 - 0-6 Vercel の Production をメンテナンス表示にする（#953。`MAINTENANCE_MODE`、`frontend/README.md` の「メンテナンス表示」）
 - 0-7 （人間の作業、#953 のマージ後）Vercel の Production から、停止したサービスの値（`BACKEND_API_URL`・`BACKEND_API_KEY`・`NEXT_PUBLIC_SUPABASE_URL`・`NEXT_PUBLIC_SUPABASE_ANON_KEY`）を消す。メンテナンス表示の間は、ビルド時と起動時の必須チェックがこれらを求めない
+- 0-8 Vercel の cron `/api/cron/update-knowledge-base`（毎日 19:30 UTC、`frontend/vercel.json`）は、削除済みの Supabase に書き込むので失敗する。#953 のマージ後は middleware が 503 を返し、処理は走らない。cron の定義は PR-3 で削除するかローカル化する
+- 0-9 `db-schema-drift.yml`（migration の PR で旧 DB に接続する）は、2026-09-27 時点で既に disabled_manually（無効化した日は未確認）。移行後にローカルの DB を相手にするかは PR-3 で決める
 
 **Phase 1 — `ci:` CI から GCP を外す**（`.github/workflows` の変更なので、H5 の guard マーカーが要る）
 
 - PR-1 `ci:` `backend-deploy-staging` と `frontend-playwright-voice-live` を削除し、`ci-success` の該当条件を外す（#954）。当初は 2 本に分けていたが、`ci.yml` は CI の path filter で frontend の変更として扱われるため、先に出した方の PR で残った方の `frontend-playwright-voice-live` が停止済みのバックエンドに接続して落ち、`ci-success` も落ちてマージできない（`.github/workflows/ci.yml` の paths-filter と `ci-success`）。そのため 1 本にまとめた。timeout validator（`scripts/validate-p0-cloudrun-vercel-timeouts.mjs`）が `ci.yml` に求めていたデプロイフラグの確認も、同じ PR で外した
-- PR-3 `ci:` `alpha-live-verification` / `terraform-plan` / `voice-e2e-nightly` / `ragas-evaluation` の live 部分を削除するか、ローカル向けにする
+- PR-3 `ci:` `alpha-live-verification` / `terraform-plan` / `voice-e2e-nightly` / `ragas-evaluation` / `db-schema-drift` の live 部分と、`frontend/vercel.json` の cron を削除するか、ローカル向けにする
 
 **Phase 2 — `refactor:` 運用スクリプト**
 
@@ -128,6 +130,9 @@ Supabase を使うのは RAG だけではない。ナレッジの CRUD API（`ba
 **Phase 3 — `feat:` ローカル本番構成**（D1〜D4 の回答が前提）
 
 - PR-6 `feat:` デモ構成を土台に、常用の compose プロファイルを作る。LLM（Ollama / OpenRouter）と RAG（Supabase / `local-pgvector`）はどちらも残して環境変数で切り替え（D1・D2）、warmup を同梱する。環境変数の切り替えだけでは起動しないので、次も含める
+  - 常用のプロファイルは、デモ構成の認証の無効化を引き継がない。`docker-compose.demo.yml` は `ENVIRONMENT: demo` と `API_SECRET_KEY: ""` で API キー認証を外し、ベースの `docker-compose.yml` はバックエンドを `0.0.0.0:8000` で公開している。常用では空でない `API_SECRET_KEY` と本番相当の `ENVIRONMENT` を必須にし、起動時に確かめる
+  - 短期記憶を Supabase（`agent_memory`）から外す。今は Supabase の接続情報が無いと、`backend/utils/memory_helper.py` が会話履歴の読み書きを飛ばす。ローカルの PostgreSQL の checkpointer の履歴を会話に使うのは `ENABLE_AGENT_MEMORY_STM_WRITES=false` のときだけ（`backend/workflows/main/memory.py`）で、この既定は true。production では `ALLOW_AGENT_MEMORY_STM_WRITE_DISABLE=true` も無いと false が無視される（`backend/utils/memory_feature_flags.py`）。切り替えと、前の発話を参照する複数ターンの会話の確認を含める
+  - 監視 API（`backend/api/monitoring.py` の `/dashboard` と `/migration-success`）と frontend の `/api/monitoring/*` のプロキシを、ローカルの PostgreSQL へ切り替えるか退役させる
   - 起動時の検証を構成に合わせる。今は production で `openrouter_api_key` と Supabase の 3 つを無条件に必須にしている（`backend/utils/env_validator.py` の `REQUIRED_PRODUCTION`）
   - ローカル検索のときは Supabase のクライアントを作らない。今は `EnhancedRAGSearch.__init__` が常に `create_client` を呼ぶ（`backend/tools/enhanced_rag.py`）
   - ダンプの `knowledge_base` を `knowledge_embeddings` へ変換する手順（必要なら再埋め込み）と、886 行の件数照合
