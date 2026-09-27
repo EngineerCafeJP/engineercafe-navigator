@@ -99,7 +99,9 @@
 | D3 | 施設外アクセスとデバイス | コード上はオンサイト専用と HTTPS の口の両方の経路を残す |
 | D4 | 実行機 | 未定。先に GCP の課金を止める |
 
-D1 の帰結: Supabase を削除している間は、既定の RAG（Supabase の RPC）が動かない。ローカル運用では `RAG_VECTOR_BACKEND=local-pgvector` を使い、ダンプから `knowledge_base` をローカルの pgvector に戻す必要がある（Phase 3 の PR-6）。KB の埋め込みを作ったモデルとローカルの埋め込みモデルが違う場合は、再埋め込みも要る。
+D1 の帰結: Supabase を削除している間は、既定の RAG（Supabase の RPC）が動かない。ローカル運用では `RAG_VECTOR_BACKEND=local-pgvector` を使う。このときの検索先は `knowledge_base` ではなく `knowledge_embeddings`（`backend/tools/local_rag.py` が呼ぶ `search_knowledge_base_local`、`backend/scripts/sql/local_rag_schema.sql`）なので、ダンプの `knowledge_base` 886 行を `knowledge_embeddings` へ変換し、件数を照合する必要がある（Phase 3 の PR-6）。KB の埋め込みを作ったモデルとローカルの埋め込みモデルが違う場合は、再埋め込みも要る。
+
+Supabase を使うのは RAG だけではない。ナレッジの CRUD API（`backend/api/knowledge.py`）、受付セッションの保存（`backend/utils/reception_repository.py`）、イベント KB の同期（`backend/scripts/sync_event_kb.py` と `backend/services/event_kb_sync.py`）も Supabase の API を直接呼ぶ。ダンプをローカルの PostgreSQL に戻しても Supabase の API は提供されないので、これらは移行するか、対象外として止めて確かめる（PR-6・PR-7）。
 
 ## 5. 実装順の提案（PR の粒度）
 
@@ -109,11 +111,13 @@ D1 の帰結: Supabase を削除している間は、既定の RAG（Supabase �
 - 0-2 **（2026-09-27 実施済み）** `ragas-evaluation.yml` を無効化した（同上）
 - 0-3 **（2026-09-27 実施済み）** Secret Manager にある secret のうち、GCP と無関係な実値 9 件を環境変数の管理先へ移し（値の一致をハッシュで確認）、残りは GCP プロジェクトごと削除した（次に GCP を使うときに作り直す）
 - 0-4 **（2026-09-27 実施済み）** Supabase の DB をダンプしてから（`public` と `supabase_migrations`、`knowledge_base` 886 行を照合）、Supabase プロジェクトを削除した（D1）
+- 0-5 **（2026-09-27 実施済み）** `frontend-production-smoke.yml`（develop への push で、本番のフロント→バックエンドの疎通を確かめる）を無効化した。戻すときは `gh workflow enable frontend-production-smoke.yml -R EngineerCafeJP/engineercafe-navigator`
+- 0-6 Vercel の Production をメンテナンス表示にする（#953。`MAINTENANCE_MODE`、`frontend/README.md` の「メンテナンス表示」）
+- 0-7 （人間の作業、#953 のマージ後）Vercel の Production から、停止したサービスの値（`BACKEND_API_URL`・`BACKEND_API_KEY`・`NEXT_PUBLIC_SUPABASE_URL`・`NEXT_PUBLIC_SUPABASE_ANON_KEY`）を消す。メンテナンス表示の間は、ビルド時と起動時の必須チェックがこれらを求めない
 
 **Phase 1 — `ci:` CI から GCP を外す**（`.github/workflows` の変更なので、H5 の guard マーカーが要る）
 
-- PR-1 `ci:` `backend-deploy-staging` と `ci-success` の該当条件を削除し、timeout validator の Cloud Run 前提を外す
-- PR-2 `ci:` `frontend-playwright-voice-live` を compose のローカルバックエンドで回すか、`ci-success` から外す
+- PR-1 `ci:` `backend-deploy-staging` と `frontend-playwright-voice-live` を削除し、`ci-success` の該当条件を外す（#954）。当初は 2 本に分けていたが、`ci.yml` は CI の path filter で frontend の変更として扱われるため、先に出した方の PR で残った方の `frontend-playwright-voice-live` が停止済みのバックエンドに接続して落ち、`ci-success` も落ちてマージできない（`.github/workflows/ci.yml` の paths-filter と `ci-success`）。そのため 1 本にまとめた。timeout validator（`scripts/validate-p0-cloudrun-vercel-timeouts.mjs`）が `ci.yml` に求めていたデプロイフラグの確認も、同じ PR で外した
 - PR-3 `ci:` `alpha-live-verification` / `terraform-plan` / `voice-e2e-nightly` / `ragas-evaluation` の live 部分を削除するか、ローカル向けにする
 
 **Phase 2 — `refactor:` 運用スクリプト**
@@ -123,8 +127,13 @@ D1 の帰結: Supabase を削除している間は、既定の RAG（Supabase �
 
 **Phase 3 — `feat:` ローカル本番構成**（D1〜D4 の回答が前提）
 
-- PR-6 `feat:` デモ構成を土台に、常用の compose プロファイルを作る。LLM（Ollama / OpenRouter）と RAG（Supabase / `local-pgvector`）はどちらも残して環境変数で切り替え（D1・D2）、warmup を同梱する。ダンプから `knowledge_base` をローカルの pgvector に戻す手順と、環境変数の注入方法を含む起動手順書を付ける
-- PR-7 `feat:` イベント KB 同期を、実行機の定期実行（launchd か systemd timer）で動かす
+- PR-6 `feat:` デモ構成を土台に、常用の compose プロファイルを作る。LLM（Ollama / OpenRouter）と RAG（Supabase / `local-pgvector`）はどちらも残して環境変数で切り替え（D1・D2）、warmup を同梱する。環境変数の切り替えだけでは起動しないので、次も含める
+  - 起動時の検証を構成に合わせる。今は production で `openrouter_api_key` と Supabase の 3 つを無条件に必須にしている（`backend/utils/env_validator.py` の `REQUIRED_PRODUCTION`）
+  - ローカル検索のときは Supabase のクライアントを作らない。今は `EnhancedRAGSearch.__init__` が常に `create_client` を呼ぶ（`backend/tools/enhanced_rag.py`）
+  - ダンプの `knowledge_base` を `knowledge_embeddings` へ変換する手順（必要なら再埋め込み）と、886 行の件数照合
+  - ナレッジの CRUD API（`backend/api/knowledge.py`）と受付セッションの保存（`backend/utils/reception_repository.py`）を、ローカルの保存先へ移すか、ローカル構成では止めて確かめる
+  - 環境変数の注入方法を含む起動手順書
+- PR-7 `feat:` イベント KB 同期をローカルで動かす。定期実行（launchd か systemd timer）に替えるだけでは動かない。今の同期は Supabase の URL とキーを必須にし（`backend/scripts/sync_event_kb.py`）、Supabase の API で `knowledge_base` に書き込む（`backend/services/event_kb_sync.py`）ので、ローカルの検索先（`knowledge_embeddings`）へ書く経路も含める
 - PR-8 `feat:` デバイス用の HTTPS の口（D3 の回答による）
 
 **Phase 4 — `chore:` / `docs:` 片付け**
