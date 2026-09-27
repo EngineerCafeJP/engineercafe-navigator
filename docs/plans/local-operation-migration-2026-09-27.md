@@ -3,6 +3,7 @@
 - 作成: 2026-09-27
 - 対象: `origin/develop` @ `eaf3d323`（2026-08-11）
 - 状態: **論点 D1〜D4 は回答済み（2026-09-27）・実装は未着手**。Phase 0 の一部は実施済み
+- 性質: 実装 PR ごとのレビューで補っていく生きた文書。2026-09-27 に Codex のレビューを 3 回受け、指摘はすべてコードで確かめて反映した（#952）。PR-6 以降も、それぞれの PR で依存を洗い直す
 - 根拠: `git grep` による全件棚卸し（14 パターン・114 ファイル）と、主要箇所の抜き取り照合
 
 ## 1. 背景
@@ -10,8 +11,8 @@
 - 運用方針: 当面はローカル運用とし、GCP は完全に停止する。
 - GCP の状態（2026-09-27）
   - `aipartner-426616`: 2026-09-27 にプロジェクトごと削除した（`gcloud projects undelete` で 2026-10-27 まで復元可）。本番バックエンドの Cloud Run `engineer-cafe-backend`、Cloud Run job `event-kb-sync`、本番 TTS の Cloud Run `piper-plus`・`voicevox-proto` がここにあった
-  - 本リポジトリから参照されない別プロジェクトにある Secret Manager の secret も、課金停止の予定がある（§5 の Phase 0）
-- GCP の外にある Supabase は稼働中で、本計画の対象外
+  - 別プロジェクト `cor-engineer-cafe` の Secret Manager にあった secret は、GCP と無関係な実値 9 件を環境変数の管理先へ移してから、プロジェクトごと削除した（2026-09-27、§5 の 0-3）
+- GCP の外にある Supabase のプロジェクトも、DB をダンプしてから 2026-09-27 に削除した（§5 の 0-4）。コード上の Supabase の経路は残す（D1）が、接続先はもう無い
 
 ## 2. 結論
 
@@ -105,21 +106,23 @@ Supabase を使うのは RAG だけではない。ナレッジの CRUD API（`ba
 
 ## 5. 実装順の提案（PR の粒度）
 
-**Phase 0 — 運用のノイズを止める（コード変更なし・可逆）**
+**Phase 0 — 運用のノイズを止める（コード変更なし）**
+
+戻せる範囲は項目によって違う。workflow の無効化（0-1・0-2・0-5）は `gh workflow enable` で戻せる。GCP のプロジェクトの削除（0-3 と、背景の `aipartner-426616`）は `gcloud projects undelete` で 2026-10-27 まで戻せる。Supabase のプロジェクトの削除（0-4）は戻せず、非公開の場所に保管したダンプから新しいプロジェクトかローカルの PostgreSQL に入れ直すしかない（入れ直す手順はダンプに添えたが、試していない）。
 
 - 0-1 **（2026-09-27 実施済み）** `voice-e2e-nightly.yml` を無効化した（戻すときは `gh workflow enable voice-e2e-nightly.yml -R EngineerCafeJP/engineercafe-navigator`）
 - 0-2 **（2026-09-27 実施済み）** `ragas-evaluation.yml` を無効化した（同上）
 - 0-3 **（2026-09-27 実施済み）** Secret Manager にある secret のうち、GCP と無関係な実値 9 件を環境変数の管理先へ移し（値の一致をハッシュで確認）、残りは GCP プロジェクトごと削除した（次に GCP を使うときに作り直す）
 - 0-4 **（2026-09-27 実施済み）** Supabase の DB をダンプしてから（`public` と `supabase_migrations`、`knowledge_base` 886 行を照合）、Supabase プロジェクトを削除した（D1）
-- 0-5 **（2026-09-27 実施済み）** `frontend-production-smoke.yml`（develop への push で、本番のフロント→バックエンドの疎通を確かめる）を無効化した。戻すときは `gh workflow enable frontend-production-smoke.yml -R EngineerCafeJP/engineercafe-navigator`
-- 0-6 Vercel の Production をメンテナンス表示にする（#953。`MAINTENANCE_MODE`、`frontend/README.md` の「メンテナンス表示」）
+- 0-5 **（2026-09-27 実施済み）** `frontend-production-smoke.yml`（develop への push で、本番のフロント→バックエンドの疎通を確かめる）を無効化した。`scripts/verify-frontend-production.sh` が `/api/voice` などに 200 を期待するので、戻すのはバックエンドを戻して `MAINTENANCE_MODE=off` にしてから（`gh workflow enable frontend-production-smoke.yml -R EngineerCafeJP/engineercafe-navigator`）
+- 0-6 **（2026-09-27 実施済み）** Vercel の Production をメンテナンス表示にした（#953。`MAINTENANCE_MODE`、`frontend/README.md` の「メンテナンス表示」）
 - 0-7 （人間の作業、#953 のマージ後）Vercel の Production から、停止したサービスの値（`BACKEND_API_URL`・`BACKEND_API_KEY`・`NEXT_PUBLIC_SUPABASE_URL`・`NEXT_PUBLIC_SUPABASE_ANON_KEY`）を消す。メンテナンス表示の間は、ビルド時と起動時の必須チェックがこれらを求めない
 - 0-8 Vercel の cron `/api/cron/update-knowledge-base`（毎日 19:30 UTC、`frontend/vercel.json`）は、削除済みの Supabase に書き込むので失敗する。#953 のマージ後は middleware が 503 を返し、処理は走らない。cron の定義は PR-3 で削除するかローカル化する
 - 0-9 `db-schema-drift.yml`（migration の PR で旧 DB に接続する）は、2026-09-27 時点で既に disabled_manually（無効化した日は未確認）。移行後にローカルの DB を相手にするかは PR-3 で決める
 
 **Phase 1 — `ci:` CI から GCP を外す**（`.github/workflows` の変更なので、H5 の guard マーカーが要る）
 
-- PR-1 `ci:` `backend-deploy-staging` と `frontend-playwright-voice-live` を削除し、`ci-success` の該当条件を外す（#954）。当初は 2 本に分けていたが、`ci.yml` は CI の path filter で frontend の変更として扱われるため、先に出した方の PR で残った方の `frontend-playwright-voice-live` が停止済みのバックエンドに接続して落ち、`ci-success` も落ちてマージできない（`.github/workflows/ci.yml` の paths-filter と `ci-success`）。そのため 1 本にまとめた。timeout validator（`scripts/validate-p0-cloudrun-vercel-timeouts.mjs`）が `ci.yml` に求めていたデプロイフラグの確認も、同じ PR で外した
+- PR-1 **（2026-09-27 マージ済み）** `ci:` `backend-deploy-staging` と `frontend-playwright-voice-live` を削除し、`ci-success` の該当条件を外す（#954）。当初は 2 本に分けていたが、`ci.yml` は CI の path filter で frontend の変更として扱われるため、先に出した方の PR で残った方の `frontend-playwright-voice-live` が停止済みのバックエンドに接続して落ち、`ci-success` も落ちてマージできない（`.github/workflows/ci.yml` の paths-filter と `ci-success`）。そのため 1 本にまとめた。timeout validator（`scripts/validate-p0-cloudrun-vercel-timeouts.mjs`）が `ci.yml` に求めていたデプロイフラグの確認も、同じ PR で外した
 - PR-3 `ci:` `alpha-live-verification` / `terraform-plan` / `voice-e2e-nightly` / `ragas-evaluation` / `db-schema-drift` の live 部分と、`frontend/vercel.json` の cron を削除するか、ローカル向けにする
 
 **Phase 2 — `refactor:` 運用スクリプト**
@@ -137,6 +140,12 @@ Supabase を使うのは RAG だけではない。ナレッジの CRUD API（`ba
   - ローカル検索のときは Supabase のクライアントを作らない。今は `EnhancedRAGSearch.__init__` が常に `create_client` を呼ぶ（`backend/tools/enhanced_rag.py`）
   - ダンプの `knowledge_base` を `knowledge_embeddings` へ変換する手順（必要なら再埋め込み）と、886 行の件数照合
   - ナレッジの CRUD API（`backend/api/knowledge.py`）と受付セッションの保存（`backend/utils/reception_repository.py`）を、ローカルの保存先へ移すか、ローカル構成では止めて確かめる
+  - frontend を production で動かすなら、frontend 側の起動時の検証も構成に合わせる。今は `frontend/src/instrumentation.ts` の `validateServerEnv()` が `NEXT_PUBLIC_SUPABASE_URL` と `NEXT_PUBLIC_SUPABASE_ANON_KEY` を無条件に必須にしている（`frontend/src/lib/env.ts`。Vercel のメンテナンス表示のときだけ飛ばす）
+  - backend の `API_SECRET_KEY` と、frontend の `BACKEND_API_KEY` を同じ値で両方に設定する。`frontend/src/lib/api/backend-proxy.ts` は `BACKEND_API_KEY` が無いと proxy を拒み、あれば `X-API-Key` として送る。ベースの `docker-compose.yml` はどちらも設定していない。frontend を経由した会話が通ることまで確かめる
+  - デモ構成の言語の固定を引き継がない。`docker-compose.demo.yml` は `LANGUAGE_FORCE: en` と `QWEN_STT_LANGUAGE: en` を設定し、`backend/workflows/main/routing.py` は言語の判定より先に `LANGUAGE_FORCE` を適用する。常用では外し、日本語とそのほかの対応言語で確かめる
+  - RAG のテキスト検索の fallback も Supabase から外す。ベクトル検索の結果が少ないときや失敗したときに呼ぶ `_text_fallback_search`（`backend/tools/enhanced_rag_fallbacks.py`）は、Supabase の `knowledge_base` を読む
+  - 受付を有効にするなら、再来訪者の判定も移す。`VisitorIdentificationService.identify_by_visitor_id()`（`backend/services/visitor_identification_service.py`）は Supabase の `visits` を読み、使えないと `None` を返すので、全員が初来訪として扱われる。移すか、止めて確かめる
+  - frontend の `/api/health/knowledge` は `knowledgeBaseUtils.getStats()`（`frontend/src/lib/knowledge-base-utils.ts`、`supabaseAdmin`）を呼ぶので、ローカルの KB が健全でも 500 になる。ローカルに合わせるか退役させる
   - 環境変数の注入方法を含む起動手順書
 - PR-7 `feat:` イベント KB 同期をローカルで動かす。定期実行（launchd か systemd timer）に替えるだけでは動かない。今の同期は Supabase の URL とキーを必須にし（`backend/scripts/sync_event_kb.py`）、Supabase の API で `knowledge_base` に書き込む（`backend/services/event_kb_sync.py`）ので、ローカルの検索先（`knowledge_embeddings`）へ書く経路も含める
 - PR-8 `feat:` デバイス用の HTTPS の口（D3 の回答による）
