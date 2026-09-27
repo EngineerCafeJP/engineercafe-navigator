@@ -5,6 +5,13 @@
 > Engineer Cafe Navigator deployment guide for Wave 3.
 > Last updated: 2026-05-18. Live revision and run IDs are tracked in
 > [STATUS.md](STATUS.md).
+>
+> **2026-09-27: the GCP deployment described below is retired.** The Cloud Run
+> services and the project `aipartner-426616` were deleted for local operation
+> ([plan](plans/local-operation-migration-2026-09-27.md)). `ci.yml` no longer has the
+> `backend-deploy-staging` job, and `scripts/validate-p0-cloudrun-vercel-timeouts.mjs`
+> no longer checks its deploy flags, so the "source of truth is ci.yml" statements
+> below are historical until this guide is rewritten (plan PR-10).
 
 This project now supports two deployment paths:
 
