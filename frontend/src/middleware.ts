@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { isMaintenanceMode } from './lib/maintenance-mode';
+import { maintenanceResponse } from './lib/maintenance-response';
+
 function unauthorizedResponse(): NextResponse {
   return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 }
@@ -55,6 +58,16 @@ function traceUserAgent(request: NextRequest): void {
 }
 
 export async function middleware(request: NextRequest): Promise<NextResponse> {
+  // Read both variables by name so Next.js exposes them to the middleware bundle.
+  const maintenance = isMaintenanceMode({
+    MAINTENANCE_MODE: process.env.MAINTENANCE_MODE,
+    VERCEL_ENV: process.env.VERCEL_ENV,
+  });
+
+  if (maintenance) {
+    return maintenanceResponse(request.nextUrl.pathname);
+  }
+
   traceUserAgent(request);
 
   if (!isProtectedOperationalRoute(request.nextUrl.pathname)) {
@@ -83,13 +96,10 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
 
 export const config = {
   matcher: [
-    '/api/admin/:path*',
-    '/api/cron/:path*',
-    '/api/monitoring/:path*',
-    '/api/voice',
-    '/api/qa',
-    '/api/character',
-    '/api/slides',
-    '/api/reception/:path*',
+    // Every path except Next.js assets, so maintenance mode can answer pages and
+    // APIs alike. Outside maintenance, only the routes listed in
+    // isProtectedOperationalRoute need the admin bearer token; /api/alerts/webhook
+    // still verifies its own secret.
+    '/((?!_next/static|_next/image|favicon.ico).*)',
   ],
 };

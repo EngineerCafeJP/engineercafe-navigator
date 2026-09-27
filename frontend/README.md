@@ -25,6 +25,24 @@ UI・VRM・ブラウザ音声・管理画面・バックエンドへのプロキ
 
 `BACKEND_API_URL`、`BACKEND_API_KEY`、`NEXT_PUBLIC_SUPABASE_*`、`SUPABASE_SERVICE_ROLE_KEY`、`ADMIN_API_SECRET` 等。必須度は [docs/STATUS.md](../docs/STATUS.md) とコードで確認。
 
+## メンテナンス表示
+
+公開用の GCP バックエンドと Supabase は 2026-09-27 に停止した。そのため Vercel の Production（`VERCEL_ENV=production`）では、`src/middleware.ts` が全ページに「メンテナンス中です」の HTML を、`/api/*` に `{"error":"Service Unavailable","reason":"maintenance"}` を返す（いずれも 503、`Retry-After: 86400`）。対象外は Next.js のアセットだけ。`/api/alerts/webhook` もメンテナンス中は 503 になり、それ以外のときは従来どおり admin の Bearer 認証を通らず、自前の secret で認証する。
+
+| `MAINTENANCE_MODE` | 動作 |
+| --- | --- |
+| 未設定 | Vercel Production のときだけメンテナンス表示。ローカルと Preview は通常どおり |
+| `on` / `true` / `1` | どこで動かしてもメンテナンス表示 |
+| `off` / `false` / `0` | メンテナンス表示にしない。バックエンドを戻したら Vercel の Production にこれを設定して再デプロイする |
+
+メンテナンス表示の間は、ビルド時の `pnpm env:check:production` と起動時の `src/instrumentation.ts` が `BACKEND_API_URL`・`BACKEND_API_KEY`・`NEXT_PUBLIC_SUPABASE_URL`・`NEXT_PUBLIC_SUPABASE_ANON_KEY` の必須チェックを飛ばす。停止したサービスの資格情報を Vercel から消しても、メンテナンス表示はデプロイできる。
+
+判定は `src/lib/maintenance-mode.ts`、応答は `src/lib/maintenance-response.ts`。テストは次のとおり。
+
+```bash
+pnpm exec tsx --test --import ./src/__tests__/node-test-setup.ts src/__tests__/middleware.test.ts src/__tests__/maintenance-startup.test.ts
+```
+
 ## ローカル・コマンド
 
 ```bash

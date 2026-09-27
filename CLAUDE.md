@@ -133,7 +133,7 @@ PostgreSQL (Supabase) with pgvector. Key tables:
 
 <important if="you are deploying, building Docker images, or modifying CI/CD">
 - **Docker on Apple Silicon**: Use `--platform linux/amd64` when building for Cloud Run (GCP).
-- **Frontend**: Vercel (`pnpm deploy` or auto-deploy on develop push)
+- **Frontend**: Vercel (`pnpm deploy` or auto-deploy on develop push). Vercel Production serves a 503 maintenance page for every route by default; `MAINTENANCE_MODE=off` turns it off (`frontend/README.md`「メンテナンス表示」)
 - **Backend**: retired from GCP on 2026-09-27. The Cloud Run services (`engineer-cafe-backend`, `voicevox-proto`) and the project `aipartner-426616` were deleted, and `ci.yml` no longer deploys. Local operation follows `docs/plans/local-operation-migration-2026-09-27.md`
 - **Cloud Run env vars** (if GCP comes back): Use `--update-env-vars` (NOT `--set-env-vars` which overwrites ALL vars)
 </important>
