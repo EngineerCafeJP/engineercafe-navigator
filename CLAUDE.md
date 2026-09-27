@@ -117,7 +117,7 @@ PostgreSQL (Supabase) with pgvector. Key tables:
 
 - **`/api/marp` (FE) ≠ `/api/slides` (BE)**: Marp = markdown→HTML rendering. Slides = narration/navigation. Different purposes entirely.
 - **Embeddings**: Always 1536 dimensions, always `openai/text-embedding-3-small` via OpenRouter API. No mixing.
-- **Alpha UI/E2E gating**: `.github/workflows/voice-e2e-nightly.yml` runs the browser voice round-trip against the live Cloud Run backend via `workflow_dispatch` (nightly cron to be re-enabled after the workflow file lands on the default branch `main`). Do not delete or weaken this workflow without updating `docs/plans/alpha-ui-e2e-hardening-2026-04-12.md`.
+- **Alpha UI/E2E gating (retired 2026-09-27)**: the live Cloud Run backend was deleted for local operation (`docs/plans/local-operation-migration-2026-09-27.md`). `voice-e2e-nightly.yml` is disabled (`gh workflow enable voice-e2e-nightly.yml -R EngineerCafeJP/engineercafe-navigator` to restore), and the `frontend-playwright-voice-live` and `backend-deploy-staging` jobs were removed from `ci.yml`. Bring back a voice round-trip gate against the local backend before relying on voice changes; record changes in `docs/plans/archive/alpha-ui-e2e-hardening-2026-04-12.md`.
 
 <important if="you are modifying frontend code (TypeScript, React, Next.js, CSS)">
 - **Tailwind CSS v3.4.17** — DO NOT upgrade to v4. PostCSS config uses `tailwindcss: {}`, not `@tailwindcss/postcss: {}`.
@@ -133,10 +133,9 @@ PostgreSQL (Supabase) with pgvector. Key tables:
 
 <important if="you are deploying, building Docker images, or modifying CI/CD">
 - **Docker on Apple Silicon**: Use `--platform linux/amd64` when building for Cloud Run (GCP).
-- **Frontend**: Vercel (`pnpm deploy` or auto-deploy on develop push)
-- **Backend**: Cloud Run `engineer-cafe-backend` in `asia-northeast1` (GCP project: `aipartner-426616`)
-- **VoiceVox**: Separate Cloud Run `voicevox-proto` in `asia-northeast2`
-- **Cloud Run env vars**: Use `--update-env-vars` (NOT `--set-env-vars` which overwrites ALL vars)
+- **Frontend**: Vercel (`pnpm deploy` or auto-deploy on develop push). Vercel Production serves a 503 maintenance page for every route by default; `MAINTENANCE_MODE=off` turns it off (`frontend/README.md`「メンテナンス表示」)
+- **Backend**: retired from GCP on 2026-09-27. The Cloud Run services (`engineer-cafe-backend`, `voicevox-proto`) and the project `aipartner-426616` were deleted, and `ci.yml` no longer deploys. Local operation follows `docs/plans/local-operation-migration-2026-09-27.md`
+- **Cloud Run env vars** (if GCP comes back): Use `--update-env-vars` (NOT `--set-env-vars` which overwrites ALL vars)
 </important>
 
 <important if="you are creating or modifying API endpoints">
