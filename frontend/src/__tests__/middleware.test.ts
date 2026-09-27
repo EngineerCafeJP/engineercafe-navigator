@@ -158,8 +158,14 @@ test('allows traced public API routes without admin bearer token', async () => {
   assert.equal(response.headers.get('x-middleware-next'), '1');
 });
 
-test('/api/alerts/webhook is not matched by middleware config', () => {
-  assert.equal(isMatchedByMiddleware('/api/alerts/webhook'), false);
+test('/api/alerts/webhook skips the admin bearer check and keeps its own secret check', async () => {
+  process.env.ADMIN_API_SECRET = 'test-secret';
+  env.NODE_ENV = 'production';
+
+  const response = await middleware(createRequest('/api/alerts/webhook'));
+
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('x-middleware-next'), '1');
 });
 
 test('middleware config matches pages and APIs but skips Next.js assets', () => {
@@ -171,6 +177,7 @@ test('middleware config matches pages and APIs but skips Next.js assets', () => 
     '/api/admin/knowledge',
     '/api/cron/update-knowledge-base',
     '/api/reception/start',
+    '/api/alerts/webhook',
   ];
 
   for (const pathname of matched) {
@@ -198,7 +205,14 @@ test('returns 503 JSON for API routes in maintenance mode before checking admin 
   env.VERCEL_ENV = 'production';
   process.env.ADMIN_API_SECRET = 'test-secret';
 
-  for (const pathname of ['/api/voice', '/api/cron/update-knowledge-base', '/api/admin/knowledge']) {
+  const apiRoutes = [
+    '/api/voice',
+    '/api/cron/update-knowledge-base',
+    '/api/admin/knowledge',
+    '/api/alerts/webhook',
+  ];
+
+  for (const pathname of apiRoutes) {
     const response = await middleware(createRequest(pathname, 'Bearer test-secret'));
 
     assert.equal(response.status, 503, pathname);

@@ -96,9 +96,10 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
 
 export const config = {
   matcher: [
-    // Every path, so maintenance mode can answer pages and APIs alike. Next.js
-    // assets are skipped, and /api/alerts/webhook keeps bypassing the middleware
-    // because it verifies its own secret instead of the admin bearer token.
-    '/((?!_next/static|_next/image|favicon.ico|api/alerts/webhook).*)',
+    // Every path except Next.js assets, so maintenance mode can answer pages and
+    // APIs alike. Outside maintenance, only the routes listed in
+    // isProtectedOperationalRoute need the admin bearer token; /api/alerts/webhook
+    // still verifies its own secret.
+    '/((?!_next/static|_next/image|favicon.ico).*)',
   ],
 };

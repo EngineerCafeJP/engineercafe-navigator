@@ -27,7 +27,7 @@ UI・VRM・ブラウザ音声・管理画面・バックエンドへのプロキ
 
 ## メンテナンス表示
 
-公開用の GCP バックエンドと Supabase は 2026-09-27 に停止した。そのため Vercel の Production（`VERCEL_ENV=production`）では、`src/middleware.ts` が全ページに「メンテナンス中です」の HTML を、`/api/*` に `{"error":"Service Unavailable","reason":"maintenance"}` を返す（いずれも 503、`Retry-After: 86400`）。`/api/alerts/webhook` と Next.js のアセットは対象外。
+公開用の GCP バックエンドと Supabase は 2026-09-27 に停止した。そのため Vercel の Production（`VERCEL_ENV=production`）では、`src/middleware.ts` が全ページに「メンテナンス中です」の HTML を、`/api/*` に `{"error":"Service Unavailable","reason":"maintenance"}` を返す（いずれも 503、`Retry-After: 86400`）。対象外は Next.js のアセットだけ。`/api/alerts/webhook` もメンテナンス中は 503 になり、それ以外のときは従来どおり admin の Bearer 認証を通らず、自前の secret で認証する。
 
 | `MAINTENANCE_MODE` | 動作 |
 | --- | --- |
