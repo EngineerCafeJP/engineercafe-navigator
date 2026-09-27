@@ -25,6 +25,18 @@ UI・VRM・ブラウザ音声・管理画面・バックエンドへのプロキ
 
 `BACKEND_API_URL`、`BACKEND_API_KEY`、`NEXT_PUBLIC_SUPABASE_*`、`SUPABASE_SERVICE_ROLE_KEY`、`ADMIN_API_SECRET` 等。必須度は [docs/STATUS.md](../docs/STATUS.md) とコードで確認。
 
+## メンテナンス表示
+
+公開用の GCP バックエンドと Supabase は 2026-09-27 に停止した。そのため Vercel の Production（`VERCEL_ENV=production`）では、`src/middleware.ts` が全ページに「メンテナンス中です」の HTML を、`/api/*` に `{"error":"Service Unavailable","reason":"maintenance"}` を返す（いずれも 503、`Retry-After: 86400`）。`/api/alerts/webhook` と Next.js のアセットは対象外。
+
+| `MAINTENANCE_MODE` | 動作 |
+| --- | --- |
+| 未設定 | Vercel Production のときだけメンテナンス表示。ローカルと Preview は通常どおり |
+| `on` / `true` / `1` | どこで動かしてもメンテナンス表示 |
+| `off` / `false` / `0` | メンテナンス表示にしない。バックエンドを戻したら Vercel の Production にこれを設定して再デプロイする |
+
+判定は `src/lib/maintenance-mode.ts`、テストは `src/__tests__/middleware.test.ts`（`pnpm exec tsx --test --import ./src/__tests__/node-test-setup.ts src/__tests__/middleware.test.ts`）。
+
 ## ローカル・コマンド
 
 ```bash
