@@ -2,7 +2,7 @@
 
 - 作成: 2026-09-27
 - 対象: `origin/develop` @ `eaf3d323`（2026-08-11）
-- 状態: **提案（承認待ち）**。承認前に大きなコード変更はしない
+- 状態: **論点 D1〜D4 は回答済み（2026-09-27）・実装は未着手**。Phase 0 の一部は実施済み
 - 根拠: `git grep` による全件棚卸し（14 パターン・114 ファイル）と、主要箇所の抜き取り照合
 
 ## 1. 背景
@@ -20,7 +20,7 @@
 3. **今すぐ起きている影響**
    - 本番バックエンドと本番 TTS は停止した
    - develop への backend 変更の push は `ci-success` で必ず失敗する（`.github/workflows/ci.yml:1046-1051` が `backend-deploy-staging` の成功を要求している）
-   - `voice-e2e-nightly.yml`（毎日 03:17 JST）は本番バックエンドに対して走り、失敗すると Issue を自動で起票する（`voice-e2e-nightly.yml:130-137`）。直近の成功は 2026-09-26 の実行で、次回から毎日失敗する見込み
+   - `voice-e2e-nightly.yml`（毎日 03:17 JST）は本番バックエンドに対して走り、失敗すると Issue を自動で起票する（`voice-e2e-nightly.yml:130-137`）。直近の成功は 2026-09-26 の実行。2026-09-27 に無効化した（Phase 0-1）
 
 ## 3. 棚卸し
 
@@ -90,22 +90,25 @@
 - スクリプト: Secret Manager を読む 8 本（`scripts/alpha-quality-gates.sh` ほか）、`gcloud logging read` を使う 5 本、`scripts/verify-deployment.sh`
 - IaC: `infra/terraform/`（監視・ログベースのメトリクス・Secret のコンテナ）
 
-## 4. 決めてほしいこと
+## 4. 論点と回答（2026-09-27）
 
-| ID | 論点 | 選択肢 |
+| ID | 論点 | 回答 |
 | --- | --- | --- |
-| D1 | RAG のベクトル検索 | Supabase を続ける / `local-pgvector` に移す |
-| D2 | LLM | Ollama（完全ローカル）/ OpenRouter を続ける（GCP ではないクラウド API） |
-| D3 | 施設外アクセスとデバイス | オンサイト専用にする / トンネルなどで HTTPS の口を作る |
-| D4 | 実行機 | どのローカル機で常時動かすか |
+| D1 | RAG のベクトル検索 | コード上は Supabase の経路を残す（今後も使う）。ただし Supabase プロジェクトは一旦削除する（削除前に DB をダンプして非公開の場所に保管） |
+| D2 | LLM | コード上は Ollama と OpenRouter の両方を残し、環境変数で切り替える |
+| D3 | 施設外アクセスとデバイス | コード上はオンサイト専用と HTTPS の口の両方の経路を残す |
+| D4 | 実行機 | 未定。先に GCP の課金を止める |
+
+D1 の帰結: Supabase を削除している間は、既定の RAG（Supabase の RPC）が動かない。ローカル運用では `RAG_VECTOR_BACKEND=local-pgvector` を使い、ダンプから `knowledge_base` をローカルの pgvector に戻す必要がある（Phase 3 の PR-6）。KB の埋め込みを作ったモデルとローカルの埋め込みモデルが違う場合は、再埋め込みも要る。
 
 ## 5. 実装順の提案（PR の粒度）
 
 **Phase 0 — 運用のノイズを止める（コード変更なし・可逆）**
 
-- 0-1 `voice-e2e-nightly.yml` を無効化する（`gh workflow disable voice-e2e-nightly.yml -R EngineerCafeJP/engineercafe-navigator`。戻すときは `enable`）
-- 0-2 `ragas-evaluation.yml` を無効化する（同上）
-- 0-3 課金停止を予定している Secret Manager から、ローカル運用で使う secret を環境変数の管理先へ移す。課金停止の後は、課金を戻すまで取り出せなくなるため、順番を守る
+- 0-1 **（2026-09-27 実施済み）** `voice-e2e-nightly.yml` を無効化した（戻すときは `gh workflow enable voice-e2e-nightly.yml -R EngineerCafeJP/engineercafe-navigator`）
+- 0-2 **（2026-09-27 実施済み）** `ragas-evaluation.yml` を無効化した（同上）
+- 0-3 Secret Manager にある secret のうち、GCP と無関係なものを環境変数の管理先へ移し、GCP に紐づくものは削除する（次に GCP を使うときに作り直す）。課金停止の後は取り出せなくなるため、移行を先に行う
+- 0-4 Supabase の DB をダンプしてから、Supabase プロジェクトを一旦削除する（D1）
 
 **Phase 1 — `ci:` CI から GCP を外す**（`.github/workflows` の変更なので、H5 の guard マーカーが要る）
 
@@ -120,7 +123,7 @@
 
 **Phase 3 — `feat:` ローカル本番構成**（D1〜D4 の回答が前提）
 
-- PR-6 `feat:` デモ構成を土台に、常用の compose プロファイルを作る（LLM・埋め込み・RAG・TTS の切替を固定し、warmup を同梱）。環境変数の注入方法を含む起動手順書を付ける
+- PR-6 `feat:` デモ構成を土台に、常用の compose プロファイルを作る。LLM（Ollama / OpenRouter）と RAG（Supabase / `local-pgvector`）はどちらも残して環境変数で切り替え（D1・D2）、warmup を同梱する。ダンプから `knowledge_base` をローカルの pgvector に戻す手順と、環境変数の注入方法を含む起動手順書を付ける
 - PR-7 `feat:` イベント KB 同期を、実行機の定期実行（launchd か systemd timer）で動かす
 - PR-8 `feat:` デバイス用の HTTPS の口（D3 の回答による）
 
