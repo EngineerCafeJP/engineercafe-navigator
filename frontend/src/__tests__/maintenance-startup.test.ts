@@ -47,20 +47,12 @@ function useProductionWithoutRetiredCredentials(maintenanceMode: string | undefi
 }
 
 function runBuildEnvCheck(maintenanceMode: string | undefined) {
-  const childEnv: Record<string, string> = {};
+  const childEnv: NodeJS.ProcessEnv = { ...process.env, VERCEL_ENV: 'production' };
+  const removedKeys: readonly string[] = [...productionRequiredVercelEnvKeys, 'MAINTENANCE_MODE'];
 
-  for (const [key, value] of Object.entries(process.env)) {
-    if (value !== undefined) {
-      childEnv[key] = value;
-    }
-  }
-
-  for (const key of productionRequiredVercelEnvKeys) {
+  for (const key of removedKeys) {
     delete childEnv[key];
   }
-
-  childEnv.VERCEL_ENV = 'production';
-  delete childEnv.MAINTENANCE_MODE;
 
   if (maintenanceMode !== undefined) {
     childEnv.MAINTENANCE_MODE = maintenanceMode;
