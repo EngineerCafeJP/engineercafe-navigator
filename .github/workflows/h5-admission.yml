@@ -1,0 +1,30 @@
+name: H5 Admission
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+
+# Required check name (branch protection): h5-admission
+# Structural path scope is enforced in scripts/h5-admission-check.sh (not by comment strings).
+jobs:
+  h5-admission:
+    name: h5-admission
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: H5 three-point admission fee
+        env:
+          H5_BASE_REF: origin/${{ github.base_ref }}
+          H5_HEAD_REF: HEAD
+          H5_PR_NUMBER: ${{ github.event.pull_request.number }}
+          # PR body is read from GITHUB_EVENT_PATH inside the script (no body expression in yml).
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          chmod +x scripts/h5-admission-check.sh
+          bash scripts/h5-admission-check.sh
